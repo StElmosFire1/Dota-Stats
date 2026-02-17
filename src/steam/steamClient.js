@@ -39,6 +39,18 @@ class SteamDotaClient extends EventEmitter {
       }
     });
 
+    this.steamClient.on('steamGuard', (domain, callback, lastCodeWrong) => {
+      if (config.steam.sharedSecret) {
+        const code = SteamTotp.generateAuthCode(config.steam.sharedSecret);
+        console.log('[Steam] Providing Steam Guard code from shared secret...');
+        callback(code);
+      } else {
+        console.error('[Steam] Steam Guard code requested but no shared secret configured.');
+        console.error('[Steam] Either disable Steam Guard on this account or set STEAM_SHARED_SECRET.');
+        callback('');
+      }
+    });
+
     this.steamClient.on('error', (err) => {
       console.error('[Steam] Login error:', err.message);
       this.isLoggedIn = false;
@@ -63,10 +75,6 @@ class SteamDotaClient extends EventEmitter {
         accountName: config.steam.accountName,
         password: config.steam.password,
       };
-
-      if (config.steam.sharedSecret) {
-        loginOptions.twoFactorCode = SteamTotp.generateAuthCode(config.steam.sharedSecret);
-      }
 
       const onReady = () => {
         cleanup();
