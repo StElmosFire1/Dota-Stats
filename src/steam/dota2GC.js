@@ -256,6 +256,7 @@ class Dota2GCClient extends EventEmitter {
         break;
       }
       default:
+        console.log(`[Dota2 GC] Unhandled message type: ${msgType} (0x${msgType.toString(16)}), payload size: ${payload.length}`);
         break;
     }
   }
