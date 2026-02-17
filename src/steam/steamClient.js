@@ -43,6 +43,18 @@ class SteamDotaClient extends EventEmitter {
       }
     });
 
+    this.steamClient.on('friendRelationship', (steamID, relationship) => {
+      if (relationship === SteamUser.EFriendRelationship.RequestRecipient) {
+        this.steamClient.addFriend(steamID, (err) => {
+          if (err) {
+            console.warn(`[Steam] Failed to accept friend request from ${steamID.getSteamID64()}: ${err.message}`);
+          } else {
+            console.log(`[Steam] Accepted friend request from ${steamID.getSteamID64()}`);
+          }
+        });
+      }
+    });
+
     this.steamClient.on('error', (err) => {
       console.error('[Steam] Login error:', err.message);
       this.isLoggedIn = false;
