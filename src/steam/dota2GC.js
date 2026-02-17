@@ -29,19 +29,26 @@ function getLobbyProtos() {
   protoRoot = new protobuf.Root();
   protoRoot.define('dota').add(
     new protobuf.Type('CMsgPracticeLobbySetDetails')
-      .add(new protobuf.Field('game_name', 1, 'string'))
-      .add(new protobuf.Field('pass_key', 6, 'string'))
-      .add(new protobuf.Field('server_region', 5, 'uint32'))
-      .add(new protobuf.Field('game_mode', 3, 'uint32'))
-      .add(new protobuf.Field('allow_spectating', 10, 'bool'))
-      .add(new protobuf.Field('leagueid', 13, 'uint32'))
-      .add(new protobuf.Field('cm_pick', 28, 'uint32'))
-      .add(new protobuf.Field('visibility', 22, 'uint32'))
+      .add(new protobuf.Field('game_name', 2, 'string'))
+      .add(new protobuf.Field('server_region', 4, 'uint32'))
+      .add(new protobuf.Field('game_mode', 5, 'uint32'))
+      .add(new protobuf.Field('cm_pick', 6, 'uint32'))
+      .add(new protobuf.Field('allow_cheats', 10, 'bool'))
+      .add(new protobuf.Field('fill_with_bots', 11, 'bool'))
+      .add(new protobuf.Field('allow_spectating', 13, 'bool'))
+      .add(new protobuf.Field('pass_key', 15, 'string'))
+      .add(new protobuf.Field('leagueid', 16, 'uint32'))
+      .add(new protobuf.Field('allchat', 23, 'bool'))
+      .add(new protobuf.Field('dota_tv_delay', 24, 'uint32'))
+      .add(new protobuf.Field('visibility', 33, 'uint32'))
+      .add(new protobuf.Field('pause_setting', 42, 'uint32'))
   );
   protoRoot.define('dota').add(
     new protobuf.Type('CMsgPracticeLobbyCreate')
       .add(new protobuf.Field('search_key', 1, 'string'))
-      .add(new protobuf.Field('lobby_details', 2, 'dota.CMsgPracticeLobbySetDetails'))
+      .add(new protobuf.Field('pass_key', 5, 'string'))
+      .add(new protobuf.Field('client_version', 6, 'uint32'))
+      .add(new protobuf.Field('lobby_details', 7, 'dota.CMsgPracticeLobbySetDetails'))
   );
   protoRoot.define('dota').add(
     new protobuf.Type('CMsgPracticeLobbyLeave')
@@ -56,6 +63,7 @@ function encodeLobbyCreate(options) {
   const Type = root.lookupType('dota.CMsgPracticeLobbyCreate');
   const msg = Type.create({
     search_key: '',
+    pass_key: options.pass_key || '',
     lobby_details: {
       game_name: options.game_name || 'Inhouse',
       pass_key: options.pass_key || '',
@@ -63,6 +71,9 @@ function encodeLobbyCreate(options) {
       game_mode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
       allow_spectating: options.allow_spectating !== false,
       visibility: 0,
+      allchat: true,
+      dota_tv_delay: 2,
+      pause_setting: 1,
     },
   });
   return Buffer.from(Type.encode(msg).finish());
