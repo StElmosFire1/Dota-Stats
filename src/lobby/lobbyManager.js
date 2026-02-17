@@ -42,9 +42,13 @@ class LobbyManager extends EventEmitter {
       if (this.state === LobbyState.IDLE) return;
 
       if (update.lobbyId) {
+        const hadNoId = !this.lobbyId;
         this.lobbyId = update.lobbyId;
         if (this.currentLobby) {
           this.currentLobby.lobbyId = update.lobbyId;
+        }
+        if (hadNoId) {
+          this._setRichPresence(update.lobbyId);
         }
       }
 
@@ -118,6 +122,10 @@ class LobbyManager extends EventEmitter {
       };
       this.state = LobbyState.WAITING;
 
+      if (this.lobbyId) {
+        this._setRichPresence(this.lobbyId);
+      }
+
       console.log(`[Lobby] Created lobby: ${name} (ID: ${this.lobbyId || 'pending'})`);
       return this.currentLobby;
     } catch (err) {
@@ -138,6 +146,7 @@ class LobbyManager extends EventEmitter {
       client.gcClient.leavePracticeLobby();
     }
 
+    this._clearRichPresence();
     this.state = LobbyState.ENDED;
     return lobbyInfo;
   }
@@ -161,6 +170,36 @@ class LobbyManager extends EventEmitter {
     return client.gcClient.inviteToLobby(steamId64);
   }
 
+  _setRichPresence(lobbyId) {
+    try {
+      const client = getSteamClient();
+      if (client.steamClient) {
+        client.steamClient.uploadRichPresence(570, {
+          steam_display: '#DOTA_RP_LOBBY',
+          status: 'WatchableGame',
+          connect: `+connect_lobby ${lobbyId}`,
+          steam_player_group: lobbyId.toString(),
+          steam_player_group_size: '10',
+        });
+        console.log(`[Lobby] Rich presence set for lobby ${lobbyId} - Join Game should be visible.`);
+      }
+    } catch (e) {
+      console.warn('[Lobby] Failed to set rich presence:', e.message);
+    }
+  }
+
+  _clearRichPresence() {
+    try {
+      const client = getSteamClient();
+      if (client.steamClient) {
+        client.steamClient.uploadRichPresence(570, {});
+        console.log('[Lobby] Rich presence cleared.');
+      }
+    } catch (e) {
+      console.warn('[Lobby] Failed to clear rich presence:', e.message);
+    }
+  }
+
   getStatus() {
     return {
       state: this.state,
@@ -177,6 +216,7 @@ class LobbyManager extends EventEmitter {
   }
 
   resetState() {
+    this._clearRichPresence();
     this.state = LobbyState.IDLE;
     this.currentLobby = null;
     this.lobbyId = null;
