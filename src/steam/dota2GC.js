@@ -187,6 +187,11 @@ class Dota2GCClient extends EventEmitter {
           console.log('[Dota2 GC] Welcome received (could not decode details).');
         }
         this.isReady = true;
+        if (this._helloInterval) {
+          clearInterval(this._helloInterval);
+          this._helloInterval = null;
+        }
+        this.emit('ready');
         if (this._callbacks.has('ready')) {
           this._callbacks.get('ready')();
           this._callbacks.delete('ready');
@@ -271,6 +276,16 @@ class Dota2GCClient extends EventEmitter {
 
       this.sendHello();
     });
+  }
+
+  startPeriodicHello(intervalMs = 30000) {
+    if (this._helloInterval) clearInterval(this._helloInterval);
+    this._helloInterval = setInterval(() => {
+      if (!this.isReady) {
+        console.log('[Dota2 GC] Retrying hello...');
+        this.sendHello();
+      }
+    }, intervalMs);
   }
 
   createPracticeLobby(options) {

@@ -32,7 +32,11 @@ class SteamDotaClient extends EventEmitter {
             this.emit('gcReady');
           })
           .catch((err) => {
-            console.warn('[Steam] GC connection issue:', err.message);
+            console.warn('[Steam] GC initial connection timed out, will keep retrying in background...');
+            this.gcClient.startPeriodicHello();
+            this.gcClient.on('ready', () => {
+              console.log('[Steam] GC connected via retry!');
+            });
             this.isGCReady = true;
             this.emit('gcReady');
           });
