@@ -62,7 +62,7 @@ function encodeLobbyCreate(options) {
       server_region: options.server_region || SERVER_REGION.AUSTRALIA,
       game_mode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
       allow_spectating: options.allow_spectating !== false,
-      visibility: 1,
+      visibility: 0,
     },
   });
   return Buffer.from(Type.encode(msg).finish());
