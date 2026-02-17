@@ -28,32 +28,37 @@ class LobbyManager extends EventEmitter {
     this.currentLobby = null;
     this.state = LobbyState.IDLE;
     this.lobbyId = null;
-    this._setupGCListeners();
+    this._gcListenersSetup = false;
   }
 
   _setupGCListeners() {
+    if (this._gcListenersSetup) return;
     const client = getSteamClient();
     if (!client.gcClient) return;
 
+    this._gcListenersSetup = true;
+
     client.gcClient.on('lobbyUpdate', (update) => {
-      if (!this.currentLobby) return;
+      if (this.state === LobbyState.IDLE) return;
 
       if (update.lobbyId) {
         this.lobbyId = update.lobbyId;
-        this.currentLobby.lobbyId = update.lobbyId;
+        if (this.currentLobby) {
+          this.currentLobby.lobbyId = update.lobbyId;
+        }
       }
 
-      if (update.matchId && !this.currentLobby.matchId) {
+      if (update.matchId && this.currentLobby && !this.currentLobby.matchId) {
         this.currentLobby.matchId = update.matchId;
         console.log(`[Lobby] Match ID captured: ${update.matchId}`);
         this.emit('matchIdCaptured', update.matchId);
       }
 
-      if (update.playerCount !== undefined) {
+      if (this.currentLobby && update.playerCount !== undefined) {
         this.currentLobby.playerCount = update.playerCount;
       }
 
-      if (update.players) {
+      if (this.currentLobby && update.players) {
         this.currentLobby.players = update.players;
       }
 
@@ -71,6 +76,12 @@ class LobbyManager extends EventEmitter {
         });
       }
     });
+
+    client.gcClient.on('lobbyDestroyed', () => {
+      if (this.state !== LobbyState.IDLE) {
+        console.log('[Lobby] Lobby destroyed by GC.');
+      }
+    });
   }
 
   async createLobby(name, password, requestedBy) {
@@ -82,6 +93,7 @@ class LobbyManager extends EventEmitter {
       throw new Error(`Cannot create lobby - current state: ${this.state}. Use !end first.`);
     }
 
+    this._setupGCListeners();
     this.state = LobbyState.CREATING;
 
     try {
@@ -91,7 +103,6 @@ class LobbyManager extends EventEmitter {
         server_region: config.dota.serverRegion || SERVER_REGION.AUSTRALIA,
         game_mode: config.dota.gameMode || GAME_MODE.CAPTAINS_MODE,
         allow_spectating: true,
-        leagueid: 0,
       });
 
       this.lobbyId = response.id ? response.id.toString() : null;
@@ -107,7 +118,7 @@ class LobbyManager extends EventEmitter {
       };
       this.state = LobbyState.WAITING;
 
-      console.log(`[Lobby] Created lobby: ${name} (ID: ${this.lobbyId})`);
+      console.log(`[Lobby] Created lobby: ${name} (ID: ${this.lobbyId || 'pending'})`);
       return this.currentLobby;
     } catch (err) {
       this.state = LobbyState.IDLE;

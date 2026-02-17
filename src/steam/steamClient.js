@@ -19,28 +19,16 @@ class SteamDotaClient extends EventEmitter {
       console.log('[Steam] Logged in successfully.');
       this.isLoggedIn = true;
       this.steamClient.setPersona(SteamUser.EPersonaState.Online);
-      this.steamClient.gamesPlayed([DOTA2_APPID]);
-    });
 
-    this.steamClient.on('appLaunched', (appid) => {
-      if (appid === DOTA2_APPID) {
-        console.log('[Steam] Dota 2 launched, connecting to GC...');
-        this.gcClient = new Dota2GCClient(this.steamClient);
-        this.gcClient.waitForReady()
-          .then(() => {
-            this.isGCReady = true;
-            this.emit('gcReady');
-          })
-          .catch((err) => {
-            console.warn('[Steam] GC initial connection timed out, will keep retrying in background...');
-            this.gcClient.startPeriodicHello();
-            this.gcClient.on('ready', () => {
-              console.log('[Steam] GC connected via retry!');
-            });
-            this.isGCReady = true;
-            this.emit('gcReady');
-          });
-      }
+      this.gcClient = new Dota2GCClient(this.steamClient);
+
+      this.gcClient.on('ready', () => {
+        console.log('[Steam] Dota 2 GC is ready!');
+        this.isGCReady = true;
+        this.emit('gcReady');
+      });
+
+      this.steamClient.gamesPlayed([DOTA2_APPID]);
     });
 
     this.steamClient.on('steamGuard', (domain, callback, lastCodeWrong) => {
@@ -80,6 +68,13 @@ class SteamDotaClient extends EventEmitter {
         password: config.steam.password,
       };
 
+      const gcTimeout = setTimeout(() => {
+        cleanup();
+        console.warn('[Steam] GC connection timed out, but Steam is logged in. Lobby features may not work immediately.');
+        this.isGCReady = true;
+        resolve();
+      }, 45000);
+
       const onReady = () => {
         cleanup();
         resolve();
@@ -89,6 +84,7 @@ class SteamDotaClient extends EventEmitter {
         reject(err);
       };
       const cleanup = () => {
+        clearTimeout(gcTimeout);
         this.removeListener('gcReady', onReady);
         this.steamClient.removeListener('error', onError);
       };
