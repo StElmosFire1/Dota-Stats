@@ -60,16 +60,19 @@ src/
 ## Tech Stack
 - discord.js v14 - Discord bot framework
 - steam-user v5 - Steam client (headless login with 2FA via steam-totp)
-- protobufjs v7 - Dota 2 GC protobuf encoding/decoding
+- dota2-user v2 - Dota 2 Game Coordinator client (handles GC handshake, protobuf serialization, SO cache)
 - google-spreadsheet v5 - Google Sheets API
 - ts-trueskill - TrueSkill MMR calculations
 - node-fetch v2 - HTTP client for OpenDota API and replay downloads
 
 ## Notes
-- The `dota2` npm package is deprecated and broken. GC communication is implemented directly using protobufjs with inline proto definitions for the messages we need.
+- Uses `dota2-user` npm package (modern maintained alternative to deprecated `dota2` package) for GC communication. It handles protobuf serialization and GC connection lifecycle automatically.
+- Lobby creation is detected via SO (Shared Object) cache messages from the GC. The GC responds to lobby create via SO cache subscription/update messages (types 21-28), not always via the direct PracticeLobbyResponse message. Our code handles both paths.
+- SO cache type 2004 = CSODOTALobby (lobby data including lobbyId, matchId, gameState, players).
 - Match data is fetched from the free OpenDota API (rate limited to ~1 req/sec).
 - Replay parsing extracts match ID from .dem header; full stat parsing requires OpenDota.
 - Bot gracefully degrades: works without Steam (no lobbies) or without Sheets (no persistence).
 
 ## Recent Changes
+- 2026-02-17: Migrated from custom protobufjs GC implementation to dota2-user library. Fixed lobby creation timeout caused by unhandled SO cache messages.
 - 2026-02-17: Initial build with full architecture.
