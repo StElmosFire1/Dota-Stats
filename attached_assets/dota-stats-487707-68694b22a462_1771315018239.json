@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "dota-stats-487707",
+  "private_key_id": "68694b22a4622b48c8b2729e9108c99c38ee38c7",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDCvlDN3f8ngKEV\nQpcpg+l161EPWa2kJgLNT32o6z+z+dhwCvTXBAzeEqchn/+n0IcOb1+wivzhXKlQ\nJw6ujT1FeK8yTf/e53vPKo8u+jatouLSPX4CHUMjyVNRWl4JfJzZ+BLkWEOVDoy8\ngUNl1n5xOyUrgh9cXo9eEwlJ+tDWeXcjYcU48FVeH5kgsX6UwNONeL6YPd+AaB4R\nG/3SipxRygD2knhOMEa+dX+ErUVvwBaGTt9XTwQPPOOW4e0Ufx3Y1qJJkn17dD9f\nBmRWTgIhLlTm0UpALwWuiOr4z/Dqq54sUmu6hjhXrrJbyMewgsgi+0RtV7fySJuG\n6Nzj3aQ3AgMBAAECggEAJ97B+Vv1dLdzg0BGZXQB1KgQSPXBxKUZlsIrBm3fdW/1\n/X5owSqtnbuw5wP0Wf2p4O0xaJoUCumnKmdMrLTy8emy6LgqZg77fJ8IgIQutJ7w\nFD4Nsc4e5FFAExxOu199V2zgJUrizz4S1zcZvtxKt9D1m7JAzG75qDd6g+BraDVL\nM9faTt0iiLHnXGDvOnHj9QC6bq/+2MKmODSWa2XUZmzQT/A+W3/0VvVupqxCIfgo\n/shIF28u1SOyg3maMfPs6wqaj2EldFkQ9iJtIcFKtabWu8ZZKIVy78rXdFgimI80\nekB2RMK3XcL0XIohw7aOhw/B2OltAAR4wcKMG4NG/QKBgQD1uKlF+AlJgROuG636\nJRpPD8c2+tRoXo+uE8Qw+/bmvlD5NPYggowiC+cmgxxpfyMKKMUK5n+rksiYVOKh\n2BRK3vjztq20breyTcwqFAC2qO+Ebu+jwIKnvt0pajiHlxLkrbxBy2WA0RW/AUSm\n8Nt/S5x9x7YTe/MCn48jzqRIiwKBgQDK48A2PdAOszTN8kzz2A+jZHKbSZs71myN\nbqGsf6VQZG2T+gmWPPylnqaf09MH4DMP4Ir8j5R9WetxYpBXzvItTxC3wsxshgZf\nna8L8J0/lY9omNSNtRMv/2CsXZfrDecaS6LBhFb8fUB8YhJeqi7NU9b/fcdOokjg\nIgE5l5ZchQKBgQChiYBeqy0P0Xdqom/BXtro1uqUTlmNM30pZ3025q3uC3eYHSUh\nQjF1wHV5cAAhqp8ScrL284lC9gBBhKxo0XClt+fZ8GJJl+/TnCl4ECZX7r9nRLbt\n5AUA2gzyyQ3YtYyKIVz9tAVKpimxo9fKF9V03fRHDB+6t2WOd+7WD2cY+QKBgGQC\nii/ynklwutm904LrgSHolLnJObTwSIga/aTbMvEC4CTuPqWJIHy/TKFCOCcMs/7i\nj4BZgjecCHvWuxIdl7EP5Uy/wCbKlf+x6aR4EftSzOMhWr0TggbJ2qx8YjNiogWL\nPQopIvvI/e2SJj31o6Zg6nz8Ui+HvWaGPJZYC61FAoGAZn+w5Bg3Gxqvpa4Pchhh\nbez2wvosIZ2PnPLFPw4rsCFsH8ChjboYYcncpEjAmp730npcsOtu+LsIWDanYbCa\ndJ2AwJ9Dg2qq/reAdCTXekiDoSp9htR7VrJH0ZzQg0XsbIBauux6+I78HXQebz8/\n1UMeP/9aD2urBXfQZX0fEzY=\n-----END PRIVATE KEY-----\n",
+  "client_email": "dota-bot@dota-stats-487707.iam.gserviceaccount.com",
+  "client_id": "113705802099328630329",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dota-bot%40dota-stats-487707.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
