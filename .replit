@@ -38,3 +38,8 @@ args = "node src/index.js"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[userenv]
+
+[userenv.shared]
+SHEET_ID = "1EjFnAnEkDkbgh4gSCmP2xwTZiAlUDsCCHLsrLShhAcE"
