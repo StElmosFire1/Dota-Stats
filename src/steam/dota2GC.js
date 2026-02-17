@@ -1,7 +1,6 @@
 const { Dota2User } = require('dota2-user');
-const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgInviteToLobby } = require('dota2-user/protobufs');
+const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects } = require('dota2-user/protobufs');
 const protobuf = require('protobufjs');
-const SteamID = require('steamid');
 const EventEmitter = require('events');
 
 const DOTA2_APPID = 570;
@@ -54,6 +53,10 @@ function getLobbyProtos() {
   protoRoot.define('dota').add(
     new protobuf.Type('CMsgPracticeLobbyLeave')
       .add(new protobuf.Field('dummy', 1, 'uint32'))
+  );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgInviteToLobby')
+      .add(new protobuf.Field('steam_id', 1, 'fixed64'))
   );
   protoRoot.resolveAll();
   return protoRoot;
@@ -342,9 +345,11 @@ class Dota2GCClient extends EventEmitter {
       return false;
     }
     try {
-      const sid = new SteamID(steamId64.toString());
-      const buf = CMsgInviteToLobby.encode({ steamId: sid.getSteamID64() }).finish();
-      this.dota2.sendRawBuffer(EGCBaseMsg.k_EMsgGCInviteToLobby, Buffer.from(buf));
+      const root = getLobbyProtos();
+      const Type = root.lookupType('dota.CMsgInviteToLobby');
+      const msg = Type.create({ steam_id: steamId64.toString() });
+      const buf = Buffer.from(Type.encode(msg).finish());
+      this.dota2.sendRawBuffer(EGCBaseMsg.k_EMsgGCInviteToLobby, buf);
       console.log(`[Dota2 GC] Lobby invite sent to: ${steamId64}`);
       return true;
     } catch (e) {
