@@ -1,10 +1,11 @@
 const { Dota2User } = require('dota2-user');
-const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects } = require('dota2-user/protobufs');
+const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects } = require('dota2-user/protobufs');
 const protobuf = require('protobufjs');
 const EventEmitter = require('events');
 
 const DOTA2_APPID = 570;
 const LOBBY_TYPE_ID = 2004;
+const LOBBY_INVITE_TYPE_ID = 2006;
 
 const GAME_MODE = {
   CAPTAINS_MODE: 2,
@@ -57,6 +58,14 @@ function getLobbyProtos() {
   protoRoot.define('dota').add(
     new protobuf.Type('CMsgInviteToLobby')
       .add(new protobuf.Field('steam_id', 1, 'fixed64'))
+  );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgPracticeLobbyJoin')
+      .add(new protobuf.Field('lobby_id', 1, 'fixed64'))
+      .add(new protobuf.Field('pass_key', 2, 'string'))
+      .add(new protobuf.Field('client_version', 3, 'uint32'))
+      .add(new protobuf.Field('custom_game_crc', 4, 'fixed64'))
+      .add(new protobuf.Field('custom_game_timestamp', 5, 'fixed32'))
   );
   protoRoot.resolveAll();
   return protoRoot;
@@ -118,6 +127,11 @@ class Dota2GCClient extends EventEmitter {
       this.emit('lobbyResponse', data);
     });
 
+    this.dota2.router.on(EDOTAGCMsg.k_EMsgGCPracticeLobbyJoinResponse, (data) => {
+      console.log(`[Dota2 GC] Lobby join response received: result=${data.result}`);
+      this.emit('lobbyJoinResponse', data);
+    });
+
     this.dota2.router.on(EDOTAGCMsg.k_EMsgGCMatchDetailsResponse, (data) => {
       console.log(`[Dota2 GC] Match details received: result=${data.result}`);
       this.emit('matchDetailsResponse', data);
@@ -149,6 +163,25 @@ class Dota2GCClient extends EventEmitter {
       console.warn('[Dota2 GC] Failed to decode CSODOTALobby:', e.message);
       return null;
     }
+  }
+
+  _tryDecodeLobbyInvite(typeId, objectData) {
+    if (typeId !== LOBBY_INVITE_TYPE_ID) return null;
+    try {
+      const invite = CSODOTALobbyInvite.decode(objectData);
+      return invite;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _processLobbyInvite(invite) {
+    if (!invite) return;
+    const lobbyId = invite.groupId ? invite.groupId.toString() : null;
+    const senderName = invite.senderName || 'Unknown';
+    const senderId = invite.senderId ? invite.senderId.toString() : 'Unknown';
+    console.log(`[Dota2 GC] Lobby invite received from ${senderName} (${senderId}), lobby: ${lobbyId}`);
+    this.emit('lobbyInviteReceived', { lobbyId, senderId, senderName });
   }
 
   _processLobbyData(lobby) {
@@ -195,6 +228,10 @@ class Dota2GCClient extends EventEmitter {
           if (lobby) {
             this._processLobbyData(lobby);
           }
+          const invite = this._tryDecodeLobbyInvite(typeId, data);
+          if (invite) {
+            this._processLobbyInvite(invite);
+          }
         }
       }
     } catch (e) {
@@ -209,6 +246,10 @@ class Dota2GCClient extends EventEmitter {
       if (lobby) {
         this._processLobbyData(lobby);
       }
+      const invite = this._tryDecodeLobbyInvite(msg.typeId, msg.objectData);
+      if (invite) {
+        this._processLobbyInvite(invite);
+      }
     } catch (e) {
       console.warn('[Dota2 GC] Could not process SO create:', e.message);
     }
@@ -220,6 +261,10 @@ class Dota2GCClient extends EventEmitter {
       const lobby = this._tryDecodeLobby(msg.typeId, msg.objectData);
       if (lobby) {
         this._processLobbyData(lobby);
+      }
+      const invite = this._tryDecodeLobbyInvite(msg.typeId, msg.objectData);
+      if (invite) {
+        this._processLobbyInvite(invite);
       }
     } catch (e) {
       console.warn('[Dota2 GC] Could not process SO update:', e.message);
@@ -234,6 +279,10 @@ class Dota2GCClient extends EventEmitter {
         const lobby = this._tryDecodeLobby(obj.typeId, obj.objectData);
         if (lobby) {
           this._processLobbyData(lobby);
+        }
+        const invite = this._tryDecodeLobbyInvite(obj.typeId, obj.objectData);
+        if (invite) {
+          this._processLobbyInvite(invite);
         }
       }
     } catch (e) {
@@ -337,6 +386,82 @@ class Dota2GCClient extends EventEmitter {
     } catch (e) {
       console.warn('[Dota2 GC] Error leaving lobby:', e.message);
     }
+  }
+
+  joinPracticeLobby(lobbyId, password) {
+    return new Promise((resolve, reject) => {
+      if (!this.isReady) return reject(new Error('GC not ready.'));
+
+      this._pendingLobbyCreate = true;
+      let resolved = false;
+
+      const timer = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        this._pendingLobbyCreate = false;
+        cleanup();
+        reject(new Error('Lobby join timed out.'));
+      }, 30000);
+
+      const onJoinResponse = (data) => {
+        if (resolved) return;
+        if (data.result !== 0 && data.result !== 1) {
+          resolved = true;
+          clearTimeout(timer);
+          this._pendingLobbyCreate = false;
+          cleanup();
+          reject(new Error(`Lobby join failed with result: ${data.result}`));
+        }
+      };
+
+      const onLobbyResponse = (data) => {
+        if (resolved) return;
+        if (data.result !== 0 && data.result !== 1) {
+          resolved = true;
+          clearTimeout(timer);
+          this._pendingLobbyCreate = false;
+          cleanup();
+          reject(new Error(`Lobby join failed with result: ${data.result}`));
+        }
+      };
+
+      const onLobbyViaCache = (data) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timer);
+        cleanup();
+        console.log('[Dota2 GC] Joined lobby (confirmed via SO cache).');
+        resolve({ id: data.lobbyId, eresult: 0 });
+      };
+
+      const cleanup = () => {
+        this.removeListener('lobbyJoinResponse', onJoinResponse);
+        this.removeListener('lobbyResponse', onLobbyResponse);
+        this.removeListener('lobbyCreatedViaCache', onLobbyViaCache);
+      };
+
+      this.on('lobbyJoinResponse', onJoinResponse);
+      this.on('lobbyResponse', onLobbyResponse);
+      this.on('lobbyCreatedViaCache', onLobbyViaCache);
+
+      try {
+        const root = getLobbyProtos();
+        const Type = root.lookupType('dota.CMsgPracticeLobbyJoin');
+        const msg = Type.create({
+          lobby_id: lobbyId.toString(),
+          pass_key: password || '',
+        });
+        const buf = Buffer.from(Type.encode(msg).finish());
+        this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbyJoin, buf);
+        console.log(`[Dota2 GC] Lobby join request sent for lobby: ${lobbyId}`);
+      } catch (err) {
+        resolved = true;
+        clearTimeout(timer);
+        this._pendingLobbyCreate = false;
+        cleanup();
+        reject(new Error(`Failed to send lobby join: ${err.message}`));
+      }
+    });
   }
 
   inviteToLobby(steamId64) {

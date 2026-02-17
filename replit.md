@@ -27,13 +27,15 @@ src/
 
 ## Data Flow
 1. Lobby Creation: Discord command -> Steam login -> Dota 2 GC protobuf -> Lobby created
-2. Match Recording: `!record <match_id>` -> OpenDota API fetch -> Google Sheets write -> TrueSkill update
-3. Replay Upload: .dem file upload -> Extract match ID from header -> OpenDota fetch -> Record stats
-4. Leaderboard: Google Sheets Ratings tab -> Sort by MMR -> Display in Discord embed
+2. Lobby Join: Discord command or auto-accept invite -> GC join message -> Bot spectates lobby
+3. Match Recording: `!record <match_id>` -> OpenDota API fetch -> Google Sheets write -> TrueSkill update
+4. Replay Upload: .dem file upload -> Extract match ID from header -> OpenDota fetch -> Record stats
+5. Leaderboard: Google Sheets Ratings tab -> Sort by MMR -> Display in Discord embed
 
 ## Discord Commands
 - `!help` - Show all commands
 - `!create_lobby <name> <password>` - Create private lobby via Steam (requires Steam creds)
+- `!join_lobby <lobby_id> [password]` - Bot joins an existing player-created lobby to track stats
 - `!invite <steam_id>` - Invite a player to the lobby by Steam64 ID
 - `!lobby_status` - Check current lobby & join info
 - `!end` - End current lobby
@@ -74,13 +76,30 @@ src/
 - Replay parsing extracts match ID from .dem header; full stat parsing requires OpenDota.
 - Bot gracefully degrades: works without Steam (no lobbies) or without Sheets (no persistence).
 
-## Lobby Joining
-Players join lobbies via Steam, not the Dota 2 lobby browser (known Valve limitation with password-protected lobbies). Methods:
-1. Add the bot's Steam account as a friend, then right-click > Join Game
+## Lobby Modes
+Two ways to use lobbies:
+
+### Bot-Created Lobbies
+Bot creates and hosts the lobby. Players join via:
+1. Add the bot's Steam account as a friend, then right-click > Join Game (rich presence enabled)
 2. Use `!invite <steam_id>` to receive a Dota 2 lobby invite notification
-The bot sends invites via GC message k_EMsgGCInviteToLobby (4512).
+
+### Player-Created Lobbies (Recommended)
+Players create the lobby themselves in Dota 2, then the bot joins to track stats:
+1. `!join_lobby <lobby_id> [password]` - Tell the bot to join via Discord
+2. Invite the bot's Steam account from within Dota 2 - Bot auto-accepts lobby invites from friends
+The bot joins as spectator/observer and auto-tracks match start/end.
+
+## Technical Details
+- Bot sends invites via GC message k_EMsgGCInviteToLobby (4512)
+- Bot joins lobbies via CMsgPracticeLobbyJoin with manual protobuf encoding
+- SO cache type 2004 = CSODOTALobby, type 2006 = CSODOTALobbyInvite
+- Auto-accept: lobby invites received via SO cache trigger automatic join
+- Rich presence: uploadRichPresence(570, {connect: '+connect_lobby <id>'}) enables Join Game button
 
 ## Recent Changes
-- 2026-02-17: Added !invite command for direct lobby invites via GC. Fixed protobuf field numbers to match Valve's official schema. Removed invalid console join command.
+- 2026-02-17: Added !join_lobby command and auto-accept lobby invites. Players can now create lobbies themselves and have the bot join to track stats.
+- 2026-02-17: Added rich presence for lobby visibility on Steam friends list.
+- 2026-02-17: Added !invite command for direct lobby invites via GC. Fixed protobuf field numbers to match Valve's official schema.
 - 2026-02-17: Migrated from custom protobufjs GC implementation to dota2-user library. Fixed lobby creation timeout caused by unhandled SO cache messages.
 - 2026-02-17: Initial build with full architecture.

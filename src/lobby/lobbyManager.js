@@ -52,6 +52,10 @@ class LobbyManager extends EventEmitter {
         }
       }
 
+      if (update.gameName && this.currentLobby && this.currentLobby.joinedExisting) {
+        this.currentLobby.name = update.gameName;
+      }
+
       if (update.matchId && this.currentLobby && !this.currentLobby.matchId) {
         this.currentLobby.matchId = update.matchId;
         console.log(`[Lobby] Match ID captured: ${update.matchId}`);
@@ -84,6 +88,20 @@ class LobbyManager extends EventEmitter {
     client.gcClient.on('lobbyDestroyed', () => {
       if (this.state !== LobbyState.IDLE) {
         console.log('[Lobby] Lobby destroyed by GC.');
+      }
+    });
+
+    client.gcClient.on('lobbyInviteReceived', async (invite) => {
+      if (this.state !== LobbyState.IDLE && this.state !== LobbyState.ENDED) {
+        console.log(`[Lobby] Ignoring lobby invite from ${invite.senderName} - already in a lobby.`);
+        return;
+      }
+      console.log(`[Lobby] Auto-accepting lobby invite from ${invite.senderName}...`);
+      try {
+        await this.joinLobby(invite.lobbyId, '', `steam:${invite.senderId}`);
+        this.emit('autoJoined', invite);
+      } catch (e) {
+        console.warn(`[Lobby] Failed to auto-accept invite: ${e.message}`);
       }
     });
   }
@@ -157,6 +175,43 @@ class LobbyManager extends EventEmitter {
       throw new Error('GC not connected. Use !record instead.');
     }
     return client.gcClient.requestMatchDetails(matchId);
+  }
+
+  async joinLobby(lobbyId, password, requestedBy) {
+    const client = getSteamClient();
+    if (!client.isGCReady || !client.gcClient) {
+      throw new Error('Steam/Dota 2 GC is not connected. Check !steam_status.');
+    }
+    if (this.state !== LobbyState.IDLE && this.state !== LobbyState.ENDED) {
+      throw new Error(`Cannot join lobby - current state: ${this.state}. Use !end first.`);
+    }
+
+    this._setupGCListeners();
+    this.state = LobbyState.CREATING;
+
+    try {
+      const response = await client.gcClient.joinPracticeLobby(lobbyId, password);
+
+      this.lobbyId = response.id ? response.id.toString() : lobbyId.toString();
+      this.currentLobby = {
+        name: `Lobby ${this.lobbyId}`,
+        password: password || '',
+        requestedBy,
+        createdAt: new Date(),
+        lobbyId: this.lobbyId,
+        matchId: null,
+        playerCount: 0,
+        players: [],
+        joinedExisting: true,
+      };
+      this.state = LobbyState.WAITING;
+
+      console.log(`[Lobby] Joined existing lobby: ${this.lobbyId}`);
+      return this.currentLobby;
+    } catch (err) {
+      this.state = LobbyState.IDLE;
+      throw new Error(`Failed to join lobby: ${err.message}`);
+    }
   }
 
   invitePlayer(steamId64) {

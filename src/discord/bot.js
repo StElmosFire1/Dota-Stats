@@ -48,6 +48,19 @@ class DiscordBot {
       this._notifyChannel(`Game is now **in progress** for lobby "${lobby.name}".`);
     });
 
+    lobbyManager.on('autoJoined', (invite) => {
+      const embed = new EmbedBuilder()
+        .setTitle('Auto-Joined Lobby')
+        .setColor(0x00ae86)
+        .setDescription(
+          `Bot was invited to a lobby by **${invite.senderName}** and has auto-joined.\n` +
+          'It will track the match automatically when it starts.\n\n' +
+          'Use `!lobby_status` to check the current lobby.'
+        )
+        .setTimestamp();
+      this._notifyChannel({ embeds: [embed] });
+    });
+
     lobbyManager.on('matchEnded', async (lobby) => {
       const matchId = lobby.matchId;
       if (!matchId) {
@@ -122,6 +135,7 @@ class DiscordBot {
           case 'create_lobby': await this._cmdCreateLobby(msg, args); break;
           case 'lobby_status': await this._cmdLobbyStatus(msg); break;
           case 'invite': await this._cmdInvite(msg, args); break;
+          case 'join_lobby': await this._cmdJoinLobby(msg, args); break;
           case 'end': await this._cmdEnd(msg); break;
           case 'record': await this._cmdRecord(msg, args); break;
           case 'top': await this._cmdTop(msg, args); break;
@@ -147,6 +161,7 @@ class DiscordBot {
           name: '**Lobby Management**',
           value: [
             '`!create_lobby <name> <password>` - Create a private lobby via Steam',
+            '`!join_lobby <lobby_id> [password]` - Bot joins an existing lobby to track stats',
             '`!invite <steam_id>` - Invite a player to the lobby by Steam ID',
             '`!lobby_status` - Check current lobby status & join info',
             '`!end` - End current lobby',
@@ -240,7 +255,7 @@ class DiscordBot {
     if (!lobbyManager) return msg.reply('Lobby manager is not available. Steam may not be connected.');
 
     const status = lobbyManager.getStatus();
-    if (!status.lobby) return msg.reply('No active lobby. Use `!create_lobby` to start one.');
+    if (!status.lobby) return msg.reply('No active lobby. Use `!create_lobby` to create one or `!join_lobby` to join an existing one.');
 
     const embed = new EmbedBuilder()
       .setTitle('Current Lobby')
@@ -264,6 +279,58 @@ class DiscordBot {
     });
 
     await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdJoinLobby(msg, args) {
+    if (!steamAvailable) {
+      return msg.reply(
+        'Steam/Dota 2 is not connected. Joining lobbies requires Steam credentials.\n' +
+        'Set `STEAM_ACCOUNT`, `STEAM_PASSWORD`, and `STEAM_SHARED_SECRET` in secrets.'
+      );
+    }
+
+    if (args.length < 1) {
+      return msg.reply(
+        'Usage: `!join_lobby <lobby_id> [password]`\n' +
+        'The lobby ID can be found in the Dota 2 console or lobby settings.\n' +
+        'Alternatively, invite the bot to your lobby from within Dota 2 and it will auto-join.'
+      );
+    }
+
+    const lobbyId = args[0];
+    const password = args.length > 1 ? args.slice(1).join(' ') : '';
+    const lobbyManager = tryGetLobbyManager();
+    if (!lobbyManager) return msg.reply('Lobby manager is not available.');
+
+    this.lobbyChannelId = msg.channel.id;
+    await msg.reply('Joining lobby, please wait...');
+
+    try {
+      const lobby = await lobbyManager.joinLobby(lobbyId, password, msg.author.id);
+
+      const embed = new EmbedBuilder()
+        .setTitle('Joined Lobby!')
+        .setColor(0x00ff00)
+        .addFields(
+          { name: 'Lobby ID', value: lobby.lobbyId || lobbyId, inline: true }
+        )
+        .setDescription(
+          'Bot has joined the lobby as a spectator/observer.\n' +
+          'It will automatically track the match when it starts.\n\n' +
+          'When the match finishes, use `!end` to disconnect the bot, ' +
+          'then `!record <match_id>` to save stats if auto-record doesn\'t trigger.'
+        )
+        .setFooter({ text: `Requested by ${msg.author.username}` })
+        .setTimestamp();
+
+      if (lobby.name && lobby.name !== `Lobby ${lobbyId}`) {
+        embed.addFields({ name: 'Name', value: lobby.name, inline: true });
+      }
+
+      await msg.channel.send({ embeds: [embed] });
+    } catch (err) {
+      await msg.reply(`Failed to join lobby: ${err.message}`);
+    }
   }
 
   async _cmdInvite(msg, args) {
