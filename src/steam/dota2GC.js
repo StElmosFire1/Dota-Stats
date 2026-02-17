@@ -63,7 +63,6 @@ function encodeLobbyCreate(options) {
   const Type = root.lookupType('dota.CMsgPracticeLobbyCreate');
   const msg = Type.create({
     search_key: '',
-    pass_key: options.pass_key || '',
     lobby_details: {
       game_name: options.game_name || 'Inhouse',
       pass_key: options.pass_key || '',

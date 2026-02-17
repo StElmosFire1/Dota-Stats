@@ -213,11 +213,20 @@ class DiscordBot {
 
       if (lobby.lobbyId) {
         embed.addFields({ name: 'Lobby ID', value: lobby.lobbyId, inline: true });
+        embed.addFields({
+          name: 'How to Join',
+          value:
+            `**Option 1:** Open Dota 2 console and type:\n` +
+            `\`dota_join_lobby ${lobby.lobbyId} ${password}\`\n\n` +
+            `**Option 2:** Search for "${name}" in the lobby browser\n` +
+            `*(Play > Custom Lobbies > Find a Lobby)*`,
+          inline: false
+        });
       }
 
       embed
         .setDescription(
-          'Join via Steam friends list or lobby browser. Bot is spectating.\n' +
+          'Lobby is ready! Use the join command below.\n' +
           'When the match finishes, use `!end` to close the lobby, ' +
           'then `!record <match_id>` to save stats.'
         )
@@ -245,7 +254,15 @@ class DiscordBot {
         { name: 'State', value: status.state, inline: true }
       );
 
-    if (status.lobby.lobbyId) embed.addFields({ name: 'Lobby ID', value: status.lobby.lobbyId, inline: true });
+    if (status.lobby.lobbyId) {
+      embed.addFields({ name: 'Lobby ID', value: status.lobby.lobbyId, inline: true });
+      const pw = status.lobby.password || '';
+      embed.addFields({
+        name: 'Join Command',
+        value: `\`dota_join_lobby ${status.lobby.lobbyId}${pw ? ' ' + pw : ''}\``,
+        inline: false
+      });
+    }
     if (status.lobby.matchId) embed.addFields({ name: 'Match ID', value: status.lobby.matchId, inline: true });
 
     await msg.reply({ embeds: [embed] });
