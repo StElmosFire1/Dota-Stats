@@ -1,0 +1,15 @@
+Build a Node.js Discord bot for tracking stats from Dota 2 inhouse games (custom lobbies) in an OCE community server with up to 100 players. The bot should be privacy-first with no need for players to expose public match data. Primary method: A spectator bot using a Steam alt account (headless via node-steam-user and dota2 libs) that auto-creates, hosts, and spectates lobbies on Valve dedicated servers for full automation (no manual lobby ID input). Backup method: Replay parsing of uploaded .dem files using the rapier library to extract full stats.
+Key features:
+
+Use discord.js for the bot.
+!create_lobby <name> <pass>: Bot auto-creates a private custom lobby via dota.createPracticeLobby({game_name: name, pass_key: pass, allow_spectating: true, game_mode: 22 (Captains Mode), server_region: 5 (SEA/OCE for Sydney low-ping), leagueid: 0}). On success (practiceLobbyCreate callback with lobby_id), store lobby_id internally, auto-join as spectator, reply "Lobby created: <name> Pass: <pass> - Join now via Steam friends or search! Bot is spectating.". Listen for practiceLobbyUpdated to get matchid on game end, then requestMatchDetails (KDA, GPM, XPM, net worth, heroes, team, win) and append rows to a Google Sheet (columns: Timestamp, MatchID, PlayerName, Hero, KDA (format: kills/deaths/assists), GPM, XPM, NetWorth, Team (Radiant/Dire), Win (Yes/No)).
+For backup: On !end or direct upload, allow captain to upload .dem replay file to Discord; bot downloads it, parses with rapier (extract similar stats from CDemoFileInfo, combat_log events, etc.), and exports to the same Sheet.
+Integrate google-spreadsheet for Google Sheets (use service account creds.json for auth).
+Handle Steam login with node-steam-user (accountName, password, shared_secret for 2FA from maFile).
+Use dota2 lib for lobby creation (dota.createPracticeLobby), GC ready, join (if needed), and match details request.
+Add basic error handling (e.g., login failures, creation errors, parse fails).
+Optionally, add TrueSkill MMR calculation (trueskill lib) based on wins, and !top leaderboard command to show rankings from Sheet data.
+Use Replit env secrets for DISCORD_TOKEN, STEAM_ACCOUNT, STEAM_PASSWORD, STEAM_SHARED_SECRET, SHEET_ID.
+Include setup instructions in comments for uploading creds.json, and running on Replit (with pm2 or similar for persistence if needed).
+
+Make it production-ready, scalable, and easy to deploy on Replit. Note any Replit limitations for Steam (e.g., headless works but test login).

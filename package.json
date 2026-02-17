@@ -1,0 +1,26 @@
+{
+  "name": "dota2-inhouse-bot",
+  "version": "1.0.0",
+  "description": "Dota 2 Inhouse Stats Tracker Discord Bot",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "dota2",
+    "discord",
+    "inhouse",
+    "stats"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "google-auth-library": "^9.15.1",
+    "google-spreadsheet": "^5.2.0",
+    "node-fetch": "^2.7.0",
+    "protobufjs": "^7.5.4",
+    "steam-user": "^5.2.1",
+    "ts-trueskill": "^4.2.2"
+  }
+}
