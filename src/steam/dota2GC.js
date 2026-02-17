@@ -1,5 +1,6 @@
 const { Dota2User } = require('dota2-user');
 const { EDOTAGCMsg, ESOMsg, CSODOTALobby, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects } = require('dota2-user/protobufs');
+const protobuf = require('protobufjs');
 const EventEmitter = require('events');
 
 const DOTA2_APPID = 570;
@@ -21,6 +22,58 @@ const SERVER_REGION = {
 const LOBBY_TYPE = {
   PRACTICE: 1,
 };
+
+let protoRoot = null;
+function getLobbyProtos() {
+  if (protoRoot) return protoRoot;
+  protoRoot = new protobuf.Root();
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgPracticeLobbySetDetails')
+      .add(new protobuf.Field('game_name', 1, 'string'))
+      .add(new protobuf.Field('pass_key', 6, 'string'))
+      .add(new protobuf.Field('server_region', 5, 'uint32'))
+      .add(new protobuf.Field('game_mode', 3, 'uint32'))
+      .add(new protobuf.Field('allow_spectating', 10, 'bool'))
+      .add(new protobuf.Field('leagueid', 13, 'uint32'))
+      .add(new protobuf.Field('cm_pick', 28, 'uint32'))
+      .add(new protobuf.Field('visibility', 22, 'uint32'))
+  );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgPracticeLobbyCreate')
+      .add(new protobuf.Field('search_key', 1, 'string'))
+      .add(new protobuf.Field('lobby_details', 2, 'dota.CMsgPracticeLobbySetDetails'))
+  );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgPracticeLobbyLeave')
+      .add(new protobuf.Field('dummy', 1, 'uint32'))
+  );
+  protoRoot.resolveAll();
+  return protoRoot;
+}
+
+function encodeLobbyCreate(options) {
+  const root = getLobbyProtos();
+  const Type = root.lookupType('dota.CMsgPracticeLobbyCreate');
+  const msg = Type.create({
+    search_key: '',
+    lobby_details: {
+      game_name: options.game_name || 'Inhouse',
+      pass_key: options.pass_key || '',
+      server_region: options.server_region || SERVER_REGION.AUSTRALIA,
+      game_mode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
+      allow_spectating: options.allow_spectating !== false,
+      visibility: 1,
+    },
+  });
+  return Buffer.from(Type.encode(msg).finish());
+}
+
+function encodeLobbyLeave() {
+  const root = getLobbyProtos();
+  const Type = root.lookupType('dota.CMsgPracticeLobbyLeave');
+  const msg = Type.create({});
+  return Buffer.from(Type.encode(msg).finish());
+}
 
 class Dota2GCClient extends EventEmitter {
   constructor(steamClient) {
@@ -206,15 +259,6 @@ class Dota2GCClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       if (!this.isReady) return reject(new Error('GC not ready.'));
 
-      const lobbyDetails = {
-        gameName: options.game_name || 'Inhouse',
-        passKey: options.pass_key || '',
-        serverRegion: options.server_region || SERVER_REGION.AUSTRALIA,
-        gameMode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
-        allowSpectating: options.allow_spectating !== false,
-        visibility: 1,
-      };
-
       this._pendingLobbyCreate = true;
       let resolved = false;
 
@@ -257,10 +301,9 @@ class Dota2GCClient extends EventEmitter {
       this.on('lobbyCreatedViaCache', onLobbyViaCache);
 
       try {
-        this.dota2.sendPartial(EDOTAGCMsg.k_EMsgGCPracticeLobbyCreate, {
-          lobbyDetails: lobbyDetails,
-        });
-        console.log(`[Dota2 GC] Lobby create request sent: ${lobbyDetails.gameName}`);
+        const buffer = encodeLobbyCreate(options);
+        this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbyCreate, buffer);
+        console.log(`[Dota2 GC] Lobby create request sent: ${options.game_name || 'Inhouse'}`);
       } catch (err) {
         resolved = true;
         clearTimeout(timer);
@@ -273,7 +316,8 @@ class Dota2GCClient extends EventEmitter {
 
   leavePracticeLobby() {
     try {
-      this.dota2.sendPartial(EDOTAGCMsg.k_EMsgGCPracticeLobbyLeave, {});
+      const buffer = encodeLobbyLeave();
+      this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbyLeave, buffer);
       this.currentLobby = null;
       console.log('[Dota2 GC] Left practice lobby.');
     } catch (e) {
