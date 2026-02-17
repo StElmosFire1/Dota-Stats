@@ -1,6 +1,7 @@
 const { Dota2User } = require('dota2-user');
-const { EDOTAGCMsg, ESOMsg, CSODOTALobby, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects } = require('dota2-user/protobufs');
+const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgInviteToLobby } = require('dota2-user/protobufs');
 const protobuf = require('protobufjs');
+const SteamID = require('steamid');
 const EventEmitter = require('events');
 
 const DOTA2_APPID = 570;
@@ -332,6 +333,23 @@ class Dota2GCClient extends EventEmitter {
       console.log('[Dota2 GC] Left practice lobby.');
     } catch (e) {
       console.warn('[Dota2 GC] Error leaving lobby:', e.message);
+    }
+  }
+
+  inviteToLobby(steamId64) {
+    if (!this.isReady) {
+      console.warn('[Dota2 GC] Cannot invite - GC not ready.');
+      return false;
+    }
+    try {
+      const sid = new SteamID(steamId64.toString());
+      const buf = CMsgInviteToLobby.encode({ steamId: sid.getSteamID64() }).finish();
+      this.dota2.sendRawBuffer(EGCBaseMsg.k_EMsgGCInviteToLobby, Buffer.from(buf));
+      console.log(`[Dota2 GC] Lobby invite sent to: ${steamId64}`);
+      return true;
+    } catch (e) {
+      console.warn(`[Dota2 GC] Error inviting to lobby: ${e.message}`);
+      return false;
     }
   }
 

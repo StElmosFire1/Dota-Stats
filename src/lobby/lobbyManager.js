@@ -150,6 +150,17 @@ class LobbyManager extends EventEmitter {
     return client.gcClient.requestMatchDetails(matchId);
   }
 
+  invitePlayer(steamId64) {
+    const client = getSteamClient();
+    if (!client.gcClient || !client.gcClient.isReady) {
+      throw new Error('GC not connected.');
+    }
+    if (this.state !== LobbyState.WAITING && this.state !== LobbyState.IN_PROGRESS) {
+      throw new Error('No active lobby to invite to.');
+    }
+    return client.gcClient.inviteToLobby(steamId64);
+  }
+
   getStatus() {
     return {
       state: this.state,
@@ -158,6 +169,7 @@ class LobbyManager extends EventEmitter {
             name: this.currentLobby.name,
             lobbyId: this.lobbyId,
             matchId: this.currentLobby.matchId,
+            password: this.currentLobby.password,
             playerCount: this.currentLobby.playerCount || 0,
           }
         : null,

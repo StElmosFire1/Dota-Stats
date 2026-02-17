@@ -34,7 +34,8 @@ src/
 ## Discord Commands
 - `!help` - Show all commands
 - `!create_lobby <name> <password>` - Create private lobby via Steam (requires Steam creds)
-- `!lobby_status` - Check current lobby
+- `!invite <steam_id>` - Invite a player to the lobby by Steam64 ID
+- `!lobby_status` - Check current lobby & join info
 - `!end` - End current lobby
 - `!record <match_id>` - Fetch match from OpenDota API and record stats
 - `!top [count]` - Leaderboard (TrueSkill MMR)
@@ -73,6 +74,13 @@ src/
 - Replay parsing extracts match ID from .dem header; full stat parsing requires OpenDota.
 - Bot gracefully degrades: works without Steam (no lobbies) or without Sheets (no persistence).
 
+## Lobby Joining
+Players join lobbies via Steam, not the Dota 2 lobby browser (known Valve limitation with password-protected lobbies). Methods:
+1. Add the bot's Steam account as a friend, then right-click > Join Game
+2. Use `!invite <steam_id>` to receive a Dota 2 lobby invite notification
+The bot sends invites via GC message k_EMsgGCInviteToLobby (4512).
+
 ## Recent Changes
+- 2026-02-17: Added !invite command for direct lobby invites via GC. Fixed protobuf field numbers to match Valve's official schema. Removed invalid console join command.
 - 2026-02-17: Migrated from custom protobufjs GC implementation to dota2-user library. Fixed lobby creation timeout caused by unhandled SO cache messages.
 - 2026-02-17: Initial build with full architecture.

@@ -121,6 +121,7 @@ class DiscordBot {
           case 'help': await this._cmdHelp(msg); break;
           case 'create_lobby': await this._cmdCreateLobby(msg, args); break;
           case 'lobby_status': await this._cmdLobbyStatus(msg); break;
+          case 'invite': await this._cmdInvite(msg, args); break;
           case 'end': await this._cmdEnd(msg); break;
           case 'record': await this._cmdRecord(msg, args); break;
           case 'top': await this._cmdTop(msg, args); break;
@@ -146,7 +147,8 @@ class DiscordBot {
           name: '**Lobby Management**',
           value: [
             '`!create_lobby <name> <password>` - Create a private lobby via Steam',
-            '`!lobby_status` - Check current lobby status',
+            '`!invite <steam_id>` - Invite a player to the lobby by Steam ID',
+            '`!lobby_status` - Check current lobby status & join info',
             '`!end` - End current lobby',
           ].join('\n'),
         },
@@ -213,20 +215,14 @@ class DiscordBot {
 
       if (lobby.lobbyId) {
         embed.addFields({ name: 'Lobby ID', value: lobby.lobbyId, inline: true });
-        embed.addFields({
-          name: 'How to Join',
-          value:
-            `**Option 1:** Open Dota 2 console and type:\n` +
-            `\`dota_join_lobby ${lobby.lobbyId} ${password}\`\n\n` +
-            `**Option 2:** Search for "${name}" in the lobby browser\n` +
-            `*(Play > Custom Lobbies > Find a Lobby)*`,
-          inline: false
-        });
       }
 
       embed
         .setDescription(
-          'Lobby is ready! Use the join command below.\n' +
+          'Lobby is ready! **How to join:**\n' +
+          '1. Add the bot\'s Steam account as a friend\n' +
+          '2. Right-click the bot in your friends list > **Join Game**\n' +
+          '3. Or use `!invite <steam_id>` to get a lobby invite\n\n' +
           'When the match finishes, use `!end` to close the lobby, ' +
           'then `!record <match_id>` to save stats.'
         )
@@ -256,16 +252,46 @@ class DiscordBot {
 
     if (status.lobby.lobbyId) {
       embed.addFields({ name: 'Lobby ID', value: status.lobby.lobbyId, inline: true });
-      const pw = status.lobby.password || '';
-      embed.addFields({
-        name: 'Join Command',
-        value: `\`dota_join_lobby ${status.lobby.lobbyId}${pw ? ' ' + pw : ''}\``,
-        inline: false
-      });
     }
     if (status.lobby.matchId) embed.addFields({ name: 'Match ID', value: status.lobby.matchId, inline: true });
+    embed.addFields({
+      name: 'How to Join',
+      value:
+        '1. Add the bot on Steam as a friend\n' +
+        '2. Right-click bot > **Join Game**\n' +
+        '3. Or use `!invite <steam_id>` for a direct invite',
+      inline: false
+    });
 
     await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdInvite(msg, args) {
+    if (!steamAvailable) {
+      return msg.reply('Steam is not connected. Cannot send invites.');
+    }
+    if (args.length < 1) {
+      return msg.reply(
+        'Usage: `!invite <steam_id>`\n' +
+        'Provide a Steam ID (e.g. `76561198012345678`).\n' +
+        'Find yours at <https://steamid.io/>'
+      );
+    }
+
+    const lobbyManager = tryGetLobbyManager();
+    if (!lobbyManager) return msg.reply('Lobby manager is not available.');
+
+    const steamId = args[0];
+    try {
+      const sent = lobbyManager.invitePlayer(steamId);
+      if (sent) {
+        await msg.reply(`Lobby invite sent to Steam ID \`${steamId}\`. They should see the invite in Dota 2.`);
+      } else {
+        await msg.reply('Failed to send invite. Make sure the bot is friends with that Steam account.');
+      }
+    } catch (err) {
+      await msg.reply(`Error: ${err.message}`);
+    }
   }
 
   async _cmdEnd(msg) {
