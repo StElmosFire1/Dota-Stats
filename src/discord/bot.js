@@ -84,6 +84,7 @@ class DiscordBot {
           }
 
           await sheetsStore.recordMatch(matchStats, lobby.name, 'auto');
+          await sheetsStore.markMatchRecorded(matchStats.matchId || matchId, 'lobby-auto');
           const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
           const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
@@ -104,6 +105,19 @@ class DiscordBot {
     if (this.lobbyChannelId) {
       const channel = this.client.channels.cache.get(this.lobbyChannelId);
       if (channel) channel.send(message).catch(() => {});
+    }
+  }
+
+  async notifyMatchRecorded(matchStats) {
+    if (!this.lobbyChannelId) return;
+    const channel = this.client.channels.cache.get(this.lobbyChannelId);
+    if (!channel) return;
+
+    try {
+      await channel.send(`Auto-detected inhouse match **${matchStats.matchId}**! Recording stats...`);
+      await this._sendMatchSummary(matchStats, '', channel);
+    } catch (err) {
+      console.error('[Discord] Notify error:', err.message);
     }
   }
 
@@ -142,6 +156,8 @@ class DiscordBot {
           case 'stats': await this._cmdStats(msg, args); break;
           case 'history': await this._cmdHistory(msg); break;
           case 'steam_status': await this._cmdSteamStatus(msg); break;
+          case 'register': await this._cmdRegister(msg, args); break;
+          case 'players': await this._cmdPlayers(msg); break;
           default: break;
         }
       } catch (err) {
@@ -168,10 +184,19 @@ class DiscordBot {
           ].join('\n'),
         },
         {
+          name: '**Player Registration**',
+          value: [
+            '`!register <steam_id>` - Link your Steam account for auto-tracking',
+            '`!players` - Show all registered players',
+            'After registering, your lobby matches are auto-detected and recorded!',
+          ].join('\n'),
+        },
+        {
           name: '**Match Recording**',
           value: [
-            '`!record <match_id>` - Record a match from OpenDota (auto-fetches stats)',
+            '`!record <match_id>` - Record a match from OpenDota (manual)',
             'Upload a `.dem` replay file - Bot extracts match ID and fetches stats',
+            'Matches are also auto-detected for registered players!',
           ].join('\n'),
         },
         {
@@ -418,9 +443,82 @@ class DiscordBot {
       await this._sendMatchSummary(matchStats, '', msg.channel);
 
       await statusMsg.edit(`Match ${matchId} recorded successfully!`);
+      await sheetsStore.markMatchRecorded(matchId, 'manual');
     } catch (err) {
       await statusMsg.edit(`Failed to record match: ${err.message}`);
     }
+  }
+
+  async _cmdRegister(msg, args) {
+    if (args.length < 1) {
+      return msg.reply(
+        'Usage: `!register <steam_id>`\n' +
+        'Your Steam ID is the long number (e.g. `76561198012345678`).\n' +
+        'Find it at https://steamid.io or in your Steam profile URL.'
+      );
+    }
+
+    const steamId = args[0].trim();
+    if (!/^\d{17}$/.test(steamId)) {
+      return msg.reply(
+        'That doesn\'t look like a valid Steam ID. It should be 17 digits (e.g. `76561198012345678`).\n' +
+        'Find yours at https://steamid.io'
+      );
+    }
+
+    if (BigInt(steamId) < BigInt('76561197960265728')) {
+      return msg.reply('That Steam ID doesn\'t look right. Make sure you\'re using your Steam64 ID.');
+    }
+
+    const sheetsStore = getSheetsStore();
+    if (!sheetsStore.initialized) {
+      return msg.reply('Google Sheets is not connected. Registration requires Sheets to be set up.');
+    }
+
+    try {
+      const result = await sheetsStore.registerPlayer(msg.author.id, msg.author.username, steamId);
+      const accountId = result.accountId32;
+
+      if (result.updated) {
+        await msg.reply(
+          `Updated your registration! Steam ID: \`${steamId}\` (Account ID: \`${accountId}\`)\n` +
+          'Your lobby matches will be auto-detected and recorded.\n' +
+          '**Important:** Make sure "Expose Public Match Data" is enabled in Dota 2 settings!'
+        );
+      } else {
+        await msg.reply(
+          `Registered! Steam ID: \`${steamId}\` (Account ID: \`${accountId}\`)\n` +
+          'Your lobby matches will now be auto-detected and recorded.\n' +
+          '**Important:** Make sure "Expose Public Match Data" is enabled in Dota 2 settings!'
+        );
+      }
+    } catch (err) {
+      await msg.reply(`Registration failed: ${err.message}`);
+    }
+  }
+
+  async _cmdPlayers(msg) {
+    const sheetsStore = getSheetsStore();
+    if (!sheetsStore.initialized) {
+      return msg.reply('Google Sheets is not connected.');
+    }
+
+    const players = await sheetsStore.getRegisteredPlayers();
+    if (players.length === 0) {
+      return msg.reply('No players registered yet. Use `!register <steam_id>` to sign up!');
+    }
+
+    const list = players.map((p, i) =>
+      `${i + 1}. **${p.discordName || 'Unknown'}** - Account ID: \`${p.accountId32}\``
+    ).join('\n');
+
+    const embed = new EmbedBuilder()
+      .setTitle('Registered Players')
+      .setColor(0x00ae86)
+      .setDescription(list)
+      .setFooter({ text: `${players.length} player${players.length !== 1 ? 's' : ''} registered` });
+
+    await msg.reply({ embeds: [embed] });
   }
 
   async _processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService) {

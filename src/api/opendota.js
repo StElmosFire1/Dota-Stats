@@ -47,6 +47,23 @@ class OpenDotaClient {
     }
   }
 
+  async getPlayerRecentMatches(accountId32, limit = 20) {
+    await this._rateLimit();
+    try {
+      const res = await fetch(
+        `${OPENDOTA_API}/players/${accountId32}/matches?limit=${limit}&lobby_type=1`
+      );
+      if (!res.ok) {
+        if (res.status === 404) return [];
+        throw new Error(`OpenDota API error: ${res.status}`);
+      }
+      return await res.json();
+    } catch (err) {
+      console.error(`[OpenDota] Player matches error (${accountId32}):`, err.message);
+      return [];
+    }
+  }
+
   _normalizeMatch(data) {
     if (!data || data.error) return null;
 

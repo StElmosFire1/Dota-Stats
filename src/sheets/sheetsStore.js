@@ -83,6 +83,27 @@ class SheetsStore {
       });
       console.log('[Sheets] Created "Ratings" sheet.');
     }
+
+    const registeredSheet = this.doc.sheetsByTitle['Players'];
+    if (!registeredSheet) {
+      await this.doc.addSheet({
+        title: 'Players',
+        headerValues: [
+          'discord_id', 'discord_name', 'steam_id_64', 'account_id_32',
+          'registered_at',
+        ],
+      });
+      console.log('[Sheets] Created "Players" sheet.');
+    }
+
+    const recordedSheet = this.doc.sheetsByTitle['RecordedMatches'];
+    if (!recordedSheet) {
+      await this.doc.addSheet({
+        title: 'RecordedMatches',
+        headerValues: ['match_id', 'recorded_at', 'source'],
+      });
+      console.log('[Sheets] Created "RecordedMatches" sheet.');
+    }
   }
 
   async recordMatch(matchStats, lobbyName, recordedBy) {
@@ -202,6 +223,67 @@ class SheetsStore {
       losses: parseInt(row.get('losses') || '0'),
       gamesPlayed: parseInt(row.get('games_played') || '0'),
     };
+  }
+
+  async registerPlayer(discordId, discordName, steamId64) {
+    if (!this.initialized) throw new Error('Sheets not initialized');
+
+    const accountId32 = (BigInt(steamId64) - BigInt('76561197960265728')).toString();
+    const sheet = this.doc.sheetsByTitle['Players'];
+    const rows = await sheet.getRows();
+    const existing = rows.find((r) => r.get('discord_id') === discordId || r.get('steam_id_64') === steamId64);
+
+    if (existing) {
+      existing.set('discord_name', discordName);
+      existing.set('steam_id_64', steamId64);
+      existing.set('account_id_32', accountId32);
+      await existing.save();
+      return { updated: true, accountId32 };
+    }
+
+    await sheet.addRow({
+      discord_id: discordId,
+      discord_name: discordName,
+      steam_id_64: steamId64,
+      account_id_32: accountId32,
+      registered_at: new Date().toISOString(),
+    });
+    return { updated: false, accountId32 };
+  }
+
+  async getRegisteredPlayers() {
+    if (!this.initialized) return [];
+
+    const sheet = this.doc.sheetsByTitle['Players'];
+    if (!sheet) return [];
+    const rows = await sheet.getRows();
+    return rows.map((r) => ({
+      discordId: r.get('discord_id'),
+      discordName: r.get('discord_name'),
+      steamId64: r.get('steam_id_64'),
+      accountId32: r.get('account_id_32'),
+    }));
+  }
+
+  async isMatchRecorded(matchId) {
+    if (!this.initialized) return false;
+
+    const sheet = this.doc.sheetsByTitle['RecordedMatches'];
+    if (!sheet) return false;
+    const rows = await sheet.getRows();
+    return rows.some((r) => r.get('match_id') === matchId.toString());
+  }
+
+  async markMatchRecorded(matchId, source) {
+    if (!this.initialized) return;
+
+    const sheet = this.doc.sheetsByTitle['RecordedMatches'];
+    if (!sheet) return;
+    await sheet.addRow({
+      match_id: matchId.toString(),
+      recorded_at: new Date().toISOString(),
+      source: source || 'manual',
+    });
   }
 
   async getMatchHistory(limit = 10) {
