@@ -62,8 +62,8 @@ function getLobbyProtos() {
   protoRoot.define('dota').add(
     new protobuf.Type('CMsgPracticeLobbyJoin')
       .add(new protobuf.Field('lobby_id', 1, 'uint64'))
-      .add(new protobuf.Field('pass_key', 2, 'string'))
-      .add(new protobuf.Field('client_version', 3, 'uint32'))
+      .add(new protobuf.Field('client_version', 2, 'uint32'))
+      .add(new protobuf.Field('pass_key', 3, 'string'))
       .add(new protobuf.Field('custom_game_crc', 4, 'fixed64'))
       .add(new protobuf.Field('custom_game_timestamp', 5, 'fixed32'))
   );
@@ -211,6 +211,10 @@ class Dota2GCClient extends EventEmitter {
 
   _processLobbyInvite(invite) {
     if (!invite) return;
+    console.log(`[Dota2 GC] Invite raw fields: groupId=${invite.groupId}, senderId=${invite.senderId}, senderName=${invite.senderName}, inviteGid=${invite.inviteGid}, customGameId=${invite.customGameId}`);
+    if (invite.members && invite.members.length > 0) {
+      console.log(`[Dota2 GC] Invite members: ${JSON.stringify(invite.members)}`);
+    }
     const lobbyId = invite.groupId ? invite.groupId.toString() : null;
     const senderName = invite.senderName || 'Unknown';
     const senderId = invite.senderId ? invite.senderId.toString() : 'Unknown';
@@ -482,10 +486,9 @@ class Dota2GCClient extends EventEmitter {
       try {
         const root = getLobbyProtos();
         const Type = root.lookupType('dota.CMsgPracticeLobbyJoin');
-        const msg = Type.create({
-          lobby_id: lobbyId.toString(),
-          pass_key: password || '',
-        });
+        const joinFields = { lobby_id: lobbyId.toString() };
+        if (password) joinFields.pass_key = password;
+        const msg = Type.create(joinFields);
         const buf = Buffer.from(Type.encode(msg).finish());
         console.log(`[Dota2 GC] Join buffer (${buf.length} bytes): ${buf.toString('hex')}`);
         console.log(`[Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (${EDOTAGCMsg.k_EMsgGCPracticeLobbyJoin}) for lobby: ${lobbyId}`);
