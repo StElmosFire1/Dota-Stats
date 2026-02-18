@@ -292,12 +292,22 @@ class DiscordBot {
     if (args.length < 1) {
       return msg.reply(
         'Usage: `!join_lobby <lobby_id> [password]`\n' +
-        'The lobby ID can be found in the Dota 2 console or lobby settings.\n' +
-        'Alternatively, invite the bot to your lobby from within Dota 2 and it will auto-join.'
+        'The lobby ID is a long number (e.g. `29712964177916965`).\n' +
+        'You can find it in the Dota 2 console with `dota_lobby_debug`.\n\n' +
+        '**Easier method:** Invite the bot\'s Steam account to your lobby from within Dota 2 and it will auto-join!'
       );
     }
 
     const lobbyId = args[0];
+
+    if (!/^\d+$/.test(lobbyId)) {
+      return msg.reply(
+        'The lobby ID should be a number (e.g. `29712964177916965`), not a name.\n' +
+        'You can find it in the Dota 2 console with `dota_lobby_debug`.\n\n' +
+        '**Easier method:** Just invite the bot\'s Steam account to your lobby from within Dota 2!'
+      );
+    }
+
     const password = args.length > 1 ? args.slice(1).join(' ') : '';
     const lobbyManager = tryGetLobbyManager();
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
