@@ -22,6 +22,14 @@ const DOTA_GAME_STATE = {
   DISCONNECT: 7,
 };
 
+const MATCH_OUTCOME = {
+  UNKNOWN: 0,
+  RAD_VICTORY: 2,
+  DIRE_VICTORY: 3,
+};
+
+const STEAM64_OFFSET = BigInt('76561197960265728');
+
 class LobbyManager extends EventEmitter {
   constructor() {
     super();
@@ -82,10 +90,25 @@ class LobbyManager extends EventEmitter {
       }
 
       if (update.gameState === DOTA_GAME_STATE.POST_GAME && this.state === LobbyState.IN_PROGRESS) {
-        console.log('[Lobby] Match ended (post-game detected).');
+        this.state = LobbyState.ENDED;
+
+        const matchId = this.currentLobby.matchId || update.matchId;
+        const radiantWin = update.matchOutcome === MATCH_OUTCOME.RAD_VICTORY;
+        const direWin = update.matchOutcome === MATCH_OUTCOME.DIRE_VICTORY;
+        const outcomeKnown = radiantWin || direWin;
+
+        let lobbyMatchStats = null;
+        if (outcomeKnown) {
+          lobbyMatchStats = this._buildLobbyMatchStats(matchId, update, radiantWin);
+        }
+
+        console.log(`[Lobby] Match ended (post-game). Match: ${matchId}, Outcome: ${update.matchOutcome} (${radiantWin ? 'Radiant' : direWin ? 'Dire' : 'Unknown'} victory)`);
+
         this.emit('matchEnded', {
           ...this.currentLobby,
-          matchId: this.currentLobby.matchId || update.matchId,
+          matchId,
+          lobbyMatchStats,
+          outcomeKnown,
         });
       }
     });
@@ -258,6 +281,51 @@ class LobbyManager extends EventEmitter {
     } catch (e) {
       console.warn('[Lobby] Failed to clear rich presence:', e.message);
     }
+  }
+
+  _buildLobbyMatchStats(matchId, update, radiantWin) {
+    const players = (update.players || [])
+      .filter((p) => p.team === 0 || p.team === 1)
+      .map((p) => {
+        const steamId64 = p.steamId || '0';
+        let accountId = '0';
+        try {
+          const big = BigInt(steamId64);
+          if (big > STEAM64_OFFSET) {
+            accountId = (big - STEAM64_OFFSET).toString();
+          }
+        } catch (e) {}
+
+        return {
+          accountId,
+          steamId64,
+          heroId: p.heroId || 0,
+          team: p.team === 0 ? 'radiant' : 'dire',
+          slot: p.slot || 0,
+          kills: 0,
+          deaths: 0,
+          assists: 0,
+          gpm: 0,
+          xpm: 0,
+          heroDamage: 0,
+          towerDamage: 0,
+          heroHealing: 0,
+          lastHits: 0,
+          denies: 0,
+          personaname: '',
+        };
+      });
+
+    return {
+      matchId: matchId || '0',
+      radiantWin,
+      duration: update.matchDuration || 0,
+      lobbyType: 1,
+      gameMode: 0,
+      startTime: Math.floor(Date.now() / 1000),
+      players,
+      source: 'lobby-gc',
+    };
   }
 
   getStatus() {

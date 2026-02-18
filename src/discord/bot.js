@@ -63,41 +63,78 @@ class DiscordBot {
 
     lobbyManager.on('matchEnded', async (lobby) => {
       const matchId = lobby.matchId;
-      if (!matchId) {
-        this._notifyChannel('Match ended but no match ID was captured. Use `!record <match_id>` manually.');
+      const lobbyMatchStats = lobby.lobbyMatchStats;
+      const outcomeKnown = lobby.outcomeKnown;
+
+      if (!matchId && !lobbyMatchStats) {
+        this._notifyChannel('Match ended but no data was captured. Use `!record <match_id>` manually.');
         return;
       }
 
-      this._notifyChannel(`Match ended! Auto-recording match **${matchId}**...`);
+      if (!outcomeKnown) {
+        this._notifyChannel(
+          `Match **${matchId || 'unknown'}** ended but the winner could not be determined from lobby data.\n` +
+          `Use \`!record ${matchId}\` to manually record if the match is available on OpenDota.`
+        );
+        return;
+      }
 
-      setTimeout(async () => {
-        try {
-          const opendota = getOpenDota();
-          const sheetsStore = getSheetsStore();
-          const statsService = getStatsService();
+      this._notifyChannel(`Match ended! Recording match **${matchId || 'unknown'}**...`);
 
-          let matchStats = await opendota.getMatch(matchId);
-          if (!matchStats) {
-            await opendota.requestParse(matchId);
-            this._notifyChannel(`Match ${matchId} not on OpenDota yet. Parse requested. Try \`!record ${matchId}\` in a few minutes.`);
+      try {
+        const sheetsStore = getSheetsStore();
+        const statsService = getStatsService();
+
+        if (sheetsStore.initialized && matchId) {
+          const alreadyRecorded = await sheetsStore.isMatchRecorded(matchId);
+          if (alreadyRecorded) {
+            this._notifyChannel(`Match **${matchId}** was already recorded.`);
+            console.log(`[AutoRecord] Match ${matchId} already recorded, skipping.`);
             return;
           }
+        }
 
-          await sheetsStore.recordMatch(matchStats, lobby.name, 'auto');
-          await sheetsStore.markMatchRecorded(matchStats.matchId || matchId, 'lobby-auto');
-          const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
-          const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
-          await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
+        if (lobbyMatchStats && lobbyMatchStats.players.length > 0) {
+          await sheetsStore.recordMatch(lobbyMatchStats, lobby.name, 'lobby-gc');
+          await sheetsStore.markMatchRecorded(lobbyMatchStats.matchId || matchId, 'lobby-gc');
+          const radiantPlayers = lobbyMatchStats.players.filter((p) => p.team === 'radiant');
+          const direPlayers = lobbyMatchStats.players.filter((p) => p.team === 'dire');
+          await this._processRatings(lobbyMatchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
 
           const channel = this.lobbyChannelId ? this.client.channels.cache.get(this.lobbyChannelId) : null;
           if (channel) {
-            await this._sendMatchSummary(matchStats, lobby.name, channel);
+            await this._sendMatchSummary(lobbyMatchStats, lobby.name, channel);
           }
-        } catch (err) {
-          console.error('[AutoRecord] Error:', err.message);
-          this._notifyChannel(`Auto-record failed: ${err.message}. Use \`!record ${matchId}\` manually.`);
+          console.log(`[AutoRecord] Match ${matchId} recorded from lobby GC data.`);
+        } else if (matchId) {
+          this._notifyChannel(`Lobby data incomplete. Trying OpenDota in 30 seconds...`);
+          setTimeout(async () => {
+            try {
+              const alreadyRecorded = await sheetsStore.isMatchRecorded(matchId);
+              if (alreadyRecorded) return;
+              const opendota = getOpenDota();
+              let matchStats = await opendota.getMatch(matchId);
+              if (!matchStats) {
+                this._notifyChannel(`Match ${matchId} not available on OpenDota (practice lobby). Use \`!record ${matchId}\` later if it appears.`);
+                return;
+              }
+              await sheetsStore.recordMatch(matchStats, lobby.name, 'auto-opendota');
+              await sheetsStore.markMatchRecorded(matchId, 'auto-opendota');
+              const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
+              const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
+              await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
+              const channel = this.lobbyChannelId ? this.client.channels.cache.get(this.lobbyChannelId) : null;
+              if (channel) await this._sendMatchSummary(matchStats, lobby.name, channel);
+            } catch (err) {
+              console.error('[AutoRecord] OpenDota fallback error:', err.message);
+              this._notifyChannel(`OpenDota fallback failed: ${err.message}`);
+            }
+          }, 30000);
         }
-      }, 30000);
+      } catch (err) {
+        console.error('[AutoRecord] Error:', err.message);
+        this._notifyChannel(`Auto-record failed: ${err.message}. Use \`!record ${matchId}\` manually.`);
+      }
     });
   }
 

@@ -47,6 +47,29 @@ async function main() {
   if (lobbyManager) {
     bot.setupLobbyEvents(lobbyManager);
     console.log('[Startup] Lobby auto-record events wired.');
+
+    const { getSteamClient } = require('./steam/steamClient');
+    const steamClient = getSteamClient();
+    steamClient.startFriendMonitor();
+
+    steamClient.on('friendInLobby', async (info) => {
+      const { LobbyState } = require('./lobby/lobbyManager');
+      if (lobbyManager.state !== LobbyState.IDLE && lobbyManager.state !== LobbyState.ENDED) {
+        console.log(`[FriendMonitor] Already in a lobby (${lobbyManager.state}), skipping auto-join for lobby ${info.lobbyId}`);
+        return;
+      }
+      console.log(`[FriendMonitor] Auto-joining lobby ${info.lobbyId} (friend: ${info.playerName})`);
+      try {
+        await lobbyManager.joinLobby(info.lobbyId, '', `friend-auto:${info.steamId64}`);
+        bot._notifyChannel(
+          `Auto-joined a lobby detected from friend **${info.playerName}**'s rich presence.\n` +
+          'The bot will track the match when it completes.'
+        );
+      } catch (err) {
+        console.warn(`[FriendMonitor] Failed to auto-join lobby ${info.lobbyId}: ${err.message}`);
+      }
+    });
+    console.log('[Startup] Friend lobby auto-detection enabled.');
   }
 
   let pollerActive = false;
@@ -97,7 +120,8 @@ async function main() {
     console.log(`  - Replay upload:    YES`);
     console.log(`  - TrueSkill MMR:    YES`);
     console.log(`  - Auto-detect:      ${pollerActive ? 'YES' : 'NO (requires Sheets)'}`);
-    console.log(`  - Auto-record:      ${steamConnected ? 'YES' : 'NO (requires Steam)'}\n`);
+    console.log(`  - Friend monitor:   ${steamConnected ? 'YES' : 'NO (requires Steam)'}`);
+    console.log(`  - Lobby recording:  ${steamConnected ? 'YES' : 'NO (requires Steam)'}\n`);
   } catch (err) {
     console.error('[Startup] Discord bot failed to start:', err.message);
     console.error('[Startup] Make sure DISCORD_TOKEN is set correctly.');

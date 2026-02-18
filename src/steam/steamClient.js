@@ -4,6 +4,8 @@ const { config } = require('../config');
 const { Dota2GCClient, DOTA2_APPID } = require('./dota2GC');
 const EventEmitter = require('events');
 
+const FRIEND_POLL_INTERVAL_MS = 60 * 1000;
+
 class SteamDotaClient extends EventEmitter {
   constructor() {
     super();
@@ -11,6 +13,9 @@ class SteamDotaClient extends EventEmitter {
     this.gcClient = null;
     this.isLoggedIn = false;
     this.isGCReady = false;
+    this._friendMonitorTimer = null;
+    this._lastSeenLobbyIds = new Map();
+    this._friendMonitorEnabled = false;
     this._setupListeners();
   }
 
@@ -55,6 +60,36 @@ class SteamDotaClient extends EventEmitter {
       }
     });
 
+    this.steamClient.on('user', (sid, persona) => {
+      if (!this._friendMonitorEnabled) return;
+      if (!persona || !persona.rich_presence) return;
+
+      const steamId64 = sid.getSteamID64();
+      const gameAppId = persona.gameid || persona.game_played_app_id;
+      if (gameAppId && gameAppId.toString() === '570') {
+        const rp = persona.rich_presence;
+        const lobbyGroup = Array.isArray(rp)
+          ? rp.find((x) => x.key === 'steam_player_group')
+          : null;
+        const lobbyId = lobbyGroup ? lobbyGroup.value : null;
+
+        if (lobbyId && lobbyId !== '0') {
+          const lastSeen = this._lastSeenLobbyIds.get(steamId64);
+          if (lastSeen !== lobbyId) {
+            this._lastSeenLobbyIds.set(steamId64, lobbyId);
+            console.log(`[Steam] Friend ${persona.player_name || steamId64} detected in Dota 2 lobby: ${lobbyId}`);
+            this.emit('friendInLobby', {
+              steamId64,
+              playerName: persona.player_name || steamId64,
+              lobbyId,
+            });
+          }
+        }
+      } else {
+        this._lastSeenLobbyIds.delete(steamId64);
+      }
+    });
+
     this.steamClient.on('error', (err) => {
       console.error('[Steam] Login error:', err.message);
       this.isLoggedIn = false;
@@ -67,6 +102,65 @@ class SteamDotaClient extends EventEmitter {
       this.isLoggedIn = false;
       this.isGCReady = false;
     });
+  }
+
+  startFriendMonitor() {
+    if (this._friendMonitorEnabled) return;
+    this._friendMonitorEnabled = true;
+    console.log('[Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.');
+
+    this._friendMonitorTimer = setInterval(() => {
+      this._pollFriendsRichPresence();
+    }, FRIEND_POLL_INTERVAL_MS);
+
+    setTimeout(() => this._pollFriendsRichPresence(), 15000);
+  }
+
+  _pollFriendsRichPresence() {
+    if (!this.isLoggedIn || !this.steamClient.myFriends) return;
+
+    const friendIds = Object.keys(this.steamClient.myFriends).filter(
+      (id) => this.steamClient.myFriends[id] === SteamUser.EFriendRelationship.Friend
+    );
+
+    if (friendIds.length === 0) return;
+
+    for (const friendId of friendIds) {
+      const user = this.steamClient.users ? this.steamClient.users[friendId] : null;
+      if (!user) continue;
+
+      const gameAppId = user.gameid || user.game_played_app_id;
+      if (!gameAppId || gameAppId.toString() !== '570') continue;
+
+      if (user.rich_presence) {
+        const rp = user.rich_presence;
+        const lobbyGroup = Array.isArray(rp)
+          ? rp.find((x) => x.key === 'steam_player_group')
+          : null;
+        const lobbyId = lobbyGroup ? lobbyGroup.value : null;
+
+        if (lobbyId && lobbyId !== '0') {
+          const lastSeen = this._lastSeenLobbyIds.get(friendId);
+          if (lastSeen !== lobbyId) {
+            this._lastSeenLobbyIds.set(friendId, lobbyId);
+            console.log(`[Steam] Friend ${user.player_name || friendId} detected in Dota 2 lobby: ${lobbyId} (via poll)`);
+            this.emit('friendInLobby', {
+              steamId64: friendId,
+              playerName: user.player_name || friendId,
+              lobbyId,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  stopFriendMonitor() {
+    this._friendMonitorEnabled = false;
+    if (this._friendMonitorTimer) {
+      clearInterval(this._friendMonitorTimer);
+      this._friendMonitorTimer = null;
+    }
   }
 
   login() {

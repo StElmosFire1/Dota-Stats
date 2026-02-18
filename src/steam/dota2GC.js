@@ -229,20 +229,25 @@ class Dota2GCClient extends EventEmitter {
     const matchId = lobby.matchId && lobby.matchId.toString() !== '0' ? lobby.matchId.toString() : null;
     const gameName = lobby.gameName || '';
     const gameState = lobby.gameState;
+    const matchOutcome = lobby.matchOutcome || 0;
+    const matchDuration = lobby.matchDuration || 0;
     const members = lobby.allMembers || [];
 
     this.currentLobby = lobby;
 
-    console.log(`[Dota2 GC] Lobby update: id=${lobbyId}, state=${gameState}, match=${matchId || 'none'}, members=${members.length}, name="${gameName}"`);
+    console.log(`[Dota2 GC] Lobby update: id=${lobbyId}, state=${gameState}, match=${matchId || 'none'}, outcome=${matchOutcome}, members=${members.length}, name="${gameName}"`);
 
     this.emit('lobbyUpdate', {
       lobbyId,
       matchId,
       gameState,
       gameName,
+      matchOutcome,
+      matchDuration,
       playerCount: members.length,
       players: members.map((m) => ({
         steamId: m.id ? m.id.toString() : '0',
+        heroId: m.heroId || 0,
         team: m.team,
         slot: m.slot,
       })),
