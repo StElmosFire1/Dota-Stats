@@ -67,6 +67,10 @@ function getLobbyProtos() {
       .add(new protobuf.Field('custom_game_crc', 4, 'fixed64'))
       .add(new protobuf.Field('custom_game_timestamp', 5, 'fixed32'))
   );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgPracticeLobbyJoinResponse')
+      .add(new protobuf.Field('result', 1, 'uint32'))
+  );
   protoRoot.resolveAll();
   return protoRoot;
 }
@@ -127,11 +131,6 @@ class Dota2GCClient extends EventEmitter {
       this.emit('lobbyResponse', data);
     });
 
-    this.dota2.router.on(EDOTAGCMsg.k_EMsgGCPracticeLobbyJoinResponse, (data) => {
-      console.log(`[Dota2 GC] Lobby join response received: result=${data.result}`);
-      this.emit('lobbyJoinResponse', data);
-    });
-
     this.dota2.router.on(EDOTAGCMsg.k_EMsgGCMatchDetailsResponse, (data) => {
       console.log(`[Dota2 GC] Match details received: result=${data.result}`);
       this.emit('matchDetailsResponse', data);
@@ -152,12 +151,28 @@ class Dota2GCClient extends EventEmitter {
         this._handleSODestroy(payload);
       } else if (msgType === ESOMsg.k_ESOMsg_CacheSubscriptionRefresh) {
         this._handleSOCacheSubscribed(payload);
-      }
-    });
-
-    this.steamClient.on('receivedFromGC', (appid, msgType, payload) => {
-      if (appid !== DOTA2_APPID) return;
-      if (msgType === EGCBaseMsg.k_EMsgGCInviteToLobby) {
+      } else if (msgType === EDOTAGCMsg.k_EMsgGCPracticeLobbyJoinResponse) {
+        try {
+          const root = getLobbyProtos();
+          const Type = root.lookupType('dota.CMsgPracticeLobbyJoinResponse');
+          const decoded = Type.decode(payload);
+          console.log(`[Dota2 GC] Lobby join response received (raw): result=${decoded.result}`);
+          this.emit('lobbyJoinResponse', decoded);
+        } catch (e) {
+          console.log(`[Dota2 GC] Lobby join response received (raw decode failed): ${e.message}`);
+          this.emit('lobbyJoinResponse', { result: 0 });
+        }
+      } else if (msgType === EDOTAGCMsg.k_EMsgGCPracticeLobbyResponse) {
+        try {
+          const root = getLobbyProtos();
+          const Type = root.lookupType('dota.CMsgPracticeLobbyJoinResponse');
+          const decoded = Type.decode(payload);
+          console.log(`[Dota2 GC] Lobby response received (raw): result=${decoded.result}`);
+          this.emit('lobbyResponse', decoded);
+        } catch (e) {
+          console.log(`[Dota2 GC] Lobby response (raw decode failed): ${e.message}`);
+        }
+      } else if (msgType === EGCBaseMsg.k_EMsgGCInviteToLobby) {
         console.log('[Dota2 GC] Received lobby invite via GC message (k_EMsgGCInviteToLobby).');
         try {
           const root = getLobbyProtos();
@@ -167,6 +182,8 @@ class Dota2GCClient extends EventEmitter {
         } catch (e) {
           console.log('[Dota2 GC] Could not decode invite message:', e.message);
         }
+      } else {
+        console.log(`[Dota2 GC] Unhandled GC message: msgType=${msgType} (${payload.length} bytes)`);
       }
     });
   }
@@ -470,8 +487,10 @@ class Dota2GCClient extends EventEmitter {
           pass_key: password || '',
         });
         const buf = Buffer.from(Type.encode(msg).finish());
+        console.log(`[Dota2 GC] Join buffer (${buf.length} bytes): ${buf.toString('hex')}`);
+        console.log(`[Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (${EDOTAGCMsg.k_EMsgGCPracticeLobbyJoin}) for lobby: ${lobbyId}`);
         this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbyJoin, buf);
-        console.log(`[Dota2 GC] Lobby join request sent for lobby: ${lobbyId}`);
+        console.log(`[Dota2 GC] Lobby join request sent successfully`);
       } catch (err) {
         resolved = true;
         clearTimeout(timer);
