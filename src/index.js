@@ -28,6 +28,7 @@ async function main() {
 
       const { getLobbyManager } = require('./lobby/lobbyManager');
       lobbyManager = getLobbyManager();
+      lobbyManager.initListeners();
       steamConnected = true;
     } catch (err) {
       console.error('[Startup] Steam login failed:', err.message);

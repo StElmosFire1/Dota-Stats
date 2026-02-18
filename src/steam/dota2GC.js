@@ -150,6 +150,23 @@ class Dota2GCClient extends EventEmitter {
         this._handleSOUpdateMultiple(payload);
       } else if (msgType === ESOMsg.k_ESOMsg_Destroy) {
         this._handleSODestroy(payload);
+      } else if (msgType === ESOMsg.k_ESOMsg_CacheSubscriptionRefresh) {
+        this._handleSOCacheSubscribed(payload);
+      }
+    });
+
+    this.steamClient.on('receivedFromGC', (appid, msgType, payload) => {
+      if (appid !== DOTA2_APPID) return;
+      if (msgType === EGCBaseMsg.k_EMsgGCInviteToLobby) {
+        console.log('[Dota2 GC] Received lobby invite via GC message (k_EMsgGCInviteToLobby).');
+        try {
+          const root = getLobbyProtos();
+          const Type = root.lookupType('dota.CMsgInviteToLobby');
+          const decoded = Type.decode(payload);
+          console.log(`[Dota2 GC] Invite from steam_id: ${decoded.steam_id}`);
+        } catch (e) {
+          console.log('[Dota2 GC] Could not decode invite message:', e.message);
+        }
       }
     });
   }
@@ -242,6 +259,7 @@ class Dota2GCClient extends EventEmitter {
   _handleSOCreate(payload) {
     try {
       const msg = CMsgSOSingleObject.decode(payload);
+      console.log(`[Dota2 GC] SO Create: typeId=${msg.typeId}, dataLen=${msg.objectData ? msg.objectData.length : 0}`);
       const lobby = this._tryDecodeLobby(msg.typeId, msg.objectData);
       if (lobby) {
         this._processLobbyData(lobby);

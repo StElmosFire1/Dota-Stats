@@ -31,12 +31,17 @@ class LobbyManager extends EventEmitter {
     this._gcListenersSetup = false;
   }
 
+  initListeners() {
+    this._setupGCListeners();
+  }
+
   _setupGCListeners() {
     if (this._gcListenersSetup) return;
     const client = getSteamClient();
     if (!client.gcClient) return;
 
     this._gcListenersSetup = true;
+    console.log('[Lobby] GC listeners initialized (auto-accept invites enabled).');
 
     client.gcClient.on('lobbyUpdate', (update) => {
       if (this.state === LobbyState.IDLE) return;
