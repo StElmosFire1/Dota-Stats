@@ -232,8 +232,9 @@ class DiscordBot {
           name: '**Match Recording**',
           value: [
             '`!record <match_id>` - Record a match from OpenDota (manual)',
-            'Upload a `.dem` replay file - Bot extracts match ID and fetches stats',
-            'Matches are also auto-detected for registered players!',
+            'Upload a `.dem` replay file - Bot parses full stats (KDA, GPM, damage, etc.)',
+            'Replay parsing works for ALL matches including practice lobbies!',
+            'Matches are also auto-detected for registered players.',
           ].join('\n'),
         },
         {
@@ -732,40 +733,79 @@ class DiscordBot {
 
   async _handleReplayUpload(msg, attachment) {
     const replayParser = getReplayParser();
-    const opendota = getOpenDota();
     const sheetsStore = getSheetsStore();
     const statsService = getStatsService();
 
-    await msg.reply('Downloading and analyzing replay...');
+    const statusMsg = await msg.reply('Downloading replay...');
 
     try {
       const filename = `replay_${Date.now()}.dem`;
       const filePath = await replayParser.downloadReplay(attachment.url, filename);
-      const replayData = replayParser.parseReplay(filePath);
 
-      let matchId = replayData.matchId;
+      if (replayParser.parserReady) {
+        await statusMsg.edit('Parsing replay for full stats (this may take a moment)...');
 
-      if (matchId && !matchId.startsWith('replay_')) {
-        await msg.channel.send(`Found match ID: ${matchId}. Fetching full stats from OpenDota...`);
+        try {
+          const matchStats = await replayParser.parseReplayFull(filePath);
 
+          if (!matchStats || matchStats.players.length === 0) {
+            await statusMsg.edit('Replay parsed but no player data was found. The replay may be corrupted or empty.');
+            replayParser.cleanup(filePath);
+            return;
+          }
+
+          if (sheetsStore.initialized && matchStats.matchId) {
+            const alreadyRecorded = await sheetsStore.isMatchRecorded(matchStats.matchId);
+            if (alreadyRecorded) {
+              await statusMsg.edit(`Match **${matchStats.matchId}** was already recorded.`);
+              replayParser.cleanup(filePath);
+              return;
+            }
+          }
+
+          await sheetsStore.recordMatch(matchStats, '', `replay:${msg.author.username}`);
+
+          const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
+          const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
+          await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
+
+          await sheetsStore.markMatchRecorded(matchStats.matchId, 'replay-upload');
+
+          await statusMsg.edit(`Replay parsed! Match **${matchStats.matchId}** recorded with full stats.`);
+          await this._sendMatchSummary(matchStats, 'Replay Upload', msg.channel);
+
+          replayParser.cleanup(filePath);
+          return;
+        } catch (parseErr) {
+          console.error('[Replay] Full parse failed:', parseErr.message);
+          await msg.channel.send(`Full replay parsing failed: ${parseErr.message}. Trying header-only fallback...`);
+        }
+      }
+
+      const headerData = replayParser.parseReplayHeader(filePath);
+      let matchId = headerData.matchId;
+
+      if (matchId) {
+        await statusMsg.edit(`Found match ID: ${matchId}. Trying OpenDota for stats...`);
+        const opendota = getOpenDota();
         const matchStats = await opendota.getMatch(matchId);
         if (matchStats) {
           await sheetsStore.recordMatch(matchStats, '', msg.author.username);
           const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
           const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
+          await sheetsStore.markMatchRecorded(matchId, 'replay-opendota');
           await this._sendMatchSummary(matchStats, 'Replay Upload', msg.channel);
         } else {
           await msg.channel.send(
-            `Match ${matchId} not found on OpenDota yet. Requesting parse...\n` +
-            'Try `!record ' + matchId + '` in a few minutes after OpenDota parses it.'
+            `Match ${matchId} not found on OpenDota (may be a practice lobby).\n` +
+            'Full replay parser is not available. Try again later or use `!record ' + matchId + '`.'
           );
-          await opendota.requestParse(matchId);
         }
       } else {
-        await msg.channel.send(
-          'Could not extract match ID from replay header.\n' +
-          'Use `!record <match_id>` with the match ID if you know it.'
+        await statusMsg.edit(
+          'Could not extract match data from the replay.\n' +
+          'Make sure the file is a valid Dota 2 .dem replay.'
         );
       }
 
@@ -782,7 +822,10 @@ class DiscordBot {
 
     const formatPlayer = (p) => {
       const name = p.personaname || `ID:${p.accountId}`;
-      return `**${name}** (Hero ${p.heroId}) | ${p.kills}/${p.deaths}/${p.assists} | CS: ${p.lastHits}/${p.denies} | GPM: ${p.goldPerMin} | DMG: ${p.heroDamage}`;
+      const heroDisplay = p.heroName
+        ? p.heroName.replace('npc_dota_hero_', '').replace(/_/g, ' ')
+        : `Hero ${p.heroId}`;
+      return `**${name}** (${heroDisplay}) | ${p.kills}/${p.deaths}/${p.assists} | CS: ${p.lastHits}/${p.denies} | GPM: ${p.goldPerMin} | DMG: ${p.heroDamage}`;
     };
 
     const embed = new EmbedBuilder()
@@ -814,8 +857,11 @@ class DiscordBot {
       embed.addFields({ name: 'Lobby', value: lobbyName, inline: true });
     }
 
+    const sourceText = matchStats.parseMethod === 'odota-parser'
+      ? 'Stats from replay file'
+      : 'Stats from OpenDota';
     embed
-      .setFooter({ text: 'Stats from OpenDota | TrueSkill MMR updated' })
+      .setFooter({ text: `${sourceText} | TrueSkill MMR updated` })
       .setTimestamp();
 
     await channel.send({ embeds: [embed] });

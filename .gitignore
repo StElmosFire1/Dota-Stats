@@ -138,3 +138,7 @@ creds.json
 # Replay files
 replays/
 *.dem
+*.dem.bz2
+
+# odota parser build artifacts
+odota-parser/

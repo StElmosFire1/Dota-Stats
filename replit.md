@@ -23,17 +23,28 @@ src/
   sheets/
     sheetsStore.js     - Google Sheets data store (Matches, PlayerStats, Ratings, Players, RecordedMatches tabs)
   replay/
-    replayParser.js    - .dem replay file download and header parsing for match ID extraction
+    replayParser.js    - Full .dem replay parsing via odota/parser (Java), with header-only fallback
+odota-parser/          - OpenDota's Java replay parser (Clarity-based), built with Maven
 ```
 
 ## Data Flow
-1. **Lobby Recording (Primary):** Bot is in lobby (created/joined/auto-detected) -> Match ends -> GC lobby data provides teams, heroes, winner -> Record to Sheets + TrueSkill
-2. **Friend Auto-Join:** Bot monitors Steam friends' rich presence -> Detects friend in Dota 2 lobby -> Auto-joins lobby -> Records match when it ends
-3. **Auto-Detect (Fallback):** Players register with `!register` -> Poller checks OpenDota every 5 min -> Only works if someone has public match data enabled
-4. **Manual Record:** `!record <match_id>` -> OpenDota API fetch -> Google Sheets write -> TrueSkill update
-5. **Replay Upload:** .dem file upload -> Extract match ID from header -> OpenDota fetch -> Record stats
+1. **Replay Upload (Full Stats):** .dem file uploaded to Discord -> Bot downloads -> Sends to local odota/parser service -> Full stats extracted (KDA, GPM, hero damage, etc.) -> Google Sheets + TrueSkill
+2. **Lobby Recording (Primary):** Bot is in lobby (created/joined/auto-detected) -> Match ends -> GC lobby data provides teams, heroes, winner -> Record to Sheets + TrueSkill
+3. **Friend Auto-Join:** Bot monitors Steam friends' rich presence -> Detects friend in Dota 2 lobby -> Auto-joins lobby -> Records match when it ends
+4. **Auto-Detect (Fallback):** Players register with `!register` -> Poller checks OpenDota every 5 min -> Only works if someone has public match data enabled
+5. **Manual Record:** `!record <match_id>` -> OpenDota API fetch -> Google Sheets write -> TrueSkill update
 6. **Lobby Creation:** Discord command -> Steam login -> Dota 2 GC protobuf -> Lobby created
 7. **Leaderboard:** Google Sheets Ratings tab -> Sort by MMR -> Display in Discord embed
+
+## Replay Parsing System
+The bot uses OpenDota's production replay parser (odota/parser) running as a local Java service:
+1. Parser runs as a child process on port 5600, started automatically on bot startup
+2. When a .dem file is uploaded to Discord, bot downloads it and POSTs to the parser
+3. Parser returns line-delimited JSON events (combat log, interval data, entity states)
+4. Bot aggregates events into full player stats: KDA, last hits, denies, GPM, XPM, hero damage, tower damage, hero healing, level
+5. Stats are recorded to Google Sheets and TrueSkill ratings are updated
+6. Works for ALL match types including practice lobbies (no OpenDota/API dependency)
+7. Falls back to header-only parsing + OpenDota if parser service is unavailable
 
 ## Discord Commands
 - `!help` - Show all commands
@@ -49,6 +60,7 @@ src/
 - `!stats [@user]` - Player stats
 - `!history` - Recent matches
 - `!steam_status` - System connection status
+- Upload `.dem` file - Full replay parsing with KDA, GPM, damage, etc.
 
 ## Lobby-Based Match Recording
 Practice lobby matches are NOT available via any external API (OpenDota, Steam Web API). The bot records match data directly from the Game Coordinator:
@@ -56,7 +68,7 @@ Practice lobby matches are NOT available via any external API (OpenDota, Steam W
 2. When match enters POST_GAME state, CSODOTALobby provides: matchOutcome, matchId, matchDuration, player heroIds, team assignments
 3. This gives us enough for TrueSkill calculations (win/loss + team composition)
 4. Detailed KDA stats are NOT available from lobby data - only heroes, teams, and winner
-5. If OpenDota has the match (someone has public data), detailed stats are fetched as a bonus
+5. For full stats: upload the .dem replay file to Discord after the match
 
 ## Friend Lobby Auto-Detection
 The bot monitors Steam friends' rich presence to auto-join lobbies:
@@ -95,16 +107,24 @@ The bot can also detect matches via OpenDota polling (requires public match data
 - google-spreadsheet v5 - Google Sheets API
 - ts-trueskill - TrueSkill MMR calculations
 - node-fetch v2 - HTTP client for OpenDota API and replay downloads
+- odota/parser (Java) - OpenDota's production Dota 2 replay parser using Clarity library
+- Java 21 + Maven - Runtime for the replay parser service
 
 ## Notes
-- Lobby-based recording via GC is the primary data collection method. It doesn't require public match data.
+- Replay upload with full parsing is the best way to get detailed stats from practice lobby matches.
+- Lobby-based recording via GC is the primary data collection method for basic stats (teams, heroes, winner).
 - Friend lobby auto-detection is the main way the bot discovers lobbies without being explicitly invited.
 - Practice lobby matches are intentionally blocked by Valve from all external APIs to protect pro scrims.
 - Lobby data only provides basic match results (teams, heroes, winner) - not KDA/GPM/items.
-- Bot gracefully degrades: works without Steam (no lobbies) or without Sheets (no persistence/auto-detect).
+- For full KDA/GPM/damage stats from practice lobbies, upload the .dem replay file.
+- Bot gracefully degrades: works without Steam (no lobbies), without Sheets (no persistence), or without parser (header-only replay parsing).
 - Bot auto-accepts all Steam friend requests for easy setup.
+- Parser service is started as a child process and cleaned up on shutdown.
 
 ## Recent Changes
+- 2026-02-19: Added full .dem replay parsing via odota/parser (Java). Extracts KDA, GPM, hero damage, tower damage, hero healing, etc.
+- 2026-02-19: Parser runs as a local Java service on port 5600, managed as a child process.
+- 2026-02-19: Updated replay upload handler with full parsing -> Sheets + TrueSkill flow, with graceful fallbacks.
 - 2026-02-18: Added friend lobby auto-detection via Steam rich presence monitoring.
 - 2026-02-18: Added lobby-based match recording from GC data (no external API needed).
 - 2026-02-18: Added auto-detect match system via OpenDota polling as fallback.

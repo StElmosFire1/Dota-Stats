@@ -2,6 +2,7 @@ const { config, validateConfig } = require('./config');
 const { getDiscordBot } = require('./discord/bot');
 const { getSheetsStore } = require('./sheets/sheetsStore');
 const { getMatchPoller } = require('./api/matchPoller');
+const { getReplayParser } = require('./replay/replayParser');
 
 async function main() {
   console.log('=== Dota 2 Inhouse Stats Bot ===');
@@ -15,6 +16,14 @@ async function main() {
   } catch (err) {
     console.error('[Startup] Sheets init failed:', err.message);
     console.warn('[Startup] Continuing without Google Sheets...');
+  }
+
+  const replayParser = getReplayParser();
+  let replayParserReady = false;
+  try {
+    replayParserReady = await replayParser.startParserService();
+  } catch (err) {
+    console.warn('[Startup] Replay parser failed to start:', err.message);
   }
 
   let steamConnected = false;
@@ -117,7 +126,7 @@ async function main() {
     console.log(`  - Google Sheets:    ${sheetsStore.initialized ? 'YES' : 'NO (set SHEET_ID + creds.json)'}`);
     console.log(`  - Steam/Lobby:      ${steamConnected ? 'YES' : 'NO (set STEAM_ACCOUNT + STEAM_PASSWORD)'}`);
     console.log(`  - OpenDota API:     YES`);
-    console.log(`  - Replay upload:    YES`);
+    console.log(`  - Replay parsing:   ${replayParserReady ? 'YES (full stats)' : 'NO (header-only)'}`);
     console.log(`  - TrueSkill MMR:    YES`);
     console.log(`  - Auto-detect:      ${pollerActive ? 'YES' : 'NO (requires Sheets)'}`);
     console.log(`  - Friend monitor:   ${steamConnected ? 'YES' : 'NO (requires Steam)'}`);
@@ -132,6 +141,7 @@ async function main() {
 process.on('SIGINT', async () => {
   console.log('\n[Shutdown] Graceful shutdown...');
   try { getDiscordBot().shutdown(); } catch (e) {}
+  try { getReplayParser().shutdown(); } catch (e) {}
   try {
     const { getSteamClient } = require('./steam/steamClient');
     getSteamClient().shutdown();
@@ -142,6 +152,7 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   console.log('\n[Shutdown] Received SIGTERM...');
   try { getDiscordBot().shutdown(); } catch (e) {}
+  try { getReplayParser().shutdown(); } catch (e) {}
   try {
     const { getSteamClient } = require('./steam/steamClient');
     getSteamClient().shutdown();
