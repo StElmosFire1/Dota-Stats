@@ -1,14 +1,85 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { uploadReplay } from '../api';
+import { uploadReplay, getUploadStatus } from '../api';
+
+const MAX_POLL_RETRIES = 5;
 
 export default function Upload() {
   const [file, setFile] = useState(null);
   const [uploadKey, setUploadKey] = useState(() => localStorage.getItem('uploadKey') || '');
   const [status, setStatus] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [jobId, setJobId] = useState(null);
   const fileRef = useRef(null);
+  const cancelledRef = useRef(false);
   const navigate = useNavigate();
+
+  const clearJob = useCallback(() => {
+    sessionStorage.removeItem('uploadJobId');
+    setJobId(null);
+    setUploading(false);
+  }, []);
+
+  const pollJob = useCallback((id, retries = 0) => {
+    if (cancelledRef.current) return;
+
+    const poll = async () => {
+      try {
+        const job = await getUploadStatus(id);
+        retries = 0;
+
+        if (job.status === 'complete') {
+          clearJob();
+          setStatus({
+            type: 'success',
+            message: `Match ${job.matchId} recorded! ${job.players} players, ${job.parseMethod} parsing.`,
+            matchId: job.matchId,
+          });
+          setFile(null);
+          if (fileRef.current) fileRef.current.value = '';
+          return;
+        }
+
+        if (job.status === 'error') {
+          clearJob();
+          setStatus({ type: 'error', message: job.error });
+          return;
+        }
+
+        if (!cancelledRef.current) {
+          setTimeout(() => pollJob(id, 0), 3000);
+        }
+      } catch (err) {
+        if (cancelledRef.current) return;
+
+        if (retries >= MAX_POLL_RETRIES) {
+          clearJob();
+          setStatus({ type: 'error', message: 'Lost connection while checking upload status.' });
+          return;
+        }
+
+        const delay = Math.min(3000 * Math.pow(2, retries), 30000);
+        setTimeout(() => pollJob(id, retries + 1), delay);
+      }
+    };
+
+    poll();
+  }, [clearJob]);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    const savedJobId = sessionStorage.getItem('uploadJobId');
+    if (savedJobId) {
+      setJobId(savedJobId);
+      setUploading(true);
+      setStatus({ type: 'info', message: 'Checking upload status...' });
+      pollJob(savedJobId);
+    }
+
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [pollJob]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -16,21 +87,30 @@ export default function Upload() {
 
     localStorage.setItem('uploadKey', uploadKey);
     setUploading(true);
-    setStatus(null);
+    setStatus({ type: 'info', message: 'Uploading replay file...' });
 
     try {
       const result = await uploadReplay(file, uploadKey);
-      setStatus({
-        type: 'success',
-        message: `Match ${result.matchId} recorded! ${result.players} players, ${result.parseMethod} parsing.`,
-        matchId: result.matchId,
-      });
-      setFile(null);
-      if (fileRef.current) fileRef.current.value = '';
+
+      if (result.jobId) {
+        cancelledRef.current = false;
+        setJobId(result.jobId);
+        sessionStorage.setItem('uploadJobId', result.jobId);
+        setStatus({ type: 'info', message: 'Replay uploaded! Parsing in background — you can navigate away safely.' });
+        pollJob(result.jobId);
+      } else {
+        setUploading(false);
+        setStatus({
+          type: 'success',
+          message: `Match ${result.matchId} recorded! ${result.players} players.`,
+          matchId: result.matchId,
+        });
+        setFile(null);
+        if (fileRef.current) fileRef.current.value = '';
+      }
     } catch (err) {
-      setStatus({ type: 'error', message: err.message });
-    } finally {
       setUploading(false);
+      setStatus({ type: 'error', message: err.message });
     }
   };
 
@@ -97,13 +177,16 @@ export default function Upload() {
           disabled={!file || !uploadKey || uploading}
           className="btn btn-primary btn-upload"
         >
-          {uploading ? 'Parsing & uploading...' : 'Upload Replay'}
+          {uploading ? 'Processing...' : 'Upload Replay'}
         </button>
       </form>
 
       {status && (
         <div className={`status-message ${status.type}`}>
           <p>{status.message}</p>
+          {status.type === 'info' && uploading && (
+            <p className="status-hint">You can navigate to other pages — processing will continue in the background.</p>
+          )}
           {status.matchId && (
             <button
               onClick={() => navigate(`/match/${status.matchId}`)}

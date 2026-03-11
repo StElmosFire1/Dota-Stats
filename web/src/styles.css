@@ -564,6 +564,18 @@ th.col-stat {
   color: var(--dire-color);
 }
 
+.status-message.info {
+  background: rgba(91, 155, 213, 0.1);
+  border: 1px solid rgba(91, 155, 213, 0.3);
+  color: var(--accent);
+}
+
+.status-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
 .status-message .btn {
   margin-top: 0.75rem;
 }

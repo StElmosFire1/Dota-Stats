@@ -39,3 +39,7 @@ export async function uploadReplay(file, uploadKey) {
   if (!res.ok) throw new Error(data.error || 'Upload failed');
   return data;
 }
+
+export async function getUploadStatus(jobId) {
+  return fetchJson(`/upload/status/${jobId}`);
+}

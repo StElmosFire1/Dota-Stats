@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const cors = require('cors');
 const db = require('../db');
 const { getReplayParser } = require('../replay/replayParser');
@@ -18,6 +19,8 @@ const upload = multer({
     }
   },
 });
+
+const uploadJobs = new Map();
 
 function authMiddleware(req, res, next) {
   const uploadKey = process.env.UPLOAD_KEY;
@@ -109,76 +112,23 @@ function createApiRouter() {
       return res.status(400).json({ error: 'No replay file provided' });
     }
 
+    const jobId = crypto.randomBytes(8).toString('hex');
     const filePath = req.file.path;
-    try {
-      const replayParser = getReplayParser();
-      const matchStats = await replayParser.parseReplay(filePath);
+    const fileName = req.file.originalname;
 
-      if (!matchStats || !matchStats.players || matchStats.players.length === 0) {
-        cleanupFile(filePath);
-        return res.status(422).json({ error: 'Failed to parse replay - no player data found' });
-      }
+    uploadJobs.set(jobId, { status: 'processing', fileName, startedAt: Date.now() });
 
-      const existing = await db.isMatchRecorded(matchStats.matchId);
-      if (existing) {
-        cleanupFile(filePath);
-        return res.status(409).json({ error: `Match ${matchStats.matchId} already recorded` });
-      }
+    res.json({ jobId, status: 'processing', message: 'Replay received. Parsing in background...' });
 
-      await db.recordMatch(matchStats, '', `web:${req.ip}`);
+    processReplayJob(jobId, filePath, req.ip).catch(err => {
+      console.error(`[API] Job ${jobId} unhandled error:`, err);
+    });
+  });
 
-      const statsService = getStatsService();
-      const radiantPlayers = matchStats.players.filter(p => p.team === 'radiant');
-      const direPlayers = matchStats.players.filter(p => p.team === 'dire');
-
-      const radiant = radiantPlayers.map(p => ({
-        id: p.accountId ? p.accountId.toString() : `anon_${p.personaname}`,
-        mu: 25,
-        sigma: 8.333,
-      }));
-      const dire = direPlayers.map(p => ({
-        id: p.accountId ? p.accountId.toString() : `anon_${p.personaname}`,
-        mu: 25,
-        sigma: 8.333,
-      }));
-
-      for (const p of [...radiant, ...dire]) {
-        if (p.id === '0') continue;
-        const existing = await db.getPlayerRating(p.id);
-        if (existing) {
-          p.mu = existing.mu;
-          p.sigma = existing.sigma;
-        }
-      }
-
-      const validRadiant = radiant.filter(p => p.id !== '0');
-      const validDire = dire.filter(p => p.id !== '0');
-
-      if (validRadiant.length > 0 && validDire.length > 0) {
-        const newRatings = statsService.calculateNewRatings(validRadiant, validDire, matchStats.radiantWin);
-        for (const r of newRatings) {
-          const isRadiant = validRadiant.some(p => p.id === r.id);
-          const won = isRadiant ? matchStats.radiantWin : !matchStats.radiantWin;
-          const player = matchStats.players.find(p =>
-            (p.accountId ? p.accountId.toString() : `anon_${p.personaname}`) === r.id
-          );
-          await db.updateRating(r.id, '', player?.personaname || r.id, r.mu, r.sigma, r.mmr, won);
-        }
-      }
-
-      cleanupFile(filePath);
-      res.json({
-        matchId: matchStats.matchId,
-        duration: matchStats.duration,
-        radiantWin: matchStats.radiantWin,
-        players: matchStats.players.length,
-        parseMethod: matchStats.parseMethod,
-      });
-    } catch (err) {
-      console.error('[API] Upload error:', err);
-      cleanupFile(filePath);
-      res.status(500).json({ error: 'Failed to process replay: ' + err.message });
-    }
+  router.get('/upload/status/:jobId', (req, res) => {
+    const job = uploadJobs.get(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json(job);
   });
 
   router.get('/stats', async (req, res) => {
@@ -195,6 +145,87 @@ function createApiRouter() {
   });
 
   return router;
+}
+
+async function processReplayJob(jobId, filePath, ip) {
+  try {
+    const replayParser = getReplayParser();
+    const matchStats = await replayParser.parseReplay(filePath);
+
+    if (!matchStats || !matchStats.players || matchStats.players.length === 0) {
+      cleanupFile(filePath);
+      setJobTerminal(jobId, { status: 'error', error: 'Failed to parse replay - no player data found' });
+      return;
+    }
+
+    const existing = await db.isMatchRecorded(matchStats.matchId);
+    if (existing) {
+      cleanupFile(filePath);
+      setJobTerminal(jobId, { status: 'error', error: `Match ${matchStats.matchId} already recorded` });
+      return;
+    }
+
+    await db.recordMatch(matchStats, '', `web:${ip}`);
+
+    const statsService = getStatsService();
+    const radiantPlayers = matchStats.players.filter(p => p.team === 'radiant');
+    const direPlayers = matchStats.players.filter(p => p.team === 'dire');
+
+    const radiant = radiantPlayers.map(p => ({
+      id: p.accountId ? p.accountId.toString() : `anon_${p.personaname}`,
+      mu: 25,
+      sigma: 8.333,
+    }));
+    const dire = direPlayers.map(p => ({
+      id: p.accountId ? p.accountId.toString() : `anon_${p.personaname}`,
+      mu: 25,
+      sigma: 8.333,
+    }));
+
+    for (const p of [...radiant, ...dire]) {
+      if (p.id === '0') continue;
+      const existingRating = await db.getPlayerRating(p.id);
+      if (existingRating) {
+        p.mu = existingRating.mu;
+        p.sigma = existingRating.sigma;
+      }
+    }
+
+    const validRadiant = radiant.filter(p => p.id !== '0');
+    const validDire = dire.filter(p => p.id !== '0');
+
+    if (validRadiant.length > 0 && validDire.length > 0) {
+      const newRatings = statsService.calculateNewRatings(validRadiant, validDire, matchStats.radiantWin);
+      for (const r of newRatings) {
+        const isRadiant = validRadiant.some(p => p.id === r.id);
+        const won = isRadiant ? matchStats.radiantWin : !matchStats.radiantWin;
+        const player = matchStats.players.find(p =>
+          (p.accountId ? p.accountId.toString() : `anon_${p.personaname}`) === r.id
+        );
+        await db.updateRating(r.id, '', player?.personaname || r.id, r.mu, r.sigma, r.mmr, won);
+      }
+    }
+
+    cleanupFile(filePath);
+    setJobTerminal(jobId, {
+      status: 'complete',
+      matchId: matchStats.matchId,
+      duration: matchStats.duration,
+      radiantWin: matchStats.radiantWin,
+      players: matchStats.players.length,
+      parseMethod: matchStats.parseMethod,
+    });
+    console.log(`[API] Upload job ${jobId} complete: match ${matchStats.matchId}`);
+  } catch (err) {
+    console.error(`[API] Upload job ${jobId} error:`, err);
+    cleanupFile(filePath);
+    setJobTerminal(jobId, { status: 'error', error: err.message });
+  }
+}
+
+function setJobTerminal(jobId, data) {
+  uploadJobs.set(jobId, data);
+  setTimeout(() => uploadJobs.delete(jobId), 10 * 60 * 1000);
 }
 
 module.exports = { createServer };
