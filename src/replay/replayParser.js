@@ -86,21 +86,11 @@ class ReplayParser {
       throw new Error('Parser service is not running. Replay parsing unavailable.');
     }
 
-    const fileBuffer = fs.readFileSync(filePath);
-    console.log(`[Replay] Sending ${path.basename(filePath)} to parser (${fileBuffer.length} bytes)...`);
+    const fileSize = fs.statSync(filePath).size;
+    const fileMB = (fileSize / (1024 * 1024)).toFixed(1);
+    console.log(`[Replay] Sending ${path.basename(filePath)} to parser (${fileMB} MB)...`);
 
-    const response = await fetch(`http://localhost:${PARSER_PORT}/`, {
-      method: 'POST',
-      body: fileBuffer,
-      headers: { 'Content-Type': 'application/octet-stream' },
-      timeout: 300000,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Parser returned status ${response.status}`);
-    }
-
-    const rawText = await response.text();
+    const rawText = await this._sendToParser(filePath);
     const lines = rawText.trim().split('\n').filter(Boolean);
 
     if (lines.length === 0) {
@@ -116,6 +106,29 @@ class ReplayParser {
 
     console.log(`[Replay] Parsed ${events.length} events from replay.`);
     return this._aggregateStats(events);
+  }
+
+  _sendToParser(filePath) {
+    const { execFileSync } = require('child_process');
+    return new Promise((resolve, reject) => {
+      try {
+        const output = execFileSync('curl', [
+          '-s', '-S',
+          '--max-time', '600',
+          '--connect-timeout', '10',
+          '-X', 'POST',
+          '-H', 'Content-Type: application/octet-stream',
+          '--data-binary', `@${filePath}`,
+          `http://localhost:${PARSER_PORT}/`,
+        ], {
+          maxBuffer: 500 * 1024 * 1024,
+          timeout: 660000,
+        });
+        resolve(output.toString());
+      } catch (err) {
+        reject(new Error(`Parser request failed: ${err.message}`));
+      }
+    });
   }
 
   _aggregateStats(events) {
