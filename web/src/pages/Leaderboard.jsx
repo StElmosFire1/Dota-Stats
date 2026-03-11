@@ -27,13 +27,13 @@ export default function Leaderboard() {
           <table className="scoreboard leaderboard-table">
             <thead>
               <tr>
-                <th className="col-rank">#</th>
-                <th className="col-player">Player</th>
-                <th className="col-stat">MMR</th>
-                <th className="col-stat">W</th>
-                <th className="col-stat">L</th>
-                <th className="col-stat">Games</th>
-                <th className="col-stat">Win %</th>
+                <th className="col-rank" title="Rank">#</th>
+                <th className="col-player" title="Player name">Player</th>
+                <th className="col-stat" title="TrueSkill MMR rating">MMR</th>
+                <th className="col-stat" title="Wins">W</th>
+                <th className="col-stat" title="Losses">L</th>
+                <th className="col-stat" title="Total games played">Games</th>
+                <th className="col-stat" title="Win percentage">Win %</th>
               </tr>
             </thead>
             <tbody>

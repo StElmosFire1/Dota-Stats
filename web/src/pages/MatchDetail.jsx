@@ -124,9 +124,9 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
           <thead>
             <tr>
               <th className="col-hero-img" style={{ width: '36px' }}></th>
-              <th className="col-player">Player</th>
-              <th className="col-stat" title="Position" style={{ minWidth: '50px' }}>Pos</th>
-              <th className="col-hero">Hero</th>
+              <th className="col-player" title="Player name">Player</th>
+              <th className="col-stat" title="Position (1-5) — click to edit" style={{ minWidth: '50px' }}>Pos</th>
+              <th className="col-hero" title="Hero played">Hero</th>
               <th className="col-stat" title="Kills">K</th>
               <th className="col-stat" title="Deaths">D</th>
               <th className="col-stat" title="Assists">A</th>
@@ -142,7 +142,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
                   <th className="col-stat" title="Net Worth">NW</th>
                 </>
               )}
-              {hasItems && <th className="col-items" style={{ minWidth: '220px' }}>Items</th>}
+              {hasItems && <th className="col-items" style={{ minWidth: '220px' }} title="End-game inventory (6 slots) | Backpack (3 slots)">Items</th>}
             </tr>
           </thead>
           <tbody>
@@ -241,19 +241,19 @@ function ExpandedStats({ players }) {
         <table className="scoreboard compact">
           <thead>
             <tr>
-              <th className="col-player">Player</th>
-              <th className="col-stat" title="Observer Wards">OBS</th>
-              <th className="col-stat" title="Sentry Wards">SEN</th>
-              <th className="col-stat" title="Wards Dewarded">DEW</th>
-              <th className="col-stat" title="Camps Stacked">STK</th>
-              <th className="col-stat" title="Rune Pickups">RUN</th>
-              <th className="col-stat" title="Stun Duration (s)">STUN</th>
-              <th className="col-stat" title="Damage Taken">DT</th>
-              <th className="col-stat" title="Buybacks">BB</th>
-              <th className="col-stat" title="Courier Kills">CK</th>
-              <th className="col-stat" title="Kill Streak">KS</th>
-              <th className="col-stat" title="Multi-kills">MK</th>
-              <th className="col-stat" title="CS at 10 min">CS@10</th>
+              <th className="col-player" title="Player name">Player</th>
+              <th className="col-stat" title="Observer Wards placed">OBS</th>
+              <th className="col-stat" title="Sentry Wards placed">SEN</th>
+              <th className="col-stat" title="Enemy wards dewarded (destroyed)">DEW</th>
+              <th className="col-stat" title="Camps stacked">STK</th>
+              <th className="col-stat" title="Rune pickups">RUN</th>
+              <th className="col-stat" title="Total stun duration dealt (seconds)">STUN</th>
+              <th className="col-stat" title="Total damage taken from enemy heroes">DT</th>
+              <th className="col-stat" title="Number of buybacks used">BB</th>
+              <th className="col-stat" title="Enemy couriers killed">CK</th>
+              <th className="col-stat" title="Longest kill streak">KS</th>
+              <th className="col-stat" title="Multi-kills (double, triple, ultra, rampage)">MK</th>
+              <th className="col-stat" title="Creep score (last hits) at 10 minutes">CS@10</th>
             </tr>
           </thead>
           <tbody>
@@ -374,8 +374,8 @@ export default function MatchDetail() {
             <table className="scoreboard compact">
               <thead>
                 <tr>
-                  <th className="col-player">Player</th>
-                  <th>Skill Order</th>
+                  <th className="col-player" title="Player name">Player</th>
+                  <th title="Order of ability level-ups throughout the game">Skill Order</th>
                 </tr>
               </thead>
               <tbody>

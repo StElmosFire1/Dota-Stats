@@ -85,21 +85,21 @@ export default function PositionStats() {
           <table className="scoreboard">
             <thead>
               <tr>
-                <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('persona_name')}>Player{si('persona_name')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')}>Games{si('games')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')}>W{si('wins')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('losses')}>L{si('losses')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')}>K{si('avg_kills')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')}>D{si('avg_deaths')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')}>A{si('avg_assists')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')}>KI%{si('avg_kill_involvement')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')}>Win%{si('win_rate')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_gpm')}>GPM{si('avg_gpm')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_xpm')}>XPM{si('avg_xpm')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_damage')}>Dmg{si('avg_hero_damage')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_damage_taken')}>Tanked{si('avg_damage_taken')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_support_gold')}>Wards{si('avg_support_gold')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_stacks')}>Stacks{si('avg_stacks')}</th>
+                <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('persona_name')} title="Player name (click to sort)">Player{si('persona_name')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Total games played at this position">Games{si('games')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')} title="Wins">W{si('wins')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('losses')} title="Losses">L{si('losses')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')} title="Average kills per game">K{si('avg_kills')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')} title="Average deaths per game">D{si('avg_deaths')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')} title="Average assists per game">A{si('avg_assists')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')} title="Kill Involvement — percentage of team kills you participated in (kills + assists)">KI%{si('avg_kill_involvement')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">Win%{si('win_rate')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_gpm')} title="Average Gold Per Minute">GPM{si('avg_gpm')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_xpm')} title="Average Experience Per Minute">XPM{si('avg_xpm')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_damage')} title="Average Hero Damage dealt per game">Dmg{si('avg_hero_damage')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_damage_taken')} title="Average Damage Taken per game">Tanked{si('avg_damage_taken')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_support_gold')} title="Average wards placed per game (Observer + Sentry)">Wards{si('avg_support_gold')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_stacks')} title="Average camps stacked per game">Stacks{si('avg_stacks')}</th>
               </tr>
             </thead>
             <tbody>

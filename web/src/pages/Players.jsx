@@ -61,11 +61,11 @@ export default function Players() {
         <table className="scoreboard">
           <thead>
             <tr>
-              <th className="col-player">Steam Name</th>
-              <th className="col-player">Nickname</th>
-              <th className="col-stat">Games</th>
-              <th className="col-stat">Last Played</th>
-              <th className="col-stat">Actions</th>
+              <th className="col-player" title="Steam display name">Steam Name</th>
+              <th className="col-player" title="Custom nickname assigned to this player">Nickname</th>
+              <th className="col-stat" title="Total games played">Games</th>
+              <th className="col-stat" title="Date of most recent match">Last Played</th>
+              <th className="col-stat" title="Edit nickname">Actions</th>
             </tr>
           </thead>
           <tbody>

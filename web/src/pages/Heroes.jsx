@@ -49,34 +49,34 @@ export default function Heroes() {
         <table className="scoreboard">
           <thead>
             <tr>
-              <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('hero_id')}>
+              <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('hero_id')} title="Hero name (click to sort)">
                 Hero{sortIcon('hero_id')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Total games played with this hero">
                 Games{sortIcon('games')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">
                 Win %{sortIcon('win_rate')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')} title="Average kills per game">
                 K{sortIcon('avg_kills')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')} title="Average deaths per game">
                 D{sortIcon('avg_deaths')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')} title="Average assists per game">
                 A{sortIcon('avg_assists')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_gpm')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_gpm')} title="Average Gold Per Minute">
                 GPM{sortIcon('avg_gpm')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_damage')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_damage')} title="Average Hero Damage dealt per game">
                 HD{sortIcon('avg_hero_damage')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_tower_damage')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_tower_damage')} title="Average Tower Damage dealt per game">
                 TD{sortIcon('avg_tower_damage')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_healing')}>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_healing')} title="Average Hero Healing per game">
                 HH{sortIcon('avg_hero_healing')}
               </th>
             </tr>

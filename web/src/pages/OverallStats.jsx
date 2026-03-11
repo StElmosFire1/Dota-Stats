@@ -53,16 +53,16 @@ export default function OverallStats() {
         <table className="scoreboard">
           <thead>
             <tr>
-              <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('persona_name')}>Player{si('persona_name')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')}>Games{si('games')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')}>W{si('wins')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('losses')}>L{si('losses')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')}>K{si('avg_kills')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')}>D{si('avg_deaths')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')}>A{si('avg_assists')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')}>Win%{si('win_rate')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')}>KI%{si('avg_kill_involvement')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('captain_win_rate')}>Capt%{si('captain_win_rate')}</th>
+              <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('persona_name')} title="Player name (click to sort)">Player{si('persona_name')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Total games played">Games{si('games')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')} title="Wins">W{si('wins')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('losses')} title="Losses">L{si('losses')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')} title="Average kills per game">K{si('avg_kills')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')} title="Average deaths per game">D{si('avg_deaths')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')} title="Average assists per game">A{si('avg_assists')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">Win%{si('win_rate')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')} title="Kill Involvement — percentage of team kills you participated in (kills + assists)">KI%{si('avg_kill_involvement')}</th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('captain_win_rate')} title="Captain win rate — win percentage when this player was captain">Capt%{si('captain_win_rate')}</th>
             </tr>
           </thead>
           <tbody>

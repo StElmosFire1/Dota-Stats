@@ -139,14 +139,14 @@ export default function PlayerProfile() {
             <table className="scoreboard">
               <thead>
                 <tr>
-                  <th className="col-player">Position</th>
-                  <th className="col-stat">Games</th>
-                  <th className="col-stat">Wins</th>
-                  <th className="col-stat">Win%</th>
-                  <th className="col-stat">K</th>
-                  <th className="col-stat">D</th>
-                  <th className="col-stat">A</th>
-                  <th className="col-stat">GPM</th>
+                  <th className="col-player" title="Lane position (1-5)">Position</th>
+                  <th className="col-stat" title="Games played at this position">Games</th>
+                  <th className="col-stat" title="Wins at this position">Wins</th>
+                  <th className="col-stat" title="Win percentage at this position">Win%</th>
+                  <th className="col-stat" title="Average kills per game">K</th>
+                  <th className="col-stat" title="Average deaths per game">D</th>
+                  <th className="col-stat" title="Average assists per game">A</th>
+                  <th className="col-stat" title="Average Gold Per Minute">GPM</th>
                 </tr>
               </thead>
               <tbody>
@@ -178,15 +178,15 @@ export default function PlayerProfile() {
             <table className="scoreboard">
               <thead>
                 <tr>
-                  <th className="col-player">Hero</th>
-                  <th className="col-stat">Games</th>
-                  <th className="col-stat">Wins</th>
-                  <th className="col-stat">Win %</th>
-                  <th className="col-stat">K</th>
-                  <th className="col-stat">D</th>
-                  <th className="col-stat">A</th>
-                  <th className="col-stat">GPM</th>
-                  <th className="col-stat">HD</th>
+                  <th className="col-player" title="Hero name">Hero</th>
+                  <th className="col-stat" title="Games played with this hero">Games</th>
+                  <th className="col-stat" title="Wins with this hero">Wins</th>
+                  <th className="col-stat" title="Win percentage with this hero">Win %</th>
+                  <th className="col-stat" title="Average kills per game">K</th>
+                  <th className="col-stat" title="Average deaths per game">D</th>
+                  <th className="col-stat" title="Average assists per game">A</th>
+                  <th className="col-stat" title="Average Gold Per Minute">GPM</th>
+                  <th className="col-stat" title="Average Hero Damage dealt per game">HD</th>
                 </tr>
               </thead>
               <tbody>
@@ -218,13 +218,13 @@ export default function PlayerProfile() {
             <table className="scoreboard">
               <thead>
                 <tr>
-                  <th className="col-player">Match</th>
-                  <th className="col-hero">Hero</th>
-                  <th className="col-stat">K</th>
-                  <th className="col-stat">D</th>
-                  <th className="col-stat">A</th>
-                  <th className="col-stat">GPM</th>
-                  <th className="col-stat">Result</th>
+                  <th className="col-player" title="Match ID (click to view details)">Match</th>
+                  <th className="col-hero" title="Hero played">Hero</th>
+                  <th className="col-stat" title="Kills">K</th>
+                  <th className="col-stat" title="Deaths">D</th>
+                  <th className="col-stat" title="Assists">A</th>
+                  <th className="col-stat" title="Gold Per Minute">GPM</th>
+                  <th className="col-stat" title="Match result">Result</th>
                 </tr>
               </thead>
               <tbody>
