@@ -17,12 +17,52 @@ export async function getMatch(matchId) {
   return fetchJson(`/matches/${matchId}`);
 }
 
+export async function deleteMatch(matchId, uploadKey, reason) {
+  const res = await fetch(BASE + `/matches/${matchId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Upload-Key': uploadKey,
+    },
+    body: JSON.stringify({ reason }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete match');
+  return data;
+}
+
 export async function getLeaderboard(limit = 50) {
   return fetchJson(`/leaderboard?limit=${limit}`);
 }
 
 export async function getPlayer(accountId) {
   return fetchJson(`/players/${accountId}`);
+}
+
+export async function getAllPlayers() {
+  return fetchJson('/players');
+}
+
+export async function getHeroStats() {
+  return fetchJson('/heroes');
+}
+
+export async function getNicknames() {
+  return fetchJson('/nicknames');
+}
+
+export async function setNickname(accountId, nickname, uploadKey) {
+  const res = await fetch(BASE + `/nicknames/${accountId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Upload-Key': uploadKey,
+    },
+    body: JSON.stringify({ nickname }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to set nickname');
+  return data;
 }
 
 const CHUNK_SIZE = 4 * 1024 * 1024;

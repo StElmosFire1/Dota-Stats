@@ -113,14 +113,33 @@ The bot can also detect matches via OpenDota polling (requires public match data
 ## Web Dashboard
 The bot includes a web dashboard for viewing match data and uploading replays:
 - **Match History** (`/`) - List of all recorded matches with winner, duration, player count
-- **Match Detail** (`/match/:id`) - Full scoreboard with KDA, GPM, damage, healing per player
-- **Leaderboard** (`/leaderboard`) - TrueSkill MMR rankings
-- **Player Profile** (`/player/:accountId`) - Player stats, averages, hero history, recent matches
-- **Upload** (`/upload`) - Upload .dem replay files (requires UPLOAD_KEY)
+- **Match Detail** (`/match/:id`) - Full scoreboard with KDA, GPM, damage, healing per player; includes match deletion with audit trail
+- **Leaderboard** (`/leaderboard`) - TrueSkill MMR rankings with nickname support
+- **Player Profile** (`/player/:accountId`) - Player stats, averages (including TD/HH/denies), hero history with per-hero KDA/GPM/HD, recent matches
+- **Hero Stats** (`/heroes`) - Per-hero aggregate stats: pick count, win rate, avg KDA/GPM/HD/TD/HH; sortable columns
+- **Players** (`/players`) - All players with editable nicknames, game count, last played date
+- **Upload** (`/upload`) - Upload .dem replay files (requires UPLOAD_KEY); duplicate prevention via SHA256 file hash
 
 Data is stored in PostgreSQL (primary) and optionally synced to Google Sheets.
 The Express server runs on port 5000 alongside the Discord bot in the same process.
 Frontend is React + Vite, built to `web/dist/` and served as static files.
+
+## Nickname System
+Players can be assigned nicknames (preferred display names) via the Players page:
+- Stored in `nicknames` table (account_id -> nickname)
+- Nicknames appear in match scoreboards, leaderboard, and player profiles
+- Requires upload key for editing (same auth as upload)
+
+## Match Deletion
+Matches can be deleted from the Match Detail page:
+- Requires upload key authentication
+- Full match data is archived in `match_deletions` table before removal
+- All TrueSkill ratings are recalculated from remaining matches after deletion
+
+## Replay Parser Details
+- Combat log events (damage, healing) use `attackername` strings, not slot numbers. Parser builds NPC-name-to-slot mapping from interval events + hero constants.
+- Epilogue data (player names, Steam IDs, match ID) uses protobuf Java serialization with possible trailing-underscore field names (e.g., `gameInfo_`, `playerInfo_`). Parser tries multiple field name variants.
+- Complete hero ID to NPC name mapping from dotaconstants (155 heroes as of 2026-03-11).
 
 ## Notes
 - Replay upload with full parsing is the best way to get detailed stats from practice lobby matches.
@@ -134,6 +153,15 @@ Frontend is React + Vite, built to `web/dist/` and served as static files.
 - Parser service is started as a child process and cleaned up on shutdown.
 
 ## Recent Changes
+- 2026-03-11: Fixed combat log parsing (HD/TD/HH) - combat log events don't carry slot, built NPC-name→slot mapping.
+- 2026-03-11: Fixed epilogue extraction - handles protobuf trailing-underscore field names for player names/Steam IDs.
+- 2026-03-11: Updated hero name mapping with complete dotaconstants list (155 heroes including Largo #155, Ring Master #131).
+- 2026-03-11: Added nickname system (DB + API + Players page with inline editing).
+- 2026-03-11: Added match deletion with audit trail (match_deletions table) and automatic rating recalculation.
+- 2026-03-11: Added duplicate replay prevention via SHA256 file hash (unique constraint in DB).
+- 2026-03-11: Added Hero Stats page with sortable columns (pick count, win rate, avg stats).
+- 2026-03-11: Enhanced Player Profile with tower damage, healing, denies averages and per-hero KDA/GPM/HD.
+- 2026-03-11: Fixed formatNumber(0) displaying "-" instead of "0" in match scoreboards.
 - 2026-03-11: Added web dashboard (Express + React) with match history, scoreboards, leaderboard, player profiles, and replay upload.
 - 2026-03-11: Added PostgreSQL database as primary data store (alongside optional Google Sheets sync).
 - 2026-03-11: Web upload protected by UPLOAD_KEY secret; public viewing for all other pages.

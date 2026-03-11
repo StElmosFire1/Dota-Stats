@@ -15,7 +15,7 @@ const HERO_NAMES = {
   61: 'Broodmother', 62: 'Bounty Hunter', 63: 'Weaver', 64: 'Jakiro',
   65: 'Batrider', 66: 'Chen', 67: 'Spectre', 68: 'Ancient Apparition',
   69: 'Doom', 70: 'Ursa', 71: 'Spirit Breaker', 72: 'Gyrocopter',
-  73: 'Alchemist', 74: 'Invoker', 75: 'Silencer', 76: 'Outworld Destroyer',
+  73: 'Alchemist', 74: 'Invoker', 75: 'Silencer', 76: 'Outworld Devourer',
   77: 'Lycan', 78: 'Brewmaster', 79: 'Shadow Demon', 80: 'Lone Druid',
   81: 'Chaos Knight', 82: 'Meepo', 83: 'Treant Protector', 84: 'Ogre Magi',
   85: 'Undying', 86: 'Rubick', 87: 'Disruptor', 88: 'Nyx Assassin',
@@ -27,17 +27,27 @@ const HERO_NAMES = {
   109: 'Terrorblade', 110: 'Phoenix', 111: 'Oracle', 112: 'Winter Wyvern',
   113: 'Arc Warden', 114: 'Monkey King', 119: 'Dark Willow', 120: 'Pangolier',
   121: 'Grimstroke', 123: 'Hoodwink', 126: 'Void Spirit', 128: 'Snapfire',
-  129: 'Mars', 131: 'Ringmaster', 135: 'Dawnbreaker', 136: 'Marci',
-  137: 'Primal Beast', 138: 'Muerta', 145: 'Kez',
+  129: 'Mars', 131: 'Ring Master', 135: 'Dawnbreaker', 136: 'Marci',
+  137: 'Primal Beast', 138: 'Muerta', 145: 'Kez', 155: 'Largo',
 };
 
 export function getHeroName(heroId, fallbackName) {
-  return HERO_NAMES[heroId] || fallbackName || `Hero #${heroId}`;
+  if (HERO_NAMES[heroId]) return HERO_NAMES[heroId];
+  if (fallbackName && fallbackName.startsWith('npc_dota_hero_')) {
+    const clean = fallbackName.replace('npc_dota_hero_', '').replace(/_/g, ' ');
+    return clean.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+  return fallbackName || `Hero #${heroId}`;
 }
 
 export function getHeroImageUrl(heroId, heroName) {
-  const name = heroName || HERO_NAMES[heroId] || '';
-  const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+  const name = HERO_NAMES[heroId] || '';
+  let slug = '';
+  if (name) {
+    slug = name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+  } else if (heroName && heroName.startsWith('npc_dota_hero_')) {
+    slug = heroName.replace('npc_dota_hero_', '');
+  }
   if (!slug) return null;
   return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
 }

@@ -26,13 +26,26 @@ export default function PlayerProfile() {
   if (loading) return <div className="loading">Loading player...</div>;
   if (!data) return <div className="error-state">Player not found</div>;
 
-  const { rating, recentMatches, averages, heroes } = data;
+  const { rating, nickname, recentMatches, averages, heroes } = data;
+  const displayName = nickname || rating?.display_name || `Player ${accountId}`;
+
+  const totalMatches = averages ? parseInt(averages.total_matches) : 0;
+  const totalKDA = averages && totalMatches > 0
+    ? ((parseInt(averages.total_kills) + parseInt(averages.total_assists)) / Math.max(parseInt(averages.total_deaths), 1)).toFixed(2)
+    : null;
 
   return (
     <div>
       <Link to="/leaderboard" className="back-link">&larr; Back to leaderboard</Link>
 
-      <h1 className="page-title">{rating?.display_name || `Player ${accountId}`}</h1>
+      <h1 className="page-title">
+        {displayName}
+        {nickname && rating?.display_name && nickname !== rating.display_name && (
+          <span style={{ fontSize: '0.6em', color: '#888', marginLeft: '0.5rem' }}>
+            ({rating.display_name})
+          </span>
+        )}
+      </h1>
 
       {rating && (
         <div className="stats-grid">
@@ -56,12 +69,18 @@ export default function PlayerProfile() {
             </div>
             <div className="stat-label">Win Rate</div>
           </div>
+          {totalKDA && (
+            <div className="stat-card">
+              <div className="stat-value">{totalKDA}</div>
+              <div className="stat-label">KDA</div>
+            </div>
+          )}
         </div>
       )}
 
-      {averages && parseInt(averages.total_matches) > 0 && (
+      {averages && totalMatches > 0 && (
         <section>
-          <h2 className="section-title">Averages</h2>
+          <h2 className="section-title">Averages ({totalMatches} games)</h2>
           <div className="stats-grid">
             <div className="stat-card sm">
               <div className="stat-value">{averages.avg_kills}</div>
@@ -87,6 +106,22 @@ export default function PlayerProfile() {
               <div className="stat-value">{parseInt(averages.avg_hero_damage).toLocaleString()}</div>
               <div className="stat-label">Hero Dmg</div>
             </div>
+            <div className="stat-card sm">
+              <div className="stat-value">{parseInt(averages.avg_tower_damage).toLocaleString()}</div>
+              <div className="stat-label">Tower Dmg</div>
+            </div>
+            <div className="stat-card sm">
+              <div className="stat-value">{parseInt(averages.avg_hero_healing).toLocaleString()}</div>
+              <div className="stat-label">Healing</div>
+            </div>
+            <div className="stat-card sm">
+              <div className="stat-value">{averages.avg_last_hits}</div>
+              <div className="stat-label">Last Hits</div>
+            </div>
+            <div className="stat-card sm">
+              <div className="stat-value">{averages.avg_denies}</div>
+              <div className="stat-label">Denies</div>
+            </div>
           </div>
         </section>
       )}
@@ -102,10 +137,15 @@ export default function PlayerProfile() {
                   <th className="col-stat">Games</th>
                   <th className="col-stat">Wins</th>
                   <th className="col-stat">Win %</th>
+                  <th className="col-stat">K</th>
+                  <th className="col-stat">D</th>
+                  <th className="col-stat">A</th>
+                  <th className="col-stat">GPM</th>
+                  <th className="col-stat">HD</th>
                 </tr>
               </thead>
               <tbody>
-                {heroes.slice(0, 10).map((h, i) => (
+                {heroes.slice(0, 15).map((h, i) => (
                   <tr key={i}>
                     <td className="col-player">{getHeroName(h.hero_id, h.hero_name)}</td>
                     <td className="col-stat">{h.games}</td>
@@ -113,6 +153,11 @@ export default function PlayerProfile() {
                     <td className="col-stat">
                       {h.games > 0 ? ((h.wins / h.games) * 100).toFixed(0) + '%' : '--'}
                     </td>
+                    <td className="col-stat">{h.avg_kills}</td>
+                    <td className="col-stat">{h.avg_deaths}</td>
+                    <td className="col-stat">{h.avg_assists}</td>
+                    <td className="col-stat">{parseInt(h.avg_gpm).toLocaleString()}</td>
+                    <td className="col-stat">{parseInt(h.avg_hero_damage).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>

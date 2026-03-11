@@ -46,7 +46,7 @@ export default function Leaderboard() {
                     <td className="col-rank">{i + 1}</td>
                     <td className="col-player">
                       <Link to={`/player/${p.player_id}`} className="player-link">
-                        {p.display_name || p.player_id}
+                        {p.nickname || p.display_name || p.player_id}
                       </Link>
                     </td>
                     <td className="col-stat mmr">{p.mmr}</td>

@@ -104,6 +104,27 @@ function createApiRouter() {
     }
   });
 
+  router.delete('/matches/:matchId', authMiddleware, async (req, res) => {
+    try {
+      const { reason } = req.body || {};
+      const result = await db.deleteMatch(req.params.matchId, `web:${req.ip}`, reason);
+      if (!result) return res.status(404).json({ error: 'Match not found' });
+
+      let ratingsRecalculated = false;
+      try {
+        await db.recalculateAllRatings();
+        ratingsRecalculated = true;
+      } catch (ratingErr) {
+        console.error('[API] Rating recalculation failed after deleting match:', ratingErr.message);
+      }
+
+      res.json({ deleted: true, matchId: req.params.matchId, ratingsRecalculated });
+    } catch (err) {
+      console.error('[API] Error deleting match:', err.message);
+      res.status(500).json({ error: 'Failed to delete match' });
+    }
+  });
+
   router.get('/leaderboard', async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit) || 50, 100);
@@ -122,6 +143,49 @@ function createApiRouter() {
     } catch (err) {
       console.error('[API] Error fetching player:', err.message);
       res.status(500).json({ error: 'Failed to fetch player stats' });
+    }
+  });
+
+  router.get('/players', async (req, res) => {
+    try {
+      const players = await db.getAllPlayers();
+      res.json({ players });
+    } catch (err) {
+      console.error('[API] Error fetching players:', err.message);
+      res.status(500).json({ error: 'Failed to fetch players' });
+    }
+  });
+
+  router.get('/nicknames', async (req, res) => {
+    try {
+      const nicknames = await db.getAllNicknames();
+      res.json({ nicknames });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch nicknames' });
+    }
+  });
+
+  router.post('/nicknames/:accountId', authMiddleware, async (req, res) => {
+    try {
+      const { nickname } = req.body;
+      const accountId = parseInt(req.params.accountId);
+      if (isNaN(accountId) || accountId <= 0) {
+        return res.status(400).json({ error: 'Invalid account ID' });
+      }
+      const result = await db.setNickname(accountId, nickname);
+      res.json({ accountId, nickname: result });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to set nickname' });
+    }
+  });
+
+  router.get('/heroes', async (req, res) => {
+    try {
+      const heroes = await db.getHeroStats();
+      res.json({ heroes });
+    } catch (err) {
+      console.error('[API] Error fetching hero stats:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero stats' });
     }
   });
 
@@ -270,9 +334,23 @@ function createApiRouter() {
 
 async function processReplayJob(jobId, filePath, ip) {
   try {
-    updateJobStep(jobId, 'Parsing replay file...');
+    updateJobStep(jobId, 'Computing file hash...');
 
     const replayParser = getReplayParser();
+    const fileHash = replayParser.computeFileHash(filePath);
+
+    const existingHashMatch = await db.isFileHashRecorded(fileHash);
+    if (existingHashMatch) {
+      cleanupFile(filePath);
+      setJobTerminal(jobId, {
+        status: 'error',
+        error: `This replay file has already been uploaded (match ${existingHashMatch})`,
+      });
+      return;
+    }
+
+    updateJobStep(jobId, 'Parsing replay file...');
+
     const matchStats = await replayParser.parseReplayFull(filePath);
 
     if (!matchStats || !matchStats.players || matchStats.players.length === 0) {
@@ -292,7 +370,7 @@ async function processReplayJob(jobId, filePath, ip) {
 
     updateJobStep(jobId, 'Recording match data...');
 
-    await db.recordMatch(matchStats, '', `web:${ip}`);
+    await db.recordMatch(matchStats, '', `web:${ip}`, fileHash);
 
     updateJobStep(jobId, 'Updating ratings...');
 

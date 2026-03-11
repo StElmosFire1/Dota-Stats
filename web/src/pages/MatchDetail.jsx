@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getMatch } from '../api';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { getMatch, deleteMatch } from '../api';
 import { getHeroName } from '../heroNames';
 
 function formatDuration(seconds) {
@@ -11,8 +11,12 @@ function formatDuration(seconds) {
 }
 
 function formatNumber(n) {
-  if (n == null || n === 0) return '-';
+  if (n == null) return '-';
   return n.toLocaleString();
+}
+
+function getDisplayName(player, index) {
+  return player.nickname || player.persona_name || `Player ${index + 1}`;
 }
 
 function TeamTable({ players, teamName, isWinner }) {
@@ -53,10 +57,10 @@ function TeamTable({ players, teamName, isWinner }) {
                 <td className="col-player">
                   {p.account_id > 0 ? (
                     <Link to={`/player/${p.account_id}`} className="player-link">
-                      {p.persona_name || `Player ${i + 1}`}
+                      {getDisplayName(p, i)}
                     </Link>
                   ) : (
-                    p.persona_name || `Player ${i + 1}`
+                    getDisplayName(p, i)
                   )}
                 </td>
                 <td className="col-hero">{getHeroName(p.hero_id, p.hero_name)}</td>
@@ -86,9 +90,13 @@ function TeamTable({ players, teamName, isWinner }) {
 
 export default function MatchDetail() {
   const { matchId } = useParams();
+  const navigate = useNavigate();
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -97,6 +105,22 @@ export default function MatchDetail() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [matchId]);
+
+  const handleDelete = async () => {
+    const uploadKey = localStorage.getItem('uploadKey');
+    if (!uploadKey) {
+      alert('You need to set an upload key first (go to Upload page)');
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteMatch(matchId, uploadKey, deleteReason);
+      navigate('/');
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
+      setDeleting(false);
+    }
+  };
 
   if (loading) return <div className="loading">Loading match...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
@@ -128,6 +152,52 @@ export default function MatchDetail() {
 
       <TeamTable players={radiant} teamName="radiant" isWinner={match.radiant_win === true} />
       <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} />
+
+      <div style={{ marginTop: '2rem', borderTop: '1px solid #333', paddingTop: '1rem' }}>
+        {!showDelete ? (
+          <button
+            onClick={() => setShowDelete(true)}
+            style={{
+              background: 'transparent', color: '#666', border: '1px solid #444',
+              padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+            }}
+          >
+            Delete Match
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              placeholder="Reason (optional)"
+              value={deleteReason}
+              onChange={e => setDeleteReason(e.target.value)}
+              style={{
+                background: '#1a1a2e', color: '#e0e0e0', border: '1px solid #444',
+                padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem', flex: '1', minWidth: '150px',
+              }}
+            />
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{
+                background: '#c0392b', color: 'white', border: 'none',
+                padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+              }}
+            >
+              {deleting ? 'Deleting...' : 'Confirm Delete'}
+            </button>
+            <button
+              onClick={() => setShowDelete(false)}
+              style={{
+                background: 'transparent', color: '#888', border: '1px solid #444',
+                padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
