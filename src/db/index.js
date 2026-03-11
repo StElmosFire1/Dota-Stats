@@ -576,8 +576,7 @@ async function getAllPlayers() {
        SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
        ROUND(AVG(ps.kills), 1) as avg_kills,
        ROUND(AVG(ps.deaths), 1) as avg_deaths,
-       ROUND(AVG(ps.assists), 1) as avg_assists,
-       ROUND(AVG(ps.gpm), 0) as avg_gpm
+       ROUND(AVG(ps.assists), 1) as avg_assists
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      WHERE ps.position > 0
@@ -585,6 +584,31 @@ async function getAllPlayers() {
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        ps.position`
   );
+
+  const teamKillsRes = await p.query(
+    `SELECT ps.match_id, ps.team, SUM(ps.kills) as team_kills
+     FROM player_stats ps GROUP BY ps.match_id, ps.team`
+  );
+  const teamKillsMap = {};
+  for (const row of teamKillsRes.rows) {
+    teamKillsMap[`${row.match_id}_${row.team}`] = parseInt(row.team_kills) || 0;
+  }
+
+  const posKiData = await p.query(
+    `SELECT
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       ps.position, ps.match_id, ps.team, ps.kills, ps.assists
+     FROM player_stats ps WHERE ps.position > 0`
+  );
+  const kiByPlayerPos = {};
+  for (const row of posKiData.rows) {
+    const key = decodeByteString(row.player_key);
+    const posKey = `${key}_${row.position}`;
+    const tk = teamKillsMap[`${row.match_id}_${row.team}`] || 1;
+    const ki = ((parseInt(row.kills) + parseInt(row.assists)) / tk) * 100;
+    if (!kiByPlayerPos[posKey]) kiByPlayerPos[posKey] = [];
+    kiByPlayerPos[posKey].push(ki);
+  }
 
   const posByPlayer = {};
   for (const row of posStats.rows) {
@@ -597,7 +621,10 @@ async function getAllPlayers() {
     const a = parseFloat(row.avg_assists) || 0;
     const kda = (k + a) / Math.max(1, d);
     const winRate = w / g;
-    const score = Math.min(10, (winRate * 3.5) + Math.min(3.5, kda * 0.7) + Math.min(3.0, (parseFloat(row.avg_gpm) || 0) / 250));
+    const posKey = `${key}_${row.position}`;
+    const kis = kiByPlayerPos[posKey] || [];
+    const avgKi = kis.length > 0 ? kis.reduce((x, y) => x + y, 0) / kis.length : 0;
+    const score = Math.min(10, (winRate * 4.0) + Math.min(3.0, kda * 0.6) + Math.min(3.0, avgKi / 25));
     posByPlayer[key].push({ position: parseInt(row.position), score: Math.round(score * 10) / 10 });
   }
 
