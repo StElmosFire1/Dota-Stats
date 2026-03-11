@@ -92,7 +92,8 @@ export default function Players() {
               <th className="col-stat" title="Average deaths per game" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')}>D{si('avg_deaths')}</th>
               <th className="col-stat" title="Average assists per game" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')}>A{si('avg_assists')}</th>
               <th className="col-stat" title="Kill Involvement — percentage of team kills you participated in (kills + assists)" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')}>KI%{si('avg_kill_involvement')}</th>
-              <th className="col-stat" title="Most frequently played position" style={{ cursor: 'pointer' }} onClick={() => handleSort('best_position')}>Best Pos{si('best_position')}</th>
+              <th className="col-stat" title="Most frequently played position" style={{ cursor: 'pointer' }} onClick={() => handleSort('most_played_position')}>Most Played{si('most_played_position')}</th>
+              <th className="col-stat" title="Best performing position (1-10 rating based on win rate, KDA, and GPM)" style={{ cursor: 'pointer' }} onClick={() => handleSort('best_position_score')}>Best Pos{si('best_position_score')}</th>
               <th className="col-stat" title="Custom nickname — click Edit to change">Nickname</th>
             </tr>
           </thead>
@@ -117,7 +118,17 @@ export default function Players() {
                   <td className="col-stat">{p.avg_deaths}</td>
                   <td className="col-stat">{p.avg_assists}</td>
                   <td className="col-stat">{p.avg_kill_involvement}%</td>
-                  <td className="col-stat">{p.best_position ? POS_SHORT[p.best_position] || '-' : '-'}</td>
+                  <td className="col-stat">{p.most_played_position ? POS_SHORT[p.most_played_position] || '-' : '-'}</td>
+                  <td className="col-stat">
+                    {p.best_position ? (
+                      <span title={`${POS_SHORT[p.best_position]} — Rating: ${p.best_position_score}/10`}>
+                        {POS_SHORT[p.best_position]}{' '}
+                        <span style={{ color: p.best_position_score >= 7 ? '#4ade80' : p.best_position_score >= 4 ? '#facc15' : '#f87171', fontSize: '0.8rem' }}>
+                          ({p.best_position_score})
+                        </span>
+                      </span>
+                    ) : '-'}
+                  </td>
                   <td className="col-stat">
                     {editingKey === key ? (
                       <div style={{ display: 'flex', gap: '0.3rem' }}>

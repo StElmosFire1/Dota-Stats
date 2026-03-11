@@ -55,8 +55,16 @@ export async function getOverallStats() {
   return fetchJson('/overall-stats');
 }
 
-export async function getPositionStats(position) {
-  return fetchJson(`/position-stats/${position}`);
+export async function getPositionStats(position, minGames = 1) {
+  return fetchJson(`/position-stats/${position}?min_games=${minGames}`);
+}
+
+export async function getPlayerPositionProfiles() {
+  return fetchJson('/player-profiles/positions');
+}
+
+export async function getPlayerHeroProfiles() {
+  return fetchJson('/player-profiles/heroes');
 }
 
 export async function getSynergy() {

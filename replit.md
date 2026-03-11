@@ -49,6 +49,10 @@ The dashboard emphasizes clear data presentation, sortable tables, and detailed 
 - **node-fetch:** Used for HTTP requests to external APIs and replay file downloads.
 
 ## Recent Changes
+- 2026-03-11: Players page — split "Best Pos" into "Most Played" (mode position) and "Best Pos" (1-10 performance rating based on win rate, KDA, GPM). Score formula: min(10, winRate*3.5 + min(3.5, kda*0.7) + min(3.0, gpm/250)).
+- 2026-03-11: Position Stats — removed 3-game minimum (now configurable via dropdown: 1/2/3/5/10). Added "Player Profiles" tab showing expandable per-player position breakdown (like the Google Sheet layout).
+- 2026-03-11: Heroes page — now shows ALL 127 Dota 2 heroes alphabetically. Unplayed heroes appear dimmed with blank stats.
+- 2026-03-11: Added Hero Breakdown page — player-centric hero view showing each player's hero pool, games, avg KDA, win%, diversification %, dire/radiant win split. Expandable rows show individual hero details.
 - 2026-03-11: Fixed position detection — parser outputs coords on 0-256 scale (center ~128), not 0-32768. Positions now correctly detect Pos 1-5 from laning data.
 - 2026-03-11: Fixed final inventory items — Entry.java `hero_inventory` was `transient` (never serialized). Removed transient flag; JS code reads `hero_inventory` array with item names/slots.
 - 2026-03-11: Added Aghs Scepter/Shard indicators on match detail — small icons next to items, blue glow when active, greyed out when inactive.

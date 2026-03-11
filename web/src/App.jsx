@@ -5,6 +5,7 @@ import MatchDetail from './pages/MatchDetail';
 import Leaderboard from './pages/Leaderboard';
 import PlayerProfile from './pages/PlayerProfile';
 import Heroes from './pages/Heroes';
+import HeroBreakdown from './pages/HeroBreakdown';
 import Players from './pages/Players';
 import OverallStats from './pages/OverallStats';
 import PositionStats from './pages/PositionStats';
@@ -26,6 +27,7 @@ function Nav() {
         <Link to="/stats" className={isActive('/stats')}>Stats</Link>
         <Link to="/positions" className={isActive('/positions')}>Positions</Link>
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
+        <Link to="/hero-breakdown" className={isActive('/hero-breakdown')}>Hero Breakdown</Link>
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/players" className={isActive('/players')}>Players</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
@@ -48,6 +50,7 @@ export default function App() {
           <Route path="/match/:matchId" element={<MatchDetail />} />
           <Route path="/player/:accountId" element={<PlayerProfile />} />
           <Route path="/heroes" element={<Heroes />} />
+          <Route path="/hero-breakdown" element={<HeroBreakdown />} />
           <Route path="/players" element={<Players />} />
           <Route path="/stats" element={<OverallStats />} />
           <Route path="/positions" element={<PositionStats />} />

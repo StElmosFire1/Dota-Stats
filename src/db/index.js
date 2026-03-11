@@ -552,7 +552,7 @@ async function getAllPlayers() {
            ELSE 0
          END
        ), 0) as avg_kill_involvement,
-       MODE() WITHIN GROUP (ORDER BY CASE WHEN ps.position > 0 THEN ps.position ELSE NULL END) as best_position
+       MODE() WITHIN GROUP (ORDER BY CASE WHEN ps.position > 0 THEN ps.position ELSE NULL END) as most_played_position
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
@@ -567,9 +567,52 @@ async function getAllPlayers() {
        n.nickname
      ORDER BY games_played DESC`
   );
+
+  const posStats = await p.query(
+    `SELECT
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       ps.position,
+       COUNT(*) as games,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
+       ROUND(AVG(ps.kills), 1) as avg_kills,
+       ROUND(AVG(ps.deaths), 1) as avg_deaths,
+       ROUND(AVG(ps.assists), 1) as avg_assists,
+       ROUND(AVG(ps.gpm), 0) as avg_gpm
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.position > 0
+     GROUP BY
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
+       ps.position`
+  );
+
+  const posByPlayer = {};
+  for (const row of posStats.rows) {
+    const key = decodeByteString(row.player_key);
+    if (!posByPlayer[key]) posByPlayer[key] = [];
+    const g = parseInt(row.games) || 1;
+    const w = parseInt(row.wins) || 0;
+    const k = parseFloat(row.avg_kills) || 0;
+    const d = parseFloat(row.avg_deaths) || 1;
+    const a = parseFloat(row.avg_assists) || 0;
+    const kda = (k + a) / Math.max(1, d);
+    const winRate = w / g;
+    const score = Math.min(10, (winRate * 3.5) + Math.min(3.5, kda * 0.7) + Math.min(3.0, (parseFloat(row.avg_gpm) || 0) / 250));
+    posByPlayer[key].push({ position: parseInt(row.position), score: Math.round(score * 10) / 10 });
+  }
+
   for (const row of result.rows) {
     row.persona_name = decodeByteString(row.persona_name);
     row.player_key = decodeByteString(row.player_key);
+    const positions = posByPlayer[row.player_key] || [];
+    if (positions.length > 0) {
+      const best = positions.reduce((a, b) => a.score > b.score ? a : b);
+      row.best_position = best.position;
+      row.best_position_score = best.score;
+    } else {
+      row.best_position = null;
+      row.best_position_score = null;
+    }
   }
   return result.rows;
 }
@@ -672,7 +715,7 @@ async function getOverallStats() {
   return result.rows;
 }
 
-async function getPositionStats(position) {
+async function getPositionStats(position, minGames = 1) {
   const p = getPool();
   const result = await p.query(
     `SELECT
@@ -700,9 +743,9 @@ async function getPositionStats(position) {
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        COALESCE(NULLIF(ps.account_id, 0), 0),
        n.nickname
-     HAVING COUNT(*) >= 3
+     HAVING COUNT(*) >= $2
      ORDER BY SUM(CASE WHEN (team = 'radiant' AND m.radiant_win = true) OR (team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END)::float / GREATEST(COUNT(*), 1) DESC, COUNT(*) DESC`,
-    [position]
+    [position, minGames]
   );
 
   const teamKills = await p.query(
@@ -1087,6 +1130,168 @@ async function getSynergyHeatmap() {
   return { players, matrix };
 }
 
+async function getPlayerPositionProfiles() {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       COALESCE(NULLIF(ps.account_id, 0), 0) as account_id,
+       MAX(ps.persona_name) as persona_name,
+       n.nickname,
+       COUNT(*) as total_games,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as total_wins,
+       ROUND(AVG(ps.kills), 1) as avg_kills,
+       ROUND(AVG(ps.deaths), 1) as avg_deaths,
+       ROUND(AVG(ps.assists), 1) as avg_assists
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     GROUP BY
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
+       COALESCE(NULLIF(ps.account_id, 0), 0),
+       n.nickname
+     ORDER BY total_games DESC`
+  );
+
+  const posBreakdown = await p.query(
+    `SELECT
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       ps.position,
+       COUNT(*) as games,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
+       ROUND(AVG(ps.kills), 1) as avg_kills,
+       ROUND(AVG(ps.deaths), 1) as avg_deaths,
+       ROUND(AVG(ps.assists), 1) as avg_assists
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.position > 0
+     GROUP BY
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
+       ps.position
+     ORDER BY ps.position`
+  );
+
+  const breakdownByPlayer = {};
+  for (const row of posBreakdown.rows) {
+    const key = decodeByteString(row.player_key);
+    if (!breakdownByPlayer[key]) breakdownByPlayer[key] = [];
+    breakdownByPlayer[key].push({
+      position: parseInt(row.position),
+      games: parseInt(row.games),
+      wins: parseInt(row.wins),
+      avg_kills: parseFloat(row.avg_kills),
+      avg_deaths: parseFloat(row.avg_deaths),
+      avg_assists: parseFloat(row.avg_assists),
+    });
+  }
+
+  const players = result.rows.map(row => {
+    row.persona_name = decodeByteString(row.persona_name);
+    row.player_key = decodeByteString(row.player_key);
+    return {
+      player_key: row.player_key,
+      account_id: parseInt(row.account_id),
+      persona_name: row.persona_name,
+      nickname: row.nickname,
+      total_games: parseInt(row.total_games),
+      total_wins: parseInt(row.total_wins),
+      avg_kills: parseFloat(row.avg_kills),
+      avg_deaths: parseFloat(row.avg_deaths),
+      avg_assists: parseFloat(row.avg_assists),
+      positions: breakdownByPlayer[row.player_key] || [],
+    };
+  });
+
+  return players;
+}
+
+async function getPlayerHeroProfiles() {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       COALESCE(NULLIF(ps.account_id, 0), 0) as account_id,
+       MAX(ps.persona_name) as persona_name,
+       n.nickname,
+       COUNT(*) as total_games,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as total_wins,
+       ROUND(AVG(ps.kills), 1) as avg_kills,
+       ROUND(AVG(ps.deaths), 1) as avg_deaths,
+       ROUND(AVG(ps.assists), 1) as avg_assists,
+       COUNT(DISTINCT CASE WHEN ps.hero_id > 0 THEN ps.hero_id ELSE NULL END) as unique_heroes
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     GROUP BY
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
+       COALESCE(NULLIF(ps.account_id, 0), 0),
+       n.nickname
+     ORDER BY total_games DESC`
+  );
+
+  const heroBreakdown = await p.query(
+    `SELECT
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       ps.hero_id,
+       ps.hero_name,
+       COUNT(*) as games,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
+       ROUND(AVG(ps.kills), 1) as avg_kills,
+       ROUND(AVG(ps.deaths), 1) as avg_deaths,
+       ROUND(AVG(ps.assists), 1) as avg_assists,
+       SUM(CASE WHEN ps.team = 'dire' THEN 1 ELSE 0 END) as dire_games,
+       SUM(CASE WHEN ps.team = 'dire' AND ((ps.team = 'dire' AND m.radiant_win = false)) THEN 1 ELSE 0 END) as dire_wins,
+       SUM(CASE WHEN ps.team = 'radiant' THEN 1 ELSE 0 END) as radiant_games,
+       SUM(CASE WHEN ps.team = 'radiant' AND m.radiant_win = true THEN 1 ELSE 0 END) as radiant_wins
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.hero_id > 0
+     GROUP BY
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
+       ps.hero_id, ps.hero_name
+     ORDER BY ps.hero_name`
+  );
+
+  const heroByPlayer = {};
+  for (const row of heroBreakdown.rows) {
+    const key = decodeByteString(row.player_key);
+    if (!heroByPlayer[key]) heroByPlayer[key] = [];
+    heroByPlayer[key].push({
+      hero_id: parseInt(row.hero_id),
+      hero_name: row.hero_name,
+      games: parseInt(row.games),
+      wins: parseInt(row.wins),
+      avg_kills: parseFloat(row.avg_kills),
+      avg_deaths: parseFloat(row.avg_deaths),
+      avg_assists: parseFloat(row.avg_assists),
+      dire_games: parseInt(row.dire_games),
+      dire_wins: parseInt(row.dire_wins),
+      radiant_games: parseInt(row.radiant_games),
+      radiant_wins: parseInt(row.radiant_wins),
+    });
+  }
+
+  const players = result.rows.map(row => {
+    row.persona_name = decodeByteString(row.persona_name);
+    row.player_key = decodeByteString(row.player_key);
+    return {
+      player_key: row.player_key,
+      account_id: parseInt(row.account_id),
+      persona_name: row.persona_name,
+      nickname: row.nickname,
+      total_games: parseInt(row.total_games),
+      total_wins: parseInt(row.total_wins),
+      avg_kills: parseFloat(row.avg_kills),
+      avg_deaths: parseFloat(row.avg_deaths),
+      avg_assists: parseFloat(row.avg_assists),
+      unique_heroes: parseInt(row.unique_heroes),
+      heroes: heroByPlayer[row.player_key] || [],
+    };
+  });
+
+  return players;
+}
+
 module.exports = {
   init,
   getPool,
@@ -1113,6 +1318,8 @@ module.exports = {
   getPlayerHeroes,
   getPlayerPositions,
   getHeroPlayers,
+  getPlayerPositionProfiles,
+  getPlayerHeroProfiles,
   registerPlayer,
   getRegisteredPlayers,
   getMatchHistory,

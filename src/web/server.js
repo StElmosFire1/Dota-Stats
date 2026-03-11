@@ -213,11 +213,32 @@ function createApiRouter() {
     try {
       const pos = parseInt(req.params.position);
       if (pos < 1 || pos > 5) return res.status(400).json({ error: 'Position must be 1-5' });
-      const stats = await db.getPositionStats(pos);
+      const minGames = Math.max(1, parseInt(req.query.min_games) || 1);
+      const stats = await db.getPositionStats(pos, minGames);
       res.json({ stats });
     } catch (err) {
       console.error('[API] Error fetching position stats:', err.message);
       res.status(500).json({ error: 'Failed to fetch position stats' });
+    }
+  });
+
+  router.get('/player-profiles/positions', async (req, res) => {
+    try {
+      const players = await db.getPlayerPositionProfiles();
+      res.json({ players });
+    } catch (err) {
+      console.error('[API] Error fetching player position profiles:', err.message);
+      res.status(500).json({ error: 'Failed to fetch player position profiles' });
+    }
+  });
+
+  router.get('/player-profiles/heroes', async (req, res) => {
+    try {
+      const players = await db.getPlayerHeroProfiles();
+      res.json({ players });
+    } catch (err) {
+      console.error('[API] Error fetching player hero profiles:', err.message);
+      res.status(500).json({ error: 'Failed to fetch player hero profiles' });
     }
   });
 
