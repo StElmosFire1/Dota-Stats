@@ -1,19 +1,40 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { uploadReplayChunked, getUploadStatus } from '../api';
 
 const MAX_POLL_RETRIES = 10;
+const STORAGE_KEY = 'uploadQueue';
+
+function loadPersistedQueue() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch { return []; }
+}
+
+function persistQueue(items) {
+  const serializable = items.map(({ file, ...rest }) => ({
+    ...rest,
+    fileName: rest.fileName || (file ? file.name : 'unknown'),
+    fileSize: rest.fileSize || (file ? file.size : 0),
+  }));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+}
 
 function FileQueueItem({ item, isCurrent }) {
   const statusClass = item.status === 'complete' ? 'success' :
                       item.status === 'error' ? 'error' :
                       item.status === 'uploading' || item.status === 'processing' ? 'info' : '';
 
+  const name = item.fileName || (item.file ? item.file.name : 'unknown');
+  const size = item.fileSize || (item.file ? item.file.size : 0);
+
   return (
     <div className={`queue-item ${statusClass} ${isCurrent ? 'current' : ''}`}>
       <div className="queue-item-header">
-        <span className="queue-file-name">{item.file.name}</span>
-        <span className="queue-file-size">{(item.file.size / (1024 * 1024)).toFixed(1)} MB</span>
+        <span className="queue-file-name">{name}</span>
+        <span className="queue-file-size">{(size / (1024 * 1024)).toFixed(1)} MB</span>
         <span className={`queue-status ${item.status}`}>
           {item.status === 'pending' && 'Waiting'}
           {item.status === 'uploading' && 'Uploading'}
@@ -34,7 +55,10 @@ function FileQueueItem({ item, isCurrent }) {
       )}
       {item.status === 'complete' && item.result && (
         <div className="queue-result">
-          Match #{item.result.matchId} — {item.result.players} players
+          <Link to={`/match/${item.result.matchId}`}>
+            Match #{item.result.matchId}
+          </Link>
+          {' '}&mdash; {item.result.players} players
         </div>
       )}
       {item.status === 'error' && item.error && (
@@ -45,35 +69,52 @@ function FileQueueItem({ item, isCurrent }) {
 }
 
 export default function Upload() {
-  const [queue, setQueue] = useState([]);
+  const [queue, setQueue] = useState(() => loadPersistedQueue());
   const [uploadKey, setUploadKey] = useState(() => localStorage.getItem('uploadKey') || '');
-  const [processing, setProcessing] = useState(false);
   const cancelledRef = useRef(false);
   const fileRef = useRef(null);
   const processingRef = useRef(false);
+  const pollingJobsRef = useRef(new Set());
   const navigate = useNavigate();
+
+  useEffect(() => {
+    persistQueue(queue);
+  }, [queue]);
 
   const updateItem = useCallback((id, updates) => {
     setQueue(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
   }, []);
 
-  const pollJob = useCallback((jobId) => {
+  const pollJob = useCallback((jobId, itemId) => {
+    if (pollingJobsRef.current.has(jobId)) return Promise.resolve(null);
+    pollingJobsRef.current.add(jobId);
+
     return new Promise((resolve, reject) => {
       let retries = 0;
 
       const poll = async () => {
-        if (cancelledRef.current) { resolve(null); return; }
+        if (cancelledRef.current) {
+          pollingJobsRef.current.delete(jobId);
+          resolve(null);
+          return;
+        }
 
         try {
           const job = await getUploadStatus(jobId);
           retries = 0;
 
+          if (job.step) {
+            updateItem(itemId, { progress: { percent: 95, detail: job.step } });
+          }
+
           if (job.status === 'complete') {
+            pollingJobsRef.current.delete(jobId);
             resolve(job);
             return;
           }
 
           if (job.status === 'error') {
+            pollingJobsRef.current.delete(jobId);
             reject(new Error(job.error || 'Parse failed'));
             return;
           }
@@ -82,9 +123,14 @@ export default function Upload() {
             setTimeout(poll, 2000);
           }
         } catch (err) {
-          if (cancelledRef.current) { resolve(null); return; }
+          if (cancelledRef.current) {
+            pollingJobsRef.current.delete(jobId);
+            resolve(null);
+            return;
+          }
           retries++;
           if (retries >= MAX_POLL_RETRIES) {
+            pollingJobsRef.current.delete(jobId);
             reject(new Error('Lost connection to server'));
             return;
           }
@@ -95,30 +141,58 @@ export default function Upload() {
 
       poll();
     });
-  }, []);
+  }, [updateItem]);
+
+  const resumeProcessingJobs = useCallback(() => {
+    setQueue(prev => {
+      for (const item of prev) {
+        if (item.status === 'processing' && item.jobId && !pollingJobsRef.current.has(item.jobId)) {
+          const itemId = item.id;
+          const jobId = item.jobId;
+          pollJob(jobId, itemId)
+            .then(result => {
+              if (result) {
+                updateItem(itemId, {
+                  status: 'complete',
+                  progress: { percent: 100, detail: 'Complete!' },
+                  result: { matchId: result.matchId, players: result.players },
+                });
+              }
+            })
+            .catch(err => {
+              updateItem(itemId, { status: 'error', error: err.message, progress: null });
+            });
+        }
+      }
+      return prev;
+    });
+  }, [pollJob, updateItem]);
 
   const processQueue = useCallback(async () => {
     if (processingRef.current) return;
     processingRef.current = true;
-    setProcessing(true);
 
     const savedKey = localStorage.getItem('uploadKey') || '';
 
     while (true) {
+      await new Promise(r => setTimeout(r, 100));
+
       let nextItem = null;
       setQueue(prev => {
-        const pending = prev.find(i => i.status === 'pending');
+        const pending = prev.find(i => i.status === 'pending' && i.file);
         if (pending) nextItem = pending;
         return prev;
       });
 
       await new Promise(r => setTimeout(r, 50));
-      setQueue(prev => {
-        const pending = prev.find(i => i.status === 'pending');
-        if (pending) nextItem = pending;
-        return prev;
-      });
-      await new Promise(r => setTimeout(r, 50));
+      if (!nextItem) {
+        setQueue(prev => {
+          const pending = prev.find(i => i.status === 'pending' && i.file);
+          if (pending) nextItem = pending;
+          return prev;
+        });
+        await new Promise(r => setTimeout(r, 50));
+      }
 
       if (!nextItem) break;
       if (cancelledRef.current) break;
@@ -132,9 +206,13 @@ export default function Upload() {
         });
 
         if (result.jobId) {
-          updateItem(itemId, { status: 'processing', progress: { percent: 95, detail: 'Parsing replay...' } });
+          updateItem(itemId, {
+            status: 'processing',
+            jobId: result.jobId,
+            progress: { percent: 95, detail: 'Parsing replay...' },
+          });
 
-          const pollResult = await pollJob(result.jobId);
+          const pollResult = await pollJob(result.jobId, itemId);
           if (pollResult) {
             updateItem(itemId, {
               status: 'complete',
@@ -149,7 +227,6 @@ export default function Upload() {
     }
 
     processingRef.current = false;
-    setProcessing(false);
   }, [updateItem, pollJob]);
 
   const addFiles = useCallback((fileList) => {
@@ -161,38 +238,43 @@ export default function Upload() {
     const newItems = validFiles.map(f => ({
       id: `${f.name}-${f.size}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       file: f,
+      fileName: f.name,
+      fileSize: f.size,
       status: 'pending',
       progress: null,
       result: null,
       error: null,
+      jobId: null,
     }));
 
     setQueue(prev => [...prev, ...newItems]);
   }, []);
 
   useEffect(() => {
-    const hasPending = queue.some(i => i.status === 'pending');
+    cancelledRef.current = false;
+    resumeProcessingJobs();
+    return () => { cancelledRef.current = true; };
+  }, []);
+
+  useEffect(() => {
+    const hasPending = queue.some(i => i.status === 'pending' && i.file);
     if (hasPending && !processingRef.current && uploadKey) {
       processQueue();
     }
   }, [queue, uploadKey, processQueue]);
 
-  useEffect(() => {
-    cancelledRef.current = false;
-    return () => { cancelledRef.current = true; };
-  }, []);
-
-  const removeItem = (id) => {
-    setQueue(prev => prev.filter(i => i.id !== id));
-  };
-
   const clearCompleted = () => {
     setQueue(prev => prev.filter(i => i.status !== 'complete' && i.status !== 'error'));
+  };
+
+  const clearAll = () => {
+    setQueue([]);
   };
 
   const completedCount = queue.filter(i => i.status === 'complete').length;
   const errorCount = queue.filter(i => i.status === 'error').length;
   const pendingCount = queue.filter(i => i.status === 'pending').length;
+  const processingCount = queue.filter(i => i.status === 'uploading' || i.status === 'processing').length;
   const activeItem = queue.find(i => i.status === 'uploading' || i.status === 'processing');
 
   return (
@@ -201,6 +283,7 @@ export default function Upload() {
       <p className="page-subtitle">
         Upload .dem replay files to record match stats. You can select multiple files at once.
         Re-uploading the same replay will replace the existing match data.
+        You can navigate away — active uploads will keep their progress.
         {' '}<a href="/api/available-stats" className="stats-download-link" download>Download list of all parseable stats</a>
       </p>
 
@@ -256,13 +339,19 @@ export default function Upload() {
           <div className="queue-header">
             <h3>
               Upload Queue
-              {completedCount > 0 && <span className="queue-count success"> — {completedCount} done</span>}
-              {errorCount > 0 && <span className="queue-count error"> — {errorCount} failed</span>}
-              {pendingCount > 0 && <span className="queue-count"> — {pendingCount} waiting</span>}
+              {processingCount > 0 && <span className="queue-count info"> &mdash; {processingCount} active</span>}
+              {completedCount > 0 && <span className="queue-count success"> &mdash; {completedCount} done</span>}
+              {errorCount > 0 && <span className="queue-count error"> &mdash; {errorCount} failed</span>}
+              {pendingCount > 0 && <span className="queue-count"> &mdash; {pendingCount} waiting</span>}
             </h3>
-            {(completedCount > 0 || errorCount > 0) && (
-              <button onClick={clearCompleted} className="btn btn-sm">Clear finished</button>
-            )}
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {(completedCount > 0 || errorCount > 0) && (
+                <button onClick={clearCompleted} className="btn btn-sm">Clear finished</button>
+              )}
+              {queue.length > 0 && !processingCount && (
+                <button onClick={clearAll} className="btn btn-sm">Clear all</button>
+              )}
+            </div>
           </div>
           <div className="queue-list">
             {queue.map(item => (
