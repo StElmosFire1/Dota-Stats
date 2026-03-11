@@ -142,7 +142,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
                   <th className="col-stat" title="Net Worth">NW</th>
                 </>
               )}
-              {hasItems && <th className="col-items" style={{ minWidth: '220px' }} title="End-game inventory (6 slots) | Backpack (3 slots)">Items</th>}
+              {hasItems && <th className="col-items" style={{ minWidth: '260px' }} title="End-game inventory (6 slots) | Backpack (3 slots) | Aghs status">Items</th>}
             </tr>
           </thead>
           <tbody>
@@ -163,8 +163,6 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
                   <td className="col-player">
                     <PlayerLink player={p} index={i} />
                     <span className="player-badges">
-                      {p.has_scepter && <span className="badge aghs" title="Aghanim's Scepter">🟡</span>}
-                      {p.has_shard && <span className="badge shard" title="Aghanim's Shard">🔵</span>}
                       {p.firstblood_claimed > 0 && <span className="badge fb" title="First Blood">FB</span>}
                       {p.first_death > 0 && <span className="badge fd" title="First Death">FD</span>}
                     </span>
@@ -195,6 +193,20 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
                           const item = (p.items || []).find(it => it.item_slot === j);
                           return <ItemIcon key={j} itemName={item?.item_name} itemId={item?.item_id} />;
                         })}
+                        <span className="aghs-indicators">
+                          <img
+                            src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/ultimate_scepter.png"
+                            alt="Aghanim's Scepter"
+                            title="Aghanim's Scepter"
+                            className={`aghs-icon ${p.has_scepter ? 'active' : 'inactive'}`}
+                          />
+                          <img
+                            src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/aghanims_shard.png"
+                            alt="Aghanim's Shard"
+                            title="Aghanim's Shard"
+                            className={`aghs-icon ${p.has_shard ? 'active' : 'inactive'}`}
+                          />
+                        </span>
                         <span className="backpack-separator">|</span>
                         {Array.from({ length: 3 }, (_, j) => {
                           const item = (p.items || []).find(it => it.item_slot === (j + 6));

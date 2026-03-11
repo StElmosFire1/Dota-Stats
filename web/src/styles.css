@@ -559,12 +559,32 @@ th.col-stat {
   color: #ccc;
 }
 
-.badge.aghs {
-  font-size: 0.7rem;
+.aghs-indicators {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
-.badge.shard {
-  font-size: 0.7rem;
+.aghs-icon {
+  width: 22px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 2px;
+  transition: opacity 0.2s;
+}
+
+.aghs-icon.active {
+  opacity: 1;
+  filter: none;
+  border: 1px solid #4fc3f7;
+  box-shadow: 0 0 4px rgba(79, 195, 247, 0.5);
+}
+
+.aghs-icon.inactive {
+  opacity: 0.2;
+  filter: grayscale(100%);
+  border: 1px solid #333;
 }
 
 .expanded-stats-section {

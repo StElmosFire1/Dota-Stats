@@ -93,7 +93,6 @@ export default function Players() {
               <th className="col-stat" title="Average assists per game" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')}>A{si('avg_assists')}</th>
               <th className="col-stat" title="Kill Involvement — percentage of team kills you participated in (kills + assists)" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')}>KI%{si('avg_kill_involvement')}</th>
               <th className="col-stat" title="Most frequently played position" style={{ cursor: 'pointer' }} onClick={() => handleSort('best_position')}>Best Pos{si('best_position')}</th>
-              <th className="col-stat" title="Date of most recent match">Last Played</th>
               <th className="col-stat" title="Custom nickname — click Edit to change">Nickname</th>
             </tr>
           </thead>
@@ -119,11 +118,6 @@ export default function Players() {
                   <td className="col-stat">{p.avg_assists}</td>
                   <td className="col-stat">{p.avg_kill_involvement}%</td>
                   <td className="col-stat">{p.best_position ? POS_SHORT[p.best_position] || '-' : '-'}</td>
-                  <td className="col-stat">
-                    {p.last_played
-                      ? new Date(p.last_played).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
-                      : '--'}
-                  </td>
                   <td className="col-stat">
                     {editingKey === key ? (
                       <div style={{ display: 'flex', gap: '0.3rem' }}>

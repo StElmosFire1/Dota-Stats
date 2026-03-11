@@ -452,16 +452,6 @@ class ReplayParser {
       }
 
       if (e.type === 'interval' && e.slot != null && e.slot >= 0 && e.slot < 10) {
-        if (!this._debugIntervalLogged) {
-          this._debugIntervalLogged = true;
-          console.log('[Replay][DEBUG] Sample interval event keys:', JSON.stringify(Object.keys(e)));
-          console.log('[Replay][DEBUG] Sample interval event (slot=' + e.slot + ', time=' + e.time + '):', JSON.stringify(e).substring(0, 1000));
-        }
-        if (!this._debugLateIntervalLogged && (e.time || 0) > 2000) {
-          this._debugLateIntervalLogged = true;
-          console.log('[Replay][DEBUG] Late interval event keys:', JSON.stringify(Object.keys(e)));
-          console.log('[Replay][DEBUG] Late interval event (slot=' + e.slot + ', time=' + e.time + '):', JSON.stringify(e).substring(0, 1500));
-        }
         const currentTime = e.time || 0;
         const prevMax = maxTime[e.slot] || -1;
 
@@ -734,12 +724,6 @@ class ReplayParser {
     console.log('[Replay] Tower damage by slot:', JSON.stringify(towerDamage));
     console.log('[Replay] Hero healing by slot:', JSON.stringify(heroHealing));
     console.log('[Replay] Damage taken by slot:', JSON.stringify(damageTaken));
-    const finalItemsSummary = {};
-    for (const [slot, items] of Object.entries(finalItems)) {
-      finalItemsSummary[slot] = Object.values(items).map(i => i.itemName).join(', ');
-    }
-    console.log('[Replay] Final items by slot:', JSON.stringify(finalItemsSummary));
-
     let epiloguePlayerInfos = [];
     if (epilogueData) {
       const dota = this._getNestedField(epilogueData,
@@ -871,9 +855,12 @@ class ReplayParser {
         }
       }
 
-      const hasScepter = playerItems.some(i => i.itemId === 108) ||
+      const hasScepter = playerItems.some(i =>
+          i.itemName === 'ultimate_scepter' || i.itemName === 'ultimate_scepter_2' ||
+          i.itemId === 108) ||
         (itemPurchases[slot] || []).some(i => i.itemName === 'item_ultimate_scepter' || i.itemName === 'item_ultimate_scepter_2');
-      const hasShard = (itemPurchases[slot] || []).some(i => i.itemName === 'item_aghanims_shard');
+      const hasShard = playerItems.some(i => i.itemName === 'aghanims_shard') ||
+        (itemPurchases[slot] || []).some(i => i.itemName === 'item_aghanims_shard');
 
       playerList.push({
         accountId: p.accountId || 0,

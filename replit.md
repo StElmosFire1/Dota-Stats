@@ -49,10 +49,16 @@ The dashboard emphasizes clear data presentation, sortable tables, and detailed 
 - **node-fetch:** Used for HTTP requests to external APIs and replay file downloads.
 
 ## Recent Changes
+- 2026-03-11: Fixed position detection — parser outputs coords on 0-256 scale (center ~128), not 0-32768. Positions now correctly detect Pos 1-5 from laning data.
+- 2026-03-11: Fixed final inventory items — Entry.java `hero_inventory` was `transient` (never serialized). Removed transient flag; JS code reads `hero_inventory` array with item names/slots.
+- 2026-03-11: Added Aghs Scepter/Shard indicators on match detail — small icons next to items, blue glow when active, greyed out when inactive.
+- 2026-03-11: Parallel chunk uploads (3 concurrent, 5MB chunks) for faster replay uploads.
+- 2026-03-11: Removed "Last Played" column from Players page.
+- 2026-03-11: Fixed leaderboard duplication — ratings table now properly reset when matches are cleared.
+- 2026-03-11: Fixed buyback tracking — uses DOTA_COMBATLOG_BUYBACK events, prefers combat log count over interval count.
 - 2026-03-11: Added items, abilities, and extended stats to replay parser (buybacks, courier kills, multi-kills, kill streaks, smoke kills, first death, lane CS@10, Aghs/Shard, final inventory, skill build).
 - 2026-03-11: Added player_items and player_abilities DB tables for per-match item builds and skill orders.
 - 2026-03-11: Added hero icons (Dota 2 CDN) and item icons to match scoreboard UI.
-- 2026-03-11: Match detail page shows Aghs/Shard badges, first blood/first death indicators, expanded stats section.
 - 2026-03-11: Fixed Java byte-array serialized player names throughout the app.
 - 2026-03-11: Added nickname system, match deletion with audit trail, duplicate replay prevention.
 - 2026-03-11: Added Hero Stats, Overall Stats, Position Stats, Synergy pages to web dashboard.

@@ -107,7 +107,8 @@ export async function setNickname(accountId, nickname, uploadKey) {
   return data;
 }
 
-const CHUNK_SIZE = 4 * 1024 * 1024;
+const CHUNK_SIZE = 5 * 1024 * 1024;
+const PARALLEL_UPLOADS = 3;
 
 export async function uploadReplayChunked(file, uploadKey, onProgress) {
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -131,21 +132,13 @@ export async function uploadReplayChunked(file, uploadKey, onProgress) {
 
   const { jobId } = initData;
 
-  for (let i = 0; i < totalChunks; i++) {
+  let completedChunks = 0;
+  const totalMB = (file.size / (1024 * 1024)).toFixed(1);
+
+  const uploadChunk = async (i) => {
     const start = i * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE, file.size);
     const chunk = file.slice(start, end);
-
-    const percent = Math.round(((i + 1) / totalChunks) * 90);
-    const uploadedMB = (Math.min((i + 1) * CHUNK_SIZE, file.size) / (1024 * 1024)).toFixed(1);
-    const totalMB = (file.size / (1024 * 1024)).toFixed(1);
-    onProgress({
-      phase: 'uploading',
-      percent,
-      detail: `Uploading ${uploadedMB}/${totalMB} MB (${percent}%)`,
-      chunksUploaded: i + 1,
-      totalChunks,
-    });
 
     let attempts = 0;
     const maxAttempts = 3;
@@ -171,6 +164,25 @@ export async function uploadReplayChunked(file, uploadKey, onProgress) {
         await new Promise(r => setTimeout(r, 1000 * attempts));
       }
     }
+
+    completedChunks++;
+    const percent = Math.round((completedChunks / totalChunks) * 90);
+    const uploadedMB = (Math.min(completedChunks * CHUNK_SIZE, file.size) / (1024 * 1024)).toFixed(1);
+    onProgress({
+      phase: 'uploading',
+      percent,
+      detail: `Uploading ${uploadedMB}/${totalMB} MB (${percent}%)`,
+      chunksUploaded: completedChunks,
+      totalChunks,
+    });
+  };
+
+  for (let batch = 0; batch < totalChunks; batch += PARALLEL_UPLOADS) {
+    const promises = [];
+    for (let j = 0; j < PARALLEL_UPLOADS && batch + j < totalChunks; j++) {
+      promises.push(uploadChunk(batch + j));
+    }
+    await Promise.all(promises);
   }
 
   onProgress({ phase: 'assembling', percent: 92, detail: 'Assembling file...' });
