@@ -150,7 +150,7 @@ function createApiRouter() {
 async function processReplayJob(jobId, filePath, ip) {
   try {
     const replayParser = getReplayParser();
-    const matchStats = await replayParser.parseReplay(filePath);
+    const matchStats = await replayParser.parseReplayFull(filePath);
 
     if (!matchStats || !matchStats.players || matchStats.players.length === 0) {
       cleanupFile(filePath);
