@@ -110,6 +110,18 @@ The bot can also detect matches via OpenDota polling (requires public match data
 - odota/parser (Java) - OpenDota's production Dota 2 replay parser using Clarity library
 - Java 21 + Maven - Runtime for the replay parser service
 
+## Web Dashboard
+The bot includes a web dashboard for viewing match data and uploading replays:
+- **Match History** (`/`) - List of all recorded matches with winner, duration, player count
+- **Match Detail** (`/match/:id`) - Full scoreboard with KDA, GPM, damage, healing per player
+- **Leaderboard** (`/leaderboard`) - TrueSkill MMR rankings
+- **Player Profile** (`/player/:accountId`) - Player stats, averages, hero history, recent matches
+- **Upload** (`/upload`) - Upload .dem replay files (requires UPLOAD_KEY)
+
+Data is stored in PostgreSQL (primary) and optionally synced to Google Sheets.
+The Express server runs on port 5000 alongside the Discord bot in the same process.
+Frontend is React + Vite, built to `web/dist/` and served as static files.
+
 ## Notes
 - Replay upload with full parsing is the best way to get detailed stats from practice lobby matches.
 - Lobby-based recording via GC is the primary data collection method for basic stats (teams, heroes, winner).
@@ -122,6 +134,9 @@ The bot can also detect matches via OpenDota polling (requires public match data
 - Parser service is started as a child process and cleaned up on shutdown.
 
 ## Recent Changes
+- 2026-03-11: Added web dashboard (Express + React) with match history, scoreboards, leaderboard, player profiles, and replay upload.
+- 2026-03-11: Added PostgreSQL database as primary data store (alongside optional Google Sheets sync).
+- 2026-03-11: Web upload protected by UPLOAD_KEY secret; public viewing for all other pages.
 - 2026-02-19: Added full .dem replay parsing via odota/parser (Java). Extracts KDA, GPM, hero damage, tower damage, hero healing, etc.
 - 2026-02-19: Parser runs as a local Java service on port 5600, managed as a child process.
 - 2026-02-19: Updated replay upload handler with full parsing -> Sheets + TrueSkill flow, with graceful fallbacks.

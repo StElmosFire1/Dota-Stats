@@ -46,5 +46,13 @@ outputType = "console"
 SHEET_ID = "1EjFnAnEkDkbgh4gSCmP2xwTZiAlUDsCCHLsrLShhAcE"
 
 [[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
 localPort = 5600
 externalPort = 80

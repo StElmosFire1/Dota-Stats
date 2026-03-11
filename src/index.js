@@ -148,7 +148,7 @@ async function main() {
   }
 
   const webApp = createServer();
-  const webPort = parseInt(process.env.PORT) || 3000;
+  const webPort = parseInt(process.env.PORT) || 5000;
   webApp.listen(webPort, '0.0.0.0', () => {
     console.log(`[Web] Dashboard running on port ${webPort}`);
     console.log(`[Startup] All systems ready.\n`);
