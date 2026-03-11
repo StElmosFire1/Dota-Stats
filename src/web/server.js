@@ -429,6 +429,30 @@ towers_killed          - Towers destroyed by this player
 roshans_killed         - Roshan kills by this player
 teamfight_participation - Teamfight participation percentage (0-1)
 firstblood_claimed     - Whether this player got first blood (0/1)
+first_death            - Whether this player died first in the match (0/1)
+buybacks               - Number of buybacks used
+courier_kills          - Enemy couriers killed
+lane_cs_10min          - Last hits at 10 minutes
+
+MULTI-KILL & STREAK STATS (from combat log events)
+---------------------------------------------------
+double_kills           - Double kill count
+triple_kills           - Triple kill count
+ultra_kills            - Ultra kill count
+rampages               - Rampage count
+kill_streak            - Longest kill streak
+
+ITEM STATS (from purchase events + interval snapshots)
+------------------------------------------------------
+items                  - Final inventory (up to 9 slots including backpack)
+has_scepter            - Whether player had Aghanim's Scepter
+has_shard              - Whether player had Aghanim's Shard
+tp_scrolls_used        - TP scrolls purchased (proxy for usage)
+smoke_kills            - Kills made while under Smoke of Deceit
+
+ABILITY/SKILL BUILD (from ability level events)
+-----------------------------------------------
+abilities              - Full skill build order with timestamps
 
 PLAYER IDENTITY (from epilogue data)
 -------------------------------------
@@ -457,6 +481,9 @@ NOTES
   attackername, meaning the ward was killed (not expired).
 - Stun duration is cumulative total seconds of stun dealt.
 - Teamfight participation is Valve's internal metric.
+- Items are captured from interval snapshots (item0-item8 fields).
+  When interval items aren't available, falls back to purchase log.
+- Ability build order is captured from DOTA_COMBATLOG_ABILITY_LEVEL events.
 - Stats only populate for newly uploaded replays (not retroactive).
   Re-upload old replays to backfill.
 `);

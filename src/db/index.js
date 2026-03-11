@@ -76,6 +76,47 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS obs_purchased INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS sen_purchased INTEGER DEFAULT 0`);
 
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS buybacks INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS courier_kills INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS tp_scrolls_used INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS double_kills INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS triple_kills INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ultra_kills INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS rampages INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS kill_streak INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS smoke_kills INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS first_death INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS lane_cs_10min INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS has_scepter BOOLEAN DEFAULT false`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS has_shard BOOLEAN DEFAULT false`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS player_items (
+        id SERIAL PRIMARY KEY,
+        match_id VARCHAR NOT NULL,
+        slot INTEGER NOT NULL,
+        item_slot INTEGER NOT NULL,
+        item_id INTEGER DEFAULT 0,
+        item_name VARCHAR DEFAULT '',
+        purchase_time INTEGER DEFAULT 0,
+        UNIQUE(match_id, slot, item_slot)
+      );
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS player_abilities (
+        id SERIAL PRIMARY KEY,
+        match_id VARCHAR NOT NULL,
+        slot INTEGER NOT NULL,
+        ability_name VARCHAR NOT NULL,
+        ability_level INTEGER NOT NULL,
+        time INTEGER DEFAULT 0
+      );
+    `);
+
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_player_items_match ON player_items(match_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_player_abilities_match ON player_abilities(match_id)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -109,8 +150,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash) {
 
     for (const player of matchStats.players) {
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49)`,
         [
           matchStats.matchId,
           player.accountId || 0,
@@ -148,8 +189,42 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash) {
           player.wardsKilled || 0,
           player.obsPurchased || 0,
           player.senPurchased || 0,
+          player.buybacks || 0,
+          player.courierKills || 0,
+          player.tpScrollsUsed || 0,
+          player.doubleKills || 0,
+          player.tripleKills || 0,
+          player.ultraKills || 0,
+          player.rampages || 0,
+          player.killStreak || 0,
+          player.smokeKills || 0,
+          player.firstDeath || 0,
+          player.laneCs10min || 0,
+          player.hasScepter || false,
+          player.hasShard || false,
         ]
       );
+
+      if (player.items && player.items.length > 0) {
+        for (const item of player.items) {
+          await client.query(
+            `INSERT INTO player_items (match_id, slot, item_slot, item_id, item_name, purchase_time)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (match_id, slot, item_slot) DO NOTHING`,
+            [matchStats.matchId, player.slot || 0, item.slot, item.itemId || 0, item.itemName || '', item.purchaseTime || 0]
+          );
+        }
+      }
+
+      if (player.abilities && player.abilities.length > 0) {
+        for (const ability of player.abilities) {
+          await client.query(
+            `INSERT INTO player_abilities (match_id, slot, ability_name, ability_level, time)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [matchStats.matchId, player.slot || 0, ability.abilityName || '', ability.abilityLevel || 0, ability.time || 0]
+          );
+        }
+      }
     }
 
     await client.query('COMMIT');
@@ -213,8 +288,32 @@ async function getMatch(matchId) {
     [matchId]
   );
 
+  const itemsResult = await p.query(
+    'SELECT * FROM player_items WHERE match_id = $1 ORDER BY slot, item_slot',
+    [matchId]
+  );
+
+  const abilitiesResult = await p.query(
+    'SELECT * FROM player_abilities WHERE match_id = $1 ORDER BY slot, time, ability_level',
+    [matchId]
+  );
+
+  const itemsBySlot = {};
+  for (const item of itemsResult.rows) {
+    if (!itemsBySlot[item.slot]) itemsBySlot[item.slot] = [];
+    itemsBySlot[item.slot].push(item);
+  }
+
+  const abilitiesBySlot = {};
+  for (const ability of abilitiesResult.rows) {
+    if (!abilitiesBySlot[ability.slot]) abilitiesBySlot[ability.slot] = [];
+    abilitiesBySlot[ability.slot].push(ability);
+  }
+
   for (const row of playersResult.rows) {
     row.persona_name = decodeByteString(row.persona_name);
+    row.items = itemsBySlot[row.slot] || [];
+    row.abilities = abilitiesBySlot[row.slot] || [];
   }
 
   return {
@@ -248,6 +347,8 @@ async function deleteMatch(matchId, deletedBy, reason) {
       [matchId, JSON.stringify(matchData), deletedBy || 'unknown', reason || '']
     );
 
+    await client.query('DELETE FROM player_items WHERE match_id = $1', [matchId]);
+    await client.query('DELETE FROM player_abilities WHERE match_id = $1', [matchId]);
     await client.query('DELETE FROM player_stats WHERE match_id = $1', [matchId]);
     await client.query('DELETE FROM matches WHERE match_id = $1', [matchId]);
 

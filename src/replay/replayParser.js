@@ -57,6 +57,67 @@ for (const [id, npc] of Object.entries(HERO_ID_TO_NPC)) {
   NPC_TO_HERO_ID[npc] = parseInt(id);
 }
 
+const ITEM_ID_TO_NAME = {
+  1:'blink',2:'blades_of_attack',3:'broadsword',4:'chainmail',5:'claymore',6:'helm_of_iron_will',
+  7:'javelin',8:'mithril_hammer',9:'platemail',10:'quarterstaff',11:'quelling_blade',
+  12:'ring_of_protection',13:'gauntlets',14:'slippers',15:'mantle',16:'branches',
+  17:'belt_of_strength',18:'boots_of_elves',19:'robe',20:'circlet',21:'ogre_axe',
+  22:'blade_of_alacrity',23:'staff_of_wizardry',24:'ultimate_orb',25:'void_stone',
+  26:'mystic_staff',27:'energy_booster',28:'point_booster',29:'vitality_booster',
+  30:'power_treads',31:'hand_of_midas',32:'oblivion_staff',33:'perseverance',34:'bracer',
+  35:'wraith_band',36:'null_talisman',37:'mekansm',38:'vladmir',39:'buckler',
+  40:'ring_of_basilius',41:'pipe',42:'urn_of_shadows',43:'headdress',44:'sheepstick',
+  46:'orchid',47:'cyclone',48:'force_staff',49:'dagon',50:'necronomicon',
+  51:'ultimate_scepter',52:'refresher',53:'assault',54:'heart',55:'black_king_bar',
+  56:'aegis',57:'shivas_guard',58:'bloodstone',59:'sphere',60:'vanguard',
+  63:'blade_mail',64:'soul_booster',65:'hood_of_defiance',67:'rapier',
+  68:'monkey_king_bar',69:'radiance',71:'butterfly',73:'greater_crit',
+  74:'armlet',75:'invis_sword',76:'sange_and_yasha',77:'satanic',78:'mjollnir',
+  79:'basher',80:'manta',81:'desolator',85:'lesser_crit',86:'ethereal_blade',
+  88:'soul_ring',89:'arcane_boots',90:'octarine_core',92:'orb_of_venom',
+  93:'stout_shield',94:'drum_of_endurance',96:'crimson_guard',97:'aether_lens',
+  98:'abyssal_blade',100:'heavens_halberd',102:'ring_of_aquila',
+  104:'tranquil_boots',106:'shadow_amulet',108:'ultimate_scepter',
+  109:'smoke_of_deceit',110:'tome_of_knowledge',111:'dust',112:'bottle',
+  114:'ward_observer',115:'ward_sentry',116:'tango',117:'clarity',
+  119:'mask_of_madness',121:'helm_of_the_dominator',122:'sange',123:'yasha',
+  124:'maelstrom',125:'diffusal_blade',127:'dragon_lance',129:'echo_sabre',
+  131:'silver_edge',132:'glimmer_cape',133:'solar_crest',
+  135:'guardian_greaves',139:'moon_shard',141:'wind_lace',143:'infused_raindrop',
+  145:'blight_stone',147:'wind_waker',148:'lotus_orb',149:'meteor_hammer',
+  150:'nullifier',151:'spirit_vessel',152:'holy_locket',154:'kaya',
+  156:'crown',158:'aeon_disk',160:'kaya_and_sange',162:'yasha_and_kaya',
+  164:'phylactery',166:'falcon_blade',168:'witch_blade',170:'blood_grenade',
+  172:'parasma',174:'disperser',176:'khanda',178:'harpoon',180:'pavise',
+  182:'dagger_of_ristul',184:'cornucopia',186:'tiara_of_selemene',
+  188:'ring_of_tarrasque',190:'mage_slayer',
+  206:'aghanims_shard',235:'devastator',236:'overwhelming_blink',237:'swift_blink',238:'arcane_blink',
+  240:'boots',248:'tpscroll',249:'reaver',250:'eaglesong',251:'sacred_relic',
+  252:'recipe_power_treads',253:'recipe_hand_of_midas',254:'recipe_oblivion_staff',
+  263:'recipe_vladmir',265:'recipe_mekansm',267:'recipe_pipe',269:'recipe_urn_of_shadows',
+  277:'recipe_sheepstick',279:'recipe_orchid',281:'recipe_cyclone',283:'recipe_force_staff',
+  285:'recipe_dagon',289:'recipe_refresher',291:'recipe_assault',293:'recipe_heart',
+  297:'recipe_shivas_guard',299:'recipe_bloodstone',303:'recipe_vanguard',
+  306:'recipe_blade_mail',311:'recipe_rapier',313:'recipe_monkey_king_bar',315:'recipe_radiance',
+  317:'recipe_butterfly',319:'recipe_greater_crit',321:'recipe_armlet',
+  323:'recipe_invis_sword',325:'recipe_sange_and_yasha',327:'recipe_satanic',329:'recipe_mjollnir',
+  331:'recipe_basher',333:'recipe_manta',337:'recipe_lesser_crit',339:'recipe_ethereal_blade',
+  349:'recipe_arcane_boots',351:'recipe_octarine_core',355:'recipe_drum_of_endurance',
+  357:'recipe_crimson_guard',359:'recipe_aether_lens',361:'recipe_abyssal_blade',
+  363:'recipe_heavens_halberd',365:'recipe_ring_of_aquila',367:'recipe_tranquil_boots',
+  371:'recipe_mask_of_madness',373:'recipe_helm_of_the_dominator',
+  377:'recipe_maelstrom',379:'recipe_diffusal_blade',381:'recipe_dragon_lance',
+  383:'recipe_echo_sabre',385:'recipe_silver_edge',387:'recipe_glimmer_cape',
+  389:'recipe_solar_crest',391:'recipe_guardian_greaves',393:'recipe_moon_shard',
+  397:'recipe_lotus_orb',399:'recipe_meteor_hammer',401:'recipe_nullifier',
+  403:'recipe_spirit_vessel',405:'recipe_holy_locket',407:'recipe_kaya',
+  409:'recipe_aeon_disk',411:'recipe_kaya_and_sange',413:'recipe_yasha_and_kaya',
+  600:'recipe_overwhelming_blink',603:'recipe_swift_blink',604:'recipe_arcane_blink',
+  609:'recipe_wind_waker',610:'recipe_witch_blade',
+  1021:'bloodthorn',1022:'lotus_orb',1023:'solar_crest',
+};
+
+
 class ReplayParser {
   constructor() {
     this.replayDir = path.join(process.cwd(), 'replays');
@@ -328,6 +389,7 @@ class ReplayParser {
     let epilogueData = null;
     const maxTime = {};
     const laningData = {};
+    const laneCs10min = {};
 
     for (const e of events) {
       if (e.type === 'epilogue' && e.key) {
@@ -409,6 +471,8 @@ class ReplayParser {
               roshansKilled: 0,
               teamfightParticipation: 0,
               firstbloodClaimed: 0,
+              buybacks: 0,
+              courierKills: 0,
             };
           }
 
@@ -433,11 +497,17 @@ class ReplayParser {
           if (e.roshans_killed != null) p.roshansKilled = e.roshans_killed;
           if (e.teamfight_participation != null) p.teamfightParticipation = parseFloat(e.teamfight_participation) || 0;
           if (e.firstblood_claimed != null) p.firstbloodClaimed = e.firstblood_claimed;
+          if (e.buyback_count != null) p.buybacks = e.buyback_count;
         }
 
         if (currentTime <= 660 && e.x != null && e.y != null) {
           if (!laningData[e.slot]) laningData[e.slot] = [];
           laningData[e.slot].push({ time: currentTime, x: e.x, y: e.y, lh: e.lh || 0 });
+        }
+
+        if (e.lh != null && currentTime >= 590 && currentTime <= 610) {
+          const prev = laneCs10min[e.slot] || 0;
+          if (e.lh > prev) laneCs10min[e.slot] = e.lh;
         }
       }
     }
@@ -463,6 +533,14 @@ class ReplayParser {
     const wardKills = {};
     const obsPurchased = {};
     const senPurchased = {};
+    const tpScrollsUsed = {};
+    const smokeKills = {};
+    const multiKills = {};
+    const killStreaks = {};
+    const firstDeathSlot = { time: Infinity, slot: -1 };
+    const itemPurchases = {};
+    const abilityLevelups = {};
+    const finalItems = {};
 
     for (const e of events) {
       if ((e.type === 'obs_left' || e.type === 'sen_left') && e.attackername) {
@@ -481,6 +559,89 @@ class ReplayParser {
           if (e.valuename === 'item_ward_sentry' || e.valuename === 'item_ward_dispenser') {
             senPurchased[slot] = (senPurchased[slot] || 0) + 1;
           }
+          if (e.valuename === 'item_tpscroll' || e.valuename === 'item_travel_boots' || e.valuename === 'item_travel_boots_2') {
+            tpScrollsUsed[slot] = (tpScrollsUsed[slot] || 0) + 1;
+          }
+
+          if (!itemPurchases[slot]) itemPurchases[slot] = [];
+          itemPurchases[slot].push({ itemName: e.valuename, time: e.time || 0 });
+        }
+      }
+
+      if (e.type === 'DOTA_COMBATLOG_MULTIKILL') {
+        let slot = e.slot;
+        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
+        if (slot != null && slot >= 0 && slot < 10) {
+          if (!multiKills[slot]) multiKills[slot] = { double: 0, triple: 0, ultra: 0, rampage: 0 };
+          const numkills = e.value || 0;
+          if (numkills === 2) multiKills[slot].double++;
+          else if (numkills === 3) multiKills[slot].triple++;
+          else if (numkills === 4) multiKills[slot].ultra++;
+          else if (numkills >= 5) multiKills[slot].rampage++;
+        }
+      }
+
+      if (e.type === 'DOTA_COMBATLOG_KILLSTREAK') {
+        let slot = e.slot;
+        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
+        if (slot != null && slot >= 0 && slot < 10) {
+          const streak = e.value || 0;
+          if (!killStreaks[slot] || streak > killStreaks[slot]) {
+            killStreaks[slot] = streak;
+          }
+        }
+      }
+
+      if (e.type === 'DOTA_COMBATLOG_DEATH') {
+        if (e.targethero && !e.targetillusion && e.targetname) {
+          const targetSlot = npcNameToSlot[e.targetname];
+          if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
+            const time = e.time || 0;
+            if (time > 0 && time < firstDeathSlot.time) {
+              firstDeathSlot.time = time;
+              firstDeathSlot.slot = targetSlot;
+            }
+          }
+        }
+
+        if (e.targetname && (e.targetname.includes('courier') || e.targetname.includes('donkey'))) {
+          let killerSlot = e.slot;
+          if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
+          if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
+            if (players[killerSlot]) players[killerSlot].courierKills = (players[killerSlot].courierKills || 0) + 1;
+          }
+        }
+      }
+
+      if (e.type === 'DOTA_COMBATLOG_MODIFIER_ADD' && e.inflictor === 'modifier_smoke_of_deceit') {
+        if (e.attackername) {
+          const slot = npcNameToSlot[e.attackername];
+          if (slot != null && slot >= 0 && slot < 10) {
+            smokeKills[slot] = (smokeKills[slot] || 0);
+          }
+        }
+      }
+
+      if (e.type === 'DOTA_COMBATLOG_DEATH' && e.targethero && !e.targetillusion) {
+        if (e.attackerhasmodifier_smoke_of_deceit || (e.inflictor && e.inflictor.includes('smoke'))) {
+          let slot = e.slot;
+          if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
+          if (slot != null && slot >= 0 && slot < 10) {
+            smokeKills[slot] = (smokeKills[slot] || 0) + 1;
+          }
+        }
+      }
+
+      if (e.type === 'DOTA_COMBATLOG_ABILITY_LEVEL') {
+        let slot = e.slot;
+        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
+        if (slot != null && slot >= 0 && slot < 10 && e.valuename) {
+          if (!abilityLevelups[slot]) abilityLevelups[slot] = [];
+          abilityLevelups[slot].push({
+            abilityName: e.valuename,
+            abilityLevel: e.abilitylevel || abilityLevelups[slot].length + 1,
+            time: e.time || 0,
+          });
         }
       }
 
@@ -512,6 +673,20 @@ class ReplayParser {
         if (slot != null && slot >= 0 && slot < 10) {
           if (e.targethero && !e.targetillusion) {
             heroHealing[slot] = (heroHealing[slot] || 0) + (e.value || 0);
+          }
+        }
+      }
+
+      if (e.type === 'interval' && e.slot != null && e.slot >= 0 && e.slot < 10) {
+        const slot = e.slot;
+        const currentTime = e.time || 0;
+        if (currentTime >= (maxTime[slot] || 0) - 30) {
+          for (let i = 0; i < 9; i++) {
+            const itemKey = `item${i}`;
+            if (e[itemKey] != null && e[itemKey] !== 0) {
+              if (!finalItems[slot]) finalItems[slot] = {};
+              finalItems[slot][i] = { itemId: e[itemKey], itemName: ITEM_ID_TO_NAME[e[itemKey]] || '', time: currentTime };
+            }
           }
         }
       }
@@ -614,6 +789,49 @@ class ReplayParser {
 
       const isCaptain = (team === 'radiant' && slot === 0) || (team === 'dire' && slot === 5);
 
+      const mk = multiKills[slot] || { double: 0, triple: 0, ultra: 0, rampage: 0 };
+
+      const playerItems = [];
+      const purchases = (itemPurchases[slot] || []).slice().reverse();
+      if (finalItems[slot]) {
+        for (const [itemSlot, itemData] of Object.entries(finalItems[slot])) {
+          playerItems.push({
+            slot: parseInt(itemSlot),
+            itemId: itemData.itemId,
+            itemName: itemData.itemName || ITEM_ID_TO_NAME[itemData.itemId] || '',
+            purchaseTime: 0,
+          });
+        }
+      }
+      if (playerItems.length === 0 && purchases.length > 0) {
+        const seen = new Set();
+        let itemSlot = 0;
+        for (const purchase of purchases) {
+          if (itemSlot >= 6) break;
+          if (purchase.itemName.startsWith('item_recipe_')) continue;
+          if (purchase.itemName === 'item_tpscroll' || purchase.itemName === 'item_ward_observer' ||
+              purchase.itemName === 'item_ward_sentry' || purchase.itemName === 'item_ward_dispenser' ||
+              purchase.itemName === 'item_smoke_of_deceit' || purchase.itemName === 'item_dust' ||
+              purchase.itemName === 'item_clarity' || purchase.itemName === 'item_flask' ||
+              purchase.itemName === 'item_tango' || purchase.itemName === 'item_enchanted_mango' ||
+              purchase.itemName === 'item_faerie_fire' || purchase.itemName === 'item_blood_grenade') continue;
+          const key = purchase.itemName;
+          if (!seen.has(key)) {
+            seen.add(key);
+            playerItems.push({
+              slot: itemSlot++,
+              itemId: 0,
+              itemName: purchase.itemName.replace('item_', ''),
+              purchaseTime: purchase.time,
+            });
+          }
+        }
+      }
+
+      const hasScepter = playerItems.some(i => i.itemId === 108) ||
+        (itemPurchases[slot] || []).some(i => i.itemName === 'item_ultimate_scepter' || i.itemName === 'item_ultimate_scepter_2');
+      const hasShard = (itemPurchases[slot] || []).some(i => i.itemName === 'item_aghanims_shard');
+
       playerList.push({
         accountId: p.accountId || 0,
         personaname: p.personaname || `Player ${slot + 1}`,
@@ -649,6 +867,21 @@ class ReplayParser {
         wardsKilled: wardKills[slot] || 0,
         obsPurchased: obsPurchased[slot] || 0,
         senPurchased: senPurchased[slot] || 0,
+        buybacks: p.buybacks || 0,
+        courierKills: p.courierKills || 0,
+        tpScrollsUsed: tpScrollsUsed[slot] || 0,
+        doubleKills: mk.double,
+        tripleKills: mk.triple,
+        ultraKills: mk.ultra,
+        rampages: mk.rampage,
+        killStreak: killStreaks[slot] || 0,
+        smokeKills: smokeKills[slot] || 0,
+        firstDeath: firstDeathSlot.slot === slot ? 1 : 0,
+        laneCs10min: laneCs10min[slot] || 0,
+        hasScepter,
+        hasShard,
+        items: playerItems,
+        abilities: abilityLevelups[slot] || [],
       });
     }
 
