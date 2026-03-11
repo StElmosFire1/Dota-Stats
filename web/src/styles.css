@@ -53,6 +53,59 @@ a:hover {
   z-index: 100;
 }
 
+.upload-indicator {
+  position: sticky;
+  top: 56px;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 2rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.upload-indicator:hover {
+  opacity: 0.85;
+}
+
+.upload-indicator.processing {
+  background: rgba(91, 155, 213, 0.15);
+  border-bottom: 1px solid rgba(91, 155, 213, 0.3);
+  color: var(--accent);
+}
+
+.upload-indicator.success {
+  background: rgba(146, 208, 78, 0.15);
+  border-bottom: 1px solid rgba(146, 208, 78, 0.3);
+  color: var(--radiant-color);
+}
+
+.upload-indicator.error {
+  background: rgba(224, 80, 80, 0.15);
+  border-bottom: 1px solid rgba(224, 80, 80, 0.3);
+  color: var(--dire-color);
+}
+
+.indicator-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.indicator-dot.pulsing {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 .nav-brand {
   font-size: 1.2rem;
   font-weight: 700;

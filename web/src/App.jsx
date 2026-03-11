@@ -5,6 +5,7 @@ import MatchDetail from './pages/MatchDetail';
 import Leaderboard from './pages/Leaderboard';
 import PlayerProfile from './pages/PlayerProfile';
 import Upload from './pages/Upload';
+import UploadIndicator from './components/UploadIndicator';
 
 function Nav() {
   const location = useLocation();
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Nav />
+      <UploadIndicator />
       <main className="container">
         <Routes>
           <Route path="/" element={<MatchList />} />
