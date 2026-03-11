@@ -61,19 +61,19 @@ function TeamTable({ players, teamName, isWinner }) {
               <th className="col-hero-img" style={{ width: '36px' }}></th>
               <th className="col-player">Player</th>
               <th className="col-hero">Hero</th>
-              <th className="col-stat">K</th>
-              <th className="col-stat">D</th>
-              <th className="col-stat">A</th>
+              <th className="col-stat" title="Kills">K</th>
+              <th className="col-stat" title="Deaths">D</th>
+              <th className="col-stat" title="Assists">A</th>
               {hasDetailedStats && (
                 <>
-                  <th className="col-stat">LH</th>
-                  <th className="col-stat">DN</th>
-                  <th className="col-stat">GPM</th>
-                  <th className="col-stat">XPM</th>
-                  <th className="col-stat">HD</th>
-                  <th className="col-stat">TD</th>
-                  <th className="col-stat">HH</th>
-                  <th className="col-stat">NW</th>
+                  <th className="col-stat" title="Last Hits">LH</th>
+                  <th className="col-stat" title="Denies">DN</th>
+                  <th className="col-stat" title="Gold Per Minute">GPM</th>
+                  <th className="col-stat" title="Experience Per Minute">XPM</th>
+                  <th className="col-stat" title="Hero Damage">HD</th>
+                  <th className="col-stat" title="Tower Damage">TD</th>
+                  <th className="col-stat" title="Hero Healing">HH</th>
+                  <th className="col-stat" title="Net Worth">NW</th>
                 </>
               )}
               {hasItems && <th className="col-items" style={{ minWidth: '180px' }}>Items</th>}
