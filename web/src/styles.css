@@ -952,3 +952,155 @@ th.col-stat {
   font-size: 0.8rem;
   margin-top: 0.2rem;
 }
+
+.position-label.editable {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  transition: background 0.15s;
+}
+.position-label.editable:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.position-select {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.backpack-separator {
+  color: var(--text-muted);
+  margin: 0 2px;
+  font-size: 0.7rem;
+}
+
+.heatmap-container {
+  overflow: auto;
+  max-width: 100%;
+  max-height: 85vh;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.heatmap-table {
+  border-collapse: collapse;
+  font-size: 0.7rem;
+}
+
+.heatmap-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  background: var(--bg-secondary);
+  min-width: 100px;
+}
+
+.heatmap-col-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-secondary);
+  padding: 0;
+  height: 80px;
+  min-width: 36px;
+  max-width: 36px;
+  vertical-align: bottom;
+}
+
+.heatmap-col-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  padding: 4px 2px;
+  font-size: 0.65rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 76px;
+}
+
+.heatmap-row-header {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg-secondary);
+  padding: 3px 8px;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  color: var(--text-primary);
+  border-right: 1px solid var(--border);
+  min-width: 100px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.heatmap-cell {
+  text-align: center;
+  padding: 2px;
+  min-width: 36px;
+  max-width: 36px;
+  height: 24px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.05);
+  cursor: default;
+  transition: opacity 0.1s;
+}
+.heatmap-cell:hover {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+  z-index: 1;
+  position: relative;
+}
+.heatmap-cell.diagonal {
+  background: var(--bg-primary);
+}
+.heatmap-cell.empty {
+  background: transparent;
+}
+
+.synergy-tooltip-bar {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  justify-content: center;
+}
+
+.heatmap-legend .legend-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.heatmap-legend .legend-bar {
+  display: flex;
+  height: 16px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.heatmap-legend .legend-bar div {
+  width: 30px;
+  height: 100%;
+}

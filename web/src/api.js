@@ -63,6 +63,24 @@ export async function getSynergy() {
   return fetchJson('/synergy');
 }
 
+export async function getSynergyHeatmap() {
+  return fetchJson('/synergy/heatmap');
+}
+
+export async function updatePlayerPosition(matchId, slot, position, uploadKey) {
+  const res = await fetch(BASE + `/matches/${matchId}/position`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Upload-Key': uploadKey,
+    },
+    body: JSON.stringify({ slot, position }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update position');
+  return data;
+}
+
 export async function getPlayerHeroes(accountId) {
   return fetchJson(`/players/${accountId}/heroes`);
 }
@@ -119,10 +137,12 @@ export async function uploadReplayChunked(file, uploadKey, onProgress) {
     const chunk = file.slice(start, end);
 
     const percent = Math.round(((i + 1) / totalChunks) * 90);
+    const uploadedMB = (Math.min((i + 1) * CHUNK_SIZE, file.size) / (1024 * 1024)).toFixed(1);
+    const totalMB = (file.size / (1024 * 1024)).toFixed(1);
     onProgress({
       phase: 'uploading',
       percent,
-      detail: `Uploading chunk ${i + 1}/${totalChunks}...`,
+      detail: `Uploading ${uploadedMB}/${totalMB} MB (${percent}%)`,
       chunksUploaded: i + 1,
       totalChunks,
     });

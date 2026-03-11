@@ -1,13 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
+
+const POSITION_NAMES = {
+  0: '-',
+  1: 'Pos 1',
+  2: 'Pos 2',
+  3: 'Pos 3',
+  4: 'Pos 4',
+  5: 'Pos 5',
+};
 
 function formatDuration(seconds) {
   if (!seconds) return '--';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function formatDurationLong(seconds) {
+  if (!seconds) return '--';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  let str = `${m} minute${m !== 1 ? 's' : ''}`;
+  if (s > 0) str += ` ${s} second${s !== 1 ? 's' : ''}`;
+  return str;
 }
 
 function formatNumber(n) {
@@ -39,12 +57,59 @@ function ItemIcon({ itemName, itemId }) {
       src={url}
       alt={itemName || ''}
       className="item-icon"
+      title={itemName ? itemName.replace('item_', '').replace(/_/g, ' ') : ''}
       onError={e => { e.target.style.display = 'none'; }}
     />
   );
 }
 
-function TeamTable({ players, teamName, isWinner }) {
+function PositionSelect({ player, matchId, onUpdate }) {
+  const [editing, setEditing] = useState(false);
+  const pos = player.position || 0;
+
+  if (!editing) {
+    return (
+      <span
+        className="position-label editable"
+        onClick={() => setEditing(true)}
+        title="Click to edit position"
+      >
+        {POSITION_NAMES[pos] || '-'}
+      </span>
+    );
+  }
+
+  return (
+    <select
+      className="position-select"
+      value={pos}
+      autoFocus
+      onChange={async (e) => {
+        const newPos = parseInt(e.target.value);
+        const uploadKey = localStorage.getItem('uploadKey');
+        if (!uploadKey) {
+          alert('Set an upload key first (Upload page)');
+          setEditing(false);
+          return;
+        }
+        try {
+          await updatePlayerPosition(matchId, player.slot, newPos, uploadKey);
+          onUpdate(player.slot, newPos);
+        } catch (err) {
+          alert('Failed: ' + err.message);
+        }
+        setEditing(false);
+      }}
+      onBlur={() => setEditing(false)}
+    >
+      {Object.entries(POSITION_NAMES).map(([v, label]) => (
+        <option key={v} value={v}>{label}</option>
+      ))}
+    </select>
+  );
+}
+
+function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
   const hasDetailedStats = players.some(p => p.gpm > 0 || p.hero_damage > 0);
   const hasItems = players.some(p => p.items && p.items.length > 0);
 
@@ -60,6 +125,7 @@ function TeamTable({ players, teamName, isWinner }) {
             <tr>
               <th className="col-hero-img" style={{ width: '36px' }}></th>
               <th className="col-player">Player</th>
+              <th className="col-stat" title="Position" style={{ minWidth: '50px' }}>Pos</th>
               <th className="col-hero">Hero</th>
               <th className="col-stat" title="Kills">K</th>
               <th className="col-stat" title="Deaths">D</th>
@@ -76,7 +142,7 @@ function TeamTable({ players, teamName, isWinner }) {
                   <th className="col-stat" title="Net Worth">NW</th>
                 </>
               )}
-              {hasItems && <th className="col-items" style={{ minWidth: '180px' }}>Items</th>}
+              {hasItems && <th className="col-items" style={{ minWidth: '220px' }}>Items</th>}
             </tr>
           </thead>
           <tbody>
@@ -103,6 +169,9 @@ function TeamTable({ players, teamName, isWinner }) {
                       {p.first_death > 0 && <span className="badge fd" title="First Death">FD</span>}
                     </span>
                   </td>
+                  <td className="col-stat">
+                    <PositionSelect player={p} matchId={matchId} onUpdate={onPositionUpdate} />
+                  </td>
                   <td className="col-hero">{getHeroName(p.hero_id, p.hero_name)}</td>
                   <td className="col-stat kills">{p.kills}</td>
                   <td className="col-stat deaths">{p.deaths}</td>
@@ -123,12 +192,14 @@ function TeamTable({ players, teamName, isWinner }) {
                     <td className="col-items">
                       <div className="items-row">
                         {Array.from({ length: 6 }, (_, j) => {
-                          const item = (p.items || []).find(i => i.item_slot === j);
+                          const item = (p.items || []).find(it => it.item_slot === j);
                           return <ItemIcon key={j} itemName={item?.item_name} itemId={item?.item_id} />;
                         })}
-                        {(p.items || []).filter(item => item.item_slot >= 6 && item.item_slot <= 8).map((item, j) => (
-                          <ItemIcon key={`bp-${j}`} itemName={item.item_name} itemId={item.item_id} />
-                        ))}
+                        <span className="backpack-separator">|</span>
+                        {Array.from({ length: 3 }, (_, j) => {
+                          const item = (p.items || []).find(it => it.item_slot === (j + 6));
+                          return <ItemIcon key={`bp-${j}`} itemName={item?.item_name} itemId={item?.item_id} />;
+                        })}
                       </div>
                     </td>
                   )}
@@ -237,6 +308,15 @@ export default function MatchDetail() {
       .finally(() => setLoading(false));
   }, [matchId]);
 
+  const handlePositionUpdate = (slot, newPosition) => {
+    setMatch(prev => ({
+      ...prev,
+      players: prev.players.map(p =>
+        p.slot === slot ? { ...p, position: newPosition } : p
+      ),
+    }));
+  };
+
   const handleDelete = async () => {
     const uploadKey = localStorage.getItem('uploadKey');
     if (!uploadKey) {
@@ -271,7 +351,7 @@ export default function MatchDetail() {
           <span className={`match-result ${match.radiant_win ? 'radiant' : 'dire'}`}>
             {match.radiant_win ? 'Radiant' : 'Dire'} Victory
           </span>
-          <span>Duration: {formatDuration(match.duration)}</span>
+          <span title={formatDuration(match.duration)}>Duration: {formatDurationLong(match.duration)}</span>
           <span>
             {new Date(match.date).toLocaleDateString('en-AU', {
               day: 'numeric', month: 'short', year: 'numeric',
@@ -282,8 +362,8 @@ export default function MatchDetail() {
         </div>
       </div>
 
-      <TeamTable players={radiant} teamName="radiant" isWinner={match.radiant_win === true} />
-      <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} />
+      <TeamTable players={radiant} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} />
+      <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} />
 
       <ExpandedStats players={allPlayers} />
 

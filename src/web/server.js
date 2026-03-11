@@ -231,6 +231,30 @@ function createApiRouter() {
     }
   });
 
+  router.get('/synergy/heatmap', async (req, res) => {
+    try {
+      const data = await db.getSynergyHeatmap();
+      res.json(data);
+    } catch (err) {
+      console.error('[API] Error fetching synergy heatmap:', err.message);
+      res.status(500).json({ error: 'Failed to fetch synergy heatmap' });
+    }
+  });
+
+  router.put('/matches/:matchId/position', authMiddleware, async (req, res) => {
+    try {
+      const { slot, position } = req.body;
+      if (slot == null || position == null || position < 0 || position > 5) {
+        return res.status(400).json({ error: 'Invalid slot or position (0-5)' });
+      }
+      await db.updatePlayerPosition(req.params.matchId, slot, position);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[API] Error updating position:', err.message);
+      res.status(500).json({ error: 'Failed to update position' });
+    }
+  });
+
   router.get('/players/:accountId/heroes', async (req, res) => {
     try {
       const heroes = await db.getPlayerHeroes(req.params.accountId);

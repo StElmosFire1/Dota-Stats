@@ -1,5 +1,7 @@
 const { Rating, quality, rate } = require('ts-trueskill');
 
+const MMR_OFFSET = 2000;
+
 class StatsService {
   constructor() {
     this.defaultMu = 25;
@@ -29,7 +31,7 @@ class StatsService {
         id: radiantPlayers[i].id,
         mu: newRatings[0][i].mu,
         sigma: newRatings[0][i].sigma,
-        mmr: Math.round((newRatings[0][i].mu - 3 * newRatings[0][i].sigma) * 100),
+        mmr: Math.round((newRatings[0][i].mu - 3 * newRatings[0][i].sigma) * 100) + MMR_OFFSET,
       });
     }
     for (let i = 0; i < direPlayers.length; i++) {
@@ -37,7 +39,7 @@ class StatsService {
         id: direPlayers[i].id,
         mu: newRatings[1][i].mu,
         sigma: newRatings[1][i].sigma,
-        mmr: Math.round((newRatings[1][i].mu - 3 * newRatings[1][i].sigma) * 100),
+        mmr: Math.round((newRatings[1][i].mu - 3 * newRatings[1][i].sigma) * 100) + MMR_OFFSET,
       });
     }
 

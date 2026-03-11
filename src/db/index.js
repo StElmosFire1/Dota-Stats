@@ -366,9 +366,21 @@ async function deleteMatch(matchId, deletedBy, reason) {
 async function getLeaderboard(limit = 50) {
   const p = getPool();
   const result = await p.query(
-    `SELECT r.*, n.nickname
+    `SELECT
+       COALESCE(n.nickname, r.player_id) as group_key,
+       MAX(r.mmr) as mmr,
+       MAX(r.mu) as mu,
+       MIN(r.sigma) as sigma,
+       SUM(r.wins)::int as wins,
+       SUM(r.losses)::int as losses,
+       SUM(r.games_played)::int as games_played,
+       MAX(r.display_name) as display_name,
+       MAX(r.player_id) as player_id,
+       MAX(n.nickname) as nickname,
+       MAX(r.last_updated) as last_updated
      FROM ratings r
      LEFT JOIN nicknames n ON n.account_id::text = r.player_id AND r.player_id ~ '^[0-9]+$'
+     GROUP BY COALESCE(n.nickname, r.player_id)
      ORDER BY mmr DESC LIMIT $1`,
     [limit]
   );
@@ -576,10 +588,10 @@ async function getOverallStats() {
   const p = getPool();
   const result = await p.query(
     `SELECT
-       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
-       COALESCE(NULLIF(ps.account_id, 0), 0) as account_id,
+       COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END) as player_key,
+       MAX(ps.account_id) as account_id,
        MAX(ps.persona_name) as persona_name,
-       n.nickname,
+       MAX(n.nickname) as nickname,
        COUNT(*) as games,
        SUM(CASE WHEN (team = 'radiant' AND m.radiant_win = true) OR (team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
        SUM(CASE WHEN (team = 'radiant' AND m.radiant_win = false) OR (team = 'dire' AND m.radiant_win = true) THEN 1 ELSE 0 END) as losses,
@@ -604,9 +616,7 @@ async function getOverallStats() {
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
      GROUP BY
-       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
-       COALESCE(NULLIF(ps.account_id, 0), 0),
-       n.nickname
+       COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END)
      ORDER BY games DESC`
   );
 
@@ -622,9 +632,10 @@ async function getOverallStats() {
 
   const kiData = await p.query(
     `SELECT
-       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END) as player_key,
        ps.match_id, ps.team, ps.kills, ps.assists
-     FROM player_stats ps`
+     FROM player_stats ps
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0`
   );
   const kiByPlayer = {};
   for (const row of kiData.rows) {
@@ -985,6 +996,81 @@ async function recalculateAllRatings() {
   }
 }
 
+async function updatePlayerPosition(matchId, slot, position) {
+  const p = getPool();
+  await p.query(
+    'UPDATE player_stats SET position = $1 WHERE match_id = $2 AND slot = $3',
+    [position, matchId, slot]
+  );
+}
+
+async function getSynergyHeatmap() {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT
+       ps1.persona_name as player_a,
+       COALESCE(NULLIF(ps1.account_id, 0), 0) as account_id_a,
+       n1.nickname as nickname_a,
+       ps2.persona_name as player_b,
+       COALESCE(NULLIF(ps2.account_id, 0), 0) as account_id_b,
+       n2.nickname as nickname_b,
+       ps1.team = ps2.team as same_team,
+       CASE WHEN (ps1.team = 'radiant' AND m.radiant_win = true) OR (ps1.team = 'dire' AND m.radiant_win = false) THEN true ELSE false END as player_a_won
+     FROM player_stats ps1
+     JOIN player_stats ps2 ON ps1.match_id = ps2.match_id AND ps1.id != ps2.id
+     JOIN matches m ON m.match_id = ps1.match_id
+     LEFT JOIN nicknames n1 ON n1.account_id = ps1.account_id AND ps1.account_id != 0
+     LEFT JOIN nicknames n2 ON n2.account_id = ps2.account_id AND ps2.account_id != 0
+     WHERE ps1.persona_name != '' AND ps2.persona_name != ''`
+  );
+
+  const playerNames = {};
+  const teammate = {};
+
+  for (const row of result.rows) {
+    row.player_a = decodeByteString(row.player_a);
+    row.player_b = decodeByteString(row.player_b);
+    const nameA = row.nickname_a || row.player_a;
+    const nameB = row.nickname_b || row.player_b;
+    const keyA = row.nickname_a || (row.account_id_a > 0 ? row.account_id_a.toString() : row.player_a);
+    const keyB = row.nickname_b || (row.account_id_b > 0 ? row.account_id_b.toString() : row.player_b);
+
+    playerNames[keyA] = nameA;
+    playerNames[keyB] = nameB;
+
+    if (!row.same_team) continue;
+    if (keyA === keyB) continue;
+
+    const pairKey = keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
+    if (!teammate[pairKey]) {
+      const orderedA = keyA < keyB ? keyA : keyB;
+      const orderedB = keyA < keyB ? keyB : keyA;
+      teammate[pairKey] = { keyA: orderedA, keyB: orderedB, wins: 0, games: 0 };
+    }
+    teammate[pairKey].games += 0.5;
+    if (row.player_a_won) teammate[pairKey].wins += 0.5;
+  }
+
+  const allPlayerKeys = Object.keys(playerNames).sort((a, b) =>
+    playerNames[a].toLowerCase().localeCompare(playerNames[b].toLowerCase())
+  );
+
+  const players = allPlayerKeys.map(k => ({ key: k, name: playerNames[k] }));
+
+  const matrix = {};
+  for (const pair of Object.values(teammate)) {
+    const g = Math.round(pair.games);
+    const w = Math.round(pair.wins);
+    if (g < 2) continue;
+    if (!matrix[pair.keyA]) matrix[pair.keyA] = {};
+    if (!matrix[pair.keyB]) matrix[pair.keyB] = {};
+    matrix[pair.keyA][pair.keyB] = { games: g, wins: w };
+    matrix[pair.keyB][pair.keyA] = { games: g, wins: w };
+  }
+
+  return { players, matrix };
+}
+
 module.exports = {
   init,
   getPool,
@@ -1007,6 +1093,7 @@ module.exports = {
   getOverallStats,
   getPositionStats,
   getSynergyMatrix,
+  getSynergyHeatmap,
   getPlayerHeroes,
   getPlayerPositions,
   getHeroPlayers,
@@ -1014,4 +1101,5 @@ module.exports = {
   getRegisteredPlayers,
   getMatchHistory,
   recalculateAllRatings,
+  updatePlayerPosition,
 };

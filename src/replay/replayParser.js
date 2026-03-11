@@ -424,7 +424,18 @@ class ReplayParser {
             const endTime = dota.endTime || dota.endTime_ || dota.end_time || dota.end_time_ || 0;
             const preGame = dota.preGameDuration || dota.preGameDuration_ || dota.pre_game_duration || dota.pre_game_duration_ || 0;
             if (endTime) {
-              duration = endTime - preGame;
+              if (endTime > 100000000) {
+                const startTime = dota.startTime || dota.startTime_ || dota.start_time || dota.start_time_ || 0;
+                if (startTime > 0) {
+                  duration = endTime - startTime - preGame;
+                }
+              } else {
+                duration = endTime - preGame;
+              }
+              if (duration < 0 || duration > 10800) {
+                console.warn(`[Replay] Suspicious epilogue duration ${duration}s, resetting to 0`);
+                duration = 0;
+              }
             }
 
             console.log(`[Replay] Epilogue extracted: matchId=${matchId}, gameMode=${gameMode}, radiantWin=${radiantWin}, duration=${duration}`);
@@ -512,10 +523,14 @@ class ReplayParser {
       }
     }
 
-    const finalDuration = Object.values(maxTime).length > 0
-      ? Math.max(...Object.values(maxTime), duration)
-      : duration;
-    if (finalDuration > 0) duration = finalDuration;
+    const maxIntervalTime = Object.values(maxTime).length > 0
+      ? Math.max(...Object.values(maxTime))
+      : 0;
+    if (maxIntervalTime > 0) {
+      duration = maxIntervalTime;
+    } else if (duration > 100000) {
+      duration = 0;
+    }
 
     const npcNameToSlot = {};
     for (const [slot, p] of Object.entries(players)) {
