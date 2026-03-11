@@ -4,6 +4,7 @@ const { getStatsService } = require('../stats/statsService');
 const { getSheetsStore } = require('../sheets/sheetsStore');
 const { getReplayParser } = require('../replay/replayParser');
 const { getOpenDota } = require('../api/opendota');
+const db = require('../db');
 
 let steamAvailable = false;
 
@@ -95,8 +96,8 @@ class DiscordBot {
         }
 
         if (lobbyMatchStats && lobbyMatchStats.players.length > 0) {
-          await sheetsStore.recordMatch(lobbyMatchStats, lobby.name, 'lobby-gc');
-          await sheetsStore.markMatchRecorded(lobbyMatchStats.matchId || matchId, 'lobby-gc');
+          await this._recordMatchData(lobbyMatchStats, lobby.name, 'lobby-gc');
+          await this._markRecorded(lobbyMatchStats.matchId || matchId, 'lobby-gc');
           const radiantPlayers = lobbyMatchStats.players.filter((p) => p.team === 'radiant');
           const direPlayers = lobbyMatchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(lobbyMatchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
@@ -118,8 +119,8 @@ class DiscordBot {
                 this._notifyChannel(`Match ${matchId} not available on OpenDota (practice lobby). Use \`!record ${matchId}\` later if it appears.`);
                 return;
               }
-              await sheetsStore.recordMatch(matchStats, lobby.name, 'auto-opendota');
-              await sheetsStore.markMatchRecorded(matchId, 'auto-opendota');
+              await this._recordMatchData(matchStats, lobby.name, 'auto-opendota');
+              await this._markRecorded(matchId, 'auto-opendota');
               const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
               const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
               await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
@@ -472,7 +473,7 @@ class DiscordBot {
         return;
       }
 
-      await sheetsStore.recordMatch(matchStats, '', msg.author.username);
+      await this._recordMatchData(matchStats, '', msg.author.username);
 
       const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
       const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
@@ -481,7 +482,7 @@ class DiscordBot {
       await this._sendMatchSummary(matchStats, '', msg.channel);
 
       await statusMsg.edit(`Match ${matchId} recorded successfully!`);
-      await sheetsStore.markMatchRecorded(matchId, 'manual');
+      await this._markRecorded(matchId, 'manual');
     } catch (err) {
       await statusMsg.edit(`Failed to record match: ${err.message}`);
     }
@@ -559,6 +560,25 @@ class DiscordBot {
     await msg.reply({ embeds: [embed] });
   }
 
+  async _recordMatchData(matchStats, lobbyName, recordedBy) {
+    const sheetsStore = getSheetsStore();
+    if (sheetsStore.initialized) {
+      await sheetsStore.recordMatch(matchStats, lobbyName, recordedBy);
+    }
+    try {
+      await db.recordMatch(matchStats, lobbyName, recordedBy);
+    } catch (err) {
+      console.error('[DB] Record match error:', err.message);
+    }
+  }
+
+  async _markRecorded(matchId, source) {
+    const sheetsStore = getSheetsStore();
+    if (sheetsStore.initialized) {
+      await sheetsStore.markMatchRecorded(matchId, source);
+    }
+  }
+
   async _processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService) {
     const radiant = radiantPlayers.map((p) => ({
       id: p.accountId.toString(),
@@ -573,10 +593,16 @@ class DiscordBot {
 
     for (const p of [...radiant, ...dire]) {
       if (p.id === '0') continue;
-      const existing = await sheetsStore.getPlayerRating(p.id);
-      if (existing) {
-        p.mu = existing.mu;
-        p.sigma = existing.sigma;
+      const dbRating = await db.getPlayerRating(p.id);
+      if (dbRating) {
+        p.mu = dbRating.mu;
+        p.sigma = dbRating.sigma;
+      } else {
+        const existing = sheetsStore.initialized ? await sheetsStore.getPlayerRating(p.id) : null;
+        if (existing) {
+          p.mu = existing.mu;
+          p.sigma = existing.sigma;
+        }
       }
     }
 
@@ -596,7 +622,14 @@ class DiscordBot {
         const won = isRadiant ? matchStats.radiantWin : !matchStats.radiantWin;
         const player = matchStats.players.find((p) => p.accountId.toString() === r.id);
         const displayName = player ? (player.personaname || r.id) : r.id;
-        await sheetsStore.updateRating(r.id, '', displayName, r.mu, r.sigma, r.mmr, won);
+        if (sheetsStore.initialized) {
+          await sheetsStore.updateRating(r.id, '', displayName, r.mu, r.sigma, r.mmr, won);
+        }
+        try {
+          await db.updateRating(r.id, '', displayName, r.mu, r.sigma, r.mmr, won);
+        } catch (err) {
+          console.error('[DB] Rating update error:', err.message);
+        }
       }
 
       console.log(`[Ratings] Updated ${newRatings.length} player ratings.`);
@@ -754,22 +787,23 @@ class DiscordBot {
             return;
           }
 
-          if (sheetsStore.initialized && matchStats.matchId) {
-            const alreadyRecorded = await sheetsStore.isMatchRecorded(matchStats.matchId);
-            if (alreadyRecorded) {
+          if (matchStats.matchId) {
+            const alreadyInDb = await db.isMatchRecorded(matchStats.matchId);
+            const alreadyInSheets = sheetsStore.initialized ? await sheetsStore.isMatchRecorded(matchStats.matchId) : false;
+            if (alreadyInDb || alreadyInSheets) {
               await statusMsg.edit(`Match **${matchStats.matchId}** was already recorded.`);
               replayParser.cleanup(filePath);
               return;
             }
           }
 
-          await sheetsStore.recordMatch(matchStats, '', `replay:${msg.author.username}`);
+          await this._recordMatchData(matchStats, '', `replay:${msg.author.username}`);
 
           const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
           const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
 
-          await sheetsStore.markMatchRecorded(matchStats.matchId, 'replay-upload');
+          await this._markRecorded(matchStats.matchId, 'replay-upload');
 
           await statusMsg.edit(`Replay parsed! Match **${matchStats.matchId}** recorded with full stats.`);
           await this._sendMatchSummary(matchStats, 'Replay Upload', msg.channel);
@@ -790,11 +824,11 @@ class DiscordBot {
         const opendota = getOpenDota();
         const matchStats = await opendota.getMatch(matchId);
         if (matchStats) {
-          await sheetsStore.recordMatch(matchStats, '', msg.author.username);
+          await this._recordMatchData(matchStats, '', msg.author.username);
           const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
           const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
-          await sheetsStore.markMatchRecorded(matchId, 'replay-opendota');
+          await this._markRecorded(matchId, 'replay-opendota');
           await this._sendMatchSummary(matchStats, 'Replay Upload', msg.channel);
         } else {
           await msg.channel.send(

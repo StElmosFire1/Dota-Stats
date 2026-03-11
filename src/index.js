@@ -3,12 +3,21 @@ const { getDiscordBot } = require('./discord/bot');
 const { getSheetsStore } = require('./sheets/sheetsStore');
 const { getMatchPoller } = require('./api/matchPoller');
 const { getReplayParser } = require('./replay/replayParser');
+const db = require('./db');
+const { createServer } = require('./web/server');
 
 async function main() {
   console.log('=== Dota 2 Inhouse Stats Bot ===');
   console.log('Starting up...\n');
 
   const missing = validateConfig();
+
+  let dbReady = false;
+  try {
+    dbReady = await db.init();
+  } catch (err) {
+    console.error('[Startup] Database init failed:', err.message);
+  }
 
   const sheetsStore = getSheetsStore();
   try {
@@ -123,6 +132,7 @@ async function main() {
     console.log('\n[Startup] Bot is running! Use !help in Discord.');
     console.log('[Startup] Features available:');
     console.log(`  - Discord commands: YES`);
+    console.log(`  - Database:         ${dbReady ? 'YES' : 'NO (DATABASE_URL not set)'}`);
     console.log(`  - Google Sheets:    ${sheetsStore.initialized ? 'YES' : 'NO (set SHEET_ID + creds.json)'}`);
     console.log(`  - Steam/Lobby:      ${steamConnected ? 'YES' : 'NO (set STEAM_ACCOUNT + STEAM_PASSWORD)'}`);
     console.log(`  - OpenDota API:     YES`);
@@ -130,12 +140,19 @@ async function main() {
     console.log(`  - TrueSkill MMR:    YES`);
     console.log(`  - Auto-detect:      ${pollerActive ? 'YES' : 'NO (requires Sheets)'}`);
     console.log(`  - Friend monitor:   ${steamConnected ? 'YES' : 'NO (requires Steam)'}`);
-    console.log(`  - Lobby recording:  ${steamConnected ? 'YES' : 'NO (requires Steam)'}\n`);
+    console.log(`  - Lobby recording:  ${steamConnected ? 'YES' : 'NO (requires Steam)'}`);
   } catch (err) {
     console.error('[Startup] Discord bot failed to start:', err.message);
     console.error('[Startup] Make sure DISCORD_TOKEN is set correctly.');
     process.exit(1);
   }
+
+  const webApp = createServer();
+  const webPort = parseInt(process.env.PORT) || 3000;
+  webApp.listen(webPort, '0.0.0.0', () => {
+    console.log(`[Web] Dashboard running on port ${webPort}`);
+    console.log(`[Startup] All systems ready.\n`);
+  });
 }
 
 process.on('SIGINT', async () => {
