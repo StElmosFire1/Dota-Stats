@@ -273,8 +273,8 @@ class ReplayParser {
   }
 
   _classifyLane(x, y) {
-    const MAP_CENTER = 16384;
-    const MID_BAND = 3000;
+    const MAP_CENTER = 128;
+    const MID_BAND = 15;
     const nx = x - MAP_CENTER;
     const ny = y - MAP_CENTER;
     const diag = ny - nx;
@@ -452,6 +452,16 @@ class ReplayParser {
       }
 
       if (e.type === 'interval' && e.slot != null && e.slot >= 0 && e.slot < 10) {
+        if (!this._debugIntervalLogged) {
+          this._debugIntervalLogged = true;
+          console.log('[Replay][DEBUG] Sample interval event keys:', JSON.stringify(Object.keys(e)));
+          console.log('[Replay][DEBUG] Sample interval event (slot=' + e.slot + ', time=' + e.time + '):', JSON.stringify(e).substring(0, 1000));
+        }
+        if (!this._debugLateIntervalLogged && (e.time || 0) > 2000) {
+          this._debugLateIntervalLogged = true;
+          console.log('[Replay][DEBUG] Late interval event keys:', JSON.stringify(Object.keys(e)));
+          console.log('[Replay][DEBUG] Late interval event (slot=' + e.slot + ', time=' + e.time + '):', JSON.stringify(e).substring(0, 1500));
+        }
         const currentTime = e.time || 0;
         const prevMax = maxTime[e.slot] || -1;
 
@@ -704,12 +714,16 @@ class ReplayParser {
       if (e.type === 'interval' && e.slot != null && e.slot >= 0 && e.slot < 10) {
         const slot = e.slot;
         const currentTime = e.time || 0;
-        if (currentTime >= (maxTime[slot] || 0) - 30) {
-          for (let i = 0; i < 9; i++) {
-            const itemKey = `item${i}`;
-            if (e[itemKey] != null && e[itemKey] !== 0) {
-              if (!finalItems[slot]) finalItems[slot] = {};
-              finalItems[slot][i] = { itemId: e[itemKey], itemName: ITEM_ID_TO_NAME[e[itemKey]] || '', time: currentTime };
+        if (e.hero_inventory && Array.isArray(e.hero_inventory) && e.hero_inventory.length > 0) {
+          finalItems[slot] = {};
+          for (const item of e.hero_inventory) {
+            if (item && item.id && item.slot != null) {
+              finalItems[slot][item.slot] = {
+                itemId: 0,
+                itemName: item.id.replace(/^item_/, ''),
+                time: currentTime,
+                charges: item.num_charges || 0
+              };
             }
           }
         }
@@ -720,6 +734,11 @@ class ReplayParser {
     console.log('[Replay] Tower damage by slot:', JSON.stringify(towerDamage));
     console.log('[Replay] Hero healing by slot:', JSON.stringify(heroHealing));
     console.log('[Replay] Damage taken by slot:', JSON.stringify(damageTaken));
+    const finalItemsSummary = {};
+    for (const [slot, items] of Object.entries(finalItems)) {
+      finalItemsSummary[slot] = Object.values(items).map(i => i.itemName).join(', ');
+    }
+    console.log('[Replay] Final items by slot:', JSON.stringify(finalItemsSummary));
 
     let epiloguePlayerInfos = [];
     if (epilogueData) {
