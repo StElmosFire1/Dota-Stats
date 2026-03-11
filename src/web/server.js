@@ -348,9 +348,7 @@ function createApiRouter() {
 
         res.json({ status: 'processing', message: 'File assembled, parsing started.' });
 
-        processReplayJob(jobId, filePath, req.ip).catch(err => {
-          console.error(`[API] Job ${jobId} unhandled error:`, err);
-        });
+        enqueueParse(jobId, filePath, req.ip);
       });
 
       writeStream.on('error', (err) => {
@@ -503,6 +501,35 @@ NOTES
   });
 
   return router;
+}
+
+const parseQueue = [];
+let parseRunning = false;
+
+function enqueueParse(jobId, filePath, ip) {
+  parseQueue.push({ jobId, filePath, ip });
+  updateJobStep(jobId, 'Queued for parsing...');
+  drainParseQueue();
+}
+
+async function drainParseQueue() {
+  if (parseRunning) return;
+  parseRunning = true;
+  while (parseQueue.length > 0) {
+    const { jobId, filePath, ip } = parseQueue.shift();
+    const pos = parseQueue.length;
+    if (pos > 0) {
+      for (let i = 0; i < parseQueue.length; i++) {
+        updateJobStep(parseQueue[i].jobId, `Queued for parsing (${i + 1} in line)...`);
+      }
+    }
+    try {
+      await processReplayJob(jobId, filePath, ip);
+    } catch (err) {
+      console.error(`[API] Job ${jobId} unhandled error:`, err);
+    }
+  }
+  parseRunning = false;
 }
 
 async function processReplayJob(jobId, filePath, ip) {
