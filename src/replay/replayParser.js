@@ -403,6 +403,12 @@ class ReplayParser {
               creepsStacked: 0,
               campsStacked: 0,
               networth: 0,
+              runePickups: 0,
+              stuns: 0,
+              towersKilled: 0,
+              roshansKilled: 0,
+              teamfightParticipation: 0,
+              firstbloodClaimed: 0,
             };
           }
 
@@ -421,6 +427,12 @@ class ReplayParser {
           if (e.creeps_stacked != null) p.creepsStacked = e.creeps_stacked;
           if (e.camps_stacked != null) p.campsStacked = e.camps_stacked;
           if (e.networth != null) p.networth = e.networth;
+          if (e.rune_pickups != null) p.runePickups = e.rune_pickups;
+          if (e.stuns != null) p.stuns = parseFloat(e.stuns) || 0;
+          if (e.towers_killed != null) p.towersKilled = e.towers_killed;
+          if (e.roshans_killed != null) p.roshansKilled = e.roshans_killed;
+          if (e.teamfight_participation != null) p.teamfightParticipation = parseFloat(e.teamfight_participation) || 0;
+          if (e.firstblood_claimed != null) p.firstbloodClaimed = e.firstblood_claimed;
         }
 
         if (currentTime <= 660 && e.x != null && e.y != null) {
@@ -448,8 +460,30 @@ class ReplayParser {
     const towerDamage = {};
     const heroHealing = {};
     const damageTaken = {};
+    const wardKills = {};
+    const obsPurchased = {};
+    const senPurchased = {};
 
     for (const e of events) {
+      if ((e.type === 'obs_left' || e.type === 'sen_left') && e.attackername) {
+        const killerSlot = npcNameToSlot[e.attackername];
+        if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
+          wardKills[killerSlot] = (wardKills[killerSlot] || 0) + 1;
+        }
+      }
+
+      if (e.type === 'DOTA_COMBATLOG_PURCHASE' && e.valuename) {
+        const slot = e.slot;
+        if (slot != null && slot >= 0 && slot < 10) {
+          if (e.valuename === 'item_ward_observer' || e.valuename === 'item_ward_dispenser') {
+            obsPurchased[slot] = (obsPurchased[slot] || 0) + 1;
+          }
+          if (e.valuename === 'item_ward_sentry' || e.valuename === 'item_ward_dispenser') {
+            senPurchased[slot] = (senPurchased[slot] || 0) + 1;
+          }
+        }
+      }
+
       if (e.type === 'DOTA_COMBATLOG_DAMAGE') {
         let attackerSlot = e.slot;
         if (attackerSlot == null && e.attackername) {
@@ -516,11 +550,29 @@ class ReplayParser {
           } catch {}
         }
 
-        const playerName = pi.playerName || pi.playerName_ || pi.player_name || pi.player_name_ || pi.heroName || pi.heroName_;
-        if (playerName) players[i].personaname = playerName;
+        let playerName = pi.playerName || pi.playerName_ || pi.player_name || pi.player_name_ || pi.heroName || pi.heroName_;
+        if (playerName) {
+          if (typeof playerName === 'object' && playerName.bytes && Array.isArray(playerName.bytes)) {
+            try {
+              playerName = Buffer.from(playerName.bytes.map(b => b < 0 ? b + 256 : b)).toString('utf8');
+            } catch {}
+          } else if (typeof playerName !== 'string') {
+            playerName = String(playerName);
+          }
+          players[i].personaname = playerName;
+        }
 
-        const heroName = pi.heroName || pi.heroName_ || pi.hero_name || pi.hero_name_;
-        if (heroName) players[i].heroName = heroName;
+        let heroName = pi.heroName || pi.heroName_ || pi.hero_name || pi.hero_name_;
+        if (heroName) {
+          if (typeof heroName === 'object' && heroName.bytes && Array.isArray(heroName.bytes)) {
+            try {
+              heroName = Buffer.from(heroName.bytes.map(b => b < 0 ? b + 256 : b)).toString('utf8');
+            } catch {}
+          } else if (typeof heroName !== 'string') {
+            heroName = String(heroName);
+          }
+          players[i].heroName = heroName;
+        }
 
         const gameTeam = pi.gameTeam != null ? pi.gameTeam :
                          pi.gameTeam_ != null ? pi.gameTeam_ :
@@ -588,6 +640,15 @@ class ReplayParser {
         campsStacked: p.campsStacked,
         position: detectedPositions[slot] || 0,
         isCaptain,
+        runePickups: p.runePickups || 0,
+        stunDuration: Math.round((p.stuns || 0) * 100) / 100,
+        towersKilled: p.towersKilled || 0,
+        roshansKilled: p.roshansKilled || 0,
+        teamfightParticipation: Math.round((p.teamfightParticipation || 0) * 100) / 100,
+        firstbloodClaimed: p.firstbloodClaimed ? 1 : 0,
+        wardsKilled: wardKills[slot] || 0,
+        obsPurchased: obsPurchased[slot] || 0,
+        senPurchased: senPurchased[slot] || 0,
       });
     }
 

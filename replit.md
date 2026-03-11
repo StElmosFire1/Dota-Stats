@@ -167,6 +167,7 @@ Matches can be deleted from the Match Detail page:
 - 2026-03-11: Added position detection (lane classification + LH rank) to replay parser; assigns pos 1-5 per team.
 - 2026-03-11: Added captain tracking (slot 0=Radiant, slot 5=Dire), obs/sen placed, creeps/camps stacked, damage_taken to player_stats.
 - 2026-03-11: Added Overall Stats, Position Stats (Pos 1-5 tabs), and Synergy (teammate + opponent matrices) pages.
+- 2026-03-11: Fixed Java byte-array serialized player names (epilogue protobuf bytes→UTF-8 decode in replayParser.js + decodeByteString utility in db/index.js).
 - 2026-03-11: Fixed Players page to show all players including account_id=0 (grouped by persona_name).
 - 2026-03-11: Player Profile now supports persona_name lookup for anonymous players.
 - 2026-03-11: Fixed formatNumber(0) displaying "-" instead of "0" in match scoreboards.

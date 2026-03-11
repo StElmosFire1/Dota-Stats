@@ -59,6 +59,10 @@ function TeamTable({ players, teamName, isWinner }) {
                     <Link to={`/player/${p.account_id}`} className="player-link">
                       {getDisplayName(p, i)}
                     </Link>
+                  ) : p.persona_name ? (
+                    <Link to={`/player/${encodeURIComponent(p.persona_name)}`} className="player-link">
+                      {getDisplayName(p, i)}
+                    </Link>
                   ) : (
                     getDisplayName(p, i)
                   )}
@@ -115,7 +119,7 @@ export default function MatchDetail() {
     setDeleting(true);
     try {
       await deleteMatch(matchId, uploadKey, deleteReason);
-      navigate('/');
+      navigate('/matches');
     } catch (err) {
       alert('Delete failed: ' + err.message);
       setDeleting(false);
@@ -131,7 +135,7 @@ export default function MatchDetail() {
 
   return (
     <div>
-      <Link to="/" className="back-link">&larr; Back to matches</Link>
+      <Link to="/matches" className="back-link">&larr; Back to matches</Link>
 
       <div className="match-detail-header">
         <h1>Match #{match.match_id}</h1>

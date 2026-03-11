@@ -378,6 +378,90 @@ function createApiRouter() {
     res.json(safeJob);
   });
 
+  router.get('/available-stats', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="available_replay_stats.txt"');
+    res.send(`Dota 2 Inhouse Bot - Available Replay Stats
+=============================================
+Stats extracted from .dem replay files via OpenDota parser.
+All stats are per-player, per-match.
+
+CORE STATS (from interval events - always available)
+----------------------------------------------------
+kills                  - Total kills
+deaths                 - Total deaths
+assists                - Total assists
+last_hits              - Total last hits
+denies                 - Total denies
+gpm                    - Gold per minute (calculated)
+xpm                    - XP per minute (calculated)
+level                  - Final hero level
+net_worth              - Final net worth (gold)
+hero_id                - Hero ID number
+hero_name              - Hero internal name (npc_dota_hero_*)
+team                   - radiant or dire
+slot                   - Player slot (0-9)
+position               - Detected position 1-5 (carry to hard support)
+is_captain             - Captain flag (slot 0 radiant, slot 5 dire)
+
+COMBAT STATS (from combat log events)
+--------------------------------------
+hero_damage            - Total damage dealt to enemy heroes
+tower_damage           - Total damage dealt to towers
+hero_healing           - Total healing done to heroes
+damage_taken           - Total damage received from enemy heroes
+
+VISION/SUPPORT STATS (from interval + ward events)
+---------------------------------------------------
+obs_placed             - Observer wards placed
+sen_placed             - Sentry wards placed
+obs_purchased          - Observer wards purchased (includes dispensers)
+sen_purchased          - Sentry wards purchased (includes dispensers)
+wards_killed           - Enemy wards dewarded/destroyed
+creeps_stacked         - Creeps stacked count
+camps_stacked          - Camps stacked count
+
+ADVANCED STATS (from interval events)
+--------------------------------------
+rune_pickups           - Total runes picked up
+stun_duration          - Total stun duration dealt (seconds)
+towers_killed          - Towers destroyed by this player
+roshans_killed         - Roshan kills by this player
+teamfight_participation - Teamfight participation percentage (0-1)
+firstblood_claimed     - Whether this player got first blood (0/1)
+
+PLAYER IDENTITY (from epilogue data)
+-------------------------------------
+account_id             - Steam account ID (derived from Steam64 ID)
+persona_name           - Steam display name at time of match
+
+MATCH-LEVEL DATA (from epilogue/interval)
+------------------------------------------
+match_id               - Valve match ID
+duration               - Match duration in seconds
+game_mode              - Game mode ID
+radiant_win            - Whether radiant won (true/false)
+
+CALCULATED AGGREGATES (available on stats pages)
+-------------------------------------------------
+kill_involvement       - (kills + assists) / team_kills * 100
+win_rate               - wins / total_games * 100
+captain_win_rate       - wins as captain / captain_games * 100
+
+NOTES
+-----
+- Position detection uses first 10 min x/y coordinates + last hits.
+  Lane classification: safe lane = carry (1) + hard support (5),
+  mid lane = mid (2), off lane = offlaner (3) + soft support (4).
+- Ward kills are detected from obs_left/sen_left events with an
+  attackername, meaning the ward was killed (not expired).
+- Stun duration is cumulative total seconds of stun dealt.
+- Teamfight participation is Valve's internal metric.
+- Stats only populate for newly uploaded replays (not retroactive).
+  Re-upload old replays to backfill.
+`);
+  });
+
   router.get('/stats', async (req, res) => {
     try {
       const matchCount = await db.getMatchCount();
@@ -403,12 +487,18 @@ async function processReplayJob(jobId, filePath, ip) {
 
     const existingHashMatch = await db.isFileHashRecorded(fileHash);
     if (existingHashMatch) {
-      cleanupFile(filePath);
-      setJobTerminal(jobId, {
-        status: 'error',
-        error: `This replay file has already been uploaded (match ${existingHashMatch})`,
-      });
-      return;
+      console.log(`[API] Duplicate file hash detected for match ${existingHashMatch}, deleting old match and re-recording.`);
+      try {
+        await db.deleteMatch(existingHashMatch, `re-upload:${ip}`, 'Replaced by re-upload of same replay file');
+      } catch (delErr) {
+        console.error(`[API] Failed to delete old match ${existingHashMatch} for re-upload:`, delErr.message);
+        cleanupFile(filePath);
+        setJobTerminal(jobId, {
+          status: 'error',
+          error: `This replay file has already been uploaded (match ${existingHashMatch}). Failed to auto-replace: ${delErr.message}`,
+        });
+        return;
+      }
     }
 
     updateJobStep(jobId, 'Parsing replay file...');
@@ -425,9 +515,14 @@ async function processReplayJob(jobId, filePath, ip) {
 
     const existing = await db.isMatchRecorded(matchStats.matchId);
     if (existing) {
-      cleanupFile(filePath);
-      setJobTerminal(jobId, { status: 'error', error: `Match ${matchStats.matchId} already recorded` });
-      return;
+      console.log(`[API] Match ${matchStats.matchId} already exists, deleting for re-record.`);
+      try {
+        await db.deleteMatch(matchStats.matchId, `re-upload:${ip}`, 'Replaced by re-upload');
+      } catch (delErr) {
+        cleanupFile(filePath);
+        setJobTerminal(jobId, { status: 'error', error: `Match ${matchStats.matchId} already recorded. Auto-replace failed: ${delErr.message}` });
+        return;
+      }
     }
 
     updateJobStep(jobId, 'Recording match data...');

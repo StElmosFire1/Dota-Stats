@@ -746,3 +746,9 @@ th.col-stat {
     padding: 1.25rem;
   }
 }
+
+.stats-download-link {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

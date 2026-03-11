@@ -2,6 +2,18 @@ const { Pool } = require('pg');
 
 let pool = null;
 
+function decodeByteString(val) {
+  if (!val || typeof val !== 'string') return val;
+  if (!val.includes('"bytes"')) return val;
+  try {
+    const parsed = JSON.parse(val);
+    if (parsed.bytes && Array.isArray(parsed.bytes)) {
+      return Buffer.from(parsed.bytes.map(b => b < 0 ? b + 256 : b)).toString('utf8');
+    }
+  } catch {}
+  return val;
+}
+
 function getPool() {
   if (!pool) {
     pool = new Pool({
@@ -54,6 +66,15 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS camps_stacked INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS damage_taken INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS slot INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS rune_pickups INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS stun_duration REAL DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS towers_killed INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS roshans_killed INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS teamfight_participation REAL DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS firstblood_claimed INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS wards_killed INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS obs_purchased INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS sen_purchased INTEGER DEFAULT 0`);
 
     console.log('[DB] Schema migrations applied.');
     return true;
@@ -88,8 +109,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash) {
 
     for (const player of matchStats.players) {
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)`,
         [
           matchStats.matchId,
           player.accountId || 0,
@@ -118,6 +139,15 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash) {
           player.campsStacked || 0,
           player.damageTaken || 0,
           player.slot || 0,
+          player.runePickups || 0,
+          player.stunDuration || 0,
+          player.towersKilled || 0,
+          player.roshansKilled || 0,
+          player.teamfightParticipation || 0,
+          player.firstbloodClaimed || 0,
+          player.wardsKilled || 0,
+          player.obsPurchased || 0,
+          player.senPurchased || 0,
         ]
       );
     }
@@ -183,6 +213,10 @@ async function getMatch(matchId) {
     [matchId]
   );
 
+  for (const row of playersResult.rows) {
+    row.persona_name = decodeByteString(row.persona_name);
+  }
+
   return {
     ...matchResult.rows[0],
     players: playersResult.rows,
@@ -237,10 +271,14 @@ async function getLeaderboard(limit = 50) {
      ORDER BY mmr DESC LIMIT $1`,
     [limit]
   );
+  for (const row of result.rows) {
+    row.display_name = decodeByteString(row.display_name);
+  }
   return result.rows;
 }
 
 async function updateRating(playerId, discordId, displayName, mu, sigma, mmr, won) {
+  displayName = decodeByteString(displayName);
   const p = getPool();
   await p.query(
     `INSERT INTO ratings (player_id, discord_id, display_name, mu, sigma, mmr, wins, losses, games_played, last_updated)
@@ -337,6 +375,14 @@ async function getPlayerStats(accountId) {
     [param]
   );
 
+  for (const row of recentMatches.rows) {
+    row.persona_name = decodeByteString(row.persona_name);
+  }
+
+  if (ratingResult.rows[0]) {
+    ratingResult.rows[0].display_name = decodeByteString(ratingResult.rows[0].display_name);
+  }
+
   return {
     rating: ratingResult.rows[0] || null,
     nickname: nicknameResult.rows[0]?.nickname || null,
@@ -392,6 +438,10 @@ async function getAllPlayers() {
        n.nickname
      ORDER BY games_played DESC`
   );
+  for (const row of result.rows) {
+    row.persona_name = decodeByteString(row.persona_name);
+    row.player_key = decodeByteString(row.player_key);
+  }
   return result.rows;
 }
 
@@ -477,13 +527,16 @@ async function getOverallStats() {
   );
   const kiByPlayer = {};
   for (const row of kiData.rows) {
+    const key = decodeByteString(row.player_key);
     const tk = teamKillsMap[`${row.match_id}_${row.team}`] || 1;
     const ki = ((parseInt(row.kills) + parseInt(row.assists)) / tk) * 100;
-    if (!kiByPlayer[row.player_key]) kiByPlayer[row.player_key] = [];
-    kiByPlayer[row.player_key].push(ki);
+    if (!kiByPlayer[key]) kiByPlayer[key] = [];
+    kiByPlayer[key].push(ki);
   }
 
   for (const row of result.rows) {
+    row.persona_name = decodeByteString(row.persona_name);
+    row.player_key = decodeByteString(row.player_key);
     const kis = kiByPlayer[row.player_key] || [];
     row.avg_kill_involvement = kis.length > 0 ? Math.round(kis.reduce((a, b) => a + b, 0) / kis.length) : 0;
   }
@@ -544,13 +597,16 @@ async function getPositionStats(position) {
   );
   const kiByPlayer = {};
   for (const row of kiData.rows) {
+    const key = decodeByteString(row.player_key);
     const tk = teamKillsMap[`${row.match_id}_${row.team}`] || 1;
     const ki = ((parseInt(row.kills) + parseInt(row.assists)) / tk) * 100;
-    if (!kiByPlayer[row.player_key]) kiByPlayer[row.player_key] = [];
-    kiByPlayer[row.player_key].push(ki);
+    if (!kiByPlayer[key]) kiByPlayer[key] = [];
+    kiByPlayer[key].push(ki);
   }
 
   for (const row of result.rows) {
+    row.persona_name = decodeByteString(row.persona_name);
+    row.player_key = decodeByteString(row.player_key);
     const kis = kiByPlayer[row.player_key] || [];
     row.avg_kill_involvement = kis.length > 0 ? Math.round(kis.reduce((a, b) => a + b, 0) / kis.length) : 0;
   }
@@ -578,6 +634,8 @@ async function getSynergyMatrix() {
   const opponent = {};
 
   for (const row of result.rows) {
+    row.player_a = decodeByteString(row.player_a);
+    row.player_b = decodeByteString(row.player_b);
     const keyA = row.account_id_a > 0 ? row.account_id_a.toString() : row.player_a;
     const keyB = row.account_id_b > 0 ? row.account_id_b.toString() : row.player_b;
 
@@ -693,6 +751,10 @@ async function getHeroPlayers(heroId) {
      ORDER BY games DESC`,
     [heroId]
   );
+  for (const row of result.rows) {
+    row.persona_name = decodeByteString(row.persona_name);
+    row.player_key = decodeByteString(row.player_key);
+  }
   return result.rows;
 }
 

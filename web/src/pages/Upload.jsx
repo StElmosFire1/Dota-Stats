@@ -125,6 +125,8 @@ export default function Upload() {
       <h1 className="page-title">Upload Replay</h1>
       <p className="page-subtitle">
         Upload a .dem replay file to record match stats. You need an upload key to submit replays.
+        Re-uploading the same replay will replace the existing match data.
+        {' '}<a href="/api/available-stats" className="stats-download-link" download>Download list of all parseable stats</a>
       </p>
 
       <form onSubmit={handleSubmit} className="upload-form">
