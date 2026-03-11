@@ -1070,14 +1070,20 @@ th.col-stat {
   background: transparent;
 }
 
-.synergy-tooltip-bar {
+.synergy-floating-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
   background: var(--bg-card);
   border: 1px solid var(--border);
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 6px;
-  font-size: 0.9rem;
-  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
   color: var(--text-primary);
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  line-height: 1.4;
 }
 
 .heatmap-legend {

@@ -22,8 +22,8 @@ function getTextColor(winRate) {
 export default function Synergy() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [hoveredCell, setHoveredCell] = useState(null);
-  const tableRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+  const tooltipRef = useRef(null);
 
   useEffect(() => {
     getSynergyHeatmap()
@@ -31,6 +31,19 @@ export default function Synergy() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  const handleMouseEnter = (e, cellData) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      ...cellData,
+      x: rect.left + rect.width / 2,
+      y: rect.top - 8,
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setTooltip(null);
+  };
 
   if (loading) return <div className="loading">Loading synergy data...</div>;
   if (!data || !data.players || data.players.length === 0) {
@@ -52,14 +65,7 @@ export default function Synergy() {
         Minimum 2 games together to appear. Hover for details.
       </p>
 
-      {hoveredCell && (
-        <div className="synergy-tooltip-bar">
-          <strong>{hoveredCell.playerA}</strong> + <strong>{hoveredCell.playerB}</strong>:
-          {' '}{hoveredCell.wins}W / {hoveredCell.games}G = {hoveredCell.winRate}% win rate
-        </div>
-      )}
-
-      <div className="heatmap-container" ref={tableRef}>
+      <div className="heatmap-container">
         <table className="heatmap-table">
           <thead>
             <tr>
@@ -92,14 +98,14 @@ export default function Synergy() {
                         backgroundColor: getWinRateColor(wr),
                         color: getTextColor(wr),
                       }}
-                      onMouseEnter={() => setHoveredCell({
+                      onMouseEnter={(e) => handleMouseEnter(e, {
                         playerA: rowPlayer.name,
                         playerB: colPlayer.name,
                         wins: cell.wins,
                         games: cell.games,
                         winRate: wr,
                       })}
-                      onMouseLeave={() => setHoveredCell(null)}
+                      onMouseLeave={handleMouseLeave}
                     >
                       {wr}%
                     </td>
@@ -110,6 +116,21 @@ export default function Synergy() {
           </tbody>
         </table>
       </div>
+
+      {tooltip && (
+        <div
+          ref={tooltipRef}
+          className="synergy-floating-tooltip"
+          style={{
+            left: tooltip.x,
+            top: tooltip.y,
+          }}
+        >
+          <strong>{tooltip.playerA}</strong> + <strong>{tooltip.playerB}</strong>
+          <br />
+          {tooltip.wins}W / {tooltip.games}G — {tooltip.winRate}% win rate
+        </div>
+      )}
 
       <div className="heatmap-legend">
         <span className="legend-label">Low</span>

@@ -552,6 +552,7 @@ class ReplayParser {
     const smokeKills = {};
     const multiKills = {};
     const killStreaks = {};
+    const combatLogBuybacks = {};
     const firstDeathSlot = { time: Infinity, slot: -1 };
     const itemPurchases = {};
     const abilityLevelups = {};
@@ -625,6 +626,14 @@ class ReplayParser {
           if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
             if (players[killerSlot]) players[killerSlot].courierKills = (players[killerSlot].courierKills || 0) + 1;
           }
+        }
+      }
+
+      if (e.type === 'DOTA_COMBATLOG_BUYBACK') {
+        let slot = e.slot;
+        if (slot == null && e.targetname) slot = npcNameToSlot[e.targetname];
+        if (slot != null && slot >= 0 && slot < 10) {
+          combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
         }
       }
 
@@ -882,7 +891,7 @@ class ReplayParser {
         wardsKilled: wardKills[slot] || 0,
         obsPurchased: obsPurchased[slot] || 0,
         senPurchased: senPurchased[slot] || 0,
-        buybacks: p.buybacks || 0,
+        buybacks: combatLogBuybacks[slot] || p.buybacks || 0,
         courierKills: p.courierKills || 0,
         tpScrollsUsed: tpScrollsUsed[slot] || 0,
         doubleKills: mk.double,

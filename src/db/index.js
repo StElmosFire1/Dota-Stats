@@ -541,10 +541,26 @@ async function getAllPlayers() {
        MAX(ps.persona_name) as persona_name,
        n.nickname,
        COUNT(DISTINCT ps.match_id) as games_played,
-       MAX(m.date) as last_played
+       MAX(m.date) as last_played,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
+       ROUND(AVG(ps.kills), 1) as avg_kills,
+       ROUND(AVG(ps.deaths), 1) as avg_deaths,
+       ROUND(AVG(ps.assists), 1) as avg_assists,
+       ROUND(AVG(
+         CASE WHEN team_kills.total_kills > 0
+           THEN ((ps.kills + ps.assists)::numeric / team_kills.total_kills) * 100
+           ELSE 0
+         END
+       ), 0) as avg_kill_involvement,
+       MODE() WITHIN GROUP (ORDER BY CASE WHEN ps.position > 0 THEN ps.position ELSE NULL END) as best_position
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     LEFT JOIN LATERAL (
+       SELECT SUM(ps2.kills) as total_kills
+       FROM player_stats ps2
+       WHERE ps2.match_id = ps.match_id AND ps2.team = ps.team
+     ) team_kills ON true
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        COALESCE(NULLIF(ps.account_id, 0), 0),
