@@ -47,6 +47,30 @@ export async function getHeroStats() {
   return fetchJson('/heroes');
 }
 
+export async function getHeroPlayers(heroId) {
+  return fetchJson(`/heroes/${heroId}/players`);
+}
+
+export async function getOverallStats() {
+  return fetchJson('/overall-stats');
+}
+
+export async function getPositionStats(position) {
+  return fetchJson(`/position-stats/${position}`);
+}
+
+export async function getSynergy() {
+  return fetchJson('/synergy');
+}
+
+export async function getPlayerHeroes(accountId) {
+  return fetchJson(`/players/${accountId}/heroes`);
+}
+
+export async function getPlayerPositions(accountId) {
+  return fetchJson(`/players/${accountId}/positions`);
+}
+
 export async function getNicknames() {
   return fetchJson('/nicknames');
 }

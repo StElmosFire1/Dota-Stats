@@ -189,6 +189,68 @@ function createApiRouter() {
     }
   });
 
+  router.get('/heroes/:heroId/players', async (req, res) => {
+    try {
+      const players = await db.getHeroPlayers(parseInt(req.params.heroId));
+      res.json({ players });
+    } catch (err) {
+      console.error('[API] Error fetching hero players:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero players' });
+    }
+  });
+
+  router.get('/overall-stats', async (req, res) => {
+    try {
+      const stats = await db.getOverallStats();
+      res.json({ stats });
+    } catch (err) {
+      console.error('[API] Error fetching overall stats:', err.message);
+      res.status(500).json({ error: 'Failed to fetch overall stats' });
+    }
+  });
+
+  router.get('/position-stats/:position', async (req, res) => {
+    try {
+      const pos = parseInt(req.params.position);
+      if (pos < 1 || pos > 5) return res.status(400).json({ error: 'Position must be 1-5' });
+      const stats = await db.getPositionStats(pos);
+      res.json({ stats });
+    } catch (err) {
+      console.error('[API] Error fetching position stats:', err.message);
+      res.status(500).json({ error: 'Failed to fetch position stats' });
+    }
+  });
+
+  router.get('/synergy', async (req, res) => {
+    try {
+      const data = await db.getSynergyMatrix();
+      res.json(data);
+    } catch (err) {
+      console.error('[API] Error fetching synergy:', err.message);
+      res.status(500).json({ error: 'Failed to fetch synergy data' });
+    }
+  });
+
+  router.get('/players/:accountId/heroes', async (req, res) => {
+    try {
+      const heroes = await db.getPlayerHeroes(req.params.accountId);
+      res.json({ heroes });
+    } catch (err) {
+      console.error('[API] Error fetching player heroes:', err.message);
+      res.status(500).json({ error: 'Failed to fetch player heroes' });
+    }
+  });
+
+  router.get('/players/:accountId/positions', async (req, res) => {
+    try {
+      const positions = await db.getPlayerPositions(req.params.accountId);
+      res.json({ positions });
+    } catch (err) {
+      console.error('[API] Error fetching player positions:', err.message);
+      res.status(500).json({ error: 'Failed to fetch player positions' });
+    }
+  });
+
   router.post('/upload/init', authMiddleware, (req, res) => {
     const { fileName, fileSize, totalChunks } = req.body;
     if (!fileName || !fileSize || !totalChunks) {

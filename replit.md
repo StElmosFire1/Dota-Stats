@@ -115,9 +115,12 @@ The bot includes a web dashboard for viewing match data and uploading replays:
 - **Match History** (`/`) - List of all recorded matches with winner, duration, player count
 - **Match Detail** (`/match/:id`) - Full scoreboard with KDA, GPM, damage, healing per player; includes match deletion with audit trail
 - **Leaderboard** (`/leaderboard`) - TrueSkill MMR rankings with nickname support
-- **Player Profile** (`/player/:accountId`) - Player stats, averages (including TD/HH/denies), hero history with per-hero KDA/GPM/HD, recent matches
+- **Player Profile** (`/player/:accountId`) - Player stats, averages (including TD/HH/denies), hero history with per-hero KDA/GPM/HD, position breakdown, recent matches. Supports both account_id and persona_name lookup.
+- **Overall Stats** (`/stats`) - Comprehensive player rankings: games, W/L, avg KDA, win%, kill involvement%, captain win%
+- **Position Stats** (`/positions`) - Per-position (1-5) stats with tabs: GPM, XPM, damage, tanked, wards, stacks (min 3 games)
+- **Synergy** (`/synergy`) - Teammate/opponent win rate matrices (min 3 games together)
 - **Hero Stats** (`/heroes`) - Per-hero aggregate stats: pick count, win rate, avg KDA/GPM/HD/TD/HH; sortable columns
-- **Players** (`/players`) - All players with editable nicknames, game count, last played date
+- **Players** (`/players`) - All players (including account_id=0) with editable nicknames, game count, last played date
 - **Upload** (`/upload`) - Upload .dem replay files (requires UPLOAD_KEY); duplicate prevention via SHA256 file hash
 
 Data is stored in PostgreSQL (primary) and optionally synced to Google Sheets.
@@ -161,6 +164,11 @@ Matches can be deleted from the Match Detail page:
 - 2026-03-11: Added duplicate replay prevention via SHA256 file hash (unique constraint in DB).
 - 2026-03-11: Added Hero Stats page with sortable columns (pick count, win rate, avg stats).
 - 2026-03-11: Enhanced Player Profile with tower damage, healing, denies averages and per-hero KDA/GPM/HD.
+- 2026-03-11: Added position detection (lane classification + LH rank) to replay parser; assigns pos 1-5 per team.
+- 2026-03-11: Added captain tracking (slot 0=Radiant, slot 5=Dire), obs/sen placed, creeps/camps stacked, damage_taken to player_stats.
+- 2026-03-11: Added Overall Stats, Position Stats (Pos 1-5 tabs), and Synergy (teammate + opponent matrices) pages.
+- 2026-03-11: Fixed Players page to show all players including account_id=0 (grouped by persona_name).
+- 2026-03-11: Player Profile now supports persona_name lookup for anonymous players.
 - 2026-03-11: Fixed formatNumber(0) displaying "-" instead of "0" in match scoreboards.
 - 2026-03-11: Added web dashboard (Express + React) with match history, scoreboards, leaderboard, player profiles, and replay upload.
 - 2026-03-11: Added PostgreSQL database as primary data store (alongside optional Google Sheets sync).

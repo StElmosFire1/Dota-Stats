@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer } from '../api';
+import { getPlayer, getPlayerPositions } from '../api';
 import { getHeroName } from '../heroNames';
+
+const POS_NAMES = { 1: 'Pos 1 (Safe)', 2: 'Pos 2 (Mid)', 3: 'Pos 3 (Off)', 4: 'Pos 4 (Sup)', 5: 'Pos 5 (Hard Sup)' };
 
 function formatDuration(seconds) {
   if (!seconds) return '--';
@@ -13,14 +15,18 @@ function formatDuration(seconds) {
 export default function PlayerProfile() {
   const { accountId } = useParams();
   const [data, setData] = useState(null);
+  const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    getPlayer(accountId)
-      .then(setData)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    Promise.all([
+      getPlayer(accountId).catch(() => null),
+      getPlayerPositions(accountId).catch(() => ({ positions: [] })),
+    ]).then(([playerData, posData]) => {
+      setData(playerData);
+      setPositions(posData?.positions || []);
+    }).finally(() => setLoading(false));
   }, [accountId]);
 
   if (loading) return <div className="loading">Loading player...</div>;
@@ -36,7 +42,7 @@ export default function PlayerProfile() {
 
   return (
     <div>
-      <Link to="/leaderboard" className="back-link">&larr; Back to leaderboard</Link>
+      <Link to="/players" className="back-link">&larr; Back to players</Link>
 
       <h1 className="page-title">
         {displayName}
@@ -126,6 +132,45 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {positions.length > 0 && (
+        <section>
+          <h2 className="section-title">Position Breakdown</h2>
+          <div className="scoreboard-wrapper">
+            <table className="scoreboard">
+              <thead>
+                <tr>
+                  <th className="col-player">Position</th>
+                  <th className="col-stat">Games</th>
+                  <th className="col-stat">Wins</th>
+                  <th className="col-stat">Win%</th>
+                  <th className="col-stat">K</th>
+                  <th className="col-stat">D</th>
+                  <th className="col-stat">A</th>
+                  <th className="col-stat">GPM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {positions.filter(p => p.position > 0).map((p, i) => {
+                  const wr = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(0) : '0';
+                  return (
+                    <tr key={i}>
+                      <td className="col-player">{POS_NAMES[p.position] || `Pos ${p.position}`}</td>
+                      <td className="col-stat">{p.games}</td>
+                      <td className="col-stat wins">{p.wins}</td>
+                      <td className="col-stat" style={{ color: parseInt(wr) >= 50 ? '#4ade80' : '#f87171' }}>{wr}%</td>
+                      <td className="col-stat">{p.avg_kills}</td>
+                      <td className="col-stat">{p.avg_deaths}</td>
+                      <td className="col-stat">{p.avg_assists}</td>
+                      <td className="col-stat">{parseInt(p.avg_gpm).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {heroes && heroes.length > 0 && (
         <section>
           <h2 className="section-title">Most Played Heroes</h2>
@@ -145,7 +190,7 @@ export default function PlayerProfile() {
                 </tr>
               </thead>
               <tbody>
-                {heroes.slice(0, 15).map((h, i) => (
+                {heroes.slice(0, 20).map((h, i) => (
                   <tr key={i}>
                     <td className="col-player">{getHeroName(h.hero_id, h.hero_name)}</td>
                     <td className="col-stat">{h.games}</td>

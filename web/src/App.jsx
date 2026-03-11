@@ -6,6 +6,9 @@ import Leaderboard from './pages/Leaderboard';
 import PlayerProfile from './pages/PlayerProfile';
 import Heroes from './pages/Heroes';
 import Players from './pages/Players';
+import OverallStats from './pages/OverallStats';
+import PositionStats from './pages/PositionStats';
+import Synergy from './pages/Synergy';
 import Upload from './pages/Upload';
 import UploadIndicator from './components/UploadIndicator';
 
@@ -21,7 +24,10 @@ function Nav() {
       <div className="nav-links">
         <Link to="/" className={isActive('/')}>Matches</Link>
         <Link to="/leaderboard" className={isActive('/leaderboard')}>Leaderboard</Link>
+        <Link to="/stats" className={isActive('/stats')}>Stats</Link>
+        <Link to="/positions" className={isActive('/positions')}>Positions</Link>
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
+        <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/players" className={isActive('/players')}>Players</Link>
         <Link to="/upload" className={isActive('/upload')}>Upload</Link>
       </div>
@@ -42,6 +48,9 @@ export default function App() {
           <Route path="/player/:accountId" element={<PlayerProfile />} />
           <Route path="/heroes" element={<Heroes />} />
           <Route path="/players" element={<Players />} />
+          <Route path="/stats" element={<OverallStats />} />
+          <Route path="/positions" element={<PositionStats />} />
+          <Route path="/synergy" element={<Synergy />} />
           <Route path="/upload" element={<Upload />} />
         </Routes>
       </main>

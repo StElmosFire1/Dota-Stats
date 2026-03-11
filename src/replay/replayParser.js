@@ -211,6 +211,113 @@ class ReplayParser {
     return undefined;
   }
 
+  _classifyLane(x, y) {
+    const MAP_CENTER = 16384;
+    const MID_BAND = 3000;
+    const nx = x - MAP_CENTER;
+    const ny = y - MAP_CENTER;
+    const diag = ny - nx;
+    if (Math.abs(diag) < MID_BAND) return 'mid';
+    return diag > 0 ? 'top' : 'bot';
+  }
+
+  _detectPositions(players, laningData, maxTime) {
+    const LANING_END = 600;
+    const positions = {};
+
+    for (const team of ['radiant', 'dire']) {
+      const teamSlots = Object.keys(players).filter(s => {
+        const slot = parseInt(s);
+        return team === 'radiant' ? slot < 5 : slot >= 5;
+      }).map(s => parseInt(s));
+
+      const laneCounts = {};
+      for (const slot of teamSlots) {
+        laneCounts[slot] = { top: 0, mid: 0, bot: 0 };
+        const samples = laningData[slot] || [];
+        for (const s of samples) {
+          if (s.time > LANING_END) continue;
+          const lane = this._classifyLane(s.x, s.y);
+          laneCounts[slot][lane]++;
+        }
+      }
+
+      const laningLH = {};
+      for (const slot of teamSlots) {
+        const samples = laningData[slot] || [];
+        let bestLH = 0;
+        for (const s of samples) {
+          if (s.time <= LANING_END && s.lh != null && s.lh > bestLH) {
+            bestLH = s.lh;
+          }
+        }
+        laningLH[slot] = bestLH;
+      }
+
+      const hasLaneData = teamSlots.some(slot => {
+        const c = laneCounts[slot];
+        return (c.top + c.mid + c.bot) > 0;
+      });
+
+      if (!hasLaneData) {
+        const ranked = [...teamSlots].sort((a, b) => laningLH[b] - laningLH[a]);
+        const fallbackPositions = [1, 2, 3, 4, 5];
+        for (let i = 0; i < ranked.length && i < 5; i++) {
+          positions[ranked[i]] = fallbackPositions[i];
+        }
+      } else {
+        const primaryLane = {};
+        for (const slot of teamSlots) {
+          const counts = laneCounts[slot];
+          const total = counts.top + counts.mid + counts.bot;
+          if (total === 0) {
+            primaryLane[slot] = 'jungle';
+          } else {
+            primaryLane[slot] = counts.top >= counts.mid && counts.top >= counts.bot ? 'top' :
+                                counts.mid >= counts.bot ? 'mid' : 'bot';
+          }
+        }
+
+        const laneGroups = { top: [], mid: [], bot: [], jungle: [] };
+        for (const slot of teamSlots) {
+          laneGroups[primaryLane[slot]].push(slot);
+        }
+
+        const safeLane = team === 'radiant' ? 'bot' : 'top';
+        const offLane = team === 'radiant' ? 'top' : 'bot';
+
+        for (const slot of (laneGroups.mid || [])) {
+          positions[slot] = 2;
+        }
+
+        const safeGroup = (laneGroups[safeLane] || []).sort((a, b) => laningLH[b] - laningLH[a]);
+        if (safeGroup.length >= 1) positions[safeGroup[0]] = 1;
+        if (safeGroup.length >= 2) positions[safeGroup[1]] = 5;
+        for (let i = 2; i < safeGroup.length; i++) positions[safeGroup[i]] = 5;
+
+        const offGroup = (laneGroups[offLane] || []).sort((a, b) => laningLH[b] - laningLH[a]);
+        if (offGroup.length >= 1) positions[offGroup[0]] = 3;
+        if (offGroup.length >= 2) positions[offGroup[1]] = 4;
+        for (let i = 2; i < offGroup.length; i++) positions[offGroup[i]] = 4;
+
+        for (const slot of (laneGroups.jungle || []).sort((a, b) => laningLH[b] - laningLH[a])) {
+          if (positions[slot] == null) {
+            const taken = new Set(Object.values(positions));
+            for (const p of [4, 3, 1, 5, 2]) {
+              if (!taken.has(p)) { positions[slot] = p; break; }
+            }
+          }
+        }
+      }
+
+      for (const slot of teamSlots) {
+        if (positions[slot] == null) positions[slot] = 0;
+      }
+    }
+
+    return positions;
+  }
+
   _aggregateStats(events) {
     const players = {};
     const playerSlots = {};
@@ -220,6 +327,7 @@ class ReplayParser {
     let gameMode = 0;
     let epilogueData = null;
     const maxTime = {};
+    const laningData = {};
 
     for (const e of events) {
       if (e.type === 'epilogue' && e.key) {
@@ -290,6 +398,11 @@ class ReplayParser {
               xp: 0,
               level: 0,
               accountId: 0,
+              obsPlaced: 0,
+              senPlaced: 0,
+              creepsStacked: 0,
+              campsStacked: 0,
+              networth: 0,
             };
           }
 
@@ -303,6 +416,16 @@ class ReplayParser {
           if (e.gold != null) p.gold = e.gold;
           if (e.xp != null) p.xp = e.xp;
           if (e.level != null) p.level = e.level;
+          if (e.obs_placed != null) p.obsPlaced = e.obs_placed;
+          if (e.sen_placed != null) p.senPlaced = e.sen_placed;
+          if (e.creeps_stacked != null) p.creepsStacked = e.creeps_stacked;
+          if (e.camps_stacked != null) p.campsStacked = e.camps_stacked;
+          if (e.networth != null) p.networth = e.networth;
+        }
+
+        if (currentTime <= 660 && e.x != null && e.y != null) {
+          if (!laningData[e.slot]) laningData[e.slot] = [];
+          laningData[e.slot].push({ time: currentTime, x: e.x, y: e.y, lh: e.lh || 0 });
         }
       }
     }
@@ -324,21 +447,26 @@ class ReplayParser {
     const heroDamage = {};
     const towerDamage = {};
     const heroHealing = {};
+    const damageTaken = {};
 
     for (const e of events) {
       if (e.type === 'DOTA_COMBATLOG_DAMAGE') {
-        let slot = e.slot;
-        if (slot == null && e.attackername) {
-          slot = npcNameToSlot[e.attackername];
+        let attackerSlot = e.slot;
+        if (attackerSlot == null && e.attackername) {
+          attackerSlot = npcNameToSlot[e.attackername];
         }
-        if (slot != null && slot >= 0 && slot < 10) {
+        if (attackerSlot != null && attackerSlot >= 0 && attackerSlot < 10) {
           if (e.targethero && !e.targetillusion) {
-            heroDamage[slot] = (heroDamage[slot] || 0) + (e.value || 0);
+            heroDamage[attackerSlot] = (heroDamage[attackerSlot] || 0) + (e.value || 0);
           }
-          if (e.targetname && (e.targetname.includes('tower') || e.targetname.includes('bad') || e.targetname.includes('good'))) {
-            if (e.targetname.includes('tower')) {
-              towerDamage[slot] = (towerDamage[slot] || 0) + (e.value || 0);
-            }
+          if (e.targetname && e.targetname.includes('tower')) {
+            towerDamage[attackerSlot] = (towerDamage[attackerSlot] || 0) + (e.value || 0);
+          }
+        }
+        if (e.targethero && !e.targetillusion && e.targetname) {
+          const targetSlot = npcNameToSlot[e.targetname];
+          if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
+            damageTaken[targetSlot] = (damageTaken[targetSlot] || 0) + (e.value || 0);
           }
         }
       }
@@ -358,6 +486,7 @@ class ReplayParser {
     console.log('[Replay] Hero damage by slot:', JSON.stringify(heroDamage));
     console.log('[Replay] Tower damage by slot:', JSON.stringify(towerDamage));
     console.log('[Replay] Hero healing by slot:', JSON.stringify(heroHealing));
+    console.log('[Replay] Damage taken by slot:', JSON.stringify(damageTaken));
 
     let epiloguePlayerInfos = [];
     if (epilogueData) {
@@ -407,6 +536,9 @@ class ReplayParser {
       matchId = 'replay_' + Date.now();
     }
 
+    const detectedPositions = this._detectPositions(players, laningData, maxTime);
+    console.log('[Replay] Detected positions:', JSON.stringify(detectedPositions));
+
     const durationMin = Math.max(duration / 60, 1);
     const playerList = [];
 
@@ -428,12 +560,15 @@ class ReplayParser {
         team = slot < 5 ? 'radiant' : 'dire';
       }
 
+      const isCaptain = (team === 'radiant' && slot === 0) || (team === 'dire' && slot === 5);
+
       playerList.push({
         accountId: p.accountId || 0,
         personaname: p.personaname || `Player ${slot + 1}`,
         heroId: p.heroId,
         heroName: p.heroName || '',
         team,
+        slot,
         kills: p.kills,
         deaths: p.deaths,
         assists: p.assists,
@@ -444,8 +579,15 @@ class ReplayParser {
         heroDamage: heroDamage[slot] || 0,
         towerDamage: towerDamage[slot] || 0,
         heroHealing: heroHealing[slot] || 0,
+        damageTaken: damageTaken[slot] || 0,
         level: p.level,
-        netWorth: p.gold,
+        netWorth: p.networth || p.gold,
+        obsPlaced: p.obsPlaced,
+        senPlaced: p.senPlaced,
+        creepsStacked: p.creepsStacked,
+        campsStacked: p.campsStacked,
+        position: detectedPositions[slot] || 0,
+        isCaptain,
       });
     }
 
@@ -457,7 +599,7 @@ class ReplayParser {
 
     console.log(`[Replay] Final stats: matchId=${matchId}, duration=${duration}s, radiantWin=${radiantWin}, players=${playerList.length}`);
     for (const p of playerList) {
-      console.log(`[Replay]   ${p.team} slot: ${p.personaname} (hero=${p.heroId}, acct=${p.accountId}) K/D/A=${p.kills}/${p.deaths}/${p.assists} HD=${p.heroDamage} TD=${p.towerDamage} HH=${p.heroHealing}`);
+      console.log(`[Replay]   ${p.team} pos${p.position} ${p.isCaptain ? '(C)' : ''}: ${p.personaname} (hero=${p.heroId}, acct=${p.accountId}) K/D/A=${p.kills}/${p.deaths}/${p.assists} HD=${p.heroDamage} TD=${p.towerDamage} HH=${p.heroHealing} DT=${p.damageTaken} OBS=${p.obsPlaced} SEN=${p.senPlaced} STK=${p.campsStacked}`);
     }
 
     return {
