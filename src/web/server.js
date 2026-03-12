@@ -84,8 +84,9 @@ function createApiRouter() {
     try {
       const limit = Math.min(parseInt(req.query.limit) || 50, 100);
       const offset = parseInt(req.query.offset) || 0;
-      const matches = await db.getMatches(limit, offset);
-      const total = await db.getMatchCount();
+      const seasonId = req.query.season_id || null;
+      const matches = await db.getMatches(limit, offset, seasonId);
+      const total = await db.getMatchCount(seasonId);
       res.json({ matches, total, limit, offset });
     } catch (err) {
       console.error('[API] Error fetching matches:', err.message);
@@ -148,7 +149,8 @@ function createApiRouter() {
 
   router.get('/players', async (req, res) => {
     try {
-      const players = await db.getAllPlayers();
+      const seasonId = req.query.season_id || null;
+      const players = await db.getAllPlayers(seasonId);
       res.json({ players });
     } catch (err) {
       console.error('[API] Error fetching players:', err.message);
@@ -181,7 +183,8 @@ function createApiRouter() {
 
   router.get('/heroes', async (req, res) => {
     try {
-      const heroes = await db.getHeroStats();
+      const seasonId = req.query.season_id || null;
+      const heroes = await db.getHeroStats(seasonId);
       res.json({ heroes });
     } catch (err) {
       console.error('[API] Error fetching hero stats:', err.message);
@@ -201,7 +204,8 @@ function createApiRouter() {
 
   router.get('/overall-stats', async (req, res) => {
     try {
-      const stats = await db.getOverallStats();
+      const seasonId = req.query.season_id || null;
+      const stats = await db.getOverallStats(seasonId);
       res.json({ stats });
     } catch (err) {
       console.error('[API] Error fetching overall stats:', err.message);
@@ -214,7 +218,8 @@ function createApiRouter() {
       const pos = parseInt(req.params.position);
       if (pos < 1 || pos > 5) return res.status(400).json({ error: 'Position must be 1-5' });
       const minGames = Math.max(1, parseInt(req.query.min_games) || 1);
-      const stats = await db.getPositionStats(pos, minGames);
+      const seasonId = req.query.season_id || null;
+      const stats = await db.getPositionStats(pos, minGames, seasonId);
       res.json({ stats });
     } catch (err) {
       console.error('[API] Error fetching position stats:', err.message);
@@ -224,7 +229,8 @@ function createApiRouter() {
 
   router.get('/player-profiles/positions', async (req, res) => {
     try {
-      const players = await db.getPlayerPositionProfiles();
+      const seasonId = req.query.season_id || null;
+      const players = await db.getPlayerPositionProfiles(seasonId);
       res.json({ players });
     } catch (err) {
       console.error('[API] Error fetching player position profiles:', err.message);
@@ -234,7 +240,8 @@ function createApiRouter() {
 
   router.get('/player-profiles/heroes', async (req, res) => {
     try {
-      const players = await db.getPlayerHeroProfiles();
+      const seasonId = req.query.season_id || null;
+      const players = await db.getPlayerHeroProfiles(seasonId);
       res.json({ players });
     } catch (err) {
       console.error('[API] Error fetching player hero profiles:', err.message);
@@ -244,7 +251,8 @@ function createApiRouter() {
 
   router.get('/synergy', async (req, res) => {
     try {
-      const data = await db.getSynergyMatrix();
+      const seasonId = req.query.season_id || null;
+      const data = await db.getSynergyMatrix(seasonId);
       res.json(data);
     } catch (err) {
       console.error('[API] Error fetching synergy:', err.message);
@@ -252,9 +260,61 @@ function createApiRouter() {
     }
   });
 
+  router.get('/seasons', async (req, res) => {
+    try {
+      const seasons = await db.getSeasons();
+      res.json({ seasons });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch seasons' });
+    }
+  });
+
+  router.post('/seasons', authMiddleware, async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || !name.trim()) return res.status(400).json({ error: 'Season name required' });
+      const season = await db.createSeason(name.trim());
+      res.json({ season });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to create season' });
+    }
+  });
+
+  router.put('/seasons/:id/activate', authMiddleware, async (req, res) => {
+    try {
+      const season = await db.setActiveSeason(parseInt(req.params.id));
+      if (!season) return res.status(404).json({ error: 'Season not found' });
+      res.json({ season });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to activate season' });
+    }
+  });
+
+  router.put('/seasons/none/activate', authMiddleware, async (req, res) => {
+    try {
+      const p = db.getPool();
+      await p.query('UPDATE seasons SET active = false');
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to deactivate seasons' });
+    }
+  });
+
+  router.put('/matches/:matchId/meta', authMiddleware, async (req, res) => {
+    try {
+      const { patch, seasonId } = req.body;
+      await db.updateMatchMeta(req.params.matchId, { patch, seasonId });
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[API] Error updating match meta:', err.message);
+      res.status(500).json({ error: 'Failed to update match' });
+    }
+  });
+
   router.get('/synergy/heatmap', async (req, res) => {
     try {
-      const data = await db.getSynergyHeatmap();
+      const seasonId = req.query.season_id || null;
+      const data = await db.getSynergyHeatmap(seasonId);
       res.json(data);
     } catch (err) {
       console.error('[API] Error fetching synergy heatmap:', err.message);
@@ -297,7 +357,7 @@ function createApiRouter() {
   });
 
   router.post('/upload/init', authMiddleware, (req, res) => {
-    const { fileName, fileSize, totalChunks } = req.body;
+    const { fileName, fileSize, totalChunks, patch } = req.body;
     if (!fileName || !fileSize || !totalChunks) {
       return res.status(400).json({ error: 'Missing fileName, fileSize, or totalChunks' });
     }
@@ -324,9 +384,10 @@ function createApiRouter() {
       totalChunks: parsedChunks,
       chunksReceived: new Set(),
       startedAt: Date.now(),
+      patch: patch ? patch.trim() : null,
     });
 
-    console.log(`[API] Upload init: job=${jobId}, file=${fileName}, size=${(parsedSize / 1024 / 1024).toFixed(1)}MB, chunks=${parsedChunks}`);
+    console.log(`[API] Upload init: job=${jobId}, file=${fileName}, size=${(parsedSize / 1024 / 1024).toFixed(1)}MB, chunks=${parsedChunks}, patch=${patch || 'none'}`);
     res.json({ jobId });
   });
 
@@ -552,7 +613,8 @@ const parseQueue = [];
 let parseRunning = false;
 
 function enqueueParse(jobId, filePath, ip) {
-  parseQueue.push({ jobId, filePath, ip });
+  const job = uploadJobs.get(jobId);
+  parseQueue.push({ jobId, filePath, ip, patch: job ? job.patch : null });
   updateJobStep(jobId, 'Queued for parsing...');
   drainParseQueue();
 }
@@ -561,7 +623,7 @@ async function drainParseQueue() {
   if (parseRunning) return;
   parseRunning = true;
   while (parseQueue.length > 0) {
-    const { jobId, filePath, ip } = parseQueue.shift();
+    const { jobId, filePath, ip, patch } = parseQueue.shift();
     const pos = parseQueue.length;
     if (pos > 0) {
       for (let i = 0; i < parseQueue.length; i++) {
@@ -569,7 +631,7 @@ async function drainParseQueue() {
       }
     }
     try {
-      await processReplayJob(jobId, filePath, ip);
+      await processReplayJob(jobId, filePath, ip, patch);
     } catch (err) {
       console.error(`[API] Job ${jobId} unhandled error:`, err);
     }
@@ -577,7 +639,7 @@ async function drainParseQueue() {
   parseRunning = false;
 }
 
-async function processReplayJob(jobId, filePath, ip) {
+async function processReplayJob(jobId, filePath, ip, patch = null) {
   try {
     updateJobStep(jobId, 'Computing file hash...');
 
@@ -626,7 +688,9 @@ async function processReplayJob(jobId, filePath, ip) {
 
     updateJobStep(jobId, 'Recording match data...');
 
-    await db.recordMatch(matchStats, '', `web:${ip}`, fileHash);
+    const activeSeason = await db.getActiveSeason();
+    const seasonId = activeSeason ? activeSeason.id : null;
+    await db.recordMatch(matchStats, '', `web:${ip}`, fileHash, patch, seasonId);
 
     updateJobStep(jobId, 'Updating ratings...');
 

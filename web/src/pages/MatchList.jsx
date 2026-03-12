@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getMatches } from '../api';
+import { useSeason } from '../context/SeasonContext';
 
 function formatDuration(seconds) {
   if (!seconds) return '--';
@@ -16,20 +17,31 @@ function formatDate(dateStr) {
 }
 
 export default function MatchList() {
+  const { seasonId, seasons } = useSeason();
   const [data, setData] = useState({ matches: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const limit = 20;
 
   useEffect(() => {
+    setPage(0);
+  }, [seasonId]);
+
+  useEffect(() => {
     setLoading(true);
-    getMatches(limit, page * limit)
+    getMatches(limit, page * limit, seasonId)
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page]);
+  }, [page, seasonId]);
 
   const totalPages = Math.ceil(data.total / limit);
+
+  const getSeasonName = (id) => {
+    if (!id) return null;
+    const s = seasons.find(x => x.id === id);
+    return s ? s.name : null;
+  };
 
   return (
     <div>
@@ -61,10 +73,12 @@ export default function MatchList() {
                   <span className="match-duration">{formatDuration(match.duration)}</span>
                   <span className="match-players">{match.player_count || '?'} players</span>
                 </div>
-                {match.parse_method && (
+                {(match.parse_method || match.patch || match.season_id) && (
                   <div className="match-card-footer">
-                    <span className="parse-badge">{match.parse_method}</span>
+                    {match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
                     {match.lobby_name && <span className="lobby-name">{match.lobby_name}</span>}
+                    {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
+                    {match.season_id && <span className="season-badge">{getSeasonName(match.season_id) || `Season ${match.season_id}`}</span>}
                   </div>
                 )}
               </Link>

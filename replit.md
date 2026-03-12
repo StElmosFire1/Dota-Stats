@@ -49,6 +49,7 @@ The dashboard emphasizes clear data presentation, sortable tables, and detailed 
 - **node-fetch:** Used for HTTP requests to external APIs and replay file downloads.
 
 ## Recent Changes
+- 2026-03-12: Added seasons system — `seasons` table with active-season tracking; `patch` and `season_id` columns on `matches`. Season CRUD API routes. All stat pages (Players, OverallStats, Heroes, HeroBreakdown, Synergy, PositionStats, MatchList) now filter by active season via global SeasonSelector in nav. Upload page has patch input field (persisted in localStorage, stamped on each batch). Match detail shows patch/season badges and has admin "Edit Patch / Season" panel. Seasons admin page at /seasons for creating seasons and setting the active one.
 - 2026-03-11: Players page — split "Best Pos" into "Most Played" (mode position) and "Best Pos" (1-10 performance rating based on win rate, KDA, GPM). Score formula: min(10, winRate*3.5 + min(3.5, kda*0.7) + min(3.0, gpm/250)).
 - 2026-03-11: Position Stats — removed 3-game minimum (now configurable via dropdown: 1/2/3/5/10). Added "Player Profiles" tab showing expandable per-player position breakdown (like the Google Sheet layout).
 - 2026-03-11: Heroes page — now shows ALL 127 Dota 2 heroes alphabetically. Unplayed heroes appear dimmed with blank stats.

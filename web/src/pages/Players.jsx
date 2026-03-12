@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getAllPlayers, setNickname } from '../api';
+import { useSeason } from '../context/SeasonContext';
 
 const POS_SHORT = { 1: 'Pos 1', 2: 'Pos 2', 3: 'Pos 3', 4: 'Pos 4', 5: 'Pos 5' };
 
 export default function Players() {
+  const { seasonId } = useSeason();
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingKey, setEditingKey] = useState(null);
@@ -15,13 +17,13 @@ export default function Players() {
 
   const loadPlayers = () => {
     setLoading(true);
-    getAllPlayers()
+    getAllPlayers(seasonId)
       .then(data => setPlayers(data.players || []))
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
-  useEffect(loadPlayers, []);
+  useEffect(loadPlayers, [seasonId]);
 
   const getPlayerKey = (p) => p.player_key || (p.account_id > 0 ? p.account_id.toString() : p.persona_name);
   const getProfileLink = (p) => {

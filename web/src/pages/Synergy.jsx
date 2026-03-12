@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getSynergyHeatmap } from '../api';
+import { useSeason } from '../context/SeasonContext';
 
 function getWinRateColor(winRate) {
   if (winRate == null) return 'transparent';
@@ -20,17 +21,19 @@ function getTextColor(winRate) {
 }
 
 export default function Synergy() {
+  const { seasonId } = useSeason();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tooltip, setTooltip] = useState(null);
   const tooltipRef = useRef(null);
 
   useEffect(() => {
-    getSynergyHeatmap()
+    setLoading(true);
+    getSynergyHeatmap(seasonId)
       .then(d => setData(d))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [seasonId]);
 
   const handleMouseEnter = (e, cellData) => {
     const rect = e.currentTarget.getBoundingClientRect();

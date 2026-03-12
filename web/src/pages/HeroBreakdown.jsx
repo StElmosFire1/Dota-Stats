@@ -2,19 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getPlayerHeroProfiles } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
+import { useSeason } from '../context/SeasonContext';
 
 export default function HeroBreakdown() {
+  const { seasonId } = useSeason();
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState({});
 
   useEffect(() => {
     setLoading(true);
-    getPlayerHeroProfiles()
+    getPlayerHeroProfiles(seasonId)
       .then(data => setPlayers(data.players || []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [seasonId]);
 
   const toggleExpanded = (key) => {
     setExpanded(prev => ({ ...prev, [key]: !prev[key] }));

@@ -117,6 +117,18 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_items_match ON player_items(match_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_abilities_match ON player_abilities(match_id)`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS seasons (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        start_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        active BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch VARCHAR(20)`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS season_id INTEGER REFERENCES seasons(id)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -125,15 +137,58 @@ async function init() {
   }
 }
 
-async function recordMatch(matchStats, lobbyName, recordedBy, fileHash) {
+async function getSeasons() {
+  const p = getPool();
+  const result = await p.query(`SELECT * FROM seasons ORDER BY start_date DESC`);
+  return result.rows;
+}
+
+async function getActiveSeason() {
+  const p = getPool();
+  const result = await p.query(`SELECT * FROM seasons WHERE active = true LIMIT 1`);
+  return result.rows[0] || null;
+}
+
+async function createSeason(name) {
+  const p = getPool();
+  await p.query(`UPDATE seasons SET active = false`);
+  const result = await p.query(
+    `INSERT INTO seasons (name, active) VALUES ($1, true) RETURNING *`,
+    [name]
+  );
+  return result.rows[0];
+}
+
+async function setActiveSeason(id) {
+  const p = getPool();
+  await p.query(`UPDATE seasons SET active = false`);
+  const result = await p.query(
+    `UPDATE seasons SET active = true WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  return result.rows[0];
+}
+
+async function updateMatchMeta(matchId, { patch, seasonId }) {
+  const p = getPool();
+  const updates = [];
+  const params = [];
+  if (patch !== undefined) { updates.push(`patch = $${params.length + 1}`); params.push(patch || null); }
+  if (seasonId !== undefined) { updates.push(`season_id = $${params.length + 1}`); params.push(seasonId || null); }
+  if (updates.length === 0) return;
+  params.push(matchId);
+  await p.query(`UPDATE matches SET ${updates.join(', ')} WHERE match_id = $${params.length}`, params);
+}
+
+async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, seasonId) {
   const p = getPool();
   const client = await p.connect();
   try {
     await client.query('BEGIN');
 
     await client.query(
-      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (match_id) DO NOTHING`,
       [
         matchStats.matchId,
@@ -145,6 +200,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash) {
         recordedBy || '',
         matchStats.parseMethod || '',
         fileHash || null,
+        patch || null,
+        seasonId || null,
       ]
     );
 
@@ -255,21 +312,28 @@ async function isFileHashRecorded(fileHash) {
   return result.rows.length > 0 ? result.rows[0].match_id : null;
 }
 
-async function getMatches(limit = 50, offset = 0) {
+async function getMatches(limit = 50, offset = 0, seasonId = null) {
   const p = getPool();
+  const params = [limit, offset];
+  const seasonClause = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
   const result = await p.query(
     `SELECT m.*,
        (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count
      FROM matches m
+     WHERE 1=1${seasonClause}
      ORDER BY m.date DESC
      LIMIT $1 OFFSET $2`,
-    [limit, offset]
+    params
   );
   return result.rows;
 }
 
-async function getMatchCount() {
+async function getMatchCount(seasonId = null) {
   const p = getPool();
+  if (seasonId) {
+    const result = await p.query('SELECT COUNT(*) as count FROM matches WHERE season_id = $1', [parseInt(seasonId)]);
+    return parseInt(result.rows[0].count);
+  }
   const result = await p.query('SELECT COUNT(*) as count FROM matches');
   return parseInt(result.rows[0].count);
 }
@@ -532,8 +596,10 @@ async function getAllNicknames() {
   return result.rows;
 }
 
-async function getAllPlayers() {
+async function getAllPlayers(seasonId = null) {
   const p = getPool();
+  const params1 = [];
+  const sc = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
   const result = await p.query(
     `SELECT
        COALESCE(NULLIF(ps.account_id, 0), 0) as account_id,
@@ -561,13 +627,17 @@ async function getAllPlayers() {
        FROM player_stats ps2
        WHERE ps2.match_id = ps.match_id AND ps2.team = ps.team
      ) team_kills ON true
+     WHERE 1=1${sc}
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        COALESCE(NULLIF(ps.account_id, 0), 0),
        n.nickname
-     ORDER BY games_played DESC`
+     ORDER BY games_played DESC`,
+    params1
   );
 
+  const params2 = [];
+  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
   const posStats = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -579,26 +649,37 @@ async function getAllPlayers() {
        ROUND(AVG(ps.assists), 1) as avg_assists
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE ps.position > 0
+     WHERE ps.position > 0${sc2}
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
-       ps.position`
+       ps.position`,
+    params2
   );
 
+  const params3 = [];
+  const sc3 = seasonId ? ` WHERE m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
   const teamKillsRes = await p.query(
     `SELECT ps.match_id, ps.team, SUM(ps.kills) as team_kills
-     FROM player_stats ps GROUP BY ps.match_id, ps.team`
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id${sc3}
+     GROUP BY ps.match_id, ps.team`,
+    params3
   );
   const teamKillsMap = {};
   for (const row of teamKillsRes.rows) {
     teamKillsMap[`${row.match_id}_${row.team}`] = parseInt(row.team_kills) || 0;
   }
 
+  const params4 = [];
+  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}` : '';
   const posKiData = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
        ps.position, ps.match_id, ps.team, ps.kills, ps.assists
-     FROM player_stats ps WHERE ps.position > 0`
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.position > 0${sc4}`,
+    params4
   );
   const kiByPlayerPos = {};
   for (const row of posKiData.rows) {
@@ -644,8 +725,10 @@ async function getAllPlayers() {
   return result.rows;
 }
 
-async function getHeroStats() {
+async function getHeroStats(seasonId = null) {
   const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
   const result = await p.query(
     `SELECT
        ps.hero_id,
@@ -663,15 +746,18 @@ async function getHeroStats() {
        ROUND(AVG(ps.last_hits), 0) as avg_last_hits
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE ps.hero_id > 0
+     WHERE ps.hero_id > 0${sc}
      GROUP BY ps.hero_id, ps.hero_name
-     ORDER BY games DESC`
+     ORDER BY games DESC`,
+    params
   );
   return result.rows;
 }
 
-async function getOverallStats() {
+async function getOverallStats(seasonId = null) {
   const p = getPool();
+  const params1 = [];
+  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
   const result = await p.query(
     `SELECT
        COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END) as player_key,
@@ -701,27 +787,38 @@ async function getOverallStats() {
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE 1=1${sc1}
      GROUP BY
        COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END)
-     ORDER BY games DESC`
+     ORDER BY games DESC`,
+    params1
   );
 
+  const params2 = [];
+  const sc2 = seasonId ? ` WHERE m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
   const teamKills = await p.query(
     `SELECT ps.match_id, ps.team, SUM(ps.kills) as team_kills
      FROM player_stats ps
-     GROUP BY ps.match_id, ps.team`
+     JOIN matches m ON m.match_id = ps.match_id${sc2}
+     GROUP BY ps.match_id, ps.team`,
+    params2
   );
   const teamKillsMap = {};
   for (const row of teamKills.rows) {
     teamKillsMap[`${row.match_id}_${row.team}`] = parseInt(row.team_kills) || 0;
   }
 
+  const params3 = [];
+  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
   const kiData = await p.query(
     `SELECT
        COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END) as player_key,
        ps.match_id, ps.team, ps.kills, ps.assists
      FROM player_stats ps
-     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0`
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE 1=1${sc3}`,
+    params3
   );
   const kiByPlayer = {};
   for (const row of kiData.rows) {
@@ -742,8 +839,10 @@ async function getOverallStats() {
   return result.rows;
 }
 
-async function getPositionStats(position, minGames = 1) {
+async function getPositionStats(position, minGames = 1, seasonId = null) {
   const p = getPool();
+  const params1 = [position, minGames];
+  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
   const result = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -765,33 +864,40 @@ async function getPositionStats(position, minGames = 1) {
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
-     WHERE ps.position = $1
+     WHERE ps.position = $1${sc1}
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        COALESCE(NULLIF(ps.account_id, 0), 0),
        n.nickname
      HAVING COUNT(*) >= $2
      ORDER BY SUM(CASE WHEN (team = 'radiant' AND m.radiant_win = true) OR (team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END)::float / GREATEST(COUNT(*), 1) DESC, COUNT(*) DESC`,
-    [position, minGames]
+    params1
   );
 
+  const params2 = [];
+  const sc2 = seasonId ? ` WHERE m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
   const teamKills = await p.query(
     `SELECT ps.match_id, ps.team, SUM(ps.kills) as team_kills
      FROM player_stats ps
-     GROUP BY ps.match_id, ps.team`
+     JOIN matches m ON m.match_id = ps.match_id${sc2}
+     GROUP BY ps.match_id, ps.team`,
+    params2
   );
   const teamKillsMap = {};
   for (const row of teamKills.rows) {
     teamKillsMap[`${row.match_id}_${row.team}`] = parseInt(row.team_kills) || 0;
   }
 
+  const params3 = [position];
+  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
   const kiData = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
        ps.match_id, ps.team, ps.kills, ps.assists
      FROM player_stats ps
-     WHERE ps.position = $1`,
-    [position]
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.position = $1${sc3}`,
+    params3
   );
   const kiByPlayer = {};
   for (const row of kiData.rows) {
@@ -812,8 +918,10 @@ async function getPositionStats(position, minGames = 1) {
   return result.rows;
 }
 
-async function getSynergyMatrix() {
+async function getSynergyMatrix(seasonId = null) {
   const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
   const result = await p.query(
     `SELECT
        ps1.persona_name as player_a,
@@ -825,7 +933,8 @@ async function getSynergyMatrix() {
      FROM player_stats ps1
      JOIN player_stats ps2 ON ps1.match_id = ps2.match_id AND ps1.id != ps2.id
      JOIN matches m ON m.match_id = ps1.match_id
-     WHERE ps1.persona_name != '' AND ps2.persona_name != ''`
+     WHERE ps1.persona_name != '' AND ps2.persona_name != ''${sc}`,
+    params
   );
 
   const teammate = {};
@@ -1090,8 +1199,10 @@ async function updatePlayerPosition(matchId, slot, position) {
   );
 }
 
-async function getSynergyHeatmap() {
+async function getSynergyHeatmap(seasonId = null) {
   const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
   const result = await p.query(
     `SELECT
        ps1.persona_name as player_a,
@@ -1107,7 +1218,8 @@ async function getSynergyHeatmap() {
      JOIN matches m ON m.match_id = ps1.match_id
      LEFT JOIN nicknames n1 ON n1.account_id = ps1.account_id AND ps1.account_id != 0
      LEFT JOIN nicknames n2 ON n2.account_id = ps2.account_id AND ps2.account_id != 0
-     WHERE ps1.persona_name != '' AND ps2.persona_name != ''`
+     WHERE ps1.persona_name != '' AND ps2.persona_name != ''${sc}`,
+    params
   );
 
   const playerNames = {};
@@ -1157,8 +1269,10 @@ async function getSynergyHeatmap() {
   return { players, matrix };
 }
 
-async function getPlayerPositionProfiles() {
+async function getPlayerPositionProfiles(seasonId = null) {
   const p = getPool();
+  const params1 = [];
+  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
   const result = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1173,13 +1287,17 @@ async function getPlayerPositionProfiles() {
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE 1=1${sc1}
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        COALESCE(NULLIF(ps.account_id, 0), 0),
        n.nickname
-     ORDER BY total_games DESC`
+     ORDER BY total_games DESC`,
+    params1
   );
 
+  const params2 = [];
+  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
   const posBreakdown = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1191,11 +1309,12 @@ async function getPlayerPositionProfiles() {
        ROUND(AVG(ps.assists), 1) as avg_assists
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE ps.position > 0
+     WHERE ps.position > 0${sc2}
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        ps.position
-     ORDER BY ps.position`
+     ORDER BY ps.position`,
+    params2
   );
 
   const breakdownByPlayer = {};
@@ -1232,8 +1351,10 @@ async function getPlayerPositionProfiles() {
   return players;
 }
 
-async function getPlayerHeroProfiles() {
+async function getPlayerHeroProfiles(seasonId = null) {
   const p = getPool();
+  const params1 = [];
+  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
   const result = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1249,13 +1370,17 @@ async function getPlayerHeroProfiles() {
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE 1=1${sc1}
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        COALESCE(NULLIF(ps.account_id, 0), 0),
        n.nickname
-     ORDER BY total_games DESC`
+     ORDER BY total_games DESC`,
+    params1
   );
 
+  const params2 = [];
+  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
   const heroBreakdown = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1272,11 +1397,12 @@ async function getPlayerHeroProfiles() {
        SUM(CASE WHEN ps.team = 'radiant' AND m.radiant_win = true THEN 1 ELSE 0 END) as radiant_wins
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE ps.hero_id > 0
+     WHERE ps.hero_id > 0${sc2}
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        ps.hero_id, ps.hero_name
-     ORDER BY ps.hero_name`
+     ORDER BY ps.hero_name`,
+    params2
   );
 
   const heroByPlayer = {};
@@ -1352,4 +1478,9 @@ module.exports = {
   getMatchHistory,
   recalculateAllRatings,
   updatePlayerPosition,
+  getSeasons,
+  getActiveSeason,
+  createSeason,
+  setActiveSeason,
+  updateMatchMeta,
 };

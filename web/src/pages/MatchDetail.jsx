@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
+import { useSeason } from '../context/SeasonContext';
 
 const POSITION_NAMES = {
   0: '-',
@@ -305,20 +306,44 @@ function ExpandedStats({ players }) {
 export default function MatchDetail() {
   const { matchId } = useParams();
   const navigate = useNavigate();
+  const { seasons } = useSeason();
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showDelete, setShowDelete] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [showMeta, setShowMeta] = useState(false);
+  const [metaPatch, setMetaPatch] = useState('');
+  const [metaSeason, setMetaSeason] = useState('');
+  const [savingMeta, setSavingMeta] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     getMatch(matchId)
-      .then(setMatch)
+      .then(m => {
+        setMatch(m);
+        setMetaPatch(m.patch || '');
+        setMetaSeason(m.season_id ? String(m.season_id) : '');
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [matchId]);
+
+  const handleSaveMeta = async () => {
+    const uploadKey = localStorage.getItem('uploadKey');
+    if (!uploadKey) { alert('Set an upload key first (Upload page)'); return; }
+    setSavingMeta(true);
+    try {
+      await updateMatchMeta(matchId, { patch: metaPatch || null, seasonId: metaSeason ? parseInt(metaSeason) : null }, uploadKey);
+      setMatch(prev => ({ ...prev, patch: metaPatch || null, season_id: metaSeason ? parseInt(metaSeason) : null }));
+      setShowMeta(false);
+    } catch (err) {
+      alert('Save failed: ' + err.message);
+    } finally {
+      setSavingMeta(false);
+    }
+  };
 
   const handlePositionUpdate = (slot, newPosition) => {
     setMatch(prev => ({
@@ -371,6 +396,11 @@ export default function MatchDetail() {
             })}
           </span>
           {match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
+          {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
+          {match.season_id && (() => {
+            const s = seasons.find(x => x.id === match.season_id);
+            return <span className="season-badge">{s ? s.name : `Season ${match.season_id}`}</span>;
+          })()}
         </div>
       </div>
 
@@ -408,6 +438,75 @@ export default function MatchDetail() {
       )}
 
       <div style={{ marginTop: '2rem', borderTop: '1px solid #333', paddingTop: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: showMeta ? '0.75rem' : 0, flexWrap: 'wrap' }}>
+          {!showMeta && (
+            <button
+              onClick={() => setShowMeta(true)}
+              style={{
+                background: 'transparent', color: '#666', border: '1px solid #444',
+                padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+              }}
+            >
+              Edit Patch / Season
+            </button>
+          )}
+        </div>
+
+        {showMeta && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem', padding: '0.75rem', background: '#1a1a2e', borderRadius: '6px', border: '1px solid #334155' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <label style={{ color: '#888', fontSize: '0.75rem' }}>Patch</label>
+              <input
+                type="text"
+                placeholder="e.g. 7.38"
+                value={metaPatch}
+                onChange={e => setMetaPatch(e.target.value)}
+                style={{
+                  background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
+                  padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem', width: '100px',
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <label style={{ color: '#888', fontSize: '0.75rem' }}>Season</label>
+              <select
+                value={metaSeason}
+                onChange={e => setMetaSeason(e.target.value)}
+                style={{
+                  background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
+                  padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem',
+                }}
+              >
+                <option value="">None</option>
+                {seasons.map(s => (
+                  <option key={s.id} value={String(s.id)}>{s.name}{s.is_active ? ' ★' : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'flex-end' }}>
+              <button
+                onClick={handleSaveMeta}
+                disabled={savingMeta}
+                style={{
+                  background: '#2563eb', color: 'white', border: 'none',
+                  padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+                }}
+              >
+                {savingMeta ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => { setShowMeta(false); setMetaPatch(match.patch || ''); setMetaSeason(match.season_id ? String(match.season_id) : ''); }}
+                style={{
+                  background: 'transparent', color: '#888', border: '1px solid #444',
+                  padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {!showDelete ? (
           <button
             onClick={() => setShowDelete(true)}

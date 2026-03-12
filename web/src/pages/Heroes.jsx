@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getHeroStats } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
+import { useSeason } from '../context/SeasonContext';
 
 const ALL_HEROES = {
   1: 'Anti-Mage', 2: 'Axe', 3: 'Bane', 4: 'Bloodseeker', 5: 'Crystal Maiden',
@@ -36,17 +37,19 @@ const ALL_HEROES = {
 };
 
 export default function Heroes() {
+  const { seasonId } = useSeason();
   const [playedHeroes, setPlayedHeroes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState('hero_name');
   const [sortDir, setSortDir] = useState(1);
 
   useEffect(() => {
-    getHeroStats()
+    setLoading(true);
+    getHeroStats(seasonId)
       .then(data => setPlayedHeroes(data.heroes || []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [seasonId]);
 
   const playedMap = {};
   for (const h of playedHeroes) {

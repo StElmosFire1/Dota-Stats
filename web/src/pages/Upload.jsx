@@ -78,6 +78,7 @@ function FileQueueItem({ item }) {
 export default function Upload() {
   const [queue, setQueue] = useState(() => loadPersistedQueue());
   const [uploadKey, setUploadKey] = useState(() => localStorage.getItem('uploadKey') || '');
+  const [patch, setPatch] = useState(() => localStorage.getItem('uploadPatch') || '');
   const fileRef = useRef(null);
   const pollingJobsRef = useRef(new Set());
   const uploadingRef = useRef(new Set());
@@ -176,7 +177,7 @@ export default function Upload() {
     try {
       const result = await uploadReplayChunked(item.file, savedKey, (p) => {
         safeUpdateItem(itemId, { progress: { percent: p.percent, detail: p.detail } });
-      });
+      }, item.patch || '');
 
       if (result.jobId) {
         safeUpdateItem(itemId, {
@@ -215,11 +216,13 @@ export default function Upload() {
     );
     if (validFiles.length === 0) return;
 
+    const currentPatch = localStorage.getItem('uploadPatch') || '';
     const newItems = validFiles.map(f => ({
       id: `${f.name}-${f.size}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       file: f,
       fileName: f.name,
       fileSize: f.size,
+      patch: currentPatch,
       status: 'pending',
       progress: null,
       result: null,
@@ -266,6 +269,22 @@ export default function Upload() {
             }}
             placeholder="Enter your upload key"
             className="form-input"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="patchInput">Patch <span style={{ color: '#888', fontWeight: 400 }}>(optional — applied to all files added below)</span></label>
+          <input
+            id="patchInput"
+            type="text"
+            value={patch}
+            onChange={(e) => {
+              setPatch(e.target.value);
+              localStorage.setItem('uploadPatch', e.target.value);
+            }}
+            placeholder="e.g. 7.38"
+            className="form-input"
+            style={{ maxWidth: '200px' }}
           />
         </div>
 

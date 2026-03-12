@@ -11,7 +11,10 @@ import OverallStats from './pages/OverallStats';
 import PositionStats from './pages/PositionStats';
 import Synergy from './pages/Synergy';
 import Upload from './pages/Upload';
+import Seasons from './pages/Seasons';
 import UploadIndicator from './components/UploadIndicator';
+import SeasonSelector from './components/SeasonSelector';
+import { SeasonProvider } from './context/SeasonContext';
 
 function Nav() {
   const location = useLocation();
@@ -32,7 +35,9 @@ function Nav() {
         <Link to="/players" className={isActive('/players')}>Players</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <Link to="/upload" className={isActive('/upload')}>Upload</Link>
+        <Link to="/seasons" className={isActive('/seasons')}>Seasons</Link>
       </div>
+      <SeasonSelector />
     </nav>
   );
 }
@@ -40,24 +45,27 @@ function Nav() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Nav />
-      <UploadIndicator />
-      <main className="container">
-        <Routes>
-          <Route path="/" element={<Leaderboard />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
-          <Route path="/matches" element={<MatchList />} />
-          <Route path="/match/:matchId" element={<MatchDetail />} />
-          <Route path="/player/:accountId" element={<PlayerProfile />} />
-          <Route path="/heroes" element={<Heroes />} />
-          <Route path="/hero-breakdown" element={<HeroBreakdown />} />
-          <Route path="/players" element={<Players />} />
-          <Route path="/stats" element={<OverallStats />} />
-          <Route path="/positions" element={<PositionStats />} />
-          <Route path="/synergy" element={<Synergy />} />
-          <Route path="/upload" element={<Upload />} />
-        </Routes>
-      </main>
+      <SeasonProvider>
+        <Nav />
+        <UploadIndicator />
+        <main className="container">
+          <Routes>
+            <Route path="/" element={<Leaderboard />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/matches" element={<MatchList />} />
+            <Route path="/match/:matchId" element={<MatchDetail />} />
+            <Route path="/player/:accountId" element={<PlayerProfile />} />
+            <Route path="/heroes" element={<Heroes />} />
+            <Route path="/hero-breakdown" element={<HeroBreakdown />} />
+            <Route path="/players" element={<Players />} />
+            <Route path="/stats" element={<OverallStats />} />
+            <Route path="/positions" element={<PositionStats />} />
+            <Route path="/synergy" element={<Synergy />} />
+            <Route path="/upload" element={<Upload />} />
+            <Route path="/seasons" element={<Seasons />} />
+          </Routes>
+        </main>
+      </SeasonProvider>
     </BrowserRouter>
   );
 }

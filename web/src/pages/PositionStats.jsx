@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getPositionStats, getPlayerPositionProfiles } from '../api';
+import { useSeason } from '../context/SeasonContext';
 
 const POSITION_NAMES = {
   1: 'Safe Lane (Pos 1)',
@@ -19,6 +20,7 @@ function formatNum(v) {
 }
 
 function PositionStatsView() {
+  const { seasonId } = useSeason();
   const [position, setPosition] = useState(1);
   const [stats, setStats] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,11 +30,11 @@ function PositionStatsView() {
 
   useEffect(() => {
     setLoading(true);
-    getPositionStats(position, minGames)
+    getPositionStats(position, minGames, seasonId)
       .then(data => setStats(data.stats || []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [position, minGames]);
+  }, [position, minGames, seasonId]);
 
   const sorted = [...stats].sort((a, b) => {
     let va = a[sortField], vb = b[sortField];
@@ -156,17 +158,18 @@ function PositionStatsView() {
 }
 
 function PlayerProfilesView() {
+  const { seasonId } = useSeason();
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState({});
 
   useEffect(() => {
     setLoading(true);
-    getPlayerPositionProfiles()
+    getPlayerPositionProfiles(seasonId)
       .then(data => setPlayers(data.players || []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [seasonId]);
 
   const toggleExpanded = (key) => {
     setExpanded(prev => ({ ...prev, [key]: !prev[key] }));

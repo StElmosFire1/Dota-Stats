@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getOverallStats } from '../api';
+import { useSeason } from '../context/SeasonContext';
 
 export default function OverallStats() {
+  const { seasonId } = useSeason();
   const [stats, setStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState('games');
   const [sortDir, setSortDir] = useState(-1);
 
   useEffect(() => {
-    getOverallStats()
+    setLoading(true);
+    getOverallStats(seasonId)
       .then(data => setStats(data.stats || []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [seasonId]);
 
   const sorted = [...stats].sort((a, b) => {
     let va = a[sortField], vb = b[sortField];

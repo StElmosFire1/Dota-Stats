@@ -9,8 +9,12 @@ async function fetchJson(url) {
   return res.json();
 }
 
-export async function getMatches(limit = 50, offset = 0) {
-  return fetchJson(`/matches?limit=${limit}&offset=${offset}`);
+function seasonParam(seasonId) {
+  return seasonId ? `&season_id=${encodeURIComponent(seasonId)}` : '';
+}
+
+export async function getMatches(limit = 50, offset = 0, seasonId = null) {
+  return fetchJson(`/matches?limit=${limit}&offset=${offset}${seasonParam(seasonId)}`);
 }
 
 export async function getMatch(matchId) {
@@ -31,6 +35,20 @@ export async function deleteMatch(matchId, uploadKey, reason) {
   return data;
 }
 
+export async function updateMatchMeta(matchId, { patch, seasonId }, uploadKey) {
+  const res = await fetch(BASE + `/matches/${matchId}/meta`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Upload-Key': uploadKey,
+    },
+    body: JSON.stringify({ patch, seasonId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update match');
+  return data;
+}
+
 export async function getLeaderboard(limit = 50) {
   return fetchJson(`/leaderboard?limit=${limit}`);
 }
@@ -39,40 +57,40 @@ export async function getPlayer(accountId) {
   return fetchJson(`/players/${accountId}`);
 }
 
-export async function getAllPlayers() {
-  return fetchJson('/players');
+export async function getAllPlayers(seasonId = null) {
+  return fetchJson(`/players?x=1${seasonParam(seasonId)}`);
 }
 
-export async function getHeroStats() {
-  return fetchJson('/heroes');
+export async function getHeroStats(seasonId = null) {
+  return fetchJson(`/heroes?x=1${seasonParam(seasonId)}`);
 }
 
 export async function getHeroPlayers(heroId) {
   return fetchJson(`/heroes/${heroId}/players`);
 }
 
-export async function getOverallStats() {
-  return fetchJson('/overall-stats');
+export async function getOverallStats(seasonId = null) {
+  return fetchJson(`/overall-stats?x=1${seasonParam(seasonId)}`);
 }
 
-export async function getPositionStats(position, minGames = 1) {
-  return fetchJson(`/position-stats/${position}?min_games=${minGames}`);
+export async function getPositionStats(position, minGames = 1, seasonId = null) {
+  return fetchJson(`/position-stats/${position}?min_games=${minGames}${seasonParam(seasonId)}`);
 }
 
-export async function getPlayerPositionProfiles() {
-  return fetchJson('/player-profiles/positions');
+export async function getPlayerPositionProfiles(seasonId = null) {
+  return fetchJson(`/player-profiles/positions?x=1${seasonParam(seasonId)}`);
 }
 
-export async function getPlayerHeroProfiles() {
-  return fetchJson('/player-profiles/heroes');
+export async function getPlayerHeroProfiles(seasonId = null) {
+  return fetchJson(`/player-profiles/heroes?x=1${seasonParam(seasonId)}`);
 }
 
-export async function getSynergy() {
-  return fetchJson('/synergy');
+export async function getSynergy(seasonId = null) {
+  return fetchJson(`/synergy?x=1${seasonParam(seasonId)}`);
 }
 
-export async function getSynergyHeatmap() {
-  return fetchJson('/synergy/heatmap');
+export async function getSynergyHeatmap(seasonId = null) {
+  return fetchJson(`/synergy/heatmap?x=1${seasonParam(seasonId)}`);
 }
 
 export async function updatePlayerPosition(matchId, slot, position, uploadKey) {
@@ -115,10 +133,42 @@ export async function setNickname(accountId, nickname, uploadKey) {
   return data;
 }
 
+export async function getSeasons() {
+  return fetchJson('/seasons');
+}
+
+export async function createSeason(name, uploadKey) {
+  const res = await fetch(BASE + '/seasons', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Upload-Key': uploadKey,
+    },
+    body: JSON.stringify({ name }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create season');
+  return data;
+}
+
+export async function activateSeason(id, uploadKey) {
+  const url = id === null ? '/seasons/none/activate' : `/seasons/${id}/activate`;
+  const res = await fetch(BASE + url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Upload-Key': uploadKey,
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to activate season');
+  return data;
+}
+
 const CHUNK_SIZE = 5 * 1024 * 1024;
 const PARALLEL_UPLOADS = 3;
 
-export async function uploadReplayChunked(file, uploadKey, onProgress) {
+export async function uploadReplayChunked(file, uploadKey, onProgress, patch = null) {
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
   onProgress({ phase: 'init', percent: 0, detail: 'Starting upload...' });
@@ -133,6 +183,7 @@ export async function uploadReplayChunked(file, uploadKey, onProgress) {
       fileName: file.name,
       fileSize: file.size,
       totalChunks,
+      patch: patch || null,
     }),
   });
   const initData = await initRes.json();
