@@ -958,61 +958,76 @@ class ReplayParser {
       if (p.heroId > 0) heroTeamMap[p.heroId] = p.team; // 'radiant' or 'dire'
     }
 
-    // Step 3: log hero IDs to diagnose any mismatch
+    // Step 3: log IDs for diagnostics
     const playerHeroIds = Object.keys(heroTeamMap).map(Number);
     const pickHeroIds = draftDeduped.filter(d => d.isPick).map(d => d.heroId);
     console.log(`[Draft] playerHeroIds: ${playerHeroIds.join(',')}`);
     console.log(`[Draft] pickHeroIds:   ${pickHeroIds.join(',')}`);
 
-    // Step 4: find radiant rawTeam value using hero cross-reference
-    let radiantRawTeam = null;
-    let direRawTeam = null;
-    for (const d of draftDeduped) {
-      if (d.isPick) {
-        const pt = heroTeamMap[d.heroId] || heroTeamMap[String(d.heroId)];
-        if (pt === 'radiant' && radiantRawTeam === null) radiantRawTeam = d.rawTeam;
-        if (pt === 'dire' && direRawTeam === null) direRawTeam = d.rawTeam;
-        if (radiantRawTeam !== null && direRawTeam !== null) break;
-      }
-    }
+    // Step 4: Determine which team went first using pick→player cross-reference.
+    // CM draft pattern (0-indexed sequence position, 24 actions total):
+    //   Bans  0-7:  A,B,A,B,A,B,A,B
+    //   Picks 8-11: A,B,A,B
+    //   Bans 12-15: B,A,B,A
+    //   Picks 16-19: B,A,B,A
+    //   Bans 20-21: A,B
+    //   Picks 22-23: A,B
+    // where A = team that went first (0), B = other team (1)
+    const CM_PATTERN = [
+      0,1,0,1,0,1,0,1,  // bans phase 1
+      0,1,0,1,           // picks phase 1
+      1,0,1,0,           // bans phase 2
+      1,0,1,0,           // picks phase 2
+      0,1,               // bans phase 3
+      0,1,               // picks phase 3
+    ];
 
-    // Fallback: if hero cross-reference failed, count rawTeam occurrences among picks.
-    // In CM each team picks exactly 5 heroes, so two distinct rawTeam values should each appear 5 times.
-    if (radiantRawTeam === null) {
-      const pickTeamCounts = {};
-      for (const d of draftDeduped) {
-        if (d.isPick) {
-          const key = String(d.rawTeam);
-          pickTeamCounts[key] = (pickTeamCounts[key] || 0) + 1;
-        }
-      }
-      const distinctTeams = Object.keys(pickTeamCounts).sort((a, b) => Number(a) - Number(b));
-      if (distinctTeams.length >= 2) {
-        // Lower value = radiant by Dota convention
-        radiantRawTeam = isNaN(Number(distinctTeams[0])) ? distinctTeams[0] : Number(distinctTeams[0]);
-        direRawTeam = isNaN(Number(distinctTeams[1])) ? distinctTeams[1] : Number(distinctTeams[1]);
-      } else if (distinctTeams.length === 1) {
-        // All picks same rawTeam — try treating null/0 as one team and the value as the other
-        radiantRawTeam = null; // will use fallback below
-      }
-      console.log(`[Draft] fallback count method — pickTeamCounts: ${JSON.stringify(pickTeamCounts)} => radiant=${radiantRawTeam} dire=${direRawTeam}`);
-    }
+    // For each pick find its team from player data (hero ID cross-reference)
+    // heroTeamMap keys might be string or number, so coerce both sides to Number
+    const getPlayerTeam = (heroId) => {
+      const id = Number(heroId);
+      return heroTeamMap[id] || heroTeamMap[String(id)] || null;
+    };
 
-    console.log(`[Draft] rawTeam mapping — radiant=${radiantRawTeam} dire=${direRawTeam}`);
-
-    // Step 5: assign correct team to every entry
-    const draft = draftDeduped.map(d => {
-      let team;
-      const pt = heroTeamMap[d.heroId] || heroTeamMap[String(d.heroId)];
-      if (d.isPick && pt != null) {
-        // Picks: use actual player team (most reliable)
-        team = pt === 'radiant' ? 0 : 1;
-      } else if (radiantRawTeam !== null && direRawTeam !== null) {
-        // Bans (or picks where hero lookup failed): use inferred rawTeam mapping
-        team = d.rawTeam === radiantRawTeam ? 0 : 1;
+    // Determine radiantFirst: is the first-picking team radiant?
+    // The first pick is at CM sequence position 8.
+    let radiantFirst = null; // true = radiant goes first, false = dire goes first
+    for (let i = 0; i < draftDeduped.length; i++) {
+      const d = draftDeduped[i];
+      if (!d.isPick) continue;
+      const pt = getPlayerTeam(d.heroId);
+      if (pt == null) continue;
+      // Which CM pattern slot does this pick correspond to?
+      // Sequence position = i (since draftDeduped is sorted by order)
+      const seqPos = i < CM_PATTERN.length ? i : null;
+      if (seqPos == null) continue;
+      const isTeamA = CM_PATTERN[seqPos] === 0; // 0 = team A in pattern
+      if (pt === 'radiant') {
+        radiantFirst = isTeamA; // radiant is team A if this pick is team A's slot
       } else {
-        // Last resort fallback
-        team = d.rawTeam === 3 ? 1 : 0;
+        radiantFirst = !isTeamA; // radiant is team B if this pick is team B's slot
+      }
+      break; // stop after first successfully resolved pick
+    }
+    console.log(`[Draft] radiantFirst=${radiantFirst} (from hero cross-reference)`);
+
+    // Step 5: assign team to every entry using CM pattern
+    const draft = draftDeduped.map((d, i) => {
+      let team;
+      if (i < CM_PATTERN.length && radiantFirst !== null) {
+        // Use CM pattern: CM_PATTERN[i]=0 means team A, 1 means team B
+        const isTeamA = CM_PATTERN[i] === 0;
+        const isRadiant = radiantFirst ? isTeamA : !isTeamA;
+        team = isRadiant ? 0 : 1;
+      } else {
+        // Fallback: use heroTeamMap directly for picks, rawTeam convention for bans
+        const pt = getPlayerTeam(d.heroId);
+        if (d.isPick && pt != null) {
+          team = pt === 'radiant' ? 0 : 1;
+        } else {
+          // rawTeam: 2=radiant, 3=dire in Dota protobuf
+          team = d.rawTeam === 3 ? 1 : 0;
+        }
       }
       return { heroId: d.heroId, isPick: d.isPick, order: d.order, team };
     });
