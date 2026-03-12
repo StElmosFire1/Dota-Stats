@@ -184,8 +184,8 @@ function createApiRouter() {
   router.get('/heroes', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
-      const heroes = await db.getHeroStats(seasonId);
-      res.json({ heroes });
+      const data = await db.getHeroStats(seasonId);
+      res.json(data);
     } catch (err) {
       console.error('[API] Error fetching hero stats:', err.message);
       res.status(500).json({ error: 'Failed to fetch hero stats' });

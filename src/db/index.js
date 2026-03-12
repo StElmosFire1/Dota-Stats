@@ -129,6 +129,19 @@ async function init() {
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch VARCHAR(20)`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS season_id INTEGER REFERENCES seasons(id)`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS match_draft (
+        id SERIAL PRIMARY KEY,
+        match_id VARCHAR(50) NOT NULL,
+        hero_id INTEGER NOT NULL,
+        is_pick BOOLEAN NOT NULL,
+        order_num INTEGER DEFAULT 0,
+        team INTEGER DEFAULT 0
+      );
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_match_id ON match_draft(match_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_hero_id ON match_draft(hero_id)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -281,6 +294,17 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
             [matchStats.matchId, player.slot || 0, ability.abilityName || '', ability.abilityLevel || 0, ability.time || 0]
           );
         }
+      }
+    }
+
+    if (matchStats.draft && matchStats.draft.length > 0) {
+      for (const d of matchStats.draft) {
+        if (!d.heroId || d.heroId <= 0) continue;
+        await client.query(
+          `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [matchStats.matchId, d.heroId, d.isPick, d.order || 0, d.team || 0]
+        );
       }
     }
 
@@ -729,6 +753,7 @@ async function getHeroStats(seasonId = null) {
   const p = getPool();
   const params = [];
   const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
+  const sc2 = seasonId ? ` AND m2.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
   const result = await p.query(
     `SELECT
        ps.hero_id,
@@ -743,7 +768,12 @@ async function getHeroStats(seasonId = null) {
        ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
        ROUND(AVG(ps.tower_damage), 0) as avg_tower_damage,
        ROUND(AVG(ps.hero_healing), 0) as avg_hero_healing,
-       ROUND(AVG(ps.last_hits), 0) as avg_last_hits
+       ROUND(AVG(ps.last_hits), 0) as avg_last_hits,
+       COALESCE((
+         SELECT COUNT(*) FROM match_draft md
+         JOIN matches m2 ON m2.match_id = md.match_id
+         WHERE md.hero_id = ps.hero_id AND md.is_pick = false${sc2}
+       ), 0) as bans
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      WHERE ps.hero_id > 0${sc}
@@ -751,7 +781,23 @@ async function getHeroStats(seasonId = null) {
      ORDER BY games DESC`,
     params
   );
-  return result.rows;
+
+  const params3 = [];
+  const sc3 = seasonId ? ` AND season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
+  const totalResult = await p.query(`SELECT COUNT(*) as total FROM matches WHERE 1=1${sc3}`, params3);
+
+  const params4 = [];
+  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}` : '';
+  const draftResult = await p.query(
+    `SELECT COUNT(DISTINCT md.match_id) as draft_total FROM match_draft md JOIN matches m ON m.match_id = md.match_id WHERE 1=1${sc4}`,
+    params4
+  );
+
+  return {
+    heroes: result.rows,
+    totalMatches: parseInt(totalResult.rows[0].total) || 0,
+    draftMatches: parseInt(draftResult.rows[0].draft_total) || 0,
+  };
 }
 
 async function getOverallStats(seasonId = null) {

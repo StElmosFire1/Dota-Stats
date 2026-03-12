@@ -390,6 +390,7 @@ class ReplayParser {
     const maxTime = {};
     const laningData = {};
     const laneCs10min = {};
+    const draft = [];
 
     for (const e of events) {
       if (e.type === 'epilogue' && e.key) {
@@ -445,6 +446,15 @@ class ReplayParser {
         } catch (err) {
           console.error('[Replay] Epilogue parse error:', err.message);
         }
+      }
+
+      if (e.type === 'draft_timings' && e.hero_id > 0) {
+        draft.push({
+          heroId: e.hero_id,
+          isPick: e.pick === true,
+          order: e.draft_order || draft.length,
+          team: e.draft_active_team || 0,
+        });
       }
 
       if (e.type === 'player_slot' && e.slot != null && e.key != null) {
@@ -926,12 +936,17 @@ class ReplayParser {
       console.log(`[Replay]   ${p.team} pos${p.position} ${p.isCaptain ? '(C)' : ''}: ${p.personaname} (hero=${p.heroId}, acct=${p.accountId}) K/D/A=${p.kills}/${p.deaths}/${p.assists} HD=${p.heroDamage} TD=${p.towerDamage} HH=${p.heroHealing} DT=${p.damageTaken} OBS=${p.obsPlaced} SEN=${p.senPlaced} STK=${p.campsStacked}`);
     }
 
+    if (draft.length > 0) {
+      console.log(`[Replay] Draft captured: ${draft.filter(d => !d.isPick).length} bans, ${draft.filter(d => d.isPick).length} picks`);
+    }
+
     return {
       matchId,
       duration,
       radiantWin,
       gameMode,
       players: playerList,
+      draft,
       parseMethod: 'odota-parser',
     };
   }

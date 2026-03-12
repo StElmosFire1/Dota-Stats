@@ -39,6 +39,8 @@ const ALL_HEROES = {
 export default function Heroes() {
   const { seasonId } = useSeason();
   const [playedHeroes, setPlayedHeroes] = useState([]);
+  const [totalMatches, setTotalMatches] = useState(0);
+  const [draftMatches, setDraftMatches] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState('hero_name');
   const [sortDir, setSortDir] = useState(1);
@@ -46,7 +48,11 @@ export default function Heroes() {
   useEffect(() => {
     setLoading(true);
     getHeroStats(seasonId)
-      .then(data => setPlayedHeroes(data.heroes || []))
+      .then(data => {
+        setPlayedHeroes(data.heroes || []);
+        setTotalMatches(data.totalMatches || 0);
+        setDraftMatches(data.draftMatches || 0);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [seasonId]);
@@ -64,6 +70,7 @@ export default function Heroes() {
       hero_name: name,
       games: played ? parseInt(played.games) : 0,
       wins: played ? parseInt(played.wins) : 0,
+      bans: played ? parseInt(played.bans) : 0,
       avg_kills: played ? parseFloat(played.avg_kills) : null,
       avg_deaths: played ? parseFloat(played.avg_deaths) : null,
       avg_assists: played ? parseFloat(played.avg_assists) : null,
@@ -81,6 +88,21 @@ export default function Heroes() {
     if (sortField === 'win_rate') {
       const va = a.games > 0 ? a.wins / a.games : -1;
       const vb = b.games > 0 ? b.wins / b.games : -1;
+      return (va - vb) * sortDir;
+    }
+    if (sortField === 'pick_rate') {
+      const va = totalMatches > 0 ? a.games / totalMatches : -1;
+      const vb = totalMatches > 0 ? b.games / totalMatches : -1;
+      return (va - vb) * sortDir;
+    }
+    if (sortField === 'ban_rate') {
+      const va = draftMatches > 0 ? a.bans / draftMatches : -1;
+      const vb = draftMatches > 0 ? b.bans / draftMatches : -1;
+      return (va - vb) * sortDir;
+    }
+    if (sortField === 'contest_rate') {
+      const va = draftMatches > 0 ? (a.games + a.bans) / draftMatches : -1;
+      const vb = draftMatches > 0 ? (b.games + b.bans) / draftMatches : -1;
       return (va - vb) * sortDir;
     }
     const va = a[sortField] ?? -1;
@@ -106,12 +128,14 @@ export default function Heroes() {
 
   const playedCount = playedHeroes.length;
   const totalCount = Object.keys(ALL_HEROES).length;
+  const hasDraftData = draftMatches > 0;
 
   return (
     <div>
       <h1 className="page-title">Hero Stats</h1>
       <p style={{ color: '#888', marginBottom: '1rem' }}>
-        {playedCount} of {totalCount} heroes played across all matches
+        {playedCount} of {totalCount} heroes played &mdash; {totalMatches} matches
+        {hasDraftData && `, ${draftMatches} with draft data`}
       </p>
       <div className="scoreboard-wrapper">
         <table className="scoreboard">
@@ -120,12 +144,28 @@ export default function Heroes() {
               <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('hero_name')} title="Hero name (click to sort)">
                 Hero{sortIcon('hero_name')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Total games played">
-                Games{sortIcon('games')}
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Times picked">
+                Picks{sortIcon('games')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">
-                Win %{sortIcon('win_rate')}
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('pick_rate')} title="Pick rate (picks ÷ total matches)">
+                Pick%{sortIcon('pick_rate')}
               </th>
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win rate when picked">
+                Win%{sortIcon('win_rate')}
+              </th>
+              {hasDraftData && (
+                <>
+                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('bans')} title="Times banned (Captain's Mode only)">
+                    Bans{sortIcon('bans')}
+                  </th>
+                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('ban_rate')} title="Ban rate (bans ÷ CM matches)">
+                    Ban%{sortIcon('ban_rate')}
+                  </th>
+                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('contest_rate')} title="Contest rate — picked or banned (picks+bans ÷ CM matches)">
+                    Contest%{sortIcon('contest_rate')}
+                  </th>
+                </>
+              )}
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')} title="Average kills per game">
                 K{sortIcon('avg_kills')}
               </th>
@@ -152,8 +192,11 @@ export default function Heroes() {
           <tbody>
             {sorted.map((h) => {
               const winRate = h.games > 0 ? ((h.wins / h.games) * 100).toFixed(0) : '';
+              const pickRate = totalMatches > 0 ? ((h.games / totalMatches) * 100).toFixed(0) : '';
+              const banRate = hasDraftData && draftMatches > 0 ? ((h.bans / draftMatches) * 100).toFixed(0) : '';
+              const contestRate = hasDraftData && draftMatches > 0 ? (((h.games + h.bans) / draftMatches) * 100).toFixed(0) : '';
               const heroImg = getHeroImageUrl(h.hero_id);
-              const unplayed = h.games === 0;
+              const unplayed = h.games === 0 && h.bans === 0;
               return (
                 <tr key={h.hero_id} style={{ opacity: unplayed ? 0.4 : 1 }}>
                   <td className="col-player">
@@ -163,9 +206,25 @@ export default function Heroes() {
                     </div>
                   </td>
                   <td className="col-stat">{h.games || ''}</td>
-                  <td className="col-stat" style={{ color: !unplayed ? (parseInt(winRate) >= 50 ? '#4ade80' : '#f87171') : '#555' }}>
+                  <td className="col-stat" style={{ color: h.games > 0 ? '#94a3b8' : '' }}>
+                    {pickRate ? `${pickRate}%` : ''}
+                  </td>
+                  <td className="col-stat" style={{ color: h.games > 0 ? (parseInt(winRate) >= 50 ? '#4ade80' : '#f87171') : '#555' }}>
                     {winRate ? `${winRate}%` : ''}
                   </td>
+                  {hasDraftData && (
+                    <>
+                      <td className="col-stat" style={{ color: h.bans > 0 ? '#f87171' : '' }}>
+                        {h.bans || ''}
+                      </td>
+                      <td className="col-stat" style={{ color: h.bans > 0 ? '#f87171' : '' }}>
+                        {banRate ? `${banRate}%` : ''}
+                      </td>
+                      <td className="col-stat" style={{ color: parseInt(contestRate) >= 50 ? '#fb923c' : (parseInt(contestRate) >= 20 ? '#facc15' : '') }}>
+                        {contestRate ? `${contestRate}%` : ''}
+                      </td>
+                    </>
+                  )}
                   <td className="col-stat">{h.avg_kills ?? ''}</td>
                   <td className="col-stat">{h.avg_deaths ?? ''}</td>
                   <td className="col-stat">{h.avg_assists ?? ''}</td>
