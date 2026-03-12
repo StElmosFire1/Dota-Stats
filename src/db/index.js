@@ -565,7 +565,7 @@ async function getLeaderboard(limit = 50) {
   const p = getPool();
   const result = await p.query(
     `SELECT
-       COALESCE(n.nickname, r.player_id) as group_key,
+       COALESCE(n.nickname, r.player_id::text) as group_key,
        MAX(r.mmr) as mmr,
        MAX(r.mu) as mu,
        MIN(r.sigma) as sigma,
