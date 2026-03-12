@@ -454,6 +454,9 @@ class ReplayParser {
         if (!draftSeen.has(e.hero_id)) {
           draftSeen.add(e.hero_id);
           const rawTeam = e.draft_active_team;
+          if (draft.length < 5) {
+            console.log(`[Draft] hero_id=${e.hero_id} pick=${e.pick} draft_order=${e.draft_order} draft_active_team=${rawTeam} (type=${typeof rawTeam})`);
+          }
           draft.push({
             heroId: e.hero_id,
             isPick: e.pick === true,
