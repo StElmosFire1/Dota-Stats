@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { config, validateConfig } = require('./config');
 const { getDiscordBot } = require('./discord/bot');
 const { getSheetsStore } = require('./sheets/sheetsStore');
