@@ -356,6 +356,17 @@ function createApiRouter() {
     }
   });
 
+  router.post('/admin/recalculate-ratings', authMiddleware, async (req, res) => {
+    try {
+      console.log('[API] Recalculating all TrueSkill ratings...');
+      await db.recalculateAllRatings();
+      res.json({ success: true, message: 'Ratings recalculated from all match history.' });
+    } catch (err) {
+      console.error('[API] Error recalculating ratings:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.put('/matches/:matchId/position', authMiddleware, async (req, res) => {
     try {
       const { slot, position } = req.body;
