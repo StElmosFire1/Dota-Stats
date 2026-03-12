@@ -240,9 +240,15 @@ async function init() {
     // apply the CM sequence pattern for bans.
     {
       const CM_PAT = [0,1,0,1,0,1,0, 0,1, 1,0,1, 1,0,0,1,1,0, 0,1,0,1, 0,1];
-      const staleMatches = await p.query(
-        `SELECT DISTINCT match_id FROM match_draft WHERE team NOT IN (0, 1)`
-      );
+      // Find matches where any pick's stored team disagrees with the player's actual team.
+      // This catches both raw-value rows (team=2/3) AND rows wrongly converted by an old migration.
+      const staleMatches = await p.query(`
+        SELECT DISTINCT md.match_id
+        FROM match_draft md
+        JOIN player_stats ps ON ps.match_id = md.match_id AND ps.hero_id = md.hero_id
+        WHERE md.is_pick = true
+          AND md.team != CASE WHEN ps.team = 'radiant' THEN 0 ELSE 1 END
+      `);
       for (const { match_id } of staleMatches.rows) {
         // Build heroTeamMap from player_stats
         const pRows = await p.query(
