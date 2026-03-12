@@ -965,21 +965,22 @@ class ReplayParser {
     console.log(`[Draft] pickHeroIds:   ${pickHeroIds.join(',')}`);
 
     // Step 4: Determine which team went first using pick→player cross-reference.
-    // CM draft pattern (0-indexed sequence position, 24 actions total):
-    //   Bans  0-7:  A,B,A,B,A,B,A,B
-    //   Picks 8-11: A,B,A,B
-    //   Bans 12-15: B,A,B,A
-    //   Picks 16-19: B,A,B,A
-    //   Bans 20-21: A,B
-    //   Picks 22-23: A,B
+    // Dota 2 CM draft pattern (0-indexed sequence position, 24 actions total):
+    //   Phase 1: 7 bans  A,B,A,B,A,B,A
+    //   Phase 1: 2 picks A,B
+    //   Phase 2: 3 bans  B,A,B
+    //   Phase 2: 6 picks B,A,A,B,B,A  (pairs: BA then AB then BA)
+    //   Phase 3: 4 bans  A,B,A,B
+    //   Phase 3: 2 picks A,B
     // where A = team that went first (0), B = other team (1)
+    // Verified against live match data (order_num 1-24 with known player teams).
     const CM_PATTERN = [
-      0,1,0,1,0,1,0,1,  // bans phase 1
-      0,1,0,1,           // picks phase 1
-      1,0,1,0,           // bans phase 2
-      1,0,1,0,           // picks phase 2
-      0,1,               // bans phase 3
-      0,1,               // picks phase 3
+      0,1,0,1,0,1,0,  // bans phase 1 (7): A,B,A,B,A,B,A
+      0,1,            // picks phase 1 (2): A,B
+      1,0,1,          // bans phase 2 (3): B,A,B
+      1,0,0,1,1,0,    // picks phase 2 (6): B,A,A,B,B,A
+      0,1,0,1,        // bans phase 3 (4): A,B,A,B
+      0,1,            // picks phase 3 (2): A,B
     ];
 
     // For each pick find its team from player data (hero ID cross-reference)

@@ -235,6 +235,63 @@ async function init() {
     `);
     await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_match_draft_unique ON match_draft(match_id, order_num)`);
 
+    // Migrate old match_draft rows where team was stored as raw rawTeam value (not 0/1).
+    // draft_active_team is unreliable so we cross-reference picks with player_stats, then
+    // apply the CM sequence pattern for bans.
+    {
+      const CM_PAT = [0,1,0,1,0,1,0, 0,1, 1,0,1, 1,0,0,1,1,0, 0,1,0,1, 0,1];
+      const staleMatches = await p.query(
+        `SELECT DISTINCT match_id FROM match_draft WHERE team NOT IN (0, 1)`
+      );
+      for (const { match_id } of staleMatches.rows) {
+        // Build heroTeamMap from player_stats
+        const pRows = await p.query(
+          `SELECT hero_id, team FROM player_stats WHERE match_id = $1`, [match_id]
+        );
+        const heroTeamMap = {};
+        for (const r of pRows.rows) {
+          if (r.hero_id > 0) heroTeamMap[r.hero_id] = r.team;
+        }
+        // Fix picks using heroTeamMap
+        await p.query(
+          `UPDATE match_draft md SET team = sub.t FROM (
+             SELECT md2.order_num,
+               CASE WHEN ps.team = 'radiant' THEN 0 ELSE 1 END AS t
+             FROM match_draft md2
+             JOIN player_stats ps ON ps.match_id = md2.match_id AND ps.hero_id = md2.hero_id
+             WHERE md2.match_id = $1 AND md2.is_pick = true
+           ) sub WHERE md.match_id = $1 AND md.order_num = sub.order_num`,
+          [match_id]
+        );
+        // Determine radiantFirst from corrected picks, then fix bans via CM pattern
+        const allRows = await p.query(
+          `SELECT order_num, hero_id, is_pick, team FROM match_draft WHERE match_id = $1 ORDER BY order_num`,
+          [match_id]
+        );
+        let radiantFirst = null;
+        for (let i = 0; i < allRows.rows.length; i++) {
+          const r = allRows.rows[i];
+          if (r.is_pick && (r.team === 0 || r.team === 1) && i < CM_PAT.length) {
+            const isTeamA = CM_PAT[i] === 0;
+            radiantFirst = r.team === 0 ? isTeamA : !isTeamA;
+            break;
+          }
+        }
+        if (radiantFirst !== null) {
+          for (let i = 0; i < allRows.rows.length; i++) {
+            const r = allRows.rows[i];
+            if (!r.is_pick && i < CM_PAT.length) {
+              const isRadiant = radiantFirst ? CM_PAT[i] === 0 : CM_PAT[i] !== 0;
+              await p.query(
+                `UPDATE match_draft SET team = $1 WHERE match_id = $2 AND order_num = $3`,
+                [isRadiant ? 0 : 1, match_id, r.order_num]
+              );
+            }
+          }
+        }
+      }
+    }
+
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS laning_nw INTEGER`);
 
     await p.query(`
