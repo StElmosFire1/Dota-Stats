@@ -408,6 +408,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
     }
 
     if (matchStats.draft && matchStats.draft.length > 0) {
+      await client.query(`DELETE FROM match_draft WHERE match_id = $1`, [matchStats.matchId]);
       for (const d of matchStats.draft) {
         if (!d.heroId || d.heroId <= 0) continue;
         await client.query(
