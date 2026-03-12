@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
 
@@ -32,6 +32,112 @@ function formatDurationLong(seconds) {
 function formatNumber(n) {
   if (n == null) return '-';
   return n.toLocaleString();
+}
+
+function getLaneResult(advantage) {
+  if (advantage > 2000) return { label: 'Win', short: 'W', color: '#4ade80' };
+  if (advantage > 500) return { label: 'Slight Win', short: 'w', color: '#86efac' };
+  if (advantage >= -500) return { label: 'Even', short: '~', color: '#94a3b8' };
+  if (advantage > -2000) return { label: 'Slight Loss', short: 'l', color: '#fca5a5' };
+  return { label: 'Loss', short: 'L', color: '#f87171' };
+}
+
+function computeLaneOutcomes(players) {
+  const withData = players.filter(p => p.laning_nw != null && p.laning_nw > 0 && p.position > 0);
+  if (withData.length < 4) return {};
+
+  const getLane = (p) => {
+    if (p.position === 2) return 'mid';
+    if (p.position === 1 || p.position === 5) return p.team === 'radiant' ? 'safe' : 'off';
+    if (p.position === 3 || p.position === 4) return p.team === 'radiant' ? 'off' : 'safe';
+    return null;
+  };
+
+  const groups = { safe_radiant: [], safe_dire: [], mid_radiant: [], mid_dire: [], off_radiant: [], off_dire: [] };
+  for (const p of withData) {
+    const lane = getLane(p);
+    if (lane) groups[`${lane}_${p.team}`].push(p);
+  }
+
+  const sumNW = (g) => g.reduce((s, p) => s + (p.laning_nw || 0), 0);
+  const outcomes = {};
+
+  const applyLane = (radGroup, direGroup) => {
+    if (radGroup.length === 0 && direGroup.length === 0) return;
+    const adv = sumNW(radGroup) - sumNW(direGroup);
+    for (const p of radGroup) outcomes[p.slot] = getLaneResult(adv);
+    for (const p of direGroup) outcomes[p.slot] = getLaneResult(-adv);
+  };
+
+  applyLane(groups.safe_radiant, groups.off_dire);
+  applyLane(groups.off_radiant, groups.safe_dire);
+  applyLane(groups.mid_radiant, groups.mid_dire);
+
+  return outcomes;
+}
+
+function DraftDisplay({ draft }) {
+  if (!draft || draft.length === 0) return null;
+  const hasBans = draft.some(d => !d.is_pick);
+  if (!hasBans) return null;
+
+  return (
+    <div style={{ marginTop: '1.5rem' }}>
+      <h3 style={{ color: '#94a3b8', marginBottom: '0.75rem', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Draft Order</h3>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'flex-start' }}>
+        {draft.map((entry, i) => {
+          const isBan = !entry.is_pick;
+          const isRadiant = entry.team === 0;
+          const teamColor = isRadiant ? '#4ade80' : '#f87171';
+          const teamLabel = isRadiant ? 'Radiant' : 'Dire';
+          const heroImg = getHeroImageUrl(entry.hero_id);
+          return (
+            <div
+              key={i}
+              title={`#${entry.order_num + 1} — ${teamLabel} ${isBan ? 'Bans' : 'Picks'}`}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '4px',
+                borderRadius: '4px',
+                border: `2px solid ${isBan ? '#7f1d1d' : (isRadiant ? '#166534' : '#1e3a5f')}`,
+                background: isBan ? 'rgba(127,29,29,0.3)' : (isRadiant ? 'rgba(22,101,52,0.3)' : 'rgba(30,58,95,0.3)'),
+                minWidth: '42px',
+              }}
+            >
+              <div style={{ fontSize: '0.6rem', color: teamColor, fontWeight: 'bold', lineHeight: 1 }}>
+                {teamLabel.slice(0, 3).toUpperCase()}
+              </div>
+              {heroImg ? (
+                <img
+                  src={heroImg}
+                  alt=""
+                  style={{
+                    width: '40px',
+                    height: '22px',
+                    objectFit: 'cover',
+                    borderRadius: '2px',
+                    filter: isBan ? 'grayscale(80%) brightness(0.6)' : 'none',
+                  }}
+                  onError={e => { e.target.style.display = 'none'; }}
+                />
+              ) : (
+                <div style={{ width: '40px', height: '22px', background: '#333', borderRadius: '2px' }} />
+              )}
+              <div style={{ fontSize: '0.6rem', color: isBan ? '#f87171' : '#93c5fd', lineHeight: 1 }}>
+                {isBan ? 'BAN' : 'PICK'}
+              </div>
+              <div style={{ fontSize: '0.55rem', color: '#555', lineHeight: 1 }}>
+                #{entry.order_num + 1}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function getDisplayName(player, index) {
@@ -110,9 +216,10 @@ function PositionSelect({ player, matchId, onUpdate }) {
   );
 }
 
-function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
+function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes }) {
   const hasDetailedStats = players.some(p => p.gpm > 0 || p.hero_damage > 0);
   const hasItems = players.some(p => p.items && p.items.length > 0);
+  const hasLane = players.some(p => laneOutcomes && laneOutcomes[p.slot]);
 
   return (
     <div className={`team-section ${teamName}`}>
@@ -142,6 +249,9 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
                   <th className="col-stat" title="Hero Healing">HH</th>
                   <th className="col-stat" title="Net Worth">NW</th>
                 </>
+              )}
+              {hasLane && (
+                <th className="col-stat" title="Lane outcome at ~8 minutes (based on net worth comparison vs lane opponent). W=Win &gt;2k, w=Slight &gt;500, ~=Even, l=Slight Loss, L=Loss">Lane</th>
               )}
               {hasItems && <th className="col-items" style={{ minWidth: '260px' }} title="End-game inventory (6 slots) | Backpack (3 slots) | Aghs status">Items</th>}
             </tr>
@@ -187,6 +297,14 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate }) {
                       <td className="col-stat nw">{formatNumber(p.net_worth)}</td>
                     </>
                   )}
+                  {hasLane && (() => {
+                    const lo = laneOutcomes && laneOutcomes[p.slot];
+                    return (
+                      <td className="col-stat" style={{ color: lo ? lo.color : '#555', fontWeight: 'bold', fontSize: '0.9rem' }} title={lo ? `${lo.label} (laning NW: ${(p.laning_nw || 0).toLocaleString()})` : 'No laning data'}>
+                        {lo ? lo.short : '-'}
+                      </td>
+                    );
+                  })()}
                   {hasItems && (
                     <td className="col-items">
                       <div className="items-row">
@@ -317,6 +435,7 @@ export default function MatchDetail() {
   const [metaPatch, setMetaPatch] = useState('');
   const [metaSeason, setMetaSeason] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const [clearingHash, setClearingHash] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -370,6 +489,21 @@ export default function MatchDetail() {
     }
   };
 
+  const handleClearHash = async () => {
+    const uploadKey = localStorage.getItem('uploadKey');
+    if (!uploadKey) { alert('Set an upload key first (Upload page)'); return; }
+    if (!confirm('This allows the same replay file to be re-uploaded (e.g. to capture draft data). Continue?')) return;
+    setClearingHash(true);
+    try {
+      await clearMatchFileHash(matchId, uploadKey);
+      alert('File hash cleared. You can now re-upload the replay for this match.');
+    } catch (err) {
+      alert('Failed: ' + err.message);
+    } finally {
+      setClearingHash(false);
+    }
+  };
+
   if (loading) return <div className="loading">Loading match...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
   if (!match) return <div className="error-state">Match not found</div>;
@@ -377,6 +511,7 @@ export default function MatchDetail() {
   const radiant = (match.players || []).filter(p => p.team === 'radiant');
   const dire = (match.players || []).filter(p => p.team === 'dire');
   const allPlayers = [...radiant, ...dire];
+  const laneOutcomes = computeLaneOutcomes(allPlayers);
 
   return (
     <div>
@@ -404,8 +539,10 @@ export default function MatchDetail() {
         </div>
       </div>
 
-      <TeamTable players={radiant} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} />
-      <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} />
+      <DraftDisplay draft={match.draft} />
+
+      <TeamTable players={radiant} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} />
+      <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} />
 
       <ExpandedStats players={allPlayers} />
 
@@ -450,6 +587,17 @@ export default function MatchDetail() {
               Edit Patch / Season
             </button>
           )}
+          <button
+            onClick={handleClearHash}
+            disabled={clearingHash}
+            title="Clears the duplicate-prevention fingerprint so this replay can be re-uploaded (useful to pick up draft data)"
+            style={{
+              background: 'transparent', color: '#666', border: '1px solid #444',
+              padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+            }}
+          >
+            {clearingHash ? 'Clearing...' : 'Allow Re-upload'}
+          </button>
         </div>
 
         {showMeta && (

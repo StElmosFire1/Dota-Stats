@@ -390,6 +390,7 @@ class ReplayParser {
     const maxTime = {};
     const laningData = {};
     const laneCs10min = {};
+    const laningNwAtEight = {};
     const draft = [];
 
     for (const e of events) {
@@ -529,6 +530,12 @@ class ReplayParser {
         if (e.lh != null && currentTime >= 590 && currentTime <= 610) {
           const prev = laneCs10min[e.slot] || 0;
           if (e.lh > prev) laneCs10min[e.slot] = e.lh;
+        }
+
+        if (e.networth != null && currentTime >= 480 && currentTime <= 540) {
+          if (!laningNwAtEight[e.slot] || currentTime > (laningNwAtEight[e.slot].time || 0)) {
+            laningNwAtEight[e.slot] = { nw: e.networth, time: currentTime };
+          }
         }
       }
     }
@@ -918,6 +925,7 @@ class ReplayParser {
         smokeKills: smokeKills[slot] || 0,
         firstDeath: firstDeathSlot.slot === slot ? 1 : 0,
         laneCs10min: laneCs10min[slot] || 0,
+        laningNw: laningNwAtEight[slot] ? laningNwAtEight[slot].nw : null,
         hasScepter,
         hasShard,
         items: playerItems,

@@ -322,6 +322,27 @@ function createApiRouter() {
     }
   });
 
+  router.get('/enemy-synergy/heatmap', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.getEnemySynergyHeatmap(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] Error fetching enemy synergy heatmap:', err.message);
+      res.status(500).json({ error: 'Failed to fetch enemy synergy heatmap' });
+    }
+  });
+
+  router.post('/matches/:matchId/clear-hash', authMiddleware, async (req, res) => {
+    try {
+      await db.clearMatchFileHash(req.params.matchId);
+      res.json({ success: true, message: 'File hash cleared — replay can now be re-uploaded.' });
+    } catch (err) {
+      console.error('[API] Error clearing file hash:', err.message);
+      res.status(500).json({ error: 'Failed to clear file hash' });
+    }
+  });
+
   router.put('/matches/:matchId/position', authMiddleware, async (req, res) => {
     try {
       const { slot, position } = req.body;

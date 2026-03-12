@@ -93,6 +93,23 @@ export async function getSynergyHeatmap(seasonId = null) {
   return fetchJson(`/synergy/heatmap?x=1${seasonParam(seasonId)}`);
 }
 
+export async function getEnemySynergyHeatmap(seasonId = null) {
+  return fetchJson(`/enemy-synergy/heatmap?x=1${seasonParam(seasonId)}`);
+}
+
+export async function clearMatchFileHash(matchId, uploadKey) {
+  const res = await fetch(BASE + `/matches/${matchId}/clear-hash`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Upload-Key': uploadKey,
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to clear file hash');
+  return data;
+}
+
 export async function updatePlayerPosition(matchId, slot, position, uploadKey) {
   const res = await fetch(BASE + `/matches/${matchId}/position`, {
     method: 'PUT',

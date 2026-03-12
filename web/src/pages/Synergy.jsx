@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getSynergyHeatmap } from '../api';
+import { getSynergyHeatmap, getEnemySynergyHeatmap } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
 function getWinRateColor(winRate) {
@@ -20,54 +20,24 @@ function getTextColor(winRate) {
   return '#000';
 }
 
-export default function Synergy() {
-  const { seasonId } = useSeason();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [tooltip, setTooltip] = useState(null);
+function Heatmap({ data, mode, tooltip, setTooltip }) {
   const tooltipRef = useRef(null);
-
-  useEffect(() => {
-    setLoading(true);
-    getSynergyHeatmap(seasonId)
-      .then(d => setData(d))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [seasonId]);
 
   const handleMouseEnter = (e, cellData) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    setTooltip({
-      ...cellData,
-      x: rect.left + rect.width / 2,
-      y: rect.top - 8,
-    });
+    setTooltip({ ...cellData, x: rect.left + rect.width / 2, y: rect.top - 8 });
   };
 
-  const handleMouseLeave = () => {
-    setTooltip(null);
-  };
+  const handleMouseLeave = () => setTooltip(null);
 
-  if (loading) return <div className="loading">Loading synergy data...</div>;
   if (!data || !data.players || data.players.length === 0) {
-    return (
-      <div>
-        <h1 className="page-title">Player Synergy</h1>
-        <p style={{ color: '#888' }}>Not enough match data yet. Play more games together!</p>
-      </div>
-    );
+    return <p style={{ color: '#888' }}>Not enough match data yet. Play more games together!</p>;
   }
 
   const { players, matrix } = data;
 
   return (
-    <div>
-      <h1 className="page-title">Player Synergy</h1>
-      <p className="page-subtitle">
-        Teammate win rate heatmap. Each cell shows the win % when those two players are on the same team.
-        Minimum 2 games together to appear. Hover for details.
-      </p>
-
+    <>
       <div className="heatmap-container">
         <table className="heatmap-table">
           <thead>
@@ -97,16 +67,14 @@ export default function Synergy() {
                     <td
                       key={ci}
                       className="heatmap-cell"
-                      style={{
-                        backgroundColor: getWinRateColor(wr),
-                        color: getTextColor(wr),
-                      }}
+                      style={{ backgroundColor: getWinRateColor(wr), color: getTextColor(wr) }}
                       onMouseEnter={(e) => handleMouseEnter(e, {
                         playerA: rowPlayer.name,
                         playerB: colPlayer.name,
                         wins: cell.wins,
                         games: cell.games,
                         winRate: wr,
+                        mode,
                       })}
                       onMouseLeave={handleMouseLeave}
                     >
@@ -124,12 +92,9 @@ export default function Synergy() {
         <div
           ref={tooltipRef}
           className="synergy-floating-tooltip"
-          style={{
-            left: tooltip.x,
-            top: tooltip.y,
-          }}
+          style={{ left: tooltip.x, top: tooltip.y }}
         >
-          <strong>{tooltip.playerA}</strong> + <strong>{tooltip.playerB}</strong>
+          <strong>{tooltip.playerA}</strong> {tooltip.mode === 'enemies' ? 'vs' : '+'} <strong>{tooltip.playerB}</strong>
           <br />
           {tooltip.wins}W / {tooltip.games}G — {tooltip.winRate}% win rate
         </div>
@@ -149,6 +114,71 @@ export default function Synergy() {
         </div>
         <span className="legend-label">High</span>
       </div>
+    </>
+  );
+}
+
+export default function Synergy() {
+  const { seasonId } = useSeason();
+  const [mode, setMode] = useState('teammates');
+  const [teammateData, setTeammateData] = useState(null);
+  const [enemyData, setEnemyData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tooltip, setTooltip] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setTeammateData(null);
+    setEnemyData(null);
+    Promise.all([
+      getSynergyHeatmap(seasonId),
+      getEnemySynergyHeatmap(seasonId),
+    ])
+      .then(([tm, en]) => {
+        setTeammateData(tm);
+        setEnemyData(en);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [seasonId]);
+
+  if (loading) return <div className="loading">Loading synergy data...</div>;
+
+  const tabStyle = (active) => ({
+    padding: '0.4rem 1.2rem',
+    borderRadius: '4px',
+    border: active ? '1px solid #3b82f6' : '1px solid #444',
+    background: active ? '#1e3a5f' : 'transparent',
+    color: active ? '#93c5fd' : '#888',
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+  });
+
+  const subtitle = mode === 'teammates'
+    ? 'Teammate win rate heatmap. Each cell shows the win % when those two players are on the same team. Minimum 2 games together to appear. Hover for details.'
+    : 'Enemy win rate heatmap. Each cell shows the win % of the row player when facing the column player as an opponent. Minimum 2 games facing each other to appear. Hover for details.';
+
+  return (
+    <div>
+      <h1 className="page-title">Player Synergy</h1>
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        <button style={tabStyle(mode === 'teammates')} onClick={() => setMode('teammates')}>
+          Teammates
+        </button>
+        <button style={tabStyle(mode === 'enemies')} onClick={() => setMode('enemies')}>
+          Enemies
+        </button>
+      </div>
+
+      <p className="page-subtitle">{subtitle}</p>
+
+      <Heatmap
+        data={mode === 'teammates' ? teammateData : enemyData}
+        mode={mode}
+        tooltip={tooltip}
+        setTooltip={setTooltip}
+      />
     </div>
   );
 }

@@ -142,6 +142,8 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_match_id ON match_draft(match_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_hero_id ON match_draft(hero_id)`);
 
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS laning_nw INTEGER`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -220,8 +222,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
 
     for (const player of matchStats.players) {
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50)`,
         [
           matchStats.matchId,
           player.accountId || 0,
@@ -272,6 +274,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
           player.laneCs10min || 0,
           player.hasScepter || false,
           player.hasShard || false,
+          player.laningNw != null ? player.laningNw : null,
         ]
       );
 
@@ -404,9 +407,15 @@ async function getMatch(matchId) {
     row.abilities = abilitiesBySlot[row.slot] || [];
   }
 
+  const draftResult = await p.query(
+    `SELECT hero_id, is_pick, order_num, team FROM match_draft WHERE match_id = $1 ORDER BY order_num ASC`,
+    [matchId]
+  );
+
   return {
     ...matchResult.rows[0],
     players: playersResult.rows,
+    draft: draftResult.rows,
   };
 }
 
@@ -1315,6 +1324,96 @@ async function getSynergyHeatmap(seasonId = null) {
   return { players, matrix };
 }
 
+async function getMatchDraft(matchId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT hero_id, is_pick, order_num, team FROM match_draft WHERE match_id = $1 ORDER BY order_num ASC`,
+    [matchId]
+  );
+  return result.rows;
+}
+
+async function clearMatchFileHash(matchId) {
+  const p = getPool();
+  await p.query(`UPDATE matches SET file_hash = NULL WHERE match_id = $1`, [matchId]);
+}
+
+async function getEnemySynergyHeatmap(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
+  const result = await p.query(
+    `SELECT
+       ps1.persona_name as player_a,
+       COALESCE(NULLIF(ps1.account_id, 0), 0) as account_id_a,
+       n1.nickname as nickname_a,
+       ps2.persona_name as player_b,
+       COALESCE(NULLIF(ps2.account_id, 0), 0) as account_id_b,
+       n2.nickname as nickname_b,
+       ps1.team != ps2.team as diff_team,
+       CASE WHEN (ps1.team = 'radiant' AND m.radiant_win = true) OR (ps1.team = 'dire' AND m.radiant_win = false) THEN true ELSE false END as player_a_won
+     FROM player_stats ps1
+     JOIN player_stats ps2 ON ps1.match_id = ps2.match_id AND ps1.id != ps2.id
+     JOIN matches m ON m.match_id = ps1.match_id
+     LEFT JOIN nicknames n1 ON n1.account_id = ps1.account_id AND ps1.account_id != 0
+     LEFT JOIN nicknames n2 ON n2.account_id = ps2.account_id AND ps2.account_id != 0
+     WHERE ps1.persona_name != '' AND ps2.persona_name != ''${sc}`,
+    params
+  );
+
+  const playerNames = {};
+  const versus = {};
+
+  for (const row of result.rows) {
+    row.player_a = decodeByteString(row.player_a);
+    row.player_b = decodeByteString(row.player_b);
+    const nameA = row.nickname_a || row.player_a;
+    const nameB = row.nickname_b || row.player_b;
+    const keyA = row.nickname_a || (row.account_id_a > 0 ? row.account_id_a.toString() : row.player_a);
+    const keyB = row.nickname_b || (row.account_id_b > 0 ? row.account_id_b.toString() : row.player_b);
+
+    playerNames[keyA] = nameA;
+    playerNames[keyB] = nameB;
+
+    if (!row.diff_team) continue;
+    if (keyA === keyB) continue;
+
+    const pairKey = keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
+    const isAFirst = keyA < keyB;
+    if (!versus[pairKey]) {
+      const orderedA = isAFirst ? keyA : keyB;
+      const orderedB = isAFirst ? keyB : keyA;
+      versus[pairKey] = { keyA: orderedA, keyB: orderedB, winsA: 0, winsB: 0, games: 0 };
+    }
+    versus[pairKey].games += 0.5;
+    if (isAFirst) {
+      if (row.player_a_won) versus[pairKey].winsA += 0.5;
+    } else {
+      if (row.player_a_won) versus[pairKey].winsB += 0.5;
+    }
+  }
+
+  const allPlayerKeys = Object.keys(playerNames).sort((a, b) =>
+    playerNames[a].toLowerCase().localeCompare(playerNames[b].toLowerCase())
+  );
+
+  const players = allPlayerKeys.map(k => ({ key: k, name: playerNames[k] }));
+
+  const matrix = {};
+  for (const pair of Object.values(versus)) {
+    const g = Math.round(pair.games);
+    if (g < 2) continue;
+    const wA = Math.round(pair.winsA);
+    const wB = Math.round(pair.winsB);
+    if (!matrix[pair.keyA]) matrix[pair.keyA] = {};
+    if (!matrix[pair.keyB]) matrix[pair.keyB] = {};
+    matrix[pair.keyA][pair.keyB] = { games: g, wins: wA };
+    matrix[pair.keyB][pair.keyA] = { games: g, wins: wB };
+  }
+
+  return { players, matrix };
+}
+
 async function getPlayerPositionProfiles(seasonId = null) {
   const p = getPool();
   const params1 = [];
@@ -1529,4 +1628,7 @@ module.exports = {
   createSeason,
   setActiveSeason,
   updateMatchMeta,
+  getMatchDraft,
+  clearMatchFileHash,
+  getEnemySynergyHeatmap,
 };
