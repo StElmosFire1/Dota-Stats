@@ -97,6 +97,7 @@ export default function HeroBreakdown() {
                         <td className="col-stat" style={{ color: '#888', fontSize: '0.8rem' }}>Avg K / D / A</td>
                         <td className="col-stat" style={{ color: '#888', fontSize: '0.8rem' }}>Games</td>
                         <td className="col-stat" style={{ color: '#888', fontSize: '0.8rem' }}>Win % (Dire / Radiant)</td>
+                        <td className="col-stat" style={{ color: '#888', fontSize: '0.8rem' }}>Lane W%</td>
                       </tr>
                       {p.heroes.map((h) => {
                         const heroName = getHeroName(h.hero_id, h.hero_name);
@@ -104,6 +105,7 @@ export default function HeroBreakdown() {
                         const overallWinPct = h.games > 0 ? Math.round((h.wins / h.games) * 100) : 0;
                         const direWinPct = h.dire_games > 0 ? Math.round((h.dire_wins / h.dire_games) * 100) : 0;
                         const radWinPct = h.radiant_games > 0 ? Math.round((h.radiant_wins / h.radiant_games) * 100) : 0;
+                        const laneWinPct = h.lane_games > 0 ? Math.round((h.lane_wins / h.lane_games) * 100) : null;
                         return (
                           <tr key={h.hero_id} style={{ background: 'rgba(30,41,59,0.3)' }}>
                             <td className="col-player" style={{ paddingLeft: '2rem' }}></td>
@@ -120,6 +122,9 @@ export default function HeroBreakdown() {
                             <td className="col-stat" style={{ color: overallWinPct >= 50 ? '#4ade80' : '#f87171' }}>
                               {overallWinPct}% (Dire: {direWinPct}% / Rad: {radWinPct}%)
                             </td>
+                            <td className="col-stat" style={{ color: laneWinPct == null ? '#666' : laneWinPct >= 50 ? '#4ade80' : '#f87171' }}>
+                              {laneWinPct != null ? `${laneWinPct}%` : '—'}
+                            </td>
                           </tr>
                         );
                       })}
@@ -127,7 +132,7 @@ export default function HeroBreakdown() {
                   )}
                   {isExpanded && p.heroes.length === 0 && (
                     <tr style={{ background: 'rgba(30,41,59,0.3)' }}>
-                      <td colSpan={5} style={{ color: '#666', paddingLeft: '2rem', fontStyle: 'italic' }}>No hero data available</td>
+                      <td colSpan={6} style={{ color: '#666', paddingLeft: '2rem', fontStyle: 'italic' }}>No hero data available</td>
                     </tr>
                   )}
                 </React.Fragment>

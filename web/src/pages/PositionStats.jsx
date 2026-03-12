@@ -42,6 +42,10 @@ function PositionStatsView() {
       va = a.games > 0 ? a.wins / a.games : 0;
       vb = b.games > 0 ? b.wins / b.games : 0;
     }
+    if (sortField === 'lane_win_rate') {
+      va = a.lane_games > 0 ? a.lane_wins / a.lane_games : 0;
+      vb = b.lane_games > 0 ? b.lane_wins / b.lane_games : 0;
+    }
     if (sortField === 'player_key' || sortField === 'persona_name') {
       return String(va || '').localeCompare(String(vb || '')) * sortDir;
     }
@@ -115,6 +119,7 @@ function PositionStatsView() {
                 <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')} title="Average assists">A{si('avg_assists')}</th>
                 <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')} title="Kill Involvement">KI%{si('avg_kill_involvement')}</th>
                 <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">Win%{si('win_rate')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('lane_win_rate')} title="% of lanes won (dominant or slight advantage)">Lane W%{si('lane_win_rate')}</th>
                 <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_gpm')} title="Average GPM">GPM{si('avg_gpm')}</th>
                 <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_xpm')} title="Average XPM">XPM{si('avg_xpm')}</th>
                 <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_damage')} title="Average Hero Damage">Dmg{si('avg_hero_damage')}</th>
@@ -126,6 +131,7 @@ function PositionStatsView() {
             <tbody>
               {sorted.map((row, i) => {
                 const winRate = row.games > 0 ? ((row.wins / row.games) * 100).toFixed(0) : '0';
+                const laneWinRate = row.lane_games > 0 ? ((row.lane_wins / row.lane_games) * 100).toFixed(0) : null;
                 const displayName = row.nickname || row.persona_name;
                 return (
                   <tr key={i}>
@@ -140,6 +146,9 @@ function PositionStatsView() {
                     <td className="col-stat">{row.avg_assists}</td>
                     <td className="col-stat">{row.avg_kill_involvement}%</td>
                     <td className="col-stat" style={{ color: parseInt(winRate) >= 50 ? '#4ade80' : '#f87171' }}>{winRate}%</td>
+                    <td className="col-stat" style={{ color: laneWinRate == null ? '#666' : parseInt(laneWinRate) >= 50 ? '#4ade80' : '#f87171' }}>
+                      {laneWinRate != null ? `${laneWinRate}%` : '—'}
+                    </td>
                     <td className="col-stat gpm">{formatNum(row.avg_gpm)}</td>
                     <td className="col-stat">{formatNum(row.avg_xpm)}</td>
                     <td className="col-stat">{formatNum(row.avg_hero_damage)}</td>

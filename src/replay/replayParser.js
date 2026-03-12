@@ -450,11 +450,12 @@ class ReplayParser {
       }
 
       if (e.type === 'draft_timings' && e.hero_id > 0) {
+        const rawTeam = e.draft_active_team;
         draft.push({
           heroId: e.hero_id,
           isPick: e.pick === true,
           order: e.draft_order || draft.length,
-          team: e.draft_active_team || 0,
+          team: rawTeam === 2 ? 0 : rawTeam === 3 ? 1 : (rawTeam || 0),
         });
       }
 

@@ -49,6 +49,9 @@ The dashboard emphasizes clear data presentation, sortable tables, and detailed 
 - **node-fetch:** Used for HTTP requests to external APIs and replay file downloads.
 
 ## Recent Changes
+- 2026-03-12: Fixed draft team display — parser previously stored `draft_active_team` as game enum values (2=radiant, 3=dire); now converts to 0/1 at parse time in both `replayParser.js` and the `match_draft` INSERT so picks/bans display correctly on the correct team side.
+- 2026-03-12: Lane W% on Position Stats page — `getPositionStats` fetches all per-match laning data, computes lane outcomes in Node.js (same STRATZ algorithm as MatchDetail), and aggregates lane wins/losses per player per position; new sortable "Lane W%" column added to the table.
+- 2026-03-12: Lane W% on Hero Breakdown page — `getPlayerHeroProfiles` similarly aggregates lane wins/losses per player per hero; "Lane W%" column added to the expanded hero sub-rows.
 - 2026-03-12: Lane win/lose — parser captures laning NW at ~8min per player; `laning_nw` column on `player_stats`; `computeLaneOutcomes` pairs players by position across teams (safe vs off, mid vs mid), compares team NW sums, shows W/w/~/l/L per player in match scoreboard using STRATZ-style thresholds (2000/500 gold).
 - 2026-03-12: Match draft display — `getMatch` now returns `draft` array; MatchDetail shows pick/ban timeline with hero icons, team color coding, and ban (greyscale) vs pick distinction.
 - 2026-03-12: Enemy synergy heatmap — `getEnemySynergyHeatmap` DB function tracks per-player win rate vs each opponent; `/enemy-synergy/heatmap` API endpoint; Synergy page has Teammates/Enemies tab toggle showing respective heatmaps.

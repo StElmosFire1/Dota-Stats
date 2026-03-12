@@ -407,7 +407,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         await client.query(
           `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team)
            VALUES ($1, $2, $3, $4, $5)`,
-          [matchStats.matchId, d.heroId, d.isPick, d.order || 0, typeof d.team === 'string' ? (d.team === 'radiant' ? 0 : 1) : (d.team || 0)]
+          [matchStats.matchId, d.heroId, d.isPick, d.order || 0, typeof d.team === 'string' ? (d.team === 'radiant' ? 0 : 1) : (d.team === 2 ? 0 : d.team === 3 ? 1 : (d.team || 0))]
         );
       }
     }
@@ -995,6 +995,42 @@ async function getOverallStats(seasonId = null) {
   return result.rows;
 }
 
+function computeMatchLaneOutcomes(players) {
+  const getLane = (p) => {
+    if (p.laning_nw == null) return null;
+    const pos = parseInt(p.position);
+    const team = p.team;
+    if (pos === 1 || pos === 5) return team === 'radiant' ? 'safe_radiant' : 'off_dire';
+    if (pos === 3 || pos === 4) return team === 'radiant' ? 'off_radiant' : 'safe_dire';
+    if (pos === 2) return team === 'radiant' ? 'mid_radiant' : 'mid_dire';
+    return null;
+  };
+  const getLaneResult = (adv) => {
+    if (adv > 2000) return 'W';
+    if (adv > 500) return 'w';
+    if (adv < -2000) return 'L';
+    if (adv < -500) return 'l';
+    return '~';
+  };
+  const groups = { safe_radiant: [], off_die: [], off_radiant: [], safe_dire: [], mid_radiant: [], mid_dire: [], off_dire: [] };
+  for (const p of players) {
+    const lane = getLane(p);
+    if (lane && groups[lane]) groups[lane].push(p);
+  }
+  const sumNW = (grp) => grp.reduce((s, p) => s + (parseInt(p.laning_nw) || 0), 0);
+  const outcomes = {};
+  const applyLane = (radGroup, direGroup) => {
+    if (radGroup.length === 0 && direGroup.length === 0) return;
+    const adv = sumNW(radGroup) - sumNW(direGroup);
+    for (const p of radGroup) outcomes[p.slot] = getLaneResult(adv);
+    for (const p of direGroup) outcomes[p.slot] = getLaneResult(-adv);
+  };
+  applyLane(groups.safe_radiant, groups.off_dire);
+  applyLane(groups.off_radiant, groups.safe_dire);
+  applyLane(groups.mid_radiant, groups.mid_dire);
+  return outcomes;
+}
+
 async function getPositionStats(position, minGames = 1, seasonId = null) {
   const p = getPool();
   const params1 = [position, minGames];
@@ -1064,11 +1100,46 @@ async function getPositionStats(position, minGames = 1, seasonId = null) {
     kiByPlayer[key].push(ki);
   }
 
+  const params4 = [];
+  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}` : '';
+  const laningData = await p.query(
+    `SELECT ps.match_id, ps.slot,
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       ps.position, ps.team, ps.laning_nw
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.laning_nw IS NOT NULL${sc4}`,
+    params4
+  );
+  const matchPlayersForLane = {};
+  for (const row of laningData.rows) {
+    if (!matchPlayersForLane[row.match_id]) matchPlayersForLane[row.match_id] = [];
+    matchPlayersForLane[row.match_id].push(row);
+  }
+  const laneByPlayer = {};
+  for (const players of Object.values(matchPlayersForLane)) {
+    const outcomes = computeMatchLaneOutcomes(players);
+    for (const p of players) {
+      if (parseInt(p.position) !== position) continue;
+      const outcome = outcomes[p.slot];
+      if (!outcome) continue;
+      const key = decodeByteString(p.player_key);
+      if (!laneByPlayer[key]) laneByPlayer[key] = { wins: 0, losses: 0, games: 0 };
+      laneByPlayer[key].games++;
+      if (outcome === 'W' || outcome === 'w') laneByPlayer[key].wins++;
+      else if (outcome === 'L' || outcome === 'l') laneByPlayer[key].losses++;
+    }
+  }
+
   for (const row of result.rows) {
     row.persona_name = decodeByteString(row.persona_name);
     row.player_key = decodeByteString(row.player_key);
     const kis = kiByPlayer[row.player_key] || [];
     row.avg_kill_involvement = kis.length > 0 ? Math.round(kis.reduce((a, b) => a + b, 0) / kis.length) : 0;
+    const lane = laneByPlayer[row.player_key] || { wins: 0, losses: 0, games: 0 };
+    row.lane_wins = lane.wins;
+    row.lane_losses = lane.losses;
+    row.lane_games = lane.games;
   }
 
   return result.rows;
@@ -1651,10 +1722,42 @@ async function getPlayerHeroProfiles(seasonId = null) {
     params2
   );
 
+  const params3 = [];
+  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
+  const heroLaningData = await p.query(
+    `SELECT ps.match_id, ps.slot, ps.hero_id,
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       ps.position, ps.team, ps.laning_nw
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.laning_nw IS NOT NULL${sc3}`,
+    params3
+  );
+  const matchPlayersHero = {};
+  for (const row of heroLaningData.rows) {
+    if (!matchPlayersHero[row.match_id]) matchPlayersHero[row.match_id] = [];
+    matchPlayersHero[row.match_id].push(row);
+  }
+  const laneByPlayerHero = {};
+  for (const players of Object.values(matchPlayersHero)) {
+    const outcomes = computeMatchLaneOutcomes(players);
+    for (const p of players) {
+      const outcome = outcomes[p.slot];
+      if (!outcome || !p.hero_id) continue;
+      const key = `${decodeByteString(p.player_key)}::${p.hero_id}`;
+      if (!laneByPlayerHero[key]) laneByPlayerHero[key] = { wins: 0, losses: 0, games: 0 };
+      laneByPlayerHero[key].games++;
+      if (outcome === 'W' || outcome === 'w') laneByPlayerHero[key].wins++;
+      else if (outcome === 'L' || outcome === 'l') laneByPlayerHero[key].losses++;
+    }
+  }
+
   const heroByPlayer = {};
   for (const row of heroBreakdown.rows) {
     const key = decodeByteString(row.player_key);
     if (!heroByPlayer[key]) heroByPlayer[key] = [];
+    const laneKey = `${key}::${row.hero_id}`;
+    const lane = laneByPlayerHero[laneKey] || { wins: 0, losses: 0, games: 0 };
     heroByPlayer[key].push({
       hero_id: parseInt(row.hero_id),
       hero_name: row.hero_name,
@@ -1667,6 +1770,9 @@ async function getPlayerHeroProfiles(seasonId = null) {
       dire_wins: parseInt(row.dire_wins),
       radiant_games: parseInt(row.radiant_games),
       radiant_wins: parseInt(row.radiant_wins),
+      lane_wins: lane.wins,
+      lane_losses: lane.losses,
+      lane_games: lane.games,
     });
   }
 
