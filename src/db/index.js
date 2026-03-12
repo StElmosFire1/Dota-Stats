@@ -577,8 +577,8 @@ async function getLeaderboard(limit = 50) {
        MAX(n.nickname) as nickname,
        MAX(r.last_updated) as last_updated
      FROM ratings r
-     LEFT JOIN nicknames n ON n.account_id::text = r.player_id AND r.player_id ~ '^[0-9]+$'
-     GROUP BY COALESCE(n.nickname, r.player_id)
+     LEFT JOIN nicknames n ON n.account_id = r.player_id
+     GROUP BY COALESCE(n.nickname, r.player_id::text)
      ORDER BY mmr DESC LIMIT $1`,
     [limit]
   );
@@ -611,7 +611,7 @@ async function updateRating(playerId, discordId, displayName, mu, sigma, mmr, wo
 async function getPlayerRating(playerId) {
   const p = getPool();
   const result = await p.query(
-    'SELECT * FROM ratings WHERE player_id = $1 OR discord_id = $1 LIMIT 1',
+    'SELECT * FROM ratings WHERE player_id::text = $1 OR discord_id = $1 LIMIT 1',
     [playerId]
   );
   return result.rows[0] || null;
@@ -626,7 +626,7 @@ async function getPlayerStats(accountId) {
   const param = isRealAccount ? parseInt(accountId) : decodeURIComponent(accountId);
 
   const ratingResult = await p.query(
-    'SELECT * FROM ratings WHERE player_id = $1 LIMIT 1',
+    'SELECT * FROM ratings WHERE player_id::text = $1 LIMIT 1',
     [isRealAccount ? accountId.toString() : `anon_${param}`]
   );
 
@@ -1290,7 +1290,7 @@ async function recalculateAllRatings() {
         const id = p.account_id > 0 ? p.account_id.toString() : `anon_${p.persona_name}`;
         if (id === '0') continue;
         const existing = await client.query(
-          'SELECT mu, sigma FROM ratings WHERE player_id = $1',
+          'SELECT mu, sigma FROM ratings WHERE player_id::text = $1',
           [id]
         );
         radiant.push({
@@ -1304,7 +1304,7 @@ async function recalculateAllRatings() {
         const id = p.account_id > 0 ? p.account_id.toString() : `anon_${p.persona_name}`;
         if (id === '0') continue;
         const existing = await client.query(
-          'SELECT mu, sigma FROM ratings WHERE player_id = $1',
+          'SELECT mu, sigma FROM ratings WHERE player_id::text = $1',
           [id]
         );
         dire.push({
