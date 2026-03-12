@@ -228,6 +228,12 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_match_id ON match_draft(match_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_hero_id ON match_draft(hero_id)`);
+    await p.query(`
+      DELETE FROM match_draft WHERE id NOT IN (
+        SELECT MIN(id) FROM match_draft GROUP BY match_id, order_num
+      )
+    `);
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_match_draft_unique ON match_draft(match_id, order_num)`);
 
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS laning_nw INTEGER`);
 
@@ -406,7 +412,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         if (!d.heroId || d.heroId <= 0) continue;
         await client.query(
           `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team)
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (match_id, order_num) DO NOTHING`,
           [matchStats.matchId, d.heroId, d.isPick, d.order || 0, typeof d.team === 'string' ? (d.team === 'radiant' ? 0 : 1) : (d.team === 2 ? 0 : d.team === 3 ? 1 : (d.team || 0))]
         );
       }

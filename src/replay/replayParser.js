@@ -392,6 +392,7 @@ class ReplayParser {
     const laneCs10min = {};
     const laningNwAtEight = {};
     const draft = [];
+    const draftSeen = new Set();
 
     for (const e of events) {
       if (e.type === 'epilogue' && e.key) {
@@ -450,13 +451,17 @@ class ReplayParser {
       }
 
       if (e.type === 'draft_timings' && e.hero_id > 0) {
-        const rawTeam = e.draft_active_team;
-        draft.push({
-          heroId: e.hero_id,
-          isPick: e.pick === true,
-          order: e.draft_order || draft.length,
-          team: rawTeam === 2 ? 0 : rawTeam === 3 ? 1 : (rawTeam || 0),
-        });
+        const orderKey = e.draft_order != null ? e.draft_order : e.hero_id;
+        if (!draftSeen.has(orderKey)) {
+          draftSeen.add(orderKey);
+          const rawTeam = e.draft_active_team;
+          draft.push({
+            heroId: e.hero_id,
+            isPick: e.pick === true,
+            order: e.draft_order || draft.length,
+            team: rawTeam === 2 ? 0 : rawTeam === 3 ? 1 : (rawTeam || 0),
+          });
+        }
       }
 
       if (e.type === 'player_slot' && e.slot != null && e.key != null) {
