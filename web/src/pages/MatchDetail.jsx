@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
+import { useAdmin } from '../context/AdminContext';
 
 const POSITION_NAMES = {
   0: '-',
@@ -172,6 +173,7 @@ function ItemIcon({ itemName, itemId }) {
 
 function PositionSelect({ player, matchId, onUpdate }) {
   const [editing, setEditing] = useState(false);
+  const { isAdmin, adminKey, setShowModal } = useAdmin();
   const pos = player.position || 0;
 
   if (!editing) {
@@ -193,14 +195,13 @@ function PositionSelect({ player, matchId, onUpdate }) {
       autoFocus
       onChange={async (e) => {
         const newPos = parseInt(e.target.value);
-        const uploadKey = localStorage.getItem('uploadKey');
-        if (!uploadKey) {
-          alert('Set an upload key first (Upload page)');
+        if (!isAdmin) {
+          setShowModal(true);
           setEditing(false);
           return;
         }
         try {
-          await updatePlayerPosition(matchId, player.slot, newPos, uploadKey);
+          await updatePlayerPosition(matchId, player.slot, newPos, adminKey);
           onUpdate(player.slot, newPos);
         } catch (err) {
           alert('Failed: ' + err.message);
@@ -425,6 +426,7 @@ export default function MatchDetail() {
   const { matchId } = useParams();
   const navigate = useNavigate();
   const { seasons } = useSeason();
+  const { isAdmin, adminKey, setShowModal } = useAdmin();
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -450,11 +452,10 @@ export default function MatchDetail() {
   }, [matchId]);
 
   const handleSaveMeta = async () => {
-    const uploadKey = localStorage.getItem('uploadKey');
-    if (!uploadKey) { alert('Set an upload key first (Upload page)'); return; }
+    if (!isAdmin) { setShowModal(true); return; }
     setSavingMeta(true);
     try {
-      await updateMatchMeta(matchId, { patch: metaPatch || null, seasonId: metaSeason ? parseInt(metaSeason) : null }, uploadKey);
+      await updateMatchMeta(matchId, { patch: metaPatch || null, seasonId: metaSeason ? parseInt(metaSeason) : null }, adminKey);
       setMatch(prev => ({ ...prev, patch: metaPatch || null, season_id: metaSeason ? parseInt(metaSeason) : null }));
       setShowMeta(false);
     } catch (err) {
@@ -474,14 +475,13 @@ export default function MatchDetail() {
   };
 
   const handleDelete = async () => {
-    const uploadKey = localStorage.getItem('uploadKey');
-    if (!uploadKey) {
-      alert('You need to set an upload key first (go to Upload page)');
+    if (!isAdmin) {
+      setShowModal(true);
       return;
     }
     setDeleting(true);
     try {
-      await deleteMatch(matchId, uploadKey, deleteReason);
+      await deleteMatch(matchId, adminKey, deleteReason);
       navigate('/matches');
     } catch (err) {
       alert('Delete failed: ' + err.message);
@@ -490,12 +490,11 @@ export default function MatchDetail() {
   };
 
   const handleClearHash = async () => {
-    const uploadKey = localStorage.getItem('uploadKey');
-    if (!uploadKey) { alert('Set an upload key first (Upload page)'); return; }
+    if (!isAdmin) { setShowModal(true); return; }
     if (!confirm('This allows the same replay file to be re-uploaded (e.g. to capture draft data). Continue?')) return;
     setClearingHash(true);
     try {
-      await clearMatchFileHash(matchId, uploadKey);
+      await clearMatchFileHash(matchId, adminKey);
       alert('File hash cleared. You can now re-upload the replay for this match.');
     } catch (err) {
       alert('Failed: ' + err.message);

@@ -14,7 +14,35 @@ import Upload from './pages/Upload';
 import Seasons from './pages/Seasons';
 import UploadIndicator from './components/UploadIndicator';
 import SeasonSelector from './components/SeasonSelector';
+import AdminLoginModal from './components/AdminLoginModal';
 import { SeasonProvider } from './context/SeasonContext';
+import { AdminProvider, useAdmin } from './context/AdminContext';
+
+function AdminButton() {
+  const { isAdmin, logout, setShowModal } = useAdmin();
+  if (isAdmin) {
+    return (
+      <button
+        className="btn btn-small admin-badge"
+        onClick={logout}
+        title="Logged in as admin — click to log out"
+        style={{ marginLeft: 8 }}
+      >
+        &#128274; Admin
+      </button>
+    );
+  }
+  return (
+    <button
+      className="btn btn-small"
+      onClick={() => setShowModal(true)}
+      title="Admin login"
+      style={{ marginLeft: 8, opacity: 0.7 }}
+    >
+      &#128275; Login
+    </button>
+  );
+}
 
 function Nav() {
   const location = useLocation();
@@ -38,6 +66,7 @@ function Nav() {
         <Link to="/seasons" className={isActive('/seasons')}>Seasons</Link>
       </div>
       <SeasonSelector />
+      <AdminButton />
     </nav>
   );
 }
@@ -45,27 +74,30 @@ function Nav() {
 export default function App() {
   return (
     <BrowserRouter>
-      <SeasonProvider>
-        <Nav />
-        <UploadIndicator />
-        <main className="container">
-          <Routes>
-            <Route path="/" element={<Leaderboard />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
-            <Route path="/matches" element={<MatchList />} />
-            <Route path="/match/:matchId" element={<MatchDetail />} />
-            <Route path="/player/:accountId" element={<PlayerProfile />} />
-            <Route path="/heroes" element={<Heroes />} />
-            <Route path="/hero-breakdown" element={<HeroBreakdown />} />
-            <Route path="/players" element={<Players />} />
-            <Route path="/stats" element={<OverallStats />} />
-            <Route path="/positions" element={<PositionStats />} />
-            <Route path="/synergy" element={<Synergy />} />
-            <Route path="/upload" element={<Upload />} />
-            <Route path="/seasons" element={<Seasons />} />
-          </Routes>
-        </main>
-      </SeasonProvider>
+      <AdminProvider>
+        <SeasonProvider>
+          <Nav />
+          <AdminLoginModal />
+          <UploadIndicator />
+          <main className="container">
+            <Routes>
+              <Route path="/" element={<Leaderboard />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/matches" element={<MatchList />} />
+              <Route path="/match/:matchId" element={<MatchDetail />} />
+              <Route path="/player/:accountId" element={<PlayerProfile />} />
+              <Route path="/heroes" element={<Heroes />} />
+              <Route path="/hero-breakdown" element={<HeroBreakdown />} />
+              <Route path="/players" element={<Players />} />
+              <Route path="/stats" element={<OverallStats />} />
+              <Route path="/positions" element={<PositionStats />} />
+              <Route path="/synergy" element={<Synergy />} />
+              <Route path="/upload" element={<Upload />} />
+              <Route path="/seasons" element={<Seasons />} />
+            </Routes>
+          </main>
+        </SeasonProvider>
+      </AdminProvider>
     </BrowserRouter>
   );
 }

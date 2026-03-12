@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useSeason } from '../context/SeasonContext';
+import { useAdmin } from '../context/AdminContext';
 import { createSeason, activateSeason } from '../api';
 
 export default function Seasons() {
   const { seasons, activeSeason, refreshSeasons } = useSeason();
+  const { isAdmin, adminKey, setShowModal } = useAdmin();
   const [newName, setNewName] = useState('');
-  const [uploadKey, setUploadKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -19,9 +20,10 @@ export default function Seasons() {
   async function handleCreate(e) {
     e.preventDefault();
     if (!newName.trim()) return;
+    if (!isAdmin) { setShowModal(true); return; }
     setLoading(true);
     try {
-      await createSeason(newName.trim(), uploadKey);
+      await createSeason(newName.trim(), adminKey);
       setNewName('');
       await refreshSeasons();
       feedback('', 'Season created and set as active.');
@@ -33,9 +35,10 @@ export default function Seasons() {
   }
 
   async function handleActivate(id) {
+    if (!isAdmin) { setShowModal(true); return; }
     setLoading(true);
     try {
-      await activateSeason(id, uploadKey);
+      await activateSeason(id, adminKey);
       await refreshSeasons();
       feedback('', id === null ? 'No active season (uploads unassigned).' : 'Season activated.');
     } catch (err) {
@@ -54,6 +57,12 @@ export default function Seasons() {
         <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 16 }}>
           Creating a season sets it as active — new replay uploads will be automatically assigned to it.
         </p>
+        {!isAdmin && (
+          <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--muted)' }}>
+            <button className="btn btn-small" onClick={() => setShowModal(true)}>Login as admin</button>
+            {' '}to manage seasons.
+          </div>
+        )}
         <form onSubmit={handleCreate} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
             type="text"
@@ -63,17 +72,9 @@ export default function Seasons() {
             onChange={e => setNewName(e.target.value)}
             style={{ flex: '1 1 200px', minWidth: 160 }}
             required
+            disabled={!isAdmin}
           />
-          <input
-            type="password"
-            className="input"
-            placeholder="Upload key"
-            value={uploadKey}
-            onChange={e => setUploadKey(e.target.value)}
-            style={{ width: 160 }}
-            required
-          />
-          <button type="submit" className="btn btn-primary" disabled={loading}>
+          <button type="submit" className="btn btn-primary" disabled={loading || !isAdmin}>
             {loading ? 'Creating…' : 'Create Season'}
           </button>
         </form>
@@ -118,9 +119,9 @@ export default function Seasons() {
                     {!s.active && (
                       <button
                         className="btn btn-small"
-                        disabled={loading || !uploadKey}
+                        disabled={loading}
                         onClick={() => handleActivate(s.id)}
-                        title={uploadKey ? '' : 'Enter upload key above first'}
+                        title={isAdmin ? '' : 'Admin login required'}
                       >
                         Set Active
                       </button>
@@ -128,9 +129,9 @@ export default function Seasons() {
                     {s.active && (
                       <button
                         className="btn btn-small btn-danger"
-                        disabled={loading || !uploadKey}
+                        disabled={loading}
                         onClick={() => handleActivate(null)}
-                        title={uploadKey ? 'Remove active season (uploads will be unassigned)' : 'Enter upload key above first'}
+                        title={isAdmin ? 'Remove active season (uploads will be unassigned)' : 'Admin login required'}
                       >
                         Deactivate
                       </button>

@@ -81,6 +81,14 @@ function createServer() {
 function createApiRouter() {
   const router = express.Router();
 
+  router.post('/admin/login', express.json(), (req, res) => {
+    const uploadKey = process.env.UPLOAD_KEY;
+    if (!uploadKey) return res.status(503).json({ error: 'Admin not configured' });
+    const { password } = req.body || {};
+    if (password === uploadKey) return res.json({ success: true });
+    return res.status(401).json({ error: 'Invalid password' });
+  });
+
   router.get('/setup/parser', (req, res) => {
     const jarPath = path.join(__dirname, '../../odota-parser/target/stats-0.1.0.jar');
     if (!fs.existsSync(jarPath)) return res.status(404).json({ error: 'not found' });

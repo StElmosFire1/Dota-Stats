@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getAllPlayers, setNickname } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import { useAdmin } from '../context/AdminContext';
 
 const POS_SHORT = { 1: 'Pos 1', 2: 'Pos 2', 3: 'Pos 3', 4: 'Pos 4', 5: 'Pos 5' };
 
 export default function Players() {
   const { seasonId } = useSeason();
+  const { isAdmin, adminKey, setShowModal } = useAdmin();
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingKey, setEditingKey] = useState(null);
@@ -41,14 +43,13 @@ export default function Players() {
       alert('Nickname editing requires a Steam account ID. Players with account_id=0 cannot have nicknames yet.');
       return;
     }
-    const uploadKey = localStorage.getItem('uploadKey');
-    if (!uploadKey) {
-      alert('Set an upload key on the Upload page first');
+    if (!isAdmin) {
+      setShowModal(true);
       return;
     }
     setSaving(true);
     try {
-      await setNickname(player.account_id, editValue, uploadKey);
+      await setNickname(player.account_id, editValue, adminKey);
       setEditingKey(null);
       loadPlayers();
     } catch (err) {

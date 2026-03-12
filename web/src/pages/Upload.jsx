@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { uploadReplayChunked, getUploadStatus } from '../api';
+import { useAdmin } from '../context/AdminContext';
 
 const MAX_POLL_RETRIES = 10;
 const STORAGE_KEY = 'uploadQueue';
@@ -76,10 +77,12 @@ function FileQueueItem({ item }) {
 }
 
 export default function Upload() {
+  const { isAdmin, adminKey, setShowModal } = useAdmin();
   const [queue, setQueue] = useState(() => loadPersistedQueue());
-  const [uploadKey, setUploadKey] = useState(() => localStorage.getItem('uploadKey') || '');
   const [patch, setPatch] = useState(() => localStorage.getItem('uploadPatch') || '');
   const fileRef = useRef(null);
+  const adminKeyRef = useRef(adminKey);
+  useEffect(() => { adminKeyRef.current = adminKey; }, [adminKey]);
   const pollingJobsRef = useRef(new Set());
   const uploadingRef = useRef(new Set());
   const unmountedRef = useRef(false);
@@ -171,7 +174,7 @@ export default function Upload() {
     if (uploadingRef.current.has(itemId)) return;
     uploadingRef.current.add(itemId);
 
-    const savedKey = localStorage.getItem('uploadKey') || '';
+    const savedKey = adminKeyRef.current || '';
     safeUpdateItem(itemId, { status: 'uploading', progress: { percent: 0, detail: 'Starting upload...' } });
 
     try {
@@ -202,13 +205,13 @@ export default function Upload() {
   }, []);
 
   useEffect(() => {
-    if (!uploadKey) return;
+    if (!adminKey) return;
 
     const pendingWithFiles = queue.filter(i => i.status === 'pending' && i.file && !uploadingRef.current.has(i.id));
     for (const item of pendingWithFiles) {
       uploadSingleFile(item);
     }
-  }, [queue, uploadKey, uploadSingleFile]);
+  }, [queue, adminKey, uploadSingleFile]);
 
   const addFiles = useCallback((fileList) => {
     const validFiles = Array.from(fileList).filter(
@@ -256,22 +259,14 @@ export default function Upload() {
         {' '}<a href="/api/available-stats" className="stats-download-link" download>Download list of all parseable stats</a>
       </p>
 
-      <div className="upload-form">
-        <div className="form-group">
-          <label htmlFor="uploadKey">Upload Key</label>
-          <input
-            id="uploadKey"
-            type="password"
-            value={uploadKey}
-            onChange={(e) => {
-              setUploadKey(e.target.value);
-              localStorage.setItem('uploadKey', e.target.value);
-            }}
-            placeholder="Enter your upload key"
-            className="form-input"
-          />
+      {!isAdmin && (
+        <div className="status-message" style={{ marginBottom: 16 }}>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>Login as admin</button>
+          {' '}to upload replays.
         </div>
+      )}
 
+      <div className="upload-form" style={{ opacity: isAdmin ? 1 : 0.5, pointerEvents: isAdmin ? 'auto' : 'none' }}>
         <div className="form-group">
           <label htmlFor="patchInput">Patch <span style={{ color: '#888', fontWeight: 400 }}>(optional — applied to all files added below)</span></label>
           <input
@@ -346,9 +341,9 @@ export default function Upload() {
         </div>
       )}
 
-      {!uploadKey && queue.length > 0 && pendingCount > 0 && (
+      {!isAdmin && queue.length > 0 && pendingCount > 0 && (
         <div className="status-message error">
-          <p>Enter an upload key to start uploading.</p>
+          <p><button className="btn btn-small" onClick={() => setShowModal(true)}>Login as admin</button> to start uploading.</p>
         </div>
       )}
     </div>
