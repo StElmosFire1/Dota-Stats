@@ -958,28 +958,60 @@ class ReplayParser {
       if (p.heroId > 0) heroTeamMap[p.heroId] = p.team; // 'radiant' or 'dire'
     }
 
-    // Step 3: for picks, use player data to find which rawTeam value = radiant
+    // Step 3: log hero IDs to diagnose any mismatch
+    const playerHeroIds = Object.keys(heroTeamMap).map(Number);
+    const pickHeroIds = draftDeduped.filter(d => d.isPick).map(d => d.heroId);
+    console.log(`[Draft] playerHeroIds: ${playerHeroIds.join(',')}`);
+    console.log(`[Draft] pickHeroIds:   ${pickHeroIds.join(',')}`);
+
+    // Step 4: find radiant rawTeam value using hero cross-reference
     let radiantRawTeam = null;
     let direRawTeam = null;
     for (const d of draftDeduped) {
-      if (d.isPick && heroTeamMap[d.heroId]) {
-        const pt = heroTeamMap[d.heroId];
+      if (d.isPick) {
+        const pt = heroTeamMap[d.heroId] || heroTeamMap[String(d.heroId)];
         if (pt === 'radiant' && radiantRawTeam === null) radiantRawTeam = d.rawTeam;
         if (pt === 'dire' && direRawTeam === null) direRawTeam = d.rawTeam;
         if (radiantRawTeam !== null && direRawTeam !== null) break;
       }
     }
-    console.log(`[Draft] rawTeam mapping — radiant=${radiantRawTeam} dire=${direRawTeam} (from ${draftDeduped.filter(d=>d.isPick).length} picks)`);
 
-    // Step 4: assign correct team to every entry
+    // Fallback: if hero cross-reference failed, count rawTeam occurrences among picks.
+    // In CM each team picks exactly 5 heroes, so two distinct rawTeam values should each appear 5 times.
+    if (radiantRawTeam === null) {
+      const pickTeamCounts = {};
+      for (const d of draftDeduped) {
+        if (d.isPick) {
+          const key = String(d.rawTeam);
+          pickTeamCounts[key] = (pickTeamCounts[key] || 0) + 1;
+        }
+      }
+      const distinctTeams = Object.keys(pickTeamCounts).sort((a, b) => Number(a) - Number(b));
+      if (distinctTeams.length >= 2) {
+        // Lower value = radiant by Dota convention
+        radiantRawTeam = isNaN(Number(distinctTeams[0])) ? distinctTeams[0] : Number(distinctTeams[0]);
+        direRawTeam = isNaN(Number(distinctTeams[1])) ? distinctTeams[1] : Number(distinctTeams[1]);
+      } else if (distinctTeams.length === 1) {
+        // All picks same rawTeam — try treating null/0 as one team and the value as the other
+        radiantRawTeam = null; // will use fallback below
+      }
+      console.log(`[Draft] fallback count method — pickTeamCounts: ${JSON.stringify(pickTeamCounts)} => radiant=${radiantRawTeam} dire=${direRawTeam}`);
+    }
+
+    console.log(`[Draft] rawTeam mapping — radiant=${radiantRawTeam} dire=${direRawTeam}`);
+
+    // Step 5: assign correct team to every entry
     const draft = draftDeduped.map(d => {
       let team;
-      if (d.isPick && heroTeamMap[d.heroId] != null) {
-        team = heroTeamMap[d.heroId] === 'radiant' ? 0 : 1;
-      } else if (radiantRawTeam !== null) {
+      const pt = heroTeamMap[d.heroId] || heroTeamMap[String(d.heroId)];
+      if (d.isPick && pt != null) {
+        // Picks: use actual player team (most reliable)
+        team = pt === 'radiant' ? 0 : 1;
+      } else if (radiantRawTeam !== null && direRawTeam !== null) {
+        // Bans (or picks where hero lookup failed): use inferred rawTeam mapping
         team = d.rawTeam === radiantRawTeam ? 0 : 1;
       } else {
-        // fallback: treat anything that isn't 3 as radiant
+        // Last resort fallback
         team = d.rawTeam === 3 ? 1 : 0;
       }
       return { heroId: d.heroId, isPick: d.isPick, order: d.order, team };
