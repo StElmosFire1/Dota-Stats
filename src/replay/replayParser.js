@@ -391,8 +391,7 @@ class ReplayParser {
     const laningData = {};
     const laneCs10min = {};
     const laningNwAtEight = {};
-    const draft = [];
-    const draftSeen = new Set();
+    const draftRaw = [];
 
     for (const e of events) {
       if (e.type === 'epilogue' && e.key) {
@@ -451,19 +450,12 @@ class ReplayParser {
       }
 
       if (e.type === 'draft_timings' && e.hero_id > 0) {
-        if (!draftSeen.has(e.hero_id)) {
-          draftSeen.add(e.hero_id);
-          const rawTeam = e.draft_active_team;
-          if (draft.length < 5) {
-            console.log(`[Draft] hero_id=${e.hero_id} pick=${e.pick} draft_order=${e.draft_order} draft_active_team=${rawTeam} (type=${typeof rawTeam})`);
-          }
-          draft.push({
-            heroId: e.hero_id,
-            isPick: e.pick === true,
-            order: e.draft_order != null ? e.draft_order : draft.length,
-            team: rawTeam === 2 ? 0 : rawTeam === 3 ? 1 : (rawTeam || 0),
-          });
-        }
+        draftRaw.push({
+          heroId: e.hero_id,
+          isPick: e.pick === true,
+          order: e.draft_order != null ? e.draft_order : draftRaw.length,
+          rawTeam: e.draft_active_team,
+        });
       }
 
       if (e.type === 'player_slot' && e.slot != null && e.key != null) {
@@ -947,6 +939,53 @@ class ReplayParser {
       radiantWin = radiantKills > direKills;
     }
 
+    // --- Draft post-processing ---
+    // Step 1: deduplicate by hero_id, preferring entries with a non-null rawTeam
+    const draftByHero = new Map();
+    for (const d of draftRaw) {
+      const existing = draftByHero.get(d.heroId);
+      if (!existing) {
+        draftByHero.set(d.heroId, d);
+      } else if (d.rawTeam != null && (existing.rawTeam == null)) {
+        draftByHero.set(d.heroId, d);
+      }
+    }
+    const draftDeduped = Array.from(draftByHero.values()).sort((a, b) => a.order - b.order);
+
+    // Step 2: build hero -> team map from actual player data
+    const heroTeamMap = {};
+    for (const p of playerList) {
+      if (p.heroId > 0) heroTeamMap[p.heroId] = p.team; // 'radiant' or 'dire'
+    }
+
+    // Step 3: for picks, use player data to find which rawTeam value = radiant
+    let radiantRawTeam = null;
+    let direRawTeam = null;
+    for (const d of draftDeduped) {
+      if (d.isPick && heroTeamMap[d.heroId]) {
+        const pt = heroTeamMap[d.heroId];
+        if (pt === 'radiant' && radiantRawTeam === null) radiantRawTeam = d.rawTeam;
+        if (pt === 'dire' && direRawTeam === null) direRawTeam = d.rawTeam;
+        if (radiantRawTeam !== null && direRawTeam !== null) break;
+      }
+    }
+    console.log(`[Draft] rawTeam mapping — radiant=${radiantRawTeam} dire=${direRawTeam} (from ${draftDeduped.filter(d=>d.isPick).length} picks)`);
+
+    // Step 4: assign correct team to every entry
+    const draft = draftDeduped.map(d => {
+      let team;
+      if (d.isPick && heroTeamMap[d.heroId] != null) {
+        team = heroTeamMap[d.heroId] === 'radiant' ? 0 : 1;
+      } else if (radiantRawTeam !== null) {
+        team = d.rawTeam === radiantRawTeam ? 0 : 1;
+      } else {
+        // fallback: treat anything that isn't 3 as radiant
+        team = d.rawTeam === 3 ? 1 : 0;
+      }
+      return { heroId: d.heroId, isPick: d.isPick, order: d.order, team };
+    });
+    // --- End draft post-processing ---
+
     console.log(`[Replay] Final stats: matchId=${matchId}, duration=${duration}s, radiantWin=${radiantWin}, players=${playerList.length}`);
     for (const p of playerList) {
       console.log(`[Replay]   ${p.team} pos${p.position} ${p.isCaptain ? '(C)' : ''}: ${p.personaname} (hero=${p.heroId}, acct=${p.accountId}) K/D/A=${p.kills}/${p.deaths}/${p.assists} HD=${p.heroDamage} TD=${p.towerDamage} HH=${p.heroHealing} DT=${p.damageTaken} OBS=${p.obsPlaced} SEN=${p.senPlaced} STK=${p.campsStacked}`);
@@ -954,6 +993,7 @@ class ReplayParser {
 
     if (draft.length > 0) {
       console.log(`[Replay] Draft captured: ${draft.filter(d => !d.isPick).length} bans, ${draft.filter(d => d.isPick).length} picks`);
+      console.log(`[Draft] First 4 entries: ${draft.slice(0,4).map(d=>`hero=${d.heroId} team=${d.team} pick=${d.isPick}`).join(' | ')}`);
     }
 
     return {
