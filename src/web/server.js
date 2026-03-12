@@ -66,17 +66,6 @@ function createServer() {
 
   app.use('/api', createApiRouter());
 
-  app.get('/dl/parser.jar', (req, res) => {
-    const jarPath = path.join(__dirname, '../../odota-parser/target/stats-0.1.0.jar');
-    if (!fs.existsSync(jarPath)) {
-      return res.status(404).json({ error: 'Parser JAR not found' });
-    }
-    const stat = fs.statSync(jarPath);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'attachment; filename="stats-0.1.0.jar"');
-    res.setHeader('Content-Length', stat.size);
-    fs.createReadStream(jarPath).pipe(res);
-  });
 
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
@@ -91,6 +80,18 @@ function createServer() {
 
 function createApiRouter() {
   const router = express.Router();
+
+  router.get('/setup/parser', (req, res) => {
+    const jarPath = path.join(__dirname, '../../odota-parser/target/stats-0.1.0.jar');
+    if (!fs.existsSync(jarPath)) return res.status(404).json({ error: 'not found' });
+    const data = fs.readFileSync(jarPath);
+    const b64 = data.toString('base64');
+    const chunkSize = 1024 * 1024; // 1MB chunks
+    const page = parseInt(req.query.page) || 0;
+    const total = Math.ceil(b64.length / chunkSize);
+    const chunk = b64.slice(page * chunkSize, (page + 1) * chunkSize);
+    res.json({ page, total, size: b64.length, chunk });
+  });
 
   router.get('/matches', async (req, res) => {
     try {
