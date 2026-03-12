@@ -66,6 +66,15 @@ function createServer() {
 
   app.use('/api', createApiRouter());
 
+  app.get('/dl/parser.jar', (req, res) => {
+    const jarPath = path.join(__dirname, '../../odota-parser/target/stats-0.1.0.jar');
+    if (fs.existsSync(jarPath)) {
+      res.download(jarPath, 'stats-0.1.0.jar');
+    } else {
+      res.status(404).json({ error: 'Parser JAR not found' });
+    }
+  });
+
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
     app.use(express.static(staticPath));
