@@ -68,11 +68,14 @@ function createServer() {
 
   app.get('/dl/parser.jar', (req, res) => {
     const jarPath = path.join(__dirname, '../../odota-parser/target/stats-0.1.0.jar');
-    if (fs.existsSync(jarPath)) {
-      res.download(jarPath, 'stats-0.1.0.jar');
-    } else {
-      res.status(404).json({ error: 'Parser JAR not found' });
+    if (!fs.existsSync(jarPath)) {
+      return res.status(404).json({ error: 'Parser JAR not found' });
     }
+    const stat = fs.statSync(jarPath);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename="stats-0.1.0.jar"');
+    res.setHeader('Content-Length', stat.size);
+    fs.createReadStream(jarPath).pipe(res);
   });
 
   const staticPath = path.join(__dirname, '../../web/dist');

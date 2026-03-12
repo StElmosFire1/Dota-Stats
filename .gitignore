@@ -140,8 +140,5 @@ replays/
 *.dem
 *.dem.bz2
 
-# odota parser build artifacts (source excluded, but keep compiled jar)
-odota-parser/src/
-odota-parser/target/original-stats-0.1.0.jar
-odota-parser/processors/
-odota-parser/scripts/
+# odota parser - keep source and pom, exclude build output
+odota-parser/target/
