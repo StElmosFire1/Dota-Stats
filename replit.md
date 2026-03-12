@@ -6,6 +6,24 @@ This project is a Node.js Discord bot designed to track statistics from Dota 2 i
 ## User Preferences
 I prefer iterative development, with a focus on delivering core features first and then refining them. When making changes, please prioritize robust error handling and graceful degradation. I value clear, concise explanations for any complex technical decisions or implementations.
 
+## Deployment Workflow (DigitalOcean at 170.64.182.110)
+**IMPORTANT:** Replit commits do NOT automatically push to GitHub. After code changes, the Replit Git panel must be used to push to GitHub first, then the DO server can pull.
+
+Full deploy sequence:
+1. Push from Replit → GitHub via the Git panel (sidebar)
+2. On DO: `cd ~/Dota-Stats && git pull && cd web && npm run build && cd .. && pm2 restart inhouse-bot`
+3. Backend-only changes (no React changes): skip `cd web && npm run build`
+
+**If draft data looks wrong on DO (quick fix):** Use "Allow Re-upload" on the match detail admin panel to clear the duplicate hash, then re-upload the replay. The parser will regenerate clean data.
+
+**If DB data needs direct fixing without git:** Run scripts with `node -e "require('dotenv').config(); ..."` from `~/Dota-Stats/` to load DATABASE_URL from .env.
+
+## Draft Team Assignment (Key Design Decision)
+Dota 2's `draft_active_team` protobuf field is unreliable — it can report the wrong team for picks/bans. The correct approach (implemented in `replayParser.js` and `db/index.js` migration):
+1. Picks: cross-reference hero_id against player_stats to determine team (always reliable)
+2. Bans: use CM_PATTERN `[0,1,0,1,0,1,0,0,1,1,0,1,1,0,0,1,1,0,0,1,0,1,0,1]` with team_A derived from the first pick's team
+Never trust `draft_active_team` directly.
+
 ## System Architecture
 The bot is built on Node.js using `discord.js` for Discord integration and a custom Steam client (`steam-user`, `dota2-user`) for Dota 2 Game Coordinator (GC) interactions. Data persistence is handled primarily via PostgreSQL, with an optional Google Sheets integration for flexible data viewing.
 
