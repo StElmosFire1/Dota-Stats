@@ -393,7 +393,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         await client.query(
           `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team)
            VALUES ($1, $2, $3, $4, $5)`,
-          [matchStats.matchId, d.heroId, d.isPick, d.order || 0, d.team || 0]
+          [matchStats.matchId, d.heroId, d.isPick, d.order || 0, typeof d.team === 'string' ? (d.team === 'radiant' ? 0 : 1) : (d.team || 0)]
         );
       }
     }
