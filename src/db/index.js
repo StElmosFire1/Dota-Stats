@@ -31,6 +31,93 @@ async function init() {
     console.log('[DB] PostgreSQL connected.');
 
     await p.query(`
+      CREATE TABLE IF NOT EXISTS matches (
+        match_id VARCHAR(50) PRIMARY KEY,
+        date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        duration INTEGER DEFAULT 0,
+        game_mode INTEGER DEFAULT 0,
+        radiant_win BOOLEAN DEFAULT false,
+        lobby_name VARCHAR(255) DEFAULT '',
+        recorded_by VARCHAR(100) DEFAULT '',
+        parse_method VARCHAR(50) DEFAULT '',
+        file_hash VARCHAR(64),
+        patch VARCHAR(20),
+        season_id INTEGER
+      );
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS player_stats (
+        id SERIAL PRIMARY KEY,
+        match_id VARCHAR(50) NOT NULL REFERENCES matches(match_id) ON DELETE CASCADE,
+        account_id BIGINT DEFAULT 0,
+        discord_id VARCHAR(100) DEFAULT '',
+        persona_name VARCHAR(255) DEFAULT '',
+        hero_id INTEGER DEFAULT 0,
+        hero_name VARCHAR(100) DEFAULT '',
+        team INTEGER DEFAULT 0,
+        kills INTEGER DEFAULT 0,
+        deaths INTEGER DEFAULT 0,
+        assists INTEGER DEFAULT 0,
+        last_hits INTEGER DEFAULT 0,
+        denies INTEGER DEFAULT 0,
+        gpm INTEGER DEFAULT 0,
+        xpm INTEGER DEFAULT 0,
+        hero_damage INTEGER DEFAULT 0,
+        tower_damage INTEGER DEFAULT 0,
+        hero_healing INTEGER DEFAULT 0,
+        level INTEGER DEFAULT 0,
+        net_worth INTEGER DEFAULT 0,
+        position INTEGER DEFAULT 0,
+        is_captain BOOLEAN DEFAULT false,
+        obs_placed INTEGER DEFAULT 0,
+        sen_placed INTEGER DEFAULT 0,
+        creeps_stacked INTEGER DEFAULT 0,
+        camps_stacked INTEGER DEFAULT 0,
+        damage_taken INTEGER DEFAULT 0,
+        slot INTEGER DEFAULT 0,
+        rune_pickups INTEGER DEFAULT 0,
+        stun_duration REAL DEFAULT 0,
+        towers_killed INTEGER DEFAULT 0,
+        roshans_killed INTEGER DEFAULT 0,
+        teamfight_participation REAL DEFAULT 0,
+        firstblood_claimed INTEGER DEFAULT 0,
+        wards_killed INTEGER DEFAULT 0,
+        obs_purchased INTEGER DEFAULT 0,
+        sen_purchased INTEGER DEFAULT 0,
+        buybacks INTEGER DEFAULT 0,
+        courier_kills INTEGER DEFAULT 0,
+        tp_scrolls_used INTEGER DEFAULT 0,
+        double_kills INTEGER DEFAULT 0,
+        triple_kills INTEGER DEFAULT 0,
+        ultra_kills INTEGER DEFAULT 0,
+        rampages INTEGER DEFAULT 0,
+        kill_streak INTEGER DEFAULT 0,
+        smoke_kills INTEGER DEFAULT 0,
+        first_death INTEGER DEFAULT 0,
+        lane_cs_10min INTEGER DEFAULT 0,
+        has_scepter BOOLEAN DEFAULT false,
+        has_shard BOOLEAN DEFAULT false,
+        laning_nw INTEGER
+      );
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS ratings (
+        player_id BIGINT PRIMARY KEY,
+        discord_id VARCHAR(100) DEFAULT '',
+        display_name VARCHAR(255) DEFAULT '',
+        mu REAL DEFAULT 25,
+        sigma REAL DEFAULT 8.333,
+        mmr REAL DEFAULT 0,
+        wins INTEGER DEFAULT 0,
+        losses INTEGER DEFAULT 0,
+        games_played INTEGER DEFAULT 0,
+        last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await p.query(`
       ALTER TABLE matches ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64);
     `);
     await p.query(`DROP INDEX IF EXISTS idx_matches_file_hash`);
