@@ -55,7 +55,7 @@ async function init() {
         persona_name VARCHAR(255) DEFAULT '',
         hero_id INTEGER DEFAULT 0,
         hero_name VARCHAR(100) DEFAULT '',
-        team INTEGER DEFAULT 0,
+        team VARCHAR(20) DEFAULT 'radiant',
         kills INTEGER DEFAULT 0,
         deaths INTEGER DEFAULT 0,
         assists INTEGER DEFAULT 0,
@@ -230,6 +230,20 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_hero_id ON match_draft(hero_id)`);
 
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS laning_nw INTEGER`);
+
+    await p.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'player_stats' AND column_name = 'team'
+          AND data_type = 'integer'
+        ) THEN
+          ALTER TABLE player_stats ALTER COLUMN team TYPE VARCHAR(20)
+            USING CASE WHEN team = 0 THEN 'radiant' ELSE 'dire' END;
+        END IF;
+      END $$;
+    `);
 
     console.log('[DB] Schema migrations applied.');
     return true;
