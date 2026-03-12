@@ -556,6 +556,7 @@ async function deleteMatch(matchId, deletedBy, reason) {
     await client.query('DELETE FROM player_items WHERE match_id = $1', [matchId]);
     await client.query('DELETE FROM player_abilities WHERE match_id = $1', [matchId]);
     await client.query('DELETE FROM player_stats WHERE match_id = $1', [matchId]);
+    await client.query('DELETE FROM match_draft WHERE match_id = $1', [matchId]);
     await client.query('DELETE FROM matches WHERE match_id = $1', [matchId]);
 
     await client.query('COMMIT');
