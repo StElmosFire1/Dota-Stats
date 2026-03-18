@@ -444,22 +444,30 @@ function createApiRouter() {
     res.json({ jobId });
   });
 
-  router.post('/upload/chunk/:jobId', authMiddleware, express.raw({ limit: '6mb', type: 'application/octet-stream' }), (req, res) => {
-    const { jobId } = req.params;
-    const chunkIndex = parseInt(req.headers['x-chunk-index']);
-    const job = uploadJobs.get(jobId);
+  router.post('/upload/chunk/:jobId', authMiddleware, express.raw({ limit: '6mb', type: '*/*' }), (req, res) => {
+    try {
+      const { jobId } = req.params;
+      const chunkIndex = parseInt(req.headers['x-chunk-index']);
+      const job = uploadJobs.get(jobId);
 
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-    if (job.status !== 'uploading') return res.status(400).json({ error: 'Job not accepting chunks' });
-    if (isNaN(chunkIndex) || chunkIndex < 0 || chunkIndex >= job.totalChunks) {
-      return res.status(400).json({ error: 'Invalid chunk index' });
+      if (!job) return res.status(404).json({ error: 'Job not found — server may have restarted, please retry the upload' });
+      if (job.status !== 'uploading') return res.status(400).json({ error: `Job not accepting chunks (status: ${job.status})` });
+      if (isNaN(chunkIndex) || chunkIndex < 0 || chunkIndex >= job.totalChunks) {
+        return res.status(400).json({ error: `Invalid chunk index: ${chunkIndex}` });
+      }
+      if (!req.body || req.body.length === 0) {
+        return res.status(400).json({ error: 'Empty chunk body — browser may not support binary upload' });
+      }
+
+      const chunkPath = path.join(CHUNK_DIR, jobId, `chunk_${String(chunkIndex).padStart(5, '0')}`);
+      fs.writeFileSync(chunkPath, req.body);
+      job.chunksReceived.add(chunkIndex);
+
+      res.json({ received: job.chunksReceived.size, total: job.totalChunks });
+    } catch (err) {
+      console.error(`[Upload] Chunk write error:`, err.message);
+      res.status(500).json({ error: `Chunk write failed: ${err.message}` });
     }
-
-    const chunkPath = path.join(CHUNK_DIR, jobId, `chunk_${String(chunkIndex).padStart(5, '0')}`);
-    fs.writeFileSync(chunkPath, req.body);
-    job.chunksReceived.add(chunkIndex);
-
-    res.json({ received: job.chunksReceived.size, total: job.totalChunks });
   });
 
   router.post('/upload/complete/:jobId', authMiddleware, (req, res) => {
