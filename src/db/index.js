@@ -920,6 +920,102 @@ async function getLeaderboard(limit = 50) {
   return result.rows;
 }
 
+async function getComputedLeaderboard(seasonId = null) {
+  const p = getPool();
+  const { getStatsService } = require('../stats/statsService');
+  const statsService = getStatsService();
+
+  // Build match filter
+  const params = [];
+  let matchWhere;
+  if (seasonId === 'legacy') {
+    matchWhere = 'WHERE m.is_legacy = true';
+  } else if (seasonId) {
+    params.push(parseInt(seasonId));
+    matchWhere = `WHERE m.season_id = $${params.length}`;
+  } else {
+    matchWhere = 'WHERE m.is_legacy = false';
+  }
+
+  // Fetch all match+player data in one query, ordered by match date ASC
+  const rows = await p.query(
+    `SELECT m.match_id, m.date, m.radiant_win,
+            ps.account_id, ps.persona_name, ps.team
+     FROM matches m
+     JOIN player_stats ps ON ps.match_id = m.match_id
+     ${matchWhere}
+     ORDER BY m.date ASC, m.match_id ASC`,
+    params
+  );
+
+  // Group by match
+  const matchMap = new Map();
+  for (const row of rows.rows) {
+    if (!matchMap.has(row.match_id)) {
+      matchMap.set(row.match_id, { radiantWin: row.radiant_win, radiant: [], dire: [] });
+    }
+    const id = row.account_id > 0 ? row.account_id.toString() : null;
+    if (!id) continue;
+    const entry = { id, persona_name: row.persona_name };
+    if (row.team === 'radiant') matchMap.get(row.match_id).radiant.push(entry);
+    else matchMap.get(row.match_id).dire.push(entry);
+  }
+
+  // Fetch nicknames
+  const nicknamesRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknames = {};
+  for (const n of nicknamesRes.rows) nicknames[n.account_id.toString()] = n.nickname;
+
+  // Compute TrueSkill in match order
+  const ratings = {}; // id -> { mu, sigma, wins, losses, display_name }
+  const DEFAULT_MU = 25, DEFAULT_SIGMA = 8.333;
+
+  for (const [, match] of matchMap) {
+    if (match.radiant.length === 0 || match.dire.length === 0) continue;
+
+    const toPlayer = (p) => ({
+      id: p.id,
+      mu: ratings[p.id]?.mu ?? DEFAULT_MU,
+      sigma: ratings[p.id]?.sigma ?? DEFAULT_SIGMA,
+    });
+
+    const radiant = match.radiant.map(toPlayer);
+    const dire = match.dire.map(toPlayer);
+    const newRatings = statsService.calculateNewRatings(radiant, dire, match.radiantWin);
+
+    for (const r of newRatings) {
+      const isRadiant = radiant.some(p => p.id === r.id);
+      const won = isRadiant ? match.radiantWin : !match.radiantWin;
+      const playerInfo = [...match.radiant, ...match.dire].find(p => p.id === r.id);
+      if (!ratings[r.id]) {
+        ratings[r.id] = { mu: DEFAULT_MU, sigma: DEFAULT_SIGMA, wins: 0, losses: 0, display_name: playerInfo?.persona_name || r.id };
+      }
+      ratings[r.id].mu = r.mu;
+      ratings[r.id].sigma = r.sigma;
+      ratings[r.id].mmr = r.mmr;
+      if (won) ratings[r.id].wins++;
+      else ratings[r.id].losses++;
+      if (playerInfo?.persona_name) ratings[r.id].display_name = playerInfo.persona_name;
+    }
+  }
+
+  // Build sorted leaderboard array
+  const leaderboard = Object.entries(ratings).map(([player_id, r]) => ({
+    player_id,
+    display_name: decodeByteString(r.display_name || player_id),
+    nickname: nicknames[player_id] || null,
+    mu: r.mu,
+    sigma: r.sigma,
+    mmr: r.mmr ?? Math.round((r.mu - 3 * r.sigma) * 100) + 2000,
+    wins: r.wins,
+    losses: r.losses,
+    games_played: r.wins + r.losses,
+  }));
+
+  leaderboard.sort((a, b) => b.mmr - a.mmr);
+  return leaderboard;
+}
+
 async function updateRating(playerId, discordId, displayName, mu, sigma, mmr, won, matchId = null) {
   displayName = decodeByteString(displayName);
   const p = getPool();
@@ -2170,15 +2266,26 @@ async function getPlayerRatingHistory(accountId) {
   return result.rows;
 }
 
-async function getPlayerStreaks() {
+async function getPlayerStreaks(seasonId = null) {
   const p = getPool();
+  let whereClause = 'WHERE ps.account_id > 0';
+  const params = [];
+  if (seasonId === 'legacy') {
+    whereClause += ' AND m.is_legacy = true';
+  } else if (seasonId) {
+    params.push(parseInt(seasonId));
+    whereClause += ` AND m.season_id = $${params.length}`;
+  } else {
+    whereClause += ' AND m.is_legacy = false';
+  }
   const result = await p.query(
     `SELECT ps.account_id, m.date, ps.team, m.radiant_win,
             ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.date DESC) as rn
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE m.is_legacy = false AND ps.account_id > 0
-     ORDER BY ps.account_id, m.date DESC`
+     ${whereClause}
+     ORDER BY ps.account_id, m.date DESC`,
+    params
   );
   const byPlayer = {};
   for (const row of result.rows) {
@@ -2562,6 +2669,7 @@ module.exports = {
   getMatch,
   deleteMatch,
   getLeaderboard,
+  getComputedLeaderboard,
   updateRating,
   getPlayerRating,
   getPlayerStats,

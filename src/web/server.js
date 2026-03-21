@@ -398,10 +398,10 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/leaderboard', async (req, res) => {
     try {
-      const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+      const seasonId = req.query.season_id || null;
       const [leaderboard, streaks] = await Promise.all([
-        db.getLeaderboard(limit),
-        db.getPlayerStreaks(),
+        db.getComputedLeaderboard(seasonId),
+        db.getPlayerStreaks(seasonId),
       ]);
       for (const p of leaderboard) {
         p.streak = streaks[p.player_id?.toString()] || 0;

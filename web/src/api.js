@@ -49,8 +49,8 @@ export async function updateMatchMeta(matchId, { patch, seasonId, date }, upload
   return data;
 }
 
-export async function getLeaderboard(limit = 50) {
-  return fetchJson(`/leaderboard?limit=${limit}`);
+export async function getLeaderboard(limit = 50, seasonId = null) {
+  return fetchJson(`/leaderboard?limit=${limit}${seasonParam(seasonId)}`);
 }
 
 export async function getPlayer(accountId) {

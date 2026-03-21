@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getLeaderboard } from '../api';
+import { useSeason } from '../context/SeasonContext';
 
 function StreakBadge({ streak }) {
   if (!streak || Math.abs(streak) < 2) return null;
@@ -23,15 +24,17 @@ function StreakBadge({ streak }) {
 }
 
 export default function Leaderboard() {
+  const { seasonId } = useSeason();
   const [data, setData] = useState({ leaderboard: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getLeaderboard(100)
+    setLoading(true);
+    getLeaderboard(100, seasonId)
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [seasonId]);
 
   if (loading) return <div className="loading">Loading leaderboard...</div>;
 
