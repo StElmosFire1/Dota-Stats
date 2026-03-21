@@ -1,0 +1,105 @@
+root@Dota-Stats:~/Dota-Stats# pm2 logs inhouse-bot --lines 50
+[TAILING] Tailing last 50 lines for [inhouse-bot] process (change the value with --lines option)
+/root/.pm2/logs/inhouse-bot-error.log last 50 lines:
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [Sheets] creds.json not found or invalid. Sheets storage disabled.
+2|inhouse- | [Sheets] Upload a Google service account creds.json to the project root.
+2|inhouse- | (node:84536) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [Sheets] creds.json not found or invalid. Sheets storage disabled.
+2|inhouse- | [Sheets] Upload a Google service account creds.json to the project root.
+2|inhouse- | (node:84798) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [Dota2 GC] Disconnected from GC: 1
+2|inhouse- | [FriendMonitor] Failed to auto-join lobby 29751949918313618: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Steam] Login error: LogonSessionReplaced
+2|inhouse- | Error: LogonSessionReplaced
+2|inhouse- |     at SteamUser._handleLogOff (/root/Dota-Stats/node_modules/steam-user/components/09-logon.js:656:12)
+2|inhouse- |     at SteamUser.<anonymous> (/root/Dota-Stats/node_modules/steam-user/components/09-logon.js:871:7)
+2|inhouse- |     at /root/Dota-Stats/node_modules/steam-user/components/classes/HandlerManager.js:35:12
+2|inhouse- |     at Array.forEach (<anonymous>)
+2|inhouse- |     at HandlerManager.emit (/root/Dota-Stats/node_modules/steam-user/components/classes/HandlerManager.js:34:12)
+2|inhouse- |     at SteamUser._handleMessage (/root/Dota-Stats/node_modules/steam-user/components/03-messages.js:645:25)
+2|inhouse- |     at SteamUser._handleNetMessage (/root/Dota-Stats/node_modules/steam-user/components/03-messages.js:565:8)
+2|inhouse- |     at SteamUser._processMulti (/root/Dota-Stats/node_modules/steam-user/components/03-messages.js:697:9) {
+2|inhouse- |   eresult: 34
+2|inhouse- | }
+2|inhouse- | [Error] Unhandled rejection: Error: LogonSessionReplaced
+2|inhouse- |     at SteamUser._handleLogOff (/root/Dota-Stats/node_modules/steam-user/components/09-logon.js:656:12)
+2|inhouse- |     at SteamUser.<anonymous> (/root/Dota-Stats/node_modules/steam-user/components/09-logon.js:871:7)
+2|inhouse- |     at /root/Dota-Stats/node_modules/steam-user/components/classes/HandlerManager.js:35:12
+2|inhouse- |     at Array.forEach (<anonymous>)
+2|inhouse- |     at HandlerManager.emit (/root/Dota-Stats/node_modules/steam-user/components/classes/HandlerManager.js:34:12)
+2|inhouse- |     at SteamUser._handleMessage (/root/Dota-Stats/node_modules/steam-user/components/03-messages.js:645:25)
+2|inhouse- |     at SteamUser._handleNetMessage (/root/Dota-Stats/node_modules/steam-user/components/03-messages.js:565:8)
+2|inhouse- |     at SteamUser._processMulti (/root/Dota-Stats/node_modules/steam-user/components/03-messages.js:697:9) {
+2|inhouse- |   eresult: 34
+2|inhouse- | }
+2|inhouse- | [Sheets] creds.json not found or invalid. Sheets storage disabled.
+2|inhouse- | [Sheets] Upload a Google service account creds.json to the project root.
+2|inhouse- | (node:232074) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:232365) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:232440) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:232535) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:232778) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:233044) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:233256) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+
+/root/.pm2/logs/inhouse-bot-out.log last 50 lines:
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=8678 (2 bytes)
+2|inhouse- | [API] Upload init: job=944da7b362ebcfe5, file=8733848934.dem, size=63.8MB, chunks=13, patch=none
+2|inhouse- | 
+2|inhouse- | [Shutdown] Graceful shutdown...
+2|inhouse- | [Discord] Bot shut down.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Dota2 GC] Left practice lobby.
+2|inhouse- | [Steam] Shut down.
+2|inhouse- | [dotenv@17.3.1] injecting env (7) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+2|inhouse- | === Dota 2 Inhouse Stats Bot ===
+2|inhouse- | Starting up...
+2|inhouse- | 
+2|inhouse- | [DB] PostgreSQL connected.
+2|inhouse- | [DB] Schema migrations applied.
+2|inhouse- | [Startup] Google Sheets: disabled (config.features.sheets = false)
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Steam] Logging in...
+2|inhouse- | [Steam] Logged in successfully.
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=4009 (4 bytes)
+2|inhouse- | [Dota2 GC] Connected to Game Coordinator.
+2|inhouse- | [Steam] Dota 2 GC is ready!
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (28 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (22 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (22 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Startup] Steam connected.
+2|inhouse- | 
+2|inhouse- | [Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+2|inhouse- | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=8678 (2 bytes)
+2|inhouse- | [Discord] Bot online as Dota Bot#5597
+2|inhouse- | 
+2|inhouse- | [Startup] Bot is running! Use !help in Discord.
+2|inhouse- | [Startup] Active features:
+2|inhouse- |   - Discord:        YES
+2|inhouse- |   - Database:       YES
+2|inhouse- |   - Steam:          YES (connected)
+2|inhouse- |   - Replay parser:  YES (full stats)
+2|inhouse- |   - TrueSkill MMR:  YES
+2|inhouse- |   - Google Sheets:  DORMANT
+2|inhouse- |   - Match poller:   DORMANT
+2|inhouse- |   - Lobby/monitor:  DORMANT
+2|inhouse- | [Web] Dashboard running on port 5000
+2|inhouse- | [Startup] All systems ready.
+2|inhouse- | 
+2|inhouse- | [API] Upload init: job=8e0c1e6fe4a24a86, file=8733848934.dem, size=63.8MB, chunks=32, patch=none

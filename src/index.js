@@ -65,6 +65,10 @@ async function main() {
       steamConnected = true;
       startupStatus.steam = true;
       console.log('[Startup] Steam connected.\n');
+      steamClient.on('steamDisconnected', (reason) => {
+        startupStatus.steam = false;
+        console.warn(`[Steam] Marked offline in health status (reason: ${reason})`);
+      });
     } catch (err) {
       console.error('[Startup] Steam login failed:', err.message);
     }

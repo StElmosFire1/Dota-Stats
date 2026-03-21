@@ -91,10 +91,15 @@ class SteamDotaClient extends EventEmitter {
     });
 
     this.steamClient.on('error', (err) => {
-      console.error('[Steam] Login error:', err.message);
       this.isLoggedIn = false;
       this.isGCReady = false;
-      this.emit('error', err);
+      if (err.eresult === 34 || err.message === 'LogonSessionReplaced') {
+        console.warn('[Steam] Session replaced by another login — Steam disconnected. Bot continues running without Steam.');
+        this.emit('steamDisconnected', 'LogonSessionReplaced');
+      } else {
+        console.error('[Steam] Login error:', err.message);
+        this.emit('steamDisconnected', err.message);
+      }
     });
 
     this.steamClient.on('disconnected', (eresult, msg) => {
