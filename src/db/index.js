@@ -366,6 +366,71 @@ async function updateMatchMeta(matchId, { patch, seasonId, date }) {
   await p.query(`UPDATE matches SET ${updates.join(', ')} WHERE match_id = $${params.length}`, params);
 }
 
+async function updateMatchDetails(matchId, { radiant_win, duration, lobby_name }) {
+  const p = getPool();
+  const updates = [];
+  const params = [];
+  if (radiant_win !== undefined) { updates.push(`radiant_win = $${params.length + 1}`); params.push(!!radiant_win); }
+  if (duration !== undefined) { updates.push(`duration = $${params.length + 1}`); params.push(parseInt(duration) || 0); }
+  if (lobby_name !== undefined) { updates.push(`lobby_name = $${params.length + 1}`); params.push(lobby_name || ''); }
+  if (updates.length === 0) return;
+  params.push(matchId);
+  await p.query(`UPDATE matches SET ${updates.join(', ')} WHERE match_id = $${params.length}`, params);
+}
+
+async function updatePlayerStats(matchId, players) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    for (const pl of players) {
+      await client.query(`
+        UPDATE player_stats SET
+          kills=$1, deaths=$2, assists=$3, last_hits=$4, denies=$5,
+          gpm=$6, xpm=$7, hero_damage=$8, tower_damage=$9, hero_healing=$10,
+          level=$11, net_worth=$12, position=$13, is_captain=$14,
+          obs_placed=$15, sen_placed=$16, obs_purchased=$17, sen_purchased=$18,
+          wards_killed=$19, creeps_stacked=$20, camps_stacked=$21,
+          rune_pickups=$22, stun_duration=$23, towers_killed=$24, roshans_killed=$25,
+          teamfight_participation=$26, firstblood_claimed=$27, buybacks=$28,
+          courier_kills=$29, tp_scrolls_used=$30, double_kills=$31, triple_kills=$32,
+          ultra_kills=$33, rampages=$34, kill_streak=$35, smoke_kills=$36,
+          first_death=$37, lane_cs_10min=$38, has_scepter=$39, has_shard=$40,
+          damage_taken=$41, laning_nw=$42, team=$43
+        WHERE match_id=$44 AND slot=$45
+      `, [
+        parseInt(pl.kills)||0, parseInt(pl.deaths)||0, parseInt(pl.assists)||0,
+        parseInt(pl.last_hits)||0, parseInt(pl.denies)||0,
+        parseInt(pl.gpm)||0, parseInt(pl.xpm)||0,
+        parseInt(pl.hero_damage)||0, parseInt(pl.tower_damage)||0, parseInt(pl.hero_healing)||0,
+        parseInt(pl.level)||0, parseInt(pl.net_worth)||0,
+        parseInt(pl.position)||0, !!pl.is_captain,
+        parseInt(pl.obs_placed)||0, parseInt(pl.sen_placed)||0,
+        parseInt(pl.obs_purchased)||0, parseInt(pl.sen_purchased)||0,
+        parseInt(pl.wards_killed)||0, parseInt(pl.creeps_stacked)||0, parseInt(pl.camps_stacked)||0,
+        parseInt(pl.rune_pickups)||0, parseFloat(pl.stun_duration)||0,
+        parseInt(pl.towers_killed)||0, parseInt(pl.roshans_killed)||0,
+        parseFloat(pl.teamfight_participation)||0, parseInt(pl.firstblood_claimed)||0,
+        parseInt(pl.buybacks)||0, parseInt(pl.courier_kills)||0,
+        parseInt(pl.tp_scrolls_used)||0, parseInt(pl.double_kills)||0, parseInt(pl.triple_kills)||0,
+        parseInt(pl.ultra_kills)||0, parseInt(pl.rampages)||0, parseInt(pl.kill_streak)||0,
+        parseInt(pl.smoke_kills)||0, parseInt(pl.first_death)||0, parseInt(pl.lane_cs_10min)||0,
+        !!pl.has_scepter, !!pl.has_shard,
+        parseInt(pl.damage_taken)||0,
+        pl.laning_nw !== null && pl.laning_nw !== undefined && pl.laning_nw !== '' ? parseInt(pl.laning_nw) : null,
+        pl.team,
+        matchId, parseInt(pl.slot)
+      ]);
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, seasonId) {
   const p = getPool();
   const client = await p.connect();
@@ -1908,6 +1973,8 @@ module.exports = {
   createSeason,
   setActiveSeason,
   updateMatchMeta,
+  updateMatchDetails,
+  updatePlayerStats,
   getMatchDraft,
   clearMatchFileHash,
   getEnemySynergyHeatmap,

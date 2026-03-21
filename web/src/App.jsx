@@ -15,8 +15,11 @@ import Seasons from './pages/Seasons';
 import UploadIndicator from './components/UploadIndicator';
 import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
+import SuperuserLoginModal from './components/SuperuserLoginModal';
+import StatsEditor from './pages/StatsEditor';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
+import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -109,6 +112,32 @@ function AdminButton() {
   );
 }
 
+function SuperuserButton() {
+  const { isSuperuser, logout, setShowModal } = useSuperuser();
+  if (isSuperuser) {
+    return (
+      <button
+        className="btn btn-small"
+        onClick={logout}
+        title="Logged in as superuser — click to log out"
+        style={{ marginLeft: 4, background: '#7b3f00', borderColor: '#ff9800', color: '#ff9800' }}
+      >
+        &#128081; SU
+      </button>
+    );
+  }
+  return (
+    <button
+      className="btn btn-small"
+      onClick={() => setShowModal(true)}
+      title="Superuser login"
+      style={{ marginLeft: 4, opacity: 0.5 }}
+    >
+      &#128081;
+    </button>
+  );
+}
+
 function Nav() {
   const location = useLocation();
   const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
@@ -132,6 +161,7 @@ function Nav() {
       </div>
       <SeasonSelector />
       <AdminButton />
+      <SuperuserButton />
       <HealthDot />
     </nav>
   );
@@ -141,28 +171,32 @@ export default function App() {
   return (
     <BrowserRouter>
       <AdminProvider>
-        <SeasonProvider>
-          <Nav />
-          <AdminLoginModal />
-          <UploadIndicator />
-          <main className="container">
-            <Routes>
-              <Route path="/" element={<Leaderboard />} />
-              <Route path="/leaderboard" element={<Leaderboard />} />
-              <Route path="/matches" element={<MatchList />} />
-              <Route path="/match/:matchId" element={<MatchDetail />} />
-              <Route path="/player/:accountId" element={<PlayerProfile />} />
-              <Route path="/heroes" element={<Heroes />} />
-              <Route path="/hero-breakdown" element={<HeroBreakdown />} />
-              <Route path="/players" element={<Players />} />
-              <Route path="/stats" element={<OverallStats />} />
-              <Route path="/positions" element={<PositionStats />} />
-              <Route path="/synergy" element={<Synergy />} />
-              <Route path="/upload" element={<Upload />} />
-              <Route path="/seasons" element={<Seasons />} />
-            </Routes>
-          </main>
-        </SeasonProvider>
+        <SuperuserProvider>
+          <SeasonProvider>
+            <Nav />
+            <AdminLoginModal />
+            <SuperuserLoginModal />
+            <UploadIndicator />
+            <main className="container">
+              <Routes>
+                <Route path="/" element={<Leaderboard />} />
+                <Route path="/leaderboard" element={<Leaderboard />} />
+                <Route path="/matches" element={<MatchList />} />
+                <Route path="/match/:matchId" element={<MatchDetail />} />
+                <Route path="/match/:matchId/edit" element={<StatsEditor />} />
+                <Route path="/player/:accountId" element={<PlayerProfile />} />
+                <Route path="/heroes" element={<Heroes />} />
+                <Route path="/hero-breakdown" element={<HeroBreakdown />} />
+                <Route path="/players" element={<Players />} />
+                <Route path="/stats" element={<OverallStats />} />
+                <Route path="/positions" element={<PositionStats />} />
+                <Route path="/synergy" element={<Synergy />} />
+                <Route path="/upload" element={<Upload />} />
+                <Route path="/seasons" element={<Seasons />} />
+              </Routes>
+            </main>
+          </SeasonProvider>
+        </SuperuserProvider>
       </AdminProvider>
     </BrowserRouter>
   );

@@ -127,6 +127,43 @@ function createApiRouter(startupStatus = {}) {
     return res.status(401).json({ error: 'Invalid password' });
   });
 
+  router.post('/admin/superuser-login', express.json(), (req, res) => {
+    const key = process.env.SUPERUSER_PASSWORD;
+    if (!key) return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
+    const { password } = req.body || {};
+    if (password === key) return res.json({ success: true });
+    return res.status(401).json({ error: 'Invalid password' });
+  });
+
+  function requireSuperuser(req, res, next) {
+    const key = process.env.SUPERUSER_PASSWORD;
+    if (!key) return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
+    if (req.headers['x-superuser-key'] !== key) return res.status(403).json({ error: 'Invalid superuser key' });
+    next();
+  }
+
+  router.put('/matches/:matchId/player-stats', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const { players } = req.body;
+      if (!Array.isArray(players)) return res.status(400).json({ error: 'players must be an array' });
+      await db.updatePlayerStats(req.params.matchId, players);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Error updating player stats:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.put('/matches/:matchId/match-details', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      await db.updateMatchDetails(req.params.matchId, req.body);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Error updating match details:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/setup/parser', (req, res) => {
     const jarPath = path.join(__dirname, '../../odota-parser/target/stats-0.1.0.jar');
     if (!fs.existsSync(jarPath)) return res.status(404).json({ error: 'not found' });

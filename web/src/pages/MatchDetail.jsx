@@ -4,6 +4,7 @@ import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatc
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
+import { useSuperuser } from '../context/SuperuserContext';
 
 const POSITION_NAMES = {
   0: '-',
@@ -427,6 +428,7 @@ export default function MatchDetail() {
   const navigate = useNavigate();
   const { seasons } = useSeason();
   const { isAdmin, adminKey, setShowModal } = useAdmin();
+  const { isSuperuser } = useSuperuser();
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -516,7 +518,21 @@ export default function MatchDetail() {
 
   return (
     <div>
-      <Link to="/matches" className="back-link">&larr; Back to matches</Link>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+        <Link to="/matches" className="back-link">&larr; Back to matches</Link>
+        {isSuperuser && (
+          <Link
+            to={`/match/${matchId}/edit`}
+            style={{
+              background: '#7b3f00', color: '#ff9800', border: '1px solid #ff9800',
+              padding: '3px 12px', borderRadius: 4, fontSize: '0.8rem', textDecoration: 'none',
+              fontWeight: 600,
+            }}
+          >
+            &#128081; Edit Stats
+          </Link>
+        )}
+      </div>
 
       <div className="match-detail-header">
         <h1>Match #{match.match_id}</h1>
