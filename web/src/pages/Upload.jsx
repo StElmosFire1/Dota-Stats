@@ -409,24 +409,38 @@ export default function Upload() {
                         <th>Date 1</th>
                         <th>Date 2</th>
                         <th>Duration diff</th>
+                        <th>Same players</th>
+                        <th>Same KDA totals</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dupResults.map((row, i) => (
-                        <tr key={i}>
-                          <td><Link to={`/match/${row.match_id_1}`}>#{row.match_id_1}</Link></td>
-                          <td><Link to={`/match/${row.match_id_2}`}>#{row.match_id_2}</Link></td>
-                          <td>{row.date_1 ? new Date(row.date_1).toLocaleDateString() : '—'}</td>
-                          <td>{row.date_2 ? new Date(row.date_2).toLocaleDateString() : '—'}</td>
-                          <td style={{ color: parseInt(row.duration_diff) < 60 ? '#f44336' : '#aaa' }}>
-                            {row.duration_diff}s
-                          </td>
-                        </tr>
-                      ))}
+                      {dupResults.map((row, i) => {
+                        const durationDiff = parseInt(row.duration_diff);
+                        const likelyDup = row.same_players && row.same_totals && durationDiff < 60;
+                        return (
+                          <tr key={i} style={{ background: likelyDup ? 'rgba(244,67,54,0.08)' : undefined }}>
+                            <td><Link to={`/match/${row.match_id_1}`}>#{row.match_id_1}</Link></td>
+                            <td><Link to={`/match/${row.match_id_2}`}>#{row.match_id_2}</Link></td>
+                            <td>{row.date_1 ? new Date(row.date_1).toLocaleDateString() : '—'}</td>
+                            <td>{row.date_2 ? new Date(row.date_2).toLocaleDateString() : '—'}</td>
+                            <td style={{ color: durationDiff < 60 ? '#f44336' : durationDiff < 300 ? '#ff9800' : '#aaa' }}>
+                              {durationDiff}s
+                            </td>
+                            <td style={{ color: row.same_players ? '#4caf50' : '#aaa' }}>
+                              {row.same_players ? '✓ Yes' : '✗ No'}
+                            </td>
+                            <td style={{ color: row.same_totals ? '#4caf50' : '#aaa' }}>
+                              {row.same_totals
+                                ? `✓ ${row.kills_1}/${row.deaths_1}`
+                                : `✗ ${row.kills_1}/${row.deaths_1} vs ${row.kills_2}/${row.deaths_2}`}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   <p style={{ color: '#aaa', fontSize: '0.8rem', marginTop: '0.5rem' }}>
-                    A small duration difference (under 60s) with the same heroes and result strongly suggests a duplicate. Delete the unwanted match from the match page.
+                    Rows highlighted in red are very likely duplicates (same players, same kill/death totals, duration within 60s). Delete the unwanted match from the match page.
                   </p>
                 </>
               )}

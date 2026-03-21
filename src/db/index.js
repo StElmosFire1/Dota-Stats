@@ -2481,8 +2481,15 @@ async function findDuplicateMatches() {
     WITH match_fingerprints AS (
       SELECT
         ps.match_id,
-        STRING_AGG(ps.hero_id::text, ',' ORDER BY ps.hero_id) AS hero_fingerprint,
-        COUNT(*) AS player_count
+        STRING_AGG(ps.hero_id::text, ',' ORDER BY ps.hero_id)          AS hero_fingerprint,
+        STRING_AGG(
+          COALESCE(ps.account_id::text, 'anon_' || ps.persona_name),
+          ',' ORDER BY COALESCE(ps.account_id::text, 'anon_' || ps.persona_name)
+        )                                                               AS player_fingerprint,
+        SUM(ps.kills)                                                   AS total_kills,
+        SUM(ps.deaths)                                                  AS total_deaths,
+        SUM(ps.assists)                                                 AS total_assists,
+        COUNT(*)                                                        AS player_count
       FROM player_stats ps
       WHERE ps.hero_id > 0
       GROUP BY ps.match_id
@@ -2495,27 +2502,42 @@ async function findDuplicateMatches() {
         m.radiant_win,
         m.duration,
         m.lobby_name,
-        mf.hero_fingerprint
+        mf.hero_fingerprint,
+        mf.player_fingerprint,
+        mf.total_kills,
+        mf.total_deaths,
+        mf.total_assists
       FROM matches m
       JOIN match_fingerprints mf ON m.match_id = mf.match_id
     )
     SELECT
-      a.match_id AS match_id_1,
-      b.match_id AS match_id_2,
-      a.date AS date_1,
-      b.date AS date_2,
+      a.match_id           AS match_id_1,
+      b.match_id           AS match_id_2,
+      a.date               AS date_1,
+      b.date               AS date_2,
       a.radiant_win,
-      a.duration AS duration_1,
-      b.duration AS duration_2,
-      a.hero_fingerprint,
-      ABS(EXTRACT(EPOCH FROM (a.date - b.date))) AS date_diff_seconds,
-      ABS(a.duration - b.duration) AS duration_diff
+      a.duration           AS duration_1,
+      b.duration           AS duration_2,
+      a.total_kills        AS kills_1,
+      b.total_kills        AS kills_2,
+      a.total_deaths       AS deaths_1,
+      b.total_deaths       AS deaths_2,
+      ABS(a.duration - b.duration)                          AS duration_diff,
+      ABS(EXTRACT(EPOCH FROM (a.date - b.date)))            AS date_diff_seconds,
+      (a.hero_fingerprint = b.hero_fingerprint)             AS same_heroes,
+      (a.player_fingerprint = b.player_fingerprint)         AS same_players,
+      (a.total_kills = b.total_kills AND
+       a.total_deaths = b.total_deaths AND
+       a.total_assists = b.total_assists)                   AS same_totals
     FROM match_info a
     JOIN match_info b
-      ON a.hero_fingerprint = b.hero_fingerprint
+      ON a.match_id < b.match_id
      AND a.radiant_win = b.radiant_win
-     AND a.match_id < b.match_id
-    ORDER BY a.match_id, b.match_id
+     AND a.hero_fingerprint = b.hero_fingerprint
+    ORDER BY
+      (a.player_fingerprint = b.player_fingerprint) DESC,
+      ABS(a.duration - b.duration) ASC,
+      a.match_id, b.match_id
   `);
   return result.rows;
 }

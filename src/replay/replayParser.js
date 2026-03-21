@@ -406,7 +406,13 @@ class ReplayParser {
           );
 
           if (dota) {
-            console.log('[Replay] Epilogue dota keys:', Object.keys(dota));
+            // Log all dota fields with their values for diagnosis
+            const dotaFieldDump = {};
+            for (const k of Object.keys(dota)) {
+              const v = dota[k];
+              if (typeof v !== 'object') dotaFieldDump[k] = v;
+            }
+            console.log('[Replay] Epilogue dota fields:', JSON.stringify(dotaFieldDump));
 
             const mid = dota.matchId || dota.matchId_ || dota.match_id || dota.match_id_;
             matchId = mid ? mid.toString() : null;
@@ -424,25 +430,37 @@ class ReplayParser {
               radiantWin = rw === 2;
             }
 
-            const endTime = dota.endTime || dota.endTime_ || dota.end_time || dota.end_time_ || 0;
-            const preGame = dota.preGameDuration || dota.preGameDuration_ || dota.pre_game_duration || dota.pre_game_duration_ || 0;
-            if (endTime) {
-              if (endTime > 100000000) {
-                const startTime = dota.startTime || dota.startTime_ || dota.start_time || dota.start_time_ || 0;
-                if (startTime > 0) {
-                  duration = endTime - startTime - preGame;
-                  gameStartTime = startTime;
-                } else {
-                  // startTime missing — use endTime as game date proxy (same day, off by ~match length)
-                  gameStartTime = endTime;
+            const endTime = Number(dota.endTime || dota.endTime_ || dota.end_time || dota.end_time_ || 0);
+            const preGame = Number(dota.preGameDuration || dota.preGameDuration_ || dota.pre_game_duration || dota.pre_game_duration_ || 0);
+            const startTime = Number(dota.startTime || dota.startTime_ || dota.start_time || dota.start_time_ || 0);
+
+            // Unix timestamps for modern games are ~1.6-2.0 billion
+            const UNIX_MIN = 1000000000;
+            const UNIX_MAX = 2100000000;
+
+            if (startTime > UNIX_MIN && startTime < UNIX_MAX) {
+              gameStartTime = startTime;
+              if (endTime > startTime) {
+                duration = endTime - startTime - preGame;
+              }
+            } else if (endTime > UNIX_MIN && endTime < UNIX_MAX) {
+              gameStartTime = endTime;
+              duration = 0;
+            } else if (endTime > 0 && endTime <= UNIX_MIN) {
+              // endTime is duration in seconds, not a timestamp — scan all fields for a timestamp
+              duration = endTime - preGame;
+              for (const k of Object.keys(dota)) {
+                const v = Number(dota[k]);
+                if (v > UNIX_MIN && v < UNIX_MAX) {
+                  console.log(`[Replay] Found Unix timestamp in dota.${k} = ${v} → ${new Date(v * 1000).toISOString()}`);
+                  if (!gameStartTime) gameStartTime = v;
                 }
-              } else {
-                duration = endTime - preGame;
               }
-              if (duration < 0 || duration > 10800) {
-                console.warn(`[Replay] Suspicious epilogue duration ${duration}s, resetting to 0`);
-                duration = 0;
-              }
+            }
+
+            if (duration < 0 || duration > 10800) {
+              console.warn(`[Replay] Suspicious epilogue duration ${duration}s, resetting to 0`);
+              duration = 0;
             }
 
             console.log(`[Replay] Epilogue extracted: matchId=${matchId}, gameMode=${gameMode}, radiantWin=${radiantWin}, duration=${duration}, gameStartTime=${gameStartTime ? new Date(gameStartTime * 1000).toISOString() : 'null'}`);
