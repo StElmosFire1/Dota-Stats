@@ -164,6 +164,18 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.put('/matches/:matchId/draft', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const { entries } = req.body;
+      if (!Array.isArray(entries)) return res.status(400).json({ error: 'entries must be an array' });
+      await db.updateMatchDraft(req.params.matchId, entries);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Error updating match draft:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/setup/parser', (req, res) => {
     const jarPath = path.join(__dirname, '../../odota-parser/target/stats-0.1.0.jar');
     if (!fs.existsSync(jarPath)) return res.status(404).json({ error: 'not found' });

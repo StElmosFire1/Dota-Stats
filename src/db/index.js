@@ -1643,6 +1643,27 @@ async function getMatchDraft(matchId) {
   return result.rows;
 }
 
+async function updateMatchDraft(matchId, entries) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM match_draft WHERE match_id = $1`, [matchId]);
+    for (const entry of entries) {
+      await client.query(
+        `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team) VALUES ($1, $2, $3, $4, $5)`,
+        [matchId, parseInt(entry.hero_id) || 0, !!entry.is_pick, parseInt(entry.order_num), parseInt(entry.team)]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 async function clearMatchFileHash(matchId) {
   const p = getPool();
   await p.query(`UPDATE matches SET file_hash = NULL WHERE match_id = $1`, [matchId]);
@@ -1976,6 +1997,7 @@ module.exports = {
   updateMatchDetails,
   updatePlayerStats,
   getMatchDraft,
+  updateMatchDraft,
   clearMatchFileHash,
   getEnemySynergyHeatmap,
 };

@@ -31,6 +31,10 @@ const HERO_NAMES = {
   137: 'Primal Beast', 138: 'Muerta', 145: 'Kez', 155: 'Largo',
 };
 
+export const ALL_HEROES = Object.entries(HERO_NAMES)
+  .map(([id, name]) => ({ id: parseInt(id), name }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
 export function getHeroName(heroId, fallbackName) {
   if (HERO_NAMES[heroId]) return HERO_NAMES[heroId];
   if (fallbackName && fallbackName.startsWith('npc_dota_hero_')) {
