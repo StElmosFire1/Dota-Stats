@@ -66,6 +66,12 @@ function createServer(startupStatus = {}) {
 
   app.use('/api', createApiRouter(startupStatus));
 
+  // Convert any middleware errors (body-parser etc) to JSON instead of HTML
+  app.use((err, req, res, next) => {
+    console.error('[Server] Middleware error:', err.message, 'on', req.method, req.path);
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  });
+
 
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
@@ -480,6 +486,7 @@ function createApiRouter(startupStatus = {}) {
       const { jobId } = req.params;
       const chunkIndex = parseInt(req.headers['x-chunk-index']);
       const job = uploadJobs.get(jobId);
+      console.log(`[Upload] Chunk ${chunkIndex} received: body=${req.body?.length ?? 'undefined'} bytes, ct=${req.headers['content-type']}, job=${job?.status ?? 'NOT FOUND'}`);
 
       if (!job) return res.status(404).json({ error: 'Job not found — server may have restarted, please retry the upload' });
       if (job.status !== 'uploading') return res.status(400).json({ error: `Job not accepting chunks (status: ${job.status})` });
