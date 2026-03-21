@@ -432,6 +432,9 @@ class ReplayParser {
                 if (startTime > 0) {
                   duration = endTime - startTime - preGame;
                   gameStartTime = startTime;
+                } else {
+                  // startTime missing — use endTime as game date proxy (same day, off by ~match length)
+                  gameStartTime = endTime;
                 }
               } else {
                 duration = endTime - preGame;
@@ -442,7 +445,7 @@ class ReplayParser {
               }
             }
 
-            console.log(`[Replay] Epilogue extracted: matchId=${matchId}, gameMode=${gameMode}, radiantWin=${radiantWin}, duration=${duration}`);
+            console.log(`[Replay] Epilogue extracted: matchId=${matchId}, gameMode=${gameMode}, radiantWin=${radiantWin}, duration=${duration}, gameStartTime=${gameStartTime ? new Date(gameStartTime * 1000).toISOString() : 'null'}`);
           } else {
             console.warn('[Replay] Could not find gameInfo.dota in epilogue. Keys:', JSON.stringify(Object.keys(epilogueData)).substring(0, 200));
           }

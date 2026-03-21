@@ -497,7 +497,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
     await client.query(
       `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       ON CONFLICT (match_id) DO NOTHING`,
+       ON CONFLICT (match_id) DO UPDATE SET date = EXCLUDED.date
+         WHERE EXCLUDED.date < NOW() - INTERVAL '10 minutes'`,
       [
         matchStats.matchId,
         matchStats.gameStartTime ? new Date(matchStats.gameStartTime * 1000).toISOString() : new Date().toISOString(),
