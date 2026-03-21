@@ -2489,6 +2489,7 @@ async function findDuplicateMatches() {
         SUM(ps.kills)                                                   AS total_kills,
         SUM(ps.deaths)                                                  AS total_deaths,
         SUM(ps.assists)                                                 AS total_assists,
+        SUM(ps.net_worth)                                               AS total_net_worth,
         COUNT(*)                                                        AS player_count
       FROM player_stats ps
       WHERE ps.hero_id > 0
@@ -2506,7 +2507,8 @@ async function findDuplicateMatches() {
         mf.player_fingerprint,
         mf.total_kills,
         mf.total_deaths,
-        mf.total_assists
+        mf.total_assists,
+        mf.total_net_worth
       FROM matches m
       JOIN match_fingerprints mf ON m.match_id = mf.match_id
     )
@@ -2522,13 +2524,16 @@ async function findDuplicateMatches() {
       b.total_kills        AS kills_2,
       a.total_deaths       AS deaths_1,
       b.total_deaths       AS deaths_2,
+      a.total_net_worth    AS nw_1,
+      b.total_net_worth    AS nw_2,
       ABS(a.duration - b.duration)                          AS duration_diff,
       ABS(EXTRACT(EPOCH FROM (a.date - b.date)))            AS date_diff_seconds,
       (a.hero_fingerprint = b.hero_fingerprint)             AS same_heroes,
       (a.player_fingerprint = b.player_fingerprint)         AS same_players,
       (a.total_kills = b.total_kills AND
        a.total_deaths = b.total_deaths AND
-       a.total_assists = b.total_assists)                   AS same_totals
+       a.total_assists = b.total_assists)                   AS same_totals,
+      (a.total_net_worth = b.total_net_worth)               AS same_nw
     FROM match_info a
     JOIN match_info b
       ON a.match_id < b.match_id

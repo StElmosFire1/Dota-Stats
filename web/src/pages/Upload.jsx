@@ -411,12 +411,13 @@ export default function Upload() {
                         <th>Duration diff</th>
                         <th>Same players</th>
                         <th>Same KDA totals</th>
+                        <th>Same net worth</th>
                       </tr>
                     </thead>
                     <tbody>
                       {dupResults.map((row, i) => {
                         const durationDiff = parseInt(row.duration_diff);
-                        const likelyDup = row.same_players && row.same_totals && durationDiff < 60;
+                        const likelyDup = row.same_players && row.same_totals && row.same_nw && durationDiff < 60;
                         return (
                           <tr key={i} style={{ background: likelyDup ? 'rgba(244,67,54,0.08)' : undefined }}>
                             <td><Link to={`/match/${row.match_id_1}`}>#{row.match_id_1}</Link></td>
@@ -433,6 +434,11 @@ export default function Upload() {
                               {row.same_totals
                                 ? `✓ ${row.kills_1}/${row.deaths_1}`
                                 : `✗ ${row.kills_1}/${row.deaths_1} vs ${row.kills_2}/${row.deaths_2}`}
+                            </td>
+                            <td style={{ color: row.same_nw ? '#4caf50' : '#aaa' }}>
+                              {row.same_nw
+                                ? `✓ ${Math.round(row.nw_1 / 1000)}k`
+                                : `✗ ${Math.round(row.nw_1 / 1000)}k vs ${Math.round(row.nw_2 / 1000)}k`}
                             </td>
                           </tr>
                         );
