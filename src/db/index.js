@@ -785,11 +785,15 @@ async function getMatches(limit = 50, offset = 0, seasonId = null) {
 
 async function getMatchCount(seasonId = null) {
   const p = getPool();
+  if (seasonId === 'legacy') {
+    const result = await p.query('SELECT COUNT(*) as count FROM matches WHERE is_legacy = true');
+    return parseInt(result.rows[0].count);
+  }
   if (seasonId) {
     const result = await p.query('SELECT COUNT(*) as count FROM matches WHERE season_id = $1', [parseInt(seasonId)]);
     return parseInt(result.rows[0].count);
   }
-  const result = await p.query('SELECT COUNT(*) as count FROM matches');
+  const result = await p.query('SELECT COUNT(*) as count FROM matches WHERE is_legacy = false');
   return parseInt(result.rows[0].count);
 }
 
