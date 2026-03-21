@@ -12,6 +12,7 @@ import PositionStats from './pages/PositionStats';
 import Synergy from './pages/Synergy';
 import Upload from './pages/Upload';
 import Seasons from './pages/Seasons';
+import BuyinSuccess from './pages/BuyinSuccess';
 import HeadToHead from './pages/HeadToHead';
 import Compare from './pages/Compare';
 import DraftAssistant from './pages/DraftAssistant';
@@ -246,6 +247,7 @@ export default function App() {
                 <Route path="/synergy" element={<Synergy />} />
                 <Route path="/upload" element={<Upload />} />
                 <Route path="/seasons" element={<Seasons />} />
+                <Route path="/buyin-success" element={<BuyinSuccess />} />
                 <Route path="/head-to-head" element={<HeadToHead />} />
                 <Route path="/compare" element={<Compare />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />

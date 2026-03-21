@@ -28,6 +28,7 @@
     "pg": "^8.20.0",
     "protobufjs": "^7.5.4",
     "steam-user": "^5.2.1",
+    "stripe": "^20.4.1",
     "ts-trueskill": "^4.2.2"
   }
 }

@@ -63,6 +63,32 @@ function createServer(startupStatus = {}) {
   const app = express();
 
   app.use(cors());
+
+  // Stripe webhook MUST be registered before express.json() to receive raw body
+  app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!process.env.STRIPE_SECRET_KEY) return res.status(503).send('Stripe not configured');
+    try {
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      let event;
+      if (webhookSecret) {
+        const sig = req.headers['stripe-signature'];
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      } else {
+        event = JSON.parse(req.body.toString());
+      }
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        await db.confirmBuyin(session.id);
+        console.log('[Stripe] Confirmed buyin for session', session.id);
+      }
+      res.json({ received: true });
+    } catch (err) {
+      console.error('[Stripe] Webhook error:', err.message);
+      res.status(400).send(`Webhook error: ${err.message}`);
+    }
+  });
+
   app.use(express.json());
 
   app.use('/api', createApiRouter(startupStatus));
@@ -434,6 +460,112 @@ function createApiRouter(startupStatus = {}) {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: 'Failed to deactivate seasons' });
+    }
+  });
+
+  // --- Season Buy-in Routes ---
+
+  router.put('/seasons/:id/buyin-amount', authMiddleware, async (req, res) => {
+    try {
+      const seasonId = parseInt(req.params.id);
+      const { amount_cents } = req.body;
+      if (typeof amount_cents !== 'number' || amount_cents < 0) {
+        return res.status(400).json({ error: 'amount_cents must be a non-negative number' });
+      }
+      const season = await db.setSeasonBuyinAmount(seasonId, amount_cents);
+      if (!season) return res.status(404).json({ error: 'Season not found' });
+      res.json({ season });
+    } catch (err) {
+      console.error('[API] Error setting buyin amount:', err.message);
+      res.status(500).json({ error: 'Failed to set buy-in amount' });
+    }
+  });
+
+  router.get('/seasons/:id/buyins', async (req, res) => {
+    try {
+      const seasonId = parseInt(req.params.id);
+      const data = await db.getSeasonBuyins(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] Error fetching buyins:', err.message);
+      res.status(500).json({ error: 'Failed to fetch buy-ins' });
+    }
+  });
+
+  router.post('/buyin/create-checkout', async (req, res) => {
+    try {
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const { season_id, display_name, account_id } = req.body;
+      if (!season_id || !display_name || !display_name.trim()) {
+        return res.status(400).json({ error: 'season_id and display_name are required' });
+      }
+      const seasons = await db.getSeasons();
+      const season = seasons.find(s => s.id === parseInt(season_id));
+      if (!season) return res.status(404).json({ error: 'Season not found' });
+      if (!season.buyin_amount_cents || season.buyin_amount_cents <= 0) {
+        return res.status(400).json({ error: 'This season does not have a buy-in configured' });
+      }
+
+      const baseUrl = process.env.SITE_URL || `http://170.64.182.110:5000`;
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: {
+              name: `${season.name} Season Buy-in`,
+              description: `Inhouse season buy-in for ${display_name.trim()}`,
+            },
+            unit_amount: season.buyin_amount_cents,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/buyin-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/seasons`,
+        metadata: {
+          season_id: String(season_id),
+          display_name: display_name.trim(),
+          account_id: account_id ? String(account_id) : '',
+        },
+      });
+
+      await db.createBuyin(
+        parseInt(season_id),
+        account_id || null,
+        display_name.trim(),
+        season.buyin_amount_cents,
+        session.id
+      );
+
+      res.json({ url: session.url });
+    } catch (err) {
+      console.error('[API] Error creating checkout session:', err.message);
+      res.status(500).json({ error: 'Failed to create checkout session' });
+    }
+  });
+
+  router.get('/buyin/confirm', async (req, res) => {
+    try {
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const { session_id } = req.query;
+      if (!session_id) return res.status(400).json({ error: 'session_id required' });
+
+      const existing = await db.getBuyinBySession(session_id);
+      if (!existing) return res.status(404).json({ error: 'Buy-in record not found' });
+      if (existing.status === 'paid') return res.json({ buyin: existing, already_confirmed: true });
+
+      const session = await stripe.checkout.sessions.retrieve(session_id);
+      if (session.payment_status !== 'paid') {
+        return res.status(402).json({ error: 'Payment not completed', status: session.payment_status });
+      }
+
+      const buyin = await db.confirmBuyin(session_id);
+      res.json({ buyin: buyin || existing, already_confirmed: false });
+    } catch (err) {
+      console.error('[API] Error confirming buyin:', err.message);
+      res.status(500).json({ error: 'Failed to confirm buy-in' });
     }
   });
 

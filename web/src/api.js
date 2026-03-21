@@ -335,3 +335,33 @@ export async function getWeeklyRecap(seasonId = null) {
   const sp = seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : '';
   return fetchJson(`/weekly-recap${sp}`);
 }
+
+export async function getSeasonBuyins(seasonId) {
+  return fetchJson(`/seasons/${seasonId}/buyins`);
+}
+
+export async function setSeasonBuyinAmount(seasonId, amountCents, uploadKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/buyin-amount`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-upload-key': uploadKey },
+    body: JSON.stringify({ amount_cents: amountCents }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to set buy-in amount');
+  return data;
+}
+
+export async function createBuyinCheckout(seasonId, displayName, accountId) {
+  const res = await fetch(BASE + `/buyin/create-checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ season_id: seasonId, display_name: displayName, account_id: accountId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create checkout');
+  return data;
+}
+
+export async function confirmBuyinSession(sessionId) {
+  return fetchJson(`/buyin/confirm?session_id=${encodeURIComponent(sessionId)}`);
+}

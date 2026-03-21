@@ -352,6 +352,24 @@ async function init() {
       )
     `);
 
+    await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS buyin_amount_cents INTEGER DEFAULT 0`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_buyins (
+        id SERIAL PRIMARY KEY,
+        season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        account_id BIGINT,
+        display_name VARCHAR(100) NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        stripe_session_id VARCHAR(200) UNIQUE,
+        status VARCHAR(20) DEFAULT 'pending',
+        paid_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_season_buyins_season ON season_buyins(season_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_season_buyins_account ON season_buyins(account_id)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -409,6 +427,58 @@ async function setActiveSeason(id) {
     [id]
   );
   return result.rows[0];
+}
+
+async function setSeasonBuyinAmount(seasonId, amountCents) {
+  const p = getPool();
+  const result = await p.query(
+    `UPDATE seasons SET buyin_amount_cents = $1 WHERE id = $2 RETURNING *`,
+    [amountCents, seasonId]
+  );
+  return result.rows[0];
+}
+
+async function createBuyin(seasonId, accountId, displayName, amountCents, stripeSessionId) {
+  const p = getPool();
+  const result = await p.query(
+    `INSERT INTO season_buyins (season_id, account_id, display_name, amount_cents, stripe_session_id, status)
+     VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING *`,
+    [seasonId, accountId || null, displayName, amountCents, stripeSessionId]
+  );
+  return result.rows[0];
+}
+
+async function confirmBuyin(stripeSessionId) {
+  const p = getPool();
+  const result = await p.query(
+    `UPDATE season_buyins SET status = 'paid', paid_at = NOW()
+     WHERE stripe_session_id = $1 AND status != 'paid' RETURNING *`,
+    [stripeSessionId]
+  );
+  return result.rows[0] || null;
+}
+
+async function getBuyinBySession(stripeSessionId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT * FROM season_buyins WHERE stripe_session_id = $1`,
+    [stripeSessionId]
+  );
+  return result.rows[0] || null;
+}
+
+async function getSeasonBuyins(seasonId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT sb.*, s.buyin_amount_cents, s.name as season_name
+     FROM season_buyins sb
+     JOIN seasons s ON s.id = sb.season_id
+     WHERE sb.season_id = $1
+     ORDER BY sb.paid_at ASC NULLS LAST, sb.created_at ASC`,
+    [seasonId]
+  );
+  const totalCents = result.rows.filter(r => r.status === 'paid').reduce((sum, r) => sum + r.amount_cents, 0);
+  return { buyins: result.rows, totalCents };
 }
 
 async function updateMatchMeta(matchId, { patch, seasonId, date }) {
@@ -2376,6 +2446,11 @@ module.exports = {
   getMatchHistory,
   recalculateAllRatings,
   updatePlayerPosition,
+  setSeasonBuyinAmount,
+  createBuyin,
+  confirmBuyin,
+  getBuyinBySession,
+  getSeasonBuyins,
   getSeasons,
   getActiveSeason,
   createSeason,
