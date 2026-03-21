@@ -287,3 +287,51 @@ export async function uploadReplayChunked(file, uploadKey, onProgress, patch = n
 export async function getUploadStatus(jobId) {
   return fetchJson(`/upload/status/${jobId}`);
 }
+
+export async function getPlayerRatingHistory(accountId) {
+  return fetchJson(`/players/${accountId}/rating-history`);
+}
+
+export async function getPlayerAchievements(accountId) {
+  return fetchJson(`/players/${accountId}/achievements`);
+}
+
+export async function getHeadToHead(a, b, seasonId = null) {
+  const sp = seasonId ? `&season_id=${encodeURIComponent(seasonId)}` : '';
+  return fetchJson(`/head-to-head?a=${a}&b=${b}${sp}`);
+}
+
+export async function getPlayerComparison(a, b, seasonId = null) {
+  const sp = seasonId ? `&season_id=${encodeURIComponent(seasonId)}` : '';
+  return fetchJson(`/compare?a=${a}&b=${b}${sp}`);
+}
+
+export async function getDraftSuggestions(params) {
+  const qs = new URLSearchParams();
+  if (params.allies?.length) qs.set('allies', params.allies.join(','));
+  if (params.enemies?.length) qs.set('enemies', params.enemies.join(','));
+  if (params.banned?.length) qs.set('banned', params.banned.join(','));
+  if (params.position) qs.set('position', params.position);
+  if (params.seasonId) qs.set('season_id', params.seasonId);
+  return fetchJson(`/draft-assistant?${qs}`);
+}
+
+export async function getPredictions(seasonId) {
+  return fetchJson(`/predictions/${seasonId}`);
+}
+
+export async function savePrediction(seasonId, predictorName, predictions) {
+  const res = await fetch(BASE + `/predictions/${seasonId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ predictor_name: predictorName, predictions }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to save');
+  return data;
+}
+
+export async function getWeeklyRecap(seasonId = null) {
+  const sp = seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : '';
+  return fetchJson(`/weekly-recap${sp}`);
+}

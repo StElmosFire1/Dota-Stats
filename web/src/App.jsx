@@ -12,6 +12,10 @@ import PositionStats from './pages/PositionStats';
 import Synergy from './pages/Synergy';
 import Upload from './pages/Upload';
 import Seasons from './pages/Seasons';
+import HeadToHead from './pages/HeadToHead';
+import Compare from './pages/Compare';
+import DraftAssistant from './pages/DraftAssistant';
+import Predictions from './pages/Predictions';
 import UploadIndicator from './components/UploadIndicator';
 import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
@@ -138,6 +142,49 @@ function SuperuserButton() {
   );
 }
 
+function DropdownMenu({ label, children }) {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  useEffect(() => setOpen(false), [location]);
+  return (
+    <span
+      style={{ position: 'relative' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span className="nav-link" style={{ cursor: 'pointer', userSelect: 'none' }}>
+        {label} <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
+      </span>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 8, padding: '6px 0', minWidth: 160, zIndex: 1000,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        }}>
+          {children}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function DropdownItem({ to, children }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        display: 'block', padding: '7px 16px', fontSize: 13,
+        color: 'var(--text-primary)', textDecoration: 'none',
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+      onMouseLeave={e => e.currentTarget.style.background = ''}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function Nav() {
   const location = useLocation();
   const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
@@ -156,6 +203,12 @@ function Nav() {
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/players" className={isActive('/players')}>Players</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
+        <DropdownMenu label="Tools">
+          <DropdownItem to="/head-to-head">Head to Head</DropdownItem>
+          <DropdownItem to="/compare">Compare Players</DropdownItem>
+          <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
+          <DropdownItem to="/predictions">Predictions</DropdownItem>
+        </DropdownMenu>
         <Link to="/upload" className={isActive('/upload')}>Upload</Link>
         <Link to="/seasons" className={isActive('/seasons')}>Seasons</Link>
       </div>
@@ -193,6 +246,10 @@ export default function App() {
                 <Route path="/synergy" element={<Synergy />} />
                 <Route path="/upload" element={<Upload />} />
                 <Route path="/seasons" element={<Seasons />} />
+                <Route path="/head-to-head" element={<HeadToHead />} />
+                <Route path="/compare" element={<Compare />} />
+                <Route path="/draft-assistant" element={<DraftAssistant />} />
+                <Route path="/predictions" element={<Predictions />} />
               </Routes>
             </main>
           </SeasonProvider>

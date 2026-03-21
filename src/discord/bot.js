@@ -196,6 +196,7 @@ class DiscordBot {
           case 'steam_status': await this._cmdSteamStatus(msg); break;
           case 'register': await this._cmdRegister(msg, args); break;
           case 'players': await this._cmdPlayers(msg); break;
+          case 'recap': await this._cmdRecap(msg); break;
           default: break;
         }
       } catch (err) {
@@ -244,6 +245,7 @@ class DiscordBot {
             '`!top [count]` - Show leaderboard (default top 10)',
             '`!stats [@user]` - Show player stats',
             '`!history` - Show recent match history',
+            '`!recap` - Weekly recap: top performers & match results',
           ].join('\n'),
         },
         {
@@ -899,6 +901,63 @@ class DiscordBot {
       .setTimestamp();
 
     await channel.send({ embeds: [embed] });
+  }
+
+  async _cmdRecap(msg) {
+    try {
+      const recap = await db.getWeeklyRecap(null);
+      const { matches, top_performers } = recap;
+
+      if (!matches || matches.length === 0) {
+        return msg.reply('No matches played in the last 7 days!');
+      }
+
+      const radiantWins = matches.filter(m => m.radiant_win).length;
+      const direWins = matches.length - radiantWins;
+
+      const embed = new EmbedBuilder()
+        .setTitle('Weekly Recap \uD83D\uDCCA')
+        .setColor(0x3b82f6)
+        .addFields(
+          {
+            name: `Matches this week: ${matches.length}`,
+            value: `Radiant ${radiantWins} \u2013 Dire ${direWins}`,
+            inline: false,
+          }
+        );
+
+      if (top_performers && top_performers.length > 0) {
+        const topLines = top_performers.slice(0, 5).map((p, i) => {
+          const kda = parseFloat(p.avg_kda).toFixed(2);
+          const gpm = Math.round(parseFloat(p.avg_gpm));
+          const medal = ['\u{1F947}', '\u{1F948}', '\u{1F949}'][i] || `${i + 1}.`;
+          return `${medal} **${p.player_name}** \u2014 KDA: ${kda} | GPM: ${gpm} | Games: ${p.games}`;
+        });
+        embed.addFields({
+          name: 'Top Performers (by KDA)',
+          value: topLines.join('\n'),
+          inline: false,
+        });
+      }
+
+      const recentLines = matches.slice(0, 5).map(m => {
+        const winner = m.radiant_win ? '\u{1F7E9} Radiant' : '\u{1F534} Dire';
+        const date = m.date ? new Date(m.date).toLocaleDateString() : '?';
+        return `\u2022 ${date} \u2014 ${winner} wins`;
+      });
+      embed.addFields({
+        name: 'Recent Matches',
+        value: recentLines.join('\n') || 'None',
+        inline: false,
+      });
+
+      embed.setFooter({ text: 'Last 7 days | Use !top for full leaderboard' }).setTimestamp();
+
+      await msg.reply({ embeds: [embed] });
+    } catch (err) {
+      console.error('[Discord] Recap error:', err);
+      await msg.reply('Failed to fetch weekly recap.');
+    }
   }
 
   async start() {

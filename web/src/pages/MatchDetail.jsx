@@ -553,6 +553,26 @@ export default function MatchDetail() {
             const s = seasons.find(x => x.id === match.season_id);
             return <span className="season-badge">{s ? s.name : `Season ${match.season_id}`}</span>;
           })()}
+          {match.is_upset && (
+            <span
+              title={`Underdog win! ${match.underdog_team === 'radiant' ? 'Radiant' : 'Dire'} had ${match.mmr_diff} lower avg MMR`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                background: 'rgba(255,165,0,0.15)', border: '1px solid rgba(255,165,0,0.5)',
+                color: '#ffb347', borderRadius: 8, padding: '2px 10px', fontSize: 12, fontWeight: 700,
+              }}
+            >
+              ⚡ Upset Win ({match.mmr_diff} MMR diff)
+            </span>
+          )}
+          {!match.is_upset && match.mmr_diff && match.mmr_diff >= 50 && (
+            <span
+              title={`Favoured team won — ${match.mmr_diff} MMR advantage`}
+              style={{ color: 'var(--text-muted)', fontSize: 11 }}
+            >
+              {match.mmr_diff} MMR gap
+            </span>
+          )}
         </div>
       </div>
 

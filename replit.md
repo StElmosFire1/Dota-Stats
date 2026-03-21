@@ -1,41 +1,13 @@
 # Dota 2 Inhouse Stats Bot
 
 ## Overview
-This project is a Node.js Discord bot designed to track statistics from Dota 2 inhouse games (custom lobbies) for an OCE community server with up to 100 players. Its primary purpose is to provide a privacy-first solution for recording match data, bypassing reliance on public match APIs for detailed stats. The bot offers various methods for recording games, from direct replay parsing to real-time lobby monitoring, and provides a comprehensive web dashboard for viewing stats, leaderboards, and player profiles. The ambition is to create a robust and feature-rich platform for competitive inhouse Dota 2 communities to manage and analyze their games.
+This project is a Node.js Discord bot designed to track statistics from Dota 2 inhouse games for an OCE community server. Its primary purpose is to provide a privacy-first solution for recording match data, bypassing reliance on public match APIs for detailed stats. The bot offers various methods for recording games, from direct replay parsing to real-time lobby monitoring, and provides a comprehensive web dashboard for viewing stats, leaderboards, and player profiles. The ambition is to create a robust and feature-rich platform for competitive inhouse Dota 2 communities to manage and analyze their games.
 
 ## User Preferences
 I prefer iterative development, with a focus on delivering core features first and then refining them. When making changes, please prioritize robust error handling and graceful degradation. I value clear, concise explanations for any complex technical decisions or implementations.
 
-## Deployment Workflow (DigitalOcean at 170.64.182.110)
-**IMPORTANT:** Replit commits do NOT automatically push to GitHub. Push via terminal: `git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main`
-
-Full deploy sequence:
-1. Push from Replit → GitHub (see above)
-2. On DO: `cd ~/Dota-Stats && git pull && cd web && npm run build && cd .. && pm2 restart inhouse-bot`
-3. Backend-only changes (no React changes): skip `cd web && npm run build`
-
-**PM2 process name:** `inhouse-bot` (id 2). The old `dota-bot` (id 1) is stopped and can be deleted: `pm2 delete dota-bot && pm2 save`
-
-## Feature Flags (src/config.js)
-Three features are **dormant** (code preserved, just disabled). To re-enable any, set to `true` in `config.features`:
-- `sheets: false` — Google Sheets sync (needs SHEET_ID env var + creds.json)
-- `matchPoller: false` — OpenDota auto-polling every 5 min for public matches
-- `lobby: false` — Steam lobby creation + friend rich-presence auto-detect
-
-Steam **login** still runs regardless (used for health check indicator).
-
-**If draft data looks wrong on DO (quick fix):** Use "Allow Re-upload" on the match detail admin panel to clear the duplicate hash, then re-upload the replay. The parser will regenerate clean data.
-
-**If DB data needs direct fixing without git:** Run scripts with `node -e "require('dotenv').config(); ..."` from `~/Dota-Stats/` to load DATABASE_URL from .env.
-
-## Draft Team Assignment (Key Design Decision)
-Dota 2's `draft_active_team` protobuf field is unreliable — it can report the wrong team for picks/bans. The correct approach (implemented in `replayParser.js` and `db/index.js` migration):
-1. Picks: cross-reference hero_id against player_stats to determine team (always reliable)
-2. Bans: use CM_PATTERN `[0,1,0,1,0,1,0,0,1,1,0,1,1,0,0,1,1,0,0,1,0,1,0,1]` with team_A derived from the first pick's team
-Never trust `draft_active_team` directly.
-
 ## System Architecture
-The bot is built on Node.js using `discord.js` for Discord integration and a custom Steam client (`steam-user`, `dota2-user`) for Dota 2 Game Coordinator (GC) interactions. Data persistence is handled primarily via PostgreSQL, with an optional Google Sheets integration for flexible data viewing.
+The bot is built on Node.js using `discord.js` for Discord integration and a custom Steam client (`steam-user`, `dota2-user`) for Dota 2 Game Coordinator (GC) interactions. Data persistence is handled primarily via PostgreSQL.
 
 **UI/UX Decisions:**
 A web dashboard (React + Vite frontend, Express backend) provides a comprehensive interface for:
@@ -51,69 +23,28 @@ The dashboard emphasizes clear data presentation, sortable tables, and detailed 
 
 **Technical Implementations & Feature Specifications:**
 
-- **Replay Parsing:** Utilizes OpenDota's production Java-based `odota/parser` as a local service to extract detailed match statistics (KDA, GPM, damage, healing, items, skill builds, multi-kills, streaks, lane CS) from `.dem` replay files. It handles complex parsing challenges like mapping combat log events to player slots and protobuf epilogue data.
-- **Lobby-Based Recording:** The bot monitors Dota 2 lobbies via the Game Coordinator. When present in a lobby, it records basic match outcomes (teams, heroes, winner, duration) for TrueSkill calculations, crucial for practice lobbies unavailable through external APIs.
-- **Friend Lobby Auto-Detection:** The bot's Steam account monitors friends' rich presence to automatically detect and join Dota 2 lobbies, facilitating seamless match recording. It auto-accepts friend requests to simplify setup.
-- **Auto-Detect System (OpenDota Fallback):** For players with public match data enabled, the bot can poll OpenDota to identify and record recent practice lobby matches.
-- **TrueSkill MMR:** Implements TrueSkill for player rating calculations, dynamically updated based on match outcomes.
-- **Discord Commands:** Provides a suite of commands for player registration, lobby creation/management, stats lookup, and manual match recording.
-- **Data Storage:** Primary storage is PostgreSQL for structured match data, player stats, items, abilities, ratings, and nicknames. Google Sheets serves as an optional, secondary storage for visibility and specific data points.
-- **Nickname System:** Allows assignment of custom nicknames to players for display across the platform.
+- **Replay Parsing:** Utilizes OpenDota's production Java-based `odota/parser` as a local service to extract detailed match statistics from `.dem` replay files (KDA, GPM, damage, healing, items, skill builds, multi-kills, streaks, lane CS).
+- **Lobby-Based Recording:** The bot monitors Dota 2 lobbies via the Game Coordinator, recording basic match outcomes for TrueSkill calculations.
+- **Friend Lobby Auto-Detection:** The bot's Steam account monitors friends' rich presence to automatically detect and join Dota 2 lobbies.
+- **Auto-Detect System (OpenDota Fallback):** Can poll OpenDota to identify and record recent practice lobby matches for players with public data.
+- **TrueSkill MMR:** Implements TrueSkill for dynamic player rating calculations based on match outcomes.
+- **Discord Commands:** Provides commands for player registration, lobby creation/management, stats lookup, and manual match recording.
+- **Data Storage:** Primary storage is PostgreSQL for structured match data, player stats, items, abilities, ratings, and nicknames.
+- **Nickname System:** Allows assignment of custom nicknames to players.
 - **Match Deletion:** Supports authenticated match deletion, archiving data, and recalculating TrueSkill ratings.
+- **Draft Team Assignment:** Uses `hero_id` against `player_stats` for picks and a CM_PATTERN for bans to reliably determine teams, as `draft_active_team` is unreliable.
 
 **System Design Choices:**
-- **Modularity:** The codebase is structured into logical components (Discord, Steam, Lobby, API, Stats, Sheets, Replay) for maintainability.
-- **Graceful Degradation:** The bot is designed to function even if optional components (e.g., Steam integration, Google Sheets, replay parser) are unavailable, ensuring core functionality.
-- **Child Processes:** The Java replay parser runs as a child process, managed by the bot for lifecycle control.
+- **Modularity:** Codebase is structured into logical components (Discord, Steam, Lobby, API, Stats, Sheets, Replay).
+- **Graceful Degradation:** Designed to function even if optional components (e.g., Steam integration, Google Sheets, replay parser) are unavailable.
+- **Child Processes:** The Java replay parser runs as a child process.
 
 ## External Dependencies
-- **Discord API:** Accessed via `discord.js` for bot interactions, commands, and rich embeds.
-- **Steam API:** Accessed via `steam-user` (for headless login, 2FA, friend monitoring) and `dota2-user` (for Dota 2 Game Coordinator communication and protobuf handling).
-- **OpenDota API:** Used for fetching match data (e.g., for `!record` command, auto-detect fallback) and indirectly through the `odota/parser` for replay analysis.
-- **Google Sheets API:** Integrated via `google-spreadsheet` for optional data storage and display. Requires a Google Cloud service account.
-- **PostgreSQL Database:** The primary database for persistent storage of all application data.
-- **odota/parser (Java):** OpenDota's Java-based replay parser, a separate service used for detailed `.dem` file analysis.
-- **ts-trueskill:** A library for TrueSkill MMR calculations.
-- **node-fetch:** Used for HTTP requests to external APIs and replay file downloads.
-
-## DO Server: nginx Configuration
-There is an nginx reverse proxy on the DO server (port 80 → port 5000). Key nginx settings needed:
-- `client_max_body_size 200m;` in the http block of `/etc/nginx/nginx.conf` (required for replay uploads)
-- Reload after changes: `sudo nginx -t && sudo systemctl reload nginx`
-
-## Replay Upload System
-- **Transport**: multipart/form-data via multer (memoryStorage, 10MB per chunk limit)
-- **Chunk size**: 2MB, serial (1 at a time)
-- **Flow**: init → chunks → complete → parse (async, background)
-- **Crash safety**: Steam `LogonSessionReplaced` errors no longer crash the bot (handled as graceful disconnect)
-- **Files**: .dem files stored in `/tmp/replay-uploads/` during parsing, cleaned up after. Only parsed stats persist in PostgreSQL.
-- **Game date**: Parser extracts `gameStartTime` Unix timestamp from replay epilogue and stores it as the match `date`. Falls back to upload time if not available.
-
-## Recent Changes
-- 2026-03-12: Fixed draft team display — parser previously stored `draft_active_team` as game enum values (2=radiant, 3=dire); now converts to 0/1 at parse time in both `replayParser.js` and the `match_draft` INSERT so picks/bans display correctly on the correct team side.
-- 2026-03-12: Lane W% on Position Stats page — `getPositionStats` fetches all per-match laning data, computes lane outcomes in Node.js (same STRATZ algorithm as MatchDetail), and aggregates lane wins/losses per player per position; new sortable "Lane W%" column added to the table.
-- 2026-03-12: Lane W% on Hero Breakdown page — `getPlayerHeroProfiles` similarly aggregates lane wins/losses per player per hero; "Lane W%" column added to the expanded hero sub-rows.
-- 2026-03-12: Lane win/lose — parser captures laning NW at ~8min per player; `laning_nw` column on `player_stats`; `computeLaneOutcomes` pairs players by position across teams (safe vs off, mid vs mid), compares team NW sums, shows W/w/~/l/L per player in match scoreboard using STRATZ-style thresholds (2000/500 gold).
-- 2026-03-12: Match draft display — `getMatch` now returns `draft` array; MatchDetail shows pick/ban timeline with hero icons, team color coding, and ban (greyscale) vs pick distinction.
-- 2026-03-12: Enemy synergy heatmap — `getEnemySynergyHeatmap` DB function tracks per-player win rate vs each opponent; `/enemy-synergy/heatmap` API endpoint; Synergy page has Teammates/Enemies tab toggle showing respective heatmaps.
-- 2026-03-12: Allow Re-upload button — admin panel on match detail now has "Allow Re-upload" that clears the file hash duplicate check so CM replays can be re-uploaded to capture draft data.
-- 2026-03-12: Added pick/ban draft data — `match_draft` table stores Captain's Mode draft order; parser captures `draft_timings` events (bans + picks with hero, order, team); Heroes page shows Picks, Pick%, Win%, Bans, Ban%, Contest% (ban+pick columns only appear when draft data exists).
-- 2026-03-12: Added seasons system — `seasons` table with active-season tracking; `patch` and `season_id` columns on `matches`. Season CRUD API routes. All stat pages (Players, OverallStats, Heroes, HeroBreakdown, Synergy, PositionStats, MatchList) now filter by active season via global SeasonSelector in nav. Upload page has patch input field (persisted in localStorage, stamped on each batch). Match detail shows patch/season badges and has admin "Edit Patch / Season" panel. Seasons admin page at /seasons for creating seasons and setting the active one.
-- 2026-03-11: Players page — split "Best Pos" into "Most Played" (mode position) and "Best Pos" (1-10 performance rating based on win rate, KDA, GPM). Score formula: min(10, winRate*3.5 + min(3.5, kda*0.7) + min(3.0, gpm/250)).
-- 2026-03-11: Position Stats — removed 3-game minimum (now configurable via dropdown: 1/2/3/5/10). Added "Player Profiles" tab showing expandable per-player position breakdown (like the Google Sheet layout).
-- 2026-03-11: Heroes page — now shows ALL 127 Dota 2 heroes alphabetically. Unplayed heroes appear dimmed with blank stats.
-- 2026-03-11: Added Hero Breakdown page — player-centric hero view showing each player's hero pool, games, avg KDA, win%, diversification %, dire/radiant win split. Expandable rows show individual hero details.
-- 2026-03-11: Fixed position detection — parser outputs coords on 0-256 scale (center ~128), not 0-32768. Positions now correctly detect Pos 1-5 from laning data.
-- 2026-03-11: Fixed final inventory items — Entry.java `hero_inventory` was `transient` (never serialized). Removed transient flag; JS code reads `hero_inventory` array with item names/slots.
-- 2026-03-11: Added Aghs Scepter/Shard indicators on match detail — small icons next to items, blue glow when active, greyed out when inactive.
-- 2026-03-11: Parallel chunk uploads (3 concurrent, 5MB chunks) for faster replay uploads.
-- 2026-03-11: Removed "Last Played" column from Players page.
-- 2026-03-11: Fixed leaderboard duplication — ratings table now properly reset when matches are cleared.
-- 2026-03-11: Fixed buyback tracking — uses DOTA_COMBATLOG_BUYBACK events, prefers combat log count over interval count.
-- 2026-03-11: Added items, abilities, and extended stats to replay parser (buybacks, courier kills, multi-kills, kill streaks, smoke kills, first death, lane CS@10, Aghs/Shard, final inventory, skill build).
-- 2026-03-11: Added player_items and player_abilities DB tables for per-match item builds and skill orders.
-- 2026-03-11: Added hero icons (Dota 2 CDN) and item icons to match scoreboard UI.
-- 2026-03-11: Fixed Java byte-array serialized player names throughout the app.
-- 2026-03-11: Added nickname system, match deletion with audit trail, duplicate replay prevention.
-- 2026-03-11: Added Hero Stats, Overall Stats, Position Stats, Synergy pages to web dashboard.
-- 2026-03-11: Added position detection, captain tracking, and ward/stack/rune stats to replay parser.
+- **Discord API:** Accessed via `discord.js`.
+- **Steam API:** Accessed via `steam-user` and `dota2-user`.
+- **OpenDota API:** Used for fetching match data and indirectly through the `odota/parser` for replay analysis.
+- **Google Sheets API:** Integrated via `google-spreadsheet` for optional data storage.
+- **PostgreSQL Database:** Primary database for persistent storage.
+- **odota/parser (Java):** OpenDota's Java-based replay parser for detailed `.dem` file analysis.
+- **ts-trueskill:** Library for TrueSkill MMR calculations.
+- **node-fetch:** Used for HTTP requests.

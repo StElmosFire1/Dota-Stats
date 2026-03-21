@@ -206,6 +206,29 @@ function createApiRouter(startupStatus = {}) {
     try {
       const match = await db.getMatch(req.params.matchId);
       if (!match) return res.status(404).json({ error: 'Match not found' });
+      if (match.players && match.players.length > 0) {
+        const radiant = match.players.filter(p => p.team === 'radiant' && p.account_id && p.account_id !== '0');
+        const dire = match.players.filter(p => p.team === 'dire' && p.account_id && p.account_id !== '0');
+        const getRatings = async (players) => {
+          const ratings = await Promise.all(players.map(p => db.getPlayerRating(p.account_id).catch(() => null)));
+          return ratings.filter(Boolean).map(r => r.mmr || 0);
+        };
+        const [radiantMmrs, direMmrs] = await Promise.all([getRatings(radiant), getRatings(dire)]);
+        if (radiantMmrs.length > 0 && direMmrs.length > 0) {
+          const radiantAvg = radiantMmrs.reduce((a, b) => a + b, 0) / radiantMmrs.length;
+          const direAvg = direMmrs.reduce((a, b) => a + b, 0) / direMmrs.length;
+          const diff = Math.abs(radiantAvg - direAvg);
+          match.radiant_avg_mmr = Math.round(radiantAvg);
+          match.dire_avg_mmr = Math.round(direAvg);
+          match.mmr_diff = Math.round(diff);
+          const lowerMmrIsRadiant = radiantAvg < direAvg;
+          const radiantWon = match.radiant_win;
+          if (diff >= 50) {
+            match.is_upset = lowerMmrIsRadiant === radiantWon;
+            match.underdog_team = lowerMmrIsRadiant ? 'radiant' : 'dire';
+          }
+        }
+      }
       res.json(match);
     } catch (err) {
       console.error('[API] Error fetching match:', err.message);
@@ -237,7 +260,13 @@ function createApiRouter(startupStatus = {}) {
   router.get('/leaderboard', async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-      const leaderboard = await db.getLeaderboard(limit);
+      const [leaderboard, streaks] = await Promise.all([
+        db.getLeaderboard(limit),
+        db.getPlayerStreaks(),
+      ]);
+      for (const p of leaderboard) {
+        p.streak = streaks[p.player_id?.toString()] || 0;
+      }
       res.json({ leaderboard });
     } catch (err) {
       console.error('[API] Error fetching leaderboard:', err.message);
@@ -759,6 +788,93 @@ NOTES
     }
   });
 
+  router.get('/players/:accountId/rating-history', async (req, res) => {
+    try {
+      const history = await db.getPlayerRatingHistory(req.params.accountId);
+      res.json({ history });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch rating history' });
+    }
+  });
+
+  router.get('/players/:accountId/achievements', async (req, res) => {
+    try {
+      const achievements = await db.getPlayerAchievements(req.params.accountId);
+      res.json({ achievements });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch achievements' });
+    }
+  });
+
+  router.get('/head-to-head', async (req, res) => {
+    try {
+      const { a, b, season_id } = req.query;
+      if (!a || !b) return res.status(400).json({ error: 'Provide ?a=accountId&b=accountId' });
+      const data = await db.getHeadToHead(a, b, season_id || null);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch head-to-head' });
+    }
+  });
+
+  router.get('/compare', async (req, res) => {
+    try {
+      const { a, b, season_id } = req.query;
+      if (!a || !b) return res.status(400).json({ error: 'Provide ?a=accountId&b=accountId' });
+      const data = await db.getPlayerComparison(a, b, season_id || null);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch comparison' });
+    }
+  });
+
+  router.get('/draft-assistant', async (req, res) => {
+    try {
+      const parseIds = (str) => str ? str.split(',').map(Number).filter(Boolean) : [];
+      const allies = parseIds(req.query.allies);
+      const enemies = parseIds(req.query.enemies);
+      const banned = parseIds(req.query.banned);
+      const position = req.query.position ? parseInt(req.query.position) : null;
+      const season_id = req.query.season_id || null;
+      const suggestions = await db.getDraftSuggestions(allies, enemies, banned, position, season_id);
+      res.json({ suggestions });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch draft suggestions' });
+    }
+  });
+
+  router.get('/predictions/:seasonId', async (req, res) => {
+    try {
+      const predictions = await db.getPredictions(req.params.seasonId);
+      res.json({ predictions });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch predictions' });
+    }
+  });
+
+  router.post('/predictions/:seasonId', express.json(), async (req, res) => {
+    try {
+      const { predictor_name, predictions } = req.body;
+      if (!predictor_name || !Array.isArray(predictions)) {
+        return res.status(400).json({ error: 'Provide predictor_name and predictions array' });
+      }
+      await db.savePrediction(req.params.seasonId, predictor_name, predictions);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to save prediction' });
+    }
+  });
+
+  router.get('/weekly-recap', async (req, res) => {
+    try {
+      const season_id = req.query.season_id || null;
+      const data = await db.getWeeklyRecap(season_id);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch weekly recap' });
+    }
+  });
+
   return router;
 }
 
@@ -882,7 +998,7 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
         const player = matchStats.players.find(p =>
           (p.accountId ? p.accountId.toString() : `anon_${p.personaname}`) === r.id
         );
-        await db.updateRating(r.id, '', player?.personaname || r.id, r.mu, r.sigma, r.mmr, won);
+        await db.updateRating(r.id, '', player?.personaname || r.id, r.mu, r.sigma, r.mmr, won, matchStats.matchId);
       }
     }
 

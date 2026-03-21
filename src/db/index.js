@@ -316,6 +316,42 @@ async function init() {
       END $$;
     `);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS rating_history (
+        id SERIAL PRIMARY KEY,
+        player_id BIGINT NOT NULL,
+        mmr REAL NOT NULL,
+        mu REAL NOT NULL,
+        sigma REAL NOT NULL,
+        match_id VARCHAR(50),
+        recorded_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_rating_history_player ON rating_history(player_id, recorded_at)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS achievements (
+        id SERIAL PRIMARY KEY,
+        player_id BIGINT NOT NULL,
+        achievement_key VARCHAR(50) NOT NULL,
+        achieved_at TIMESTAMPTZ DEFAULT NOW(),
+        match_id VARCHAR(50),
+        value REAL DEFAULT 0,
+        UNIQUE(player_id, achievement_key)
+      )
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_predictions (
+        id SERIAL PRIMARY KEY,
+        season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        predictor_name VARCHAR(100) NOT NULL,
+        predictions JSONB NOT NULL DEFAULT '[]',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(season_id, predictor_name)
+      )
+    `);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -736,7 +772,7 @@ async function getLeaderboard(limit = 50) {
        MAX(n.nickname) as nickname,
        MAX(r.last_updated) as last_updated
      FROM ratings r
-     LEFT JOIN nicknames n ON n.account_id = r.player_id
+     LEFT JOIN nicknames n ON n.account_id::text = r.player_id
      GROUP BY COALESCE(n.nickname, r.player_id::text)
      ORDER BY mmr DESC LIMIT $1`,
     [limit]
@@ -747,7 +783,7 @@ async function getLeaderboard(limit = 50) {
   return result.rows;
 }
 
-async function updateRating(playerId, discordId, displayName, mu, sigma, mmr, won) {
+async function updateRating(playerId, discordId, displayName, mu, sigma, mmr, won, matchId = null) {
   displayName = decodeByteString(displayName);
   const p = getPool();
   await p.query(
@@ -765,6 +801,13 @@ async function updateRating(playerId, discordId, displayName, mu, sigma, mmr, wo
        display_name = COALESCE(NULLIF($3, ''), ratings.display_name)`,
     [playerId, discordId || '', displayName || '', mu, sigma, mmr, won ? 1 : 0, won ? 0 : 1]
   );
+  const numericPid = /^\d+$/.test(String(playerId)) ? parseInt(playerId) : null;
+  if (numericPid) {
+    await p.query(
+      `INSERT INTO rating_history (player_id, mmr, mu, sigma, match_id) VALUES ($1, $2, $3, $4, $5)`,
+      [numericPid, mmr, mu, sigma, matchId]
+    );
+  }
 }
 
 async function getPlayerRating(playerId) {
@@ -1977,6 +2020,328 @@ async function getPlayerHeroProfiles(seasonId = null) {
   return players;
 }
 
+async function getPlayerRatingHistory(accountId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT mmr, mu, sigma, match_id, recorded_at
+     FROM rating_history
+     WHERE player_id = $1
+     ORDER BY recorded_at ASC
+     LIMIT 200`,
+    [parseInt(accountId)]
+  );
+  return result.rows;
+}
+
+async function getPlayerStreaks() {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT ps.account_id, m.date, ps.team, m.radiant_win,
+            ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.date DESC) as rn
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE m.is_legacy = false AND ps.account_id > 0
+     ORDER BY ps.account_id, m.date DESC`
+  );
+  const byPlayer = {};
+  for (const row of result.rows) {
+    const id = row.account_id.toString();
+    if (!byPlayer[id]) byPlayer[id] = [];
+    if (parseInt(row.rn) <= 30) byPlayer[id].push(row);
+  }
+  const streaks = {};
+  for (const [id, matches] of Object.entries(byPlayer)) {
+    let streak = 0;
+    for (const m of matches) {
+      const won = (m.team === 'radiant' && m.radiant_win) || (m.team === 'dire' && !m.radiant_win);
+      if (streak === 0) { streak = won ? 1 : -1; }
+      else if (streak > 0 && won) streak++;
+      else if (streak < 0 && !won) streak--;
+      else break;
+    }
+    streaks[id] = streak;
+  }
+  return streaks;
+}
+
+async function getHeadToHead(playerA, playerB, seasonId = null) {
+  const p = getPool();
+  const params = [parseInt(playerA), parseInt(playerB)];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const result = await p.query(
+    `SELECT
+       m.match_id, m.date, m.radiant_win, m.duration,
+       a.team as a_team, a.kills as a_kills, a.deaths as a_deaths,
+       a.assists as a_assists, a.gpm as a_gpm, a.hero_name as a_hero, a.hero_id as a_hero_id,
+       b.kills as b_kills, b.deaths as b_deaths, b.assists as b_assists,
+       b.gpm as b_gpm, b.hero_name as b_hero, b.hero_id as b_hero_id
+     FROM player_stats a
+     JOIN player_stats b ON b.match_id = a.match_id AND b.account_id = $2 AND b.team != a.team
+     JOIN matches m ON m.match_id = a.match_id
+     WHERE a.account_id = $1${sc}
+     ORDER BY m.date DESC`,
+    params
+  );
+  const matches = result.rows;
+  const aWins = matches.filter(m =>
+    (m.a_team === 'radiant' && m.radiant_win) || (m.a_team === 'dire' && !m.radiant_win)
+  ).length;
+  return {
+    total: matches.length,
+    a_wins: aWins,
+    b_wins: matches.length - aWins,
+    matches,
+  };
+}
+
+async function getPlayerComparison(playerA, playerB, seasonId = null) {
+  const p = getPool();
+  async function fetchStats(accountId) {
+    const params = [parseInt(accountId)];
+    const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+    const r = await p.query(
+      `SELECT
+         COUNT(*) as games,
+         SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win=true) OR (ps.team='dire' AND m.radiant_win=false) THEN 1 ELSE 0 END) as wins,
+         AVG(ps.kills) as avg_kills, AVG(ps.deaths) as avg_deaths, AVG(ps.assists) as avg_assists,
+         AVG(ps.gpm) as avg_gpm, AVG(ps.xpm) as avg_xpm,
+         AVG(ps.hero_damage) as avg_hero_damage, AVG(ps.damage_taken) as avg_damage_taken,
+         AVG(ps.camps_stacked) as avg_camps_stacked,
+         COUNT(DISTINCT ps.hero_id) as unique_heroes
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1${sc}`,
+      params
+    );
+    const rr = await p.query(`SELECT * FROM ratings WHERE player_id = $1`, [parseInt(accountId)]);
+    const nn = await p.query(`SELECT nickname FROM nicknames WHERE account_id = $1`, [parseInt(accountId)]);
+    const row = r.rows[0] || {};
+    const rating = rr.rows[0] || {};
+    return {
+      account_id: accountId,
+      display_name: nn.rows[0]?.nickname || rating.display_name || `Player ${accountId}`,
+      mmr: rating.mmr || 0,
+      games: parseInt(row.games) || 0,
+      wins: parseInt(row.wins) || 0,
+      avg_kills: parseFloat(row.avg_kills) || 0,
+      avg_deaths: parseFloat(row.avg_deaths) || 0,
+      avg_assists: parseFloat(row.avg_assists) || 0,
+      avg_gpm: parseFloat(row.avg_gpm) || 0,
+      avg_xpm: parseFloat(row.avg_xpm) || 0,
+      avg_hero_damage: parseFloat(row.avg_hero_damage) || 0,
+      avg_damage_taken: parseFloat(row.avg_damage_taken) || 0,
+      avg_camps_stacked: parseFloat(row.avg_camps_stacked) || 0,
+      unique_heroes: parseInt(row.unique_heroes) || 0,
+    };
+  }
+  const [a, b] = await Promise.all([fetchStats(playerA), fetchStats(playerB)]);
+  return { a, b };
+}
+
+async function getPlayerAchievements(accountId) {
+  const p = getPool();
+  const pid = parseInt(accountId);
+  const [gamesRes, heroesRes, captainRes, positionsRes] = await Promise.all([
+    p.query(
+      `SELECT COUNT(*) as games,
+              SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins,
+              SUM(CASE WHEN ps.deaths = 0 THEN 1 ELSE 0 END) as deathless_games
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT COUNT(DISTINCT ps.hero_id) as unique_heroes,
+              MAX(cnt) as max_on_one_hero
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id,
+       LATERAL (SELECT COUNT(*) as cnt FROM player_stats ps2
+                JOIN matches m2 ON m2.match_id = ps2.match_id
+                WHERE ps2.account_id = $1 AND ps2.hero_id = ps.hero_id AND m2.is_legacy = false) sub
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT COUNT(*) as captain_games FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND ps.is_captain = true AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT COUNT(DISTINCT ps.position) as positions_played FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND ps.position > 0 AND m.is_legacy = false`,
+      [pid]
+    ),
+  ]);
+  const games = parseInt(gamesRes.rows[0]?.games) || 0;
+  const deathlessGames = parseInt(gamesRes.rows[0]?.deathless_games) || 0;
+  const uniqueHeroes = parseInt(heroesRes.rows[0]?.unique_heroes) || 0;
+  const maxOnOneHero = parseInt(heroesRes.rows[0]?.max_on_one_hero) || 0;
+  const captainGames = parseInt(captainRes.rows[0]?.captain_games) || 0;
+  const positionsPlayed = parseInt(positionsRes.rows[0]?.positions_played) || 0;
+
+  const maxStreakRes = await p.query(
+    `SELECT ps.team, m.radiant_win, m.date FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.account_id = $1 AND m.is_legacy = false ORDER BY m.date ASC`,
+    [pid]
+  );
+  let maxStreak = 0, cur = 0;
+  for (const r of maxStreakRes.rows) {
+    const won = (r.team === 'radiant' && r.radiant_win) || (r.team === 'dire' && !r.radiant_win);
+    cur = won ? cur + 1 : 0;
+    if (cur > maxStreak) maxStreak = cur;
+  }
+
+  const ACHIEVEMENTS = [
+    { key: 'veteran_25', label: 'Veteran', desc: '25 games played', icon: '🎖️', earned: games >= 25 },
+    { key: 'veteran_50', label: 'Battle-Hardened', desc: '50 games played', icon: '⚔️', earned: games >= 50 },
+    { key: 'veteran_100', label: 'Centurion', desc: '100 games played', icon: '🏆', earned: games >= 100 },
+    { key: 'streak_5', label: 'On Fire', desc: '5-game win streak', icon: '🔥', earned: maxStreak >= 5 },
+    { key: 'streak_10', label: 'Unstoppable', desc: '10-game win streak', icon: '💥', earned: maxStreak >= 10 },
+    { key: 'deathless', label: 'Untouchable', desc: 'Won a game with 0 deaths', icon: '🛡️', earned: deathlessGames > 0 },
+    { key: 'captain_5', label: 'Born Leader', desc: 'Captained 5+ matches', icon: '👑', earned: captainGames >= 5 },
+    { key: 'all_positions', label: 'Versatile', desc: 'Played all 5 positions', icon: '🎭', earned: positionsPlayed >= 5 },
+    { key: 'hero_diversity', label: 'Jack of All Trades', desc: '15+ different heroes', icon: '🃏', earned: uniqueHeroes >= 15 },
+    { key: 'specialist', label: 'Specialist', desc: '10+ games on one hero', icon: '🎯', earned: maxOnOneHero >= 10 },
+  ];
+  return ACHIEVEMENTS;
+}
+
+async function getPredictions(seasonId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT predictor_name, predictions, created_at FROM season_predictions WHERE season_id = $1 ORDER BY created_at ASC`,
+    [parseInt(seasonId)]
+  );
+  return result.rows;
+}
+
+async function savePrediction(seasonId, predictorName, predictions) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO season_predictions (season_id, predictor_name, predictions)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (season_id, predictor_name) DO UPDATE SET predictions = $3`,
+    [parseInt(seasonId), predictorName, JSON.stringify(predictions)]
+  );
+}
+
+async function getWeeklyRecap(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const matchesRes = await p.query(
+    `SELECT m.match_id, m.date, m.radiant_win, m.duration, m.lobby_name
+     FROM matches m
+     WHERE m.date >= NOW() - INTERVAL '7 days'${sc}
+     ORDER BY m.date DESC`,
+    params
+  );
+  const params2 = [];
+  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const topPerformersRes = await p.query(
+    `SELECT
+       COALESCE(n.nickname, ps.persona_name) as player_name,
+       ps.account_id,
+       AVG(ps.kills) as avg_kills,
+       AVG(ps.gpm) as avg_gpm,
+       AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE ps.kills + ps.assists END) as avg_kda,
+       COUNT(*) as games
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE m.date >= NOW() - INTERVAL '7 days'${sc2}
+     GROUP BY COALESCE(n.nickname, ps.persona_name), ps.account_id
+     HAVING COUNT(*) >= 2
+     ORDER BY avg_kda DESC LIMIT 10`,
+    params2
+  );
+  return {
+    matches: matchesRes.rows,
+    top_performers: topPerformersRes.rows,
+    period: '7 days',
+  };
+}
+
+async function getDraftSuggestions(allyHeroIds, enemyHeroIds, bannedHeroIds, position, seasonId = null) {
+  const p = getPool();
+  const excludeIds = [...allyHeroIds, ...enemyHeroIds, ...bannedHeroIds].filter(Boolean);
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+
+  const baseQuery = `
+    SELECT ps.hero_id, COUNT(*) as games,
+           SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.hero_id > 0${excludeIds.length ? ` AND ps.hero_id != ALL($${params.push(excludeIds)})` : ''}
+    ${position ? ` AND ps.position = $${params.push(parseInt(position))}` : ''}
+    ${sc}
+    GROUP BY ps.hero_id
+    HAVING COUNT(*) >= 1
+  `;
+  const baseRes = await p.query(baseQuery, params);
+
+  let synergyBonus = {};
+  if (allyHeroIds.length > 0) {
+    const sp = [allyHeroIds];
+    const ssc = seasonId ? ` AND m.season_id = $${sp.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+    const sRes = await p.query(
+      `SELECT ps.hero_id,
+              COUNT(*) as games,
+              SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.hero_id > 0
+         AND EXISTS (
+           SELECT 1 FROM player_stats ps2
+           WHERE ps2.match_id = ps.match_id AND ps2.team = ps.team AND ps2.hero_id = ANY($1)
+         )${ssc}
+       GROUP BY ps.hero_id HAVING COUNT(*) >= 1`,
+      sp
+    );
+    for (const r of sRes.rows) {
+      synergyBonus[r.hero_id] = parseInt(r.wins) / Math.max(parseInt(r.games), 1);
+    }
+  }
+
+  let counterBonus = {};
+  if (enemyHeroIds.length > 0) {
+    const ep = [enemyHeroIds];
+    const esc = seasonId ? ` AND m.season_id = $${ep.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+    const eRes = await p.query(
+      `SELECT ps.hero_id,
+              COUNT(*) as games,
+              SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.hero_id > 0
+         AND EXISTS (
+           SELECT 1 FROM player_stats ps2
+           WHERE ps2.match_id = ps.match_id AND ps2.team != ps.team AND ps2.hero_id = ANY($1)
+         )${esc}
+       GROUP BY ps.hero_id HAVING COUNT(*) >= 1`,
+      ep
+    );
+    for (const r of eRes.rows) {
+      counterBonus[r.hero_id] = parseInt(r.wins) / Math.max(parseInt(r.games), 1);
+    }
+  }
+
+  return baseRes.rows.map(r => {
+    const heroId = r.hero_id;
+    const games = parseInt(r.games);
+    const wins = parseInt(r.wins);
+    const baseWr = games > 0 ? wins / games : 0.5;
+    const syn = synergyBonus[heroId] ?? baseWr;
+    const ctr = counterBonus[heroId] ?? baseWr;
+    const score = (baseWr * 0.4) + (syn * 0.35) + (ctr * 0.25);
+    return { hero_id: heroId, games, wins, base_wr: baseWr, synergy_wr: syn, counter_wr: ctr, score };
+  }).sort((a, b) => b.score - a.score).slice(0, 30);
+}
+
 module.exports = {
   init,
   getPool,
@@ -2021,4 +2386,13 @@ module.exports = {
   updateMatchDraft,
   clearMatchFileHash,
   getEnemySynergyHeatmap,
+  getPlayerRatingHistory,
+  getPlayerStreaks,
+  getHeadToHead,
+  getPlayerComparison,
+  getPlayerAchievements,
+  getPredictions,
+  savePrediction,
+  getWeeklyRecap,
+  getDraftSuggestions,
 };

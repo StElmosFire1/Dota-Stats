@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements } from '../api';
 import { getHeroName } from '../heroNames';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
 
 const POS_NAMES = { 1: 'Pos 1 (Safe)', 2: 'Pos 2 (Mid)', 3: 'Pos 3 (Off)', 4: 'Pos 4 (Sup)', 5: 'Pos 5 (Hard Sup)' };
 
@@ -12,10 +15,108 @@ function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function RatingChart({ history }) {
+  if (!history || history.length < 2) return null;
+  const data = history.map((h, i) => ({
+    idx: i + 1,
+    mmr: Math.round(h.mmr),
+    date: h.recorded_at ? new Date(h.recorded_at).toLocaleDateString() : `#${i+1}`,
+  }));
+  const mmrValues = data.map(d => d.mmr);
+  const minMmr = Math.min(...mmrValues);
+  const maxMmr = Math.max(...mmrValues);
+  const domain = [Math.max(0, minMmr - 50), maxMmr + 50];
+  const startMmr = data[0].mmr;
+  const endMmr = data[data.length - 1].mmr;
+  const delta = endMmr - startMmr;
+  const deltaColor = delta >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+
+  return (
+    <section>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+        <h2 className="section-title" style={{ margin: 0 }}>MMR History</h2>
+        <span style={{ fontSize: 13, color: deltaColor, fontWeight: 600 }}>
+          {delta >= 0 ? '+' : ''}{delta} MMR over {history.length} games
+        </span>
+      </div>
+      <div className="stat-card" style={{ padding: '1rem 0.5rem' }}>
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis
+              dataKey="idx"
+              tick={false}
+              stroke="var(--border)"
+              label={{ value: 'Games →', position: 'insideRight', offset: -10, fill: 'var(--text-muted)', fontSize: 11 }}
+            />
+            <YAxis
+              domain={domain}
+              stroke="var(--border)"
+              tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+              width={42}
+            />
+            <Tooltip
+              contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
+              labelStyle={{ color: 'var(--text-muted)', fontSize: 12 }}
+              itemStyle={{ color: 'var(--accent-blue)' }}
+              formatter={(v, n) => [v + ' MMR', 'Rating']}
+              labelFormatter={(_, payload) => payload?.[0]?.payload?.date || ''}
+            />
+            <Line
+              type="monotone"
+              dataKey="mmr"
+              stroke="#3b82f6"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 5, fill: '#3b82f6' }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
+
+function AchievementBadges({ achievements }) {
+  if (!achievements || achievements.length === 0) return null;
+  const earned = achievements.filter(a => a.earned);
+  if (earned.length === 0 && achievements.every(a => !a.earned)) return null;
+
+  return (
+    <section>
+      <h2 className="section-title">Achievements</h2>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {achievements.map(a => (
+          <div
+            key={a.key}
+            title={a.desc}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              padding: '12px 14px', borderRadius: 10, minWidth: 80, textAlign: 'center',
+              background: a.earned ? 'var(--bg-card)' : 'rgba(0,0,0,0.15)',
+              border: `1px solid ${a.earned ? 'var(--accent-blue)' : 'var(--border)'}`,
+              opacity: a.earned ? 1 : 0.38,
+              boxShadow: a.earned ? '0 0 8px rgba(59,130,246,0.2)' : 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            <div style={{ fontSize: 26, marginBottom: 5 }}>{a.icon}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: a.earned ? 'var(--text-primary)' : 'var(--text-muted)', lineHeight: 1.3 }}>
+              {a.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function PlayerProfile() {
   const { accountId } = useParams();
   const [data, setData] = useState(null);
   const [positions, setPositions] = useState([]);
+  const [ratingHistory, setRatingHistory] = useState([]);
+  const [achievements, setAchievements] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,9 +124,13 @@ export default function PlayerProfile() {
     Promise.all([
       getPlayer(accountId).catch(() => null),
       getPlayerPositions(accountId).catch(() => ({ positions: [] })),
-    ]).then(([playerData, posData]) => {
+      getPlayerRatingHistory(accountId).catch(() => ({ history: [] })),
+      getPlayerAchievements(accountId).catch(() => ({ achievements: [] })),
+    ]).then(([playerData, posData, histData, achData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
+      setRatingHistory(histData?.history || []);
+      setAchievements(achData?.achievements || []);
     }).finally(() => setLoading(false));
   }, [accountId]);
 
@@ -83,6 +188,10 @@ export default function PlayerProfile() {
           )}
         </div>
       )}
+
+      <RatingChart history={ratingHistory} />
+
+      <AchievementBadges achievements={achievements} />
 
       {averages && totalMatches > 0 && (
         <section>

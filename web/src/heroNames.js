@@ -35,6 +35,8 @@ export const ALL_HEROES = Object.entries(HERO_NAMES)
   .map(([id, name]) => ({ id: parseInt(id), name }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
+export const ALL_HERO_IDS = ALL_HEROES.map(h => h.id);
+
 export function getHeroName(heroId, fallbackName) {
   if (HERO_NAMES[heroId]) return HERO_NAMES[heroId];
   if (fallbackName && fallbackName.startsWith('npc_dota_hero_')) {
