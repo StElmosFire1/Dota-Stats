@@ -365,3 +365,58 @@ export async function createBuyinCheckout(seasonId, displayName, accountId) {
 export async function confirmBuyinSession(sessionId) {
   return fetchJson(`/buyin/confirm?session_id=${encodeURIComponent(sessionId)}`);
 }
+
+export async function deleteSeasonApi(seasonId, superuserKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}`, {
+    method: 'DELETE',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete season');
+  return data;
+}
+
+export async function getSeasonPayouts(seasonId) {
+  return fetchJson(`/seasons/${seasonId}/payouts`);
+}
+
+export async function addSeasonPayout(seasonId, categoryType, label, amountCents, notes, uploadKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/payouts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-upload-key': uploadKey },
+    body: JSON.stringify({ category_type: categoryType, label, amount_cents: amountCents, notes }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to add payout category');
+  return data;
+}
+
+export async function deleteSeasonPayout(seasonId, payoutId, uploadKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/payouts/${payoutId}`, {
+    method: 'DELETE',
+    headers: { 'x-upload-key': uploadKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete payout');
+  return data;
+}
+
+export async function setPayoutWinner(seasonId, payoutId, winnerAccountId, winnerDisplayName, uploadKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/payouts/${payoutId}/winner`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-upload-key': uploadKey },
+    body: JSON.stringify({ winner_account_id: winnerAccountId, winner_display_name: winnerDisplayName }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to set winner');
+  return data;
+}
+
+export async function getSteamUser() {
+  return fetchJson('/auth/me');
+}
+
+export async function steamLogout() {
+  const res = await fetch(BASE + '/auth/logout', { method: 'POST' });
+  return res.ok;
+}

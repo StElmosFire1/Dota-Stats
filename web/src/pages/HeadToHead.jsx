@@ -38,7 +38,7 @@ export default function HeadToHead() {
 
   const nameFor = (id) => {
     const p = players.find(x => x.account_id?.toString() === id?.toString());
-    return p?.player_key || id;
+    return p?.nickname || p?.persona_name || p?.player_key || id;
   };
 
   const aName = nameFor(playerA);

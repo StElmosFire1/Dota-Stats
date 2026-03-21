@@ -19,6 +19,9 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Hero statistics with pick rates and win rates.
 - Player management, including nickname assignment.
 - Replay file uploads with duplicate prevention.
+- Season buy-in and prize pool management via Stripe.
+- Prize category configuration (leaderboard rank, position MVPs, stat-based awards, custom).
+- Steam OpenID sign-in for verified identity on buy-ins.
 The dashboard emphasizes clear data presentation, sortable tables, and detailed insights.
 
 **Technical Implementations & Feature Specifications:**
@@ -47,4 +50,14 @@ The dashboard emphasizes clear data presentation, sortable tables, and detailed 
 - **PostgreSQL Database:** Primary database for persistent storage.
 - **odota/parser (Java):** OpenDota's Java-based replay parser for detailed `.dem` file analysis.
 - **ts-trueskill:** Library for TrueSkill MMR calculations.
-- **node-fetch:** Used for HTTP requests.
+- **node-fetch:** Used for HTTP requests and Steam OpenID verification.
+- **Stripe:** Payment processing for season buy-ins (`stripe` npm package, `STRIPE_SECRET_KEY` env).
+- **express-session:** Server-side sessions for Steam auth (`SESSION_SECRET` env recommended).
+- **helmet:** HTTP security headers middleware.
+- **express-rate-limit:** Rate limiting on auth endpoints.
+
+**Environment Variables (DO server):**
+- `SESSION_SECRET` — secret for signing session cookies (add to DO env for security)
+- `STRIPE_SECRET_KEY` — Stripe API key
+- `STRIPE_WEBHOOK_SECRET` — optional, for Stripe webhook signature verification
+- `SITE_URL` — base URL used for Stripe redirect and Steam auth return (e.g. `http://170.64.182.110:5000`)

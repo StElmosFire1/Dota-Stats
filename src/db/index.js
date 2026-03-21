@@ -370,6 +370,21 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_season_buyins_season ON season_buyins(season_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_season_buyins_account ON season_buyins(account_id)`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_payout_categories (
+        id SERIAL PRIMARY KEY,
+        season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        category_type VARCHAR(50) NOT NULL,
+        label VARCHAR(100) NOT NULL,
+        amount_cents INTEGER NOT NULL DEFAULT 0,
+        winner_account_id BIGINT,
+        winner_display_name VARCHAR(100),
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_payout_categories_season ON season_payout_categories(season_id)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -425,6 +440,53 @@ async function setActiveSeason(id) {
   const result = await p.query(
     `UPDATE seasons SET active = true WHERE id = $1 RETURNING *`,
     [id]
+  );
+  return result.rows[0];
+}
+
+async function deleteSeason(id) {
+  const p = getPool();
+  await p.query('BEGIN');
+  try {
+    await p.query(`UPDATE matches SET season_id = NULL WHERE season_id = $1`, [id]);
+    const result = await p.query(`DELETE FROM seasons WHERE id = $1 RETURNING *`, [id]);
+    await p.query('COMMIT');
+    return result.rows[0] || null;
+  } catch (err) {
+    await p.query('ROLLBACK');
+    throw err;
+  }
+}
+
+async function getSeasonPayouts(seasonId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT * FROM season_payout_categories WHERE season_id = $1 ORDER BY created_at ASC`,
+    [seasonId]
+  );
+  return result.rows;
+}
+
+async function addSeasonPayout(seasonId, categoryType, label, amountCents, notes) {
+  const p = getPool();
+  const result = await p.query(
+    `INSERT INTO season_payout_categories (season_id, category_type, label, amount_cents, notes)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [seasonId, categoryType, label, amountCents, notes || null]
+  );
+  return result.rows[0];
+}
+
+async function deleteSeasonPayout(payoutId) {
+  const p = getPool();
+  await p.query(`DELETE FROM season_payout_categories WHERE id = $1`, [payoutId]);
+}
+
+async function setPayoutWinner(payoutId, winnerAccountId, winnerDisplayName) {
+  const p = getPool();
+  const result = await p.query(
+    `UPDATE season_payout_categories SET winner_account_id = $1, winner_display_name = $2 WHERE id = $3 RETURNING *`,
+    [winnerAccountId || null, winnerDisplayName || null, payoutId]
   );
   return result.rows[0];
 }
@@ -2446,6 +2508,11 @@ module.exports = {
   getMatchHistory,
   recalculateAllRatings,
   updatePlayerPosition,
+  deleteSeason,
+  getSeasonPayouts,
+  addSeasonPayout,
+  deleteSeasonPayout,
+  setPayoutWinner,
   setSeasonBuyinAmount,
   createBuyin,
   confirmBuyin,

@@ -25,6 +25,7 @@ import StatsEditor from './pages/StatsEditor';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
+import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -113,6 +114,35 @@ function AdminButton() {
       style={{ marginLeft: 8, opacity: 0.7 }}
     >
       &#128275; Login
+    </button>
+  );
+}
+
+function SteamButton() {
+  const { steamUser, loading, signIn, logout } = useSteamAuth();
+  if (loading) return null;
+  if (steamUser) {
+    return (
+      <button
+        className="btn btn-small"
+        onClick={logout}
+        title={`Signed in as ${steamUser.displayName || steamUser.accountId} — click to sign out`}
+        style={{ marginLeft: 4, background: '#1b2838', borderColor: '#4c6b22', color: '#a4d007', fontSize: 11 }}
+      >
+        <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 12, height: 12, verticalAlign: 'middle', marginRight: 4 }} />
+        {steamUser.displayName || 'Steam'}
+      </button>
+    );
+  }
+  return (
+    <button
+      className="btn btn-small"
+      onClick={signIn}
+      title="Sign in with Steam to verify your identity for buy-ins"
+      style={{ marginLeft: 4, background: '#1b2838', borderColor: '#567997', color: '#8ba7bf', fontSize: 11 }}
+    >
+      <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 12, height: 12, verticalAlign: 'middle', marginRight: 4 }} />
+      Steam Login
     </button>
   );
 }
@@ -214,6 +244,7 @@ function Nav() {
         </DropdownMenu>
       </div>
       <SeasonSelector />
+      <SteamButton />
       <AdminButton />
       <SuperuserButton />
       <HealthDot />
@@ -224,6 +255,7 @@ function Nav() {
 export default function App() {
   return (
     <BrowserRouter>
+      <SteamAuthProvider>
       <AdminProvider>
         <SuperuserProvider>
           <SeasonProvider>
@@ -257,6 +289,7 @@ export default function App() {
           </SeasonProvider>
         </SuperuserProvider>
       </AdminProvider>
+      </SteamAuthProvider>
     </BrowserRouter>
   );
 }

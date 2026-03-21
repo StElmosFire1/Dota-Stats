@@ -4,6 +4,9 @@ const fs = require('fs');
 const crypto = require('crypto');
 const cors = require('cors');
 const multer = require('multer');
+const session = require('express-session');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
 const db = require('../db');
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
@@ -59,10 +62,104 @@ function cleanupChunks(jobId) {
   } catch {}
 }
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
 function createServer(startupStatus = {}) {
   const app = express();
 
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }));
   app.use(cors());
+
+  const sessionSecret = process.env.SESSION_SECRET || (() => {
+    console.warn('[Session] SESSION_SECRET not set — using insecure default. Add it as an environment secret.');
+    return 'dota2-inhouse-default-secret-please-change';
+  })();
+
+  app.use(session({
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
+  }));
+
+  // Steam OpenID authentication
+  const fetch = require('node-fetch');
+  const STEAM_OPEN_ID = 'https://steamcommunity.com/openid/login';
+  const STEAM_ID_REGEX = /^https?:\/\/steamcommunity\.com\/openid\/id\/(\d+)$/;
+
+  app.get('/auth/steam', authLimiter, (req, res) => {
+    const baseUrl = process.env.SITE_URL || 'http://170.64.182.110:5000';
+    const returnUrl = `${baseUrl}/auth/steam/return`;
+    const params = new URLSearchParams({
+      'openid.mode': 'checkid_setup',
+      'openid.ns': 'http://specs.openid.net/auth/2.0',
+      'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
+      'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
+      'openid.return_to': returnUrl,
+      'openid.realm': baseUrl,
+    });
+    res.redirect(`${STEAM_OPEN_ID}?${params}`);
+  });
+
+  app.get('/auth/steam/return', authLimiter, async (req, res) => {
+    try {
+      if (req.query['openid.mode'] !== 'id_res') {
+        return res.redirect('/?auth=cancelled');
+      }
+      const claimedId = req.query['openid.claimed_id'] || '';
+      if (!STEAM_ID_REGEX.test(claimedId)) {
+        return res.redirect('/?auth=invalid');
+      }
+
+      const verifyParams = new URLSearchParams(req.query);
+      verifyParams.set('openid.mode', 'check_authentication');
+      const verifyRes = await fetch(STEAM_OPEN_ID, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: verifyParams.toString(),
+      });
+      const text = await verifyRes.text();
+      if (!text.includes('is_valid:true')) {
+        return res.redirect('/?auth=invalid');
+      }
+
+      const steamId64 = claimedId.match(STEAM_ID_REGEX)[1];
+      const accountId = (BigInt(steamId64) - 76561197960265728n).toString();
+
+      const pool = db.getPool();
+      const lookup = await pool.query(
+        `SELECT COALESCE(n.nickname, ps.persona_name) as display_name
+         FROM player_stats ps
+         LEFT JOIN nicknames n ON n.account_id = ps.account_id
+         WHERE ps.account_id = $1
+         ORDER BY ps.date DESC LIMIT 1`,
+        [accountId]
+      );
+
+      req.session.steamId64 = steamId64;
+      req.session.accountId = accountId;
+      req.session.displayName = lookup.rows[0]?.display_name || null;
+
+      res.redirect('/?auth=success');
+    } catch (err) {
+      console.error('[Steam Auth] Error:', err.message);
+      res.redirect('/?auth=error');
+    }
+  });
 
   // Stripe webhook MUST be registered before express.json() to receive raw body
   app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -145,7 +242,23 @@ function createApiRouter(startupStatus = {}) {
     });
   });
 
-  router.post('/admin/login', express.json(), (req, res) => {
+  router.get('/auth/me', (req, res) => {
+    if (req.session && req.session.accountId) {
+      res.json({
+        accountId: req.session.accountId,
+        steamId64: req.session.steamId64,
+        displayName: req.session.displayName || null,
+      });
+    } else {
+      res.json(null);
+    }
+  });
+
+  router.post('/auth/logout', (req, res) => {
+    req.session.destroy(() => res.json({ success: true }));
+  });
+
+  router.post('/admin/login', authLimiter, express.json(), (req, res) => {
     const uploadKey = process.env.UPLOAD_KEY;
     if (!uploadKey) return res.status(503).json({ error: 'Admin not configured' });
     const { password } = req.body || {};
@@ -153,7 +266,7 @@ function createApiRouter(startupStatus = {}) {
     return res.status(401).json({ error: 'Invalid password' });
   });
 
-  router.post('/admin/superuser-login', express.json(), (req, res) => {
+  router.post('/admin/superuser-login', authLimiter, express.json(), (req, res) => {
     const key = process.env.SUPERUSER_PASSWORD;
     if (!key) return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
     const { password } = req.body || {};
@@ -566,6 +679,71 @@ function createApiRouter(startupStatus = {}) {
     } catch (err) {
       console.error('[API] Error confirming buyin:', err.message);
       res.status(500).json({ error: 'Failed to confirm buy-in' });
+    }
+  });
+
+  router.delete('/seasons/:id', requireSuperuser, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await db.deleteSeason(id);
+      if (!deleted) return res.status(404).json({ error: 'Season not found' });
+      res.json({ success: true, deleted });
+    } catch (err) {
+      console.error('[API] Error deleting season:', err.message);
+      if (err.message && err.message.includes('foreign key')) {
+        return res.status(409).json({ error: 'Cannot delete a season that has matches assigned to it. Remove those matches first or reassign them.' });
+      }
+      res.status(500).json({ error: 'Failed to delete season' });
+    }
+  });
+
+  router.get('/seasons/:id/payouts', async (req, res) => {
+    try {
+      const payouts = await db.getSeasonPayouts(parseInt(req.params.id));
+      res.json({ payouts });
+    } catch (err) {
+      console.error('[API] Error fetching payouts:', err.message);
+      res.status(500).json({ error: 'Failed to fetch payouts' });
+    }
+  });
+
+  router.post('/seasons/:id/payouts', authMiddleware, async (req, res) => {
+    try {
+      const seasonId = parseInt(req.params.id);
+      const { category_type, label, amount_cents, notes } = req.body;
+      if (!category_type || !label || typeof amount_cents !== 'number') {
+        return res.status(400).json({ error: 'category_type, label, and amount_cents are required' });
+      }
+      const payout = await db.addSeasonPayout(seasonId, category_type, label, amount_cents, notes);
+      res.json({ payout });
+    } catch (err) {
+      console.error('[API] Error adding payout:', err.message);
+      res.status(500).json({ error: 'Failed to add payout category' });
+    }
+  });
+
+  router.delete('/seasons/:id/payouts/:payoutId', authMiddleware, async (req, res) => {
+    try {
+      await db.deleteSeasonPayout(parseInt(req.params.payoutId));
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[API] Error deleting payout:', err.message);
+      res.status(500).json({ error: 'Failed to delete payout' });
+    }
+  });
+
+  router.put('/seasons/:id/payouts/:payoutId/winner', authMiddleware, async (req, res) => {
+    try {
+      const { winner_account_id, winner_display_name } = req.body;
+      const payout = await db.setPayoutWinner(
+        parseInt(req.params.payoutId),
+        winner_account_id || null,
+        winner_display_name || null
+      );
+      res.json({ payout });
+    } catch (err) {
+      console.error('[API] Error setting winner:', err.message);
+      res.status(500).json({ error: 'Failed to set winner' });
     }
   });
 
