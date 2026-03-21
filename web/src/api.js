@@ -35,14 +35,14 @@ export async function deleteMatch(matchId, uploadKey, reason) {
   return data;
 }
 
-export async function updateMatchMeta(matchId, { patch, seasonId }, uploadKey) {
+export async function updateMatchMeta(matchId, { patch, seasonId, date }, uploadKey) {
   const res = await fetch(BASE + `/matches/${matchId}/meta`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
       'X-Upload-Key': uploadKey,
     },
-    body: JSON.stringify({ patch, seasonId }),
+    body: JSON.stringify({ patch, seasonId, date }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to update match');

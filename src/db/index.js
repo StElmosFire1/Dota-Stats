@@ -354,12 +354,13 @@ async function setActiveSeason(id) {
   return result.rows[0];
 }
 
-async function updateMatchMeta(matchId, { patch, seasonId }) {
+async function updateMatchMeta(matchId, { patch, seasonId, date }) {
   const p = getPool();
   const updates = [];
   const params = [];
   if (patch !== undefined) { updates.push(`patch = $${params.length + 1}`); params.push(patch || null); }
   if (seasonId !== undefined) { updates.push(`season_id = $${params.length + 1}`); params.push(seasonId || null); }
+  if (date !== undefined && date) { updates.push(`date = $${params.length + 1}`); params.push(new Date(date).toISOString()); }
   if (updates.length === 0) return;
   params.push(matchId);
   await p.query(`UPDATE matches SET ${updates.join(', ')} WHERE match_id = $${params.length}`, params);
@@ -377,7 +378,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
        ON CONFLICT (match_id) DO NOTHING`,
       [
         matchStats.matchId,
-        new Date().toISOString(),
+        matchStats.gameStartTime ? new Date(matchStats.gameStartTime * 1000).toISOString() : new Date().toISOString(),
         matchStats.duration || 0,
         matchStats.gameMode || 0,
         matchStats.radiantWin,

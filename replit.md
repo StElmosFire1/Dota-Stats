@@ -76,6 +76,19 @@ The dashboard emphasizes clear data presentation, sortable tables, and detailed 
 - **ts-trueskill:** A library for TrueSkill MMR calculations.
 - **node-fetch:** Used for HTTP requests to external APIs and replay file downloads.
 
+## DO Server: nginx Configuration
+There is an nginx reverse proxy on the DO server (port 80 → port 5000). Key nginx settings needed:
+- `client_max_body_size 200m;` in the http block of `/etc/nginx/nginx.conf` (required for replay uploads)
+- Reload after changes: `sudo nginx -t && sudo systemctl reload nginx`
+
+## Replay Upload System
+- **Transport**: multipart/form-data via multer (memoryStorage, 10MB per chunk limit)
+- **Chunk size**: 2MB, serial (1 at a time)
+- **Flow**: init → chunks → complete → parse (async, background)
+- **Crash safety**: Steam `LogonSessionReplaced` errors no longer crash the bot (handled as graceful disconnect)
+- **Files**: .dem files stored in `/tmp/replay-uploads/` during parsing, cleaned up after. Only parsed stats persist in PostgreSQL.
+- **Game date**: Parser extracts `gameStartTime` Unix timestamp from replay epilogue and stores it as the match `date`. Falls back to upload time if not available.
+
 ## Recent Changes
 - 2026-03-12: Fixed draft team display — parser previously stored `draft_active_team` as game enum values (2=radiant, 3=dire); now converts to 0/1 at parse time in both `replayParser.js` and the `match_draft` INSERT so picks/bans display correctly on the correct team side.
 - 2026-03-12: Lane W% on Position Stats page — `getPositionStats` fetches all per-match laning data, computes lane outcomes in Node.js (same STRATZ algorithm as MatchDetail), and aggregates lane wins/losses per player per position; new sortable "Lane W%" column added to the table.

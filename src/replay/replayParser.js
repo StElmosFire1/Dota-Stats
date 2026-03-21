@@ -386,6 +386,7 @@ class ReplayParser {
     let duration = 0;
     let radiantWin = null;
     let gameMode = 0;
+    let gameStartTime = null;
     let epilogueData = null;
     const maxTime = {};
     const laningData = {};
@@ -430,6 +431,7 @@ class ReplayParser {
                 const startTime = dota.startTime || dota.startTime_ || dota.start_time || dota.start_time_ || 0;
                 if (startTime > 0) {
                   duration = endTime - startTime - preGame;
+                  gameStartTime = startTime;
                 }
               } else {
                 duration = endTime - preGame;
@@ -1049,6 +1051,7 @@ class ReplayParser {
       duration,
       radiantWin,
       gameMode,
+      gameStartTime,
       players: playerList,
       draft,
       parseMethod: 'odota-parser',

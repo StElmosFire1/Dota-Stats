@@ -361,8 +361,8 @@ function createApiRouter(startupStatus = {}) {
 
   router.put('/matches/:matchId/meta', authMiddleware, async (req, res) => {
     try {
-      const { patch, seasonId } = req.body;
-      await db.updateMatchMeta(req.params.matchId, { patch, seasonId });
+      const { patch, seasonId, date } = req.body;
+      await db.updateMatchMeta(req.params.matchId, { patch, seasonId, date });
       res.json({ success: true });
     } catch (err) {
       console.error('[API] Error updating match meta:', err.message);

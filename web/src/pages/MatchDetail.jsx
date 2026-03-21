@@ -436,6 +436,7 @@ export default function MatchDetail() {
   const [showMeta, setShowMeta] = useState(false);
   const [metaPatch, setMetaPatch] = useState('');
   const [metaSeason, setMetaSeason] = useState('');
+  const [metaDate, setMetaDate] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
   const [clearingHash, setClearingHash] = useState(false);
 
@@ -446,6 +447,7 @@ export default function MatchDetail() {
         setMatch(m);
         setMetaPatch(m.patch || '');
         setMetaSeason(m.season_id ? String(m.season_id) : '');
+        setMetaDate(m.date ? new Date(m.date).toISOString().slice(0, 16) : '');
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -455,8 +457,8 @@ export default function MatchDetail() {
     if (!isAdmin) { setShowModal(true); return; }
     setSavingMeta(true);
     try {
-      await updateMatchMeta(matchId, { patch: metaPatch || null, seasonId: metaSeason ? parseInt(metaSeason) : null }, adminKey);
-      setMatch(prev => ({ ...prev, patch: metaPatch || null, season_id: metaSeason ? parseInt(metaSeason) : null }));
+      await updateMatchMeta(matchId, { patch: metaPatch || null, seasonId: metaSeason ? parseInt(metaSeason) : null, date: metaDate || null }, adminKey);
+      setMatch(prev => ({ ...prev, patch: metaPatch || null, season_id: metaSeason ? parseInt(metaSeason) : null, date: metaDate || prev.date }));
       setShowMeta(false);
     } catch (err) {
       alert('Save failed: ' + err.message);
@@ -630,6 +632,18 @@ export default function MatchDetail() {
                 ))}
               </select>
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <label style={{ color: '#888', fontSize: '0.75rem' }}>Date Played</label>
+              <input
+                type="datetime-local"
+                value={metaDate}
+                onChange={e => setMetaDate(e.target.value)}
+                style={{
+                  background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
+                  padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem',
+                }}
+              />
+            </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'flex-end' }}>
               <button
                 onClick={handleSaveMeta}
@@ -642,7 +656,7 @@ export default function MatchDetail() {
                 {savingMeta ? 'Saving...' : 'Save'}
               </button>
               <button
-                onClick={() => { setShowMeta(false); setMetaPatch(match.patch || ''); setMetaSeason(match.season_id ? String(match.season_id) : ''); }}
+                onClick={() => { setShowMeta(false); setMetaPatch(match.patch || ''); setMetaSeason(match.season_id ? String(match.season_id) : ''); setMetaDate(match.date ? new Date(match.date).toISOString().slice(0, 16) : ''); }}
                 style={{
                   background: 'transparent', color: '#888', border: '1px solid #444',
                   padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
