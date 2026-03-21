@@ -209,6 +209,7 @@ function BuyinListModal({ season, onClose }) {
                     <tr>
                       <th>#</th>
                       <th>Player</th>
+                      <th>Verified</th>
                       <th>Amount</th>
                       <th>Paid At</th>
                     </tr>
@@ -218,6 +219,17 @@ function BuyinListModal({ season, onClose }) {
                       <tr key={b.id}>
                         <td style={{ color: 'var(--muted)', fontSize: 13 }}>{i + 1}</td>
                         <td><strong>{b.display_name}</strong></td>
+                        <td>
+                          {b.account_id ? (
+                            <span title="Linked to a registered Steam account" style={{
+                              color: '#4ade80', fontSize: 13, fontWeight: 600
+                            }}>✓ Linked</span>
+                          ) : (
+                            <span title="Name entered manually — not linked to a registered account" style={{
+                              color: 'var(--muted)', fontSize: 12
+                            }}>— Manual</span>
+                          )}
+                        </td>
                         <td>{fmtAUD(b.amount_cents)}</td>
                         <td style={{ color: 'var(--muted)', fontSize: 12 }}>
                           {b.paid_at ? new Date(b.paid_at).toLocaleString() : '—'}
@@ -226,6 +238,11 @@ function BuyinListModal({ season, onClose }) {
                     ))}
                   </tbody>
                 </table>
+                {paid.some(b => !b.account_id) && (
+                  <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: -8, marginBottom: 16 }}>
+                    "Manual" entries were typed by hand and are not linked to a registered Steam account. Players should select their name from the dropdown when paying to show as Linked.
+                  </p>
+                )}
               </>
             )}
 
