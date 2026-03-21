@@ -85,7 +85,7 @@ function createApiRouter(startupStatus = {}) {
     let dbOk = false;
     try {
       const db = require('../db');
-      await db.pool.query('SELECT 1');
+      await db.getPool().query('SELECT 1');
       dbOk = true;
     } catch {}
 
