@@ -288,6 +288,12 @@ export async function getUploadStatus(jobId) {
   return fetchJson(`/upload/status/${jobId}`);
 }
 
+export async function getDuplicateMatches(adminKey) {
+  return fetchJson(`/admin/duplicate-matches`, {
+    headers: { 'x-admin-key': adminKey },
+  });
+}
+
 export async function getPlayerRatingHistory(accountId) {
   return fetchJson(`/players/${accountId}/rating-history`);
 }

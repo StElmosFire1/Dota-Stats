@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { uploadReplayChunked, getUploadStatus } from '../api';
+import { uploadReplayChunked, getUploadStatus, getDuplicateMatches } from '../api';
 import { useAdmin } from '../context/AdminContext';
 
 const MAX_POLL_RETRIES = 10;
@@ -63,9 +63,16 @@ function FileQueueItem({ item }) {
       )}
       {item.status === 'complete' && item.result && (
         <div className="queue-result">
-          <Link to={`/match/${item.result.matchId}`}>
-            Match #{item.result.matchId}
-          </Link>
+          <span style={{ marginRight: '0.5rem' }}>
+            {item.result.isNew
+              ? <span style={{ color: '#4caf50', fontWeight: 600 }}>✓ New match</span>
+              : item.result.replaceReason === 'sameFile'
+                ? <span style={{ color: '#ff9800', fontWeight: 600 }}>↺ Re-upload (same file, stats refreshed)</span>
+                : <span style={{ color: '#2196f3', fontWeight: 600 }}>↺ Updated (same match ID, stats refreshed)</span>
+            }
+          </span>
+          &mdash;{' '}
+          <Link to={`/match/${item.result.matchId}`}>Match #{item.result.matchId}</Link>
           {' '}&mdash; {item.result.players} players
         </div>
       )}
@@ -80,6 +87,8 @@ export default function Upload() {
   const { isAdmin, adminKey, setShowModal } = useAdmin();
   const [queue, setQueue] = useState(() => loadPersistedQueue());
   const [patch, setPatch] = useState(() => localStorage.getItem('uploadPatch') || '');
+  const [dupScanState, setDupScanState] = useState('idle');
+  const [dupResults, setDupResults] = useState(null);
   const fileRef = useRef(null);
   const adminKeyRef = useRef(adminKey);
   useEffect(() => { adminKeyRef.current = adminKey; }, [adminKey]);
@@ -143,7 +152,12 @@ export default function Upload() {
           safeUpdateItem(itemId, {
             status: 'complete',
             progress: { percent: 100, detail: 'Complete!' },
-            result: { matchId: job.matchId, players: job.players },
+            result: {
+              matchId: job.matchId,
+              players: job.players,
+              isNew: job.isNew,
+              replaceReason: job.replaceReason,
+            },
           });
           return;
         }
@@ -245,6 +259,19 @@ export default function Upload() {
     pollingJobsRef.current.clear();
   };
 
+  const runDupScan = async () => {
+    setDupScanState('scanning');
+    setDupResults(null);
+    try {
+      const results = await getDuplicateMatches(adminKey);
+      setDupResults(results);
+      setDupScanState('done');
+    } catch (err) {
+      setDupResults([]);
+      setDupScanState('error');
+    }
+  };
+
   const completedCount = queue.filter(i => i.status === 'complete').length;
   const errorCount = queue.filter(i => i.status === 'error' || i.status === 'lost').length;
   const pendingCount = queue.filter(i => i.status === 'pending').length;
@@ -344,6 +371,67 @@ export default function Upload() {
       {!isAdmin && queue.length > 0 && pendingCount > 0 && (
         <div className="status-message error">
           <p><button className="btn btn-small" onClick={() => setShowModal(true)}>Login as admin</button> to start uploading.</p>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ marginTop: '2rem' }}>
+          <h3 style={{ marginBottom: '0.5rem' }}>Duplicate Match Scanner</h3>
+          <p style={{ color: '#aaa', fontSize: '0.9rem', marginBottom: '0.75rem' }}>
+            Scans all matches for pairs that share the exact same set of heroes and result — a strong indicator of the same game recorded twice.
+          </p>
+          <button
+            className="btn btn-secondary"
+            onClick={runDupScan}
+            disabled={dupScanState === 'scanning'}
+          >
+            {dupScanState === 'scanning' ? 'Scanning…' : 'Scan for Duplicates'}
+          </button>
+
+          {dupScanState === 'error' && (
+            <p style={{ color: '#f44336', marginTop: '0.5rem' }}>Scan failed — check console for details.</p>
+          )}
+
+          {dupScanState === 'done' && dupResults !== null && (
+            <div style={{ marginTop: '1rem' }}>
+              {dupResults.length === 0 ? (
+                <p style={{ color: '#4caf50' }}>✓ No duplicates found.</p>
+              ) : (
+                <>
+                  <p style={{ color: '#ff9800', marginBottom: '0.5rem' }}>
+                    ⚠ {dupResults.length} potential duplicate pair{dupResults.length !== 1 ? 's' : ''} found:
+                  </p>
+                  <table className="stats-table" style={{ fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr>
+                        <th>Match 1</th>
+                        <th>Match 2</th>
+                        <th>Date 1</th>
+                        <th>Date 2</th>
+                        <th>Duration diff</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dupResults.map((row, i) => (
+                        <tr key={i}>
+                          <td><Link to={`/match/${row.match_id_1}`}>#{row.match_id_1}</Link></td>
+                          <td><Link to={`/match/${row.match_id_2}`}>#{row.match_id_2}</Link></td>
+                          <td>{row.date_1 ? new Date(row.date_1).toLocaleDateString() : '—'}</td>
+                          <td>{row.date_2 ? new Date(row.date_2).toLocaleDateString() : '—'}</td>
+                          <td style={{ color: parseInt(row.duration_diff) < 60 ? '#f44336' : '#aaa' }}>
+                            {row.duration_diff}s
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p style={{ color: '#aaa', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                    A small duration difference (under 60s) with the same heroes and result strongly suggests a duplicate. Delete the unwanted match from the match page.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

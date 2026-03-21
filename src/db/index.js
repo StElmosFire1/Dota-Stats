@@ -2475,6 +2475,51 @@ async function getDraftSuggestions(allyHeroIds, enemyHeroIds, bannedHeroIds, pos
   }).sort((a, b) => b.score - a.score).slice(0, 30);
 }
 
+async function findDuplicateMatches() {
+  const p = getPool();
+  const result = await p.query(`
+    WITH match_fingerprints AS (
+      SELECT
+        ps.match_id,
+        STRING_AGG(ps.hero_id::text, ',' ORDER BY ps.hero_id) AS hero_fingerprint,
+        COUNT(*) AS player_count
+      FROM player_stats ps
+      WHERE ps.hero_id > 0
+      GROUP BY ps.match_id
+      HAVING COUNT(*) >= 8
+    ),
+    match_info AS (
+      SELECT
+        m.match_id,
+        m.date,
+        m.radiant_win,
+        m.duration,
+        m.lobby_name,
+        mf.hero_fingerprint
+      FROM matches m
+      JOIN match_fingerprints mf ON m.match_id = mf.match_id
+    )
+    SELECT
+      a.match_id AS match_id_1,
+      b.match_id AS match_id_2,
+      a.date AS date_1,
+      b.date AS date_2,
+      a.radiant_win,
+      a.duration AS duration_1,
+      b.duration AS duration_2,
+      a.hero_fingerprint,
+      ABS(EXTRACT(EPOCH FROM (a.date - b.date))) AS date_diff_seconds,
+      ABS(a.duration - b.duration) AS duration_diff
+    FROM match_info a
+    JOIN match_info b
+      ON a.hero_fingerprint = b.hero_fingerprint
+     AND a.radiant_win = b.radiant_win
+     AND a.match_id < b.match_id
+    ORDER BY a.match_id, b.match_id
+  `);
+  return result.rows;
+}
+
 module.exports = {
   init,
   getPool,
@@ -2538,4 +2583,5 @@ module.exports = {
   savePrediction,
   getWeeklyRecap,
   getDraftSuggestions,
+  findDuplicateMatches,
 };

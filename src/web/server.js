@@ -1185,6 +1185,15 @@ NOTES
     }
   });
 
+  router.get('/admin/duplicate-matches', authMiddleware, async (req, res) => {
+    try {
+      const duplicates = await db.findDuplicateMatches();
+      res.json(duplicates);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to scan for duplicates' });
+    }
+  });
+
   return router;
 }
 
@@ -1226,10 +1235,12 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
     const fileHash = replayParser.computeFileHash(filePath);
 
     const existingHashMatch = await db.isFileHashRecorded(fileHash);
+    let replaceReason = null;
     if (existingHashMatch) {
       console.log(`[API] Duplicate file hash detected for match ${existingHashMatch}, deleting old match and re-recording.`);
       try {
         await db.deleteMatch(existingHashMatch, `re-upload:${ip}`, 'Replaced by re-upload of same replay file');
+        replaceReason = 'sameFile';
       } catch (delErr) {
         console.error(`[API] Failed to delete old match ${existingHashMatch} for re-upload:`, delErr.message);
         cleanupFile(filePath);
@@ -1251,6 +1262,15 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
       return;
     }
 
+    // Fix date: if replay has no embedded timestamp, fall back to file mtime rather than now()
+    if (!matchStats.gameStartTime) {
+      try {
+        const fileStat = fs.statSync(filePath);
+        matchStats.gameStartTime = Math.floor(fileStat.mtimeMs / 1000);
+        console.log(`[API] No gameStartTime in replay — using file mtime: ${new Date(matchStats.gameStartTime * 1000).toISOString()}`);
+      } catch (_) {}
+    }
+
     updateJobStep(jobId, 'Checking for duplicates...');
 
     const existing = await db.isMatchRecorded(matchStats.matchId);
@@ -1258,6 +1278,7 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
       console.log(`[API] Match ${matchStats.matchId} already exists, deleting for re-record.`);
       try {
         await db.deleteMatch(matchStats.matchId, `re-upload:${ip}`, 'Replaced by re-upload');
+        if (!replaceReason) replaceReason = 'sameMatchId';
       } catch (delErr) {
         cleanupFile(filePath);
         setJobTerminal(jobId, { status: 'error', error: `Match ${matchStats.matchId} already recorded. Auto-replace failed: ${delErr.message}` });
@@ -1320,6 +1341,8 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
       radiantWin: matchStats.radiantWin,
       players: matchStats.players.length,
       parseMethod: matchStats.parseMethod,
+      isNew: replaceReason === null,
+      replaceReason,
     });
     console.log(`[API] Upload job ${jobId} complete: match ${matchStats.matchId}`);
   } catch (err) {
