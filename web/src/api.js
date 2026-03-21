@@ -220,18 +220,24 @@ export async function uploadReplayChunked(file, uploadKey, onProgress, patch = n
     const maxAttempts = 3;
     while (attempts < maxAttempts) {
       try {
+        const formData = new FormData();
+        formData.append('chunk', chunk, `chunk_${i}.bin`);
         const chunkRes = await fetch(BASE + `/upload/chunk/${jobId}`, {
           method: 'POST',
           headers: {
             'X-Upload-Key': uploadKey,
             'X-Chunk-Index': String(i),
-            'Content-Type': 'application/octet-stream',
           },
-          body: chunk,
+          body: formData,
         });
         if (!chunkRes.ok) {
-          const errData = await chunkRes.json().catch(() => ({}));
-          throw new Error(errData.error || `Chunk ${i} upload failed`);
+          const responseText = await chunkRes.text().catch(() => '');
+          let errMsg = `Chunk ${i} upload failed (HTTP ${chunkRes.status})`;
+          try { errMsg = JSON.parse(responseText).error || errMsg; } catch {}
+          if (!errMsg.includes(responseText) && responseText && responseText.length < 200) {
+            errMsg += `: ${responseText}`;
+          }
+          throw new Error(errMsg);
         }
         break;
       } catch (err) {

@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const cors = require('cors');
+const multer = require('multer');
 const db = require('../db');
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
@@ -481,32 +482,34 @@ function createApiRouter(startupStatus = {}) {
     res.json({ jobId });
   });
 
-  router.post('/upload/chunk/:jobId', authMiddleware, async (req, res) => {
-    const { jobId } = req.params;
-    const chunkIndex = parseInt(req.headers['x-chunk-index']);
-    const job = uploadJobs.get(jobId);
+  const chunkUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
 
-    if (!job) return res.status(404).json({ error: 'Job not found — server may have restarted, please retry the upload' });
-    if (job.status !== 'uploading') return res.status(400).json({ error: `Job not accepting chunks (status: ${job.status})` });
-    if (isNaN(chunkIndex) || chunkIndex < 0 || chunkIndex >= job.totalChunks) {
-      return res.status(400).json({ error: `Invalid chunk index: ${chunkIndex}` });
-    }
-
-    const chunkPath = path.join(CHUNK_DIR, jobId, `chunk_${String(chunkIndex).padStart(5, '0')}`);
+  router.post('/upload/chunk/:jobId', authMiddleware, chunkUpload.single('chunk'), async (req, res) => {
     try {
-      await new Promise((resolve, reject) => {
-        const writeStream = fs.createWriteStream(chunkPath);
-        req.pipe(writeStream);
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-        req.on('error', reject);
-      });
-      console.log(`[Upload] Chunk ${chunkIndex} written: job=${jobId}`);
+      const { jobId } = req.params;
+      const chunkIndex = parseInt(req.headers['x-chunk-index']);
+      const job = uploadJobs.get(jobId);
+
+      if (!job) return res.status(404).json({ error: 'Job not found — server may have restarted, please retry the upload' });
+      if (job.status !== 'uploading') return res.status(400).json({ error: `Job not accepting chunks (status: ${job.status})` });
+      if (isNaN(chunkIndex) || chunkIndex < 0 || chunkIndex >= job.totalChunks) {
+        return res.status(400).json({ error: `Invalid chunk index: ${chunkIndex}` });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: 'No chunk data received — ensure body is multipart/form-data with field "chunk"' });
+      }
+
+      const chunkPath = path.join(CHUNK_DIR, jobId, `chunk_${String(chunkIndex).padStart(5, '0')}`);
+      await fs.promises.writeFile(chunkPath, req.file.buffer);
+      console.log(`[Upload] Chunk ${chunkIndex} received: ${req.file.size} bytes, job=${jobId}`);
       job.chunksReceived.add(chunkIndex);
       res.json({ received: job.chunksReceived.size, total: job.totalChunks });
     } catch (err) {
-      console.error(`[Upload] Chunk ${chunkIndex} write error:`, err.message);
-      res.status(500).json({ error: `Chunk write failed: ${err.message}` });
+      console.error(`[Upload] Chunk error:`, err.message);
+      res.status(500).json({ error: `Chunk failed: ${err.message}` });
     }
   });
 
