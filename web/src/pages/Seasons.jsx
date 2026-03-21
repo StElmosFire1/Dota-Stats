@@ -105,14 +105,25 @@ export default function Seasons() {
             <tbody>
               {seasons.map(s => (
                 <tr key={s.id}>
-                  <td><strong>{s.name}</strong></td>
+                  <td>
+                    <strong>{s.name}</strong>
+                    {s.is_legacy && (
+                      <span style={{
+                        marginLeft: 8, fontSize: 11, padding: '1px 6px',
+                        background: 'var(--surface2, #2a2a3a)', color: 'var(--muted)',
+                        borderRadius: 4, verticalAlign: 'middle', border: '1px solid var(--border)'
+                      }}>Legacy</span>
+                    )}
+                  </td>
                   <td style={{ color: 'var(--muted)', fontSize: 13 }}>
                     {new Date(s.created_at).toLocaleDateString()}
                   </td>
                   <td>
                     {s.active
                       ? <span className="badge badge-radiant">Active</span>
-                      : <span style={{ color: 'var(--muted)', fontSize: 13 }}>Inactive</span>
+                      : s.is_legacy
+                        ? <span style={{ color: 'var(--muted)', fontSize: 13 }}>Legacy</span>
+                        : <span style={{ color: 'var(--muted)', fontSize: 13 }}>Inactive</span>
                     }
                   </td>
                   <td>

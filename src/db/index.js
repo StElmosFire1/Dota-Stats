@@ -215,6 +215,8 @@ async function init() {
     `);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch VARCHAR(20)`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS season_id INTEGER REFERENCES seasons(id)`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
+    await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS match_draft (
@@ -580,7 +582,7 @@ async function isFileHashRecorded(fileHash) {
 async function getMatches(limit = 50, offset = 0, seasonId = null) {
   const p = getPool();
   const params = [limit, offset];
-  const seasonClause = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
+  const seasonClause = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT m.*,
        (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count
@@ -871,7 +873,7 @@ async function getAllNicknames() {
 async function getAllPlayers(seasonId = null) {
   const p = getPool();
   const params1 = [];
-  const sc = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
+  const sc = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT
        COALESCE(NULLIF(ps.account_id, 0), 0) as account_id,
@@ -909,7 +911,7 @@ async function getAllPlayers(seasonId = null) {
   );
 
   const params2 = [];
-  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
+  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}`: ' AND m.is_legacy = false';
   const posStats = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -929,7 +931,7 @@ async function getAllPlayers(seasonId = null) {
   );
 
   const params3 = [];
-  const sc3 = seasonId ? ` WHERE m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
+  const sc3 = seasonId ? ` WHERE m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}`: ' WHERE m.is_legacy = false';
   const teamKillsRes = await p.query(
     `SELECT ps.match_id, ps.team, SUM(ps.kills) as team_kills
      FROM player_stats ps
@@ -943,7 +945,7 @@ async function getAllPlayers(seasonId = null) {
   }
 
   const params4 = [];
-  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}` : '';
+  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}`: ' AND m.is_legacy = false';
   const posKiData = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1000,8 +1002,8 @@ async function getAllPlayers(seasonId = null) {
 async function getHeroStats(seasonId = null) {
   const p = getPool();
   const params = [];
-  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
-  const sc2 = seasonId ? ` AND m2.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}`: ' AND m.is_legacy = false';
+  const sc2 = seasonId ? ` AND m2.season_id = $${params.push(parseInt(seasonId)) && params.length}`: ' AND m2.is_legacy = false';
   const result = await p.query(
     `SELECT
        ps.hero_id,
@@ -1031,11 +1033,11 @@ async function getHeroStats(seasonId = null) {
   );
 
   const params3 = [];
-  const sc3 = seasonId ? ` AND season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
+  const sc3 = seasonId ? ` AND season_id = $${params3.push(parseInt(seasonId)) && params3.length}`: ' AND is_legacy = false';
   const totalResult = await p.query(`SELECT COUNT(*) as total FROM matches WHERE 1=1${sc3}`, params3);
 
   const params4 = [];
-  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}` : '';
+  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}`: ' AND m.is_legacy = false';
   const draftResult = await p.query(
     `SELECT COUNT(DISTINCT md.match_id) as draft_total FROM match_draft md JOIN matches m ON m.match_id = md.match_id WHERE 1=1${sc4}`,
     params4
@@ -1051,7 +1053,7 @@ async function getHeroStats(seasonId = null) {
 async function getOverallStats(seasonId = null) {
   const p = getPool();
   const params1 = [];
-  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
+  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT
        COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END) as player_key,
@@ -1089,7 +1091,7 @@ async function getOverallStats(seasonId = null) {
   );
 
   const params2 = [];
-  const sc2 = seasonId ? ` WHERE m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
+  const sc2 = seasonId ? ` WHERE m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}`: ' WHERE m.is_legacy = false';
   const teamKills = await p.query(
     `SELECT ps.match_id, ps.team, SUM(ps.kills) as team_kills
      FROM player_stats ps
@@ -1103,7 +1105,7 @@ async function getOverallStats(seasonId = null) {
   }
 
   const params3 = [];
-  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
+  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}`: ' AND m.is_legacy = false';
   const kiData = await p.query(
     `SELECT
        COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END) as player_key,
@@ -1172,7 +1174,7 @@ function computeMatchLaneOutcomes(players) {
 async function getPositionStats(position, minGames = 1, seasonId = null) {
   const p = getPool();
   const params1 = [position, minGames];
-  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
+  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1205,7 +1207,7 @@ async function getPositionStats(position, minGames = 1, seasonId = null) {
   );
 
   const params2 = [];
-  const sc2 = seasonId ? ` WHERE m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
+  const sc2 = seasonId ? ` WHERE m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}`: ' WHERE m.is_legacy = false';
   const teamKills = await p.query(
     `SELECT ps.match_id, ps.team, SUM(ps.kills) as team_kills
      FROM player_stats ps
@@ -1219,7 +1221,7 @@ async function getPositionStats(position, minGames = 1, seasonId = null) {
   }
 
   const params3 = [position];
-  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
+  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}`: ' AND m.is_legacy = false';
   const kiData = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1239,7 +1241,7 @@ async function getPositionStats(position, minGames = 1, seasonId = null) {
   }
 
   const params4 = [];
-  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}` : '';
+  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId)) && params4.length}`: ' AND m.is_legacy = false';
   const laningData = await p.query(
     `SELECT ps.match_id, ps.slot,
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1286,7 +1288,7 @@ async function getPositionStats(position, minGames = 1, seasonId = null) {
 async function getSynergyMatrix(seasonId = null) {
   const p = getPool();
   const params = [];
-  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT
        ps1.persona_name as player_a,
@@ -1567,7 +1569,7 @@ async function updatePlayerPosition(matchId, slot, position) {
 async function getSynergyHeatmap(seasonId = null) {
   const p = getPool();
   const params = [];
-  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT
        ps1.persona_name as player_a,
@@ -1672,7 +1674,7 @@ async function clearMatchFileHash(matchId) {
 async function getEnemySynergyHeatmap(seasonId = null) {
   const p = getPool();
   const params = [];
-  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}` : '';
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId)) && params.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT
        ps1.persona_name as player_a,
@@ -1748,7 +1750,7 @@ async function getEnemySynergyHeatmap(seasonId = null) {
 async function getPlayerPositionProfiles(seasonId = null) {
   const p = getPool();
   const params1 = [];
-  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
+  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1773,7 +1775,7 @@ async function getPlayerPositionProfiles(seasonId = null) {
   );
 
   const params2 = [];
-  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
+  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}`: ' AND m.is_legacy = false';
   const posBreakdown = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1830,7 +1832,7 @@ async function getPlayerPositionProfiles(seasonId = null) {
 async function getPlayerHeroProfiles(seasonId = null) {
   const p = getPool();
   const params1 = [];
-  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}` : '';
+  const sc1 = seasonId ? ` AND m.season_id = $${params1.push(parseInt(seasonId)) && params1.length}`: ' AND m.is_legacy = false';
   const result = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1856,7 +1858,7 @@ async function getPlayerHeroProfiles(seasonId = null) {
   );
 
   const params2 = [];
-  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}` : '';
+  const sc2 = seasonId ? ` AND m.season_id = $${params2.push(parseInt(seasonId)) && params2.length}`: ' AND m.is_legacy = false';
   const heroBreakdown = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1882,7 +1884,7 @@ async function getPlayerHeroProfiles(seasonId = null) {
   );
 
   const params3 = [];
-  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}` : '';
+  const sc3 = seasonId ? ` AND m.season_id = $${params3.push(parseInt(seasonId)) && params3.length}`: ' AND m.is_legacy = false';
   const heroLaningData = await p.query(
     `SELECT ps.match_id, ps.slot, ps.hero_id,
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
