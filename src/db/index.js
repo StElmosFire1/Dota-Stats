@@ -773,7 +773,7 @@ async function getLeaderboard(limit = 50) {
        MAX(n.nickname) as nickname,
        MAX(r.last_updated) as last_updated
      FROM ratings r
-     LEFT JOIN nicknames n ON n.account_id::text = r.player_id
+     LEFT JOIN nicknames n ON n.account_id::text = r.player_id::text
      GROUP BY COALESCE(n.nickname, r.player_id::text)
      ORDER BY mmr DESC LIMIT $1`,
     [limit]

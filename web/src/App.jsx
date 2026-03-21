@@ -148,11 +148,11 @@ function DropdownMenu({ label, children }) {
   useEffect(() => setOpen(false), [location]);
   return (
     <span
-      style={{ position: 'relative' }}
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <span className="nav-link" style={{ cursor: 'pointer', userSelect: 'none' }}>
+      <span className="nav-link" style={{ cursor: 'pointer', userSelect: 'none', display: 'inline-flex', alignItems: 'center' }}>
         {label} <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
       </span>
       {open && (
@@ -203,14 +203,14 @@ function Nav() {
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/players" className={isActive('/players')}>Players</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
+        <Link to="/upload" className={isActive('/upload')}>Upload</Link>
+        <Link to="/seasons" className={isActive('/seasons')}>Seasons</Link>
         <DropdownMenu label="Tools">
           <DropdownItem to="/head-to-head">Head to Head</DropdownItem>
           <DropdownItem to="/compare">Compare Players</DropdownItem>
           <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
         </DropdownMenu>
-        <Link to="/upload" className={isActive('/upload')}>Upload</Link>
-        <Link to="/seasons" className={isActive('/seasons')}>Seasons</Link>
       </div>
       <SeasonSelector />
       <AdminButton />
