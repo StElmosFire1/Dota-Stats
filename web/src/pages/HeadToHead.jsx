@@ -57,7 +57,7 @@ export default function HeadToHead() {
           >
             <option value="">Select player…</option>
             {players.map(p => (
-              <option key={p.account_id} value={p.account_id}>{p.player_key}</option>
+              <option key={p.account_id} value={p.account_id}>{p.nickname || p.persona_name || p.player_key}</option>
             ))}
           </select>
         </div>
@@ -73,7 +73,7 @@ export default function HeadToHead() {
           >
             <option value="">Select player…</option>
             {players.map(p => (
-              <option key={p.account_id} value={p.account_id}>{p.player_key}</option>
+              <option key={p.account_id} value={p.account_id}>{p.nickname || p.persona_name || p.player_key}</option>
             ))}
           </select>
         </div>
