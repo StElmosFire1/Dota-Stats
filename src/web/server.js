@@ -481,12 +481,12 @@ function createApiRouter(startupStatus = {}) {
     res.json({ jobId });
   });
 
-  router.post('/upload/chunk/:jobId', authMiddleware, express.raw({ limit: '6mb', type: '*/*' }), (req, res) => {
+  router.post('/upload/chunk/:jobId', authMiddleware, express.raw({ limit: '3mb', type: '*/*' }), async (req, res) => {
     try {
       const { jobId } = req.params;
       const chunkIndex = parseInt(req.headers['x-chunk-index']);
       const job = uploadJobs.get(jobId);
-      console.log(`[Upload] Chunk ${chunkIndex} received: body=${req.body?.length ?? 'undefined'} bytes, ct=${req.headers['content-type']}, job=${job?.status ?? 'NOT FOUND'}`);
+      console.log(`[Upload] Chunk ${chunkIndex} received: body=${req.body?.length ?? 'undefined'} bytes, job=${job?.status ?? 'NOT FOUND'}`);
 
       if (!job) return res.status(404).json({ error: 'Job not found — server may have restarted, please retry the upload' });
       if (job.status !== 'uploading') return res.status(400).json({ error: `Job not accepting chunks (status: ${job.status})` });
@@ -494,11 +494,11 @@ function createApiRouter(startupStatus = {}) {
         return res.status(400).json({ error: `Invalid chunk index: ${chunkIndex}` });
       }
       if (!req.body || req.body.length === 0) {
-        return res.status(400).json({ error: 'Empty chunk body — browser may not support binary upload' });
+        return res.status(400).json({ error: 'Empty chunk body — body parser did not receive data' });
       }
 
       const chunkPath = path.join(CHUNK_DIR, jobId, `chunk_${String(chunkIndex).padStart(5, '0')}`);
-      fs.writeFileSync(chunkPath, req.body);
+      await fs.promises.writeFile(chunkPath, req.body);
       job.chunksReceived.add(chunkIndex);
 
       res.json({ received: job.chunksReceived.size, total: job.totalChunks });

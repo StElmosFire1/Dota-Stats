@@ -182,7 +182,7 @@ export async function activateSeason(id, uploadKey) {
   return data;
 }
 
-const CHUNK_SIZE = 5 * 1024 * 1024;
+const CHUNK_SIZE = 2 * 1024 * 1024;
 const PARALLEL_UPLOADS = 1;
 
 export async function uploadReplayChunked(file, uploadKey, onProgress, patch = null) {
