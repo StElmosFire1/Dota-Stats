@@ -58,13 +58,13 @@ function cleanupChunks(jobId) {
   } catch {}
 }
 
-function createServer() {
+function createServer(startupStatus = {}) {
   const app = express();
 
   app.use(cors());
   app.use(express.json());
 
-  app.use('/api', createApiRouter());
+  app.use('/api', createApiRouter(startupStatus));
 
 
   const staticPath = path.join(__dirname, '../../web/dist');
@@ -78,8 +78,39 @@ function createServer() {
   return app;
 }
 
-function createApiRouter() {
+function createApiRouter(startupStatus = {}) {
   const router = express.Router();
+
+  router.get('/health', async (req, res) => {
+    let dbOk = false;
+    try {
+      const db = require('../db');
+      await db.pool.query('SELECT 1');
+      dbOk = true;
+    } catch {}
+
+    const replayParser = getReplayParser();
+    const parserOk = replayParser?.parserReady === true;
+
+    res.json({
+      ok: startupStatus.discord && dbOk,
+      uptime: startupStatus.startedAt
+        ? Math.round((Date.now() - new Date(startupStatus.startedAt).getTime()) / 1000)
+        : null,
+      startedAt: startupStatus.startedAt || null,
+      services: {
+        discord:      { ok: !!startupStatus.discord,      label: 'Discord Bot' },
+        database:     { ok: dbOk,                         label: 'Database' },
+        steam:        { ok: !!startupStatus.steam,        label: 'Steam' },
+        replayParser: { ok: parserOk,                     label: 'Replay Parser' },
+      },
+      dormant: {
+        sheets:      'Google Sheets sync',
+        matchPoller: 'OpenDota match poller',
+        lobby:       'Steam lobby / friend monitor',
+      },
+    });
+  });
 
   router.post('/admin/login', express.json(), (req, res) => {
     const uploadKey = process.env.UPLOAD_KEY;

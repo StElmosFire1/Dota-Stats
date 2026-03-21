@@ -16,6 +16,16 @@ const config = {
     serverRegion: 5,
     gameMode: 22,
   },
+
+  // Feature flags — set to true to re-enable dormant features
+  features: {
+    // Google Sheets sync (requires SHEET_ID env var + creds.json)
+    sheets: false,
+    // OpenDota match auto-poller (polls every 5min for public matches)
+    matchPoller: false,
+    // Steam lobby creation + friend auto-detect (requires lobby bot setup)
+    lobby: false,
+  },
 };
 
 function validateConfig() {

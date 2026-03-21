@@ -7,12 +7,22 @@ This project is a Node.js Discord bot designed to track statistics from Dota 2 i
 I prefer iterative development, with a focus on delivering core features first and then refining them. When making changes, please prioritize robust error handling and graceful degradation. I value clear, concise explanations for any complex technical decisions or implementations.
 
 ## Deployment Workflow (DigitalOcean at 170.64.182.110)
-**IMPORTANT:** Replit commits do NOT automatically push to GitHub. After code changes, the Replit Git panel must be used to push to GitHub first, then the DO server can pull.
+**IMPORTANT:** Replit commits do NOT automatically push to GitHub. Push via terminal: `git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main`
 
 Full deploy sequence:
-1. Push from Replit → GitHub via the Git panel (sidebar)
+1. Push from Replit → GitHub (see above)
 2. On DO: `cd ~/Dota-Stats && git pull && cd web && npm run build && cd .. && pm2 restart inhouse-bot`
 3. Backend-only changes (no React changes): skip `cd web && npm run build`
+
+**PM2 process name:** `inhouse-bot` (id 2). The old `dota-bot` (id 1) is stopped and can be deleted: `pm2 delete dota-bot && pm2 save`
+
+## Feature Flags (src/config.js)
+Three features are **dormant** (code preserved, just disabled). To re-enable any, set to `true` in `config.features`:
+- `sheets: false` — Google Sheets sync (needs SHEET_ID env var + creds.json)
+- `matchPoller: false` — OpenDota auto-polling every 5 min for public matches
+- `lobby: false` — Steam lobby creation + friend rich-presence auto-detect
+
+Steam **login** still runs regardless (used for health check indicator).
 
 **If draft data looks wrong on DO (quick fix):** Use "Allow Re-upload" on the match detail admin panel to clear the duplicate hash, then re-upload the replay. The parser will regenerate clean data.
 

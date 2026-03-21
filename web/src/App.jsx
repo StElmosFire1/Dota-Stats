@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import MatchList from './pages/MatchList';
 import MatchDetail from './pages/MatchDetail';
@@ -17,6 +17,71 @@ import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
+
+function HealthDot() {
+  const [health, setHealth] = useState(null);
+  const [show, setShow] = useState(false);
+
+  const fetch_ = () =>
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(setHealth)
+      .catch(() => setHealth(null));
+
+  useEffect(() => {
+    fetch_();
+    const t = setInterval(fetch_, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const allOk = health?.ok;
+  const color = health === null ? '#888' : allOk ? '#4caf50' : '#f44336';
+  const label = health === null ? 'Checking…' : allOk ? 'All systems OK' : 'Service issue';
+
+  const services = health?.services
+    ? Object.values(health.services).map(s => `${s.ok ? '✓' : '✗'} ${s.label}`).join('\n')
+    : '';
+
+  const uptimeStr = health?.uptime != null
+    ? (() => {
+        const s = health.uptime;
+        if (s < 60) return `${s}s`;
+        if (s < 3600) return `${Math.floor(s / 60)}m`;
+        return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+      })()
+    : null;
+
+  const tooltip = [label, services, uptimeStr ? `Uptime: ${uptimeStr}` : ''].filter(Boolean).join('\n');
+
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 10, cursor: 'default' }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <span style={{
+        width: 9, height: 9, borderRadius: '50%',
+        background: color,
+        display: 'inline-block',
+        boxShadow: allOk ? `0 0 6px ${color}` : 'none',
+        transition: 'background 0.3s',
+      }} />
+      {show && (
+        <span style={{
+          position: 'absolute', top: 16, right: 0,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 6, padding: '8px 12px',
+          fontSize: 12, whiteSpace: 'pre', lineHeight: 1.7,
+          zIndex: 999, color: 'var(--text-primary)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+          minWidth: 160,
+        }}>
+          {tooltip || 'No data'}
+        </span>
+      )}
+    </span>
+  );
+}
 
 function AdminButton() {
   const { isAdmin, logout, setShowModal } = useAdmin();
@@ -67,6 +132,7 @@ function Nav() {
       </div>
       <SeasonSelector />
       <AdminButton />
+      <HealthDot />
     </nav>
   );
 }
