@@ -8,7 +8,7 @@ function getClient() {
     if (!apiKey) return null;
     _client = new OpenAI({
       apiKey,
-      baseURL: 'https://api.groq.com/openai/v1',
+      baseURL: 'https://api.x.ai/v1',
     });
   }
   return _client;
@@ -19,7 +19,7 @@ async function ask(prompt, maxTokens = 200, temperature = 0.85) {
   if (!client) return null;
   try {
     const completion = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'grok-3-mini',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: maxTokens,
       temperature,
@@ -207,7 +207,7 @@ async function generateChatResponse({ message, history = [], serverContext = '' 
 
   try {
     const completion = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'grok-3-mini',
       messages,
       max_tokens: 400,
       temperature: 0.75,
