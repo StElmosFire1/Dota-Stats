@@ -9,46 +9,81 @@ const config = {
       // Tiers ordered highest to lowest — first match wins
       tiers: [
         {
-          name: 'The Guy',
-          emoji: '👑',
-          description: 'Undisputed. Feared. Respected.',
-          min: 2500,
-          roleId: process.env.DISCORD_ROLE_THEGUY || null,
+          name: 'Gaben',
+          emoji: '🎩',
+          description: 'A personal friend of the man himself.',
+          min: 2375,
+          roleId: process.env.DISCORD_ROLE_GABEN || null,
         },
         {
-          name: 'Actually Scary',
-          emoji: '😤',
-          description: 'People check your profile before picking.',
-          min: 2350,
-          roleId: process.env.DISCORD_ROLE_ACTUALLYSCARY || null,
+          name: 'Prime Pick',
+          emoji: '🎯',
+          description: 'Everyone wants you on their team.',
+          min: 2300,
+          roleId: process.env.DISCORD_ROLE_PRIMEPICK || null,
         },
         {
-          name: 'Getting Warm',
-          emoji: '🔥',
-          description: 'Finally showing a pulse.',
-          min: 2250,
-          roleId: process.env.DISCORD_ROLE_GETTINGWARM || null,
+          name: 'Apex',
+          emoji: '⚡',
+          description: 'Operating at peak Dota capacity.',
+          min: 2245,
+          roleId: process.env.DISCORD_ROLE_APEX || null,
         },
         {
-          name: 'First Timer',
-          emoji: '🎮',
-          description: 'Someone hand them a tutorial.',
-          min: 2150,
-          roleId: process.env.DISCORD_ROLE_FIRSTTIMER || null,
+          name: 'Veteran',
+          emoji: '🎖️',
+          description: 'Seen things. Done things. Knows things.',
+          min: 2200,
+          roleId: process.env.DISCORD_ROLE_VETERAN || null,
         },
         {
-          name: 'Noob',
-          emoji: '🐣',
-          description: 'Hatched, but not dangerous.',
-          min: 2050,
-          roleId: process.env.DISCORD_ROLE_NOOB || null,
+          name: 'Solid',
+          emoji: '💪',
+          description: 'Reliable. People can actually count on you.',
+          min: 2165,
+          roleId: process.env.DISCORD_ROLE_SOLID || null,
+        },
+        {
+          name: 'Average',
+          emoji: '😐',
+          description: 'Not bad. Not good. Just... there.',
+          min: 2130,
+          roleId: process.env.DISCORD_ROLE_AVERAGE || null,
         },
         {
           name: 'NPC',
           emoji: '🤖',
-          description: 'You could be replaced by a bot.',
-          min: 0,
+          description: 'Standing in the trees doing nothing.',
+          min: 2100,
           roleId: process.env.DISCORD_ROLE_NPC || null,
+        },
+        {
+          name: 'Anchor',
+          emoji: '⚓',
+          description: 'Dragging your team straight to the bottom.',
+          min: 2075,
+          roleId: process.env.DISCORD_ROLE_ANCHOR || null,
+        },
+        {
+          name: 'Neutral Creep',
+          emoji: '🐗',
+          description: 'You exist. The jungle thanks you for feeding it.',
+          min: 2050,
+          roleId: process.env.DISCORD_ROLE_NEUTRALCREEP || null,
+        },
+        {
+          name: 'Observer Ward',
+          emoji: '👁️',
+          description: 'Placed. Ignored. Immediately dewarded.',
+          min: 2025,
+          roleId: process.env.DISCORD_ROLE_OBSERVERWARD || null,
+        },
+        {
+          name: 'Position 6',
+          emoji: '🗺️',
+          description: 'The position that doesn\'t exist — neither do your contributions.',
+          min: 0,
+          roleId: process.env.DISCORD_ROLE_POSITION6 || null,
         },
       ],
     },
@@ -69,18 +104,15 @@ const config = {
 
   // Feature flags — set to true to re-enable dormant features
   features: {
-    // Google Sheets sync (requires SHEET_ID env var + creds.json)
     sheets: false,
-    // OpenDota match auto-poller (polls every 5min for public matches)
     matchPoller: false,
-    // Steam lobby creation + friend auto-detect (requires lobby bot setup)
     lobby: false,
   },
 };
 
 /**
  * Get the MMR tier for a given MMR value.
- * Returns { name, emoji, description, min } or null.
+ * Returns { name, emoji, description, min } or the lowest tier.
  */
 function getMmrTier(mmr) {
   const tiers = config.discord.mmrRoles.tiers;

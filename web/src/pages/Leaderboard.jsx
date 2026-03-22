@@ -4,12 +4,17 @@ import { getLeaderboard } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
 const MMR_TIERS = [
-  { name: 'The Guy',        emoji: '👑', description: 'Undisputed. Feared. Respected.',    min: 2500 },
-  { name: 'Actually Scary', emoji: '😤', description: 'People check your profile before picking.', min: 2350 },
-  { name: 'Getting Warm',   emoji: '🔥', description: 'Finally showing a pulse.',           min: 2250 },
-  { name: 'First Timer',    emoji: '🎮', description: 'Someone hand them a tutorial.',      min: 2150 },
-  { name: 'Noob',           emoji: '🐣', description: 'Hatched, but not dangerous.',        min: 2050 },
-  { name: 'NPC',            emoji: '🤖', description: 'You could be replaced by a bot.',   min: 0    },
+  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 2375 },
+  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 2300 },
+  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 2245 },
+  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 2200 },
+  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 2165 },
+  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 2130 },
+  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 2100 },
+  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 2075 },
+  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 2050 },
+  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 2025 },
+  { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0    },
 ];
 
 function getTier(mmr) {
@@ -76,29 +81,29 @@ export default function Leaderboard() {
     <div>
       <h1 className="page-title">Leaderboard</h1>
 
-      {/* Tier legend */}
+      {/* Tier legend — worst to best left to right */}
       <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20,
+        display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20,
         padding: '12px 16px', background: 'var(--bg-card)',
         border: '1px solid var(--border)', borderRadius: 10,
+        alignItems: 'center',
       }}>
-        {MMR_TIERS.slice().reverse().map(t => (
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4, whiteSpace: 'nowrap' }}>worst →</span>
+        {[...MMR_TIERS].reverse().map((t, i) => (
           <span
             key={t.name}
             title={t.description}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
+              display: 'inline-flex', alignItems: 'center', gap: 4,
               background: 'var(--bg-hover)', border: '1px solid var(--border)',
-              borderRadius: 8, padding: '3px 10px', fontSize: 12, fontWeight: 600,
-              color: 'var(--text-secondary)', cursor: 'default',
+              borderRadius: 8, padding: '3px 9px', fontSize: 11, fontWeight: 600,
+              color: 'var(--text-secondary)', cursor: 'default', whiteSpace: 'nowrap',
             }}
           >
             {t.emoji} {t.name}
-            <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>
-              {t.min === 0 ? `< 2050` : `${t.min}+`}
-            </span>
           </span>
         ))}
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4, whiteSpace: 'nowrap' }}>→ best</span>
       </div>
 
       {data.leaderboard.length === 0 ? (
