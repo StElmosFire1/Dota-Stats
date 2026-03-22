@@ -1250,10 +1250,11 @@ NOTES
     const now = Date.now();
     if (_chatContextCache && now < _chatContextExpiry) return _chatContextCache;
     try {
-      const [leaderboard, heroStats] = await Promise.all([
+      const [leaderboard, heroStatsResult] = await Promise.all([
         db.getComputedLeaderboard(null).catch(() => []),
-        db.getHeroStats(null).catch(() => []),
+        db.getHeroStats(null).catch(() => ({ heroes: [] })),
       ]);
+      const heroStats = Array.isArray(heroStatsResult) ? heroStatsResult : (heroStatsResult?.heroes || []);
       const top5 = leaderboard.slice(0, 5).map((p, i) =>
         `${i + 1}. ${p.nickname || p.display_name || p.player_id} — ${p.mmr} MMR, ${p.wins}W ${p.losses}L`
       ).join('\n');
