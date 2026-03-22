@@ -1,0 +1,127 @@
+root@Dota-Stats:~/Dota-Stats# pm2 logs inhouse-bot --lines 60 --nostream
+[TAILING] Tailing last 60 lines for [inhouse-bot] process (change the value with --lines option)
+/root/.pm2/logs/inhouse-bot-error.log last 60 lines:
+2|inhouse- | (node:235732) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:236684) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | (node:236829) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | (node:236928) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | (node:237029) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | (node:237072) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | (node:237240) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | [API] Error fetching leaderboard: operator does not exist: text = bigint
+2|inhouse- | (node:237370) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching matches: invalid input syntax for type integer: "NaN"
+2|inhouse- | [API] Error fetching matches: invalid input syntax for type integer: "NaN"
+2|inhouse- | (node:237746) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching matches: invalid input syntax for type integer: "NaN"
+2|inhouse- | (node:237952) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:238122) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [API] Error fetching matches: invalid input syntax for type integer: "NaN"
+2|inhouse- | [API] Error fetching matches: invalid input syntax for type integer: "NaN"
+2|inhouse- | (node:240979) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:241114) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:241267) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:258463) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:258658) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:259095) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:259429) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:259527) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:259712) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:259919) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+
+/root/.pm2/logs/inhouse-bot-out.log last 60 lines:
+2|inhouse- | [Startup] Bot is running! Use !help in Discord.
+2|inhouse- | [Startup] Active features:
+2|inhouse- |   - Discord:        YES
+2|inhouse- |   - Database:       YES
+2|inhouse- |   - Steam:          YES (connected)
+2|inhouse- |   - Replay parser:  YES (full stats)
+2|inhouse- |   - TrueSkill MMR:  YES
+2|inhouse- |   - Google Sheets:  DORMANT
+2|inhouse- |   - Match poller:   DORMANT
+2|inhouse- |   - Lobby/monitor:  DORMANT
+2|inhouse- | [Web] Dashboard running on port 5000
+2|inhouse- | [Startup] All systems ready.
+2|inhouse- | 
+2|inhouse- | 
+2|inhouse- | [Shutdown] Graceful shutdown...
+2|inhouse- | [Discord] Bot shut down.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Dota2 GC] Left practice lobby.
+2|inhouse- | [Steam] Shut down.
+2|inhouse- | [dotenv@17.3.1] injecting env (9) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+2|inhouse- | === Dota 2 Inhouse Stats Bot ===
+2|inhouse- | Starting up...
+2|inhouse- | 
+2|inhouse- | [DB] PostgreSQL connected.
+2|inhouse- | [DB] Schema migrations applied.
+2|inhouse- | [Startup] Google Sheets: disabled (config.features.sheets = false)
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Steam] Logging in...
+2|inhouse- | [Steam] Logged in successfully.
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=4009 (4 bytes)
+2|inhouse- | [Dota2 GC] Connected to Game Coordinator.
+2|inhouse- | [Steam] Dota 2 GC is ready!
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+2|inhouse- | [Startup] Steam connected.
+2|inhouse- | 
+2|inhouse- | [Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+2|inhouse- | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (28 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (22 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (22 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Discord] Bot online as Dota Bot#5597
+2|inhouse- | 
+2|inhouse- | [Startup] Bot is running! Use !help in Discord.
+2|inhouse- | [Startup] Active features:
+2|inhouse- |   - Discord:        YES
+2|inhouse- |   - Database:       YES
+2|inhouse- |   - Steam:          YES (connected)
+2|inhouse- |   - Replay parser:  YES (full stats)
+2|inhouse- |   - TrueSkill MMR:  YES
+2|inhouse- |   - Google Sheets:  DORMANT
+2|inhouse- |   - Match poller:   DORMANT
+2|inhouse- |   - Lobby/monitor:  DORMANT
+2|inhouse- | [Web] Dashboard running on port 5000
+2|inhouse- | [Startup] All systems ready.
+2|inhouse- | 
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=8678 (2 bytes)
+
+root@Dota-Stats:~/Dota-Stats#

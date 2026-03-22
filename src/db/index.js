@@ -399,6 +399,39 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_payout_categories_season ON season_payout_categories(season_id)`);
 
+    // Fix column types that may be wrong on older DB instances (CREATE TABLE IF NOT EXISTS doesn't alter existing columns)
+    await p.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'player_stats' AND column_name = 'account_id'
+            AND data_type NOT IN ('bigint', 'integer')
+        ) THEN
+          ALTER TABLE player_stats ALTER COLUMN account_id TYPE BIGINT
+            USING NULLIF(TRIM(account_id::text), '')::bigint;
+        END IF;
+
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'nicknames' AND column_name = 'account_id'
+            AND data_type NOT IN ('bigint', 'integer')
+        ) THEN
+          ALTER TABLE nicknames ALTER COLUMN account_id TYPE BIGINT
+            USING NULLIF(TRIM(account_id::text), '')::bigint;
+        END IF;
+
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'ratings' AND column_name = 'player_id'
+            AND data_type NOT IN ('bigint', 'integer')
+        ) THEN
+          ALTER TABLE ratings ALTER COLUMN player_id TYPE BIGINT
+            USING NULLIF(TRIM(player_id::text), '')::bigint;
+        END IF;
+      END $$;
+    `);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
