@@ -1,5 +1,45 @@
 const BASE = '/api';
 
+export async function getPatchNotes() {
+  return fetchJson('/patch-notes');
+}
+
+export async function getPatchNote(id) {
+  return fetchJson(`/patch-notes/${id}`);
+}
+
+export async function createPatchNote({ version, title, content, author }, uploadKey) {
+  const res = await fetch(BASE + '/patch-notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Upload-Key': uploadKey },
+    body: JSON.stringify({ version, title, content, author }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create patch note');
+  return data;
+}
+
+export async function updatePatchNote(id, { version, title, content, author }, uploadKey) {
+  const res = await fetch(BASE + `/patch-notes/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Upload-Key': uploadKey },
+    body: JSON.stringify({ version, title, content, author }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update patch note');
+  return data;
+}
+
+export async function deletePatchNote(id, uploadKey) {
+  const res = await fetch(BASE + `/patch-notes/${id}`, {
+    method: 'DELETE',
+    headers: { 'X-Upload-Key': uploadKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete patch note');
+  return data;
+}
+
 async function fetchJson(url) {
   const res = await fetch(BASE + url);
   if (!res.ok) {

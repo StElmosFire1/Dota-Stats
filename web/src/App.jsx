@@ -22,6 +22,7 @@ import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
 import SuperuserLoginModal from './components/SuperuserLoginModal';
 import StatsEditor from './pages/StatsEditor';
+import PatchNotes from './pages/PatchNotes';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
@@ -241,6 +242,7 @@ function Nav() {
           <DropdownItem to="/compare">Compare Players</DropdownItem>
           <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
+          <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
         </DropdownMenu>
       </div>
       <SeasonSelector />
@@ -284,6 +286,7 @@ export default function App() {
                 <Route path="/compare" element={<Compare />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
                 <Route path="/predictions" element={<Predictions />} />
+                <Route path="/patch-notes" element={<PatchNotes />} />
               </Routes>
             </main>
           </SeasonProvider>

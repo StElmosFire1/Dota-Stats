@@ -1194,6 +1194,62 @@ NOTES
     }
   });
 
+  // Patch notes
+  router.get('/patch-notes', async (req, res) => {
+    try {
+      const notes = await db.getPatchNotes();
+      res.json({ patchNotes: notes });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch patch notes' });
+    }
+  });
+
+  router.get('/patch-notes/:id', async (req, res) => {
+    try {
+      const note = await db.getPatchNote(parseInt(req.params.id));
+      if (!note) return res.status(404).json({ error: 'Patch note not found' });
+      res.json(note);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch patch note' });
+    }
+  });
+
+  router.post('/patch-notes', authMiddleware, express.json(), async (req, res) => {
+    try {
+      const { version, title, content, author } = req.body;
+      if (!version || !title || !content) {
+        return res.status(400).json({ error: 'version, title, and content are required' });
+      }
+      const note = await db.createPatchNote({ version, title, content, author });
+      res.status(201).json(note);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to create patch note' });
+    }
+  });
+
+  router.put('/patch-notes/:id', authMiddleware, express.json(), async (req, res) => {
+    try {
+      const { version, title, content, author } = req.body;
+      if (!version || !title || !content) {
+        return res.status(400).json({ error: 'version, title, and content are required' });
+      }
+      const note = await db.updatePatchNote(parseInt(req.params.id), { version, title, content, author });
+      if (!note) return res.status(404).json({ error: 'Patch note not found' });
+      res.json(note);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to update patch note' });
+    }
+  });
+
+  router.delete('/patch-notes/:id', authMiddleware, async (req, res) => {
+    try {
+      await db.deletePatchNote(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to delete patch note' });
+    }
+  });
+
   return router;
 }
 

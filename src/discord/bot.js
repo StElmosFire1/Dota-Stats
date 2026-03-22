@@ -6,7 +6,7 @@ const { getSheetsStore } = require('../sheets/sheetsStore');
 const { getReplayParser } = require('../replay/replayParser');
 const { getOpenDota } = require('../api/opendota');
 const db = require('../db');
-const { generateWeeklyRecapBlurb } = require('../services/groqService');
+const { generateWeeklyRecapBlurb, generatePlayerAnalysis, generatePlayerRoast, generateMatchMvpBlurb } = require('../services/groqService');
 
 let steamAvailable = false;
 
@@ -188,6 +188,8 @@ class DiscordBot {
           case 'help': await this._cmdHelp(msg); break;
           case 'top': await this._cmdTop(msg, args); break;
           case 'stats': await this._cmdStats(msg, args); break;
+          case 'analyze': case 'analyse': await this._cmdAnalyze(msg, args); break;
+          case 'roast': await this._cmdRoast(msg, args); break;
           case 'history': await this._cmdHistory(msg); break;
           case 'register': await this._cmdRegister(msg, args); break;
           case 'players': await this._cmdPlayers(msg); break;
@@ -235,6 +237,13 @@ class DiscordBot {
             '`!herostats <hero>` - Win rate & top players for a hero',
             '`!vs @user` - Your head-to-head record against someone',
             '`!recap` - This week\'s highlights & fun stats',
+          ].join('\n'),
+        },
+        {
+          name: '\u{1F916} AI Commands',
+          value: [
+            '`!analyze [@user]` - AI performance analysis from the coaching bot',
+            '`!roast [@user]` - Let the AI trash-talk someone\'s stats (all in good fun)',
           ].join('\n'),
         },
         {
@@ -691,6 +700,74 @@ class DiscordBot {
     }
 
     await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdAnalyze(msg, args) {
+    const mentioned = msg.mentions.users.first();
+    const targetUser = mentioned || msg.author;
+    const registered = await db.getPlayerByDiscordId(targetUser.id);
+    if (!registered) {
+      return msg.reply(`${targetUser.id === msg.author.id ? 'You\'re' : `${targetUser.username} isn't`} not registered. Use \`!register <steam_id>\` first.`);
+    }
+    const accountId = registered.account_id_32;
+    const [stats, rating, heroes] = await Promise.all([
+      db.getPlayerStats(accountId),
+      db.getPlayerRating(accountId),
+      db.getPlayerHeroStats(accountId).catch(() => []),
+    ]);
+    const avg = stats.averages || {};
+    if (!parseInt(avg.total_matches)) return msg.reply('Not enough match data to analyse yet.');
+
+    await msg.reply('\u{1F916} Asking the AI coach\u2026');
+    const blurb = await generatePlayerAnalysis({
+      name: registered.discord_name || targetUser.username,
+      avg,
+      rating,
+      recentHeroes: heroes,
+    });
+    if (!blurb) return msg.reply('AI analysis is unavailable right now. Try again later.');
+
+    const embed = new EmbedBuilder()
+      .setTitle(`\u{1F9E0} AI Analysis \u2014 ${registered.discord_name || targetUser.username}`)
+      .setColor(0x7c3aed)
+      .setDescription(blurb)
+      .setFooter({ text: 'Powered by Groq \u00B7 Llama 3.1' })
+      .setTimestamp();
+    await msg.channel.send({ embeds: [embed] });
+  }
+
+  async _cmdRoast(msg, args) {
+    const mentioned = msg.mentions.users.first();
+    const targetUser = mentioned || msg.author;
+    const registered = await db.getPlayerByDiscordId(targetUser.id);
+    if (!registered) {
+      return msg.reply(`Can't roast someone who doesn't exist in the system. Use \`!register <steam_id>\` first.`);
+    }
+    const accountId = registered.account_id_32;
+    const [stats, rating, heroes] = await Promise.all([
+      db.getPlayerStats(accountId),
+      db.getPlayerRating(accountId),
+      db.getPlayerHeroStats(accountId).catch(() => []),
+    ]);
+    const avg = stats.averages || {};
+    if (!parseInt(avg.total_matches)) return msg.reply('Not enough data to roast yet — play more games!');
+
+    await msg.reply('\u{1F608} Firing up the roast machine\u2026');
+    const blurb = await generatePlayerRoast({
+      name: registered.discord_name || targetUser.username,
+      avg,
+      rating,
+      recentHeroes: heroes,
+    });
+    if (!blurb) return msg.reply('The roast machine broke. Probably your fault.');
+
+    const embed = new EmbedBuilder()
+      .setTitle(`\u{1F525} Roast \u2014 ${registered.discord_name || targetUser.username}`)
+      .setColor(0xe05c5c)
+      .setDescription(blurb)
+      .setFooter({ text: 'All in good fun \u00B7 Powered by Groq' })
+      .setTimestamp();
+    await msg.channel.send({ embeds: [embed] });
   }
 
   async _cmdHistory(msg) {

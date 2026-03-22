@@ -180,6 +180,18 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS killed_by JSONB DEFAULT '{}'`);
 
     await p.query(`
+      CREATE TABLE IF NOT EXISTS patch_notes (
+        id SERIAL PRIMARY KEY,
+        version VARCHAR(20) NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        content TEXT NOT NULL,
+        author VARCHAR(100),
+        published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await p.query(`
       CREATE TABLE IF NOT EXISTS player_items (
         id SERIAL PRIMARY KEY,
         match_id VARCHAR NOT NULL,
@@ -2485,6 +2497,41 @@ async function getPlayerByDiscordId(discordId) {
   return result.rows[0] || null;
 }
 
+async function getPatchNotes() {
+  const p = getPool();
+  const res = await p.query(`SELECT * FROM patch_notes ORDER BY published_at DESC`);
+  return res.rows;
+}
+
+async function getPatchNote(id) {
+  const p = getPool();
+  const res = await p.query(`SELECT * FROM patch_notes WHERE id = $1`, [id]);
+  return res.rows[0] || null;
+}
+
+async function createPatchNote({ version, title, content, author }) {
+  const p = getPool();
+  const res = await p.query(
+    `INSERT INTO patch_notes (version, title, content, author) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [version, title, content, author || null]
+  );
+  return res.rows[0];
+}
+
+async function updatePatchNote(id, { version, title, content, author }) {
+  const p = getPool();
+  const res = await p.query(
+    `UPDATE patch_notes SET version=$1, title=$2, content=$3, author=$4 WHERE id=$5 RETURNING *`,
+    [version, title, content, author || null, id]
+  );
+  return res.rows[0] || null;
+}
+
+async function deletePatchNote(id) {
+  const p = getPool();
+  await p.query(`DELETE FROM patch_notes WHERE id = $1`, [id]);
+}
+
 async function getPlayerNemesis(accountId) {
   const p = getPool();
   // Aggregate the killed_by JSONB across all non-legacy matches for this player
@@ -2905,4 +2952,9 @@ module.exports = {
   findDuplicateMatches,
   getPlayerCurrentStreak,
   getPlayerNemesis,
+  getPatchNotes,
+  getPatchNote,
+  createPatchNote,
+  updatePatchNote,
+  deletePatchNote,
 };
