@@ -1250,24 +1250,62 @@ NOTES
     const now = Date.now();
     if (_chatContextCache && now < _chatContextExpiry) return _chatContextCache;
     try {
-      const [leaderboard, heroStatsResult] = await Promise.all([
+      const [leaderboard, heroStatsResult, overallStats, recentMatches, matchCount] = await Promise.all([
         db.getComputedLeaderboard(null).catch(() => []),
         db.getHeroStats(null).catch(() => ({ heroes: [] })),
+        db.getOverallStats(null).catch(() => ({ players: [] })),
+        db.getMatchHistory(10).catch(() => []),
+        db.getMatchCount(null).catch(() => 0),
       ]);
       const heroStats = Array.isArray(heroStatsResult) ? heroStatsResult : (heroStatsResult?.heroes || []);
+      const overallPlayers = Array.isArray(overallStats) ? overallStats : (overallStats?.players || overallStats?.rows || []);
+
+      // Build a lookup from player name/nickname -> overall stats
+      const statsLookup = {};
+      for (const p of overallPlayers) {
+        const key = p.nickname || p.persona_name || p.player_key;
+        if (key) statsLookup[key] = p;
+      }
+
+      // Full leaderboard with MMR
       const allPlayers = leaderboard.map((p, i) =>
         `${i + 1}. ${p.nickname || p.display_name || p.player_id} — ${p.mmr} MMR, ${p.wins}W ${p.losses}L`
       ).join('\n');
-      const topHeroes = heroStats.slice(0, 12).map(h =>
-        `${h.hero_name}: ${h.games} games, ${h.win_rate}% WR`
+
+      // Per-player detailed stats (avg KDA, GPM, damage)
+      const playerDetails = overallPlayers.map(p => {
+        const name = p.nickname || p.persona_name || p.player_key || '?';
+        const wr = p.games > 0 ? Math.round((p.wins / p.games) * 100) : 0;
+        const kda = `${p.avg_kills}/${p.avg_deaths}/${p.avg_assists}`;
+        const gpm = p.avg_gpm ? `${p.avg_gpm} GPM` : '';
+        const dmg = p.avg_hero_damage ? `${Math.round(p.avg_hero_damage / 1000)}k dmg` : '';
+        const heal = p.avg_hero_healing > 100 ? `${Math.round(p.avg_hero_healing / 1000)}k heal` : '';
+        return `${name}: ${p.games}g ${wr}%WR, KDA ${kda}${gpm ? ', ' + gpm : ''}${dmg ? ', ' + dmg : ''}${heal ? ', ' + heal : ''}`;
+      }).join('\n');
+
+      // All heroes
+      const allHeroes = heroStats.map(h =>
+        `${h.hero_name}: ${h.games}g ${h.win_rate}%WR`
       ).join(', ');
+
+      // Recent matches
+      const recentMatchLines = recentMatches.map(m => {
+        const date = new Date(m.date).toLocaleDateString('en-AU');
+        const dur = m.duration ? `${Math.round(m.duration / 60)}min` : '';
+        return `${date}: ${m.radiantWin ? 'Radiant' : 'Dire'} win${dur ? ' (' + dur + ')' : ''}${m.lobbyName ? ' — ' + m.lobbyName : ''}`;
+      }).join('\n');
+
       _chatContextCache = [
-        `Total players on leaderboard: ${leaderboard.length}`,
-        leaderboard.length > 0 ? `Full leaderboard:\n${allPlayers}` : '',
-        topHeroes ? `Most picked heroes: ${topHeroes}` : '',
+        `OCE Dota 2 Inhouse Community | Total matches: ${matchCount} | Players: ${leaderboard.length}`,
+        '',
+        leaderboard.length > 0 ? `=== LEADERBOARD (TrueSkill MMR) ===\n${allPlayers}` : '',
+        overallPlayers.length > 0 ? `\n=== PLAYER STATS (per-game averages) ===\n${playerDetails}` : '',
+        allHeroes ? `\n=== HERO STATS ===\n${allHeroes}` : '',
+        recentMatchLines ? `\n=== RECENT MATCHES (last 10) ===\n${recentMatchLines}` : '',
       ].filter(Boolean).join('\n');
       _chatContextExpiry = now + 5 * 60 * 1000;
-    } catch {
+    } catch (err) {
+      console.error('[Chat] getServerContext error:', err.message);
       _chatContextCache = 'Stats unavailable.';
       _chatContextExpiry = now + 60 * 1000;
     }
