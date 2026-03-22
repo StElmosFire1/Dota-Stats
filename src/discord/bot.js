@@ -6,6 +6,7 @@ const { getSheetsStore } = require('../sheets/sheetsStore');
 const { getReplayParser } = require('../replay/replayParser');
 const { getOpenDota } = require('../api/opendota');
 const db = require('../db');
+const { generateWeeklyRecapBlurb } = require('../services/groqService');
 
 let steamAvailable = false;
 
@@ -1253,6 +1254,12 @@ class DiscordBot {
         ? `${Math.floor(avgDuration / 60)}m${String(avgDuration % 60).padStart(2, '0')}s`
         : '?';
 
+      const aiBlurb = await generateWeeklyRecapBlurb({
+        matches,
+        topPerformers: top_performers,
+        fun,
+      });
+
       const embed = new EmbedBuilder()
         .setTitle('\u{1F4CA} Weekly Recap')
         .setColor(0x3b82f6)
@@ -1261,6 +1268,10 @@ class DiscordBot {
           value: `\u{1F7E2} Radiant ${radiantWins} \u2013 ${direWins} Dire \u{1F534}  \u2022  Avg game: ${avgDurStr}`,
           inline: false,
         });
+
+      if (aiBlurb) {
+        embed.addFields({ name: '\u{1F916} AI Recap', value: aiBlurb.slice(0, 1024), inline: false });
+      }
 
       if (top_performers && top_performers.length > 0) {
         const topLines = top_performers.slice(0, 5).map((p, i) => {
@@ -1340,6 +1351,12 @@ class DiscordBot {
         ? `${Math.floor(avgDuration / 60)}m${String(avgDuration % 60).padStart(2, '0')}s`
         : '?';
 
+      const aiBlurb = await generateWeeklyRecapBlurb({
+        matches,
+        topPerformers: top_performers,
+        fun,
+      });
+
       const embed = new EmbedBuilder()
         .setTitle('\u{1F4CA} Weekly Recap \u2014 Automated')
         .setColor(0x3b82f6)
@@ -1348,6 +1365,10 @@ class DiscordBot {
           value: `\u{1F7E2} Radiant ${radiantWins} \u2013 ${direWins} Dire \u{1F534}  \u2022  Avg game: ${avgDurStr}`,
           inline: false,
         });
+
+      if (aiBlurb) {
+        embed.addFields({ name: '\u{1F916} AI Recap', value: aiBlurb.slice(0, 1024), inline: false });
+      }
 
       if (top_performers?.length > 0) {
         const topLines = top_performers.slice(0, 5).map((p, i) => {
