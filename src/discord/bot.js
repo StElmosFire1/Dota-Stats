@@ -787,10 +787,23 @@ class DiscordBot {
           const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
 
+          const streakCallouts = [];
           if (msg.guild) {
             for (const p of matchStats.players.filter(p => p.accountId && p.accountId !== 0)) {
               const rating = await db.getPlayerRating(p.accountId.toString()).catch(() => null);
               if (rating) await this._updateMmrRoles(msg.guild, p.accountId.toString(), rating.mmr).catch(() => {});
+
+              const streak = await db.getPlayerCurrentStreak(p.accountId).catch(() => 0);
+              const name = p.personaname || `ID:${p.accountId}`;
+              if (streak >= 3) {
+                const fireEmoji = '\u{1F525}';
+                const prefix = streak >= 5 ? fireEmoji.repeat(3) : fireEmoji;
+                streakCallouts.push(`${prefix} **${name}** is on a **${streak}-game win streak!**`);
+              } else if (streak <= -3) {
+                const skullEmoji = String.fromCodePoint(0x1F480);
+                const prefix = Math.abs(streak) >= 5 ? skullEmoji.repeat(3) : skullEmoji;
+                streakCallouts.push(`${prefix} **${name}** is on a **${Math.abs(streak)}-game losing streak...**`);
+              }
             }
           }
 
@@ -798,6 +811,10 @@ class DiscordBot {
 
           await statusMsg.edit(`Replay parsed! Match **${matchStats.matchId}** recorded with full stats.`);
           await this._sendMatchSummary(matchStats, 'Replay Upload', msg.channel);
+
+          if (streakCallouts.length > 0) {
+            await msg.channel.send(`\u{1F3C6} **Streak Watch:**\n${streakCallouts.join('\n')}`).catch(() => {});
+          }
 
           replayParser.cleanup(filePath);
           return;
@@ -846,6 +863,71 @@ class DiscordBot {
       .replace('npc_dota_hero_', '')
       .replace(/_/g, ' ')
       .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  _buildAwardsFromFun(fun) {
+    const awards = [];
+    const fmtDur = (secs) => `${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, '0')}s`;
+
+    if (fun.rampage) {
+      const hero = this._heroDisplayName(fun.rampage.hero_name);
+      awards.push(`\u{1F3C6} **RAMPAGE** \u2014 ${fun.rampage.name} (${hero}) in #${fun.rampage.match_id}!`);
+    }
+    if (fun.deathless) {
+      const hero = this._heroDisplayName(fun.deathless.hero_name);
+      awards.push(`\u{1F47B} **Untouchable** \u2014 ${fun.deathless.name} (${hero}) ${fun.deathless.kills}/${fun.deathless.deaths}/${fun.deathless.assists} without dying in #${fun.deathless.match_id}`);
+    }
+    if (fun.highKDA) {
+      const k = fun.highKDA;
+      awards.push(`\u{1F451} **Best KDA** \u2014 ${k.name}: ${k.kills}/${k.deaths}/${k.assists} (${parseFloat(k.kda).toFixed(2)}) in #${k.match_id}`);
+    }
+    if (fun.mostKills) {
+      const hero = this._heroDisplayName(fun.mostKills.hero_name);
+      awards.push(`\u2694\uFE0F **Slayer** \u2014 ${fun.mostKills.name} (${hero}): ${fun.mostKills.kills} kills in #${fun.mostKills.match_id}`);
+    }
+    if (fun.highestGPM) {
+      const hero = this._heroDisplayName(fun.highestGPM.hero_name);
+      awards.push(`\u{1F4B0} **Gold Machine** \u2014 ${fun.highestGPM.name} (${hero}): ${fun.highestGPM.gpm} GPM in #${fun.highestGPM.match_id}`);
+    }
+    if (fun.mostTowerDmg && parseInt(fun.mostTowerDmg.tower_damage) >= 5000) {
+      const hero = this._heroDisplayName(fun.mostTowerDmg.hero_name);
+      awards.push(`\u{1F3DB}\uFE0F **Tower Terror** \u2014 ${fun.mostTowerDmg.name} (${hero}): ${Math.round(parseInt(fun.mostTowerDmg.tower_damage) / 1000)}k tower dmg in #${fun.mostTowerDmg.match_id}`);
+    }
+    if (fun.mostWards && parseInt(fun.mostWards.total_wards) >= 6) {
+      awards.push(`\u{1F441}\uFE0F **Vision King** \u2014 ${fun.mostWards.name}: ${fun.mostWards.obs_placed} obs + ${fun.mostWards.sen_placed} sentry in #${fun.mostWards.match_id}`);
+    }
+    if (fun.mostHealing && parseInt(fun.mostHealing.hero_healing) >= 3000) {
+      const hero = this._heroDisplayName(fun.mostHealing.hero_name);
+      awards.push(`\u{1FA79} **Lifesaver** \u2014 ${fun.mostHealing.name} (${hero}): ${Math.round(parseInt(fun.mostHealing.hero_healing) / 1000)}k healing in #${fun.mostHealing.match_id}`);
+    }
+    if (fun.mostStuns && parseFloat(fun.mostStuns.stun_duration) >= 15) {
+      const hero = this._heroDisplayName(fun.mostStuns.hero_name);
+      awards.push(`\u{1F9CA} **Perma-Stunner** \u2014 ${fun.mostStuns.name} (${hero}): ${parseFloat(fun.mostStuns.stun_duration).toFixed(0)}s of CC in #${fun.mostStuns.match_id}`);
+    }
+    if (fun.mostStacks && parseInt(fun.mostStacks.camps_stacked) >= 5) {
+      awards.push(`\u{1F432} **Stack God** \u2014 ${fun.mostStacks.name}: ${fun.mostStacks.camps_stacked} camps stacked in #${fun.mostStacks.match_id}`);
+    }
+    if (fun.bestKI && parseInt(fun.bestKI.ki_pct) >= 80) {
+      const hero = this._heroDisplayName(fun.bestKI.hero_name);
+      awards.push(`\u{1F525} **Everywhere** \u2014 ${fun.bestKI.name} (${hero}): ${fun.bestKI.ki_pct}% kill involvement in #${fun.bestKI.match_id}`);
+    }
+    if (fun.mostWardKills && parseInt(fun.mostWardKills.wards_killed) >= 5) {
+      awards.push(`\u{1F440} **Ward Hunter** \u2014 ${fun.mostWardKills.name}: ${fun.mostWardKills.wards_killed} wards destroyed in #${fun.mostWardKills.match_id}`);
+    }
+    if (fun.mostDeaths) {
+      awards.push(`\u{1F480} **Sacrificial Lamb** \u2014 ${fun.mostDeaths.name}: fed ${fun.mostDeaths.deaths} times in #${fun.mostDeaths.match_id}`);
+    }
+    if (fun.bloodbath && parseInt(fun.bloodbath.total_kills) >= 60) {
+      awards.push(`\u{1F9DF} **Bloodbath** \u2014 #${fun.bloodbath.match_id}: ${fun.bloodbath.total_kills} kills`);
+    }
+    if (fun.fastGame && fun.fastGame.duration < 25 * 60) {
+      awards.push(`\u26A1 **Speed Run** \u2014 #${fun.fastGame.match_id} ended in ${fmtDur(fun.fastGame.duration)}`);
+    }
+    if (fun.slowGame && fun.slowGame.duration > 55 * 60) {
+      awards.push(`\u{1F62B} **Marathon** \u2014 #${fun.slowGame.match_id} dragged to ${fmtDur(fun.slowGame.duration)}`);
+    }
+
+    return awards;
   }
 
   async _sendMatchSummary(matchStats, lobbyName, channel) {
@@ -919,24 +1001,63 @@ class DiscordBot {
     }
 
     const highlights = [];
+    const hName = (p) => p.personaname || 'Unknown';
+
     if (mvp) {
       const mvpKda = mvp.deaths > 0
         ? `${((mvp.kills + mvp.assists) / mvp.deaths).toFixed(2)} KDA`
         : `${mvp.kills + mvp.assists} KDA (deathless)`;
-      highlights.push(`\u{1F451} **MVP:** ${mvp.personaname || 'Unknown'} (${this._heroDisplayName(mvp.heroName, mvp.heroId)}) \u2014 ${mvpKda}`);
+      highlights.push(`\u{1F451} **MVP:** ${hName(mvp)} (${this._heroDisplayName(mvp.heroName, mvp.heroId)}) \u2014 ${mvpKda}`);
     }
     if (goldKing && goldKing !== mvp) {
-      highlights.push(`\u{1F4B0} **Gold King:** ${goldKing.personaname || 'Unknown'} \u2014 ${goldKing.goldPerMin} GPM`);
+      highlights.push(`\u{1F4B0} **Gold King:** ${hName(goldKing)} \u2014 ${goldKing.goldPerMin} GPM`);
     }
     if (slayer && slayer.kills >= 10) {
-      highlights.push(`\u2694\uFE0F **Slayer:** ${slayer.personaname || 'Unknown'} \u2014 ${slayer.kills} kills`);
+      highlights.push(`\u2694\uFE0F **Slayer:** ${hName(slayer)} \u2014 ${slayer.kills} kills`);
     }
     if (damage) {
-      highlights.push(`\u{1F4A5} **Most Damage:** ${damage.personaname || 'Unknown'} \u2014 ${Math.round((damage.heroDamage || 0) / 1000)}k`);
+      highlights.push(`\u{1F4A5} **Top Damage:** ${hName(damage)} \u2014 ${Math.round((damage.heroDamage || 0) / 1000)}k`);
+    }
+
+    const topRampage = allPlayers.find(p => (p.rampages || 0) > 0);
+    if (topRampage) {
+      highlights.push(`\u{1F3C6} **RAMPAGE!** ${hName(topRampage)} (${this._heroDisplayName(topRampage.heroName, topRampage.heroId)})`);
+    }
+
+    const topWards = [...allPlayers].sort((a, b) => ((b.obsPlaced || 0) + (b.senPlaced || 0)) - ((a.obsPlaced || 0) + (a.senPlaced || 0)))[0];
+    if (topWards && (topWards.obsPlaced || 0) + (topWards.senPlaced || 0) >= 6) {
+      const tot = (topWards.obsPlaced || 0) + (topWards.senPlaced || 0);
+      highlights.push(`\u{1F441}\uFE0F **Vision King:** ${hName(topWards)} \u2014 ${topWards.obsPlaced || 0} obs + ${topWards.senPlaced || 0} sentry (${tot})`);
+    }
+
+    const topHealer = [...allPlayers].sort((a, b) => (b.heroHealing || 0) - (a.heroHealing || 0))[0];
+    if (topHealer && (topHealer.heroHealing || 0) >= 3000) {
+      highlights.push(`\u{1FA79} **Lifesaver:** ${hName(topHealer)} \u2014 ${Math.round(topHealer.heroHealing / 1000)}k healing`);
+    }
+
+    const topTower = [...allPlayers].sort((a, b) => (b.towerDamage || 0) - (a.towerDamage || 0))[0];
+    if (topTower && (topTower.towerDamage || 0) >= 5000) {
+      highlights.push(`\u{1F3DB}\uFE0F **Tower Terror:** ${hName(topTower)} \u2014 ${Math.round(topTower.towerDamage / 1000)}k tower dmg`);
+    }
+
+    const topStun = [...allPlayers].sort((a, b) => (b.stunDuration || 0) - (a.stunDuration || 0))[0];
+    if (topStun && (topStun.stunDuration || 0) >= 15) {
+      highlights.push(`\u{1F9CA} **CC Machine:** ${hName(topStun)} \u2014 ${Math.round(topStun.stunDuration)}s of stuns`);
+    }
+
+    const winnerPlayers = allPlayers.filter(p => matchStats.radiantWin ? p.team === 'radiant' : p.team === 'dire');
+    const winTeamKills = winnerPlayers.reduce((s, p) => s + (p.kills || 0), 0);
+    if (winTeamKills >= 5) {
+      const topKI = [...winnerPlayers].sort((a, b) =>
+        ((b.kills + b.assists) / winTeamKills) - ((a.kills + a.assists) / winTeamKills))[0];
+      const kiPct = Math.round(((topKI.kills + topKI.assists) / winTeamKills) * 100);
+      if (kiPct >= 60 && topKI !== mvp) {
+        highlights.push(`\u{1F525} **Everywhere:** ${hName(topKI)} \u2014 ${kiPct}% kill involvement`);
+      }
     }
 
     if (highlights.length > 0) {
-      embed.addFields({ name: '\u2B50 Highlights', value: highlights.join('\n'), inline: false });
+      embed.addFields({ name: '\u2B50 Highlights', value: highlights.join('\n').slice(0, 1024), inline: false });
     }
 
     const sourceText = matchStats.parseMethod === 'odota-parser' ? 'Full replay stats' : 'Stats from OpenDota';
@@ -1125,39 +1246,22 @@ class DiscordBot {
         });
       }
 
-      const awards = [];
-      if (fun.highKDA) {
-        const k = fun.highKDA;
-        awards.push(`\u{1F451} **Best KDA** — ${k.name}: ${k.kills}/${k.deaths}/${k.assists} (${parseFloat(k.kda).toFixed(2)}) in match #${k.match_id}`);
-      }
-      if (fun.mostKills) {
-        awards.push(`\u2694\uFE0F **Most Kills** — ${fun.mostKills.name}: ${fun.mostKills.kills} kills in match #${fun.mostKills.match_id}`);
-      }
-      if (fun.mostDeaths) {
-        awards.push(`\u{1F480} **Sacrificial Lamb** — ${fun.mostDeaths.name}: ${fun.mostDeaths.deaths} deaths in match #${fun.mostDeaths.match_id}`);
-      }
-      if (fun.highestGPM) {
-        awards.push(`\u{1F4B0} **Gold King** — ${fun.highestGPM.name}: ${fun.highestGPM.gpm} GPM in match #${fun.highestGPM.match_id}`);
-      }
-      if (fun.bloodbath && parseInt(fun.bloodbath.total_kills) >= 60) {
-        const dur = fun.bloodbath.duration ? `${Math.floor(fun.bloodbath.duration / 60)}m` : '';
-        awards.push(`\u{1F9DF} **Bloodbath** — Match #${fun.bloodbath.match_id}: ${fun.bloodbath.total_kills} kills${dur ? ` in ${dur}` : ''}`);
-      }
-      if (fun.fastGame && fun.fastGame.duration < 25 * 60) {
-        const dur = `${Math.floor(fun.fastGame.duration / 60)}m${String(fun.fastGame.duration % 60).padStart(2, '0')}s`;
-        awards.push(`\u26A1 **Fastest Game** — Match #${fun.fastGame.match_id}: ${dur}`);
-      }
-      if (fun.slowGame && fun.slowGame.duration > 50 * 60) {
-        const dur = `${Math.floor(fun.slowGame.duration / 60)}m${String(fun.slowGame.duration % 60).padStart(2, '0')}s`;
-        awards.push(`\u{1F62B} **Marathon** — Match #${fun.slowGame.match_id}: ${dur}`);
-      }
-
+      const awards = this._buildAwardsFromFun(fun);
       if (awards.length > 0) {
-        embed.addFields({ name: '\u{1F3C5} Weekly Awards', value: awards.join('\n'), inline: false });
+        const chunks = [];
+        let chunk = '';
+        for (const a of awards) {
+          if ((chunk + '\n' + a).length > 1024) { chunks.push(chunk); chunk = a; }
+          else chunk = chunk ? chunk + '\n' + a : a;
+        }
+        if (chunk) chunks.push(chunk);
+        chunks.forEach((c, i) => embed.addFields({
+          name: i === 0 ? '\u{1F3C5} Awards' : '\u200b',
+          value: c, inline: false,
+        }));
       }
 
       embed.setFooter({ text: 'Last 7 days \u2022 Use !top for full leaderboard' }).setTimestamp();
-
       await msg.reply({ embeds: [embed] });
     } catch (err) {
       console.error('[Discord] Recap error:', err);
@@ -1225,24 +1329,20 @@ class DiscordBot {
         embed.addFields({ name: '\u2B50 Top Performers', value: topLines.join('\n'), inline: false });
       }
 
-      const awards = [];
-      if (fun.highKDA) {
-        const k = fun.highKDA;
-        awards.push(`\u{1F451} **Best KDA** — ${k.name}: ${k.kills}/${k.deaths}/${k.assists} (${parseFloat(k.kda).toFixed(2)}) in #${k.match_id}`);
+      const awards = this._buildAwardsFromFun(fun);
+      if (awards.length > 0) {
+        const chunks = [];
+        let chunk = '';
+        for (const a of awards) {
+          if ((chunk + '\n' + a).length > 1024) { chunks.push(chunk); chunk = a; }
+          else chunk = chunk ? chunk + '\n' + a : a;
+        }
+        if (chunk) chunks.push(chunk);
+        chunks.forEach((c, i) => embed.addFields({
+          name: i === 0 ? '\u{1F3C5} Awards' : '\u200b',
+          value: c, inline: false,
+        }));
       }
-      if (fun.mostKills) awards.push(`\u2694\uFE0F **Most Kills** — ${fun.mostKills.name}: ${fun.mostKills.kills} in #${fun.mostKills.match_id}`);
-      if (fun.mostDeaths) awards.push(`\u{1F480} **Sacrificial Lamb** — ${fun.mostDeaths.name}: ${fun.mostDeaths.deaths} deaths in #${fun.mostDeaths.match_id}`);
-      if (fun.highestGPM) awards.push(`\u{1F4B0} **Gold King** — ${fun.highestGPM.name}: ${fun.highestGPM.gpm} GPM in #${fun.highestGPM.match_id}`);
-      if (fun.fastGame && fun.fastGame.duration < 25 * 60) {
-        const d = `${Math.floor(fun.fastGame.duration / 60)}m${String(fun.fastGame.duration % 60).padStart(2, '0')}s`;
-        awards.push(`\u26A1 **Fastest Game** — #${fun.fastGame.match_id}: ${d}`);
-      }
-      if (fun.slowGame && fun.slowGame.duration > 50 * 60) {
-        const d = `${Math.floor(fun.slowGame.duration / 60)}m${String(fun.slowGame.duration % 60).padStart(2, '0')}s`;
-        awards.push(`\u{1F62B} **Marathon** — #${fun.slowGame.match_id}: ${d}`);
-      }
-
-      if (awards.length > 0) embed.addFields({ name: '\u{1F3C5} Weekly Awards', value: awards.join('\n'), inline: false });
       embed.setFooter({ text: 'Use !top for full leaderboard' }).setTimestamp();
 
       await channel.send({ embeds: [embed] });

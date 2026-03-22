@@ -2478,66 +2478,119 @@ async function getPlayerByDiscordId(discordId) {
   return result.rows[0] || null;
 }
 
-async function getFunRecapStats(seasonId = null) {
+async function getPlayerCurrentStreak(accountId) {
+  const p = getPool();
+  const res = await p.query(`
+    SELECT ps.team, m.radiant_win
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = $1 AND m.is_legacy = false
+    ORDER BY m.date DESC
+    LIMIT 15
+  `, [accountId]);
+
+  if (!res.rows.length) return 0;
+
+  const firstWon = (res.rows[0].team === 'radiant') === res.rows[0].radiant_win;
+  let streak = 0;
+  for (const row of res.rows) {
+    const won = (row.team === 'radiant') === row.radiant_win;
+    if (won === firstWon) streak++;
+    else break;
+  }
+  return firstWon ? streak : -streak;
+}
+
+async function getFunRecapStats(seasonId = null, intervalDays = 7) {
   const p = getPool();
   const params = [];
   const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
-  const timeFilter = ` AND m.date >= NOW() - INTERVAL '7 days'`;
+  const timeFilter = ` AND m.date >= NOW() - INTERVAL '${intervalDays} days'`;
+  const baseWhere = `WHERE 1=1${sc}${timeFilter}`;
 
-  const [highKDA, mostKills, mostDeaths, highestGPM, bloodbath, fastGame, slowGame] = await Promise.all([
-    p.query(`
-      SELECT COALESCE(n.nickname, ps.persona_name) as name, ps.kills, ps.deaths, ps.assists,
-             ps.match_id,
-             CASE WHEN ps.deaths > 0 THEN ROUND((ps.kills + ps.assists)::numeric / ps.deaths, 2) ELSE (ps.kills + ps.assists) END as kda
+  const playerSelect = `COALESCE(n.nickname, ps.persona_name) as name,
+    ps.match_id, ps.kills, ps.deaths, ps.assists, ps.account_id`;
+  const playerJoins = `FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0`;
+
+  const [
+    highKDA, mostKills, mostDeaths, highestGPM, bloodbath, fastGame, slowGame,
+    mostWards, mostHealing, mostTowerDmg, mostStuns, mostStacks, rampage,
+    deathless, bestKI, mostWardKills,
+  ] = await Promise.all([
+    // Best KDA single game
+    p.query(`SELECT ${playerSelect}, ps.gpm,
+      CASE WHEN ps.deaths > 0 THEN ROUND((ps.kills + ps.assists)::numeric / ps.deaths, 2) ELSE (ps.kills + ps.assists) END as kda
+      ${playerJoins} ${baseWhere} ORDER BY kda DESC LIMIT 1`, params),
+
+    // Most kills single game
+    p.query(`SELECT ${playerSelect}, ps.hero_name ${playerJoins} ${baseWhere} ORDER BY ps.kills DESC LIMIT 1`, params),
+
+    // Most deaths single game
+    p.query(`SELECT ${playerSelect}, ps.hero_name ${playerJoins} ${baseWhere} ORDER BY ps.deaths DESC LIMIT 1`, params),
+
+    // Highest GPM single game
+    p.query(`SELECT ${playerSelect}, ps.gpm, ps.hero_name ${playerJoins} ${baseWhere} ORDER BY ps.gpm DESC LIMIT 1`, params),
+
+    // Bloodbath match (most total kills)
+    p.query(`SELECT m.match_id, SUM(ps.kills) as total_kills, m.duration
+      FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+      ${baseWhere.replace('WHERE 1=1', 'WHERE 1=1')} GROUP BY m.match_id, m.duration ORDER BY total_kills DESC LIMIT 1`, params),
+
+    // Fastest game
+    p.query(`SELECT match_id, duration, lobby_name FROM matches m WHERE duration IS NOT NULL${sc}${timeFilter} ORDER BY duration ASC LIMIT 1`, params),
+
+    // Longest game
+    p.query(`SELECT match_id, duration, lobby_name FROM matches m WHERE duration IS NOT NULL${sc}${timeFilter} ORDER BY duration DESC LIMIT 1`, params),
+
+    // Most wards placed (obs + sentry) — support highlight
+    p.query(`SELECT ${playerSelect}, ps.obs_placed, ps.sen_placed, (ps.obs_placed + ps.sen_placed) as total_wards
+      ${playerJoins} ${baseWhere} ORDER BY total_wards DESC LIMIT 1`, params),
+
+    // Most healing — healer highlight
+    p.query(`SELECT ${playerSelect}, ps.hero_healing, ps.hero_name
+      ${playerJoins} ${baseWhere} AND ps.hero_healing > 0 ORDER BY ps.hero_healing DESC LIMIT 1`, params),
+
+    // Most tower damage — pusher highlight
+    p.query(`SELECT ${playerSelect}, ps.tower_damage, ps.hero_name
+      ${playerJoins} ${baseWhere} AND ps.tower_damage > 0 ORDER BY ps.tower_damage DESC LIMIT 1`, params),
+
+    // Highest stun duration — initiator highlight
+    p.query(`SELECT ${playerSelect}, ps.stun_duration, ps.hero_name
+      ${playerJoins} ${baseWhere} AND ps.stun_duration > 0 ORDER BY ps.stun_duration DESC LIMIT 1`, params),
+
+    // Most camps stacked — support/offlane highlight
+    p.query(`SELECT ${playerSelect}, ps.camps_stacked
+      ${playerJoins} ${baseWhere} AND ps.camps_stacked > 0 ORDER BY ps.camps_stacked DESC LIMIT 1`, params),
+
+    // Rampage — carry moment highlight
+    p.query(`SELECT ${playerSelect}, ps.hero_name, ps.rampages
+      ${playerJoins} ${baseWhere} AND ps.rampages > 0 ORDER BY ps.rampages DESC, ps.kills DESC LIMIT 1`, params),
+
+    // Deathless performance (0 deaths, 5+ kill involvement)
+    p.query(`SELECT ${playerSelect}, ps.hero_name, ps.gpm,
+      (ps.kills + ps.assists) as involvement
+      ${playerJoins} ${baseWhere} AND ps.deaths = 0 AND (ps.kills + ps.assists) >= 5
+      ORDER BY involvement DESC LIMIT 1`, params),
+
+    // Best kill involvement single game (excluding outliers with <3 team kills)
+    p.query(`SELECT ps.account_id, COALESCE(n.nickname, ps.persona_name) as name, ps.match_id,
+      ps.kills, ps.assists, ps.deaths, ps.hero_name,
+      ROUND(((ps.kills + ps.assists)::numeric / NULLIF(tk.team_kills, 0)) * 100, 0) as ki_pct
       FROM player_stats ps
       JOIN matches m ON m.match_id = ps.match_id
       LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
-      WHERE 1=1${sc}${timeFilter}
-      ORDER BY kda DESC LIMIT 1`, params),
+      JOIN LATERAL (
+        SELECT SUM(kills) as team_kills FROM player_stats ps2
+        WHERE ps2.match_id = ps.match_id AND ps2.team = ps.team
+      ) tk ON true
+      ${baseWhere.replace('WHERE 1=1', 'WHERE tk.team_kills >= 3')} AND ps.kills + ps.assists >= 5
+      ORDER BY ki_pct DESC LIMIT 1`, params),
 
-    p.query(`
-      SELECT COALESCE(n.nickname, ps.persona_name) as name, ps.kills, ps.match_id
-      FROM player_stats ps
-      JOIN matches m ON m.match_id = ps.match_id
-      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
-      WHERE 1=1${sc}${timeFilter}
-      ORDER BY ps.kills DESC LIMIT 1`, params),
-
-    p.query(`
-      SELECT COALESCE(n.nickname, ps.persona_name) as name, ps.deaths, ps.match_id
-      FROM player_stats ps
-      JOIN matches m ON m.match_id = ps.match_id
-      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
-      WHERE 1=1${sc}${timeFilter}
-      ORDER BY ps.deaths DESC LIMIT 1`, params),
-
-    p.query(`
-      SELECT COALESCE(n.nickname, ps.persona_name) as name, ps.gpm, ps.match_id
-      FROM player_stats ps
-      JOIN matches m ON m.match_id = ps.match_id
-      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
-      WHERE 1=1${sc}${timeFilter}
-      ORDER BY ps.gpm DESC LIMIT 1`, params),
-
-    p.query(`
-      SELECT m.match_id, SUM(ps.kills) as total_kills, m.duration
-      FROM player_stats ps
-      JOIN matches m ON m.match_id = ps.match_id
-      WHERE 1=1${sc}${timeFilter}
-      GROUP BY m.match_id, m.duration
-      ORDER BY total_kills DESC LIMIT 1`, params),
-
-    p.query(`
-      SELECT m.match_id, m.duration, m.lobby_name
-      FROM matches m
-      WHERE m.duration IS NOT NULL${sc}${timeFilter}
-      ORDER BY m.duration ASC LIMIT 1`, params),
-
-    p.query(`
-      SELECT m.match_id, m.duration, m.lobby_name
-      FROM matches m
-      WHERE m.duration IS NOT NULL${sc}${timeFilter}
-      ORDER BY m.duration DESC LIMIT 1`, params),
+    // Most wards killed — anti-support highlight
+    p.query(`SELECT ${playerSelect}, ps.wards_killed
+      ${playerJoins} ${baseWhere} AND ps.wards_killed > 0 ORDER BY ps.wards_killed DESC LIMIT 1`, params),
   ]);
 
   return {
@@ -2548,6 +2601,15 @@ async function getFunRecapStats(seasonId = null) {
     bloodbath: bloodbath.rows[0] || null,
     fastGame: fastGame.rows[0] || null,
     slowGame: slowGame.rows[0] || null,
+    mostWards: mostWards.rows[0] || null,
+    mostHealing: mostHealing.rows[0] || null,
+    mostTowerDmg: mostTowerDmg.rows[0] || null,
+    mostStuns: mostStuns.rows[0] || null,
+    mostStacks: mostStacks.rows[0] || null,
+    rampage: rampage.rows[0] || null,
+    deathless: deathless.rows[0] || null,
+    bestKI: bestKI.rows[0] || null,
+    mostWardKills: mostWardKills.rows[0] || null,
   };
 }
 
@@ -2804,4 +2866,5 @@ module.exports = {
   getPlayerByDiscordId,
   getDraftSuggestions,
   findDuplicateMatches,
+  getPlayerCurrentStreak,
 };
