@@ -5,15 +5,51 @@ const config = {
     announceChannelId: process.env.ANNOUNCE_CHANNEL_ID || null,
     weeklyRecapChannelId: process.env.WEEKLY_RECAP_CHANNEL_ID || process.env.ANNOUNCE_CHANNEL_ID || null,
     mmrRoles: {
-      // Role IDs assigned based on MMR thresholds (set via env vars)
-      // Format: DISCORD_ROLE_<TIER>=<discord_role_id>
+      // Role IDs assigned based on MMR thresholds (set via env vars in Discord server)
+      // Tiers ordered highest to lowest — first match wins
       tiers: [
-        { name: 'Immortal',  min: 2500, roleId: process.env.DISCORD_ROLE_IMMORTAL  || null },
-        { name: 'Divine',    min: 2350, roleId: process.env.DISCORD_ROLE_DIVINE    || null },
-        { name: 'Ancient',   min: 2250, roleId: process.env.DISCORD_ROLE_ANCIENT   || null },
-        { name: 'Legend',    min: 2150, roleId: process.env.DISCORD_ROLE_LEGEND    || null },
-        { name: 'Crusader',  min: 2050, roleId: process.env.DISCORD_ROLE_CRUSADER  || null },
-        { name: 'Herald',    min: 0,    roleId: process.env.DISCORD_ROLE_HERALD    || null },
+        {
+          name: 'The Guy',
+          emoji: '👑',
+          description: 'Undisputed. Feared. Respected.',
+          min: 2500,
+          roleId: process.env.DISCORD_ROLE_THEGUY || null,
+        },
+        {
+          name: 'Actually Scary',
+          emoji: '😤',
+          description: 'People check your profile before picking.',
+          min: 2350,
+          roleId: process.env.DISCORD_ROLE_ACTUALLYSCARY || null,
+        },
+        {
+          name: 'Getting Warm',
+          emoji: '🔥',
+          description: 'Finally showing a pulse.',
+          min: 2250,
+          roleId: process.env.DISCORD_ROLE_GETTINGWARM || null,
+        },
+        {
+          name: 'First Timer',
+          emoji: '🎮',
+          description: 'Someone hand them a tutorial.',
+          min: 2150,
+          roleId: process.env.DISCORD_ROLE_FIRSTTIMER || null,
+        },
+        {
+          name: 'Noob',
+          emoji: '🐣',
+          description: 'Hatched, but not dangerous.',
+          min: 2050,
+          roleId: process.env.DISCORD_ROLE_NOOB || null,
+        },
+        {
+          name: 'NPC',
+          emoji: '🤖',
+          description: 'You could be replaced by a bot.',
+          min: 0,
+          roleId: process.env.DISCORD_ROLE_NPC || null,
+        },
       ],
     },
   },
@@ -42,6 +78,18 @@ const config = {
   },
 };
 
+/**
+ * Get the MMR tier for a given MMR value.
+ * Returns { name, emoji, description, min } or null.
+ */
+function getMmrTier(mmr) {
+  const tiers = config.discord.mmrRoles.tiers;
+  for (const tier of tiers) {
+    if (mmr >= tier.min) return tier;
+  }
+  return tiers[tiers.length - 1];
+}
+
 function validateConfig() {
   const missing = [];
   if (!config.discord.token) missing.push('DISCORD_TOKEN');
@@ -56,4 +104,4 @@ function validateConfig() {
   return missing;
 }
 
-module.exports = { config, validateConfig };
+module.exports = { config, validateConfig, getMmrTier };

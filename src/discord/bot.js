@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const cron = require('node-cron');
-const { config } = require('../config');
+const { config, getMmrTier } = require('../config');
 const { getStatsService } = require('../stats/statsService');
 const { getSheetsStore } = require('../sheets/sheetsStore');
 const { getReplayParser } = require('../replay/replayParser');
@@ -623,14 +623,16 @@ class DiscordBot {
       const medal = i === 0 ? '\u{1F947}' : i === 1 ? '\u{1F948}' : i === 2 ? '\u{1F949}' : `${i + 1}.`;
       const name = p.nickname || p.display_name || `Player ${p.player_id}`;
       const winRate = p.games_played > 0 ? ((p.wins / p.games_played) * 100).toFixed(0) : 0;
-      return `${medal} **${name}** \u2014 ${p.mmr} MMR | ${p.wins}W-${p.losses}L (${winRate}%)`;
+      const tier = getMmrTier(p.mmr);
+      const tierTag = tier ? ` ${tier.emoji}` : '';
+      return `${medal} **${name}**${tierTag} \u2014 ${p.mmr} MMR | ${p.wins}W-${p.losses}L (${winRate}%)`;
     });
 
     const embed = new EmbedBuilder()
       .setTitle('\u{1F3C6} Inhouse Leaderboard')
       .setColor(0xffd700)
       .setDescription(lines.join('\n'))
-      .setFooter({ text: `Top ${Math.min(limit, leaderboard.length)} players \u2022 TrueSkill MMR` })
+      .setFooter({ text: `Top ${Math.min(limit, leaderboard.length)} players \u2022 TrueSkill MMR \u2022 \u{1F916}NPC \u{1F423}Noob \u{1F3AE}First Timer \u{1F525}Getting Warm \u{1F624}Actually Scary \u{1F451}The Guy` })
       .setTimestamp();
 
     await msg.reply({ embeds: [embed] });
@@ -674,10 +676,14 @@ class DiscordBot {
     if (streak >= 3) streakText = ` \u{1F525} ${streak}W streak`;
     else if (streak <= -3) streakText = ` ${String.fromCodePoint(0x1F480)} ${Math.abs(streak)}L streak`;
 
+    const tier = getMmrTier(mmr);
+    const tierBadge = tier ? `${tier.emoji} ${tier.name}` : '';
+
     const embed = new EmbedBuilder()
       .setTitle(`\u{1F4CA} ${displayName}${streakText}`)
       .setColor(0x00ae86)
       .addFields(
+        { name: 'Rank', value: tierBadge || 'Unranked', inline: true },
         { name: 'MMR', value: mmr.toString(), inline: true },
         { name: 'Games', value: games.toString(), inline: true },
         { name: 'Win Rate', value: `${winRate}%`, inline: true },
@@ -686,9 +692,8 @@ class DiscordBot {
         { name: 'Avg GPM', value: avg.avg_gpm?.toString() || '\u2014', inline: true },
         { name: 'Avg Damage', value: avg.avg_hero_damage ? parseInt(avg.avg_hero_damage).toLocaleString() : '\u2014', inline: true },
         { name: 'Avg Last Hits', value: avg.avg_last_hits?.toString() || '\u2014', inline: true },
-        { name: 'Avg Healing', value: avg.avg_hero_healing ? parseInt(avg.avg_hero_healing).toLocaleString() : '\u2014', inline: true },
       )
-      .setFooter({ text: `Account ID: ${accountId}` })
+      .setFooter({ text: tier ? `${tier.description} \u00B7 Account ID: ${accountId}` : `Account ID: ${accountId}` })
       .setTimestamp();
 
     if (nemesisData && nemesisData.length > 0) {
