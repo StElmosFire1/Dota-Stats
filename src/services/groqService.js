@@ -1,12 +1,15 @@
-const Groq = require('groq-sdk');
+const { OpenAI } = require('openai');
 
 let _client = null;
 
 function getClient() {
   if (!_client) {
-    const apiKey = process.env.GROQ_API_KEY;
+    const apiKey = process.env.GROK_API_KEY || process.env.GROQ_API_KEY;
     if (!apiKey) return null;
-    _client = new Groq({ apiKey });
+    _client = new OpenAI({
+      apiKey,
+      baseURL: 'https://api.x.ai/v1',
+    });
   }
   return _client;
 }
@@ -16,14 +19,14 @@ async function ask(prompt, maxTokens = 200, temperature = 0.85) {
   if (!client) return null;
   try {
     const completion = await client.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: 'grok-3-mini',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: maxTokens,
       temperature,
     });
     return completion.choices?.[0]?.message?.content?.trim() || null;
   } catch (err) {
-    console.error('[Groq] API call failed:', err.message);
+    console.error('[Grok] API call failed:', err.message);
     return null;
   }
 }
@@ -69,18 +72,13 @@ async function generateWeeklyRecapBlurb({ matches, topPerformers, fun }) {
       contextBlock,
     ].join('\n'), 200, 0.85);
   } catch (err) {
-    console.error('[Groq] Weekly recap generation failed:', err.message);
+    console.error('[Grok] Weekly recap generation failed:', err.message);
     return null;
   }
 }
 
 /**
  * Generate an AI performance analysis for a specific player.
- * @param {Object} opts
- * @param {string} opts.name - Display name
- * @param {Object} opts.avg - averages object from getPlayerStats
- * @param {Object} opts.rating - rating row
- * @param {Array}  opts.recentHeroes - top heroes played
  */
 async function generatePlayerAnalysis({ name, avg, rating, recentHeroes }) {
   if (!getClient()) return null;
@@ -112,7 +110,7 @@ async function generatePlayerAnalysis({ name, avg, rating, recentHeroes }) {
       context,
     ].join('\n'), 220, 0.75);
   } catch (err) {
-    console.error('[Groq] Player analysis failed:', err.message);
+    console.error('[Grok] Player analysis failed:', err.message);
     return null;
   }
 }
@@ -152,7 +150,7 @@ async function generatePlayerRoast({ name, avg, rating, recentHeroes }) {
       context,
     ].join('\n'), 160, 0.95);
   } catch (err) {
-    console.error('[Groq] Player roast failed:', err.message);
+    console.error('[Grok] Player roast failed:', err.message);
     return null;
   }
 }
@@ -174,7 +172,7 @@ async function generateMatchMvpBlurb({ name, heroName, kills, deaths, assists, d
       context,
     ].join('\n'), 60, 0.9);
   } catch (err) {
-    console.error('[Groq] MVP blurb failed:', err.message);
+    console.error('[Grok] MVP blurb failed:', err.message);
     return null;
   }
 }

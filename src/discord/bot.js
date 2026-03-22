@@ -731,7 +731,7 @@ class DiscordBot {
       .setTitle(`\u{1F9E0} AI Analysis \u2014 ${registered.discord_name || targetUser.username}`)
       .setColor(0x7c3aed)
       .setDescription(blurb)
-      .setFooter({ text: 'Powered by Groq \u00B7 Llama 3.1' })
+      .setFooter({ text: 'Powered by Grok (xAI)' })
       .setTimestamp();
     await msg.channel.send({ embeds: [embed] });
   }
@@ -765,7 +765,7 @@ class DiscordBot {
       .setTitle(`\u{1F525} Roast \u2014 ${registered.discord_name || targetUser.username}`)
       .setColor(0xe05c5c)
       .setDescription(blurb)
-      .setFooter({ text: 'All in good fun \u00B7 Powered by Groq' })
+      .setFooter({ text: 'All in good fun \u00B7 Powered by Grok (xAI)' })
       .setTimestamp();
     await msg.channel.send({ embeds: [embed] });
   }
