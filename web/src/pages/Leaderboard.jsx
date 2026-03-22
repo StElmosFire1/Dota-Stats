@@ -4,16 +4,16 @@ import { getLeaderboard } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
 const MMR_TIERS = [
-  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 2850 },
-  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 2650 },
-  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 2500 },
-  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 2400 },
-  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 2250 },
-  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 2100 },
-  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 2025 },
-  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 1950 },
-  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 1850 },
-  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 1700 },
+  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 3200 },
+  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 3000 },
+  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 2800 },
+  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 2600 },
+  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 2400 },
+  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 2200 },
+  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 2000 },
+  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 1800 },
+  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 1600 },
+  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 1400 },
   { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0    },
 ];
 
