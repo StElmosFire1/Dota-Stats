@@ -1,5 +1,8 @@
 #!/usr/bin/env node
+require('dotenv').config();
 const db = require('../src/db');
+
+module.exports = { get notes() { return notes; } };
 
 const notes = [
   {
@@ -293,13 +296,26 @@ Replaced generic MMR numbers with 11 custom rank tiers that actually match the i
   },
 ];
 
-(async () => {
-  for (const note of notes) {
-    const created = await db.createPatchNote(note);
-    console.log(`[PatchNote] v${created.version} — ${created.title} (id=${created.id})`);
-    // Small delay so timestamps are in correct ascending order
-    await new Promise(r => setTimeout(r, 100));
-  }
-  console.log('\nDone. All patch notes seeded.');
-  process.exit(0);
-})();
+if (require.main === module) {
+  (async () => {
+    try {
+      await db.init();
+      const existing = await db.getPatchNotes();
+      if (existing.length > 0) {
+        console.log(`[PatchNote] ${existing.length} notes already exist — skipping seed.`);
+        process.exit(0);
+      }
+      for (const note of notes) {
+        const created = await db.createPatchNote(note);
+        console.log(`[PatchNote] v${created.version} — ${created.title} (id=${created.id})`);
+        await new Promise(r => setTimeout(r, 100));
+      }
+      console.log('\nDone. All patch notes seeded.');
+    } catch (err) {
+      console.error('[PatchNote] Seed failed:', err.message);
+      console.error('Make sure DATABASE_URL is set in your .env file or environment.');
+      process.exit(1);
+    }
+    process.exit(0);
+  })();
+}
