@@ -1297,6 +1297,45 @@ NOTES
     }
   });
 
+  router.get('/patch-notes', async (req, res) => {
+    try {
+      const notes = await db.getPatchNotes();
+      res.json({ patchNotes: notes });
+    } catch (err) {
+      console.error('[API] GET /patch-notes error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch patch notes' });
+    }
+  });
+
+  router.post('/patch-notes', authMiddleware, express.json(), async (req, res) => {
+    try {
+      const { version, title, content, author } = req.body || {};
+      if (!version || !title || !content) {
+        return res.status(400).json({ error: 'version, title, and content are required.' });
+      }
+      const note = await db.createPatchNote({ version, title, content, author });
+      res.json(note);
+    } catch (err) {
+      console.error('[API] POST /patch-notes error:', err.message);
+      res.status(500).json({ error: 'Failed to create patch note' });
+    }
+  });
+
+  router.put('/patch-notes/:id', authMiddleware, express.json(), async (req, res) => {
+    try {
+      const { version, title, content, author } = req.body || {};
+      if (!version || !title || !content) {
+        return res.status(400).json({ error: 'version, title, and content are required.' });
+      }
+      const note = await db.updatePatchNote(parseInt(req.params.id), { version, title, content, author });
+      if (!note) return res.status(404).json({ error: 'Patch note not found' });
+      res.json(note);
+    } catch (err) {
+      console.error('[API] PUT /patch-notes error:', err.message);
+      res.status(500).json({ error: 'Failed to update patch note' });
+    }
+  });
+
   router.delete('/patch-notes/:id', authMiddleware, async (req, res) => {
     try {
       await db.deletePatchNote(parseInt(req.params.id));
