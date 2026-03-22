@@ -176,6 +176,8 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS lane_cs_10min INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS has_scepter BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS has_shard BOOLEAN DEFAULT false`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS support_gold_spent INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS killed_by JSONB DEFAULT '{}'`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS player_items (
@@ -585,8 +587,9 @@ async function updatePlayerStats(matchId, players) {
           courier_kills=$29, tp_scrolls_used=$30, double_kills=$31, triple_kills=$32,
           ultra_kills=$33, rampages=$34, kill_streak=$35, smoke_kills=$36,
           first_death=$37, lane_cs_10min=$38, has_scepter=$39, has_shard=$40,
-          damage_taken=$41, laning_nw=$42, team=$43
-        WHERE match_id=$44 AND slot=$45
+          damage_taken=$41, laning_nw=$42, team=$43,
+          support_gold_spent=$44, killed_by=$45
+        WHERE match_id=$46 AND slot=$47
       `, [
         parseInt(pl.kills)||0, parseInt(pl.deaths)||0, parseInt(pl.assists)||0,
         parseInt(pl.last_hits)||0, parseInt(pl.denies)||0,
@@ -608,6 +611,8 @@ async function updatePlayerStats(matchId, players) {
         parseInt(pl.damage_taken)||0,
         pl.laning_nw !== null && pl.laning_nw !== undefined && pl.laning_nw !== '' ? parseInt(pl.laning_nw) : null,
         pl.team,
+        parseInt(pl.support_gold_spent)||0,
+        JSON.stringify(pl.killed_by || {}),
         matchId, parseInt(pl.slot)
       ]);
     }
@@ -648,8 +653,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
 
     for (const player of matchStats.players) {
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52)`,
         [
           matchStats.matchId,
           player.accountId || 0,
@@ -701,6 +706,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
           player.hasScepter || false,
           player.hasShard || false,
           player.laningNw != null ? player.laningNw : null,
+          player.supportGoldSpent || 0,
+          JSON.stringify(player.killedBy || {}),
         ]
       );
 
@@ -2478,6 +2485,36 @@ async function getPlayerByDiscordId(discordId) {
   return result.rows[0] || null;
 }
 
+async function getPlayerNemesis(accountId) {
+  const p = getPool();
+  // Aggregate the killed_by JSONB across all non-legacy matches for this player
+  // Returns the top killer(s) by total kills
+  const res = await p.query(`
+    SELECT
+      killer_key AS killer_account_id,
+      SUM((killed_by -> killer_key)::int) AS total_kills,
+      COALESCE(n.nickname, pl.persona_name) AS killer_name,
+      pl.hero_name AS last_hero
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id AND m.is_legacy = false,
+    LATERAL jsonb_object_keys(ps.killed_by) AS killer_key
+    LEFT JOIN LATERAL (
+      SELECT persona_name, hero_name
+      FROM player_stats ps2
+      JOIN matches m2 ON m2.match_id = ps2.match_id
+      WHERE ps2.account_id::text = killer_key
+      ORDER BY m2.date DESC LIMIT 1
+    ) pl ON true
+    LEFT JOIN nicknames n ON n.account_id::text = killer_key
+    WHERE ps.account_id = $1
+      AND (killed_by -> killer_key)::int > 0
+    GROUP BY killer_key, n.nickname, pl.persona_name, pl.hero_name
+    ORDER BY total_kills DESC
+    LIMIT 3
+  `, [accountId]);
+  return res.rows;
+}
+
 async function getPlayerCurrentStreak(accountId) {
   const p = getPool();
   const res = await p.query(`
@@ -2867,4 +2904,5 @@ module.exports = {
   getDraftSuggestions,
   findDuplicateMatches,
   getPlayerCurrentStreak,
+  getPlayerNemesis,
 };

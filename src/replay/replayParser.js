@@ -597,6 +597,17 @@ class ReplayParser {
     const itemPurchases = {};
     const abilityLevelups = {};
     const finalItems = {};
+    const killedBy = {};       // killedBy[victimSlot][killerSlot] = count
+    const supportGoldSpent = {}; // supportGoldSpent[slot] = total gold
+
+    const SUPPORT_ITEM_COSTS = {
+      item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
+      item_smoke_of_deceit: 50, item_dust: 80, item_clarity: 50,
+      item_flask: 110, item_tango: 90, item_enchanted_mango: 65,
+      item_faerie_fire: 50, item_blood_grenade: 80,
+      item_infused_raindrop: 75, item_tome_of_knowledge: 75,
+      item_gem: 875, item_vampiric_talisman: 450,
+    };
 
     for (const e of events) {
       if ((e.type === 'obs_left' || e.type === 'sen_left') && e.attackername) {
@@ -617,6 +628,10 @@ class ReplayParser {
           }
           if (e.valuename === 'item_tpscroll' || e.valuename === 'item_travel_boots' || e.valuename === 'item_travel_boots_2') {
             tpScrollsUsed[slot] = (tpScrollsUsed[slot] || 0) + 1;
+          }
+          const supportCost = SUPPORT_ITEM_COSTS[e.valuename];
+          if (supportCost) {
+            supportGoldSpent[slot] = (supportGoldSpent[slot] || 0) + supportCost;
           }
 
           if (!itemPurchases[slot]) itemPurchases[slot] = [];
@@ -656,6 +671,14 @@ class ReplayParser {
             if (time > 0 && time < firstDeathSlot.time) {
               firstDeathSlot.time = time;
               firstDeathSlot.slot = targetSlot;
+            }
+
+            // Nemesis: track which hero kills this player
+            let killerSlot = e.slot;
+            if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
+            if (killerSlot != null && killerSlot >= 0 && killerSlot < 10 && killerSlot !== targetSlot) {
+              if (!killedBy[targetSlot]) killedBy[targetSlot] = {};
+              killedBy[targetSlot][killerSlot] = (killedBy[targetSlot][killerSlot] || 0) + 1;
             }
           }
         }
@@ -764,6 +787,19 @@ class ReplayParser {
     console.log('[Replay] Tower damage by slot:', JSON.stringify(towerDamage));
     console.log('[Replay] Hero healing by slot:', JSON.stringify(heroHealing));
     console.log('[Replay] Damage taken by slot:', JSON.stringify(damageTaken));
+    console.log('[Replay] Support gold spent by slot:', JSON.stringify(supportGoldSpent));
+
+    // Compute nemesis per slot (killer who killed victim the most, minimum 2 kills)
+    const nemesis = {};
+    for (let slot = 0; slot < 10; slot++) {
+      const byKiller = killedBy[slot];
+      if (!byKiller) continue;
+      let maxKills = 1, nemesisSlot = -1;
+      for (const [kSlot, count] of Object.entries(byKiller)) {
+        if (count > maxKills) { maxKills = count; nemesisSlot = parseInt(kSlot); }
+      }
+      if (nemesisSlot >= 0) nemesis[slot] = { slot: nemesisSlot, count: maxKills };
+    }
     let epiloguePlayerInfos = [];
     if (epilogueData) {
       const dota = this._getNestedField(epilogueData,
@@ -953,6 +989,14 @@ class ReplayParser {
         hasShard,
         items: playerItems,
         abilities: abilityLevelups[slot] || [],
+        supportGoldSpent: supportGoldSpent[slot] || 0,
+        nemesisHeroName: nemesis[slot] != null ? (players[nemesis[slot].slot]?.heroName || '') : '',
+        nemesisKills: nemesis[slot] != null ? nemesis[slot].count : 0,
+        killedBy: Object.entries(killedBy[slot] || {}).reduce((acc, [kSlot, count]) => {
+          const killer = players[parseInt(kSlot)];
+          if (killer?.accountId) acc[String(killer.accountId)] = count;
+          return acc;
+        }, {}),
       });
     }
 

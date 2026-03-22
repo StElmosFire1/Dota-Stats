@@ -639,9 +639,11 @@ class DiscordBot {
     }
 
     const accountId = registered.account_id_32;
-    const [stats, rating] = await Promise.all([
+    const [stats, rating, nemesisData, streak] = await Promise.all([
       db.getPlayerStats(accountId),
       db.getPlayerRating(accountId),
+      db.getPlayerNemesis(accountId).catch(() => []),
+      db.getPlayerCurrentStreak(accountId).catch(() => 0),
     ]);
 
     const avg = stats.averages || {};
@@ -658,8 +660,12 @@ class DiscordBot {
 
     const displayName = registered.discord_name || targetUser.username;
 
+    let streakText = '';
+    if (streak >= 3) streakText = ` \u{1F525} ${streak}W streak`;
+    else if (streak <= -3) streakText = ` ${String.fromCodePoint(0x1F480)} ${Math.abs(streak)}L streak`;
+
     const embed = new EmbedBuilder()
-      .setTitle(`\u{1F4CA} ${displayName}`)
+      .setTitle(`\u{1F4CA} ${displayName}${streakText}`)
       .setColor(0x00ae86)
       .addFields(
         { name: 'MMR', value: mmr.toString(), inline: true },
@@ -667,13 +673,21 @@ class DiscordBot {
         { name: 'Win Rate', value: `${winRate}%`, inline: true },
         { name: 'W / L', value: `${wins} / ${losses}`, inline: true },
         { name: 'Avg KDA', value: `${avg.avg_kills}/${avg.avg_deaths}/${avg.avg_assists} (${kda})`, inline: true },
-        { name: 'Avg GPM', value: avg.avg_gpm?.toString() || '—', inline: true },
-        { name: 'Avg Damage', value: avg.avg_hero_damage ? parseInt(avg.avg_hero_damage).toLocaleString() : '—', inline: true },
-        { name: 'Avg Last Hits', value: avg.avg_last_hits?.toString() || '—', inline: true },
-        { name: 'Avg Healing', value: avg.avg_hero_healing ? parseInt(avg.avg_hero_healing).toLocaleString() : '—', inline: true },
+        { name: 'Avg GPM', value: avg.avg_gpm?.toString() || '\u2014', inline: true },
+        { name: 'Avg Damage', value: avg.avg_hero_damage ? parseInt(avg.avg_hero_damage).toLocaleString() : '\u2014', inline: true },
+        { name: 'Avg Last Hits', value: avg.avg_last_hits?.toString() || '\u2014', inline: true },
+        { name: 'Avg Healing', value: avg.avg_hero_healing ? parseInt(avg.avg_hero_healing).toLocaleString() : '\u2014', inline: true },
       )
       .setFooter({ text: `Account ID: ${accountId}` })
       .setTimestamp();
+
+    if (nemesisData && nemesisData.length > 0) {
+      const nemLines = nemesisData.map((n, i) => {
+        const hero = this._heroDisplayName(n.last_hero);
+        return `${i + 1}. **${n.killer_name || 'Unknown'}** (${hero}) \u2014 killed you ${n.total_kills}x`;
+      });
+      embed.addFields({ name: '\u{1F608} Your Nemesis', value: nemLines.join('\n'), inline: false });
+    }
 
     await msg.reply({ embeds: [embed] });
   }
@@ -964,9 +978,11 @@ class DiscordBot {
       const name = p.personaname || `ID:${p.accountId}`;
       const hero = this._heroDisplayName(p.heroName, p.heroId);
       const kda = `${p.kills}/${p.deaths}/${p.assists}`;
-      const gpm = p.goldPerMin ? ` | ${p.goldPerMin} GPM` : '';
+      const gpm = p.goldPerMin ? ` | ${p.goldPerMin}g` : '';
       const dmg = p.heroDamage ? ` | ${Math.round(p.heroDamage / 1000)}k dmg` : '';
-      return `**${name}** (${hero}) ${kda}${gpm}${dmg}`;
+      const supportGold = (p.supportGoldSpent || 0) >= 500
+        ? ` | \u{1F441}\uFE0F ${p.supportGoldSpent}g` : '';
+      return `**${name}** (${hero}) ${kda}${gpm}${dmg}${supportGold}`;
     };
 
     const embed = new EmbedBuilder()
@@ -1054,6 +1070,20 @@ class DiscordBot {
       if (kiPct >= 60 && topKI !== mvp) {
         highlights.push(`\u{1F525} **Everywhere:** ${hName(topKI)} \u2014 ${kiPct}% kill involvement`);
       }
+    }
+
+    // Nemesis callouts: anyone killed by the same enemy 2+ times this game
+    for (const p of allPlayers) {
+      if ((p.nemesisKills || 0) >= 2 && p.nemesisHeroName) {
+        const nemHero = this._heroDisplayName(p.nemesisHeroName);
+        highlights.push(`\u{1F608} **Nemesis:** ${hName(p)} got slapped by ${nemHero} \u00D7${p.nemesisKills}`);
+      }
+    }
+
+    // Support gold recognition — highest support spender gets a callout if >= 1000g
+    const topSupport = [...allPlayers].sort((a, b) => (b.supportGoldSpent || 0) - (a.supportGoldSpent || 0))[0];
+    if (topSupport && (topSupport.supportGoldSpent || 0) >= 1000) {
+      highlights.push(`\u{1F4B8} **Support Tax:** ${hName(topSupport)} spent ${topSupport.supportGoldSpent}g on team items`);
     }
 
     if (highlights.length > 0) {
