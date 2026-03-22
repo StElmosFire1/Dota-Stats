@@ -2,6 +2,20 @@ const config = {
   discord: {
     token: process.env.DISCORD_TOKEN,
     prefix: '!',
+    announceChannelId: process.env.ANNOUNCE_CHANNEL_ID || null,
+    weeklyRecapChannelId: process.env.WEEKLY_RECAP_CHANNEL_ID || process.env.ANNOUNCE_CHANNEL_ID || null,
+    mmrRoles: {
+      // Role IDs assigned based on MMR thresholds (set via env vars)
+      // Format: DISCORD_ROLE_<TIER>=<discord_role_id>
+      tiers: [
+        { name: 'Immortal',  min: 2500, roleId: process.env.DISCORD_ROLE_IMMORTAL  || null },
+        { name: 'Divine',    min: 2350, roleId: process.env.DISCORD_ROLE_DIVINE    || null },
+        { name: 'Ancient',   min: 2250, roleId: process.env.DISCORD_ROLE_ANCIENT   || null },
+        { name: 'Legend',    min: 2150, roleId: process.env.DISCORD_ROLE_LEGEND    || null },
+        { name: 'Crusader',  min: 2050, roleId: process.env.DISCORD_ROLE_CRUSADER  || null },
+        { name: 'Herald',    min: 0,    roleId: process.env.DISCORD_ROLE_HERALD    || null },
+      ],
+    },
   },
   steam: {
     accountName: process.env.STEAM_ACCOUNT,

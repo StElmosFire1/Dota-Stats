@@ -27,6 +27,7 @@
     "google-spreadsheet": "^5.2.0",
     "helmet": "^8.1.0",
     "multer": "^2.1.1",
+    "node-cron": "^4.2.1",
     "node-fetch": "^2.7.0",
     "pg": "^8.20.0",
     "protobufjs": "^7.5.4",

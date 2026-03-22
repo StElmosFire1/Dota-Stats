@@ -2472,6 +2472,85 @@ async function savePrediction(seasonId, predictorName, predictions) {
   );
 }
 
+async function getPlayerByDiscordId(discordId) {
+  const p = getPool();
+  const result = await p.query('SELECT * FROM players WHERE discord_id = $1 LIMIT 1', [discordId]);
+  return result.rows[0] || null;
+}
+
+async function getFunRecapStats(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const timeFilter = ` AND m.date >= NOW() - INTERVAL '7 days'`;
+
+  const [highKDA, mostKills, mostDeaths, highestGPM, bloodbath, fastGame, slowGame] = await Promise.all([
+    p.query(`
+      SELECT COALESCE(n.nickname, ps.persona_name) as name, ps.kills, ps.deaths, ps.assists,
+             ps.match_id,
+             CASE WHEN ps.deaths > 0 THEN ROUND((ps.kills + ps.assists)::numeric / ps.deaths, 2) ELSE (ps.kills + ps.assists) END as kda
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+      WHERE 1=1${sc}${timeFilter}
+      ORDER BY kda DESC LIMIT 1`, params),
+
+    p.query(`
+      SELECT COALESCE(n.nickname, ps.persona_name) as name, ps.kills, ps.match_id
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+      WHERE 1=1${sc}${timeFilter}
+      ORDER BY ps.kills DESC LIMIT 1`, params),
+
+    p.query(`
+      SELECT COALESCE(n.nickname, ps.persona_name) as name, ps.deaths, ps.match_id
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+      WHERE 1=1${sc}${timeFilter}
+      ORDER BY ps.deaths DESC LIMIT 1`, params),
+
+    p.query(`
+      SELECT COALESCE(n.nickname, ps.persona_name) as name, ps.gpm, ps.match_id
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+      WHERE 1=1${sc}${timeFilter}
+      ORDER BY ps.gpm DESC LIMIT 1`, params),
+
+    p.query(`
+      SELECT m.match_id, SUM(ps.kills) as total_kills, m.duration
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      WHERE 1=1${sc}${timeFilter}
+      GROUP BY m.match_id, m.duration
+      ORDER BY total_kills DESC LIMIT 1`, params),
+
+    p.query(`
+      SELECT m.match_id, m.duration, m.lobby_name
+      FROM matches m
+      WHERE m.duration IS NOT NULL${sc}${timeFilter}
+      ORDER BY m.duration ASC LIMIT 1`, params),
+
+    p.query(`
+      SELECT m.match_id, m.duration, m.lobby_name
+      FROM matches m
+      WHERE m.duration IS NOT NULL${sc}${timeFilter}
+      ORDER BY m.duration DESC LIMIT 1`, params),
+  ]);
+
+  return {
+    highKDA: highKDA.rows[0] || null,
+    mostKills: mostKills.rows[0] || null,
+    mostDeaths: mostDeaths.rows[0] || null,
+    highestGPM: highestGPM.rows[0] || null,
+    bloodbath: bloodbath.rows[0] || null,
+    fastGame: fastGame.rows[0] || null,
+    slowGame: slowGame.rows[0] || null,
+  };
+}
+
 async function getWeeklyRecap(seasonId = null) {
   const p = getPool();
   const params = [];
@@ -2721,6 +2800,8 @@ module.exports = {
   getPredictions,
   savePrediction,
   getWeeklyRecap,
+  getFunRecapStats,
+  getPlayerByDiscordId,
   getDraftSuggestions,
   findDuplicateMatches,
 };

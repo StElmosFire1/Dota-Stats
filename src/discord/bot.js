@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const cron = require('node-cron');
 const { config } = require('../config');
 const { getStatsService } = require('../stats/statsService');
 const { getSheetsStore } = require('../sheets/sheetsStore');
@@ -190,6 +191,9 @@ class DiscordBot {
           case 'register': await this._cmdRegister(msg, args); break;
           case 'players': await this._cmdPlayers(msg); break;
           case 'recap': await this._cmdRecap(msg); break;
+          case 'herostats': await this._cmdHeroStats(msg, args); break;
+          case 'vs': await this._cmdVs(msg, args); break;
+          case 'match': await this._cmdMatch(msg, args); break;
           default: break;
         }
       } catch (err) {
@@ -224,9 +228,12 @@ class DiscordBot {
           name: '**Stats & Rankings**',
           value: [
             '`!top [count]` - Show leaderboard (default top 10)',
-            '`!stats [@user]` - Show your stats (or another player\'s)',
+            '`!stats [@user]` - Show your stats (or @mention another player)',
             '`!history` - Show recent match history',
-            '`!recap` - Weekly recap: top performers & match results',
+            '`!match <id>` - Show scoreboard for a specific match',
+            '`!herostats <hero>` - Win rate & top players for a hero',
+            '`!vs @user` - Your head-to-head record against someone',
+            '`!recap` - This week\'s highlights & fun stats',
           ].join('\n'),
         },
         {
@@ -598,58 +605,74 @@ class DiscordBot {
   }
 
   async _cmdTop(msg, args) {
-    const sheetsStore = getSheetsStore();
-    if (!sheetsStore.initialized) {
-      return msg.reply('Google Sheets is not connected. Set `SHEET_ID` and upload `creds.json`.');
-    }
-
-    const limit = parseInt(args[0]) || 10;
-    const leaderboard = await sheetsStore.getLeaderboard(limit);
-
+    const limit = Math.min(parseInt(args[0]) || 10, 25);
+    const leaderboard = await db.getComputedLeaderboard(null);
     if (leaderboard.length === 0) return msg.reply('No ratings recorded yet. Play some games first!');
 
-    const lines = leaderboard.map((p, i) => {
+    const lines = leaderboard.slice(0, limit).map((p, i) => {
       const medal = i === 0 ? '\u{1F947}' : i === 1 ? '\u{1F948}' : i === 2 ? '\u{1F949}' : `${i + 1}.`;
-      const winRate = p.gamesPlayed > 0 ? ((p.wins / p.gamesPlayed) * 100).toFixed(0) : 0;
-      return `${medal} **${p.displayName}** \u2014 MMR: ${p.mmr} | ${p.wins}W-${p.losses}L (${winRate}%)`;
+      const name = p.nickname || p.display_name || `Player ${p.player_id}`;
+      const winRate = p.games_played > 0 ? ((p.wins / p.games_played) * 100).toFixed(0) : 0;
+      return `${medal} **${name}** \u2014 ${p.mmr} MMR | ${p.wins}W-${p.losses}L (${winRate}%)`;
     });
 
     const embed = new EmbedBuilder()
-      .setTitle('Inhouse Leaderboard')
+      .setTitle('\u{1F3C6} Inhouse Leaderboard')
       .setColor(0xffd700)
       .setDescription(lines.join('\n'))
-      .setFooter({ text: `Top ${leaderboard.length} players | TrueSkill MMR` })
+      .setFooter({ text: `Top ${Math.min(limit, leaderboard.length)} players \u2022 TrueSkill MMR` })
       .setTimestamp();
 
     await msg.reply({ embeds: [embed] });
   }
 
   async _cmdStats(msg, args) {
-    const sheetsStore = getSheetsStore();
-    if (!sheetsStore.initialized) {
-      return msg.reply('Google Sheets is not connected. Set `SHEET_ID` and upload `creds.json`.');
+    const mentioned = msg.mentions.users.first();
+    const targetUser = mentioned || msg.author;
+
+    const registered = await db.getPlayerByDiscordId(targetUser.id);
+    if (!registered) {
+      const hint = targetUser.id === msg.author.id
+        ? 'You\'re not registered. Use `!register <steam_id>` to link your Steam account.'
+        : `${targetUser.username} hasn't registered their Steam account yet.`;
+      return msg.reply(hint);
     }
 
-    const target = msg.mentions.users.first() || msg.author;
-    const rating = await sheetsStore.getPlayerRating(target.id);
+    const accountId = registered.account_id_32;
+    const [stats, rating] = await Promise.all([
+      db.getPlayerStats(accountId),
+      db.getPlayerRating(accountId),
+    ]);
 
-    if (!rating) return msg.reply(`No stats found for ${target.username}. Play some games first!`);
+    const avg = stats.averages || {};
+    const games = parseInt(avg.total_matches) || 0;
+    if (games === 0) return msg.reply(`No match data found yet for ${targetUser.username}.`);
 
-    const winRate = rating.gamesPlayed > 0
-      ? ((rating.wins / rating.gamesPlayed) * 100).toFixed(1)
-      : '0';
+    const wins = rating ? rating.wins : 0;
+    const losses = rating ? rating.losses : 0;
+    const mmr = rating ? rating.mmr : 2000;
+    const winRate = games > 0 ? ((wins / games) * 100).toFixed(1) : '0';
+    const kda = parseFloat(avg.avg_deaths) > 0
+      ? ((parseFloat(avg.avg_kills) + parseFloat(avg.avg_assists)) / parseFloat(avg.avg_deaths)).toFixed(2)
+      : (parseFloat(avg.avg_kills) + parseFloat(avg.avg_assists)).toFixed(2);
+
+    const displayName = registered.discord_name || targetUser.username;
 
     const embed = new EmbedBuilder()
-      .setTitle(`Stats: ${rating.displayName}`)
+      .setTitle(`\u{1F4CA} ${displayName}`)
       .setColor(0x00ae86)
       .addFields(
-        { name: 'MMR', value: rating.mmr.toString(), inline: true },
-        { name: 'Games', value: rating.gamesPlayed.toString(), inline: true },
+        { name: 'MMR', value: mmr.toString(), inline: true },
+        { name: 'Games', value: games.toString(), inline: true },
         { name: 'Win Rate', value: `${winRate}%`, inline: true },
-        { name: 'Wins', value: rating.wins.toString(), inline: true },
-        { name: 'Losses', value: rating.losses.toString(), inline: true },
-        { name: 'Confidence', value: `\u00b1${(rating.sigma * 3).toFixed(0)}`, inline: true }
+        { name: 'W / L', value: `${wins} / ${losses}`, inline: true },
+        { name: 'Avg KDA', value: `${avg.avg_kills}/${avg.avg_deaths}/${avg.avg_assists} (${kda})`, inline: true },
+        { name: 'Avg GPM', value: avg.avg_gpm?.toString() || '—', inline: true },
+        { name: 'Avg Damage', value: avg.avg_hero_damage ? parseInt(avg.avg_hero_damage).toLocaleString() : '—', inline: true },
+        { name: 'Avg Last Hits', value: avg.avg_last_hits?.toString() || '—', inline: true },
+        { name: 'Avg Healing', value: avg.avg_hero_healing ? parseInt(avg.avg_hero_healing).toLocaleString() : '—', inline: true },
       )
+      .setFooter({ text: `Account ID: ${accountId}` })
       .setTimestamp();
 
     await msg.reply({ embeds: [embed] });
@@ -764,6 +787,13 @@ class DiscordBot {
           const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
 
+          if (msg.guild) {
+            for (const p of matchStats.players.filter(p => p.accountId && p.accountId !== 0)) {
+              const rating = await db.getPlayerRating(p.accountId.toString()).catch(() => null);
+              if (rating) await this._updateMmrRoles(msg.guild, p.accountId.toString(), rating.mmr).catch(() => {});
+            }
+          }
+
           await this._markRecorded(matchStats.matchId, 'replay-upload');
 
           await statusMsg.edit(`Replay parsed! Match **${matchStats.matchId}** recorded with full stats.`);
@@ -810,61 +840,254 @@ class DiscordBot {
     }
   }
 
+  _heroDisplayName(heroName, heroId) {
+    if (!heroName) return heroId ? `Hero ${heroId}` : 'Unknown';
+    return heroName
+      .replace('npc_dota_hero_', '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
   async _sendMatchSummary(matchStats, lobbyName, channel) {
     const statsService = getStatsService();
     const radiant = matchStats.players.filter((p) => p.team === 'radiant');
     const dire = matchStats.players.filter((p) => p.team === 'dire');
+    const allPlayers = matchStats.players;
+
+    const winner = matchStats.radiantWin ? 'Radiant' : 'Dire';
+    const duration = statsService.formatDuration(matchStats.duration);
+    const totalKills = allPlayers.reduce((s, p) => s + (p.kills || 0), 0);
+
+    const mvp = [...allPlayers].sort((a, b) => {
+      const kdaA = a.deaths > 0 ? (a.kills + a.assists) / a.deaths : a.kills + a.assists;
+      const kdaB = b.deaths > 0 ? (b.kills + b.assists) / b.deaths : b.kills + b.assists;
+      return kdaB - kdaA;
+    })[0];
+
+    const goldKing = [...allPlayers].sort((a, b) => (b.goldPerMin || 0) - (a.goldPerMin || 0))[0];
+    const slayer = [...allPlayers].sort((a, b) => (b.kills || 0) - (a.kills || 0))[0];
+    const damage = [...allPlayers].sort((a, b) => (b.heroDamage || 0) - (a.heroDamage || 0))[0];
+
+    const durationSecs = matchStats.duration || 0;
+    let flavour = '';
+    if (durationSecs < 20 * 60) flavour = '\u26A1 Lightning fast stomp!';
+    else if (durationSecs > 60 * 60) flavour = '\u{1F62B} Marathon of suffering...';
+    else if (totalKills >= 70) flavour = '\u{1F9DF} Bloodbath — nobody was safe.';
+    else if (totalKills <= 20) flavour = '\u{1F6AB} Turtlefest — barely anyone died.';
+
+    const titleEmoji = matchStats.radiantWin ? '\u{1F7E2}' : '\u{1F534}';
+    const title = `${titleEmoji} ${winner} Victory! ${lobbyName ? `\u2014 ${lobbyName}` : ''}`;
 
     const formatPlayer = (p) => {
       const name = p.personaname || `ID:${p.accountId}`;
-      const heroDisplay = p.heroName
-        ? p.heroName.replace('npc_dota_hero_', '').replace(/_/g, ' ')
-        : `Hero ${p.heroId}`;
-      return `**${name}** (${heroDisplay}) | ${p.kills}/${p.deaths}/${p.assists} | CS: ${p.lastHits}/${p.denies} | GPM: ${p.goldPerMin} | DMG: ${p.heroDamage}`;
+      const hero = this._heroDisplayName(p.heroName, p.heroId);
+      const kda = `${p.kills}/${p.deaths}/${p.assists}`;
+      const gpm = p.goldPerMin ? ` | ${p.goldPerMin} GPM` : '';
+      const dmg = p.heroDamage ? ` | ${Math.round(p.heroDamage / 1000)}k dmg` : '';
+      return `**${name}** (${hero}) ${kda}${gpm}${dmg}`;
     };
 
     const embed = new EmbedBuilder()
-      .setTitle(`Match Recorded: ${matchStats.matchId}`)
-      .setColor(matchStats.radiantWin ? 0x92fc6d : 0xff4444)
+      .setTitle(title)
+      .setColor(matchStats.radiantWin ? 0x57d95a : 0xe05c5c)
       .addFields(
-        { name: 'Duration', value: statsService.formatDuration(matchStats.duration), inline: true },
-        { name: 'Winner', value: matchStats.radiantWin ? 'Radiant' : 'Dire', inline: true },
-        { name: 'Game Mode', value: matchStats.gameMode.toString(), inline: true }
+        { name: '\u23F1 Duration', value: duration, inline: true },
+        { name: '\u2694\uFE0F Total Kills', value: totalKills.toString(), inline: true },
+        { name: '\u{1F3C6} Winner', value: winner, inline: true },
       );
+
+    if (flavour) {
+      embed.addFields({ name: '\u200b', value: flavour, inline: false });
+    }
 
     const radiantText = radiant.map(formatPlayer).join('\n');
     const direText = dire.map(formatPlayer).join('\n');
+    const radiantKills = radiant.reduce((s, p) => s + (p.kills || 0), 0);
+    const direKills = dire.reduce((s, p) => s + (p.kills || 0), 0);
 
     if (radiantText) {
       embed.addFields({
-        name: `Radiant ${matchStats.radiantWin ? '(Winner) \u2705' : '\u274c'}`,
+        name: `\u{1F7E2} Radiant ${matchStats.radiantWin ? '\u2705' : '\u274c'} \u2014 ${radiantKills} kills`,
         value: radiantText.slice(0, 1024),
       });
     }
     if (direText) {
       embed.addFields({
-        name: `Dire ${!matchStats.radiantWin ? '(Winner) \u2705' : '\u274c'}`,
+        name: `\u{1F534} Dire ${!matchStats.radiantWin ? '\u2705' : '\u274c'} \u2014 ${direKills} kills`,
         value: direText.slice(0, 1024),
       });
     }
 
-    if (lobbyName) {
-      embed.addFields({ name: 'Lobby', value: lobbyName, inline: true });
+    const highlights = [];
+    if (mvp) {
+      const mvpKda = mvp.deaths > 0
+        ? `${((mvp.kills + mvp.assists) / mvp.deaths).toFixed(2)} KDA`
+        : `${mvp.kills + mvp.assists} KDA (deathless)`;
+      highlights.push(`\u{1F451} **MVP:** ${mvp.personaname || 'Unknown'} (${this._heroDisplayName(mvp.heroName, mvp.heroId)}) \u2014 ${mvpKda}`);
+    }
+    if (goldKing && goldKing !== mvp) {
+      highlights.push(`\u{1F4B0} **Gold King:** ${goldKing.personaname || 'Unknown'} \u2014 ${goldKing.goldPerMin} GPM`);
+    }
+    if (slayer && slayer.kills >= 10) {
+      highlights.push(`\u2694\uFE0F **Slayer:** ${slayer.personaname || 'Unknown'} \u2014 ${slayer.kills} kills`);
+    }
+    if (damage) {
+      highlights.push(`\u{1F4A5} **Most Damage:** ${damage.personaname || 'Unknown'} \u2014 ${Math.round((damage.heroDamage || 0) / 1000)}k`);
     }
 
-    const sourceText = matchStats.parseMethod === 'odota-parser'
-      ? 'Stats from replay file'
-      : 'Stats from OpenDota';
-    embed
-      .setFooter({ text: `${sourceText} | TrueSkill MMR updated` })
-      .setTimestamp();
+    if (highlights.length > 0) {
+      embed.addFields({ name: '\u2B50 Highlights', value: highlights.join('\n'), inline: false });
+    }
+
+    const sourceText = matchStats.parseMethod === 'odota-parser' ? 'Full replay stats' : 'Stats from OpenDota';
+    embed.setFooter({ text: `Match #${matchStats.matchId} \u2022 ${sourceText} \u2022 MMR updated` }).setTimestamp();
 
     await channel.send({ embeds: [embed] });
+
+    if (config.discord.announceChannelId && channel.id !== config.discord.announceChannelId) {
+      const announceChannel = channel.guild?.channels?.cache?.get(config.discord.announceChannelId);
+      if (announceChannel) await announceChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+  }
+
+  async _cmdHeroStats(msg, args) {
+    if (args.length === 0) return msg.reply('Usage: `!herostats <hero name>` e.g. `!herostats pudge`');
+    const query = args.join(' ').toLowerCase().replace(/\s+/g, '_');
+    const allHeroes = await db.getHeroStats(null);
+
+    const match = allHeroes.find(h => {
+      const name = (h.hero_name || '').toLowerCase().replace('npc_dota_hero_', '');
+      return name.includes(query) || query.includes(name.replace(/_/g, ''));
+    });
+
+    if (!match) {
+      return msg.reply(`Couldn't find a hero matching \`${args.join(' ')}\`. Check the spelling and try again.`);
+    }
+
+    const heroDisplay = this._heroDisplayName(match.hero_name, match.hero_id);
+    const winRate = match.games > 0 ? ((match.wins / match.games) * 100).toFixed(1) : '0';
+
+    const topPlayersText = (match.top_players || []).slice(0, 5).map((p, i) => {
+      const medal = ['\u{1F947}', '\u{1F948}', '\u{1F949}'][i] || `${i + 1}.`;
+      const pr = match.games > 0 ? ((p.games / match.games) * 100).toFixed(0) : '0';
+      return `${medal} **${p.name}** \u2014 ${p.wins}W/${p.games - p.wins}L (${((p.wins / p.games) * 100).toFixed(0)}% WR)`;
+    }).join('\n') || 'Not enough data';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`\u{1F9B8} ${heroDisplay} Stats`)
+      .setColor(0x9b59b6)
+      .addFields(
+        { name: 'Matches Played', value: match.games.toString(), inline: true },
+        { name: 'Win Rate', value: `${winRate}%`, inline: true },
+        { name: 'Wins / Losses', value: `${match.wins} / ${match.games - match.wins}`, inline: true },
+        { name: '\u{1F3C6} Top Players on this Hero', value: topPlayersText, inline: false },
+      )
+      .setFooter({ text: 'All time inhouse stats' })
+      .setTimestamp();
+
+    await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdVs(msg, args) {
+    const mentioned = msg.mentions.users.first();
+    if (!mentioned) return msg.reply('Usage: `!vs @player` — mention who you want to check your record against.');
+    if (mentioned.id === msg.author.id) return msg.reply('You can\'t check a record against yourself!');
+
+    const [myReg, theirReg] = await Promise.all([
+      db.getPlayerByDiscordId(msg.author.id),
+      db.getPlayerByDiscordId(mentioned.id),
+    ]);
+
+    if (!myReg) return msg.reply('You\'re not registered. Use `!register <steam_id>` to link your account.');
+    if (!theirReg) return msg.reply(`${mentioned.username} hasn't registered their Steam account yet.`);
+
+    const h2h = await db.getHeadToHead(myReg.account_id_32, theirReg.account_id_32, null);
+
+    if (h2h.total === 0) {
+      return msg.reply(`You and ${mentioned.username} have never been on opposing teams in a recorded match.`);
+    }
+
+    const myName = myReg.discord_name || msg.author.username;
+    const theirName = theirReg.discord_name || mentioned.username;
+    const myWinRate = ((h2h.a_wins / h2h.total) * 100).toFixed(0);
+
+    let verdict = '';
+    if (h2h.a_wins > h2h.b_wins) verdict = `\u{1F4AA} **${myName}** has the edge.`;
+    else if (h2h.b_wins > h2h.a_wins) verdict = `\u{1F62D} **${theirName}** has the upper hand.`;
+    else verdict = '\u{1F91D} Dead even.';
+
+    const recentLines = h2h.matches.slice(0, 5).map(m => {
+      const myWon = (m.a_team === 'radiant' && m.radiant_win) || (m.a_team === 'dire' && !m.radiant_win);
+      const result = myWon ? '\u2705 Win' : '\u274c Loss';
+      const date = m.date ? new Date(m.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '?';
+      return `${result} — #${m.match_id} (${date})`;
+    }).join('\n');
+
+    const embed = new EmbedBuilder()
+      .setTitle(`\u2694\uFE0F ${myName} vs ${theirName}`)
+      .setColor(0xe67e22)
+      .addFields(
+        { name: `${myName} wins`, value: h2h.a_wins.toString(), inline: true },
+        { name: `${theirName} wins`, value: h2h.b_wins.toString(), inline: true },
+        { name: 'Total matches', value: h2h.total.toString(), inline: true },
+        { name: 'Verdict', value: verdict, inline: false },
+        { name: 'Recent Results', value: recentLines || 'None', inline: false },
+      )
+      .setFooter({ text: 'Head-to-head \u2022 opposing teams only' })
+      .setTimestamp();
+
+    await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdMatch(msg, args) {
+    if (!args[0]) return msg.reply('Usage: `!match <match_id>`');
+    const matchId = parseInt(args[0]);
+    if (isNaN(matchId)) return msg.reply('Please provide a valid match ID number.');
+
+    const match = await db.getMatch(matchId);
+    if (!match) return msg.reply(`Match #${matchId} not found.`);
+
+    const radiant = (match.players || []).filter(p => p.team === 'radiant');
+    const dire = (match.players || []).filter(p => p.team === 'dire');
+    const duration = match.duration
+      ? `${Math.floor(match.duration / 60)}m${String(match.duration % 60).padStart(2, '0')}s`
+      : '?';
+    const date = match.date ? new Date(match.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '?';
+
+    const formatLine = (p) => {
+      const name = p.nickname || p.persona_name || `ID:${p.account_id}`;
+      const hero = this._heroDisplayName(p.hero_name, p.hero_id);
+      const kda = `${p.kills}/${p.deaths}/${p.assists}`;
+      const gpm = p.gpm ? ` ${p.gpm}GPM` : '';
+      return `**${name}** (${hero}) ${kda}${gpm}`;
+    };
+
+    const radiantText = radiant.length > 0 ? radiant.map(formatLine).join('\n') : 'No data';
+    const direText = dire.length > 0 ? dire.map(formatLine).join('\n') : 'No data';
+    const winner = match.radiant_win ? 'Radiant' : 'Dire';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`Match #${matchId} \u2014 ${winner} Victory`)
+      .setColor(match.radiant_win ? 0x57d95a : 0xe05c5c)
+      .addFields(
+        { name: '\u23F1 Duration', value: duration, inline: true },
+        { name: '\u{1F4C5} Date', value: date, inline: true },
+        { name: '\u200b', value: '\u200b', inline: true },
+        { name: '\u{1F7E2} Radiant', value: radiantText.slice(0, 1024), inline: false },
+        { name: '\u{1F534} Dire', value: direText.slice(0, 1024), inline: false },
+      )
+      .setFooter({ text: `Match ID: ${matchId}` })
+      .setTimestamp();
+
+    await msg.reply({ embeds: [embed] });
   }
 
   async _cmdRecap(msg) {
     try {
-      const recap = await db.getWeeklyRecap(null);
+      const [recap, fun] = await Promise.all([
+        db.getWeeklyRecap(null),
+        db.getFunRecapStats(null),
+      ]);
       const { matches, top_performers } = recap;
 
       if (!matches || matches.length === 0) {
@@ -873,44 +1096,67 @@ class DiscordBot {
 
       const radiantWins = matches.filter(m => m.radiant_win).length;
       const direWins = matches.length - radiantWins;
+      const totalDuration = matches.reduce((s, m) => s + (m.duration || 0), 0);
+      const avgDuration = matches.length > 0 ? Math.round(totalDuration / matches.length) : 0;
+      const avgDurStr = avgDuration > 0
+        ? `${Math.floor(avgDuration / 60)}m${String(avgDuration % 60).padStart(2, '0')}s`
+        : '?';
 
       const embed = new EmbedBuilder()
-        .setTitle('Weekly Recap \uD83D\uDCCA')
+        .setTitle('\u{1F4CA} Weekly Recap')
         .setColor(0x3b82f6)
-        .addFields(
-          {
-            name: `Matches this week: ${matches.length}`,
-            value: `Radiant ${radiantWins} \u2013 Dire ${direWins}`,
-            inline: false,
-          }
-        );
+        .addFields({
+          name: `\u{1F3AE} ${matches.length} match${matches.length !== 1 ? 'es' : ''} this week`,
+          value: `\u{1F7E2} Radiant ${radiantWins} \u2013 ${direWins} Dire \u{1F534}  \u2022  Avg game: ${avgDurStr}`,
+          inline: false,
+        });
 
       if (top_performers && top_performers.length > 0) {
         const topLines = top_performers.slice(0, 5).map((p, i) => {
           const kda = parseFloat(p.avg_kda).toFixed(2);
           const gpm = Math.round(parseFloat(p.avg_gpm));
           const medal = ['\u{1F947}', '\u{1F948}', '\u{1F949}'][i] || `${i + 1}.`;
-          return `${medal} **${p.player_name}** \u2014 KDA: ${kda} | GPM: ${gpm} | Games: ${p.games}`;
+          return `${medal} **${p.player_name}** \u2014 ${kda} KDA | ${gpm} GPM | ${p.games} games`;
         });
         embed.addFields({
-          name: 'Top Performers (by KDA)',
+          name: '\u2B50 Top Performers (KDA)',
           value: topLines.join('\n'),
           inline: false,
         });
       }
 
-      const recentLines = matches.slice(0, 5).map(m => {
-        const winner = m.radiant_win ? '\u{1F7E9} Radiant' : '\u{1F534} Dire';
-        const date = m.date ? new Date(m.date).toLocaleDateString() : '?';
-        return `\u2022 ${date} \u2014 ${winner} wins`;
-      });
-      embed.addFields({
-        name: 'Recent Matches',
-        value: recentLines.join('\n') || 'None',
-        inline: false,
-      });
+      const awards = [];
+      if (fun.highKDA) {
+        const k = fun.highKDA;
+        awards.push(`\u{1F451} **Best KDA** — ${k.name}: ${k.kills}/${k.deaths}/${k.assists} (${parseFloat(k.kda).toFixed(2)}) in match #${k.match_id}`);
+      }
+      if (fun.mostKills) {
+        awards.push(`\u2694\uFE0F **Most Kills** — ${fun.mostKills.name}: ${fun.mostKills.kills} kills in match #${fun.mostKills.match_id}`);
+      }
+      if (fun.mostDeaths) {
+        awards.push(`\u{1F480} **Sacrificial Lamb** — ${fun.mostDeaths.name}: ${fun.mostDeaths.deaths} deaths in match #${fun.mostDeaths.match_id}`);
+      }
+      if (fun.highestGPM) {
+        awards.push(`\u{1F4B0} **Gold King** — ${fun.highestGPM.name}: ${fun.highestGPM.gpm} GPM in match #${fun.highestGPM.match_id}`);
+      }
+      if (fun.bloodbath && parseInt(fun.bloodbath.total_kills) >= 60) {
+        const dur = fun.bloodbath.duration ? `${Math.floor(fun.bloodbath.duration / 60)}m` : '';
+        awards.push(`\u{1F9DF} **Bloodbath** — Match #${fun.bloodbath.match_id}: ${fun.bloodbath.total_kills} kills${dur ? ` in ${dur}` : ''}`);
+      }
+      if (fun.fastGame && fun.fastGame.duration < 25 * 60) {
+        const dur = `${Math.floor(fun.fastGame.duration / 60)}m${String(fun.fastGame.duration % 60).padStart(2, '0')}s`;
+        awards.push(`\u26A1 **Fastest Game** — Match #${fun.fastGame.match_id}: ${dur}`);
+      }
+      if (fun.slowGame && fun.slowGame.duration > 50 * 60) {
+        const dur = `${Math.floor(fun.slowGame.duration / 60)}m${String(fun.slowGame.duration % 60).padStart(2, '0')}s`;
+        awards.push(`\u{1F62B} **Marathon** — Match #${fun.slowGame.match_id}: ${dur}`);
+      }
 
-      embed.setFooter({ text: 'Last 7 days | Use !top for full leaderboard' }).setTimestamp();
+      if (awards.length > 0) {
+        embed.addFields({ name: '\u{1F3C5} Weekly Awards', value: awards.join('\n'), inline: false });
+      }
+
+      embed.setFooter({ text: 'Last 7 days \u2022 Use !top for full leaderboard' }).setTimestamp();
 
       await msg.reply({ embeds: [embed] });
     } catch (err) {
@@ -919,9 +1165,104 @@ class DiscordBot {
     }
   }
 
+  async _updateMmrRoles(guild, playerId, mmr) {
+    const tiers = config.discord.mmrRoles.tiers.filter(t => t.roleId);
+    if (tiers.length === 0) return;
+
+    const players = await db.getRegisteredPlayers();
+    const player = players.find(p => p.account_id_32 === playerId?.toString());
+    if (!player?.discord_id) return;
+
+    const member = await guild.members.fetch(player.discord_id).catch(() => null);
+    if (!member) return;
+
+    const targetTier = tiers.find(t => mmr >= t.min);
+    const allRoleIds = tiers.map(t => t.roleId).filter(Boolean);
+
+    const toRemove = member.roles.cache.filter(r => allRoleIds.includes(r.id));
+    if (toRemove.size > 0) await member.roles.remove(toRemove).catch(() => {});
+    if (targetTier?.roleId) await member.roles.add(targetTier.roleId).catch(() => {});
+  }
+
+  async _postWeeklyRecap() {
+    const channelId = config.discord.weeklyRecapChannelId;
+    if (!channelId) return;
+    const channel = this.client.channels.cache.get(channelId);
+    if (!channel) return;
+
+    try {
+      const [recap, fun] = await Promise.all([
+        db.getWeeklyRecap(null),
+        db.getFunRecapStats(null),
+      ]);
+      const { matches, top_performers } = recap;
+      if (!matches || matches.length === 0) return;
+
+      const radiantWins = matches.filter(m => m.radiant_win).length;
+      const direWins = matches.length - radiantWins;
+      const totalDuration = matches.reduce((s, m) => s + (m.duration || 0), 0);
+      const avgDuration = matches.length > 0 ? Math.round(totalDuration / matches.length) : 0;
+      const avgDurStr = avgDuration > 0
+        ? `${Math.floor(avgDuration / 60)}m${String(avgDuration % 60).padStart(2, '0')}s`
+        : '?';
+
+      const embed = new EmbedBuilder()
+        .setTitle('\u{1F4CA} Weekly Recap \u2014 Automated')
+        .setColor(0x3b82f6)
+        .addFields({
+          name: `\u{1F3AE} ${matches.length} match${matches.length !== 1 ? 'es' : ''} this week`,
+          value: `\u{1F7E2} Radiant ${radiantWins} \u2013 ${direWins} Dire \u{1F534}  \u2022  Avg game: ${avgDurStr}`,
+          inline: false,
+        });
+
+      if (top_performers?.length > 0) {
+        const topLines = top_performers.slice(0, 5).map((p, i) => {
+          const kda = parseFloat(p.avg_kda).toFixed(2);
+          const gpm = Math.round(parseFloat(p.avg_gpm));
+          const medal = ['\u{1F947}', '\u{1F948}', '\u{1F949}'][i] || `${i + 1}.`;
+          return `${medal} **${p.player_name}** \u2014 ${kda} KDA | ${gpm} GPM | ${p.games} games`;
+        });
+        embed.addFields({ name: '\u2B50 Top Performers', value: topLines.join('\n'), inline: false });
+      }
+
+      const awards = [];
+      if (fun.highKDA) {
+        const k = fun.highKDA;
+        awards.push(`\u{1F451} **Best KDA** — ${k.name}: ${k.kills}/${k.deaths}/${k.assists} (${parseFloat(k.kda).toFixed(2)}) in #${k.match_id}`);
+      }
+      if (fun.mostKills) awards.push(`\u2694\uFE0F **Most Kills** — ${fun.mostKills.name}: ${fun.mostKills.kills} in #${fun.mostKills.match_id}`);
+      if (fun.mostDeaths) awards.push(`\u{1F480} **Sacrificial Lamb** — ${fun.mostDeaths.name}: ${fun.mostDeaths.deaths} deaths in #${fun.mostDeaths.match_id}`);
+      if (fun.highestGPM) awards.push(`\u{1F4B0} **Gold King** — ${fun.highestGPM.name}: ${fun.highestGPM.gpm} GPM in #${fun.highestGPM.match_id}`);
+      if (fun.fastGame && fun.fastGame.duration < 25 * 60) {
+        const d = `${Math.floor(fun.fastGame.duration / 60)}m${String(fun.fastGame.duration % 60).padStart(2, '0')}s`;
+        awards.push(`\u26A1 **Fastest Game** — #${fun.fastGame.match_id}: ${d}`);
+      }
+      if (fun.slowGame && fun.slowGame.duration > 50 * 60) {
+        const d = `${Math.floor(fun.slowGame.duration / 60)}m${String(fun.slowGame.duration % 60).padStart(2, '0')}s`;
+        awards.push(`\u{1F62B} **Marathon** — #${fun.slowGame.match_id}: ${d}`);
+      }
+
+      if (awards.length > 0) embed.addFields({ name: '\u{1F3C5} Weekly Awards', value: awards.join('\n'), inline: false });
+      embed.setFooter({ text: 'Use !top for full leaderboard' }).setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+    } catch (err) {
+      console.error('[Discord] Weekly recap post error:', err.message);
+    }
+  }
+
   async start() {
     if (!config.discord.token) throw new Error('DISCORD_TOKEN not configured.');
     await this.client.login(config.discord.token);
+
+    this.client.once('ready', () => {
+      // Weekly recap: Monday 9am AEST (Sunday 11pm UTC)
+      cron.schedule('0 23 * * 0', () => {
+        console.log('[Discord] Posting weekly recap...');
+        this._postWeeklyRecap();
+      }, { timezone: 'UTC' });
+      console.log('[Discord] Weekly recap scheduled (Mondays 9am AEST).');
+    });
   }
 
   async shutdown() {
