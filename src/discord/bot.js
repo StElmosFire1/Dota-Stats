@@ -184,16 +184,9 @@ class DiscordBot {
       try {
         switch (command) {
           case 'help': await this._cmdHelp(msg); break;
-          case 'create_lobby': await this._cmdCreateLobby(msg, args); break;
-          case 'lobby_status': await this._cmdLobbyStatus(msg); break;
-          case 'invite': await this._cmdInvite(msg, args); break;
-          case 'join_lobby': await this._cmdJoinLobby(msg, args); break;
-          case 'end': await this._cmdEnd(msg); break;
-          case 'record': await this._cmdRecord(msg, args); break;
           case 'top': await this._cmdTop(msg, args); break;
           case 'stats': await this._cmdStats(msg, args); break;
           case 'history': await this._cmdHistory(msg); break;
-          case 'steam_status': await this._cmdSteamStatus(msg); break;
           case 'register': await this._cmdRegister(msg, args); break;
           case 'players': await this._cmdPlayers(msg); break;
           case 'recap': await this._cmdRecap(msg); break;
@@ -213,47 +206,32 @@ class DiscordBot {
       .setDescription('Track your inhouse games and climb the leaderboard!')
       .addFields(
         {
-          name: '**Lobby Management**',
-          value: [
-            '`!create_lobby <name> <password>` - Create a private lobby via Steam',
-            '`!join_lobby <lobby_id> [password]` - Bot joins an existing lobby to track stats',
-            '`!invite <steam_id>` - Invite a player to the lobby by Steam ID',
-            '`!lobby_status` - Check current lobby status & join info',
-            '`!end` - End current lobby',
-          ].join('\n'),
-        },
-        {
           name: '**Player Registration**',
           value: [
-            '`!register <steam_id>` - Link your Steam account for auto-tracking',
+            '`!register <steam_id>` - Link your Steam account to this Discord account',
             '`!players` - Show all registered players',
-            'After registering, your lobby matches are auto-detected and recorded!',
+            'Your Steam64 ID can be found at https://steamid.io',
           ].join('\n'),
         },
         {
           name: '**Match Recording**',
           value: [
-            '`!record <match_id>` - Record a match from OpenDota (manual)',
-            'Upload a `.dem` replay file - Bot parses full stats (KDA, GPM, damage, etc.)',
-            'Replay parsing works for ALL matches including practice lobbies!',
-            'Matches are also auto-detected for registered players.',
+            'Upload a `.dem` replay file - Bot parses full stats (KDA, GPM, damage, items, etc.)',
+            'Replay parsing works for all private inhouse matches!',
           ].join('\n'),
         },
         {
           name: '**Stats & Rankings**',
           value: [
             '`!top [count]` - Show leaderboard (default top 10)',
-            '`!stats [@user]` - Show player stats',
+            '`!stats [@user]` - Show your stats (or another player\'s)',
             '`!history` - Show recent match history',
             '`!recap` - Weekly recap: top performers & match results',
           ].join('\n'),
         },
         {
-          name: '**System**',
-          value: [
-            '`!steam_status` - Check Steam/Dota2/Sheets connection status',
-            '`!help` - Show this message',
-          ].join('\n'),
+          name: '**Info**',
+          value: '`!help` - Show this message',
         }
       )
       .setFooter({ text: 'OCE Dota 2 Inhouse Community' });
@@ -494,15 +472,15 @@ class DiscordBot {
     if (args.length < 1) {
       return msg.reply(
         'Usage: `!register <steam_id>`\n' +
-        'Your Steam ID is the long number (e.g. `76561198012345678`).\n' +
-        'Find it at https://steamid.io or in your Steam profile URL.'
+        'Your Steam64 ID is a 17-digit number (e.g. `76561198012345678`).\n' +
+        'Find it at https://steamid.io'
       );
     }
 
     const steamId = args[0].trim();
     if (!/^\d{17}$/.test(steamId)) {
       return msg.reply(
-        'That doesn\'t look like a valid Steam ID. It should be 17 digits (e.g. `76561198012345678`).\n' +
+        'That doesn\'t look like a valid Steam64 ID — it should be 17 digits (e.g. `76561198012345678`).\n' +
         'Find yours at https://steamid.io'
       );
     }
@@ -511,46 +489,25 @@ class DiscordBot {
       return msg.reply('That Steam ID doesn\'t look right. Make sure you\'re using your Steam64 ID.');
     }
 
-    const sheetsStore = getSheetsStore();
-    if (!sheetsStore.initialized) {
-      return msg.reply('Google Sheets is not connected. Registration requires Sheets to be set up.');
-    }
-
     try {
-      const result = await sheetsStore.registerPlayer(msg.author.id, msg.author.username, steamId);
-      const accountId = result.accountId32;
-
-      if (result.updated) {
-        await msg.reply(
-          `Updated your registration! Steam ID: \`${steamId}\` (Account ID: \`${accountId}\`)\n` +
-          'Your lobby matches will be auto-detected and recorded.\n' +
-          '**Important:** Make sure "Expose Public Match Data" is enabled in Dota 2 settings!'
-        );
-      } else {
-        await msg.reply(
-          `Registered! Steam ID: \`${steamId}\` (Account ID: \`${accountId}\`)\n` +
-          'Your lobby matches will now be auto-detected and recorded.\n' +
-          '**Important:** Make sure "Expose Public Match Data" is enabled in Dota 2 settings!'
-        );
-      }
+      const { accountId32 } = await db.registerPlayer(msg.author.id, msg.author.username, steamId);
+      await msg.reply(
+        `Registered! Steam ID: \`${steamId}\` (Account ID: \`${accountId32}\`)\n` +
+        'Your account is now linked. Upload a `.dem` replay file in this channel to record a match.'
+      );
     } catch (err) {
       await msg.reply(`Registration failed: ${err.message}`);
     }
   }
 
   async _cmdPlayers(msg) {
-    const sheetsStore = getSheetsStore();
-    if (!sheetsStore.initialized) {
-      return msg.reply('Google Sheets is not connected.');
-    }
-
-    const players = await sheetsStore.getRegisteredPlayers();
+    const players = await db.getRegisteredPlayers();
     if (players.length === 0) {
       return msg.reply('No players registered yet. Use `!register <steam_id>` to sign up!');
     }
 
     const list = players.map((p, i) =>
-      `${i + 1}. **${p.discordName || 'Unknown'}** - Account ID: \`${p.accountId32}\``
+      `${i + 1}. **${p.discord_name || 'Unknown'}** - Account ID: \`${p.account_id_32}\``
     ).join('\n');
 
     const embed = new EmbedBuilder()
