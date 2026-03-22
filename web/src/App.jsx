@@ -18,6 +18,7 @@ import Compare from './pages/Compare';
 import DraftAssistant from './pages/DraftAssistant';
 import Predictions from './pages/Predictions';
 import UploadIndicator from './components/UploadIndicator';
+import AiChat from './components/AiChat';
 import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
 import SuperuserLoginModal from './components/SuperuserLoginModal';
@@ -293,6 +294,7 @@ export default function App() {
         </SuperuserProvider>
       </AdminProvider>
       </SteamAuthProvider>
+      <AiChat />
     </BrowserRouter>
   );
 }

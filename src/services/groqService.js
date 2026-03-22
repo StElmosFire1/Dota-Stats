@@ -177,9 +177,52 @@ async function generateMatchMvpBlurb({ name, heroName, kills, deaths, assists, d
   }
 }
 
+/**
+ * Conversational Grok chat for the web dashboard.
+ * Strictly restricted to Dota 2 and this server's inhouse stats.
+ */
+async function generateChatResponse({ message, history = [], serverContext = '' }) {
+  const client = getClient();
+  if (!client) return 'AI chat is not configured (missing API key).';
+
+  const systemPrompt = [
+    'You are GrokBot, the AI assistant embedded in an OCE Dota 2 inhouse community stats website.',
+    'Your ONLY job is to discuss Dota 2 strategy, hero picks, bans, roles, item builds, drafting,',
+    'and the specific player statistics and match history provided to you below.',
+    'If the user asks about anything unrelated to Dota 2 or the stats on this site,',
+    'politely decline and redirect them back to Dota topics.',
+    'Be concise, knowledgeable, and a little bit cheeky — this is a competitive gaming community.',
+    'Do NOT use bullet points for short answers. Use plain prose unless listing heroes or items.',
+    '',
+    '--- CURRENT SERVER DATA SNAPSHOT ---',
+    serverContext || 'No stats data available yet.',
+    '--- END SNAPSHOT ---',
+  ].join('\n');
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.slice(-10), // Keep last 10 turns for context
+    { role: 'user', content: message },
+  ];
+
+  try {
+    const completion = await client.chat.completions.create({
+      model: 'grok-3-mini',
+      messages,
+      max_tokens: 400,
+      temperature: 0.75,
+    });
+    return completion.choices?.[0]?.message?.content?.trim() || 'No response generated.';
+  } catch (err) {
+    console.error('[Grok] Chat response failed:', err.message);
+    return 'Sorry, I ran into an error. Try again in a moment.';
+  }
+}
+
 module.exports = {
   generateWeeklyRecapBlurb,
   generatePlayerAnalysis,
   generatePlayerRoast,
   generateMatchMvpBlurb,
+  generateChatResponse,
 };

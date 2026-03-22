@@ -10,6 +10,7 @@ const { rateLimit } = require('express-rate-limit');
 const db = require('../db');
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
+const { generateChatResponse } = require('../services/groqService');
 
 const CHUNK_DIR = '/tmp/replay-chunks';
 const UPLOAD_DIR = '/tmp/replay-uploads';
@@ -1238,6 +1239,61 @@ NOTES
       res.json(note);
     } catch (err) {
       res.status(500).json({ error: 'Failed to update patch note' });
+    }
+  });
+
+  // AI Chat — Grok-powered, Dota-only assistant
+  // Cache server context for 5 minutes to avoid hammering the DB on every message
+  let _chatContextCache = null;
+  let _chatContextExpiry = 0;
+  async function getServerContext() {
+    const now = Date.now();
+    if (_chatContextCache && now < _chatContextExpiry) return _chatContextCache;
+    try {
+      const [leaderboard, heroStats] = await Promise.all([
+        db.getComputedLeaderboard(null).catch(() => []),
+        db.getHeroStats(null).catch(() => []),
+      ]);
+      const top5 = leaderboard.slice(0, 5).map((p, i) =>
+        `${i + 1}. ${p.nickname || p.display_name || p.player_id} — ${p.mmr} MMR, ${p.wins}W ${p.losses}L`
+      ).join('\n');
+      const topHeroes = heroStats.slice(0, 8).map(h =>
+        `${h.hero_name}: ${h.games} games, ${h.win_rate}% WR`
+      ).join(', ');
+      _chatContextCache = [
+        `Total players on leaderboard: ${leaderboard.length}`,
+        leaderboard.length > 0 ? `Top 5 players:\n${top5}` : '',
+        topHeroes ? `Most picked heroes: ${topHeroes}` : '',
+      ].filter(Boolean).join('\n');
+      _chatContextExpiry = now + 5 * 60 * 1000;
+    } catch {
+      _chatContextCache = 'Stats unavailable.';
+      _chatContextExpiry = now + 60 * 1000;
+    }
+    return _chatContextCache;
+  }
+
+  const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
+
+  router.post('/chat', chatLimiter, express.json(), async (req, res) => {
+    try {
+      const { message, history } = req.body || {};
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        return res.status(400).json({ error: 'Message is required.' });
+      }
+      if (message.length > 500) {
+        return res.status(400).json({ error: 'Message too long (max 500 chars).' });
+      }
+      const serverContext = await getServerContext();
+      const reply = await generateChatResponse({
+        message: message.trim(),
+        history: Array.isArray(history) ? history : [],
+        serverContext,
+      });
+      res.json({ reply });
+    } catch (err) {
+      console.error('[Chat API] Error:', err.message);
+      res.status(500).json({ error: 'Chat service unavailable.' });
     }
   });
 
