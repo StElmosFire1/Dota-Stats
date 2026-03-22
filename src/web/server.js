@@ -1255,15 +1255,15 @@ NOTES
         db.getHeroStats(null).catch(() => ({ heroes: [] })),
       ]);
       const heroStats = Array.isArray(heroStatsResult) ? heroStatsResult : (heroStatsResult?.heroes || []);
-      const top5 = leaderboard.slice(0, 5).map((p, i) =>
+      const allPlayers = leaderboard.map((p, i) =>
         `${i + 1}. ${p.nickname || p.display_name || p.player_id} — ${p.mmr} MMR, ${p.wins}W ${p.losses}L`
       ).join('\n');
-      const topHeroes = heroStats.slice(0, 8).map(h =>
+      const topHeroes = heroStats.slice(0, 12).map(h =>
         `${h.hero_name}: ${h.games} games, ${h.win_rate}% WR`
       ).join(', ');
       _chatContextCache = [
         `Total players on leaderboard: ${leaderboard.length}`,
-        leaderboard.length > 0 ? `Top 5 players:\n${top5}` : '',
+        leaderboard.length > 0 ? `Full leaderboard:\n${allPlayers}` : '',
         topHeroes ? `Most picked heroes: ${topHeroes}` : '',
       ].filter(Boolean).join('\n');
       _chatContextExpiry = now + 5 * 60 * 1000;
