@@ -656,17 +656,19 @@ class DiscordBot {
   }
 
   async _cmdHistory(msg) {
-    const sheetsStore = getSheetsStore();
-    if (!sheetsStore.initialized) {
-      return msg.reply('Google Sheets is not connected. Set `SHEET_ID` and upload `creds.json`.');
-    }
-
-    const matches = await sheetsStore.getMatchHistory(10);
+    const matches = await db.getMatchHistory(10);
     if (matches.length === 0) return msg.reply('No matches recorded yet.');
 
     const lines = matches.map((m) => {
       const winner = m.radiantWin ? 'Radiant' : 'Dire';
-      return `**${m.matchId}** \u2014 ${m.lobbyName || 'Manual'} | ${winner} Win | ${m.date}`;
+      const duration = m.duration
+        ? `${Math.floor(m.duration / 60)}m${String(m.duration % 60).padStart(2, '0')}s`
+        : null;
+      const date = m.date ? new Date(m.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
+      const parts = [m.lobbyName || 'Match', `${winner} Win`];
+      if (duration) parts.push(duration);
+      if (date) parts.push(date);
+      return `**#${m.matchId}** \u2014 ${parts.join(' | ')}`;
     });
 
     const embed = new EmbedBuilder()
