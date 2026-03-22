@@ -1250,59 +1250,116 @@ NOTES
     const now = Date.now();
     if (_chatContextCache && now < _chatContextExpiry) return _chatContextCache;
     try {
-      const [leaderboard, heroStatsResult, overallStats, recentMatches, matchCount] = await Promise.all([
+      const [leaderboard, heroStatsResult, overallStats, playerHeroProfiles, playerPosProfiles, recentMatches, matchCount] = await Promise.all([
         db.getComputedLeaderboard(null).catch(() => []),
         db.getHeroStats(null).catch(() => ({ heroes: [] })),
-        db.getOverallStats(null).catch(() => ({ players: [] })),
-        db.getMatchHistory(10).catch(() => []),
+        db.getOverallStats(null).catch(() => []),
+        db.getPlayerHeroProfiles(null).catch(() => []),
+        db.getPlayerPositionProfiles(null).catch(() => []),
+        db.getMatchHistory(15).catch(() => []),
         db.getMatchCount(null).catch(() => 0),
       ]);
-      const heroStats = Array.isArray(heroStatsResult) ? heroStatsResult : (heroStatsResult?.heroes || []);
-      const overallPlayers = Array.isArray(overallStats) ? overallStats : (overallStats?.players || overallStats?.rows || []);
 
-      // Build a lookup from player name/nickname -> overall stats
-      const statsLookup = {};
+      const heroStats = Array.isArray(heroStatsResult) ? heroStatsResult : (heroStatsResult?.heroes || []);
+      const overallPlayers = Array.isArray(overallStats) ? overallStats : [];
+
+      // Build lookups keyed by player_key / persona_name
+      const overallLookup = {};
       for (const p of overallPlayers) {
-        const key = p.nickname || p.persona_name || p.player_key;
-        if (key) statsLookup[key] = p;
+        const k = p.nickname || p.persona_name || p.player_key;
+        if (k) overallLookup[k] = p;
+      }
+      const heroProfileLookup = {};
+      for (const p of playerHeroProfiles) {
+        const k = p.nickname || p.persona_name || p.player_key;
+        if (k) heroProfileLookup[k] = p;
+      }
+      const posProfileLookup = {};
+      for (const p of playerPosProfiles) {
+        const k = p.nickname || p.persona_name || p.player_key;
+        if (k) posProfileLookup[k] = p;
       }
 
-      // Full leaderboard with MMR
-      const allPlayers = leaderboard.map((p, i) =>
-        `${i + 1}. ${p.nickname || p.display_name || p.player_id} — ${p.mmr} MMR, ${p.wins}W ${p.losses}L`
+      const posLabel = { 1: 'Carry', 2: 'Mid', 3: 'Offlane', 4: 'Soft Sup', 5: 'Hard Sup' };
+
+      // === LEADERBOARD ===
+      const leaderboardLines = leaderboard.map((p, i) =>
+        `${i + 1}. ${p.nickname || p.display_name || p.player_id} — ${p.mmr} MMR, ${p.wins}W ${p.losses}L (${p.wins + p.losses}g)`
       ).join('\n');
 
-      // Per-player detailed stats (avg KDA, GPM, damage)
-      const playerDetails = overallPlayers.map(p => {
-        const name = p.nickname || p.persona_name || p.player_key || '?';
-        const wr = p.games > 0 ? Math.round((p.wins / p.games) * 100) : 0;
-        const kda = `${p.avg_kills}/${p.avg_deaths}/${p.avg_assists}`;
-        const gpm = p.avg_gpm ? `${p.avg_gpm} GPM` : '';
-        const dmg = p.avg_hero_damage ? `${Math.round(p.avg_hero_damage / 1000)}k dmg` : '';
-        const heal = p.avg_hero_healing > 100 ? `${Math.round(p.avg_hero_healing / 1000)}k heal` : '';
-        return `${name}: ${p.games}g ${wr}%WR, KDA ${kda}${gpm ? ', ' + gpm : ''}${dmg ? ', ' + dmg : ''}${heal ? ', ' + heal : ''}`;
+      // === PER-PLAYER FULL PROFILES ===
+      const playerProfileLines = leaderboard.map(lp => {
+        const name = lp.nickname || lp.display_name || lp.player_id;
+        const ov = overallLookup[name] || overallLookup[lp.display_name] || overallLookup[lp.player_id] || {};
+        const hp = heroProfileLookup[name] || heroProfileLookup[lp.display_name] || heroProfileLookup[lp.player_id] || {};
+        const pp = posProfileLookup[name] || posProfileLookup[lp.display_name] || posProfileLookup[lp.player_id] || {};
+
+        const games = lp.wins + lp.losses;
+        const wr = games > 0 ? Math.round((lp.wins / games) * 100) : 0;
+
+        // Core stats line
+        const kda = ov.avg_kills != null ? `KDA ${ov.avg_kills}/${ov.avg_deaths}/${ov.avg_assists}` : '';
+        const gpm = ov.avg_gpm ? `${ov.avg_gpm} GPM` : '';
+        const dmg = ov.avg_hero_damage > 0 ? `${Math.round(ov.avg_hero_damage / 1000)}k dmg` : '';
+        const heal = ov.avg_hero_healing > 200 ? `${Math.round(ov.avg_hero_healing / 1000)}k heal` : '';
+        const statParts = [kda, gpm, dmg, heal].filter(Boolean).join(', ');
+
+        // Position breakdown
+        const positions = (pp.positions || [])
+          .sort((a, b) => b.games - a.games)
+          .slice(0, 3)
+          .map(pos => `Pos${pos.position}(${posLabel[pos.position] || '?'}) ${pos.games}g ${Math.round((pos.wins / pos.games) * 100)}%WR`)
+          .join(', ');
+
+        // Hero breakdown — most played first, then sort top 5 by games
+        const heroes = (hp.heroes || [])
+          .sort((a, b) => b.games - a.games)
+          .slice(0, 5)
+          .map(h => {
+            const hwr = h.games > 0 ? Math.round((h.wins / h.games) * 100) : 0;
+            const hkda = `${h.avg_kills}/${h.avg_deaths}/${h.avg_assists}`;
+            return `${h.hero_name} ${h.games}g ${hwr}%WR (${hkda} KDA)`;
+          })
+          .join(', ');
+
+        // Best heroes by win rate (min 2 games)
+        const bestHeroes = (hp.heroes || [])
+          .filter(h => h.games >= 2)
+          .sort((a, b) => (b.wins / b.games) - (a.wins / a.games))
+          .slice(0, 3)
+          .map(h => `${h.hero_name} ${Math.round((h.wins / h.games) * 100)}%WR`)
+          .join(', ');
+
+        const lines = [
+          `[${name}] ${lp.mmr} MMR | ${lp.wins}W ${lp.losses}L (${wr}%WR)${statParts ? ' | ' + statParts : ''}`,
+          positions ? `  Positions: ${positions}` : '',
+          heroes ? `  Most picked: ${heroes}` : '',
+          bestHeroes ? `  Best WR heroes: ${bestHeroes}` : '',
+        ].filter(Boolean);
+        return lines.join('\n');
       }).join('\n');
 
-      // All heroes
-      const allHeroes = heroStats.map(h =>
+      // === SERVER-WIDE HERO STATS ===
+      const heroLines = heroStats.map(h =>
         `${h.hero_name}: ${h.games}g ${h.win_rate}%WR`
       ).join(', ');
 
-      // Recent matches
+      // === RECENT MATCHES ===
       const recentMatchLines = recentMatches.map(m => {
         const date = new Date(m.date).toLocaleDateString('en-AU');
         const dur = m.duration ? `${Math.round(m.duration / 60)}min` : '';
-        return `${date}: ${m.radiantWin ? 'Radiant' : 'Dire'} win${dur ? ' (' + dur + ')' : ''}${m.lobbyName ? ' — ' + m.lobbyName : ''}`;
+        return `${date}: ${m.radiantWin ? 'Radiant' : 'Dire'} win${dur ? ' (' + dur + ')' : ''}${m.lobbyName ? ' | ' + m.lobbyName : ''}`;
       }).join('\n');
 
       _chatContextCache = [
-        `OCE Dota 2 Inhouse Community | Total matches: ${matchCount} | Players: ${leaderboard.length}`,
+        `OCE Dota 2 Inhouse Stats Site | Total matches (current season): ${matchCount} | Registered players: ${leaderboard.length}`,
         '',
-        leaderboard.length > 0 ? `=== LEADERBOARD (TrueSkill MMR) ===\n${allPlayers}` : '',
-        overallPlayers.length > 0 ? `\n=== PLAYER STATS (per-game averages) ===\n${playerDetails}` : '',
-        allHeroes ? `\n=== HERO STATS ===\n${allHeroes}` : '',
-        recentMatchLines ? `\n=== RECENT MATCHES (last 10) ===\n${recentMatchLines}` : '',
+        leaderboard.length > 0 ? `=== LEADERBOARD (TrueSkill MMR) ===\n${leaderboardLines}` : 'No matches recorded yet.',
+        leaderboard.length > 0 ? `\n=== FULL PLAYER PROFILES ===\n${playerProfileLines}` : '',
+        heroLines ? `\n=== SERVER HERO STATS ===\n${heroLines}` : '',
+        recentMatchLines ? `\n=== RECENT MATCHES ===\n${recentMatchLines}` : '',
       ].filter(Boolean).join('\n');
+
       _chatContextExpiry = now + 5 * 60 * 1000;
     } catch (err) {
       console.error('[Chat] getServerContext error:', err.message);
