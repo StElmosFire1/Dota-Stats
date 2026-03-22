@@ -44,6 +44,8 @@ outputType = "console"
 
 [userenv.shared]
 SHEET_ID = "1EjFnAnEkDkbgh4gSCmP2xwTZiAlUDsCCHLsrLShhAcE"
+ANNOUNCE_CHANNEL_ID = "1380084621676646453"
+WEEKLY_RECAP_CHANNEL_ID = "1380084621676646453"
 
 [[ports]]
 localPort = 3000
