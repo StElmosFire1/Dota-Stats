@@ -43,7 +43,7 @@ function TierBadge({ mmr }) {
 }
 
 function StreakBadge({ streak }) {
-  if (!streak || Math.abs(streak) < 2) return null;
+  if (!streak) return null;
   const isWin = streak > 0;
   return (
     <span
@@ -106,6 +106,10 @@ export default function Leaderboard() {
         <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4, whiteSpace: 'nowrap' }}>→ best</span>
       </div>
 
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, marginTop: -8 }}>
+        Ranked by TrueSkill MMR — beating stronger opponents earns more rating than raw win rate.
+      </p>
+
       {data.leaderboard.length === 0 ? (
         <div className="empty-state">
           <p>No ratings yet. Play some matches to populate the leaderboard!</p>
@@ -146,7 +150,7 @@ export default function Leaderboard() {
                     <td className="col-stat">{p.games_played}</td>
                     <td className="col-stat">{winRate}%</td>
                     <td className="col-stat">
-                      {p.streak && Math.abs(p.streak) >= 2
+                      {p.streak
                         ? <StreakBadge streak={p.streak} />
                         : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
                     </td>
