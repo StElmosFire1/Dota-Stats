@@ -30,21 +30,13 @@ async function main() {
     console.error('[Startup] Database init failed:', err.message);
   }
 
-  // --- Auto-seed patch notes if table is empty ---
+  // --- Auto-seed patch notes on every startup (upsert by version) ---
   if (startupStatus.database) {
     try {
-      const existing = await db.getPatchNotes();
-      if (existing.length === 0) {
-        console.log('[Startup] No patch notes found — auto-seeding...');
-        const { notes: seedNotes } = require('../scripts/seed-patch-notes');
-        for (const note of seedNotes) {
-          await db.createPatchNote(note);
-          await new Promise(r => setTimeout(r, 50));
-        }
-        console.log(`[Startup] Seeded ${seedNotes.length} patch notes.`);
-      }
+      const patchNotesSeed = require('./data/patchNotes');
+      await db.seedPatchNotes(patchNotesSeed);
     } catch (err) {
-      console.error('[Startup] Patch note auto-seed failed:', err.message);
+      console.error('[Startup] Patch note seed failed:', err.message);
     }
   }
 

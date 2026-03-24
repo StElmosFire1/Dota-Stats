@@ -445,6 +445,10 @@ async function init() {
       END $$;
     `);
 
+    await p.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_patch_notes_version ON patch_notes(version);
+    `);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -2578,6 +2582,21 @@ async function deletePatchNote(id) {
   await p.query(`DELETE FROM patch_notes WHERE id = $1`, [id]);
 }
 
+async function seedPatchNotes(notes) {
+  const p = getPool();
+  for (const note of notes) {
+    await p.query(`
+      INSERT INTO patch_notes (version, title, content, author)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (version) DO UPDATE
+        SET title = EXCLUDED.title,
+            content = EXCLUDED.content,
+            author = EXCLUDED.author
+    `, [note.version, note.title, note.content, note.author || 'System']);
+  }
+  console.log(`[DB] Patch notes seeded (${notes.length} entries).`);
+}
+
 async function getPlayerNemesis(accountId) {
   const p = getPool();
   // Aggregate the killed_by JSONB across all non-legacy matches for this player
@@ -3060,6 +3079,7 @@ module.exports = {
   getPatchNotes,
   getPatchNote,
   createPatchNote,
+  seedPatchNotes,
   updatePatchNote,
   deletePatchNote,
 };
