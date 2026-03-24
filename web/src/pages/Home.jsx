@@ -51,8 +51,6 @@ export default function Home() {
   const [stats, setStats] = useState(null);
   const [recap, setRecap] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [genError, setGenError] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -64,26 +62,6 @@ export default function Home() {
       setLoading(false);
     });
   }, []);
-
-  async function handleGenerateRecap() {
-    const key = prompt('Enter the admin key to generate a recap:');
-    if (!key) return;
-    setGenerating(true);
-    setGenError(null);
-    try {
-      const res = await fetch('/api/generate-recap', {
-        method: 'POST',
-        headers: { 'x-upload-key': key },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      setRecap(data);
-    } catch (e) {
-      setGenError(e.message);
-    } finally {
-      setGenerating(false);
-    }
-  }
 
   const totals = stats?.totals || {};
   const recentMatches = stats?.recentMatches || [];
@@ -131,26 +109,14 @@ export default function Home() {
 
         {/* Weekly AI Recap */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 22, gridColumn: recap?.ai_blurb ? 'span 2' : 'span 1' }}>
-          <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
             📊 Weekly Recap
             {recap?.generated_at && (
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
                 generated {fmtDate(recap.generated_at)}
               </span>
             )}
-            <button
-              onClick={handleGenerateRecap}
-              disabled={generating}
-              style={{
-                marginLeft: 'auto', fontSize: 11, padding: '3px 10px',
-                background: 'var(--bg-hover)', border: '1px solid var(--border)',
-                borderRadius: 6, color: 'var(--text-secondary)', cursor: 'pointer',
-              }}
-            >
-              {generating ? '⏳ Generating…' : '⚙️ Generate Now'}
-            </button>
           </h2>
-          {genError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>Error: {genError}</div>}
           {recap?.ai_blurb ? (
             <div>
               <p style={{ margin: '0 0 14px', fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.7, fontStyle: 'italic' }}>
