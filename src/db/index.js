@@ -2873,7 +2873,18 @@ async function getHomeStats() {
           GROUP BY ps2.hero_name ORDER BY COUNT(*) DESC LIMIT 1) AS most_played_hero
     `),
     p.query(`
-      SELECT m.match_id, m.date, m.radiant_win, m.duration, m.lobby_name
+      SELECT
+        m.match_id, m.date, m.radiant_win, m.duration, m.lobby_name,
+        (SELECT SUM(ps2.kills) FROM player_stats ps2 WHERE ps2.match_id = m.match_id)::int AS total_kills,
+        (SELECT ps3.persona_name FROM player_stats ps3
+          WHERE ps3.match_id = m.match_id AND ps3.kills IS NOT NULL
+          ORDER BY ps3.kills DESC LIMIT 1) AS top_killer,
+        (SELECT ps4.kills FROM player_stats ps4
+          WHERE ps4.match_id = m.match_id AND ps4.kills IS NOT NULL
+          ORDER BY ps4.kills DESC LIMIT 1)::int AS top_kills,
+        (SELECT ps5.hero_name FROM player_stats ps5
+          WHERE ps5.match_id = m.match_id AND ps5.kills IS NOT NULL
+          ORDER BY ps5.kills DESC LIMIT 1) AS top_killer_hero
       FROM matches m
       WHERE m.is_legacy = false
       ORDER BY m.date DESC

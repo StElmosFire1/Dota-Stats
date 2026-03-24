@@ -23,28 +23,39 @@ function StatCard({ label, value, sub, icon }) {
   );
 }
 
-function QuickLink({ to, icon, label, desc }) {
-  return (
-    <Link to={to} style={{ textDecoration: 'none', flex: 1, minWidth: 160 }}>
-      <div style={{
-        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-        padding: '16px 18px', transition: 'border-color 0.15s, background 0.15s',
-        cursor: 'pointer',
-      }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover)'; }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-card)'; }}
-      >
-        <div style={{ fontSize: 20, marginBottom: 6 }}>{icon}</div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>{label}</div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{desc}</div>
-      </div>
-    </Link>
-  );
-}
-
 function fmtDuration(s) {
   if (!s) return '—';
   return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+}
+
+function MatchRow({ m }) {
+  const winner = m.radiant_win ? 'Radiant' : 'Dire';
+  const winColor = m.radiant_win ? 'var(--accent-green)' : 'var(--accent-red)';
+  const killerHero = m.top_killer_hero ? formatHeroName(m.top_killer_hero) : null;
+  return (
+    <Link to={`/match/${m.match_id}`} style={{
+      display: 'grid', gridTemplateColumns: '110px 90px 70px 1fr 80px',
+      alignItems: 'center', gap: 12,
+      padding: '10px 14px', borderRadius: 8,
+      background: 'var(--bg-hover)', textDecoration: 'none',
+      border: '1px solid transparent', transition: 'border-color 0.15s',
+    }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
+    >
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(m.date)}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: winColor }}>{winner} Win</span>
+      <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{fmtDuration(m.duration)}</span>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {m.top_killer && m.top_kills != null
+          ? <>⚔️ <strong style={{ color: 'var(--text-primary)' }}>{m.top_killer}</strong>{killerHero ? ` · ${killerHero}` : ''} · {m.top_kills}k</>
+          : null}
+      </span>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>
+        {m.total_kills != null ? `${m.total_kills} kills` : ''}
+      </span>
+    </Link>
+  );
 }
 
 export default function Home() {
@@ -161,23 +172,7 @@ export default function Home() {
               <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No matches recorded yet.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {recentMatches.map(m => (
-                  <Link key={m.match_id} to={`/match/${m.match_id}`} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 12px', borderRadius: 8,
-                    background: 'var(--bg-hover)', textDecoration: 'none',
-                    border: '1px solid transparent', transition: 'border-color 0.15s',
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
-                  >
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{fmtDate(m.date)}</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: m.radiant_win ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                      {m.radiant_win ? 'Radiant' : 'Dire'} Win
-                    </span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDuration(m.duration)}</span>
-                  </Link>
-                ))}
+                {recentMatches.map(m => <MatchRow key={m.match_id} m={m} />)}
               </div>
             )}
           </div>
@@ -191,40 +186,10 @@ export default function Home() {
             🕐 Recent Matches
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {recentMatches.map(m => (
-              <Link key={m.match_id} to={`/match/${m.match_id}`} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', borderRadius: 8, background: 'var(--bg-hover)',
-                textDecoration: 'none', border: '1px solid transparent', transition: 'border-color 0.15s',
-              }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
-              >
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{fmtDate(m.date)}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: m.radiant_win ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                  {m.radiant_win ? 'Radiant' : 'Dire'} Win
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDuration(m.duration)}</span>
-              </Link>
-            ))}
+            {recentMatches.map(m => <MatchRow key={m.match_id} m={m} />)}
           </div>
         </div>
       )}
-
-      {/* Quick navigation */}
-      <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 14px' }}>
-        Explore
-      </h2>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 28 }}>
-        <QuickLink to="/leaderboard" icon="🏆" label="Leaderboard" desc="TrueSkill MMR rankings" />
-        <QuickLink to="/players" icon="👥" label="Players" desc="Individual profiles & stats" />
-        <QuickLink to="/heroes" icon="🦸" label="Heroes" desc="Pick rates, win rates, KDA" />
-        <QuickLink to="/matches" icon="🎮" label="Matches" desc="Full match history" />
-        <QuickLink to="/synergy" icon="🤝" label="Synergy" desc="Teammate & opponent win rates" />
-        <QuickLink to="/head-to-head" icon="⚔️" label="Head to Head" desc="Direct player matchups" />
-        <QuickLink to="/draft-assistant" icon="📋" label="Draft Assistant" desc="Hero pick & ban suggestions" />
-        <QuickLink to="/patch-notes" icon="📝" label="Patch Notes" desc="Latest game updates" />
-      </div>
 
     </div>
   );
