@@ -10,7 +10,7 @@ const { rateLimit } = require('express-rate-limit');
 const db = require('../db');
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
-const { generateChatResponse } = require('../services/groqService');
+const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/groqService');
 
 const CHUNK_DIR = '/tmp/replay-chunks';
 const UPLOAD_DIR = '/tmp/replay-uploads';
@@ -1202,6 +1202,38 @@ NOTES
       res.json(recap || {});
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch latest recap' });
+    }
+  });
+
+  router.post('/generate-recap', authMiddleware, express.json(), async (req, res) => {
+    try {
+      const [recap, fun] = await Promise.all([
+        db.getWeeklyRecap(null),
+        db.getFunRecapStats(null),
+      ]);
+      const { matches, top_performers } = recap;
+      if (!matches || matches.length === 0) {
+        return res.status(400).json({ error: 'No matches in the last 7 days to recap.' });
+      }
+      const aiBlurb = await generateWeeklyRecapBlurb({
+        matches,
+        topPerformers: top_performers,
+        fun,
+      });
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      await db.saveWeeklyRecap({
+        matchesCount: matches.length,
+        aiBlurb: aiBlurb || null,
+        topPerformers: top_performers || [],
+        funHighlights: fun || {},
+        periodStart: weekAgo,
+        periodEnd: new Date(),
+      });
+      const saved = await db.getLatestWeeklyRecap();
+      res.json(saved || {});
+    } catch (err) {
+      console.error('[API] generate-recap error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to generate recap' });
     }
   });
 
