@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getHomeStats, getLatestRecap } from '../api';
+import { getHeroName } from '../heroNames';
+
+function formatHeroName(raw) {
+  if (!raw) return '—';
+  if (raw.startsWith('npc_dota_hero_')) {
+    return raw.replace('npc_dota_hero_', '').replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return raw;
+}
 
 function StatCard({ label, value, sub, icon }) {
   return (
@@ -100,7 +110,7 @@ export default function Home() {
           <StatCard icon="🎮" label="Total Matches" value={totals.total_matches} />
           <StatCard icon="👥" label="Players" value={totals.total_players} />
           <StatCard icon="📅" label="This Week" value={totals.matches_this_week} sub="matches played" />
-          <StatCard icon="🦸" label="Most Played Hero" value={totals.most_played_hero} />
+          <StatCard icon="🦸" label="Most Played Hero" value={formatHeroName(totals.most_played_hero)} />
         </div>
       )}
 
