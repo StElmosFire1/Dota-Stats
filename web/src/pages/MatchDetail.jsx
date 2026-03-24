@@ -545,6 +545,7 @@ export default function MatchDetail() {
             {new Date(match.date).toLocaleDateString('en-AU', {
               day: 'numeric', month: 'short', year: 'numeric',
               hour: '2-digit', minute: '2-digit',
+              timeZone: 'Australia/Sydney',
             })}
           </span>
           {match.parse_method && <span className="parse-badge">{match.parse_method}</span>}

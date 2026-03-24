@@ -1386,6 +1386,21 @@ class DiscordBot {
 
       embed.setFooter({ text: 'Last 7 days \u2022 Use !top for full leaderboard' }).setTimestamp();
       await msg.reply({ embeds: [embed] });
+
+      // Save to DB so the landing page can display the latest recap
+      try {
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        await db.saveWeeklyRecap({
+          matchesCount: matches.length,
+          aiBlurb: aiBlurb || null,
+          topPerformers: top_performers || [],
+          funHighlights: fun || {},
+          periodStart: weekAgo,
+          periodEnd: new Date(),
+        });
+      } catch (saveErr) {
+        console.error('[Discord] Failed to save recap to DB:', saveErr.message);
+      }
     } catch (err) {
       console.error('[Discord] Recap error:', err);
       await msg.reply('Failed to fetch weekly recap.');

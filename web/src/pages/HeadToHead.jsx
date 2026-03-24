@@ -136,7 +136,7 @@ export default function HeadToHead() {
                       const bImg = getHeroImageUrl(m.b_hero_id, m.b_hero);
                       return (
                         <tr key={m.match_id}>
-                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{m.date ? new Date(m.date).toLocaleDateString() : '—'}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{m.date ? new Date(m.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Australia/Sydney' }) : '—'}</td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               {aImg && <img src={aImg} alt="" style={{ width: 24, height: 24, borderRadius: 4 }} />}

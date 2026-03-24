@@ -12,8 +12,10 @@ function formatDuration(seconds) {
 
 function formatDate(dateStr) {
   if (!dateStr) return '--';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(dateStr).toLocaleDateString('en-AU', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    timeZone: 'Australia/Sydney',
+  });
 }
 
 export default function MatchList() {

@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getHomeStats, getLatestRecap } from '../api';
-import { getHeroName } from '../heroNames';
+import { fmtDate } from '../utils/dates';
 
 function formatHeroName(raw) {
   if (!raw) return '—';
-  if (raw.startsWith('npc_dota_hero_')) {
-    return raw.replace('npc_dota_hero_', '').replace(/_/g, ' ')
-      .replace(/\b\w/g, c => c.toUpperCase());
-  }
-  return raw;
+  const clean = raw.replace(/^npc_dota_hero_/, '').replace(/_/g, ' ');
+  return clean.replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function StatCard({ label, value, sub, icon }) {
@@ -48,12 +45,6 @@ function QuickLink({ to, icon, label, desc }) {
 function fmtDuration(s) {
   if (!s) return '—';
   return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
-}
-
-function fmtDate(d) {
-  if (!d) return '';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('en-AU', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 export default function Home() {

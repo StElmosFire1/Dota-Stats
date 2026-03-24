@@ -20,7 +20,7 @@ function RatingChart({ history }) {
   const data = history.map((h, i) => ({
     idx: i + 1,
     mmr: Math.round(h.mmr),
-    date: h.recorded_at ? new Date(h.recorded_at).toLocaleDateString() : `#${i+1}`,
+    date: h.recorded_at ? new Date(h.recorded_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Australia/Sydney' }) : `#${i+1}`,
   }));
   const mmrValues = data.map(d => d.mmr);
   const minMmr = Math.min(...mmrValues);

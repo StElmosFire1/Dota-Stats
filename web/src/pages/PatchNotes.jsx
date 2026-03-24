@@ -11,6 +11,7 @@ function formatDate(str) {
   if (!str) return '';
   return new Date(str).toLocaleDateString('en-AU', {
     day: 'numeric', month: 'long', year: 'numeric',
+    timeZone: 'Australia/Sydney',
   });
 }
 
