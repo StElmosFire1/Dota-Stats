@@ -399,6 +399,19 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_payout_categories_season ON season_payout_categories(season_id)`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS weekly_recaps (
+        id SERIAL PRIMARY KEY,
+        generated_at TIMESTAMPTZ DEFAULT NOW(),
+        matches_count INTEGER DEFAULT 0,
+        ai_blurb TEXT,
+        top_performers JSONB,
+        fun_highlights JSONB,
+        period_start TIMESTAMPTZ,
+        period_end TIMESTAMPTZ
+      )
+    `);
+
     // Fix column types that may be wrong on older DB instances (CREATE TABLE IF NOT EXISTS doesn't alter existing columns)
     await p.query(`
       DO $$
@@ -2844,6 +2857,72 @@ async function getDraftSuggestions(allyHeroIds, enemyHeroIds, bannedHeroIds, pos
   }).sort((a, b) => b.score - a.score).slice(0, 30);
 }
 
+async function getHomeStats() {
+  const p = getPool();
+  const [totals, recentMatches, hotStreaks] = await Promise.all([
+    p.query(`
+      SELECT
+        (SELECT COUNT(*) FROM matches WHERE is_legacy = false) AS total_matches,
+        (SELECT COUNT(DISTINCT account_id) FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id WHERE m.is_legacy = false AND ps.account_id != 0) AS total_players,
+        (SELECT COUNT(*) FROM matches WHERE is_legacy = false AND date >= NOW() - INTERVAL '7 days') AS matches_this_week,
+        (SELECT ps.hero_name FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id WHERE m.is_legacy = false AND ps.hero_name IS NOT NULL GROUP BY ps.hero_name ORDER BY COUNT(*) DESC LIMIT 1) AS most_played_hero
+    `),
+    p.query(`
+      SELECT m.match_id, m.date, m.radiant_win, m.duration, m.lobby_name,
+        (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count
+      FROM matches m WHERE m.is_legacy = false
+      ORDER BY m.date DESC LIMIT 5
+    `),
+    p.query(`
+      SELECT
+        COALESCE(n.nickname, ps.persona_name) AS player_name,
+        ps.account_id,
+        streak_data.streak
+      FROM (
+        SELECT account_id, streak FROM (
+          SELECT account_id,
+            SUM(CASE WHEN won THEN 1 ELSE 0 END) FILTER (WHERE rn <= streak_len) as streak,
+            MAX(streak_len) as streak_len
+          FROM (
+            SELECT ps.account_id,
+              CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN true ELSE false END as won,
+              ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.date DESC) as rn,
+              COUNT(*) OVER (PARTITION BY ps.account_id) as streak_len
+            FROM player_stats ps
+            JOIN matches m ON m.match_id = ps.match_id
+            WHERE m.is_legacy = false AND ps.account_id != 0
+          ) sub WHERE won = true AND rn = 1
+        ) s2
+        WHERE streak >= 3
+        LIMIT 5
+      ) streak_data
+      JOIN (SELECT DISTINCT account_id, persona_name FROM player_stats WHERE account_id != 0) ps ON ps.account_id = streak_data.account_id
+      LEFT JOIN nicknames n ON n.account_id = streak_data.account_id
+    `),
+  ]);
+  return {
+    totals: totals.rows[0] || {},
+    recentMatches: recentMatches.rows,
+    hotStreaks: hotStreaks.rows,
+  };
+}
+
+async function saveWeeklyRecap({ matchesCount, aiBlurb, topPerformers, funHighlights, periodStart, periodEnd }) {
+  const p = getPool();
+  await p.query(`
+    INSERT INTO weekly_recaps (matches_count, ai_blurb, top_performers, fun_highlights, period_start, period_end)
+    VALUES ($1, $2, $3, $4, $5, $6)
+  `, [matchesCount, aiBlurb, JSON.stringify(topPerformers), JSON.stringify(funHighlights), periodStart, periodEnd]);
+}
+
+async function getLatestWeeklyRecap() {
+  const p = getPool();
+  const res = await p.query(`
+    SELECT * FROM weekly_recaps ORDER BY generated_at DESC LIMIT 1
+  `);
+  return res.rows[0] || null;
+}
+
 async function findDuplicateMatches() {
   const p = getPool();
   const result = await p.query(`
@@ -2985,6 +3064,9 @@ module.exports = {
   findDuplicateMatches,
   getPlayerCurrentStreak,
   getPlayerNemesis,
+  getHomeStats,
+  saveWeeklyRecap,
+  getLatestWeeklyRecap,
   getPatchNotes,
   getPatchNote,
   createPatchNote,

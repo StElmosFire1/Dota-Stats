@@ -466,3 +466,15 @@ export async function steamLogout() {
   const res = await fetch(BASE + '/auth/logout', { method: 'POST' });
   return res.ok;
 }
+
+export async function getHomeStats() {
+  return fetchJson('/home-stats');
+}
+
+export async function getLatestRecap() {
+  return fetchJson('/latest-recap');
+}
+
+export async function getPlayerNemesis(accountId) {
+  return fetchJson(`/player/${accountId}/nemesis`);
+}

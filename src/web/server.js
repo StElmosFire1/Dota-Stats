@@ -1186,6 +1186,35 @@ NOTES
     }
   });
 
+  router.get('/home-stats', async (req, res) => {
+    try {
+      const data = await db.getHomeStats();
+      res.json(data);
+    } catch (err) {
+      console.error('[API] home-stats error:', err);
+      res.status(500).json({ error: 'Failed to fetch home stats' });
+    }
+  });
+
+  router.get('/latest-recap', async (req, res) => {
+    try {
+      const recap = await db.getLatestWeeklyRecap();
+      res.json(recap || {});
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch latest recap' });
+    }
+  });
+
+  router.get('/player/:id/nemesis', async (req, res) => {
+    try {
+      const accountId = BigInt(req.params.id);
+      const nemesis = await db.getPlayerNemesis(accountId);
+      res.json(nemesis);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch nemesis data' });
+    }
+  });
+
   router.get('/admin/duplicate-matches', authMiddleware, async (req, res) => {
     try {
       const duplicates = await db.findDuplicateMatches();

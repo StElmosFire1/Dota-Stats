@@ -1439,6 +1439,21 @@ class DiscordBot {
         fun,
       });
 
+      // Save recap to DB for display on landing page
+      try {
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        await db.saveWeeklyRecap({
+          matchesCount: matches.length,
+          aiBlurb: aiBlurb || null,
+          topPerformers: top_performers || [],
+          funHighlights: fun || {},
+          periodStart: weekAgo,
+          periodEnd: new Date(),
+        });
+      } catch (saveErr) {
+        console.error('[Discord] Failed to save weekly recap to DB:', saveErr.message);
+      }
+
       const embed = new EmbedBuilder()
         .setTitle('\u{1F4CA} Weekly Recap \u2014 Automated')
         .setColor(0x3b82f6)

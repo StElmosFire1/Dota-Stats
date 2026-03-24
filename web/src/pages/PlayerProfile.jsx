@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis } from '../api';
 import { getHeroName } from '../heroNames';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -117,6 +117,7 @@ export default function PlayerProfile() {
   const [positions, setPositions] = useState([]);
   const [ratingHistory, setRatingHistory] = useState([]);
   const [achievements, setAchievements] = useState([]);
+  const [nemesis, setNemesis] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -126,11 +127,13 @@ export default function PlayerProfile() {
       getPlayerPositions(accountId).catch(() => ({ positions: [] })),
       getPlayerRatingHistory(accountId).catch(() => ({ history: [] })),
       getPlayerAchievements(accountId).catch(() => ({ achievements: [] })),
-    ]).then(([playerData, posData, histData, achData]) => {
+      getPlayerNemesis(accountId).catch(() => []),
+    ]).then(([playerData, posData, histData, achData, nemData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
       setAchievements(achData?.achievements || []);
+      setNemesis(Array.isArray(nemData) ? nemData : []);
     }).finally(() => setLoading(false));
   }, [accountId]);
 
@@ -192,6 +195,39 @@ export default function PlayerProfile() {
       <RatingChart history={ratingHistory} />
 
       <AchievementBadges achievements={achievements} />
+
+      {nemesis.length > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-title">☠️ Nemesis</h2>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, marginTop: -8 }}>
+            Players who have killed this player the most across all matches.
+          </p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {nemesis.map((n, i) => {
+              const medals = ['💀', '🩸', '⚔️'];
+              return (
+                <div key={n.killer_account_id} style={{
+                  background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+                  padding: '14px 18px', minWidth: 160, flex: 1,
+                }}>
+                  <div style={{ fontSize: 20, marginBottom: 6 }}>{medals[i] || '⚔️'}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+                    {n.killer_name || `Player ${n.killer_account_id}`}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--accent-red)', fontWeight: 600 }}>
+                    {n.total_kills} kills
+                  </div>
+                  {n.last_hero && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                      Last seen on {n.last_hero}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {averages && totalMatches > 0 && (
         <section>

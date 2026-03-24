@@ -24,6 +24,7 @@ import AdminLoginModal from './components/AdminLoginModal';
 import SuperuserLoginModal from './components/SuperuserLoginModal';
 import StatsEditor from './pages/StatsEditor';
 import PatchNotes from './pages/PatchNotes';
+import Home from './pages/Home';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
@@ -228,7 +229,8 @@ function Nav() {
         <span className="brand-icon">&#9876;</span> Inhouse Stats
       </Link>
       <div className="nav-links">
-        <Link to="/" className={isActive('/')}>Leaderboard</Link>
+        <Link to="/" className={isActive('/')}>Home</Link>
+        <Link to="/leaderboard" className={isActive('/leaderboard')}>Leaderboard</Link>
         <Link to="/stats" className={isActive('/stats')}>Stats</Link>
         <Link to="/positions" className={isActive('/positions')}>Positions</Link>
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
@@ -268,7 +270,7 @@ export default function App() {
             <UploadIndicator />
             <main className="container">
               <Routes>
-                <Route path="/" element={<Leaderboard />} />
+                <Route path="/" element={<Home />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
                 <Route path="/matches" element={<MatchList />} />
                 <Route path="/match/:matchId" element={<MatchDetail />} />
