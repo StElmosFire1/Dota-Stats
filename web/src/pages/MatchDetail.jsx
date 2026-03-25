@@ -43,7 +43,7 @@ function getLaneResult(advantage) {
   if (advantage > 2000) return { label: 'Win', short: 'W', color: '#4ade80' };
   if (advantage > 500) return { label: 'Slight Win', short: 'w', color: '#86efac' };
   if (advantage >= -500) return { label: 'Even', short: '~', color: '#94a3b8' };
-  if (advantage > -2000) return { label: 'Slight Loss', short: 'l', color: '#fca5a5' };
+  if (advantage > -2000) return { label: 'Slight Loss', short: 'L', color: '#fca5a5' };
   return { label: 'Loss', short: 'L', color: '#f87171' };
 }
 
@@ -112,7 +112,7 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
     const teamIdx = teamPlayers.indexOf(tp);
     const color = isRadiant ? RADIANT_COLORS[teamIdx % RADIANT_COLORS.length] : DIRE_COLORS[teamIdx % DIRE_COLORS.length];
     const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
-    const purchases = (tp.purchaseLog || []).filter(pu => pu.time >= 0);
+    const purchases = (tp.purchaseLog || []);
     return { name, color, purchases, slot: tp.slot };
   });
 
@@ -132,14 +132,14 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
             }} title={name}>{name}</div>
             <div style={{ flex: 1, position: 'relative', height: 26, background: '#0f172a', borderRadius: 4, overflow: 'visible' }}>
               {purchases.map((pu, j) => {
-                const pct = Math.min(100, (pu.time / (maxTime || 1)) * 100);
+                const pct = Math.min(100, (Math.max(0, pu.time) / (maxTime || 1)) * 100);
                 const label = pu.itemName.replace('item_', '').replace(/_/g, ' ');
                 const abbr = label.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
                 const iconUrl = getItemImageUrl(pu.itemName, null);
                 return (
                   <div
                     key={j}
-                    title={`${label} @ ${fmtTime(pu.time)}`}
+                    title={`${label} @ ${pu.time < 0 ? 'Pre-game' : fmtTime(pu.time)}`}
                     style={{
                       position: 'absolute',
                       left: `${pct}%`,
@@ -561,7 +561,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                 </>
               )}
               {hasLane && (
-                <th className="col-stat" title="Lane outcome at ~8 minutes (based on net worth comparison vs lane opponent). W=Win &gt;2k, w=Slight &gt;500, ~=Even, l=Slight Loss, L=Loss">Lane</th>
+                <th className="col-stat" title="Lane outcome at ~8 minutes (based on net worth comparison vs lane opponent). W=Win &gt;2k, w=Slight Win &gt;500, ~=Even, L=Loss (lighter = slight, darker = dominant)">Lane</th>
               )}
               {hasItems && <th className="col-items" style={{ minWidth: '260px' }} title="End-game inventory (6 slots) | Backpack (3 slots) | Aghs status">Items</th>}
             </tr>
