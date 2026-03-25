@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis } from '../api';
 import { getHeroName } from '../heroNames';
+import { formatHeroName } from '../utils/heroes';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -219,7 +220,7 @@ export default function PlayerProfile() {
                   </div>
                   {n.last_hero && (
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                      Last seen on {n.last_hero}
+                      Last seen on {formatHeroName(n.last_hero)}
                     </div>
                   )}
                 </div>

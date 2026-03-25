@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { getMatch } from '../api';
 import { useSuperuser } from '../context/SuperuserContext';
 import { ALL_HEROES, getHeroName, getHeroImageUrl } from '../heroNames';
+import { formatHeroName } from '../utils/heroes';
 
 const BASE = '/api';
 
@@ -392,7 +393,7 @@ export default function StatsEditor() {
                         <span style={{ color: isRadiant ? '#4caf50' : '#f44336', fontSize: '0.7rem' }}>{isRadiant ? 'R' : 'D'}</span>{' '}
                         <span style={{ color: '#e0e0e0' }}>{pl.persona_name || `Slot ${pl.slot}`}</span>
                       </td>
-                      <td style={{ ...cellStyle, padding: '4px 6px', color: '#aaa', whiteSpace: 'nowrap' }}>{pl.hero_name || '—'}</td>
+                      <td style={{ ...cellStyle, padding: '4px 6px', color: '#aaa', whiteSpace: 'nowrap' }}>{pl.hero_name ? formatHeroName(pl.hero_name) : '—'}</td>
                       {fields.map(f => (
                         <PlayerCell key={f.key} player={pl} field={f} onChange={(field, val) => updatePlayer(pl.slot, field, val)} />
                       ))}

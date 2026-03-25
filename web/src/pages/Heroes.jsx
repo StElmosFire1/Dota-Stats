@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getHeroStats } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
+import { formatHeroName } from '../utils/heroes';
 import { useSeason } from '../context/SeasonContext';
 
 const ALL_HEROES = {
@@ -202,7 +203,7 @@ export default function Heroes() {
                   <td className="col-player">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       {heroImg && <img src={heroImg} alt={h.hero_name} style={{ width: '28px', height: '16px', borderRadius: '2px' }} />}
-                      <span>{h.hero_name}</span>
+                      <span>{formatHeroName(h.hero_name)}</span>
                     </div>
                   </td>
                   <td className="col-stat">{h.games || ''}</td>
