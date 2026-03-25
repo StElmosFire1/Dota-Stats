@@ -32,28 +32,162 @@ function WardCanvas({ placements, selectedPlayer, wardType, playerList, mapLoade
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.fillRect(0, 0, W, H);
     } else {
-      ctx.fillStyle = '#0f2010';
+      // Dota 2 map fallback — approximate topology
+      ctx.fillStyle = '#0a1610';
       ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#1a4020';
-      ctx.fillRect(0, H * 0.55, W * 0.45, H * 0.45);
-      ctx.fillStyle = '#1a4020';
-      ctx.fillRect(W * 0.55, 0, W * 0.45, H * 0.45);
-      ctx.strokeStyle = '#2a6030';
-      ctx.lineWidth = 2;
+
+      // Base terrain
+      ctx.fillStyle = '#12241a';
+      ctx.fillRect(0, 0, W, H);
+
+      // Radiant jungle (safe lane — bottom right of radiant base)
+      ctx.fillStyle = '#0f2016';
+      ctx.fillRect(W * 0.28, H * 0.58, W * 0.24, H * 0.28);
+
+      // Dire jungle (safe lane — top left of dire base)
+      ctx.fillStyle = '#0d1a28';
+      ctx.fillRect(W * 0.48, H * 0.14, W * 0.24, H * 0.28);
+
+      // Radiant off-lane jungle (top left)
+      ctx.fillStyle = '#0f2016';
+      ctx.fillRect(W * 0.06, H * 0.20, W * 0.20, H * 0.30);
+
+      // Dire off-lane jungle (bottom right)
+      ctx.fillStyle = '#0d1a28';
+      ctx.fillRect(W * 0.74, H * 0.50, W * 0.20, H * 0.30);
+
+      // River (diagonal teal-green band)
+      ctx.fillStyle = '#0a3a2a';
       ctx.beginPath();
-      ctx.moveTo(0, H * 0.35);
-      ctx.lineTo(W * 0.35, H * 0.35);
-      ctx.lineTo(W * 0.35, 0);
-      ctx.stroke();
+      ctx.moveTo(W * 0.51, H * 1.0);
+      ctx.lineTo(W * 0.59, H * 1.0);
+      ctx.lineTo(W * 0.57, H * 0.77);
+      ctx.lineTo(W * 0.53, H * 0.57);
+      ctx.lineTo(W * 0.41, H * 0.43);
+      ctx.lineTo(W * 0.38, H * 0.23);
+      ctx.lineTo(W * 0.42, H * 0.0);
+      ctx.lineTo(W * 0.34, H * 0.0);
+      ctx.lineTo(W * 0.30, H * 0.22);
+      ctx.lineTo(W * 0.33, H * 0.43);
+      ctx.lineTo(W * 0.46, H * 0.57);
+      ctx.lineTo(W * 0.49, H * 0.77);
+      ctx.lineTo(W * 0.45, H * 1.0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Bottom lane path (E-W along south)
+      ctx.fillStyle = '#2a2418';
       ctx.beginPath();
-      ctx.moveTo(W * 0.65, H);
-      ctx.lineTo(W * 0.65, H * 0.65);
-      ctx.lineTo(W, H * 0.65);
-      ctx.stroke();
+      ctx.moveTo(W * 0.01, H * 0.80);
+      ctx.lineTo(W * 0.44, H * 0.80);
+      ctx.lineTo(W * 0.51, H * 0.88);
+      ctx.lineTo(W * 0.91, H * 0.88);
+      ctx.lineTo(W * 0.91, H * 0.94);
+      ctx.lineTo(W * 0.50, H * 0.94);
+      ctx.lineTo(W * 0.42, H * 0.86);
+      ctx.lineTo(W * 0.01, H * 0.86);
+      ctx.closePath();
+      ctx.fill();
+
+      // Top lane path (N-S along west)
+      ctx.fillStyle = '#2a2418';
       ctx.beginPath();
-      ctx.moveTo(0, H * 0.5);
-      ctx.lineTo(W * 0.5, 0);
+      ctx.moveTo(W * 0.06, H * 0.99);
+      ctx.lineTo(W * 0.06, H * 0.55);
+      ctx.lineTo(W * 0.12, H * 0.50);
+      ctx.lineTo(W * 0.12, H * 0.06);
+      ctx.lineTo(W * 0.18, H * 0.06);
+      ctx.lineTo(W * 0.18, H * 0.52);
+      ctx.lineTo(W * 0.12, H * 0.57);
+      ctx.lineTo(W * 0.12, H * 0.99);
+      ctx.closePath();
+      ctx.fill();
+
+      // Mid lane (diagonal NW-SE)
+      ctx.fillStyle = '#2a2418';
+      ctx.beginPath();
+      ctx.moveTo(W * 0.16, H * 0.79);
+      ctx.lineTo(W * 0.24, H * 0.74);
+      ctx.lineTo(W * 0.74, H * 0.26);
+      ctx.lineTo(W * 0.80, H * 0.22);
+      ctx.lineTo(W * 0.86, H * 0.26);
+      ctx.lineTo(W * 0.78, H * 0.32);
+      ctx.lineTo(W * 0.28, H * 0.80);
+      ctx.lineTo(W * 0.20, H * 0.84);
+      ctx.closePath();
+      ctx.fill();
+
+      // Radiant base (bottom-left)
+      ctx.fillStyle = '#143020';
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      ctx.lineTo(0, H * 0.60);
+      ctx.lineTo(W * 0.20, H * 0.60);
+      ctx.lineTo(W * 0.28, H * 0.80);
+      ctx.lineTo(W * 0.28, H);
+      ctx.closePath();
+      ctx.fill();
+
+      // Dire base (top-right)
+      ctx.fillStyle = '#101428';
+      ctx.beginPath();
+      ctx.moveTo(W, 0);
+      ctx.lineTo(W, H * 0.40);
+      ctx.lineTo(W * 0.72, H * 0.40);
+      ctx.lineTo(W * 0.64, H * 0.22);
+      ctx.lineTo(W * 0.64, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Roshan pit (game ~168, 90 → canvas ~0.656, 0.648)
+      ctx.save();
+      ctx.fillStyle = '#b87000';
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.arc(W * 0.64, H * 0.65, W * 0.022, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Radiant ancient (game ~25,25 → canvas ~0.098,0.902)
+      ctx.save();
+      ctx.fillStyle = '#22dd44';
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.arc(W * 0.10, H * 0.90, W * 0.028, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#55ff77';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
+      ctx.restore();
+
+      // Dire ancient (game ~230,230 → canvas ~0.898,0.102)
+      ctx.save();
+      ctx.fillStyle = '#4466ff';
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.arc(W * 0.90, H * 0.10, W * 0.028, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#7799ff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+
+      // Labels
+      ctx.save();
+      ctx.font = `bold ${Math.floor(W * 0.023)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(80,255,120,0.40)';
+      ctx.fillText('RADIANT', W * 0.14, H * 0.96);
+      ctx.fillStyle = 'rgba(100,140,255,0.40)';
+      ctx.fillText('DIRE', W * 0.86, H * 0.04);
+      ctx.fillStyle = 'rgba(255,200,50,0.40)';
+      ctx.font = `${Math.floor(W * 0.019)}px sans-serif`;
+      ctx.fillText('ROSH', W * 0.64, H * 0.71);
+      ctx.restore();
     }
 
     const toShow = selectedPlayer === 'all'

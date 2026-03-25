@@ -190,7 +190,8 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
 
 function TimelineGraph({ timeline, allPlayers }) {
   const [metric, setMetric] = useState('nw');
-  const [showItems, setShowItems] = useState(true);
+  const [showItems, setShowItems] = useState(false);
+  const [hiddenPlayers, setHiddenPlayers] = useState(new Set());
   const itemsRef = useRef(null);
 
   const { chartData, playerKeys, maxTime } = useMemo(() => {
@@ -312,7 +313,6 @@ function TimelineGraph({ timeline, allPlayers }) {
               name,
             ]}
           />
-          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
           {roshanEvents.map((e, i) => (
             <ReferenceLine key={i} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
               label={{ value: '🐉', position: 'top', fontSize: 12 }} />
@@ -327,11 +327,39 @@ function TimelineGraph({ timeline, allPlayers }) {
               strokeWidth={1.5}
               dot={false}
               activeDot={{ r: 4 }}
+              hide={hiddenPlayers.has(key)}
             />
           ))}
         </LineChart>
       </ResponsiveContainer>
-      <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+        {playerKeys.map(({ key, name, color }) => {
+          const hidden = hiddenPlayers.has(key);
+          return (
+            <div
+              key={key}
+              onClick={() => setHiddenPlayers(prev => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key); else next.add(key);
+                return next;
+              })}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
+                opacity: hidden ? 0.35 : 1,
+                fontSize: 11, color: hidden ? '#64748b' : color,
+                padding: '2px 8px', borderRadius: 4, border: '1px solid',
+                borderColor: hidden ? '#334155' : `${color}55`,
+                background: hidden ? 'transparent' : `${color}11`,
+                userSelect: 'none', transition: 'all 0.15s',
+              }}
+            >
+              <div style={{ width: 14, height: 2, background: hidden ? '#64748b' : color, borderRadius: 1 }} />
+              {name}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 16, marginTop: 6, flexWrap: 'wrap' }}>
         {[['radiant', '#4ade80'], ['dire', '#f87171']].map(([team, color]) => (
           <div key={team} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
             <div style={{ width: 16, height: 2, background: color, borderRadius: 1 }} />

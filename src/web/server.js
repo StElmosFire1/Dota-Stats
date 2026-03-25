@@ -199,6 +199,11 @@ function createServer(startupStatus = {}) {
 
 
   let minimapCache = null;
+  const MINIMAP_URLS = [
+    'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/minimap/minimap.png',
+    'https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/minimap/minimap.png',
+    'https://www.opendota.com/public/images/map/minimap.png',
+  ];
   app.get('/minimap.png', async (req, res) => {
     try {
       if (minimapCache) {
@@ -207,9 +212,17 @@ function createServer(startupStatus = {}) {
         return res.send(minimapCache);
       }
       const fetch = require('node-fetch');
-      const r = await fetch('https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/minimap/minimap.png', { timeout: 10000 });
-      if (!r.ok) throw new Error(`CDN returned ${r.status}`);
-      const buf = await r.buffer();
+      let buf = null;
+      for (const url of MINIMAP_URLS) {
+        try {
+          const r = await fetch(url, { timeout: 8000 });
+          if (!r.ok) continue;
+          const b = await r.buffer();
+          // verify PNG magic bytes
+          if (b.length > 4 && b[0] === 0x89 && b[1] === 0x50) { buf = b; break; }
+        } catch (_) { /* try next */ }
+      }
+      if (!buf) throw new Error('All minimap sources failed');
       minimapCache = buf;
       res.set('Content-Type', 'image/png');
       res.set('Cache-Control', 'public, max-age=86400');
