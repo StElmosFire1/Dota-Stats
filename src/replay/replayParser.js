@@ -1208,6 +1208,33 @@ class ReplayParser {
       parseMethod: 'odota-parser',
       gameTimeline: {
         interval: 30,
+        players: playerList.map(p => {
+          const slot = p.slot;
+          const rawPurchases = itemPurchases[slot] || [];
+          const purchaseLog = rawPurchases.filter(pu => {
+            const n = pu.itemName;
+            if (!n) return false;
+            if (n.startsWith('item_recipe_')) return false;
+            const skip = ['item_tpscroll','item_ward_observer','item_ward_sentry','item_ward_dispenser',
+              'item_smoke_of_deceit','item_dust','item_clarity','item_flask',
+              'item_tango','item_enchanted_mango','item_faerie_fire','item_blood_grenade','item_tome_of_knowledge'];
+            if (skip.includes(n)) return false;
+            return true;
+          }).map(pu => ({ itemName: pu.itemName, time: pu.time || 0 }));
+          return {
+            slot,
+            name: p.personaname || '',
+            team: p.team,
+            samples: p.timelineSamples || [],
+            purchaseLog,
+            abilityLog: (abilityLevelups[slot] || []).map((a, idx) => ({
+              heroLevel: idx + 1,
+              abilityName: a.abilityName,
+              abilityLevel: a.abilityLevel,
+              time: a.time || 0,
+            })),
+          };
+        }),
         events: gameEvents.sort((a, b) => a.t - b.t),
       },
       laneOutcomes,

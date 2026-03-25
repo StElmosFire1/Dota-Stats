@@ -102,20 +102,99 @@ const METRIC_LABELS = {
   cs: 'Last Hits',
 };
 
+function ItemSwimLane({ players, allPlayers, maxTime }) {
+  const slotToName = {};
+  allPlayers.forEach(p => { slotToName[p.slot] = p.nickname || p.persona_name || `Player ${p.slot}`; });
+
+  const rows = players.map((tp, i) => {
+    const isRadiant = tp.team === 'radiant' || tp.slot < 5;
+    const teamPlayers = players.filter(p => (p.team === 'radiant' || p.slot < 5) === isRadiant);
+    const teamIdx = teamPlayers.indexOf(tp);
+    const color = isRadiant ? RADIANT_COLORS[teamIdx % RADIANT_COLORS.length] : DIRE_COLORS[teamIdx % DIRE_COLORS.length];
+    const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
+    const purchases = (tp.purchaseLog || []).filter(pu => pu.time >= 0);
+    return { name, color, purchases, slot: tp.slot };
+  });
+
+  if (rows.every(r => r.purchases.length === 0)) return null;
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+        Item Purchase Timings
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {rows.map(({ name, color, purchases, slot }) => (
+          <div key={slot} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 90, fontSize: 11, color, textAlign: 'right', flexShrink: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }} title={name}>{name}</div>
+            <div style={{ flex: 1, position: 'relative', height: 26, background: '#0f172a', borderRadius: 4, overflow: 'visible' }}>
+              {purchases.map((pu, j) => {
+                const pct = Math.min(100, (pu.time / (maxTime || 1)) * 100);
+                const label = pu.itemName.replace('item_', '').replace(/_/g, ' ');
+                const iconUrl = getItemImageUrl(pu.itemName, null);
+                return (
+                  <div
+                    key={j}
+                    title={`${label} @ ${fmtTime(pu.time)}`}
+                    style={{
+                      position: 'absolute',
+                      left: `${pct}%`,
+                      top: 0,
+                      transform: 'translateX(-50%)',
+                      zIndex: j,
+                    }}
+                  >
+                    {iconUrl ? (
+                      <img
+                        src={iconUrl}
+                        alt={label}
+                        style={{ width: 22, height: 16, borderRadius: 2, display: 'block', border: '1px solid #334155' }}
+                        onError={e => { e.target.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: 8, height: 8, borderRadius: '50%', background: color,
+                        border: '1px solid #334155', marginTop: 9,
+                      }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+          <div style={{ width: 90 }} />
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#475569' }}>
+            <span>0:00</span>
+            <span>{fmtTime(Math.round(maxTime / 2))}</span>
+            <span>{fmtTime(maxTime)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TimelineGraph({ timeline, allPlayers }) {
   const [metric, setMetric] = useState('nw');
+  const [showItems, setShowItems] = useState(true);
 
-  const { chartData, playerKeys } = useMemo(() => {
-    if (!timeline?.players?.length) return { chartData: [], playerKeys: [] };
+  const { chartData, playerKeys, maxTime } = useMemo(() => {
+    if (!timeline?.players?.length) return { chartData: [], playerKeys: [], maxTime: 0 };
 
     const slotToName = {};
-    allPlayers.forEach(p => { slotToName[p.slot] = p.persona_name || p.nickname || `Player ${p.slot}`; });
+    allPlayers.forEach(p => { slotToName[p.slot] = p.nickname || p.persona_name || `Player ${p.slot}`; });
 
     const timeSet = new Set();
     for (const tp of timeline.players) {
       (tp.samples || []).forEach(s => timeSet.add(s.t));
     }
     const times = [...timeSet].sort((a, b) => a - b);
+    const maxTime = times.length > 0 ? times[times.length - 1] : 0;
 
     const playerMap = {};
     for (const tp of timeline.players) {
@@ -129,9 +208,7 @@ function TimelineGraph({ timeline, allPlayers }) {
       const row = { t };
       for (const tp of timeline.players) {
         const s = playerMap[tp.slot][t];
-        const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
         row[`slot_${tp.slot}`] = s ? (s[metric] ?? 0) : 0;
-        row[`__name_${tp.slot}`] = name;
       }
       return row;
     });
@@ -145,13 +222,15 @@ function TimelineGraph({ timeline, allPlayers }) {
       return { key: `slot_${tp.slot}`, name, color };
     });
 
-    return { chartData, playerKeys };
+    return { chartData, playerKeys, maxTime };
   }, [timeline, metric, allPlayers]);
 
-  const killEvents = useMemo(() => {
+  const roshanEvents = useMemo(() => {
     if (!timeline?.events) return [];
-    return timeline.events.filter(e => e.type === 'roshan_kill');
+    return timeline.events.filter(e => e.type === 'roshan');
   }, [timeline]);
+
+  const hasPurchaseLogs = timeline?.players?.some(p => (p.purchaseLog || []).length > 0);
 
   if (!timeline?.players?.length) return null;
 
@@ -161,7 +240,7 @@ function TimelineGraph({ timeline, allPlayers }) {
         <h3 style={{ color: '#94a3b8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
           Game Timeline
         </h3>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {Object.entries(METRIC_LABELS).map(([k, label]) => (
             <button
               key={k}
@@ -177,6 +256,20 @@ function TimelineGraph({ timeline, allPlayers }) {
               {label}
             </button>
           ))}
+          {hasPurchaseLogs && (
+            <button
+              onClick={() => setShowItems(v => !v)}
+              style={{
+                padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
+                border: '1px solid',
+                borderColor: showItems ? '#10b981' : '#334155',
+                background: showItems ? '#065f46' : '#1e293b',
+                color: showItems ? '#6ee7b7' : '#94a3b8',
+              }}
+            >
+              🛒 Items
+            </button>
+          )}
         </div>
       </div>
       <ResponsiveContainer width="100%" height={320}>
@@ -187,7 +280,6 @@ function TimelineGraph({ timeline, allPlayers }) {
             tickFormatter={fmtTime}
             stroke="#475569"
             tick={{ fill: '#64748b', fontSize: 11 }}
-            label={{ value: 'Time', position: 'insideBottomRight', offset: -4, fill: '#475569', fontSize: 11 }}
           />
           <YAxis
             tickFormatter={metric === 'level' ? String : fmtLargeNum}
@@ -205,8 +297,9 @@ function TimelineGraph({ timeline, allPlayers }) {
             ]}
           />
           <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-          {killEvents.map((e, i) => (
-            <ReferenceLine key={i} x={e.t} stroke="#a855f7" strokeDasharray="4 2" label={{ value: '🐉', fontSize: 10 }} />
+          {roshanEvents.map((e, i) => (
+            <ReferenceLine key={i} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
+              label={{ value: '🐉', position: 'top', fontSize: 12 }} />
           ))}
           {playerKeys.map(({ key, name, color }) => (
             <Line
@@ -222,20 +315,23 @@ function TimelineGraph({ timeline, allPlayers }) {
           ))}
         </LineChart>
       </ResponsiveContainer>
-      <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
         {[['radiant', '#4ade80'], ['dire', '#f87171']].map(([team, color]) => (
           <div key={team} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
             <div style={{ width: 16, height: 2, background: color, borderRadius: 1 }} />
             {team.charAt(0).toUpperCase() + team.slice(1)}
           </div>
         ))}
-        {killEvents.length > 0 && (
+        {roshanEvents.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
             <div style={{ width: 1, height: 14, background: '#a855f7', borderRadius: 1 }} />
-            Roshan
+            Roshan kill
           </div>
         )}
       </div>
+      {showItems && hasPurchaseLogs && (
+        <ItemSwimLane players={timeline.players} allPlayers={allPlayers} maxTime={maxTime} />
+      )}
     </div>
   );
 }
@@ -508,15 +604,74 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
   );
 }
 
+function fmtAbilityName(name) {
+  if (!name) return '';
+  if (name.includes('special_bonus')) return 'Talent';
+  return name.replace(/^[^_]+_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function getAbilityIcon(name) {
+  if (!name) return null;
+  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/abilities/${name}.png`;
+}
+
 function SkillBuild({ abilities }) {
   if (!abilities || abilities.length === 0) return null;
   return (
-    <div className="skill-build">
-      {abilities.map((a, i) => (
-        <span key={i} className="skill-pip" title={`Lvl ${a.ability_level}: ${a.ability_name.replace('special_bonus_', 'talent: ')}`}>
-          {a.ability_name.includes('special_bonus') ? 'T' : a.ability_level}
-        </span>
-      ))}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'flex-start' }}>
+      {abilities.map((a, i) => {
+        const isTalent = a.ability_name?.includes('special_bonus');
+        const icon = getAbilityIcon(a.ability_name);
+        const label = fmtAbilityName(a.ability_name);
+        const heroLevel = i + 1;
+        const timeFmt = a.time > 0 ? ` @ ${Math.floor(a.time / 60)}:${String(a.time % 60).padStart(2, '0')}` : '';
+        return (
+          <div
+            key={i}
+            title={`Hero Level ${heroLevel} → ${label}${timeFmt}`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              padding: '3px 4px',
+              borderRadius: 4,
+              background: isTalent ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${isTalent ? '#7c3aed' : '#2d3748'}`,
+              minWidth: 34,
+              cursor: 'default',
+            }}
+          >
+            <div style={{ fontSize: 9, color: '#64748b', lineHeight: 1, fontWeight: 600 }}>
+              {heroLevel}
+            </div>
+            {isTalent ? (
+              <div style={{
+                width: 24, height: 24, background: '#7c3aed', borderRadius: 3,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 700, color: '#e9d5ff',
+              }}>T</div>
+            ) : icon ? (
+              <img
+                src={icon}
+                alt={label}
+                style={{ width: 24, height: 24, borderRadius: 3, objectFit: 'cover' }}
+                onError={e => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+                }}
+              />
+            ) : null}
+            <div style={{
+              fontSize: 8, color: '#475569', lineHeight: 1,
+              display: isTalent ? 'none' : 'block',
+              textAlign: 'center',
+            }}>
+              {'●'.repeat(Math.min(a.ability_level || 1, 7))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -750,13 +905,13 @@ export default function MatchDetail() {
 
       {allPlayers.some(p => p.abilities && p.abilities.length > 0) && (
         <div className="expanded-stats-section">
-          <h3>Skill Builds</h3>
+          <h3>Skill Builds <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— hover each cell for ability name & timing</span></h3>
           <div className="scoreboard-wrapper">
             <table className="scoreboard compact">
               <thead>
                 <tr>
                   <th className="col-player" title="Player name">Player</th>
-                  <th title="Order of ability level-ups throughout the game">Skill Order</th>
+                  <th title="Ability levelled at each hero level (1–25). Hover for details. Purple = Talent.">Ability per Hero Level →</th>
                 </tr>
               </thead>
               <tbody>
