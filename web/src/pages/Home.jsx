@@ -13,7 +13,8 @@ function StatCard({ label, value, sub, icon }) {
   return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-      padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 140,
+      padding: '20px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center',
+      textAlign: 'center', gap: 4, flex: 1, minWidth: 140,
     }}>
       <span style={{ fontSize: 22 }}>{icon}</span>
       <span style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>{value ?? '—'}</span>

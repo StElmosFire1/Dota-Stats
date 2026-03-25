@@ -299,8 +299,8 @@ export default function Heroes() {
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_tower_damage')} title="Average Tower Damage">
                 TD{sortIcon('avg_tower_damage')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_healing')} title="Average Hero Healing">
-                HH{sortIcon('avg_hero_healing')}
+              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_healing')} title="Average Healing done to allied heroes (excludes self-regeneration)">
+                Heal{sortIcon('avg_hero_healing')}
               </th>
             </tr>
           </thead>
