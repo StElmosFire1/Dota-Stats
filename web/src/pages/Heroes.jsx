@@ -299,9 +299,6 @@ export default function Heroes() {
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_tower_damage')} title="Average Tower Damage">
                 TD{sortIcon('avg_tower_damage')}
               </th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_healing')} title="Average Healing done to allied heroes (excludes self-regeneration)">
-                Heal{sortIcon('avg_hero_healing')}
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -346,7 +343,6 @@ export default function Heroes() {
                   <td className="col-stat gpm">{h.avg_gpm != null ? parseInt(h.avg_gpm).toLocaleString() : ''}</td>
                   <td className="col-stat">{h.avg_hero_damage != null ? parseInt(h.avg_hero_damage).toLocaleString() : ''}</td>
                   <td className="col-stat">{h.avg_tower_damage != null ? parseInt(h.avg_tower_damage).toLocaleString() : ''}</td>
-                  <td className="col-stat">{h.avg_hero_healing != null ? parseInt(h.avg_hero_healing).toLocaleString() : ''}</td>
                 </tr>
               );
             })}

@@ -848,7 +848,8 @@ class ReplayParser {
           slot = npcNameToSlot[e.attackername];
         }
         if (slot != null && slot >= 0 && slot < 10) {
-          if (e.targethero && !e.targetillusion) {
+          const isSelfHeal = !e.targetname || e.attackername === e.targetname;
+          if (e.targethero && !e.targetillusion && !isSelfHeal) {
             heroHealing[slot] = (heroHealing[slot] || 0) + (e.value || 0);
           }
         }
