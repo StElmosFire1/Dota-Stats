@@ -586,7 +586,7 @@ class ReplayParser {
             t: currentTime,
             nw: e.networth || 0,
             xp: e.xp || 0,
-            lvl: e.level || 0,
+            level: e.level || 0,
             cs: e.lh || 0,
           });
         }

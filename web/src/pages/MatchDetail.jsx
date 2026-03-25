@@ -218,7 +218,7 @@ function TimelineGraph({ timeline, allPlayers }) {
       const row = { t };
       for (const tp of timeline.players) {
         const s = playerMap[tp.slot][t];
-        row[`slot_${tp.slot}`] = s ? (s[metric] ?? 0) : 0;
+        row[`slot_${tp.slot}`] = s ? (s[metric] ?? (metric === 'level' ? (s['lvl'] ?? 0) : 0)) : 0;
       }
       return row;
     });
