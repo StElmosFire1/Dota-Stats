@@ -673,7 +673,9 @@ class ReplayParser {
       }
 
       if (e.type === 'DOTA_COMBATLOG_PURCHASE' && e.valuename) {
-        const slot = e.slot;
+        let slot = e.slot;
+        // Map raw Valve dire slots (128-132) to normalized 5-9
+        if (slot != null && slot >= 128 && slot <= 132) slot = slot - 128 + 5;
         if (slot != null && slot >= 0 && slot < 10) {
           if (e.valuename === 'item_ward_observer' || e.valuename === 'item_ward_dispenser') {
             obsPurchased[slot] = (obsPurchased[slot] || 0) + 1;
@@ -1200,7 +1202,13 @@ class ReplayParser {
 
     console.log(`[Replay] Lane outcomes: ${JSON.stringify(laneOutcomes)}`);
     console.log(`[Replay] Timeline samples: ${Object.keys(timelineSamples).length} slots, ${Object.values(timelineSamples).reduce((s,a)=>s+a.length,0)} total points`);
-    console.log(`[Replay] Ward placements: ${Object.values(wardPlacements).reduce((s,a)=>s+a.length,0)} total`);
+    const totalWards = Object.values(wardPlacements).reduce((s,a)=>s+a.length,0);
+    const wardBreakdown = Object.entries(wardPlacements).map(([sl, arr]) => `slot${sl}:${arr.length}`).join(', ');
+    console.log(`[Replay] Ward placements: ${totalWards} total${wardBreakdown ? ` (${wardBreakdown})` : ' — NONE CAPTURED (check slot mapping)'}`);
+    const totalPurchaseSlots = Object.keys(itemPurchases).length;
+    const purchaseBreakdown = Object.entries(itemPurchases).map(([sl, arr]) => `slot${sl}:${arr.length}`).join(', ');
+    console.log(`[Replay] Item purchases: ${totalPurchaseSlots} slots${purchaseBreakdown ? ` (${purchaseBreakdown})` : ' — NONE CAPTURED'}`);
+
     console.log(`[Replay] Final stats: matchId=${matchId}, duration=${duration}s, radiantWin=${radiantWin}, players=${playerList.length}`);
     for (const p of playerList) {
       console.log(`[Replay]   ${p.team} pos${p.position} ${p.isCaptain ? '(C)' : ''}: ${p.personaname} (hero=${p.heroId}, acct=${p.accountId}) K/D/A=${p.kills}/${p.deaths}/${p.assists} HD=${p.heroDamage} TD=${p.towerDamage} HH=${p.heroHealing} DT=${p.damageTaken} OBS=${p.obsPlaced} SEN=${p.senPlaced} STK=${p.campsStacked}`);
