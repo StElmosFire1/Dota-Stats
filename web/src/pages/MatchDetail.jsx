@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
@@ -182,6 +182,7 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
 function TimelineGraph({ timeline, allPlayers }) {
   const [metric, setMetric] = useState('nw');
   const [showItems, setShowItems] = useState(true);
+  const itemsRef = useRef(null);
 
   const { chartData, playerKeys, maxTime } = useMemo(() => {
     if (!timeline?.players?.length) return { chartData: [], playerKeys: [], maxTime: 0 };
@@ -258,7 +259,13 @@ function TimelineGraph({ timeline, allPlayers }) {
           ))}
           {hasPurchaseLogs && (
             <button
-              onClick={() => setShowItems(v => !v)}
+              onClick={() => {
+                const next = !showItems;
+                setShowItems(next);
+                if (next) {
+                  setTimeout(() => itemsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+                }
+              }}
               style={{
                 padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
                 border: '1px solid',
@@ -330,7 +337,13 @@ function TimelineGraph({ timeline, allPlayers }) {
         )}
       </div>
       {showItems && hasPurchaseLogs && (
-        <ItemSwimLane players={timeline.players} allPlayers={allPlayers} maxTime={maxTime} />
+        <div ref={itemsRef} style={{
+          marginTop: 12,
+          padding: '12px 0',
+          borderTop: '1px solid #1e293b',
+        }}>
+          <ItemSwimLane players={timeline.players} allPlayers={allPlayers} maxTime={maxTime} />
+        </div>
       )}
     </div>
   );

@@ -639,6 +639,7 @@ class ReplayParser {
       item_gem: 875, item_vampiric_talisman: 450,
     };
 
+    let wardEventDebugLogged = false;
     for (const e of events) {
       if ((e.type === 'obs_left' || e.type === 'sen_left') && e.attackername) {
         const killerSlot = npcNameToSlot[e.attackername];
@@ -648,14 +649,24 @@ class ReplayParser {
       }
 
       if ((e.type === 'obs_log' || e.type === 'sen_log') && e.x != null && e.y != null) {
+        if (!wardEventDebugLogged) {
+          console.log('[Replay] Sample ward event fields:', JSON.stringify(e));
+          wardEventDebugLogged = true;
+        }
         let slot = e.slot;
+        if (slot == null && e.player_slot != null) slot = e.player_slot;
         if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
+        if (slot == null && e.unit) slot = npcNameToSlot[e.unit];
+        if (slot == null && e.entityleft) slot = npcNameToSlot[e.entityleft];
+        if (slot == null && e.key) slot = npcNameToSlot[e.key];
         if (slot != null && slot >= 0 && slot < 10) {
           if (!wardPlacements[slot]) wardPlacements[slot] = [];
           wardPlacements[slot].push({
             type: e.type === 'obs_log' ? 'obs' : 'sen',
             x: e.x, y: e.y, t: e.time || 0,
           });
+        } else {
+          console.log('[Replay] Ward event slot unresolved — full event:', JSON.stringify(e));
         }
       }
 
