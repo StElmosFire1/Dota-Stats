@@ -134,6 +134,7 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
               {purchases.map((pu, j) => {
                 const pct = Math.min(100, (pu.time / (maxTime || 1)) * 100);
                 const label = pu.itemName.replace('item_', '').replace(/_/g, ' ');
+                const abbr = label.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
                 const iconUrl = getItemImageUrl(pu.itemName, null);
                 return (
                   <div
@@ -142,23 +143,31 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
                     style={{
                       position: 'absolute',
                       left: `${pct}%`,
-                      top: 0,
+                      top: 3,
                       transform: 'translateX(-50%)',
                       zIndex: j,
+                      width: 22,
+                      height: 16,
                     }}
                   >
-                    {iconUrl ? (
+                    <div style={{
+                      width: 22, height: 16, borderRadius: 2,
+                      background: `${color}22`, border: `1px solid ${color}66`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 7, color, fontWeight: 700, letterSpacing: 0.2,
+                      overflow: 'hidden',
+                    }}>{abbr}</div>
+                    {iconUrl && (
                       <img
                         src={iconUrl}
                         alt={label}
-                        style={{ width: 22, height: 16, borderRadius: 2, display: 'block', border: '1px solid #334155' }}
+                        style={{
+                          position: 'absolute', inset: 0,
+                          width: 22, height: 16, borderRadius: 2, display: 'block',
+                          border: '1px solid #334155',
+                        }}
                         onError={e => { e.target.style.display = 'none'; }}
                       />
-                    ) : (
-                      <div style={{
-                        width: 8, height: 8, borderRadius: '50%', background: color,
-                        border: '1px solid #334155', marginTop: 9,
-                      }} />
                     )}
                   </div>
                 );

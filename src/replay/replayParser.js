@@ -659,6 +659,8 @@ class ReplayParser {
         if (slot == null && e.unit) slot = npcNameToSlot[e.unit];
         if (slot == null && e.entityleft) slot = npcNameToSlot[e.entityleft];
         if (slot == null && e.key) slot = npcNameToSlot[e.key];
+        // Map raw Valve dire slots (128-132) to normalized 5-9
+        if (slot != null && slot >= 128 && slot <= 132) slot = slot - 128 + 5;
         if (slot != null && slot >= 0 && slot < 10) {
           if (!wardPlacements[slot]) wardPlacements[slot] = [];
           wardPlacements[slot].push({
@@ -666,7 +668,7 @@ class ReplayParser {
             x: e.x, y: e.y, t: e.time || 0,
           });
         } else {
-          console.log('[Replay] Ward event slot unresolved — full event:', JSON.stringify(e));
+          if (!wardEventDebugLogged) console.log('[Replay] Ward event slot unresolved — full event:', JSON.stringify(e));
         }
       }
 
