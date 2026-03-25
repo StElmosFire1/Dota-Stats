@@ -69,10 +69,7 @@ export default function MultiKills() {
             borderRadius: 10, padding: '8px 14px',
           }}>
             <span style={{ fontSize: 20 }}>{k.emoji}</span>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 13, color: k.color }}>{k.label}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{k.desc}</div>
-            </div>
+            <div style={{ fontWeight: 600, fontSize: 13, color: k.color }}>{k.label}</div>
           </div>
         ))}
       </div>

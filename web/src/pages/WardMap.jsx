@@ -264,7 +264,7 @@ export default function WardMap() {
     const img = new Image();
     img.onload = () => setMapLoaded(true);
     img.onerror = () => setMapLoaded(false);
-    img.src = '/minimap.png';
+    img.src = '/minimap.jpg';
     mapImg.current = img;
   }, []);
 
