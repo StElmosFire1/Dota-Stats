@@ -20,8 +20,14 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Player management, including nickname assignment.
 - Replay file uploads with duplicate prevention.
 - Season buy-in and prize pool management via Stripe.
-- Prize category configuration (leaderboard rank, position MVPs, stat-based awards, custom).
+- Prize category configuration (leaderboard rank, position MVPs, stat-based awards, custom) with both fixed AUD $ and % of prize pool modes.
 - Steam OpenID sign-in for verified identity on buy-ins.
+- Multi-kill leaderboard page (/multikills) — sortable by rampages, ultra kills, triples, doubles.
+- Hero position meta tab on the Heroes page — win rates per hero by position (Pos 1–5).
+- Most Improved widget on the Leaderboard — top MMR gainers over 30 days (from rating_history).
+- Match prediction system: `!predict <matchId> radiant|dire` Discord command + `/api/predictions` endpoints.
+- Achievement badges on player profiles expanded: rampage, ultra kill, first blood, massacre, ward lord/breaker.
+- Player prediction accuracy stats shown on player profiles.
 The dashboard emphasizes clear data presentation, sortable tables, and detailed insights.
 
 **Technical Implementations & Feature Specifications:**

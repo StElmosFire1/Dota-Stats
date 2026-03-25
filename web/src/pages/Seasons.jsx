@@ -306,7 +306,7 @@ function PayoutsModal({ season, players, adminKey, onClose }) {
   const [payouts, setPayouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ category_type: '', label: '', amount_dollars: '', notes: '' });
+  const [form, setForm] = useState({ category_type: '', label: '', amount_dollars: '', amount_percent: '', payout_mode: 'cents', notes: '' });
   const [formError, setFormError] = useState('');
   const [winnerEditing, setWinnerEditing] = useState(null);
   const [winnerValue, setWinnerValue] = useState('');
@@ -326,14 +326,27 @@ function PayoutsModal({ season, players, adminKey, onClose }) {
 
   async function handleAdd(e) {
     e.preventDefault();
-    const dollars = parseFloat(form.amount_dollars);
     if (!form.category_type) { setFormError('Select a category type'); return; }
     if (!form.label.trim()) { setFormError('Label is required'); return; }
-    if (isNaN(dollars) || dollars < 0) { setFormError('Enter a valid amount'); return; }
+    const isPercent = form.payout_mode === 'percent';
+    if (isPercent) {
+      const pct = parseFloat(form.amount_percent);
+      if (isNaN(pct) || pct < 0 || pct > 100) { setFormError('Enter a valid % (0–100)'); return; }
+    } else {
+      const dollars = parseFloat(form.amount_dollars);
+      if (isNaN(dollars) || dollars < 0) { setFormError('Enter a valid dollar amount'); return; }
+    }
     setAdding(true); setFormError('');
     try {
-      await addSeasonPayout(season.id, form.category_type, form.label.trim(), Math.round(dollars * 100), form.notes || null, adminKey);
-      setForm({ category_type: '', label: '', amount_dollars: '', notes: '' });
+      const dollars = parseFloat(form.amount_dollars) || 0;
+      const pct = parseFloat(form.amount_percent) || 0;
+      await addSeasonPayout(
+        season.id, form.category_type, form.label.trim(),
+        isPercent ? 0 : Math.round(dollars * 100),
+        form.notes || null, adminKey,
+        form.payout_mode, pct
+      );
+      setForm({ category_type: '', label: '', amount_dollars: '', amount_percent: '', payout_mode: 'cents', notes: '' });
       reload();
     } catch (err) {
       setFormError(err.message);
@@ -408,7 +421,11 @@ function PayoutsModal({ season, players, adminKey, onClose }) {
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{labelFor(p.category_type)}</div>
                     {p.notes && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontStyle: 'italic' }}>{p.notes}</div>}
                   </td>
-                  <td style={{ fontWeight: 600, color: 'var(--accent, #7c6bff)' }}>{fmtAUD(p.amount_cents)}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--accent, #7c6bff)' }}>
+                    {p.payout_mode === 'percent'
+                      ? `${parseFloat(p.amount_percent).toFixed(1)}% of pool`
+                      : fmtAUD(p.amount_cents)}
+                  </td>
                   <td>
                     {winnerEditing === p.id ? (
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -475,12 +492,36 @@ function PayoutsModal({ season, players, adminKey, onClose }) {
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Prize Amount (AUD $)</label>
-                  <input
-                    className="input" style={{ width: '100%', boxSizing: 'border-box' }}
-                    type="number" min="0" step="0.01" placeholder="e.g. 50.00"
-                    value={form.amount_dollars} onChange={e => setForm(f => ({ ...f, amount_dollars: e.target.value }))} required
-                  />
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
+                    Prize Amount
+                    <span style={{ display: 'inline-flex', gap: 2, marginLeft: 8, verticalAlign: 'middle' }}>
+                      {['cents', 'percent'].map(mode => (
+                        <button
+                          key={mode} type="button"
+                          onClick={() => setForm(f => ({ ...f, payout_mode: mode }))}
+                          style={{
+                            padding: '1px 8px', fontSize: 11, cursor: 'pointer', borderRadius: 4,
+                            border: '1px solid var(--border)',
+                            background: form.payout_mode === mode ? 'var(--accent-blue)' : 'var(--bg-hover)',
+                            color: form.payout_mode === mode ? '#fff' : 'var(--text-muted)',
+                          }}
+                        >{mode === 'cents' ? 'AUD $' : '% of pool'}</button>
+                      ))}
+                    </span>
+                  </label>
+                  {form.payout_mode === 'cents' ? (
+                    <input
+                      className="input" style={{ width: '100%', boxSizing: 'border-box' }}
+                      type="number" min="0" step="0.01" placeholder="e.g. 50.00"
+                      value={form.amount_dollars} onChange={e => setForm(f => ({ ...f, amount_dollars: e.target.value }))} required
+                    />
+                  ) : (
+                    <input
+                      className="input" style={{ width: '100%', boxSizing: 'border-box' }}
+                      type="number" min="0" max="100" step="0.5" placeholder="e.g. 30 (= 30% of prize pool)"
+                      value={form.amount_percent} onChange={e => setForm(f => ({ ...f, amount_percent: e.target.value }))} required
+                    />
+                  )}
                 </div>
               </div>
               <div style={{ marginBottom: 10 }}>

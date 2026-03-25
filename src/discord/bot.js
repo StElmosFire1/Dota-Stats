@@ -197,6 +197,8 @@ class DiscordBot {
           case 'herostats': await this._cmdHeroStats(msg, args); break;
           case 'vs': await this._cmdVs(msg, args); break;
           case 'match': await this._cmdMatch(msg, args); break;
+          case 'predict': await this._cmdPredict(msg, args); break;
+          case 'predictions': await this._cmdPredictions(msg, args); break;
           default: break;
         }
       } catch (err) {
@@ -240,7 +242,15 @@ class DiscordBot {
           ].join('\n'),
         },
         {
-          name: '\u{1F916} AI Commands',
+          name: '🎯 Predictions',
+          value: [
+            '`!predict <matchId> <radiant|dire>` - Predict who wins a match',
+            '`!predictions <matchId>` - See all predictions for a match',
+            'Results auto-reveal after match is recorded!',
+          ].join('\n'),
+        },
+        {
+          name: '🤖 AI Commands',
           value: [
             '`!analyze [@user]` - AI performance analysis from the coaching bot',
             '`!roast [@user]` - Let the AI trash-talk someone\'s stats (all in good fun)',
@@ -1512,6 +1522,82 @@ class DiscordBot {
     } catch (err) {
       console.error('[Discord] Weekly recap post error:', err.message);
     }
+  }
+
+  async _cmdPredict(msg, args) {
+    if (!args || args.length < 2) {
+      return msg.reply(
+        '**Usage:** `!predict <matchId> <radiant|dire>`\n' +
+        'Example: `!predict 12345 radiant` — predict Radiant wins match 12345.\n' +
+        'Use `!predictions <matchId>` to see current predictions.'
+      );
+    }
+    const matchId = parseInt(args[0]);
+    const side = args[1]?.toLowerCase();
+    if (isNaN(matchId)) return msg.reply('Invalid match ID.');
+    if (!['radiant', 'dire'].includes(side)) return msg.reply('Specify `radiant` or `dire`.');
+
+    const discordUser = msg.author;
+    const predictorName = discordUser.username;
+
+    let predictorAccountId = null;
+    try {
+      const player = await db.getPlayerByDiscordId(discordUser.id);
+      if (player) predictorAccountId = player.account_id;
+    } catch (_) {}
+
+    await db.upsertMatchPrediction(matchId, predictorAccountId, predictorName, side);
+
+    const sideEmoji = side === 'radiant' ? '🟢' : '🔴';
+    const embed = new EmbedBuilder()
+      .setTitle('🎯 Prediction Submitted')
+      .setColor(side === 'radiant' ? 0x4caf50 : 0xf44336)
+      .setDescription(`**${predictorName}** predicts ${sideEmoji} **${side.charAt(0).toUpperCase() + side.slice(1)}** wins match **#${matchId}**.`)
+      .setFooter({ text: `Use !predictions ${matchId} to see all picks` });
+    await msg.channel.send({ embeds: [embed] });
+  }
+
+  async _cmdPredictions(msg, args) {
+    if (!args || !args[0]) {
+      return msg.reply('**Usage:** `!predictions <matchId>` — Show all predictions for a match.');
+    }
+    const matchId = parseInt(args[0]);
+    if (isNaN(matchId)) return msg.reply('Invalid match ID.');
+
+    const preds = await db.getMatchPredictions(matchId);
+    if (!preds || preds.length === 0) {
+      return msg.reply(`No predictions recorded for match **#${matchId}** yet. Use \`!predict ${matchId} radiant\` or \`!predict ${matchId} dire\` to submit yours!`);
+    }
+
+    const radiant = preds.filter(p => p.predicted_winner === 'radiant');
+    const dire = preds.filter(p => p.predicted_winner === 'dire');
+    const resolved = preds.some(p => p.resolved);
+
+    const radiantList = radiant.map(p => {
+      if (!resolved) return p.predictor_name;
+      return `${p.predictor_name}${p.correct ? ' ✅' : ' ❌'}`;
+    }).join(', ') || '*none*';
+    const direList = dire.map(p => {
+      if (!resolved) return p.predictor_name;
+      return `${p.predictor_name}${p.correct ? ' ✅' : ' ❌'}`;
+    }).join(', ') || '*none*';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🎯 Predictions — Match #${matchId}`)
+      .setColor(0x3b82f6)
+      .addFields(
+        { name: `🟢 Radiant (${radiant.length})`, value: radiantList, inline: true },
+        { name: `🔴 Dire (${dire.length})`, value: direList, inline: true },
+      );
+
+    if (resolved) {
+      const winner = preds.find(p => p.correct)?.predicted_winner;
+      embed.addFields({ name: 'Result', value: winner ? `${winner === 'radiant' ? '🟢' : '🔴'} **${winner}** won!` : 'Match result recorded.', inline: false });
+    } else {
+      embed.setFooter({ text: 'Predictions locked in — results revealed when match is recorded.' });
+    }
+
+    await msg.channel.send({ embeds: [embed] });
   }
 
   async start() {

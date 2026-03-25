@@ -479,6 +479,79 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/hero-meta', async (req, res) => {
+    try {
+      const rows = await db.getHeroMetaByPosition();
+      res.json({ rows });
+    } catch (err) {
+      console.error('[API] Error fetching hero meta:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero meta' });
+    }
+  });
+
+  router.get('/multikills', async (req, res) => {
+    try {
+      const rows = await db.getMultiKillStats();
+      res.json({ rows });
+    } catch (err) {
+      console.error('[API] Error fetching multikill stats:', err.message);
+      res.status(500).json({ error: 'Failed to fetch multikill stats' });
+    }
+  });
+
+  router.get('/most-improved', async (req, res) => {
+    try {
+      const days = parseInt(req.query.days) || 30;
+      const rows = await db.getMostImproved(days);
+      res.json({ rows, days });
+    } catch (err) {
+      console.error('[API] Error fetching most improved:', err.message);
+      res.status(500).json({ error: 'Failed to fetch most improved' });
+    }
+  });
+
+  router.get('/predictions/open', async (req, res) => {
+    try {
+      const data = await db.getOpenPrediction();
+      res.json({ prediction: data });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch open prediction' });
+    }
+  });
+
+  router.post('/predictions/:matchId', async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.matchId);
+      const { predictor_account_id, predictor_name, predicted_winner } = req.body;
+      if (!predictor_name || !['radiant', 'dire'].includes(predicted_winner)) {
+        return res.status(400).json({ error: 'predictor_name and predicted_winner (radiant|dire) required' });
+      }
+      const pred = await db.upsertMatchPrediction(matchId, predictor_account_id || null, predictor_name, predicted_winner);
+      res.json({ prediction: pred });
+    } catch (err) {
+      console.error('[API] Error saving prediction:', err.message);
+      res.status(500).json({ error: 'Failed to save prediction' });
+    }
+  });
+
+  router.get('/matches/:matchId/predictions', async (req, res) => {
+    try {
+      const preds = await db.getMatchPredictions(parseInt(req.params.matchId));
+      res.json({ predictions: preds });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch predictions' });
+    }
+  });
+
+  router.get('/players/:accountId/predictions', async (req, res) => {
+    try {
+      const stats = await db.getPlayerPredictionStats(parseInt(req.params.accountId));
+      res.json({ stats });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch prediction stats' });
+    }
+  });
+
   router.get('/overall-stats', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
@@ -711,11 +784,18 @@ function createApiRouter(startupStatus = {}) {
   router.post('/seasons/:id/payouts', authMiddleware, async (req, res) => {
     try {
       const seasonId = parseInt(req.params.id);
-      const { category_type, label, amount_cents, notes } = req.body;
-      if (!category_type || !label || typeof amount_cents !== 'number') {
-        return res.status(400).json({ error: 'category_type, label, and amount_cents are required' });
+      const { category_type, label, amount_cents, notes, payout_mode, amount_percent } = req.body;
+      if (!category_type || !label) {
+        return res.status(400).json({ error: 'category_type and label are required' });
       }
-      const payout = await db.addSeasonPayout(seasonId, category_type, label, amount_cents, notes);
+      const mode = payout_mode === 'percent' ? 'percent' : 'cents';
+      if (mode === 'cents' && typeof amount_cents !== 'number') {
+        return res.status(400).json({ error: 'amount_cents required for fixed mode' });
+      }
+      if (mode === 'percent' && (typeof amount_percent !== 'number' || amount_percent < 0 || amount_percent > 100)) {
+        return res.status(400).json({ error: 'amount_percent must be 0–100' });
+      }
+      const payout = await db.addSeasonPayout(seasonId, category_type, label, amount_cents || 0, notes, mode, amount_percent || 0);
       res.json({ payout });
     } catch (err) {
       console.error('[API] Error adding payout:', err.message);

@@ -25,6 +25,7 @@ import SuperuserLoginModal from './components/SuperuserLoginModal';
 import StatsEditor from './pages/StatsEditor';
 import PatchNotes from './pages/PatchNotes';
 import Home from './pages/Home';
+import MultiKills from './pages/MultiKills';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
@@ -244,6 +245,7 @@ function Nav() {
           <DropdownItem to="/head-to-head">Head to Head</DropdownItem>
           <DropdownItem to="/compare">Compare Players</DropdownItem>
           <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
+          <DropdownItem to="/multikills">Multi-Kill Leaderboard</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
         </DropdownMenu>
@@ -290,6 +292,7 @@ export default function App() {
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
                 <Route path="/predictions" element={<Predictions />} />
                 <Route path="/patch-notes" element={<PatchNotes />} />
+                <Route path="/multikills" element={<MultiKills />} />
               </Routes>
             </main>
           </SeasonProvider>

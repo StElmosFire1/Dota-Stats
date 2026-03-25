@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats } from '../api';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import {
@@ -119,6 +119,7 @@ export default function PlayerProfile() {
   const [ratingHistory, setRatingHistory] = useState([]);
   const [achievements, setAchievements] = useState([]);
   const [nemesis, setNemesis] = useState([]);
+  const [predictionStats, setPredictionStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -129,12 +130,14 @@ export default function PlayerProfile() {
       getPlayerRatingHistory(accountId).catch(() => ({ history: [] })),
       getPlayerAchievements(accountId).catch(() => ({ achievements: [] })),
       getPlayerNemesis(accountId).catch(() => []),
-    ]).then(([playerData, posData, histData, achData, nemData]) => {
+      getPlayerPredictionStats(accountId).catch(() => null),
+    ]).then(([playerData, posData, histData, achData, nemData, predData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
       setAchievements(achData?.achievements || []);
       setNemesis(Array.isArray(nemData) ? nemData : []);
+      setPredictionStats(predData?.stats || null);
     }).finally(() => setLoading(false));
   }, [accountId]);
 
@@ -196,6 +199,44 @@ export default function PlayerProfile() {
       <RatingChart history={ratingHistory} />
 
       <AchievementBadges achievements={achievements} />
+
+      {predictionStats && parseInt(predictionStats.total) > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-title">🎯 Match Predictions</h2>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+              padding: '14px 20px', minWidth: 120, textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>{predictionStats.total}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Total Predictions</div>
+            </div>
+            <div style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+              padding: '14px 20px', minWidth: 120, textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-green)' }}>{predictionStats.correct_count}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Correct</div>
+            </div>
+            <div style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+              padding: '14px 20px', minWidth: 120, textAlign: 'center',
+            }}>
+              <div style={{
+                fontSize: 24, fontWeight: 800,
+                color: parseInt(predictionStats.total) > 0
+                  ? (parseInt(predictionStats.correct_count) / parseInt(predictionStats.total) >= 0.5 ? 'var(--accent-green)' : 'var(--accent-red)')
+                  : 'var(--text-primary)',
+              }}>
+                {parseInt(predictionStats.total) > 0
+                  ? `${Math.round((parseInt(predictionStats.correct_count) / parseInt(predictionStats.total)) * 100)}%`
+                  : '—'}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Accuracy</div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {nemesis.length > 0 && (
         <section style={{ marginBottom: 24 }}>

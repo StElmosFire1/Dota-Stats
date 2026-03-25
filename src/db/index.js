@@ -366,6 +366,21 @@ async function init() {
       )
     `);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS match_predictions (
+        id SERIAL PRIMARY KEY,
+        match_id BIGINT NOT NULL,
+        predictor_account_id BIGINT,
+        predictor_name VARCHAR(100) NOT NULL,
+        predicted_winner VARCHAR(10) NOT NULL,
+        resolved BOOLEAN NOT NULL DEFAULT false,
+        correct BOOLEAN,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(match_id, predictor_account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_match_predictions_match ON match_predictions(match_id)`);
+
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS buyin_amount_cents INTEGER DEFAULT 0`);
 
     await p.query(`
@@ -391,12 +406,16 @@ async function init() {
         category_type VARCHAR(50) NOT NULL,
         label VARCHAR(100) NOT NULL,
         amount_cents INTEGER NOT NULL DEFAULT 0,
+        payout_mode VARCHAR(10) NOT NULL DEFAULT 'cents',
+        amount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
         winner_account_id BIGINT,
         winner_display_name VARCHAR(100),
         notes TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    await p.query(`ALTER TABLE season_payout_categories ADD COLUMN IF NOT EXISTS payout_mode VARCHAR(10) NOT NULL DEFAULT 'cents'`);
+    await p.query(`ALTER TABLE season_payout_categories ADD COLUMN IF NOT EXISTS amount_percent DECIMAL(5,2) NOT NULL DEFAULT 0`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_payout_categories_season ON season_payout_categories(season_id)`);
 
     await p.query(`
@@ -531,12 +550,15 @@ async function getSeasonPayouts(seasonId) {
   return result.rows;
 }
 
-async function addSeasonPayout(seasonId, categoryType, label, amountCents, notes) {
+async function addSeasonPayout(seasonId, categoryType, label, amountCents, notes, payoutMode, amountPercent) {
   const p = getPool();
+  const mode = payoutMode === 'percent' ? 'percent' : 'cents';
+  const pct = mode === 'percent' ? (parseFloat(amountPercent) || 0) : 0;
+  const cents = mode === 'cents' ? (parseInt(amountCents) || 0) : 0;
   const result = await p.query(
-    `INSERT INTO season_payout_categories (season_id, category_type, label, amount_cents, notes)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [seasonId, categoryType, label, amountCents, notes || null]
+    `INSERT INTO season_payout_categories (season_id, category_type, label, amount_cents, payout_mode, amount_percent, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [seasonId, categoryType, label, cents, mode, pct, notes || null]
   );
   return result.rows[0];
 }
@@ -2507,17 +2529,56 @@ async function getPlayerAchievements(accountId) {
     if (cur > maxStreak) maxStreak = cur;
   }
 
+  const [mkRes, fbRes, wardRes] = await Promise.all([
+    p.query(
+      `SELECT SUM(rampages) AS rampages, SUM(ultra_kills) AS ultra_kills, SUM(triple_kills) AS triple_kills,
+              SUM(double_kills) AS double_kills, MAX(kills) AS max_kills
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT SUM(firstblood_claimed) AS fbs FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT SUM(obs_placed + sen_placed) AS wards_placed, SUM(wards_killed) AS wards_killed
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+  ]);
+
+  const rampages = parseInt(mkRes.rows[0]?.rampages) || 0;
+  const ultraKills = parseInt(mkRes.rows[0]?.ultra_kills) || 0;
+  const tripleKills = parseInt(mkRes.rows[0]?.triple_kills) || 0;
+  const doubleKills = parseInt(mkRes.rows[0]?.double_kills) || 0;
+  const maxKills = parseInt(mkRes.rows[0]?.max_kills) || 0;
+  const firstBloods = parseInt(fbRes.rows[0]?.fbs) || 0;
+  const wardsPlaced = parseInt(wardRes.rows[0]?.wards_placed) || 0;
+  const wardsKilled = parseInt(wardRes.rows[0]?.wards_killed) || 0;
+
   const ACHIEVEMENTS = [
-    { key: 'veteran_25', label: 'Veteran', desc: '25 games played', icon: '🎖️', earned: games >= 25 },
-    { key: 'veteran_50', label: 'Battle-Hardened', desc: '50 games played', icon: '⚔️', earned: games >= 50 },
-    { key: 'veteran_100', label: 'Centurion', desc: '100 games played', icon: '🏆', earned: games >= 100 },
-    { key: 'streak_5', label: 'On Fire', desc: '5-game win streak', icon: '🔥', earned: maxStreak >= 5 },
-    { key: 'streak_10', label: 'Unstoppable', desc: '10-game win streak', icon: '💥', earned: maxStreak >= 10 },
-    { key: 'deathless', label: 'Untouchable', desc: 'Won a game with 0 deaths', icon: '🛡️', earned: deathlessGames > 0 },
-    { key: 'captain_5', label: 'Born Leader', desc: 'Captained 5+ matches', icon: '👑', earned: captainGames >= 5 },
-    { key: 'all_positions', label: 'Versatile', desc: 'Played all 5 positions', icon: '🎭', earned: positionsPlayed >= 5 },
-    { key: 'hero_diversity', label: 'Jack of All Trades', desc: '15+ different heroes', icon: '🃏', earned: uniqueHeroes >= 15 },
-    { key: 'specialist', label: 'Specialist', desc: '10+ games on one hero', icon: '🎯', earned: maxOnOneHero >= 10 },
+    { key: 'veteran_25',    label: 'Veteran',          desc: '25 games played',              icon: '🎖️',  earned: games >= 25 },
+    { key: 'veteran_50',    label: 'Battle-Hardened',   desc: '50 games played',              icon: '⚔️',  earned: games >= 50 },
+    { key: 'veteran_100',   label: 'Centurion',         desc: '100 games played',             icon: '🏆',  earned: games >= 100 },
+    { key: 'streak_5',      label: 'On Fire',           desc: '5-game win streak',            icon: '🔥',  earned: maxStreak >= 5 },
+    { key: 'streak_10',     label: 'Unstoppable',       desc: '10-game win streak',           icon: '💥',  earned: maxStreak >= 10 },
+    { key: 'deathless',     label: 'Untouchable',       desc: 'Won a game with 0 deaths',     icon: '🛡️',  earned: deathlessGames > 0 },
+    { key: 'captain_5',     label: 'Born Leader',       desc: 'Captained 5+ matches',         icon: '👑',  earned: captainGames >= 5 },
+    { key: 'all_positions', label: 'Versatile',         desc: 'Played all 5 positions',       icon: '🎭',  earned: positionsPlayed >= 5 },
+    { key: 'hero_diversity',label: 'Jack of All Trades', desc: '15+ different heroes',        icon: '🃏',  earned: uniqueHeroes >= 15 },
+    { key: 'specialist',    label: 'Specialist',        desc: '10+ games on one hero',        icon: '🎯',  earned: maxOnOneHero >= 10 },
+    { key: 'rampage',       label: 'RAMPAGE',           desc: 'Achieved at least one rampage',icon: '☠️',  earned: rampages > 0 },
+    { key: 'ultra_kill',    label: 'Ultra Kill',        desc: 'Got an Ultra Kill',            icon: '⚡',  earned: ultraKills > 0 },
+    { key: 'multikill_10',  label: 'Kill Artist',       desc: '10+ multi-kills (combined)',   icon: '🔪',  earned: (doubleKills + tripleKills + ultraKills + rampages) >= 10 },
+    { key: 'first_blood',   label: 'First Blood',       desc: 'Claimed first blood',          icon: '💉',  earned: firstBloods > 0 },
+    { key: 'bloodthirsty',  label: 'Bloodthirsty',      desc: '10+ first bloods overall',     icon: '🩸',  earned: firstBloods >= 10 },
+    { key: 'massacre',      label: 'Massacre',          desc: '20+ kills in a single game',   icon: '💀',  earned: maxKills >= 20 },
+    { key: 'ward_lord',     label: 'Ward Lord',         desc: '200+ wards placed',            icon: '👁️',  earned: wardsPlaced >= 200 },
+    { key: 'ward_breaker',  label: 'Ward Breaker',      desc: '50+ enemy wards killed',       icon: '🔍',  earned: wardsKilled >= 50 },
   ];
   return ACHIEVEMENTS;
 }
@@ -3004,6 +3065,147 @@ async function findDuplicateMatches() {
   return result.rows;
 }
 
+async function getMultiKillStats() {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT
+      ps.account_id,
+      COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
+      SUM(ps.double_kills)  AS double_kills,
+      SUM(ps.triple_kills)  AS triple_kills,
+      SUM(ps.ultra_kills)   AS ultra_kills,
+      SUM(ps.rampages)      AS rampages,
+      COUNT(ps.match_id)    AS games_played,
+      SUM(ps.double_kills + ps.triple_kills + ps.ultra_kills + ps.rampages) AS total_multikills
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    LEFT JOIN nicknames n ON n.account_id = ps.account_id
+    WHERE ps.account_id > 0 AND m.is_legacy = false
+    GROUP BY ps.account_id, n.nickname
+    HAVING SUM(ps.double_kills + ps.triple_kills + ps.ultra_kills + ps.rampages) > 0
+    ORDER BY rampages DESC, ultra_kills DESC, triple_kills DESC, double_kills DESC
+  `);
+  return result.rows;
+}
+
+async function getMostImproved(days = 30) {
+  const p = getPool();
+  const result = await p.query(`
+    WITH latest AS (
+      SELECT DISTINCT ON (player_id) player_id, mu, sigma, recorded_at
+      FROM rating_history
+      ORDER BY player_id, recorded_at DESC
+    ),
+    earliest AS (
+      SELECT DISTINCT ON (player_id) player_id, mu, sigma, recorded_at
+      FROM rating_history
+      WHERE recorded_at >= NOW() - INTERVAL '${parseInt(days)} days'
+      ORDER BY player_id, recorded_at ASC
+    )
+    SELECT
+      l.player_id AS account_id,
+      COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
+      ROUND((l.mu - 3*l.sigma)*100 + 2000) AS current_mmr,
+      ROUND((e.mu - 3*e.sigma)*100 + 2000) AS start_mmr,
+      ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) AS mmr_delta,
+      COUNT(ps.match_id) AS games_in_period
+    FROM latest l
+    JOIN earliest e ON e.player_id = l.player_id
+    LEFT JOIN nicknames n ON n.account_id = l.player_id
+    LEFT JOIN player_stats ps ON ps.account_id = l.player_id
+    LEFT JOIN matches m ON m.match_id = ps.match_id AND m.date >= NOW() - INTERVAL '${parseInt(days)} days'
+    GROUP BY l.player_id, l.mu, l.sigma, e.mu, e.sigma, n.nickname
+    HAVING ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) > 0
+    ORDER BY mmr_delta DESC
+    LIMIT 10
+  `);
+  return result.rows;
+}
+
+async function getHeroMetaByPosition() {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT
+      ps.hero_id,
+      ps.hero_name,
+      ps.position,
+      COUNT(*) AS games,
+      SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins,
+      ROUND(
+        100.0 * SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)
+        / NULLIF(COUNT(*), 0)
+      , 1) AS win_rate
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.hero_id > 0 AND ps.position BETWEEN 1 AND 5 AND m.is_legacy = false
+    GROUP BY ps.hero_id, ps.hero_name, ps.position
+    HAVING COUNT(*) >= 2
+    ORDER BY ps.position ASC, games DESC
+  `);
+  return result.rows;
+}
+
+async function getMatchPredictions(matchId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT predictor_account_id, predictor_name, predicted_winner, resolved, correct, created_at
+     FROM match_predictions WHERE match_id = $1 ORDER BY created_at ASC`,
+    [parseInt(matchId)]
+  );
+  return result.rows;
+}
+
+async function upsertMatchPrediction(matchId, predictorAccountId, predictorName, predictedWinner) {
+  const p = getPool();
+  const result = await p.query(
+    `INSERT INTO match_predictions (match_id, predictor_account_id, predictor_name, predicted_winner)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (match_id, predictor_account_id) DO UPDATE
+       SET predicted_winner = $4, resolved = false, correct = null
+     RETURNING *`,
+    [parseInt(matchId), predictorAccountId ? parseInt(predictorAccountId) : null, predictorName, predictedWinner]
+  );
+  return result.rows[0];
+}
+
+async function resolveMatchPredictions(matchId, winnerTeam) {
+  const p = getPool();
+  await p.query(
+    `UPDATE match_predictions
+     SET resolved = true,
+         correct = CASE WHEN predicted_winner = $2 THEN true ELSE false END
+     WHERE match_id = $1`,
+    [parseInt(matchId), winnerTeam]
+  );
+}
+
+async function getPlayerPredictionStats(accountId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE resolved) AS total,
+       COUNT(*) FILTER (WHERE resolved AND correct) AS correct_count
+     FROM match_predictions
+     WHERE predictor_account_id = $1`,
+    [parseInt(accountId)]
+  );
+  return result.rows[0] || { total: 0, correct_count: 0 };
+}
+
+async function getOpenPrediction() {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT * FROM match_predictions WHERE resolved = false ORDER BY created_at DESC LIMIT 1`
+  );
+  if (!result.rows.length) return null;
+  const matchId = result.rows[0].match_id;
+  const all = await p.query(
+    `SELECT predictor_name, predicted_winner, created_at FROM match_predictions WHERE match_id = $1 AND resolved = false ORDER BY created_at ASC`,
+    [matchId]
+  );
+  return { match_id: matchId, predictions: all.rows };
+}
+
 module.exports = {
   init,
   getPool,
@@ -3082,4 +3284,12 @@ module.exports = {
   seedPatchNotes,
   updatePatchNote,
   deletePatchNote,
+  getMultiKillStats,
+  getMostImproved,
+  getHeroMetaByPosition,
+  getMatchPredictions,
+  upsertMatchPrediction,
+  resolveMatchPredictions,
+  getPlayerPredictionStats,
+  getOpenPrediction,
 };

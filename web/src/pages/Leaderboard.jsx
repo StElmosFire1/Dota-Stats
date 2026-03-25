@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getLeaderboard } from '../api';
+import { getLeaderboard, getMostImproved } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
 const MMR_TIERS = [
@@ -62,10 +62,88 @@ function StreakBadge({ streak }) {
   );
 }
 
+function MostImprovedWidget({ data, loading }) {
+  if (loading) return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+      padding: '16px 20px', marginBottom: 24,
+    }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading most improved…</div>
+    </div>
+  );
+
+  if (!data || data.length === 0) return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+      padding: '16px 20px', marginBottom: 24,
+    }}>
+      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>📈 Most Improved (30 days)</div>
+      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+        Not enough rating history yet — data accumulates after more matches.
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(76,175,80,0.08) 0%, var(--bg-card) 100%)',
+      border: '1px solid rgba(76,175,80,0.3)', borderRadius: 12,
+      padding: '16px 20px', marginBottom: 24,
+    }}>
+      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span>📈</span>
+        <span>Most Improved — last 30 days</span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {data.slice(0, 5).map((p, i) => (
+          <div key={p.account_id} style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+            padding: '10px 14px', minWidth: 140, flex: '1 1 140px',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+                background: 'var(--bg-hover)', borderRadius: 4, padding: '1px 5px',
+              }}>#{i + 1}</span>
+              <Link to={`/player/${p.account_id}`} style={{
+                fontWeight: 600, fontSize: 13, color: 'var(--text-primary)',
+                textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {p.display_name}
+              </Link>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>MMR</span>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>{p.current_mmr}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Gained</span>
+              <span style={{
+                fontWeight: 700, fontSize: 14,
+                color: Number(p.mmr_delta) > 0 ? 'var(--accent-green)' : 'var(--text-muted)',
+              }}>
+                +{p.mmr_delta}
+              </span>
+            </div>
+            {p.games_in_period > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                {p.games_in_period} game{p.games_in_period !== 1 ? 's' : ''} this period
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Leaderboard() {
   const { seasonId } = useSeason();
   const [data, setData] = useState({ leaderboard: [] });
   const [loading, setLoading] = useState(true);
+  const [improved, setImproved] = useState([]);
+  const [improvedLoading, setImprovedLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
@@ -75,11 +153,22 @@ export default function Leaderboard() {
       .finally(() => setLoading(false));
   }, [seasonId]);
 
+  useEffect(() => {
+    setImprovedLoading(true);
+    getMostImproved(30)
+      .then(d => setImproved(d.rows || []))
+      .catch(() => setImproved([]))
+      .finally(() => setImprovedLoading(false));
+  }, []);
+
   if (loading) return <div className="loading">Loading leaderboard...</div>;
 
   return (
     <div>
       <h1 className="page-title">Leaderboard</h1>
+
+      {/* Most Improved Widget */}
+      <MostImprovedWidget data={improved} loading={improvedLoading} />
 
       {/* Tier legend — worst to best left to right */}
       <div style={{

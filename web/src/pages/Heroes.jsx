@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getHeroStats } from '../api';
+import { getHeroStats, getHeroMeta } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { useSeason } from '../context/SeasonContext';
@@ -37,6 +37,95 @@ const ALL_HEROES = {
   137: 'Primal Beast', 138: 'Muerta', 145: 'Kez', 155: 'Largo',
 };
 
+const POSITIONS = { 1: 'Safe Lane Carry', 2: 'Mid Lane', 3: 'Offlane', 4: 'Soft Support', 5: 'Hard Support' };
+
+function HeroMetaTab() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activePos, setActivePos] = useState(1);
+
+  useEffect(() => {
+    getHeroMeta()
+      .then(d => setRows(d.rows || []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const byPos = {};
+  for (const r of rows) {
+    const p = parseInt(r.position);
+    if (!byPos[p]) byPos[p] = [];
+    byPos[p].push(r);
+  }
+
+  const posRows = (byPos[activePos] || []).sort((a, b) => Number(b.games) - Number(a.games));
+
+  if (loading) return <div className="loading">Loading hero meta…</div>;
+
+  return (
+    <div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+        Win rates by position across all non-legacy matches with ≥2 games on that hero at that position.
+      </p>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        {[1, 2, 3, 4, 5].map(pos => (
+          <button
+            key={pos}
+            onClick={() => setActivePos(pos)}
+            style={{
+              padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+              border: '1px solid var(--border)',
+              background: activePos === pos ? 'var(--accent-blue)' : 'var(--bg-card)',
+              color: activePos === pos ? '#fff' : 'var(--text-primary)',
+              fontWeight: activePos === pos ? 700 : 400,
+            }}
+          >
+            Pos {pos} — {POSITIONS[pos]}
+          </button>
+        ))}
+      </div>
+      {posRows.length === 0 ? (
+        <div className="empty-state"><p>Not enough data for this position yet.</p></div>
+      ) : (
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard">
+            <thead>
+              <tr>
+                <th className="col-rank">#</th>
+                <th className="col-player">Hero</th>
+                <th className="col-stat">Games</th>
+                <th className="col-stat">Wins</th>
+                <th className="col-stat">Win %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {posRows.map((r, i) => {
+                const wr = Number(r.win_rate);
+                const color = wr >= 60 ? '#4ade80' : wr >= 50 ? 'var(--text-primary)' : wr < 40 ? '#f87171' : 'var(--text-muted)';
+                const heroImg = getHeroImageUrl(r.hero_id);
+                return (
+                  <tr key={`${r.hero_id}-${r.position}`}>
+                    <td className="col-rank">{i + 1}</td>
+                    <td className="col-player">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {heroImg && <img src={heroImg} alt={r.hero_name} style={{ width: 28, height: 16, borderRadius: 2 }} />}
+                        <span>{formatHeroName(r.hero_name)}</span>
+                      </div>
+                    </td>
+                    <td className="col-stat">{r.games}</td>
+                    <td className="col-stat">{r.wins}</td>
+                    <td className="col-stat" style={{ color, fontWeight: 700 }}>{wr}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Heroes() {
   const { seasonId } = useSeason();
   const [playedHeroes, setPlayedHeroes] = useState([]);
@@ -45,6 +134,7 @@ export default function Heroes() {
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState('hero_name');
   const [sortDir, setSortDir] = useState(1);
+  const [tab, setTab] = useState('stats');
 
   useEffect(() => {
     setLoading(true);
@@ -125,19 +215,43 @@ export default function Heroes() {
     return sortDir > 0 ? ' \u25B2' : ' \u25BC';
   };
 
-  if (loading) return <div className="loading">Loading hero stats...</div>;
-
   const playedCount = playedHeroes.length;
   const totalCount = Object.keys(ALL_HEROES).length;
   const hasDraftData = draftMatches > 0;
 
+  const TABS = [
+    { key: 'stats', label: 'Hero Stats' },
+    { key: 'meta', label: '📍 Position Meta' },
+  ];
+
   return (
     <div>
-      <h1 className="page-title">Hero Stats</h1>
-      <p style={{ color: '#888', marginBottom: '1rem' }}>
-        {playedCount} of {totalCount} heroes played &mdash; {totalMatches} matches
-        {hasDraftData && `, ${draftMatches} with draft data`}
-      </p>
+      <h1 className="page-title">Heroes</h1>
+
+      {/* Tab switcher */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{
+              padding: '8px 18px', cursor: 'pointer', fontSize: 14, fontWeight: tab === t.key ? 700 : 400,
+              background: 'none', border: 'none', borderBottom: tab === t.key ? '2px solid var(--accent-blue)' : '2px solid transparent',
+              color: tab === t.key ? 'var(--accent-blue)' : 'var(--text-muted)',
+              borderRadius: 0, marginBottom: -1,
+            }}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'meta' && <HeroMetaTab />}
+
+      {tab === 'stats' && !loading && (
+        <>
+        <p style={{ color: '#888', marginBottom: '1rem' }}>
+          {playedCount} of {totalCount} heroes played &mdash; {totalMatches} matches
+          {hasDraftData && `, ${draftMatches} with draft data`}
+        </p>
       <div className="scoreboard-wrapper">
         <table className="scoreboard">
           <thead>
@@ -239,6 +353,10 @@ export default function Heroes() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
+
+      {tab === 'stats' && loading && <div className="loading">Loading hero stats...</div>}
     </div>
   );
 }

@@ -426,15 +426,53 @@ export async function getSeasonPayouts(seasonId) {
   return fetchJson(`/seasons/${seasonId}/payouts`);
 }
 
-export async function addSeasonPayout(seasonId, categoryType, label, amountCents, notes, uploadKey) {
+export async function addSeasonPayout(seasonId, categoryType, label, amountCents, notes, uploadKey, payoutMode, amountPercent) {
   const res = await fetch(BASE + `/seasons/${seasonId}/payouts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-upload-key': uploadKey },
-    body: JSON.stringify({ category_type: categoryType, label, amount_cents: amountCents, notes }),
+    body: JSON.stringify({
+      category_type: categoryType,
+      label,
+      amount_cents: amountCents,
+      notes,
+      payout_mode: payoutMode || 'cents',
+      amount_percent: amountPercent || 0,
+    }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to add payout category');
   return data;
+}
+
+export async function getMultiKillStats() {
+  return fetchJson('/multikills');
+}
+
+export async function getMostImproved(days = 30) {
+  return fetchJson(`/most-improved?days=${days}`);
+}
+
+export async function getHeroMeta() {
+  return fetchJson('/hero-meta');
+}
+
+export async function getMatchPredictions(matchId) {
+  return fetchJson(`/matches/${matchId}/predictions`);
+}
+
+export async function submitMatchPrediction(matchId, predictorName, predictedWinner, predictorAccountId) {
+  const res = await fetch(BASE + `/predictions/${matchId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ predictor_name: predictorName, predicted_winner: predictedWinner, predictor_account_id: predictorAccountId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to submit prediction');
+  return data;
+}
+
+export async function getPlayerPredictionStats(accountId) {
+  return fetchJson(`/players/${accountId}/predictions`);
 }
 
 export async function deleteSeasonPayout(seasonId, payoutId, uploadKey) {
