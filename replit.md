@@ -6,6 +6,10 @@ This project is a Node.js Discord bot designed to track statistics from Dota 2 i
 ## User Preferences
 I prefer iterative development, with a focus on delivering core features first and then refining them. When making changes, please prioritize robust error handling and graceful degradation. I value clear, concise explanations for any complex technical decisions or implementations.
 
+**Auto-push:** After completing any set of changes and rebuilding, always push to GitHub automatically using:
+`git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main`
+The lock file warning that sometimes appears is harmless — the push itself succeeds.
+
 ## System Architecture
 The bot is built on Node.js using `discord.js` for Discord integration and a custom Steam client (`steam-user`, `dota2-user`) for Dota 2 Game Coordinator (GC) interactions. Data persistence is handled primarily via PostgreSQL.
 
