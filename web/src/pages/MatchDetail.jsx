@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+} from 'recharts';
 
 const POSITION_NAMES = {
   0: '-',
@@ -76,6 +79,165 @@ function computeLaneOutcomes(players) {
   applyLane(groups.mid_radiant, groups.mid_dire);
 
   return outcomes;
+}
+
+const RADIANT_COLORS = ['#4ade80','#86efac','#34d399','#6ee7b7','#bbf7d0'];
+const DIRE_COLORS    = ['#f87171','#fca5a5','#fb923c','#f59e0b','#e879f9'];
+
+function fmtTime(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function fmtLargeNum(v) {
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
+  return String(v);
+}
+
+const METRIC_LABELS = {
+  nw: 'Net Worth',
+  xp: 'Experience',
+  level: 'Level',
+  cs: 'Last Hits',
+};
+
+function TimelineGraph({ timeline, allPlayers }) {
+  const [metric, setMetric] = useState('nw');
+
+  const { chartData, playerKeys } = useMemo(() => {
+    if (!timeline?.players?.length) return { chartData: [], playerKeys: [] };
+
+    const slotToName = {};
+    allPlayers.forEach(p => { slotToName[p.slot] = p.persona_name || p.nickname || `Player ${p.slot}`; });
+
+    const timeSet = new Set();
+    for (const tp of timeline.players) {
+      (tp.samples || []).forEach(s => timeSet.add(s.t));
+    }
+    const times = [...timeSet].sort((a, b) => a - b);
+
+    const playerMap = {};
+    for (const tp of timeline.players) {
+      playerMap[tp.slot] = {};
+      for (const s of (tp.samples || [])) {
+        playerMap[tp.slot][s.t] = s;
+      }
+    }
+
+    const chartData = times.map(t => {
+      const row = { t };
+      for (const tp of timeline.players) {
+        const s = playerMap[tp.slot][t];
+        const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
+        row[`slot_${tp.slot}`] = s ? (s[metric] ?? 0) : 0;
+        row[`__name_${tp.slot}`] = name;
+      }
+      return row;
+    });
+
+    const playerKeys = timeline.players.map((tp, i) => {
+      const isRadiant = tp.team === 'radiant' || tp.slot < 5;
+      const teamPlayers = timeline.players.filter(p => (p.team === 'radiant' || p.slot < 5) === isRadiant);
+      const teamIdx = teamPlayers.indexOf(tp);
+      const color = isRadiant ? RADIANT_COLORS[teamIdx % RADIANT_COLORS.length] : DIRE_COLORS[teamIdx % DIRE_COLORS.length];
+      const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
+      return { key: `slot_${tp.slot}`, name, color };
+    });
+
+    return { chartData, playerKeys };
+  }, [timeline, metric, allPlayers]);
+
+  const killEvents = useMemo(() => {
+    if (!timeline?.events) return [];
+    return timeline.events.filter(e => e.type === 'roshan_kill');
+  }, [timeline]);
+
+  if (!timeline?.players?.length) return null;
+
+  return (
+    <div className="expanded-stats-section" style={{ marginTop: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ color: '#94a3b8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+          Game Timeline
+        </h3>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {Object.entries(METRIC_LABELS).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setMetric(k)}
+              style={{
+                padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
+                border: '1px solid',
+                borderColor: metric === k ? '#3b82f6' : '#334155',
+                background: metric === k ? '#1d4ed8' : '#1e293b',
+                color: metric === k ? '#fff' : '#94a3b8',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={320}>
+        <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="t"
+            tickFormatter={fmtTime}
+            stroke="#475569"
+            tick={{ fill: '#64748b', fontSize: 11 }}
+            label={{ value: 'Time', position: 'insideBottomRight', offset: -4, fill: '#475569', fontSize: 11 }}
+          />
+          <YAxis
+            tickFormatter={metric === 'level' ? String : fmtLargeNum}
+            stroke="#475569"
+            tick={{ fill: '#64748b', fontSize: 11 }}
+            width={44}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 6, fontSize: 12 }}
+            labelStyle={{ color: '#94a3b8', marginBottom: 4 }}
+            labelFormatter={fmtTime}
+            formatter={(value, name) => [
+              metric === 'level' ? value : fmtLargeNum(value),
+              name,
+            ]}
+          />
+          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+          {killEvents.map((e, i) => (
+            <ReferenceLine key={i} x={e.t} stroke="#a855f7" strokeDasharray="4 2" label={{ value: '🐉', fontSize: 10 }} />
+          ))}
+          {playerKeys.map(({ key, name, color }) => (
+            <Line
+              key={key}
+              type="monotone"
+              dataKey={key}
+              name={name}
+              stroke={color}
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+        {[['radiant', '#4ade80'], ['dire', '#f87171']].map(([team, color]) => (
+          <div key={team} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+            <div style={{ width: 16, height: 2, background: color, borderRadius: 1 }} />
+            {team.charAt(0).toUpperCase() + team.slice(1)}
+          </div>
+        ))}
+        {killEvents.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+            <div style={{ width: 1, height: 14, background: '#a855f7', borderRadius: 1 }} />
+            Roshan
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function DraftDisplay({ draft }) {
@@ -583,6 +745,8 @@ export default function MatchDetail() {
       <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} />
 
       <ExpandedStats players={allPlayers} />
+
+      <TimelineGraph timeline={match.game_timeline} allPlayers={allPlayers} />
 
       {allPlayers.some(p => p.abilities && p.abilities.length > 0) && (
         <div className="expanded-stats-section">

@@ -198,6 +198,28 @@ function createServer(startupStatus = {}) {
   });
 
 
+  let minimapCache = null;
+  app.get('/minimap.png', async (req, res) => {
+    try {
+      if (minimapCache) {
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.send(minimapCache);
+      }
+      const fetch = require('node-fetch');
+      const r = await fetch('https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/minimap/minimap.png', { timeout: 10000 });
+      if (!r.ok) throw new Error(`CDN returned ${r.status}`);
+      const buf = await r.buffer();
+      minimapCache = buf;
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.send(buf);
+    } catch (err) {
+      console.warn('[Server] Minimap proxy failed:', err.message);
+      res.status(404).send('Minimap unavailable');
+    }
+  });
+
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
     app.use(express.static(staticPath));
@@ -549,6 +571,26 @@ function createApiRouter(startupStatus = {}) {
       res.json({ stats });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch prediction stats' });
+    }
+  });
+
+  router.get('/players/:accountId/ward-placements', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const placements = await db.getPlayerWardPlacements(parseInt(req.params.accountId), seasonId);
+      res.json({ placements });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch ward placements' });
+    }
+  });
+
+  router.get('/ward-placements', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const players = await db.getAllPlayersWardPlacements(seasonId);
+      res.json({ players });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch ward placements' });
     }
   });
 

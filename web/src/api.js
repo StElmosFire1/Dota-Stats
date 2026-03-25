@@ -516,3 +516,13 @@ export async function getLatestRecap() {
 export async function getPlayerNemesis(accountId) {
   return fetchJson(`/player/${accountId}/nemesis`);
 }
+
+export async function getPlayerWardPlacements(accountId, seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/players/${accountId}/ward-placements${q}`);
+}
+
+export async function getAllWardPlacements(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/ward-placements${q}`);
+}

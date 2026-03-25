@@ -468,6 +468,12 @@ async function init() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_patch_notes_version ON patch_notes(version);
     `);
 
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS game_timeline JSONB`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS lane_outcomes JSONB`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ward_placements JSONB DEFAULT '[]'`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS nemesis_hero_name VARCHAR(100) DEFAULT ''`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS nemesis_kills INTEGER DEFAULT 0`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -716,9 +722,11 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
     await client.query('BEGIN');
 
     await client.query(
-      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       ON CONFLICT (match_id) DO UPDATE SET date = EXCLUDED.date
+      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       ON CONFLICT (match_id) DO UPDATE SET date = EXCLUDED.date,
+         game_timeline = COALESCE(EXCLUDED.game_timeline, matches.game_timeline),
+         lane_outcomes = COALESCE(EXCLUDED.lane_outcomes, matches.lane_outcomes)
          WHERE EXCLUDED.date < NOW() - INTERVAL '10 minutes'`,
       [
         matchStats.matchId,
@@ -732,13 +740,15 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         fileHash || null,
         patch || null,
         seasonId || null,
+        matchStats.gameTimeline ? JSON.stringify(matchStats.gameTimeline) : null,
+        matchStats.laneOutcomes ? JSON.stringify(matchStats.laneOutcomes) : null,
       ]
     );
 
     for (const player of matchStats.players) {
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55)`,
         [
           matchStats.matchId,
           player.accountId || 0,
@@ -792,6 +802,9 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
           player.laningNw != null ? player.laningNw : null,
           player.supportGoldSpent || 0,
           JSON.stringify(player.killedBy || {}),
+          JSON.stringify(player.wardPlacements || []),
+          player.nemesisHeroName || '',
+          player.nemesisKills || 0,
         ]
       );
 
@@ -3206,6 +3219,74 @@ async function getOpenPrediction() {
   return { match_id: matchId, predictions: all.rows };
 }
 
+async function getPlayerWardPlacements(accountId, seasonId = null) {
+  const p = getPool();
+  const params = [accountId];
+  let sc = '';
+  if (!seasonId) sc = ` AND m.is_legacy = false`;
+  else if (seasonId === 'legacy') sc = ` AND m.is_legacy = true`;
+  else { params.push(parseInt(seasonId)); sc = ` AND m.season_id = $${params.length}`; }
+
+  const res = await p.query(`
+    SELECT ps.ward_placements, ps.persona_name, ps.hero_id, ps.hero_name, m.match_id, m.date
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = $1
+      AND ps.ward_placements IS NOT NULL
+      AND ps.ward_placements != '[]'::jsonb
+      ${sc}
+    ORDER BY m.date DESC
+  `, params);
+
+  const allPlacements = { obs: [], sen: [] };
+  for (const row of res.rows) {
+    const placements = row.ward_placements || [];
+    for (const p of placements) {
+      if (p.type === 'obs') allPlacements.obs.push({ x: p.x, y: p.y, t: p.t, matchId: row.match_id });
+      else if (p.type === 'sen') allPlacements.sen.push({ x: p.x, y: p.y, t: p.t, matchId: row.match_id });
+    }
+  }
+  return allPlacements;
+}
+
+async function getAllPlayersWardPlacements(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  let sc = '';
+  if (!seasonId) sc = ` AND m.is_legacy = false`;
+  else if (seasonId === 'legacy') sc = ` AND m.is_legacy = true`;
+  else { params.push(parseInt(seasonId)); sc = ` AND m.season_id = $${params.length}`; }
+
+  const res = await p.query(`
+    SELECT ps.account_id, ps.persona_name, n.nickname, ps.ward_placements
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+    WHERE ps.ward_placements IS NOT NULL
+      AND ps.ward_placements != '[]'::jsonb
+      AND ps.account_id != 0
+      ${sc}
+    ORDER BY ps.account_id
+  `, params);
+
+  const byPlayer = {};
+  for (const row of res.rows) {
+    const id = String(row.account_id);
+    if (!byPlayer[id]) {
+      byPlayer[id] = {
+        accountId: row.account_id,
+        name: row.nickname || row.persona_name || `Player ${id}`,
+        obs: [], sen: [],
+      };
+    }
+    for (const wp of (row.ward_placements || [])) {
+      if (wp.type === 'obs') byPlayer[id].obs.push({ x: wp.x, y: wp.y });
+      else if (wp.type === 'sen') byPlayer[id].sen.push({ x: wp.x, y: wp.y });
+    }
+  }
+  return Object.values(byPlayer);
+}
+
 module.exports = {
   init,
   getPool,
@@ -3292,4 +3373,6 @@ module.exports = {
   resolveMatchPredictions,
   getPlayerPredictionStats,
   getOpenPrediction,
+  getPlayerWardPlacements,
+  getAllPlayersWardPlacements,
 };

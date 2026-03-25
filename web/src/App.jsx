@@ -26,6 +26,7 @@ import StatsEditor from './pages/StatsEditor';
 import PatchNotes from './pages/PatchNotes';
 import Home from './pages/Home';
 import MultiKills from './pages/MultiKills';
+import WardMap from './pages/WardMap';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
@@ -246,6 +247,7 @@ function Nav() {
           <DropdownItem to="/compare">Compare Players</DropdownItem>
           <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
           <DropdownItem to="/multikills">Multi-Kill Leaderboard</DropdownItem>
+          <DropdownItem to="/ward-map">Ward Heatmap</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
         </DropdownMenu>
@@ -293,6 +295,7 @@ export default function App() {
                 <Route path="/predictions" element={<Predictions />} />
                 <Route path="/patch-notes" element={<PatchNotes />} />
                 <Route path="/multikills" element={<MultiKills />} />
+                <Route path="/ward-map" element={<WardMap />} />
               </Routes>
             </main>
           </SeasonProvider>

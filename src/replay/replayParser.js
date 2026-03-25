@@ -394,6 +394,14 @@ class ReplayParser {
     const laningNwAtEight = {};
     const draftRaw = [];
 
+    const timelineSamples = {};
+    const timelineLastSampled = {};
+    const laningNwAt10 = {};
+    const laningXpAt10 = {};
+    const wardPlacements = {};
+    const gameEvents = [];
+    const laningKillsAt10 = {};
+
     for (const e of events) {
       if (e.type === 'epilogue' && e.key) {
         try {
@@ -560,6 +568,28 @@ class ReplayParser {
             laningNwAtEight[e.slot] = { nw: e.networth, time: currentTime };
           }
         }
+
+        if (currentTime >= 590 && currentTime <= 615) {
+          if (!laningNwAt10[e.slot] || currentTime > (laningNwAt10[e.slot].time || 0)) {
+            laningNwAt10[e.slot] = { nw: e.networth || 0, time: currentTime };
+          }
+          if (!laningXpAt10[e.slot] || currentTime > (laningXpAt10[e.slot].time || 0)) {
+            laningXpAt10[e.slot] = { xp: e.xp || 0, time: currentTime };
+          }
+        }
+
+        const prevSampled = timelineLastSampled[e.slot] || -30;
+        if (currentTime - prevSampled >= 30) {
+          timelineLastSampled[e.slot] = currentTime;
+          if (!timelineSamples[e.slot]) timelineSamples[e.slot] = [];
+          timelineSamples[e.slot].push({
+            t: currentTime,
+            nw: e.networth || 0,
+            xp: e.xp || 0,
+            lvl: e.level || 0,
+            cs: e.lh || 0,
+          });
+        }
       }
     }
 
@@ -614,6 +644,18 @@ class ReplayParser {
         const killerSlot = npcNameToSlot[e.attackername];
         if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
           wardKills[killerSlot] = (wardKills[killerSlot] || 0) + 1;
+        }
+      }
+
+      if ((e.type === 'obs_log' || e.type === 'sen_log') && e.x != null && e.y != null) {
+        let slot = e.slot;
+        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
+        if (slot != null && slot >= 0 && slot < 10) {
+          if (!wardPlacements[slot]) wardPlacements[slot] = [];
+          wardPlacements[slot].push({
+            type: e.type === 'obs_log' ? 'obs' : 'sen',
+            x: e.x, y: e.y, t: e.time || 0,
+          });
         }
       }
 
@@ -673,14 +715,49 @@ class ReplayParser {
               firstDeathSlot.slot = targetSlot;
             }
 
-            // Nemesis: track which hero kills this player
             let killerSlot = e.slot;
             if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
             if (killerSlot != null && killerSlot >= 0 && killerSlot < 10 && killerSlot !== targetSlot) {
               if (!killedBy[targetSlot]) killedBy[targetSlot] = {};
               killedBy[targetSlot][killerSlot] = (killedBy[targetSlot][killerSlot] || 0) + 1;
             }
+
+            gameEvents.push({ t: time, type: 'kill', killerSlot: killerSlot != null ? killerSlot : -1, victimSlot: targetSlot });
+
+            if (time <= 600) {
+              if (!laningKillsAt10[targetSlot]) laningKillsAt10[targetSlot] = { k: 0, d: 0, a: 0 };
+              laningKillsAt10[targetSlot].d++;
+              if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
+                if (!laningKillsAt10[killerSlot]) laningKillsAt10[killerSlot] = { k: 0, d: 0, a: 0 };
+                laningKillsAt10[killerSlot].k++;
+              }
+              if (e.assisters && Array.isArray(e.assisters)) {
+                for (const aName of e.assisters) {
+                  const aSlot = npcNameToSlot[aName];
+                  if (aSlot != null && aSlot >= 0 && aSlot < 10) {
+                    if (!laningKillsAt10[aSlot]) laningKillsAt10[aSlot] = { k: 0, d: 0, a: 0 };
+                    laningKillsAt10[aSlot].a++;
+                  }
+                }
+              }
+            }
           }
+        }
+
+        if (e.targetname && e.targetname.includes('roshan')) {
+          const time = e.time || 0;
+          let killerSlot = e.slot;
+          if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
+          const team = killerSlot != null && killerSlot >= 0 && killerSlot < 5 ? 'radiant' : 'dire';
+          gameEvents.push({ t: time, type: 'roshan', team });
+        }
+
+        if (e.targetname && (e.targetname.includes('tower') || e.targetname.includes('fort') || e.targetname.includes('barracks'))) {
+          const time = e.time || 0;
+          let killerSlot = e.slot;
+          if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
+          const killerTeam = killerSlot != null && killerSlot >= 0 && killerSlot < 5 ? 'radiant' : 'dire';
+          gameEvents.push({ t: time, type: 'building', team: killerTeam, building: e.targetname });
         }
 
         if (e.targetname && (e.targetname.includes('courier') || e.targetname.includes('donkey'))) {
@@ -694,7 +771,9 @@ class ReplayParser {
 
       if (e.type === 'DOTA_COMBATLOG_BUYBACK') {
         let slot = e.slot;
+        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
         if (slot == null && e.targetname) slot = npcNameToSlot[e.targetname];
+        if (slot == null && typeof e.slot === 'number') slot = e.slot;
         if (slot != null && slot >= 0 && slot < 10) {
           combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
         }
@@ -997,6 +1076,8 @@ class ReplayParser {
           if (killer?.accountId) acc[String(killer.accountId)] = count;
           return acc;
         }, {}),
+        wardPlacements: wardPlacements[slot] || [],
+        timelineSamples: timelineSamples[slot] || [],
       });
     }
 
@@ -1101,6 +1182,11 @@ class ReplayParser {
     });
     // --- End draft post-processing ---
 
+    const laneOutcomes = this._computeStratzLaneOutcomes(detectedPositions, players, laningNwAt10, laningXpAt10, laneCs10min, laningKillsAt10);
+
+    console.log(`[Replay] Lane outcomes: ${JSON.stringify(laneOutcomes)}`);
+    console.log(`[Replay] Timeline samples: ${Object.keys(timelineSamples).length} slots, ${Object.values(timelineSamples).reduce((s,a)=>s+a.length,0)} total points`);
+    console.log(`[Replay] Ward placements: ${Object.values(wardPlacements).reduce((s,a)=>s+a.length,0)} total`);
     console.log(`[Replay] Final stats: matchId=${matchId}, duration=${duration}s, radiantWin=${radiantWin}, players=${playerList.length}`);
     for (const p of playerList) {
       console.log(`[Replay]   ${p.team} pos${p.position} ${p.isCaptain ? '(C)' : ''}: ${p.personaname} (hero=${p.heroId}, acct=${p.accountId}) K/D/A=${p.kills}/${p.deaths}/${p.assists} HD=${p.heroDamage} TD=${p.towerDamage} HH=${p.heroHealing} DT=${p.damageTaken} OBS=${p.obsPlaced} SEN=${p.senPlaced} STK=${p.campsStacked}`);
@@ -1120,7 +1206,91 @@ class ReplayParser {
       players: playerList,
       draft,
       parseMethod: 'odota-parser',
+      gameTimeline: {
+        interval: 30,
+        events: gameEvents.sort((a, b) => a.t - b.t),
+      },
+      laneOutcomes,
     };
+  }
+
+  _computeStratzLaneOutcomes(detectedPositions, players, laningNwAt10, laningXpAt10, laneCs10min, laningKillsAt10) {
+    const MAX_NW_PER_PLAYER = 8000;
+    const MAX_XP_PER_PLAYER = 7000;
+    const MAX_CS = 153;
+
+    const laneGroups = {
+      bottom: { radiant: [], dire: [] },
+      mid:    { radiant: [], dire: [] },
+      top:    { radiant: [], dire: [] },
+    };
+
+    for (const [slotStr, pos] of Object.entries(detectedPositions)) {
+      const slot = parseInt(slotStr);
+      if (pos === 0) continue;
+      const team = slot < 5 ? 'radiant' : 'dire';
+      let lane;
+      if (pos === 2) {
+        lane = 'mid';
+      } else if (pos === 1 || pos === 5) {
+        lane = team === 'radiant' ? 'bottom' : 'top';
+      } else if (pos === 3 || pos === 4) {
+        lane = team === 'radiant' ? 'top' : 'bottom';
+      } else {
+        continue;
+      }
+      laneGroups[lane][team].push(slot);
+    }
+
+    const outcomes = {};
+    for (const lane of ['bottom', 'mid', 'top']) {
+      const rSlots = laneGroups[lane].radiant;
+      const dSlots = laneGroups[lane].dire;
+      if (rSlots.length === 0 || dSlots.length === 0) continue;
+
+      const maxPlayers = Math.max(rSlots.length, dSlots.length);
+      const maxNW = MAX_NW_PER_PLAYER * maxPlayers;
+      const maxXP = MAX_XP_PER_PLAYER * maxPlayers;
+
+      const sumStat = (slots, getter) => slots.reduce((s, slot) => s + (getter(slot) || 0), 0);
+
+      const rNW = sumStat(rSlots, s => laningNwAt10[s]?.nw);
+      const dNW = sumStat(dSlots, s => laningNwAt10[s]?.nw);
+      const rXP = sumStat(rSlots, s => laningXpAt10[s]?.xp);
+      const dXP = sumStat(dSlots, s => laningXpAt10[s]?.xp);
+      const rCS = sumStat(rSlots, s => laneCs10min[s]);
+      const dCS = sumStat(dSlots, s => laneCs10min[s]);
+
+      const laneKDA = (slots) => slots.reduce((s, slot) => {
+        const lk = laningKillsAt10[slot] || { k: 0, d: 0, a: 0 };
+        return s + lk.k + lk.a - lk.d;
+      }, 0);
+      const rKDA = laneKDA(rSlots);
+      const dKDA = laneKDA(dSlots);
+
+      const adjNW = maxNW > 0 ? (rNW / maxNW) - (dNW / maxNW) : 0;
+      const adjXP = maxXP > 0 ? (rXP / maxXP) - (dXP / maxXP) : 0;
+      const adjCS = (rCS / MAX_CS) - (dCS / MAX_CS);
+      const clamp6 = v => Math.min(Math.max(v, -6), 6);
+      const kdaDiff = (clamp6(rKDA) / 6) - (clamp6(dKDA) / 6);
+      const score = adjNW + adjXP + adjCS + (kdaDiff / 2);
+
+      const abs = Math.abs(score);
+      const getOutcome = (positive) => {
+        if (abs < 0.15) return 'draw';
+        if (abs < 0.6) return positive ? 'win' : 'loss';
+        return positive ? 'stomp' : 'stomp_loss';
+      };
+
+      outcomes[lane] = {
+        score: Math.round(score * 1000) / 1000,
+        radiant: getOutcome(score > 0),
+        dire: getOutcome(score < 0),
+        radiantSlots: rSlots,
+        direSlots: dSlots,
+      };
+    }
+    return outcomes;
   }
 
   parseReplayHeader(filePath) {

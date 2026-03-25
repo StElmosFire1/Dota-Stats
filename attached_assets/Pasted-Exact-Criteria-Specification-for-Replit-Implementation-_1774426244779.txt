@@ -1,0 +1,84 @@
+Exact Criteria / Specification for Replit Implementation
+1. When to calculate (critical)
+
+Compute the LaneScore exactly at the 10-minute mark (game time = 600 seconds).
+For Turbo matches only: use 7-minute mark (420 seconds) instead.
+This is the single moment Stratz uses for the entire lane outcome label.
+
+2. Core Formula (use exactly this)
+$$LaneScore = AdjustedLaneNW + LaneXP + LaneCS + (AdjustedLaneKDA / 2)
+$$
+
+LaneScore > 0 → Radiant lane advantage
+LaneScore < 0 → Dire lane advantage
+The final outcome (Win/Loss/Draw/Stomp) is decided by comparing this LaneScore against lane-specific + rank-specific benchmarks (see step 6).
+
+3. How to compute each component (verbatim from Stratz)
+
+AdjustedLaneNW and LaneXP (Net Worth & Experience):
+For each lane matchup, calculate the normalized difference:textCopydifference = (radiantValue / maxValue) - (direValue / maxValue)
+maxValue = the theoretical or observed maximum possible NW or XP at the 10-min mark for that lane (you will need to define this dynamically from your dataset or use a high observed ceiling; Stratz does not publish the exact number, but it follows the same pattern as CS).
+
+LaneCS (Creep Score / last hits):
+Use exactly:textCopyLaneCS = (radiantLaneCS / 153) - (direLaneCS / 153)
+153 is the hard-coded maximum possible CS at 10 minutes (or 7 min Turbo).
+Exclusions: Do not count CS from Wraith King skeletons or any other summons that Stratz excludes.
+
+AdjustedLaneKDA:
+First compute a raw lane KDA score for the lane (kills + assists – deaths attributed to that lane — see attribution rules below).
+Clamp it: clamped = Math.Min(Math.Max(rawLaneKDA, -6), 6)
+Normalized difference:textCopyKDA_diff = (clamped_radiant / 6.0) - (clamped_dire / 6.0)
+In the final formula use only (KDA_diff / 2).
+
+
+4. Lane assignment & special handling (must implement exactly)
+
+Use the standard 3 lane matchups: Top (Offlane), Middle, Bottom (Safeline).
+Assign heroes to lanes using the same lane role data you already pull (Stratz/OpenDota lane field: 1=Top, 2=Mid, 3=Bot).
+Roaming / Jungling heroes (position at start of game):
+Their CS and XP do NOT count toward any individual lane.
+Kill/assist points from them are distributed equally across all 3 lanes.
+Their deaths are not counted against any lane.
+
+KDA attribution rules:
+Kills/assists are credited to the lane(s) of the killer and assisters based on where the event occurred on the map + which lane the hero originated from.
+Deaths are only charged against the hero’s original assigned lane.
+
+Hero-specific normalizations (Stratz does these):
+Normalize Alchemist’s XP so he isn’t unfairly over-represented.
+Any other adjustments Stratz mentions in future patches (you can add them later).
+
+
+5. Data you need at 10-min mark (per player in the lane)
+
+Net Worth (gold)
+Total XP
+Creep Score (last hits only — denies are already baked into Stratz’s logic)
+Kills / Deaths / Assists attributed per the rules above
+Hero ID (for special cases like Alchemist)
+Lane role / position at game start
+
+6. How to turn LaneScore into Win / Loss / Draw / Stomp
+
+Stratz uses pre-defined benchmark ranges that are:
+Specific to the lane (Top / Mid / Bot)
+Specific to the match’s average rank / MMR bracket
+
+Thresholds (approximate percentages Stratz publishes):
+Top ~10 % of LaneScore differences in that lane + rank → Stomp (for the winning side)
+Next ~60 % → Win or Loss
+Remaining ~30 % → Draw
+
+Practical implementation tip for Replit:
+Either:
+Hard-code percentile tables per lane + per rank bracket (e.g. Herald–Divine–Immortal), or
+Dynamically compute percentiles from your own historical match database (recommended for accuracy).
+
+Outcomes are symmetric between Radiant and Dire.
+
+
+7. Final output for your website
+
+For every match, for each of the 3 lanes, output one of:
+Lane Win / Lane Loss / Lane Draw / Lane Stomp (plus which side won if applicable).
+Display it exactly like Stratz/Dotabuff do in the match details.
