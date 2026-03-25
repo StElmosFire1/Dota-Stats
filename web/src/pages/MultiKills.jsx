@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { getMultiKillStats } from '../api';
 
 const KILL_TYPES = [
-  { key: 'rampages',    label: 'Rampages',    emoji: '☠️',  color: '#e53935', desc: '5 kills without dying' },
-  { key: 'ultra_kills', label: 'Ultra Kills',  emoji: '⚡',  color: '#8e24aa', desc: '4 kills without dying' },
-  { key: 'triple_kills',label: 'Triple Kills', emoji: '🔥',  color: '#ef6c00', desc: '3 kills without dying' },
-  { key: 'double_kills',label: 'Double Kills', emoji: '⚔️',  color: '#1976d2', desc: '2 kills without dying' },
+  { key: 'rampages',    label: 'Rampages',    emoji: '☠️',  color: '#e53935', desc: '5 kills within 18s' },
+  { key: 'ultra_kills', label: 'Ultra Kills',  emoji: '⚡',  color: '#8e24aa', desc: '4 kills within 18s' },
+  { key: 'triple_kills',label: 'Triple Kills', emoji: '🔥',  color: '#ef6c00', desc: '3 kills within 18s' },
+  { key: 'double_kills',label: 'Double Kills', emoji: '⚔️',  color: '#1976d2', desc: '2 kills within 18s' },
 ];
 
 function KillBadge({ count, color, emoji }) {
@@ -57,7 +57,7 @@ export default function MultiKills() {
     <div>
       <h1 className="page-title">Multi-Kill Leaderboard</h1>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>
-        Consecutive kill streaks within a single engagement — click a column to sort.
+        Each kill within 18 seconds of the last starts or extends the chain — click a column to sort.
       </p>
 
       {/* Kill type legend */}
@@ -113,10 +113,10 @@ export default function MultiKills() {
               <tr>
                 <th className="col-rank">#</th>
                 <th className="col-player">Player</th>
-                <Th col="rampages"     label="☠️ Rampages"    title="5 kills without dying" />
-                <Th col="ultra_kills"  label="⚡ Ultras"       title="4 kills without dying" />
-                <Th col="triple_kills" label="🔥 Triples"      title="3 kills without dying" />
-                <Th col="double_kills" label="⚔️ Doubles"      title="2 kills without dying" />
+                <Th col="rampages"     label="☠️ Rampages"    title="5 hero kills each within 18s of the last" />
+                <Th col="ultra_kills"  label="⚡ Ultras"       title="4 hero kills each within 18s of the last" />
+                <Th col="triple_kills" label="🔥 Triples"      title="3 hero kills each within 18s of the last" />
+                <Th col="double_kills" label="⚔️ Doubles"      title="2 hero kills each within 18s of the last" />
                 <Th col="total"        label="Total"           title="All multi-kills combined" />
                 <th className="col-stat" title="Games played">Games</th>
               </tr>
