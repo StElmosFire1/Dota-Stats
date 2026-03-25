@@ -1,0 +1,97 @@
+root@Dota-Stats:~/Dota-Stats# pm2 logs inhouse-bot --nostream --lines 500 | grep "Replay"
+2|inhouse- | [Replay] Sending afca3f7fe7ade6d4.dem to parser (150.0 MB)...
+2|inhouse- | [Replay] Parsed 352078 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8740534526,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774265849,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8740534526, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-23T11:37:29.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_pudge":0,"npc_dota_hero_ringmaster":1,"npc_dota_hero_sniper":2,"npc_dota_hero_earthshaker":3,"npc_dota_hero_zuus":4,"npc_dota_hero_rattletrap":5,"npc_dota_hero_weaver":6,"npc_dota_hero_invoker":7,"npc_dota_hero_life_stealer":8,"npc_dota_hero_crystal_maiden":9}
+2|inhouse- | [Replay] Hero damage by slot: {"0":93834,"1":36611,"2":67477,"3":33157,"4":71129,"5":40226,"6":32705,"7":66781,"8":62921,"9":23025}
+2|inhouse- | [Replay] Tower damage by slot: {"0":427,"2":3974,"3":527,"4":380,"5":150,"6":10187,"7":973,"8":5854,"9":286}
+2|inhouse- | [Replay] Hero healing by slot: {"1":6,"6":1634,"8":5236}
+2|inhouse- | [Replay] Damage taken by slot: {"0":116793,"1":40845,"2":39619,"3":53459,"4":54144,"5":84799,"6":64729,"7":56932,"8":97885,"9":40250}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":90,"1":170,"3":285,"4":155,"6":285,"7":140,"9":270}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":3,"1":4,"2":1,"3":5,"4":2,"5":3,"6":5,"7":2,"8":1,"9":4}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.72,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[2,3],"direSlots":[5,9]},"mid":{"score":0.6,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[4],"direSlots":[7]},"top":{"score":-0.835,"radiant":"stomp_loss","dire":"stomp","radiantSlots":[0,1],"direSlots":[6,8]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 1440 total points
+2|inhouse- | [Replay] Ward placements: 0 total
+2|inhouse- | [Replay] Final stats: matchId=8740534526, duration=4268s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos3 (C): Harry (hero=14, acct=108449472) K/D/A=11/11/29 HD=93834 TD=427 HH=0 DT=116793 OBS=0 SEN=6 STK=0
+2|inhouse- | [Replay]   radiant pos4 : Lemon Burtle (hero=131, acct=1142497072) K/D/A=1/10/37 HD=36611 TD=0 HH=6 DT=40845 OBS=16 SEN=27 STK=2
+2|inhouse- | [Replay]   radiant pos1 : MajinDabura (hero=35, acct=35944012) K/D/A=20/10/20 HD=67477 TD=3974 HH=0 DT=39619 OBS=1 SEN=0 STK=3
+2|inhouse- | [Replay]   radiant pos5 : Hoodini (hero=7, acct=161409022) K/D/A=3/13/36 HD=33157 TD=527 HH=0 DT=53459 OBS=12 SEN=27 STK=2
+2|inhouse- | [Replay]   radiant pos2 : ▪☻▪ (hero=22, acct=195989012) K/D/A=18/11/24 HD=71129 TD=380 HH=0 DT=54144 OBS=2 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos3 (C): SPOON ASS (hero=51, acct=130446492) K/D/A=3/14/34 HD=40226 TD=150 HH=0 DT=84799 OBS=1 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos5 : Skankhunt42 (hero=63, acct=186762212) K/D/A=7/11/19 HD=32705 TD=10187 HH=1634 DT=64729 OBS=5 SEN=13 STK=1
+2|inhouse- | [Replay]   dire pos2 : TANK (hero=74, acct=228770302) K/D/A=16/8/19 HD=66781 TD=973 HH=0 DT=56932 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=54, acct=277264212) K/D/A=26/8/16 HD=62921 TD=5854 HH=5236 DT=97885 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   dire pos4 : Klevin (hero=5, acct=1156848162) K/D/A=3/12/24 HD=23025 TD=286 HH=0 DT=40250 OBS=26 SEN=46 STK=0
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- |   - Replay parser:  YES (full stats)
+2|inhouse- | [Replay] Sending 0118c8ce99eb6fed.dem to parser (150.0 MB)...
+2|inhouse- | [Replay] Parsed 352078 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8740534526,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774265849,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8740534526, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-23T11:37:29.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_pudge":0,"npc_dota_hero_ringmaster":1,"npc_dota_hero_sniper":2,"npc_dota_hero_earthshaker":3,"npc_dota_hero_zuus":4,"npc_dota_hero_rattletrap":5,"npc_dota_hero_weaver":6,"npc_dota_hero_invoker":7,"npc_dota_hero_life_stealer":8,"npc_dota_hero_crystal_maiden":9}
+2|inhouse- | [Replay] Hero damage by slot: {"0":93834,"1":36611,"2":67477,"3":33157,"4":71129,"5":40226,"6":32705,"7":66781,"8":62921,"9":23025}
+2|inhouse- | [Replay] Tower damage by slot: {"0":427,"2":3974,"3":527,"4":380,"5":150,"6":10187,"7":973,"8":5854,"9":286}
+2|inhouse- | [Replay] Hero healing by slot: {"1":6,"6":1634,"8":5236}
+2|inhouse- | [Replay] Damage taken by slot: {"0":116793,"1":40845,"2":39619,"3":53459,"4":54144,"5":84799,"6":64729,"7":56932,"8":97885,"9":40250}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":90,"1":170,"3":285,"4":155,"6":285,"7":140,"9":270}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":3,"1":4,"2":1,"3":5,"4":2,"5":3,"6":5,"7":2,"8":1,"9":4}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.72,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[2,3],"direSlots":[5,9]},"mid":{"score":0.6,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[4],"direSlots":[7]},"top":{"score":-0.835,"radiant":"stomp_loss","dire":"stomp","radiantSlots":[0,1],"direSlots":[6,8]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 1440 total points
+2|inhouse- | [Replay] Ward placements: 0 total
+2|inhouse- | [Replay] Final stats: matchId=8740534526, duration=4268s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos3 (C): Harry (hero=14, acct=108449472) K/D/A=11/11/29 HD=93834 TD=427 HH=0 DT=116793 OBS=0 SEN=6 STK=0
+2|inhouse- | [Replay]   radiant pos4 : Lemon Burtle (hero=131, acct=1142497072) K/D/A=1/10/37 HD=36611 TD=0 HH=6 DT=40845 OBS=16 SEN=27 STK=2
+2|inhouse- | [Replay]   radiant pos1 : MajinDabura (hero=35, acct=35944012) K/D/A=20/10/20 HD=67477 TD=3974 HH=0 DT=39619 OBS=1 SEN=0 STK=3
+2|inhouse- | [Replay]   radiant pos5 : Hoodini (hero=7, acct=161409022) K/D/A=3/13/36 HD=33157 TD=527 HH=0 DT=53459 OBS=12 SEN=27 STK=2
+2|inhouse- | [Replay]   radiant pos2 : ▪☻▪ (hero=22, acct=195989012) K/D/A=18/11/24 HD=71129 TD=380 HH=0 DT=54144 OBS=2 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos3 (C): SPOON ASS (hero=51, acct=130446492) K/D/A=3/14/34 HD=40226 TD=150 HH=0 DT=84799 OBS=1 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos5 : Skankhunt42 (hero=63, acct=186762212) K/D/A=7/11/19 HD=32705 TD=10187 HH=1634 DT=64729 OBS=5 SEN=13 STK=1
+2|inhouse- | [Replay]   dire pos2 : TANK (hero=74, acct=228770302) K/D/A=16/8/19 HD=66781 TD=973 HH=0 DT=56932 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=54, acct=277264212) K/D/A=26/8/16 HD=62921 TD=5854 HH=5236 DT=97885 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   dire pos4 : Klevin (hero=5, acct=1156848162) K/D/A=3/12/24 HD=23025 TD=286 HH=0 DT=40250 OBS=26 SEN=46 STK=0
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- |   - Replay parser:  YES (full stats)
+2|inhouse- | [Replay] Sending f9dac2b64c99c05a.dem to parser (150.0 MB)...
+2|inhouse- | [Replay] Parsed 352078 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8740534526,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774265849,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8740534526, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-23T11:37:29.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_pudge":0,"npc_dota_hero_ringmaster":1,"npc_dota_hero_sniper":2,"npc_dota_hero_earthshaker":3,"npc_dota_hero_zuus":4,"npc_dota_hero_rattletrap":5,"npc_dota_hero_weaver":6,"npc_dota_hero_invoker":7,"npc_dota_hero_life_stealer":8,"npc_dota_hero_crystal_maiden":9}
+2|inhouse- | [Replay] Hero damage by slot: {"0":93834,"1":36611,"2":67477,"3":33157,"4":71129,"5":40226,"6":32705,"7":66781,"8":62921,"9":23025}
+2|inhouse- | [Replay] Tower damage by slot: {"0":427,"2":3974,"3":527,"4":380,"5":150,"6":10187,"7":973,"8":5854,"9":286}
+2|inhouse- | [Replay] Hero healing by slot: {"1":6,"6":1634,"8":5236}
+2|inhouse- | [Replay] Damage taken by slot: {"0":116793,"1":40845,"2":39619,"3":53459,"4":54144,"5":84799,"6":64729,"7":56932,"8":97885,"9":40250}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":90,"1":170,"3":285,"4":155,"6":285,"7":140,"9":270}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":3,"1":4,"2":1,"3":5,"4":2,"5":3,"6":5,"7":2,"8":1,"9":4}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.72,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[2,3],"direSlots":[5,9]},"mid":{"score":0.6,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[4],"direSlots":[7]},"top":{"score":-0.835,"radiant":"stomp_loss","dire":"stomp","radiantSlots":[0,1],"direSlots":[6,8]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 1440 total points
+2|inhouse- | [Replay] Ward placements: 0 total — NONE CAPTURED (check slot mapping)
+2|inhouse- | [Replay] Item purchases: 8 slots (slot0:4, slot1:4, slot3:5, slot4:6, slot5:5, slot6:6, slot7:3, slot9:5)
+2|inhouse- | [Replay] Final stats: matchId=8740534526, duration=4268s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos3 (C): Harry (hero=14, acct=108449472) K/D/A=11/11/29 HD=93834 TD=427 HH=0 DT=116793 OBS=0 SEN=6 STK=0
+2|inhouse- | [Replay]   radiant pos4 : Lemon Burtle (hero=131, acct=1142497072) K/D/A=1/10/37 HD=36611 TD=0 HH=6 DT=40845 OBS=16 SEN=27 STK=2
+2|inhouse- | [Replay]   radiant pos1 : MajinDabura (hero=35, acct=35944012) K/D/A=20/10/20 HD=67477 TD=3974 HH=0 DT=39619 OBS=1 SEN=0 STK=3
+2|inhouse- | [Replay]   radiant pos5 : Hoodini (hero=7, acct=161409022) K/D/A=3/13/36 HD=33157 TD=527 HH=0 DT=53459 OBS=12 SEN=27 STK=2
+2|inhouse- | [Replay]   radiant pos2 : ▪☻▪ (hero=22, acct=195989012) K/D/A=18/11/24 HD=71129 TD=380 HH=0 DT=54144 OBS=2 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos3 (C): SPOON ASS (hero=51, acct=130446492) K/D/A=3/14/34 HD=40226 TD=150 HH=0 DT=84799 OBS=1 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos5 : Skankhunt42 (hero=63, acct=186762212) K/D/A=7/11/19 HD=32705 TD=10187 HH=1634 DT=64729 OBS=5 SEN=13 STK=1
+2|inhouse- | [Replay]   dire pos2 : TANK (hero=74, acct=228770302) K/D/A=16/8/19 HD=66781 TD=973 HH=0 DT=56932 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=54, acct=277264212) K/D/A=26/8/16 HD=62921 TD=5854 HH=5236 DT=97885 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   dire pos4 : Klevin (hero=5, acct=1156848162) K/D/A=3/12/24 HD=23025 TD=286 HH=0 DT=40250 OBS=26 SEN=46 STK=0
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks

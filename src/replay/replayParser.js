@@ -648,7 +648,7 @@ class ReplayParser {
         }
       }
 
-      if ((e.type === 'obs_log' || e.type === 'sen_log') && e.x != null && e.y != null) {
+      if ((e.type === 'obs' || e.type === 'sen') && e.x != null && e.y != null) {
         if (!wardEventDebugLogged) {
           console.log('[Replay] Sample ward event fields:', JSON.stringify(e));
           wardEventDebugLogged = true;
@@ -664,11 +664,11 @@ class ReplayParser {
         if (slot != null && slot >= 0 && slot < 10) {
           if (!wardPlacements[slot]) wardPlacements[slot] = [];
           wardPlacements[slot].push({
-            type: e.type === 'obs_log' ? 'obs' : 'sen',
+            type: e.type === 'obs' ? 'obs' : 'sen',
             x: e.x, y: e.y, t: e.time || 0,
           });
         } else {
-          if (!wardEventDebugLogged) console.log('[Replay] Ward event slot unresolved — full event:', JSON.stringify(e));
+          console.log('[Replay] Ward event slot unresolved — full event:', JSON.stringify(e));
         }
       }
 
@@ -676,6 +676,8 @@ class ReplayParser {
         let slot = e.slot;
         // Map raw Valve dire slots (128-132) to normalized 5-9
         if (slot != null && slot >= 128 && slot <= 132) slot = slot - 128 + 5;
+        // Fallback: resolve slot from attacker NPC name if slot is still missing/invalid
+        if ((slot == null || slot < 0 || slot >= 10) && e.attackername) slot = npcNameToSlot[e.attackername];
         if (slot != null && slot >= 0 && slot < 10) {
           if (e.valuename === 'item_ward_observer' || e.valuename === 'item_ward_dispenser') {
             obsPurchased[slot] = (obsPurchased[slot] || 0) + 1;
