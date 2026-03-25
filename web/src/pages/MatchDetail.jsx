@@ -100,6 +100,7 @@ const METRIC_LABELS = {
   xp: 'Experience',
   level: 'Level',
   cs: 'Last Hits',
+  hd: 'Hero Damage',
 };
 
 function ItemSwimLane({ players, allPlayers, maxTime }) {
@@ -188,6 +189,41 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
   );
 }
 
+function TimelineTooltip({ active, payload, label, playerKeyMap, metric }) {
+  if (!active || !payload?.length) return null;
+  const visible = payload.filter(e => !e.hide && e.value != null);
+  if (!visible.length) return null;
+  return (
+    <div style={{
+      background: '#0f172a', border: '1px solid #334155', borderRadius: 6,
+      padding: '8px 10px', fontSize: 12, maxWidth: 260,
+    }}>
+      <div style={{ color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>{fmtTime(label)}</div>
+      {visible.map(entry => {
+        const info = playerKeyMap?.[entry.dataKey];
+        const val = metric === 'level' ? entry.value : fmtLargeNum(entry.value);
+        return (
+          <div key={entry.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+            {info?.heroImg ? (
+              <img
+                src={info.heroImg} alt=""
+                style={{ width: 24, height: 14, borderRadius: 2, flexShrink: 0, objectFit: 'cover' }}
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+            ) : (
+              <div style={{ width: 14, height: 2, background: info?.color || '#888', borderRadius: 1, flexShrink: 0 }} />
+            )}
+            <span style={{ color: info?.color || entry.color, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {info?.name || entry.name}
+            </span>
+            <span style={{ color: '#f1f5f9', fontWeight: 700, marginLeft: 6 }}>{val}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function TimelineGraph({ timeline, allPlayers }) {
   const [metric, setMetric] = useState('nw');
   const [showItems, setShowItems] = useState(false);
@@ -230,11 +266,19 @@ function TimelineGraph({ timeline, allPlayers }) {
       const teamIdx = teamPlayers.indexOf(tp);
       const color = isRadiant ? RADIANT_COLORS[teamIdx % RADIANT_COLORS.length] : DIRE_COLORS[teamIdx % DIRE_COLORS.length];
       const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
-      return { key: `slot_${tp.slot}`, name, color };
+      const ap = allPlayers.find(p => p.slot === tp.slot);
+      const heroImg = ap ? getHeroImageUrl(ap.hero_id, ap.hero_name) : null;
+      return { key: `slot_${tp.slot}`, name, color, heroImg };
     });
 
     return { chartData, playerKeys, maxTime };
   }, [timeline, metric, allPlayers]);
+
+  const playerKeyMap = useMemo(() => {
+    const map = {};
+    playerKeys.forEach(({ key, name, color, heroImg }) => { map[key] = { name, color, heroImg }; });
+    return map;
+  }, [playerKeys]);
 
   const roshanEvents = useMemo(() => {
     if (!timeline?.events) return [];
@@ -305,13 +349,7 @@ function TimelineGraph({ timeline, allPlayers }) {
             width={44}
           />
           <Tooltip
-            contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 6, fontSize: 12 }}
-            labelStyle={{ color: '#94a3b8', marginBottom: 4 }}
-            labelFormatter={fmtTime}
-            formatter={(value, name) => [
-              metric === 'level' ? value : fmtLargeNum(value),
-              name,
-            ]}
+            content={(props) => <TimelineTooltip {...props} playerKeyMap={playerKeyMap} metric={metric} />}
           />
           {roshanEvents.map((e, i) => (
             <ReferenceLine key={i} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
