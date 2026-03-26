@@ -64,7 +64,7 @@ export default function Home() {
   const [recap, setRecap] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchData = () => {
     Promise.all([
       getHomeStats().catch(() => null),
       getLatestRecap().catch(() => null),
@@ -73,6 +73,12 @@ export default function Home() {
       setRecap(r);
       setLoading(false);
     });
+  };
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 60000); // refresh every 60s
+    return () => clearInterval(interval);
   }, []);
 
   const totals = stats?.totals || {};

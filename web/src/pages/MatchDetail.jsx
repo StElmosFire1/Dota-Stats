@@ -313,6 +313,11 @@ function TimelineGraph({ timeline, allPlayers }) {
     return timeline.events.filter(e => e.type === 'roshan');
   }, [timeline]);
 
+  const tormenterEvents = useMemo(() => {
+    if (!timeline?.events) return [];
+    return timeline.events.filter(e => e.type === 'tormenter');
+  }, [timeline]);
+
   if (!timeline?.players?.length) return null;
 
   return (
@@ -376,8 +381,12 @@ function TimelineGraph({ timeline, allPlayers }) {
             content={(props) => <TimelineTooltip {...props} playerKeyMap={playerKeyMap} metric={metric} />}
           />
           {roshanEvents.map((e, i) => (
-            <ReferenceLine key={i} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
+            <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
               label={{ value: '🐉', position: 'top', fontSize: 12 }} />
+          ))}
+          {tormenterEvents.map((e, i) => (
+            <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3"
+              label={{ value: '💀', position: 'top', fontSize: 12 }} />
           ))}
           {playerKeys.map(({ key, name, color }) => (
             <Line
@@ -431,7 +440,13 @@ function TimelineGraph({ timeline, allPlayers }) {
         {roshanEvents.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
             <div style={{ width: 1, height: 14, background: '#a855f7', borderRadius: 1 }} />
-            Roshan kill
+            🐉 Roshan killed ({roshanEvents.length}x)
+          </div>
+        )}
+        {tormenterEvents.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+            <div style={{ width: 1, height: 14, background: '#f97316', borderRadius: 1 }} />
+            💀 Tormenter killed ({tormenterEvents.length}x)
           </div>
         )}
       </div>

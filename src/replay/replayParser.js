@@ -807,7 +807,19 @@ class ReplayParser {
           // Roshan
           if (tname.includes('roshan')) {
             const ks = npcNameToSlot[aname];
-            gameEvents.push({ t: deathTime, type: 'roshan', team: (ks != null && ks >= 0 && ks < 5) ? 'radiant' : 'dire' });
+            // If killer slot unknown (aname not in map), derive team from attacker NPC name prefix
+            let roshanTeam = 'unknown';
+            if (ks != null && ks >= 0 && ks < 10) roshanTeam = ks < 5 ? 'radiant' : 'dire';
+            gameEvents.push({ t: deathTime, type: 'roshan', team: roshanTeam, killerSlot: ks != null ? ks : -1 });
+            console.log(`[Replay] Roshan killed at ${deathTime}s by ${aname} (slot ${ks}) team=${roshanTeam}`);
+          }
+          // Tormenter
+          if (tname.includes('tormenter')) {
+            const ks = npcNameToSlot[aname];
+            let tormentTeam = 'unknown';
+            if (ks != null && ks >= 0 && ks < 10) tormentTeam = ks < 5 ? 'radiant' : 'dire';
+            gameEvents.push({ t: deathTime, type: 'tormenter', team: tormentTeam, killerSlot: ks != null ? ks : -1 });
+            console.log(`[Replay] Tormenter killed at ${deathTime}s by ${aname} (slot ${ks}) team=${tormentTeam}`);
           }
           // Courier
           if (tname.includes('courier') || tname.includes('donkey')) {
@@ -823,10 +835,17 @@ class ReplayParser {
       }
 
       // ── Buyback ───────────────────────────────────────────────────────────
-      // Streaming: type "DOTA_COMBATLOG_BUYBACK", hero in e.attackername
+      // Streaming: type "DOTA_COMBATLOG_BUYBACK", hero in e.attackername or e.targetname
       // Blob:      type "buyback_log", slot in e.slot
-      if (e.type === 'DOTA_COMBATLOG_BUYBACK' && e.attackername) {
-        const slot = npcNameToSlot[e.attackername];
+      if (e.type === 'DOTA_COMBATLOG_BUYBACK') {
+        // The buying hero may appear in either field depending on parser version
+        const heroName = e.attackername || e.targetname;
+        let slot = heroName ? npcNameToSlot[heroName] : null;
+        // Some builds put the slot index directly
+        if (slot == null && e.slot != null) {
+          slot = e.slot;
+          if (slot >= 128 && slot <= 132) slot = slot - 128 + 5;
+        }
         if (slot != null && slot >= 0 && slot < 10) combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
       } else if (e.type === 'buyback_log') {
         let slot = e.slot;
