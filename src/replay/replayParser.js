@@ -616,6 +616,7 @@ class ReplayParser {
     const towerDamage = {};
     const heroHealing = {};
     const damageTaken = {};
+    const hdPoints = {};   // slot → [{t, cumHd}] — cumulative hero damage snapshots for timeline back-fill
     const wardKills = {};
     const obsPurchased = {};
     const senPurchased = {};
@@ -821,6 +822,8 @@ class ReplayParser {
         if (attackerSlot != null && attackerSlot >= 0 && attackerSlot < 10) {
           if (e.targethero && !e.targetillusion) {
             heroDamage[attackerSlot] = (heroDamage[attackerSlot] || 0) + (e.value || 0);
+            if (!hdPoints[attackerSlot]) hdPoints[attackerSlot] = [];
+            hdPoints[attackerSlot].push({ t: e.time || 0, cumHd: heroDamage[attackerSlot] });
           }
           if (e.key && (e.key.includes('tower') || e.key.includes('fort') || e.key.includes('barracks') || e.key.includes('rax'))) {
             towerDamage[attackerSlot] = (towerDamage[attackerSlot] || 0) + (e.value || 0);
@@ -867,6 +870,17 @@ class ReplayParser {
             }
           }
         }
+      }
+    }
+
+    // Back-fill timeline sample hd values with cumulative hero damage from hdPoints
+    for (const [slotStr, samples] of Object.entries(timelineSamples)) {
+      const pts = hdPoints[parseInt(slotStr)] || [];
+      if (pts.length === 0) continue;
+      let pIdx = 0;
+      for (const sample of samples) {
+        while (pIdx + 1 < pts.length && pts[pIdx + 1].t <= sample.t) pIdx++;
+        sample.hd = pts[pIdx].t <= sample.t ? pts[pIdx].cumHd : 0;
       }
     }
 
