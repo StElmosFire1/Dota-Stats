@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getAllWardPlacements, getPlayerWardPlacements } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
@@ -15,6 +15,7 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+// Dota 2 coordinate space mapped to canvas
 const MAP_X_MIN = 62, MAP_X_MAX = 190, MAP_Y_MIN = 73, MAP_Y_MAX = 197;
 
 function wardToCanvas(ward, W, H) {
@@ -24,16 +25,17 @@ function wardToCanvas(ward, W, H) {
   };
 }
 
-// Heat colour ramp: transparent → blue → cyan → yellow → orange → red
+// Heat colour ramp: transparent → blue → cyan → green → yellow → orange → red
 function heatColor(t) {
   if (t <= 0) return [0, 0, 0, 0];
   const stops = [
-    [0.00, [0,   0,   200, 0  ]],
-    [0.15, [0,   0,   255, 80 ]],
-    [0.35, [0,   200, 255, 140]],
-    [0.55, [255, 255,  0,  190]],
-    [0.75, [255, 140,  0,  220]],
-    [1.00, [255,  0,   0,  255]],
+    [0.00, [  0,   0, 220,   0]],
+    [0.10, [  0,   0, 255,  60]],
+    [0.30, [  0, 180, 255, 130]],
+    [0.50, [  0, 255, 100, 180]],
+    [0.65, [200, 255,   0, 210]],
+    [0.80, [255, 160,   0, 235]],
+    [1.00, [255,   0,   0, 255]],
   ];
   for (let i = 1; i < stops.length; i++) {
     if (t <= stops[i][0]) {
@@ -44,38 +46,46 @@ function heatColor(t) {
   return stops[stops.length - 1][1];
 }
 
+// Draw a proper density heatmap using Gaussian accumulation.
+// Each point contributes fractional intensity so isolated wards are cool (blue)
+// and frequently-warded spots are hot (red).
 function drawHeatmap(ctx, W, H, points, sigma) {
   if (!points.length) return;
 
-  // Off-screen intensity pass: draw white radial gradients with globalCompositeOperation='lighter'
   const offscreen = document.createElement('canvas');
   offscreen.width = W;
   offscreen.height = H;
   const oc = offscreen.getContext('2d');
   oc.globalCompositeOperation = 'lighter';
 
+  // Use fractional peak intensity so overlapping is required to reach hot colors.
+  // Single isolated ward → t ≈ 0.12 → blue tint
+  // 5+ overlapping wards → t ≈ 0.6+ → yellow/orange
+  // 10+ overlapping → red
+  const peakAlpha = Math.min(0.22, 1.5 / Math.max(1, points.length / 8));
+
   for (const { px, py } of points) {
-    const grad = oc.createRadialGradient(px, py, 0, px, py, sigma);
-    grad.addColorStop(0,   'rgba(255,255,255,1)');
-    grad.addColorStop(0.4, 'rgba(255,255,255,0.6)');
+    const r = sigma;
+    const grad = oc.createRadialGradient(px, py, 0, px, py, r);
+    grad.addColorStop(0,   `rgba(255,255,255,${peakAlpha})`);
+    grad.addColorStop(0.3, `rgba(255,255,255,${peakAlpha * 0.65})`);
+    grad.addColorStop(0.7, `rgba(255,255,255,${peakAlpha * 0.2})`);
     grad.addColorStop(1,   'rgba(255,255,255,0)');
     oc.fillStyle = grad;
     oc.beginPath();
-    oc.arc(px, py, sigma, 0, Math.PI * 2);
+    oc.arc(px, py, r, 0, Math.PI * 2);
     oc.fill();
   }
 
-  // Read pixel data and apply colour ramp
   const raw = oc.getImageData(0, 0, W, H);
-  const out  = ctx.createImageData(W, H);
-  // Find max channel (r channel drives intensity since we drew white)
+  const out = ctx.createImageData(W, H);
   let maxV = 0;
   for (let i = 0; i < raw.data.length; i += 4) if (raw.data[i] > maxV) maxV = raw.data[i];
   if (maxV === 0) return;
 
   for (let i = 0; i < raw.data.length; i += 4) {
     const t = raw.data[i] / maxV;
-    if (t < 0.02) continue;
+    if (t < 0.04) continue;
     const [r, g, b, a] = heatColor(t);
     out.data[i]   = r;
     out.data[i+1] = g;
@@ -85,7 +95,17 @@ function drawHeatmap(ctx, W, H, points, sigma) {
   ctx.putImageData(out, 0, 0);
 }
 
-function WardCanvas({ placements, selectedPlayer, wardType, playerList, mapLoaded, mapImg, viewMode }) {
+// Draw a diamond (rotated square) for sentry wards to distinguish from observer circles
+function drawDiamond(ctx, px, py, r) {
+  ctx.beginPath();
+  ctx.moveTo(px,     py - r);
+  ctx.lineTo(px + r, py);
+  ctx.lineTo(px,     py + r);
+  ctx.lineTo(px - r, py);
+  ctx.closePath();
+}
+
+function WardCanvas({ placements, selectedPlayer, wardType, playerColorMap, mapLoaded, mapImg, viewMode }) {
   const canvasRef = useRef(null);
 
   const draw = useCallback(() => {
@@ -97,167 +117,16 @@ function WardCanvas({ placements, selectedPlayer, wardType, playerList, mapLoade
 
     ctx.clearRect(0, 0, W, H);
 
+    // Always draw map background
     if (mapLoaded && mapImg.current?.naturalWidth > 0) {
       ctx.drawImage(mapImg.current, 0, 0, W, H);
-      ctx.fillStyle = viewMode === 'heatmap' ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.25)';
+      // Darken more for heatmap so the colours pop, less for points
+      ctx.fillStyle = viewMode === 'heatmap' ? 'rgba(0,0,0,0.52)' : 'rgba(0,0,0,0.2)';
       ctx.fillRect(0, 0, W, H);
     } else {
-      // Dota 2 map fallback — approximate topology
+      // Simple dark fallback
       ctx.fillStyle = '#0a1610';
       ctx.fillRect(0, 0, W, H);
-
-      // Base terrain
-      ctx.fillStyle = '#12241a';
-      ctx.fillRect(0, 0, W, H);
-
-      // Radiant jungle (safe lane — bottom right of radiant base)
-      ctx.fillStyle = '#0f2016';
-      ctx.fillRect(W * 0.28, H * 0.58, W * 0.24, H * 0.28);
-
-      // Dire jungle (safe lane — top left of dire base)
-      ctx.fillStyle = '#0d1a28';
-      ctx.fillRect(W * 0.48, H * 0.14, W * 0.24, H * 0.28);
-
-      // Radiant off-lane jungle (top left)
-      ctx.fillStyle = '#0f2016';
-      ctx.fillRect(W * 0.06, H * 0.20, W * 0.20, H * 0.30);
-
-      // Dire off-lane jungle (bottom right)
-      ctx.fillStyle = '#0d1a28';
-      ctx.fillRect(W * 0.74, H * 0.50, W * 0.20, H * 0.30);
-
-      // River (diagonal teal-green band)
-      ctx.fillStyle = '#0a3a2a';
-      ctx.beginPath();
-      ctx.moveTo(W * 0.51, H * 1.0);
-      ctx.lineTo(W * 0.59, H * 1.0);
-      ctx.lineTo(W * 0.57, H * 0.77);
-      ctx.lineTo(W * 0.53, H * 0.57);
-      ctx.lineTo(W * 0.41, H * 0.43);
-      ctx.lineTo(W * 0.38, H * 0.23);
-      ctx.lineTo(W * 0.42, H * 0.0);
-      ctx.lineTo(W * 0.34, H * 0.0);
-      ctx.lineTo(W * 0.30, H * 0.22);
-      ctx.lineTo(W * 0.33, H * 0.43);
-      ctx.lineTo(W * 0.46, H * 0.57);
-      ctx.lineTo(W * 0.49, H * 0.77);
-      ctx.lineTo(W * 0.45, H * 1.0);
-      ctx.closePath();
-      ctx.fill();
-
-      // Bottom lane path (E-W along south)
-      ctx.fillStyle = '#2a2418';
-      ctx.beginPath();
-      ctx.moveTo(W * 0.01, H * 0.80);
-      ctx.lineTo(W * 0.44, H * 0.80);
-      ctx.lineTo(W * 0.51, H * 0.88);
-      ctx.lineTo(W * 0.91, H * 0.88);
-      ctx.lineTo(W * 0.91, H * 0.94);
-      ctx.lineTo(W * 0.50, H * 0.94);
-      ctx.lineTo(W * 0.42, H * 0.86);
-      ctx.lineTo(W * 0.01, H * 0.86);
-      ctx.closePath();
-      ctx.fill();
-
-      // Top lane path (N-S along west)
-      ctx.fillStyle = '#2a2418';
-      ctx.beginPath();
-      ctx.moveTo(W * 0.06, H * 0.99);
-      ctx.lineTo(W * 0.06, H * 0.55);
-      ctx.lineTo(W * 0.12, H * 0.50);
-      ctx.lineTo(W * 0.12, H * 0.06);
-      ctx.lineTo(W * 0.18, H * 0.06);
-      ctx.lineTo(W * 0.18, H * 0.52);
-      ctx.lineTo(W * 0.12, H * 0.57);
-      ctx.lineTo(W * 0.12, H * 0.99);
-      ctx.closePath();
-      ctx.fill();
-
-      // Mid lane (diagonal NW-SE)
-      ctx.fillStyle = '#2a2418';
-      ctx.beginPath();
-      ctx.moveTo(W * 0.16, H * 0.79);
-      ctx.lineTo(W * 0.24, H * 0.74);
-      ctx.lineTo(W * 0.74, H * 0.26);
-      ctx.lineTo(W * 0.80, H * 0.22);
-      ctx.lineTo(W * 0.86, H * 0.26);
-      ctx.lineTo(W * 0.78, H * 0.32);
-      ctx.lineTo(W * 0.28, H * 0.80);
-      ctx.lineTo(W * 0.20, H * 0.84);
-      ctx.closePath();
-      ctx.fill();
-
-      // Radiant base (bottom-left)
-      ctx.fillStyle = '#143020';
-      ctx.beginPath();
-      ctx.moveTo(0, H);
-      ctx.lineTo(0, H * 0.60);
-      ctx.lineTo(W * 0.20, H * 0.60);
-      ctx.lineTo(W * 0.28, H * 0.80);
-      ctx.lineTo(W * 0.28, H);
-      ctx.closePath();
-      ctx.fill();
-
-      // Dire base (top-right)
-      ctx.fillStyle = '#101428';
-      ctx.beginPath();
-      ctx.moveTo(W, 0);
-      ctx.lineTo(W, H * 0.40);
-      ctx.lineTo(W * 0.72, H * 0.40);
-      ctx.lineTo(W * 0.64, H * 0.22);
-      ctx.lineTo(W * 0.64, 0);
-      ctx.closePath();
-      ctx.fill();
-
-      // Roshan pit (game ~168, 90 → canvas ~0.656, 0.648)
-      ctx.save();
-      ctx.fillStyle = '#b87000';
-      ctx.globalAlpha = 0.75;
-      ctx.beginPath();
-      ctx.arc(W * 0.64, H * 0.65, W * 0.022, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.restore();
-
-      // Radiant ancient (game ~25,25 → canvas ~0.098,0.902)
-      ctx.save();
-      ctx.fillStyle = '#22dd44';
-      ctx.globalAlpha = 0.75;
-      ctx.beginPath();
-      ctx.arc(W * 0.10, H * 0.90, W * 0.028, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = '#55ff77';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.restore();
-
-      // Dire ancient (game ~230,230 → canvas ~0.898,0.102)
-      ctx.save();
-      ctx.fillStyle = '#4466ff';
-      ctx.globalAlpha = 0.75;
-      ctx.beginPath();
-      ctx.arc(W * 0.90, H * 0.10, W * 0.028, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = '#7799ff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.restore();
-
-      // Labels
-      ctx.save();
-      ctx.font = `bold ${Math.floor(W * 0.023)}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'rgba(80,255,120,0.40)';
-      ctx.fillText('RADIANT', W * 0.14, H * 0.96);
-      ctx.fillStyle = 'rgba(100,140,255,0.40)';
-      ctx.fillText('DIRE', W * 0.86, H * 0.04);
-      ctx.fillStyle = 'rgba(255,200,50,0.40)';
-      ctx.font = `${Math.floor(W * 0.019)}px sans-serif`;
-      ctx.fillText('ROSH', W * 0.64, H * 0.71);
-      ctx.restore();
     }
 
     const toShow = selectedPlayer === 'all'
@@ -268,63 +137,80 @@ function WardCanvas({ placements, selectedPlayer, wardType, playerList, mapLoade
     const showSen = wardType === 'sen' || wardType === 'both';
 
     if (viewMode === 'heatmap') {
-      // Separate obs and sen coordinates then draw two heatmap layers
       const obsPoints = [], senPoints = [];
       for (const player of toShow) {
         if (showObs) (player.obs || []).forEach(w => obsPoints.push(wardToCanvas(w, W, H)));
         if (showSen) (player.sen || []).forEach(w => senPoints.push(wardToCanvas(w, W, H)));
       }
-      // Draw observer heatmap (default colour ramp: blue→red)
-      if (obsPoints.length) drawHeatmap(ctx, W, H, obsPoints, 28);
-      // Draw sentry heatmap on a separate temp canvas blended over
+
+      // Draw observer heatmap (full colour ramp)
+      if (obsPoints.length) drawHeatmap(ctx, W, H, obsPoints, 26);
+
+      // Draw sentry heatmap with a purple/blue tint to distinguish
       if (senPoints.length) {
         const tmpCanvas = document.createElement('canvas');
         tmpCanvas.width = W; tmpCanvas.height = H;
         const tmpCtx = tmpCanvas.getContext('2d');
-        drawHeatmap(tmpCtx, W, H, senPoints, 22);
-        // Tint sentry layer amber: draw normal then multiply with amber tint
+        drawHeatmap(tmpCtx, W, H, senPoints, 20);
+        // Tint sentry layer with a light purple overlay to differentiate from observers
         tmpCtx.globalCompositeOperation = 'source-atop';
-        tmpCtx.fillStyle = 'rgba(255,180,0,0.35)';
+        tmpCtx.fillStyle = 'rgba(160,80,255,0.28)';
         tmpCtx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 0.85;
         ctx.drawImage(tmpCanvas, 0, 0);
+        ctx.globalAlpha = 1;
       }
     } else {
-      // Points view — existing dot rendering
-      const playerColorMap = {};
-      playerList.forEach((p, i) => {
-        playerColorMap[String(p.accountId)] = PLAYER_COLORS[i % PLAYER_COLORS.length];
-      });
+      // Points view — circles for observers, diamonds for sentries, both use player colour
       for (const player of toShow) {
-        const baseColor = selectedPlayer === 'all'
-          ? (playerColorMap[String(player.accountId)] || '#4ade80')
-          : '#4ade80';
-        const wardData = [
-          ...(showObs ? (player.obs || []).map(w => ({ ...w, isObs: true })) : []),
-          ...(showSen ? (player.sen || []).map(w => ({ ...w, isObs: false })) : []),
-        ];
-        for (const ward of wardData) {
-          const { px, py } = wardToCanvas(ward, W, H);
-          const color = ward.isObs ? baseColor : '#f59e0b';
-          const glowR = ward.isObs ? 14 : 10;
-          const dotR  = ward.isObs ? 5 : 4;
-          const grad = ctx.createRadialGradient(px, py, 0, px, py, glowR);
-          grad.addColorStop(0, hexToRgba(color, 0.7));
-          grad.addColorStop(1, hexToRgba(color, 0));
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(px, py, glowR, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = color;
-          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(px, py, dotR, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+        const baseColor = playerColorMap[String(player.accountId)] || '#4ade80';
+
+        if (showObs) {
+          for (const ward of (player.obs || [])) {
+            const { px, py } = wardToCanvas(ward, W, H);
+            const glowR = 13;
+            const dotR  = 5;
+            const grad = ctx.createRadialGradient(px, py, 0, px, py, glowR);
+            grad.addColorStop(0, hexToRgba(baseColor, 0.65));
+            grad.addColorStop(1, hexToRgba(baseColor, 0));
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(px, py, glowR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = baseColor;
+            ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(px, py, dotR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        if (showSen) {
+          for (const ward of (player.sen || [])) {
+            const { px, py } = wardToCanvas(ward, W, H);
+            const glowR = 11;
+            const dotR  = 4;
+            const grad = ctx.createRadialGradient(px, py, 0, px, py, glowR);
+            grad.addColorStop(0, hexToRgba(baseColor, 0.5));
+            grad.addColorStop(1, hexToRgba(baseColor, 0));
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(px, py, glowR, 0, Math.PI * 2);
+            ctx.fill();
+            // Diamond shape for sentry
+            ctx.fillStyle = baseColor;
+            ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+            ctx.lineWidth = 1.2;
+            drawDiamond(ctx, px, py, dotR);
+            ctx.fill();
+            ctx.stroke();
+          }
         }
       }
     }
-  }, [placements, selectedPlayer, wardType, playerList, mapLoaded, mapImg, viewMode]);
+  }, [placements, selectedPlayer, wardType, playerColorMap, mapLoaded, mapImg, viewMode]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -343,7 +229,7 @@ export default function WardMap() {
   const [playerList, setPlayerList] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState('all');
   const [wardType, setWardType] = useState('both');
-  const [viewMode, setViewMode] = useState('heatmap'); // 'heatmap' | 'points'
+  const [viewMode, setViewMode] = useState('heatmap');
   const [loading, setLoading] = useState(true);
   const [mapLoaded, setMapLoaded] = useState(false);
   const mapImg = useRef(null);
@@ -351,7 +237,7 @@ export default function WardMap() {
   useEffect(() => {
     const img = new Image();
     img.onload = () => setMapLoaded(true);
-    img.onerror = () => setMapLoaded(false);
+    img.onerror = () => { setMapLoaded(false); };
     img.src = '/minimap.jpg';
     mapImg.current = img;
   }, []);
@@ -360,11 +246,24 @@ export default function WardMap() {
     setLoading(true);
     getAllWardPlacements(seasonId)
       .then(data => {
-        setPlayerList(data.players || []);
+        // Sort alphabetically by name
+        const sorted = (data.players || []).slice().sort((a, b) =>
+          (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+        );
+        setPlayerList(sorted);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [seasonId]);
+
+  // Assign stable colours to players sorted alphabetically
+  const playerColorMap = useMemo(() => {
+    const map = {};
+    playerList.forEach((p, i) => {
+      map[String(p.accountId)] = PLAYER_COLORS[i % PLAYER_COLORS.length];
+    });
+    return map;
+  }, [playerList]);
 
   const totalObs = playerList.reduce((s, p) => s + (p.obs?.length || 0), 0);
   const totalSen = playerList.reduce((s, p) => s + (p.sen?.length || 0), 0);
@@ -372,12 +271,15 @@ export default function WardMap() {
   const selectedPlayerData = playerList.filter(p =>
     selectedPlayer === 'all' || String(p.accountId) === selectedPlayer
   );
-
   const obsCount = selectedPlayerData.reduce((s, p) => s + (p.obs?.length || 0), 0);
   const senCount = selectedPlayerData.reduce((s, p) => s + (p.sen?.length || 0), 0);
 
+  const selectedColor = selectedPlayer !== 'all'
+    ? (playerColorMap[selectedPlayer] || '#4ade80')
+    : null;
+
   return (
-    <div style={{ padding: '24px 16px', maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ padding: '24px 16px', maxWidth: 960, margin: '0 auto' }}>
       <h1 style={{ fontSize: 26, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
         🗺️ Ward Heatmap
       </h1>
@@ -403,7 +305,7 @@ export default function WardMap() {
               placements={playerList}
               selectedPlayer={selectedPlayer}
               wardType={wardType}
-              playerList={playerList}
+              playerColorMap={playerColorMap}
               mapLoaded={mapLoaded}
               mapImg={mapImg}
               viewMode={viewMode}
@@ -412,11 +314,11 @@ export default function WardMap() {
 
           <div style={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {/* View mode toggle */}
+            {/* View mode */}
             <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, border: '1px solid #334155' }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>View Mode</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                {[['heatmap','🔥 Heatmap'],['points','• Points']].map(([v, label]) => (
+                {[['heatmap','🔥 Heatmap'],['points','◆ Points']].map(([v, label]) => (
                   <button
                     key={v}
                     onClick={() => setViewMode(v)}
@@ -435,6 +337,7 @@ export default function WardMap() {
               </div>
             </div>
 
+            {/* Player select */}
             <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, border: '1px solid #334155' }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Player</div>
               <select
@@ -447,7 +350,7 @@ export default function WardMap() {
                 }}
               >
                 <option value="all">All Players</option>
-                {playerList.map((p, i) => (
+                {playerList.map((p) => (
                   <option key={p.accountId} value={String(p.accountId)}>
                     {p.name}
                   </option>
@@ -455,6 +358,7 @@ export default function WardMap() {
               </select>
             </div>
 
+            {/* Ward type */}
             <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, border: '1px solid #334155' }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Ward Type</div>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -477,36 +381,59 @@ export default function WardMap() {
               </div>
             </div>
 
+            {/* Legend */}
             <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, border: '1px solid #334155' }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Legend</div>
               {viewMode === 'heatmap' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {/* Heatmap colour ramp bar */}
-                  <div style={{ height: 14, borderRadius: 4, background: 'linear-gradient(to right, #0000c8, #00c8ff, #ffff00, #ff8c00, #ff0000)', marginBottom: 4 }} />
+                  <div style={{
+                    height: 14, borderRadius: 4,
+                    background: 'linear-gradient(to right, #0000dc 0%, #00b4ff 30%, #00ff64 50%, #c8ff00 65%, #ffa000 80%, #ff0000 100%)',
+                    marginBottom: 4,
+                  }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' }}>
                     <span>Rare</span><span>Common</span>
                   </div>
                   <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-                    Observer wards use full colour ramp; sentry wards overlay with amber tint.
+                    Observers use full colour ramp. Sentries overlay with purple tint.
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#60a5fa' }} />
+                      Observers
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#a855f7' }} />
+                      Sentries
+                    </div>
                   </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0' }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#4ade80' }} />
-                    Observer Ward
+                  <div style={{ display: 'flex', gap: 16, marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#e2e8f0' }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#94a3b8' }} />
+                      Observer (circle)
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#e2e8f0' }}>
+                      <svg width="12" height="12" viewBox="0 0 12 12">
+                        <polygon points="6,1 11,6 6,11 1,6" fill="#94a3b8" stroke="rgba(0,0,0,0.5)" strokeWidth="0.8" />
+                      </svg>
+                      Sentry (diamond)
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0' }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b' }} />
-                    Sentry Ward
-                  </div>
-                  {selectedPlayer === 'all' && (
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Player Colors</div>
+                  {selectedPlayer !== 'all' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0' }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: selectedColor }} />
+                      {playerList.find(p => String(p.accountId) === selectedPlayer)?.name || 'Player'}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 4 }}>
+                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Player Colours</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {playerList.map((p, i) => (
+                        {playerList.map((p) => (
                           <div key={p.accountId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: PLAYER_COLORS[i % PLAYER_COLORS.length], flexShrink: 0 }} />
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: playerColorMap[String(p.accountId)], flexShrink: 0 }} />
                             {p.name}
                           </div>
                         ))}
@@ -517,6 +444,7 @@ export default function WardMap() {
               )}
             </div>
 
+            {/* Stats */}
             <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, border: '1px solid #334155' }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Stats</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
@@ -526,7 +454,7 @@ export default function WardMap() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
                   <span>🔍 Sentries shown</span>
-                  <span style={{ color: '#f59e0b', fontWeight: 600 }}>{senCount}</span>
+                  <span style={{ color: '#a78bfa', fontWeight: 600 }}>{senCount}</span>
                 </div>
                 <div style={{ borderTop: '1px solid #334155', paddingTop: 6, marginTop: 2 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12 }}>
@@ -538,6 +466,7 @@ export default function WardMap() {
                 </div>
               </div>
             </div>
+
           </div>
         </div>
       )}
