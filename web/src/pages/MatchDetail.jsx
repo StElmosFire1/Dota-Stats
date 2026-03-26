@@ -340,6 +340,38 @@ function TimelineGraph({ timeline, allPlayers }) {
     return timeline.events.filter(e => e.type === 'tormenter');
   }, [timeline]);
 
+  const towerEvents = useMemo(() => {
+    if (!timeline?.events) return [];
+    // 'team' is the killer's team — the building belongs to the opposite team
+    return timeline.events
+      .filter(e => e.type === 'building' && e.building?.includes('tower'))
+      .map(e => {
+        const b = e.building || '';
+        const isRadiantStructure = b.includes('goodguys');
+        const tier = b.includes('tower4') ? 4 : b.includes('tower3') ? 3 : b.includes('tower2') ? 2 : 1;
+        const lane = b.includes('_top') ? 'T' : b.includes('_bot') ? 'B' : b.includes('_mid') ? 'M' : '';
+        return {
+          t: e.t,
+          label: `T${tier}${lane}`,
+          radiantFalls: isRadiantStructure, // green structure = radiant tower destroyed by dire
+          tier,
+        };
+      });
+  }, [timeline]);
+
+  const barracksEvents = useMemo(() => {
+    if (!timeline?.events) return [];
+    return timeline.events
+      .filter(e => e.type === 'building' && (e.building?.includes('rax') || e.building?.includes('barracks')))
+      .map(e => {
+        const b = e.building || '';
+        const isRadiantStructure = b.includes('goodguys');
+        const btype = b.includes('ranged') ? 'R' : b.includes('melee') ? 'M' : '';
+        const lane = b.includes('_top') ? 'T' : b.includes('_bot') ? 'B' : b.includes('_mid') ? 'M' : '';
+        return { t: e.t, label: `Rax${lane}${btype}`, radiantFalls: isRadiantStructure };
+      });
+  }, [timeline]);
+
   if (!timeline?.players?.length) return null;
 
   return (
@@ -417,6 +449,16 @@ function TimelineGraph({ timeline, allPlayers }) {
               <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3"
                 label={{ value: '💀', position: 'top', fontSize: 12 }} />
             ))}
+            {towerEvents.map((e, i) => (
+              <ReferenceLine key={`tw-${i}`} x={e.t}
+                stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1}
+                label={{ value: '🗼', position: 'insideTopLeft', fontSize: 10 }} />
+            ))}
+            {barracksEvents.map((e, i) => (
+              <ReferenceLine key={`rax-${i}`} x={e.t}
+                stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1.5}
+                label={{ value: '🏛️', position: 'insideTopLeft', fontSize: 10 }} />
+            ))}
             <Area
               type="monotone" dataKey="goldlead" name="Radiant Gold Lead"
               stroke="#4ade80" strokeWidth={2} fill="url(#glGrad)" dot={false} activeDot={{ r: 4 }}
@@ -447,6 +489,16 @@ function TimelineGraph({ timeline, allPlayers }) {
             {tormenterEvents.map((e, i) => (
               <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3"
                 label={{ value: '💀', position: 'top', fontSize: 12 }} />
+            ))}
+            {towerEvents.map((e, i) => (
+              <ReferenceLine key={`ltw-${i}`} x={e.t}
+                stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1}
+                label={{ value: '🗼', position: 'insideTopLeft', fontSize: 10 }} />
+            ))}
+            {barracksEvents.map((e, i) => (
+              <ReferenceLine key={`lrax-${i}`} x={e.t}
+                stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1.5}
+                label={{ value: '🏛️', position: 'insideTopLeft', fontSize: 10 }} />
             ))}
             {playerKeys.map(({ key, name, color }) => (
               <Line
@@ -514,6 +566,15 @@ function TimelineGraph({ timeline, allPlayers }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
             <div style={{ width: 1, height: 14, background: '#f97316', borderRadius: 1 }} />
             💀 Tormenter killed ({tormenterEvents.length}x)
+          </div>
+        )}
+        {towerEvents.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+            <div style={{ display: 'flex', gap: 3 }}>
+              <div style={{ width: 1, height: 14, background: '#4ade80', borderRadius: 1 }} />
+              <div style={{ width: 1, height: 14, background: '#f87171', borderRadius: 1 }} />
+            </div>
+            🗼 Towers fallen ({towerEvents.length + barracksEvents.length}x) — green=dire loses, red=radiant loses
           </div>
         )}
       </div>

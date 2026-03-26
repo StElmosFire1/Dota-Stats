@@ -639,6 +639,61 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/records', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const records = await db.getPersonalRecords(seasonId);
+      res.json({ records });
+    } catch (err) {
+      console.error('[API] Error fetching records:', err.message);
+      res.status(500).json({ error: 'Failed to fetch records' });
+    }
+  });
+
+  router.get('/first-blood-stats', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const stats = await db.getFirstBloodStats(seasonId);
+      res.json({ stats });
+    } catch (err) {
+      console.error('[API] Error fetching first blood stats:', err.message);
+      res.status(500).json({ error: 'Failed to fetch first blood stats' });
+    }
+  });
+
+  router.get('/heroes/:heroId/skill-builds', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.getHeroSkillBuilds(parseInt(req.params.heroId), seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] Error fetching skill builds:', err.message);
+      res.status(500).json({ error: 'Failed to fetch skill builds' });
+    }
+  });
+
+  router.get('/players/:accountId/duration-stats', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const stats = await db.getPlayerGameDurationStats(parseInt(req.params.accountId), seasonId);
+      res.json({ stats });
+    } catch (err) {
+      console.error('[API] Error fetching duration stats:', err.message);
+      res.status(500).json({ error: 'Failed to fetch duration stats' });
+    }
+  });
+
+  router.get('/comeback-matches', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const matches = await db.getComebackMatches(seasonId);
+      res.json({ matches });
+    } catch (err) {
+      console.error('[API] Error fetching comeback matches:', err.message);
+      res.status(500).json({ error: 'Failed to fetch comeback matches' });
+    }
+  });
+
   router.get('/overall-stats', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

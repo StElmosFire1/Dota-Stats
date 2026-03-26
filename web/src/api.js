@@ -540,3 +540,28 @@ export async function getDraftStats(seasonId = null) {
   const q = seasonId ? `?season_id=${seasonId}` : '';
   return fetchJson(`/draft-stats${q}`);
 }
+
+export async function getPersonalRecords(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/records${q}`);
+}
+
+export async function getFirstBloodStats(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/first-blood-stats${q}`);
+}
+
+export async function getHeroSkillBuilds(heroId, seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/heroes/${heroId}/skill-builds${q}`);
+}
+
+export async function getPlayerDurationStats(accountId, seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/players/${accountId}/duration-stats${q}`);
+}
+
+export async function getComebackMatches(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/comeback-matches${q}`);
+}

@@ -1203,7 +1203,9 @@ async function getPlayerStats(accountId) {
        ROUND(AVG(net_worth), 0) as avg_net_worth,
        SUM(kills) as total_kills,
        SUM(deaths) as total_deaths,
-       SUM(assists) as total_assists
+       SUM(assists) as total_assists,
+       SUM(firstblood_claimed) as total_firstbloods,
+       ROUND(100.0 * SUM(firstblood_claimed) / NULLIF(COUNT(*), 0), 1) as fb_rate
      FROM player_stats ps
      WHERE ${whereClause}`,
     [param]
@@ -3353,6 +3355,226 @@ async function getDraftStats(seasonId = null) {
   return { heroes: picks.rows, totalMatches: parseInt(totalMatches.rows[0]?.cnt || 0) };
 }
 
+async function getPersonalRecords(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+
+  const rows = await p.query(`
+    SELECT
+      ps.account_id, ps.persona_name,
+      n.nickname,
+      ps.hero_name,
+      ps.kills, ps.deaths, ps.assists, ps.gpm, ps.xpm,
+      ps.hero_damage, ps.hero_healing, ps.tower_damage, ps.net_worth,
+      ps.last_hits, ps.level,
+      m.match_id, m.date, m.duration
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    LEFT JOIN nicknames n ON n.account_id = ps.account_id
+    WHERE ps.account_id > 0 ${sc}
+  `, params);
+
+  const records = {};
+  const categories = [
+    { key: 'kills', label: 'Most Kills', asc: false },
+    { key: 'deaths', label: 'Most Deaths', asc: false },
+    { key: 'assists', label: 'Most Assists', asc: false },
+    { key: 'gpm', label: 'Highest GPM', asc: false },
+    { key: 'xpm', label: 'Highest XPM', asc: false },
+    { key: 'hero_damage', label: 'Most Hero Damage', asc: false },
+    { key: 'hero_healing', label: 'Most Healing', asc: false },
+    { key: 'tower_damage', label: 'Most Tower Damage', asc: false },
+    { key: 'net_worth', label: 'Highest Net Worth', asc: false },
+    { key: 'last_hits', label: 'Most Last Hits', asc: false },
+    { key: 'level', label: 'Highest Level', asc: false },
+  ];
+
+  for (const cat of categories) {
+    const sorted = [...rows.rows]
+      .filter(r => r[cat.key] != null && parseFloat(r[cat.key]) > 0)
+      .sort((a, b) => cat.asc
+        ? parseFloat(a[cat.key]) - parseFloat(b[cat.key])
+        : parseFloat(b[cat.key]) - parseFloat(a[cat.key]));
+    if (sorted.length) {
+      const r = sorted[0];
+      records[cat.key] = {
+        label: cat.label,
+        value: parseFloat(r[cat.key]),
+        account_id: r.account_id,
+        persona_name: r.nickname || r.persona_name,
+        hero_name: r.hero_name,
+        match_id: r.match_id,
+        date: r.date,
+        duration: r.duration,
+      };
+    }
+  }
+  return records;
+}
+
+async function getFirstBloodStats(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+
+  const rows = await p.query(`
+    SELECT
+      ps.account_id,
+      COALESCE(n.nickname, ps.persona_name) AS display_name,
+      SUM(ps.firstblood_claimed) AS fb_count,
+      COUNT(*) AS games,
+      ROUND(100.0 * SUM(ps.firstblood_claimed) / NULLIF(COUNT(*), 0), 1) AS fb_rate
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    LEFT JOIN nicknames n ON n.account_id = ps.account_id
+    WHERE ps.account_id > 0 ${sc}
+    GROUP BY ps.account_id, display_name
+    HAVING COUNT(*) >= 5
+    ORDER BY fb_count DESC
+    LIMIT 20
+  `, params);
+
+  return rows.rows;
+}
+
+async function getHeroSkillBuilds(heroId, seasonId = null) {
+  const p = getPool();
+  const params = [parseInt(heroId)];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+
+  const builds = await p.query(`
+    SELECT
+      pa.ability_name,
+      pa.ability_level,
+      ROUND(AVG(pa.time)) AS avg_time,
+      COUNT(*) AS occurrences
+    FROM player_abilities pa
+    JOIN player_stats ps ON ps.match_id = pa.match_id AND ps.slot = pa.slot
+    JOIN matches m ON m.match_id = pa.match_id
+    WHERE ps.hero_id = $1 ${sc}
+      AND pa.ability_name NOT LIKE '%attribute_bonus%'
+    GROUP BY pa.ability_name, pa.ability_level
+    ORDER BY pa.ability_level, occurrences DESC
+  `, params);
+
+  const heroNameRow = await p.query(
+    `SELECT DISTINCT hero_name FROM player_stats WHERE hero_id = $1 LIMIT 1`, [parseInt(heroId)]
+  );
+
+  const totalGames = await p.query(`
+    SELECT COUNT(DISTINCT pa.match_id) AS games
+    FROM player_abilities pa
+    JOIN player_stats ps ON ps.match_id = pa.match_id AND ps.slot = pa.slot
+    JOIN matches m ON m.match_id = pa.match_id
+    WHERE ps.hero_id = $1 ${sc}
+  `, params);
+
+  return {
+    heroId,
+    heroName: heroNameRow.rows[0]?.hero_name || '',
+    totalGames: parseInt(totalGames.rows[0]?.games || 0),
+    builds: builds.rows,
+  };
+}
+
+async function getPlayerGameDurationStats(accountId, seasonId = null) {
+  const p = getPool();
+  const params = [parseInt(accountId)];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+
+  const rows = await p.query(`
+    SELECT
+      CASE
+        WHEN m.duration < 1500 THEN '<25m'
+        WHEN m.duration < 2100 THEN '25-35m'
+        WHEN m.duration < 2700 THEN '35-45m'
+        ELSE '>45m'
+      END AS bracket,
+      COUNT(*) AS games,
+      SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins,
+      ROUND(AVG(ps.kills),1) AS avg_kills,
+      ROUND(AVG(ps.gpm),0) AS avg_gpm,
+      ROUND(AVG(ps.hero_damage),0) AS avg_damage
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = $1 ${sc}
+    GROUP BY bracket
+    ORDER BY MIN(m.duration)
+  `, params);
+
+  return rows.rows;
+}
+
+async function getComebackMatches(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+
+  const rows = await p.query(`
+    SELECT
+      m.match_id, m.date, m.duration, m.radiant_win,
+      m.game_timeline
+    FROM matches m
+    WHERE m.game_timeline IS NOT NULL
+      AND m.game_timeline->'goldLead' IS NOT NULL
+      ${sc.replace('m.', '')}
+    ORDER BY m.date DESC
+  `, params);
+
+  const comebacks = [];
+  for (const row of rows.rows) {
+    try {
+      const gl = row.game_timeline?.goldLead;
+      if (!Array.isArray(gl) || gl.length < 10) continue;
+      const values = gl.map(p => parseFloat(p.goldlead) || 0);
+      const maxLead = Math.max(...values);
+      const minLead = Math.min(...values);
+      const finalLead = values[values.length - 1];
+
+      let comebackSize = 0;
+      let comebackTeam = null;
+
+      if (!row.radiant_win && maxLead > 5000) {
+        comebackSize = maxLead;
+        comebackTeam = 'dire';
+      } else if (row.radiant_win && minLead < -5000) {
+        comebackSize = Math.abs(minLead);
+        comebackTeam = 'radiant';
+      }
+
+      if (comebackSize >= 5000) {
+        const radiantNames = [];
+        const direNames = [];
+        try {
+          const ps = await p.query(
+            `SELECT COALESCE(n.nickname, ps.persona_name) AS name, ps.team FROM player_stats ps LEFT JOIN nicknames n ON n.account_id = ps.account_id WHERE ps.match_id = $1 ORDER BY ps.slot`,
+            [row.match_id]
+          );
+          for (const pr of ps.rows) {
+            if (pr.team === 'radiant') radiantNames.push(pr.name);
+            else direNames.push(pr.name);
+          }
+        } catch (_) {}
+
+        comebacks.push({
+          match_id: row.match_id,
+          date: row.date,
+          duration: row.duration,
+          radiant_win: row.radiant_win,
+          comeback_team: comebackTeam,
+          max_deficit: Math.round(comebackSize),
+          radiant_players: radiantNames,
+          dire_players: direNames,
+        });
+      }
+    } catch (_) {}
+  }
+
+  comebacks.sort((a, b) => b.max_deficit - a.max_deficit);
+  return comebacks.slice(0, 20);
+}
+
 module.exports = {
   init,
   getPool,
@@ -3443,4 +3665,9 @@ module.exports = {
   getAllPlayersWardPlacements,
   getPlayerHeroCounters,
   getDraftStats,
+  getPersonalRecords,
+  getFirstBloodStats,
+  getHeroSkillBuilds,
+  getPlayerGameDurationStats,
+  getComebackMatches,
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats } from '../api';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import {
@@ -122,6 +122,7 @@ export default function PlayerProfile() {
   const [predictionStats, setPredictionStats] = useState(null);
   const [heroCounters, setHeroCounters] = useState([]);
   const [streak, setStreak] = useState(null);
+  const [durationStats, setDurationStats] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -135,7 +136,8 @@ export default function PlayerProfile() {
       getPlayerPredictionStats(accountId).catch(() => null),
       getPlayerHeroCounters(accountId).catch(() => ({ counters: [] })),
       getPlayerStreak(accountId).catch(() => ({ streak: 0 })),
-    ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData]) => {
+      getPlayerDurationStats(accountId).catch(() => ({ stats: [] })),
+    ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData, durData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
@@ -144,6 +146,7 @@ export default function PlayerProfile() {
       setPredictionStats(predData?.stats || null);
       setHeroCounters(counterData?.counters || []);
       setStreak(streakData?.streak ?? null);
+      setDurationStats(durData?.stats || []);
     }).finally(() => setLoading(false));
   }, [accountId]);
 
@@ -208,6 +211,15 @@ export default function PlayerProfile() {
                 {streak > 0 ? `W${streak}` : `L${Math.abs(streak)}`}
               </div>
               <div className="stat-label">Current Streak</div>
+            </div>
+          )}
+          {averages && parseInt(averages.total_firstbloods) > 0 && (
+            <div className="stat-card" style={{ borderColor: '#f87171' }}>
+              <div className="stat-value" style={{ color: '#f87171' }}>
+                {averages.total_firstbloods}
+                <span style={{ fontSize: '0.7em', color: '#64748b', marginLeft: 4 }}>({averages.fb_rate}%)</span>
+              </div>
+              <div className="stat-label">🩸 First Bloods</div>
             </div>
           )}
         </div>
@@ -455,6 +467,31 @@ export default function PlayerProfile() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {durationStats && durationStats.length > 0 && (
+        <section>
+          <h2 className="section-title">Win Rate by Game Duration</h2>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {durationStats.map(row => {
+              const wr = row.games > 0 ? Math.round(100 * row.wins / row.games) : 0;
+              const barColor = wr >= 55 ? '#4ade80' : wr >= 45 ? '#facc15' : '#f87171';
+              return (
+                <div key={row.bracket} style={{
+                  background: '#1e293b', border: '1px solid #334155', borderRadius: 10,
+                  padding: '1rem 1.25rem', minWidth: 140, textAlign: 'center',
+                }}>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: 4 }}>{row.bracket}</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: barColor }}>{wr}%</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: 2 }}>{row.games} games</div>
+                  <div style={{ color: '#64748b', fontSize: '0.72rem', marginTop: 4 }}>
+                    Avg {row.avg_kills}K · {row.avg_gpm} GPM
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
