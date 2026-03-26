@@ -81,8 +81,19 @@ function computeLaneOutcomes(players) {
   return outcomes;
 }
 
-const RADIANT_COLORS = ['#4ade80','#86efac','#34d399','#6ee7b7','#bbf7d0'];
-const DIRE_COLORS    = ['#f87171','#fca5a5','#fb923c','#f59e0b','#e879f9'];
+// Dota 2 in-game player colours, indexed by slot 0-9
+const DOTA_PLAYER_COLORS = [
+  '#3374FF', // slot 0 – blue
+  '#66FFBF', // slot 1 – teal
+  '#BF00BF', // slot 2 – purple
+  '#F3F00B', // slot 3 – yellow
+  '#FF6600', // slot 4 – orange
+  '#FE87C4', // slot 5 – pink
+  '#C3C3C3', // slot 6 – grey
+  '#84D4F9', // slot 7 – light blue
+  '#00BF00', // slot 8 – dark green
+  '#C57836', // slot 9 – brown
+];
 
 function fmtTime(secs) {
   const m = Math.floor(secs / 60);
@@ -107,11 +118,8 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
   const slotToName = {};
   allPlayers.forEach(p => { slotToName[p.slot] = p.nickname || p.persona_name || `Player ${p.slot}`; });
 
-  const rows = players.map((tp, i) => {
-    const isRadiant = tp.team === 'radiant' || tp.slot < 5;
-    const teamPlayers = players.filter(p => (p.team === 'radiant' || p.slot < 5) === isRadiant);
-    const teamIdx = teamPlayers.indexOf(tp);
-    const color = isRadiant ? RADIANT_COLORS[teamIdx % RADIANT_COLORS.length] : DIRE_COLORS[teamIdx % DIRE_COLORS.length];
+  const rows = players.map((tp) => {
+    const color = DOTA_PLAYER_COLORS[tp.slot % 10];
     const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
     const purchases = (tp.purchaseLog || []);
     return { name, color, purchases, slot: tp.slot };
@@ -197,7 +205,9 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
 
 function TimelineTooltip({ active, payload, label, playerKeyMap, metric }) {
   if (!active || !payload?.length) return null;
-  const visible = payload.filter(e => !e.hide && e.value != null);
+  const visible = payload
+    .filter(e => !e.hide && e.value != null)
+    .sort((a, b) => b.value - a.value);
   if (!visible.length) return null;
   return (
     <div style={{
@@ -236,8 +246,8 @@ function TimelineGraph({ timeline, allPlayers }) {
   const [hiddenPlayers, setHiddenPlayers] = useState(new Set());
   const itemsRef = useRef(null);
 
-  const { chartData, playerKeys, maxTime } = useMemo(() => {
-    if (!timeline?.players?.length) return { chartData: [], playerKeys: [], maxTime: 0 };
+  const { chartData, playerKeys, playerKeysDesc, maxTime } = useMemo(() => {
+    if (!timeline?.players?.length) return { chartData: [], playerKeys: [], playerKeysDesc: [], maxTime: 0 };
 
     const slotToName = {};
     allPlayers.forEach(p => { slotToName[p.slot] = p.nickname || p.persona_name || `Player ${p.slot}`; });
@@ -266,18 +276,30 @@ function TimelineGraph({ timeline, allPlayers }) {
       return row;
     });
 
-    const playerKeys = timeline.players.map((tp, i) => {
-      const isRadiant = tp.team === 'radiant' || tp.slot < 5;
-      const teamPlayers = timeline.players.filter(p => (p.team === 'radiant' || p.slot < 5) === isRadiant);
-      const teamIdx = teamPlayers.indexOf(tp);
-      const color = isRadiant ? RADIANT_COLORS[teamIdx % RADIANT_COLORS.length] : DIRE_COLORS[teamIdx % DIRE_COLORS.length];
-      const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
-      const ap = allPlayers.find(p => p.slot === tp.slot);
-      const heroImg = ap ? getHeroImageUrl(ap.hero_id, ap.hero_name) : null;
-      return { key: `slot_${tp.slot}`, name, color, heroImg };
-    });
+    // Get the final value for each player for the active metric so we can sort
+    const finalVal = (tp) => {
+      const samples = tp.samples || [];
+      if (!samples.length) return 0;
+      const last = samples[samples.length - 1];
+      return last[metric] ?? (metric === 'level' ? (last['lvl'] ?? 0) : 0);
+    };
 
-    return { chartData, playerKeys, maxTime };
+    const playerKeys = timeline.players
+      .slice()
+      .sort((a, b) => finalVal(a) - finalVal(b)) // ascending so highest is rendered last (on top in SVG)
+      .map((tp) => {
+        const color = DOTA_PLAYER_COLORS[tp.slot % 10];
+        const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
+        const ap = allPlayers.find(p => p.slot === tp.slot);
+        const heroImg = ap ? getHeroImageUrl(ap.hero_id, ap.hero_name) : null;
+        const endVal = finalVal(tp);
+        return { key: `slot_${tp.slot}`, name, color, heroImg, endVal };
+      });
+
+    // Legend order: highest on top — reverse for display purposes
+    const playerKeysDesc = [...playerKeys].reverse();
+
+    return { chartData, playerKeys, playerKeysDesc, maxTime };
   }, [timeline, metric, allPlayers]);
 
   const playerKeyMap = useMemo(() => {
@@ -373,7 +395,7 @@ function TimelineGraph({ timeline, allPlayers }) {
         </LineChart>
       </ResponsiveContainer>
       <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-        {playerKeys.map(({ key, name, color }) => {
+        {playerKeysDesc.map(({ key, name, color }) => {
           const hidden = hiddenPlayers.has(key);
           return (
             <div
