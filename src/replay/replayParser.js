@@ -642,7 +642,8 @@ class ReplayParser {
 
     let wardEventDebugLogged = false;
     for (const e of events) {
-      if ((e.type === 'obs_left' || e.type === 'sen_left') && e.attackername) {
+      // Java parser converts obs_left/sen_left → obs_left_log/sen_left_log (retains attackername via shallowCopy)
+      if ((e.type === 'obs_left_log' || e.type === 'sen_left_log') && e.attackername) {
         const killerSlot = npcNameToSlot[e.attackername];
         if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
           wardKills[killerSlot] = (wardKills[killerSlot] || 0) + 1;
@@ -673,38 +674,41 @@ class ReplayParser {
         }
       }
 
-      if (e.type === 'DOTA_COMBATLOG_PURCHASE' && e.valuename) {
+      // Java parser converts DOTA_COMBATLOG_PURCHASE → type:'purchase_log', item name in e.key (strip 'item_' prefix removed)
+      if (e.type === 'purchase_log' && e.key) {
         let slot = e.slot;
         // Map raw Valve dire slots (128-132) to normalized 5-9
         if (slot != null && slot >= 128 && slot <= 132) slot = slot - 128 + 5;
-        // Fallback: resolve slot from attacker NPC name if slot is still missing/invalid
-        if ((slot == null || slot < 0 || slot >= 10) && e.attackername) slot = npcNameToSlot[e.attackername];
+        // Fallback: resolve slot from unit NPC name
+        if ((slot == null || slot < 0 || slot >= 10) && e.unit) slot = npcNameToSlot[e.unit];
         if (slot != null && slot >= 0 && slot < 10) {
-          if (e.valuename === 'item_ward_observer' || e.valuename === 'item_ward_dispenser') {
+          const itemName = 'item_' + e.key;
+          if (e.key === 'ward_observer' || e.key === 'ward_dispenser') {
             obsPurchased[slot] = (obsPurchased[slot] || 0) + 1;
           }
-          if (e.valuename === 'item_ward_sentry' || e.valuename === 'item_ward_dispenser') {
+          if (e.key === 'ward_sentry' || e.key === 'ward_dispenser') {
             senPurchased[slot] = (senPurchased[slot] || 0) + 1;
           }
-          if (e.valuename === 'item_tpscroll' || e.valuename === 'item_travel_boots' || e.valuename === 'item_travel_boots_2') {
+          if (e.key === 'tpscroll' || e.key === 'travel_boots' || e.key === 'travel_boots_2') {
             tpScrollsUsed[slot] = (tpScrollsUsed[slot] || 0) + 1;
           }
-          const supportCost = SUPPORT_ITEM_COSTS[e.valuename];
+          const supportCost = SUPPORT_ITEM_COSTS[itemName];
           if (supportCost) {
             supportGoldSpent[slot] = (supportGoldSpent[slot] || 0) + supportCost;
           }
 
           if (!itemPurchases[slot]) itemPurchases[slot] = [];
-          itemPurchases[slot].push({ itemName: e.valuename, time: e.time || 0 });
+          itemPurchases[slot].push({ itemName, time: e.time || 0 });
         }
       }
 
-      if (e.type === 'DOTA_COMBATLOG_MULTIKILL') {
+      // Java parser converts DOTA_COMBATLOG_MULTIKILL → type:'multi_kills', kill count in e.key (string)
+      if (e.type === 'multi_kills') {
         let slot = e.slot;
-        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
+        if (slot == null && e.unit) slot = npcNameToSlot[e.unit];
         if (slot != null && slot >= 0 && slot < 10) {
           if (!multiKills[slot]) multiKills[slot] = { double: 0, triple: 0, ultra: 0, rampage: 0 };
-          const numkills = e.value || 0;
+          const numkills = parseInt(e.key) || 0;
           if (numkills === 2) multiKills[slot].double++;
           else if (numkills === 3) multiKills[slot].triple++;
           else if (numkills === 4) multiKills[slot].ultra++;
@@ -712,150 +716,135 @@ class ReplayParser {
         }
       }
 
-      if (e.type === 'DOTA_COMBATLOG_KILLSTREAK') {
+      // Java parser converts DOTA_COMBATLOG_KILLSTREAK → type:'kill_streaks', streak value in e.key (string)
+      if (e.type === 'kill_streaks') {
         let slot = e.slot;
-        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
+        if (slot == null && e.unit) slot = npcNameToSlot[e.unit];
         if (slot != null && slot >= 0 && slot < 10) {
-          const streak = e.value || 0;
+          const streak = parseInt(e.key) || 0;
           if (!killStreaks[slot] || streak > killStreaks[slot]) {
             killStreaks[slot] = streak;
           }
         }
       }
 
-      if (e.type === 'DOTA_COMBATLOG_DEATH') {
-        if (e.targethero && !e.targetillusion && e.targetname) {
-          const targetSlot = npcNameToSlot[e.targetname];
-          if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
-            const time = e.time || 0;
-            if (time > 0 && time < firstDeathSlot.time) {
-              firstDeathSlot.time = time;
-              firstDeathSlot.slot = targetSlot;
-            }
+      // Java parser converts DOTA_COMBATLOG_DEATH (hero kills) → type:'kills_log'
+      // e.unit = attacker NPC name, e.key = victim hero NPC name, e.slot = attacker's slot
+      if (e.type === 'kills_log' && e.key) {
+        const targetSlot = npcNameToSlot[e.key];
+        if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
+          const time = e.time || 0;
+          if (time > 0 && time < firstDeathSlot.time) {
+            firstDeathSlot.time = time;
+            firstDeathSlot.slot = targetSlot;
+          }
 
-            let killerSlot = e.slot;
-            if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
-            if (killerSlot != null && killerSlot >= 0 && killerSlot < 10 && killerSlot !== targetSlot) {
-              if (!killedBy[targetSlot]) killedBy[targetSlot] = {};
-              killedBy[targetSlot][killerSlot] = (killedBy[targetSlot][killerSlot] || 0) + 1;
-            }
+          let killerSlot = e.slot;
+          if (killerSlot == null && e.unit) killerSlot = npcNameToSlot[e.unit];
+          if (killerSlot != null && killerSlot >= 0 && killerSlot < 10 && killerSlot !== targetSlot) {
+            if (!killedBy[targetSlot]) killedBy[targetSlot] = {};
+            killedBy[targetSlot][killerSlot] = (killedBy[targetSlot][killerSlot] || 0) + 1;
+          }
 
-            gameEvents.push({ t: time, type: 'kill', killerSlot: killerSlot != null ? killerSlot : -1, victimSlot: targetSlot });
+          gameEvents.push({ t: time, type: 'kill', killerSlot: killerSlot != null ? killerSlot : -1, victimSlot: targetSlot });
 
-            if (time <= 600) {
-              if (!laningKillsAt10[targetSlot]) laningKillsAt10[targetSlot] = { k: 0, d: 0, a: 0 };
-              laningKillsAt10[targetSlot].d++;
-              if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
-                if (!laningKillsAt10[killerSlot]) laningKillsAt10[killerSlot] = { k: 0, d: 0, a: 0 };
-                laningKillsAt10[killerSlot].k++;
-              }
-              if (e.assisters && Array.isArray(e.assisters)) {
-                for (const aName of e.assisters) {
-                  const aSlot = npcNameToSlot[aName];
-                  if (aSlot != null && aSlot >= 0 && aSlot < 10) {
-                    if (!laningKillsAt10[aSlot]) laningKillsAt10[aSlot] = { k: 0, d: 0, a: 0 };
-                    laningKillsAt10[aSlot].a++;
-                  }
-                }
-              }
+          if (time <= 600) {
+            if (!laningKillsAt10[targetSlot]) laningKillsAt10[targetSlot] = { k: 0, d: 0, a: 0 };
+            laningKillsAt10[targetSlot].d++;
+            if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
+              if (!laningKillsAt10[killerSlot]) laningKillsAt10[killerSlot] = { k: 0, d: 0, a: 0 };
+              laningKillsAt10[killerSlot].k++;
             }
           }
         }
+      }
 
-        if (e.targetname && e.targetname.includes('roshan')) {
+      // Java parser emits type:'killed' for ALL deaths (heroes, roshan, couriers)
+      // e.key = victim NPC name, e.unit = attacker NPC name, e.slot = attacker's slot
+      if (e.type === 'killed' && e.key) {
+        if (e.key.includes('roshan')) {
           const time = e.time || 0;
           let killerSlot = e.slot;
-          if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
+          if (killerSlot == null && e.unit) killerSlot = npcNameToSlot[e.unit];
           const team = killerSlot != null && killerSlot >= 0 && killerSlot < 5 ? 'radiant' : 'dire';
           gameEvents.push({ t: time, type: 'roshan', team });
         }
 
-        if (e.targetname && (e.targetname.includes('tower') || e.targetname.includes('fort') || e.targetname.includes('barracks'))) {
-          const time = e.time || 0;
+        if (e.key.includes('courier') || e.key.includes('donkey')) {
           let killerSlot = e.slot;
-          if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
-          const killerTeam = killerSlot != null && killerSlot >= 0 && killerSlot < 5 ? 'radiant' : 'dire';
-          gameEvents.push({ t: time, type: 'building', team: killerTeam, building: e.targetname });
-        }
-
-        if (e.targetname && (e.targetname.includes('courier') || e.targetname.includes('donkey'))) {
-          let killerSlot = e.slot;
-          if (killerSlot == null && e.attackername) killerSlot = npcNameToSlot[e.attackername];
+          if (killerSlot == null && e.unit) killerSlot = npcNameToSlot[e.unit];
           if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
             if (players[killerSlot]) players[killerSlot].courierKills = (players[killerSlot].courierKills || 0) + 1;
           }
         }
       }
 
-      if (e.type === 'DOTA_COMBATLOG_BUYBACK') {
+      // Java parser converts DOTA_COMBATLOG_DEATH (building kills) → type:'building_kill'
+      // e.key = building NPC name, e.slot = killer's slot
+      if (e.type === 'building_kill' && e.key) {
+        const time = e.time || 0;
+        let killerSlot = e.slot;
+        if (killerSlot == null && e.unit) killerSlot = npcNameToSlot[e.unit];
+        const killerTeam = killerSlot != null && killerSlot >= 0 && killerSlot < 5 ? 'radiant' : 'dire';
+        gameEvents.push({ t: time, type: 'building', team: killerTeam, building: e.key });
+      }
+
+      // Java parser converts DOTA_COMBATLOG_BUYBACK → type:'buyback_log', slot in e.slot
+      if (e.type === 'buyback_log') {
         let slot = e.slot;
-        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
-        if (slot == null && e.targetname) slot = npcNameToSlot[e.targetname];
-        if (slot == null && typeof e.slot === 'number') slot = e.slot;
+        if (slot != null && slot >= 128 && slot <= 132) slot = slot - 128 + 5;
         if (slot != null && slot >= 0 && slot < 10) {
           combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
         }
       }
 
-      if (e.type === 'DOTA_COMBATLOG_MODIFIER_ADD' && e.inflictor === 'modifier_smoke_of_deceit') {
-        if (e.attackername) {
-          const slot = npcNameToSlot[e.attackername];
-          if (slot != null && slot >= 0 && slot < 10) {
-            smokeKills[slot] = (smokeKills[slot] || 0);
-          }
-        }
-      }
-
-      if (e.type === 'DOTA_COMBATLOG_DEATH' && e.targethero && !e.targetillusion) {
-        if (e.attackerhasmodifier_smoke_of_deceit || (e.inflictor && e.inflictor.includes('smoke'))) {
-          let slot = e.slot;
-          if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
-          if (slot != null && slot >= 0 && slot < 10) {
-            smokeKills[slot] = (smokeKills[slot] || 0) + 1;
-          }
-        }
-      }
-
-      if (e.type === 'DOTA_COMBATLOG_ABILITY_LEVEL') {
+      // Java parser converts DOTA_COMBATLOG_ABILITY_LEVEL → type:'ability_levels'
+      // e.key = ability name, e.level = ability level, e.slot = player's slot
+      if (e.type === 'ability_levels' && e.key) {
         let slot = e.slot;
-        if (slot == null && e.attackername) slot = npcNameToSlot[e.attackername];
-        if (slot != null && slot >= 0 && slot < 10 && e.valuename) {
+        if (slot == null && e.unit) slot = npcNameToSlot[e.unit];
+        if (slot != null && slot >= 0 && slot < 10) {
           if (!abilityLevelups[slot]) abilityLevelups[slot] = [];
           abilityLevelups[slot].push({
-            abilityName: e.valuename,
-            abilityLevel: e.abilitylevel || abilityLevelups[slot].length + 1,
+            abilityName: e.key,
+            abilityLevel: e.level || abilityLevelups[slot].length + 1,
             time: e.time || 0,
           });
         }
       }
 
-      if (e.type === 'DOTA_COMBATLOG_DAMAGE') {
+      // Java parser converts DOTA_COMBATLOG_DAMAGE → type:'damage' (attacker-centric)
+      // e.unit = attacker NPC, e.key = victim NPC, e.slot = attacker's slot, e.targethero = bool
+      if (e.type === 'damage' && e.value > 0) {
         let attackerSlot = e.slot;
-        if (attackerSlot == null && e.attackername) {
-          attackerSlot = npcNameToSlot[e.attackername];
-        }
+        if (attackerSlot == null && e.unit) attackerSlot = npcNameToSlot[e.unit];
         if (attackerSlot != null && attackerSlot >= 0 && attackerSlot < 10) {
           if (e.targethero && !e.targetillusion) {
             heroDamage[attackerSlot] = (heroDamage[attackerSlot] || 0) + (e.value || 0);
           }
-          if (e.targetname && e.targetname.includes('tower')) {
+          if (e.key && (e.key.includes('tower') || e.key.includes('fort') || e.key.includes('barracks') || e.key.includes('rax'))) {
             towerDamage[attackerSlot] = (towerDamage[attackerSlot] || 0) + (e.value || 0);
           }
         }
-        if (e.targethero && !e.targetillusion && e.targetname) {
-          const targetSlot = npcNameToSlot[e.targetname];
-          if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
-            damageTaken[targetSlot] = (damageTaken[targetSlot] || 0) + (e.value || 0);
-          }
+      }
+
+      // Java parser converts DOTA_COMBATLOG_DAMAGE (hero targets only) → type:'damage_taken' (victim-centric)
+      // e.unit = victim NPC, e.key = attacker NPC, e.slot = victim's slot
+      if (e.type === 'damage_taken' && e.value > 0) {
+        let targetSlot = e.slot;
+        if (targetSlot == null && e.unit) targetSlot = npcNameToSlot[e.unit];
+        if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
+          damageTaken[targetSlot] = (damageTaken[targetSlot] || 0) + (e.value || 0);
         }
       }
-      if (e.type === 'DOTA_COMBATLOG_HEAL') {
+
+      // Java parser converts DOTA_COMBATLOG_HEAL → type:'healing'
+      // e.unit = healer NPC, e.key = target NPC, e.slot = healer's slot
+      if (e.type === 'healing' && e.value > 0) {
         let slot = e.slot;
-        if (slot == null && e.attackername) {
-          slot = npcNameToSlot[e.attackername];
-        }
+        if (slot == null && e.unit) slot = npcNameToSlot[e.unit];
         if (slot != null && slot >= 0 && slot < 10) {
-          const isSelfHeal = !e.targetname || e.attackername === e.targetname;
+          const isSelfHeal = !e.key || e.unit === e.key;
           if (e.targethero && !e.targetillusion && !isSelfHeal) {
             heroHealing[slot] = (heroHealing[slot] || 0) + (e.value || 0);
           }
