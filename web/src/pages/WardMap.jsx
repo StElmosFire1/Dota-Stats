@@ -213,13 +213,14 @@ function WardCanvas({ placements, selectedPlayer, wardType, playerList, mapLoade
       ];
 
       for (const ward of wardData) {
-        // Dota 2 playable area spans cells 64–192 in both axes.
-        // Coordinates outside this range are non-playable terrain.
-        const MAP_MIN = 64;
-        const MAP_MAX = 192;
-        const MAP_RANGE = MAP_MAX - MAP_MIN; // 128
-        const px = ((ward.x - MAP_MIN) / MAP_RANGE) * W;
-        const py = (1 - (ward.y - MAP_MIN) / MAP_RANGE) * H;
+        // Dota 2 playable area — calibrated bounds (X and Y differ slightly
+        // due to map asymmetry and minimap image framing).
+        const MAP_X_MIN = 61;
+        const MAP_X_MAX = 189;
+        const MAP_Y_MIN = 73;
+        const MAP_Y_MAX = 197;
+        const px = ((ward.x - MAP_X_MIN) / (MAP_X_MAX - MAP_X_MIN)) * W;
+        const py = (1 - (ward.y - MAP_Y_MIN) / (MAP_Y_MAX - MAP_Y_MIN)) * H;
 
         const color = ward.isObs ? baseColor : '#f59e0b';
         const glowR = ward.isObs ? 14 : 10;
