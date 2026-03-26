@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { getSeasons } from '../api';
 
 const SeasonContext = createContext({
@@ -12,11 +12,18 @@ const SeasonContext = createContext({
 export function SeasonProvider({ children }) {
   const [seasonId, setSeasonId] = useState(null);
   const [seasons, setSeasons] = useState([]);
+  const initialized = useRef(false);
 
   const refreshSeasons = useCallback(async () => {
     try {
       const data = await getSeasons();
-      setSeasons(data.seasons || []);
+      const loaded = data.seasons || [];
+      setSeasons(loaded);
+      if (!initialized.current) {
+        initialized.current = true;
+        const active = loaded.find(s => s.active);
+        if (active) setSeasonId(active.id);
+      }
     } catch {}
   }, []);
 

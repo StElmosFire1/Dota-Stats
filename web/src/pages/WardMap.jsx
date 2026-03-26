@@ -244,7 +244,7 @@ export default function WardMap() {
   const [playerList, setPlayerList] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState('all');
   const [wardType, setWardType] = useState('both');
-  const [viewMode, setViewMode] = useState('heatmap');
+  const viewMode = 'points';
   const [loading, setLoading] = useState(true);
   const [mapLoaded, setMapLoaded] = useState(false);
   const mapImg = useRef(null);
@@ -296,7 +296,7 @@ export default function WardMap() {
   return (
     <div style={{ padding: '24px 16px', maxWidth: 960, margin: '0 auto' }}>
       <h1 style={{ fontSize: 26, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
-        🗺️ Ward Heatmap
+        🗺️ Ward Map
       </h1>
       <p style={{ color: '#94a3b8', marginBottom: 24 }}>
         Observer and sentry ward placement patterns across all tracked replays.
@@ -328,29 +328,6 @@ export default function WardMap() {
           </div>
 
           <div style={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-            {/* View mode */}
-            <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, border: '1px solid #334155' }}>
-              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>View Mode</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {[['heatmap','🔥 Heatmap'],['points','◆ Points']].map(([v, label]) => (
-                  <button
-                    key={v}
-                    onClick={() => setViewMode(v)}
-                    style={{
-                      flex: 1, padding: '7px 4px', borderRadius: 6, fontSize: 12,
-                      border: '1px solid',
-                      borderColor: viewMode === v ? '#3b82f6' : '#334155',
-                      background: viewMode === v ? '#1d4ed8' : '#0f172a',
-                      color: viewMode === v ? '#fff' : '#94a3b8',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {/* Player select */}
             <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, border: '1px solid #334155' }}>
@@ -399,64 +376,38 @@ export default function WardMap() {
             {/* Legend */}
             <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, border: '1px solid #334155' }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Legend</div>
-              {viewMode === 'heatmap' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{
-                    height: 14, borderRadius: 4,
-                    background: 'linear-gradient(to right, #0000dc 0%, #00b4ff 30%, #00ff64 50%, #c8ff00 65%, #ffa000 80%, #ff0000 100%)',
-                    marginBottom: 4,
-                  }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' }}>
-                    <span>Rare</span><span>Common</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 16, marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#e2e8f0' }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#94a3b8' }} />
+                    Observer (circle)
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-                    Observers use full colour ramp. Sentries overlay with purple tint.
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#60a5fa' }} />
-                      Observers
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#a855f7' }} />
-                      Sentries
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#e2e8f0' }}>
+                    <svg width="12" height="12" viewBox="0 0 12 12">
+                      <polygon points="6,1 11,6 6,11 1,6" fill="#94a3b8" stroke="rgba(0,0,0,0.5)" strokeWidth="0.8" />
+                    </svg>
+                    Sentry (diamond)
                   </div>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', gap: 16, marginBottom: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#e2e8f0' }}>
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#94a3b8' }} />
-                      Observer (circle)
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#e2e8f0' }}>
-                      <svg width="12" height="12" viewBox="0 0 12 12">
-                        <polygon points="6,1 11,6 6,11 1,6" fill="#94a3b8" stroke="rgba(0,0,0,0.5)" strokeWidth="0.8" />
-                      </svg>
-                      Sentry (diamond)
+                {selectedPlayer !== 'all' ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0' }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: selectedColor }} />
+                    {playerList.find(p => String(p.accountId) === selectedPlayer)?.name || 'Player'}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Player Colours</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {playerList.map((p) => (
+                        <div key={p.accountId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: playerColorMap[String(p.accountId)], flexShrink: 0 }} />
+                          {p.name}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  {selectedPlayer !== 'all' ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0' }}>
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: selectedColor }} />
-                      {playerList.find(p => String(p.accountId) === selectedPlayer)?.name || 'Player'}
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: 4 }}>
-                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Player Colours</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {playerList.map((p) => (
-                          <div key={p.accountId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: playerColorMap[String(p.accountId)], flexShrink: 0 }} />
-                            {p.name}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Stats */}

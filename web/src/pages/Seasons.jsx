@@ -635,6 +635,21 @@ export default function Seasons() {
     }
   }
 
+  if (!isSuperuser) {
+    return (
+      <div style={{ maxWidth: 600, margin: '80px auto', textAlign: 'center', padding: '0 16px' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+        <h2 style={{ color: 'var(--text-primary)', marginBottom: 8 }}>Superuser Access Required</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>
+          Season management is restricted to superusers only.
+        </p>
+        <button className="btn btn-primary" onClick={() => setSuperuserModal(true)}>
+          Login as Superuser
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
       <h2 style={{ marginBottom: 24 }}>Seasons</h2>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getPersonalRecords, getFirstBloodStats, getComebackMatches } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import { formatHeroName } from '../utils/heroes';
 
 function fmtDuration(s) {
   if (!s) return '';
@@ -126,7 +127,7 @@ export default function Records() {
                       {rec.persona_name}
                     </Link>
                     <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
-                      {rec.hero_name} &bull;{' '}
+                      {formatHeroName(rec.hero_name)} &bull;{' '}
                       <Link to={`/match/${rec.match_id}`} style={{ color: '#60a5fa', textDecoration: 'none' }}>
                         Match #{rec.match_id}
                       </Link>
