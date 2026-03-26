@@ -215,8 +215,8 @@ function WardCanvas({ placements, selectedPlayer, wardType, playerList, mapLoade
       for (const ward of wardData) {
         // Dota 2 playable area — calibrated bounds (X and Y differ slightly
         // due to map asymmetry and minimap image framing).
-        const MAP_X_MIN = 61;
-        const MAP_X_MAX = 189;
+        const MAP_X_MIN = 62;
+        const MAP_X_MAX = 190;
         const MAP_Y_MIN = 73;
         const MAP_Y_MAX = 197;
         const px = ((ward.x - MAP_X_MIN) / (MAP_X_MAX - MAP_X_MIN)) * W;
