@@ -8,10 +8,10 @@ export async function getPatchNote(id) {
   return fetchJson(`/patch-notes/${id}`);
 }
 
-export async function createPatchNote({ version, title, content, author }, uploadKey) {
+export async function createPatchNote({ version, title, content, author }, superuserKey) {
   const res = await fetch(BASE + '/patch-notes', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Upload-Key': uploadKey },
+    headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
     body: JSON.stringify({ version, title, content, author }),
   });
   const data = await res.json();
@@ -19,10 +19,10 @@ export async function createPatchNote({ version, title, content, author }, uploa
   return data;
 }
 
-export async function updatePatchNote(id, { version, title, content, author }, uploadKey) {
+export async function updatePatchNote(id, { version, title, content, author }, superuserKey) {
   const res = await fetch(BASE + `/patch-notes/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Upload-Key': uploadKey },
+    headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
     body: JSON.stringify({ version, title, content, author }),
   });
   const data = await res.json();
@@ -30,10 +30,10 @@ export async function updatePatchNote(id, { version, title, content, author }, u
   return data;
 }
 
-export async function deletePatchNote(id, uploadKey) {
+export async function deletePatchNote(id, superuserKey) {
   const res = await fetch(BASE + `/patch-notes/${id}`, {
     method: 'DELETE',
-    headers: { 'X-Upload-Key': uploadKey },
+    headers: { 'X-Superuser-Key': superuserKey },
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to delete patch note');
@@ -176,12 +176,12 @@ export async function getNicknames() {
   return fetchJson('/nicknames');
 }
 
-export async function setNickname(accountId, nickname, uploadKey) {
+export async function setNickname(accountId, nickname, superuserKey) {
   const res = await fetch(BASE + `/nicknames/${accountId}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Upload-Key': uploadKey,
+      'X-Superuser-Key': superuserKey,
     },
     body: JSON.stringify({ nickname }),
   });

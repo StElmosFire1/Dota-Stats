@@ -30,16 +30,14 @@ export default function SeasonSelector({ className = '' }) {
         </option>
       ))}
       {legacySeasons.length > 0 && (
-        <>
+        <optgroup label="─── Legacy ───">
           <option value="legacy">All Legacy Seasons</option>
-          <optgroup label="─── Legacy ───">
-            {legacySeasons.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.name} (Legacy)
-              </option>
-            ))}
-          </optgroup>
-        </>
+          {legacySeasons.map(s => (
+            <option key={s.id} value={s.id}>
+              {s.name} (Legacy)
+            </option>
+          ))}
+        </optgroup>
       )}
     </select>
   );

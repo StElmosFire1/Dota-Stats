@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAdmin } from '../context/AdminContext';
+import { useSuperuser } from '../context/SuperuserContext';
 import {
   getPatchNotes,
   createPatchNote,
@@ -40,7 +40,7 @@ function renderContent(text) {
 const emptyForm = { version: '', title: '', content: '', author: '' };
 
 export default function PatchNotes() {
-  const { isAdmin } = useAdmin();
+  const { isSuperuser, superuserKey, setShowModal } = useSuperuser();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -50,7 +50,6 @@ export default function PatchNotes() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
-  const [uploadKey, setUploadKey] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
@@ -82,16 +81,16 @@ export default function PatchNotes() {
     if (!form.version.trim() || !form.title.trim() || !form.content.trim()) {
       return setFormError('Version, title, and content are required.');
     }
-    if (!uploadKey.trim()) return setFormError('Enter your admin key to save.');
+    if (!isSuperuser) { setShowModal(true); return; }
     setSaving(true);
     setFormError(null);
     try {
       let saved;
       if (editId) {
-        saved = await updatePatchNote(editId, form, uploadKey);
+        saved = await updatePatchNote(editId, form, superuserKey);
         setNotes(n => n.map(x => x.id === editId ? saved : x));
       } else {
-        saved = await createPatchNote(form, uploadKey);
+        saved = await createPatchNote(form, superuserKey);
         setNotes(n => [saved, ...n]);
         setExpanded(saved.id);
       }
@@ -106,9 +105,9 @@ export default function PatchNotes() {
   };
 
   const handleDelete = async (id) => {
-    if (!uploadKey.trim()) return setFormError('Enter your admin key to delete.');
+    if (!isSuperuser) { setShowModal(true); return; }
     try {
-      await deletePatchNote(id, uploadKey);
+      await deletePatchNote(id, superuserKey);
       setNotes(n => n.filter(x => x.id !== id));
       if (expanded === id) setExpanded(null);
       setConfirmDelete(null);
@@ -126,28 +125,12 @@ export default function PatchNotes() {
             Bot, website, and rules updates for the inhouse community
           </p>
         </div>
-        {isAdmin && (
+        {isSuperuser && (
           <button className="btn" onClick={openCreate} style={{ fontSize: 13 }}>
             + New Patch
           </button>
         )}
       </div>
-
-      {isAdmin && (
-        <div style={{ marginBottom: 20 }}>
-          <input
-            type="password"
-            placeholder="Admin key (required to save/delete)"
-            value={uploadKey}
-            onChange={e => setUploadKey(e.target.value)}
-            style={{
-              padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)',
-              background: 'var(--bg-input)', color: 'var(--text-primary)',
-              fontSize: 13, width: 280,
-            }}
-          />
-        </div>
-      )}
 
       {formError && (
         <div style={{ background: '#3b1a1a', border: '1px solid #e05c5c', borderRadius: 8, padding: '10px 16px', marginBottom: 16, color: '#ff9999', fontSize: 13 }}>
@@ -207,7 +190,7 @@ export default function PatchNotes() {
           background: 'var(--bg-card)', border: '1px solid var(--border)',
           borderRadius: 12, padding: 40, textAlign: 'center', color: 'var(--text-secondary)',
         }}>
-          No patch notes yet.{isAdmin && ' Use the button above to publish the first one.'}
+          No patch notes yet.{isSuperuser && ' Use the button above to publish the first one.'}
         </div>
       )}
 
@@ -253,7 +236,7 @@ export default function PatchNotes() {
               {isOpen && (
                 <div style={{ padding: '16px 20px 20px' }}>
                   {renderContent(note.content)}
-                  {isAdmin && (
+                  {isSuperuser && (
                     <div style={{ display: 'flex', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                       <button className="btn btn-small" onClick={() => openEdit(note)}>✏️ Edit</button>
                       {confirmDelete === note.id ? (

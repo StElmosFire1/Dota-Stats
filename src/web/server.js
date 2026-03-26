@@ -480,7 +480,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.post('/nicknames/:accountId', authMiddleware, async (req, res) => {
+  router.post('/nicknames/:accountId', requireSuperuser, async (req, res) => {
     try {
       const { nickname } = req.body;
       const accountId = parseInt(req.params.accountId);
@@ -1501,7 +1501,7 @@ NOTES
     }
   });
 
-  router.post('/patch-notes', authMiddleware, express.json(), async (req, res) => {
+  router.post('/patch-notes', requireSuperuser, express.json(), async (req, res) => {
     try {
       const { version, title, content, author } = req.body;
       if (!version || !title || !content) {
@@ -1514,7 +1514,7 @@ NOTES
     }
   });
 
-  router.put('/patch-notes/:id', authMiddleware, express.json(), async (req, res) => {
+  router.put('/patch-notes/:id', requireSuperuser, express.json(), async (req, res) => {
     try {
       const { version, title, content, author } = req.body;
       if (!version || !title || !content) {
@@ -1718,7 +1718,7 @@ NOTES
     }
   });
 
-  router.delete('/patch-notes/:id', authMiddleware, async (req, res) => {
+  router.delete('/patch-notes/:id', requireSuperuser, async (req, res) => {
     try {
       await db.deletePatchNote(parseInt(req.params.id));
       res.json({ ok: true });
