@@ -588,7 +588,7 @@ class ReplayParser {
             xp: e.xp || 0,
             level: e.level || 0,
             cs: e.lh || 0,
-            hd: heroDamage[e.slot] || 0,
+            hd: e.heroDamage || 0,
           });
         }
       }
