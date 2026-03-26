@@ -117,7 +117,13 @@ function ItemSwimLane({ players, allPlayers, maxTime }) {
     return { name, color, purchases, slot: tp.slot };
   });
 
-  if (rows.every(r => r.purchases.length === 0)) return null;
+  if (rows.every(r => r.purchases.length === 0)) {
+    return (
+      <div style={{ fontSize: 12, color: '#475569', padding: '8px 0', fontStyle: 'italic' }}>
+        No item purchase data — re-upload this replay to populate item timings.
+      </div>
+    );
+  }
 
   return (
     <div style={{ marginTop: 16 }}>
@@ -285,8 +291,6 @@ function TimelineGraph({ timeline, allPlayers }) {
     return timeline.events.filter(e => e.type === 'roshan');
   }, [timeline]);
 
-  const hasPurchaseLogs = timeline?.players?.some(p => (p.purchaseLog || []).length > 0);
-
   if (!timeline?.players?.length) return null;
 
   return (
@@ -311,26 +315,24 @@ function TimelineGraph({ timeline, allPlayers }) {
               {label}
             </button>
           ))}
-          {hasPurchaseLogs && (
-            <button
-              onClick={() => {
-                const next = !showItems;
-                setShowItems(next);
-                if (next) {
-                  setTimeout(() => itemsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
-                }
-              }}
-              style={{
-                padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
-                border: '1px solid',
-                borderColor: showItems ? '#10b981' : '#334155',
-                background: showItems ? '#065f46' : '#1e293b',
-                color: showItems ? '#6ee7b7' : '#94a3b8',
-              }}
-            >
-              🛒 Items
-            </button>
-          )}
+          <button
+            onClick={() => {
+              const next = !showItems;
+              setShowItems(next);
+              if (next) {
+                setTimeout(() => itemsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+              }
+            }}
+            style={{
+              padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
+              border: '1px solid',
+              borderColor: showItems ? '#10b981' : '#334155',
+              background: showItems ? '#065f46' : '#1e293b',
+              color: showItems ? '#6ee7b7' : '#94a3b8',
+            }}
+          >
+            🛒 Items
+          </button>
         </div>
       </div>
       <ResponsiveContainer width="100%" height={320}>
@@ -411,7 +413,7 @@ function TimelineGraph({ timeline, allPlayers }) {
           </div>
         )}
       </div>
-      {showItems && hasPurchaseLogs && (
+      {showItems && timeline?.players?.length > 0 && (
         <div ref={itemsRef} style={{
           marginTop: 12,
           padding: '12px 0',
