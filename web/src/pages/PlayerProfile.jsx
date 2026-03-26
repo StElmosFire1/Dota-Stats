@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak } from '../api';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import {
@@ -120,6 +120,8 @@ export default function PlayerProfile() {
   const [achievements, setAchievements] = useState([]);
   const [nemesis, setNemesis] = useState([]);
   const [predictionStats, setPredictionStats] = useState(null);
+  const [heroCounters, setHeroCounters] = useState([]);
+  const [streak, setStreak] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -131,13 +133,17 @@ export default function PlayerProfile() {
       getPlayerAchievements(accountId).catch(() => ({ achievements: [] })),
       getPlayerNemesis(accountId).catch(() => []),
       getPlayerPredictionStats(accountId).catch(() => null),
-    ]).then(([playerData, posData, histData, achData, nemData, predData]) => {
+      getPlayerHeroCounters(accountId).catch(() => ({ counters: [] })),
+      getPlayerStreak(accountId).catch(() => ({ streak: 0 })),
+    ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
       setAchievements(achData?.achievements || []);
       setNemesis(Array.isArray(nemData) ? nemData : []);
       setPredictionStats(predData?.stats || null);
+      setHeroCounters(counterData?.counters || []);
+      setStreak(streakData?.streak ?? null);
     }).finally(() => setLoading(false));
   }, [accountId]);
 
@@ -191,6 +197,17 @@ export default function PlayerProfile() {
             <div className="stat-card">
               <div className="stat-value">{totalKDA}</div>
               <div className="stat-label">KDA</div>
+            </div>
+          )}
+          {streak !== null && streak !== 0 && (
+            <div className="stat-card" style={{
+              borderColor: streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+              boxShadow: streak > 0 ? '0 0 8px rgba(74,222,128,0.2)' : '0 0 8px rgba(248,113,113,0.2)',
+            }}>
+              <div className="stat-value" style={{ color: streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                {streak > 0 ? `W${streak}` : `L${Math.abs(streak)}`}
+              </div>
+              <div className="stat-label">Current Streak</div>
             </div>
           )}
         </div>
@@ -267,6 +284,50 @@ export default function PlayerProfile() {
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {heroCounters.filter(c => parseInt(c.games_against) >= 2).length > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-title">⚔️ Hero Matchups</h2>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, marginTop: -8 }}>
+            Win rates against and alongside enemy heroes (min. 2 games).
+          </p>
+          <div className="scoreboard-wrapper">
+            <table className="scoreboard">
+              <thead>
+                <tr>
+                  <th className="col-player">Hero</th>
+                  <th className="col-stat" title="Games played against this hero">vs Games</th>
+                  <th className="col-stat" title="Win rate when facing this hero">vs Win%</th>
+                  <th className="col-stat" title="Games played with this hero on your team">With Games</th>
+                  <th className="col-stat" title="Win rate when this hero is on your team">With Win%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {heroCounters
+                  .filter(c => parseInt(c.games_against) >= 2)
+                  .slice(0, 15)
+                  .map((c, i) => {
+                    const vsWr = c.games_against > 0 ? Math.round((c.wins_against / c.games_against) * 100) : null;
+                    const withWr = c.games_with > 0 ? Math.round((c.wins_with / c.games_with) * 100) : null;
+                    return (
+                      <tr key={i}>
+                        <td className="col-player">{getHeroName(c.hero_id, c.hero_name)}</td>
+                        <td className="col-stat">{c.games_against}</td>
+                        <td className="col-stat" style={{ color: vsWr === null ? 'var(--text-muted)' : vsWr >= 50 ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 600 }}>
+                          {vsWr !== null ? `${vsWr}%` : '--'}
+                        </td>
+                        <td className="col-stat">{c.games_with || 0}</td>
+                        <td className="col-stat" style={{ color: withWr === null ? 'var(--text-muted)' : withWr >= 50 ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 600 }}>
+                          {withWr !== null ? `${withWr}%` : '--'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
           </div>
         </section>
       )}

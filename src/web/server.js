@@ -607,6 +607,38 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/players/:accountId/hero-counters', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const counters = await db.getPlayerHeroCounters(parseInt(req.params.accountId), seasonId);
+      res.json({ counters });
+    } catch (err) {
+      console.error('[API] Error fetching hero counters:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero counters' });
+    }
+  });
+
+  router.get('/players/:accountId/streak', async (req, res) => {
+    try {
+      const streak = await db.getPlayerCurrentStreak(parseInt(req.params.accountId));
+      res.json({ streak });
+    } catch (err) {
+      console.error('[API] Error fetching streak:', err.message);
+      res.status(500).json({ error: 'Failed to fetch streak' });
+    }
+  });
+
+  router.get('/draft-stats', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.getDraftStats(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] Error fetching draft stats:', err.message);
+      res.status(500).json({ error: 'Failed to fetch draft stats' });
+    }
+  });
+
   router.get('/overall-stats', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

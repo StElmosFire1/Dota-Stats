@@ -6,7 +6,7 @@ import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+  LineChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts';
 
 const POSITION_NAMES = {
@@ -112,6 +112,7 @@ const METRIC_LABELS = {
   level: 'Level',
   cs: 'Last Hits',
   hd: 'Hero Damage',
+  goldlead: 'Gold Lead',
 };
 
 function ItemSwimLane({ players, allPlayers, maxTime }) {
@@ -267,37 +268,58 @@ function TimelineGraph({ timeline, allPlayers }) {
       }
     }
 
+    // Build a slot->team lookup from allPlayers
+    const slotTeam = {};
+    allPlayers.forEach(p => { slotTeam[p.slot] = p.team; });
+
     const chartData = times.map(t => {
       const row = { t };
-      for (const tp of timeline.players) {
-        const s = playerMap[tp.slot][t];
-        row[`slot_${tp.slot}`] = s ? (s[metric] ?? (metric === 'level' ? (s['lvl'] ?? 0) : 0)) : 0;
+      if (metric === 'goldlead') {
+        let radiantNw = 0, direNw = 0;
+        for (const tp of timeline.players) {
+          const s = playerMap[tp.slot][t];
+          const nw = s ? (s.nw ?? 0) : 0;
+          if (slotTeam[tp.slot] === 'radiant') radiantNw += nw;
+          else direNw += nw;
+        }
+        row.goldlead = radiantNw - direNw;
+      } else {
+        for (const tp of timeline.players) {
+          const s = playerMap[tp.slot][t];
+          row[`slot_${tp.slot}`] = s ? (s[metric] ?? (metric === 'level' ? (s['lvl'] ?? 0) : 0)) : 0;
+        }
       }
       return row;
     });
 
-    // Get the final value for each player for the active metric so we can sort
-    const finalVal = (tp) => {
-      const samples = tp.samples || [];
-      if (!samples.length) return 0;
-      const last = samples[samples.length - 1];
-      return last[metric] ?? (metric === 'level' ? (last['lvl'] ?? 0) : 0);
-    };
+    let playerKeys, playerKeysDesc;
+    if (metric === 'goldlead') {
+      playerKeys = [{ key: 'goldlead', name: 'Radiant Gold Lead', color: '#4ade80' }];
+      playerKeysDesc = playerKeys;
+    } else {
+      // Get the final value for each player for the active metric so we can sort
+      const finalVal = (tp) => {
+        const samples = tp.samples || [];
+        if (!samples.length) return 0;
+        const last = samples[samples.length - 1];
+        return last[metric] ?? (metric === 'level' ? (last['lvl'] ?? 0) : 0);
+      };
 
-    const playerKeys = timeline.players
-      .slice()
-      .sort((a, b) => finalVal(a) - finalVal(b)) // ascending so highest is rendered last (on top in SVG)
-      .map((tp) => {
-        const color = DOTA_PLAYER_COLORS[tp.slot % 10];
-        const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
-        const ap = allPlayers.find(p => p.slot === tp.slot);
-        const heroImg = ap ? getHeroImageUrl(ap.hero_id, ap.hero_name) : null;
-        const endVal = finalVal(tp);
-        return { key: `slot_${tp.slot}`, name, color, heroImg, endVal };
-      });
+      playerKeys = timeline.players
+        .slice()
+        .sort((a, b) => finalVal(a) - finalVal(b)) // ascending so highest is rendered last (on top in SVG)
+        .map((tp) => {
+          const color = DOTA_PLAYER_COLORS[tp.slot % 10];
+          const name = slotToName[tp.slot] || tp.name || `Slot ${tp.slot}`;
+          const ap = allPlayers.find(p => p.slot === tp.slot);
+          const heroImg = ap ? getHeroImageUrl(ap.hero_id, ap.hero_name) : null;
+          const endVal = finalVal(tp);
+          return { key: `slot_${tp.slot}`, name, color, heroImg, endVal };
+        });
 
-    // Legend order: highest on top — reverse for display purposes
-    const playerKeysDesc = [...playerKeys].reverse();
+      // Legend order: highest on top — reverse for display purposes
+      playerKeysDesc = [...playerKeys].reverse();
+    }
 
     return { chartData, playerKeys, playerKeysDesc, maxTime };
   }, [timeline, metric, allPlayers]);
@@ -363,45 +385,84 @@ function TimelineGraph({ timeline, allPlayers }) {
         </div>
       </div>
       <ResponsiveContainer width="100%" height={320}>
-        <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-          <XAxis
-            dataKey="t"
-            tickFormatter={fmtTime}
-            stroke="#475569"
-            tick={{ fill: '#64748b', fontSize: 11 }}
-          />
-          <YAxis
-            tickFormatter={metric === 'level' ? String : fmtLargeNum}
-            stroke="#475569"
-            tick={{ fill: '#64748b', fontSize: 11 }}
-            width={44}
-          />
-          <Tooltip
-            content={(props) => <TimelineTooltip {...props} playerKeyMap={playerKeyMap} metric={metric} />}
-          />
-          {roshanEvents.map((e, i) => (
-            <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
-              label={{ value: '🐉', position: 'top', fontSize: 12 }} />
-          ))}
-          {tormenterEvents.map((e, i) => (
-            <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3"
-              label={{ value: '💀', position: 'top', fontSize: 12 }} />
-          ))}
-          {playerKeys.map(({ key, name, color }) => (
-            <Line
-              key={key}
-              type="monotone"
-              dataKey={key}
-              name={name}
-              stroke={color}
-              strokeWidth={1.5}
-              dot={false}
-              activeDot={{ r: 4 }}
-              hide={hiddenPlayers.has(key)}
+        {metric === 'goldlead' ? (
+          <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+            <defs>
+              <linearGradient id="glGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#4ade80" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#4ade80" stopOpacity={0.02} />
+              </linearGradient>
+              <linearGradient id="glGradNeg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#f87171" stopOpacity={0.02} />
+                <stop offset="95%" stopColor="#f87171" stopOpacity={0.25} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis dataKey="t" tickFormatter={fmtTime} stroke="#475569" tick={{ fill: '#64748b', fontSize: 11 }} />
+            <YAxis
+              tickFormatter={v => { const abs = Math.abs(v); return `${v >= 0 ? '+' : ''}${fmtLargeNum(v)}`; }}
+              stroke="#475569" tick={{ fill: '#64748b', fontSize: 11 }} width={52}
             />
-          ))}
-        </LineChart>
+            <Tooltip
+              formatter={(v) => [`${v >= 0 ? '+' : ''}${Math.round(v).toLocaleString()}g`, 'Gold Lead']}
+              labelFormatter={fmtTime}
+              contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 12 }}
+            />
+            <ReferenceLine y={0} stroke="#475569" strokeWidth={1.5} />
+            {roshanEvents.map((e, i) => (
+              <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
+                label={{ value: '🐉', position: 'top', fontSize: 12 }} />
+            ))}
+            {tormenterEvents.map((e, i) => (
+              <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3"
+                label={{ value: '💀', position: 'top', fontSize: 12 }} />
+            ))}
+            <Area
+              type="monotone" dataKey="goldlead" name="Radiant Gold Lead"
+              stroke="#4ade80" strokeWidth={2} fill="url(#glGrad)" dot={false} activeDot={{ r: 4 }}
+            />
+          </AreaChart>
+        ) : (
+          <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis
+              dataKey="t"
+              tickFormatter={fmtTime}
+              stroke="#475569"
+              tick={{ fill: '#64748b', fontSize: 11 }}
+            />
+            <YAxis
+              tickFormatter={metric === 'level' ? String : fmtLargeNum}
+              stroke="#475569"
+              tick={{ fill: '#64748b', fontSize: 11 }}
+              width={44}
+            />
+            <Tooltip
+              content={(props) => <TimelineTooltip {...props} playerKeyMap={playerKeyMap} metric={metric} />}
+            />
+            {roshanEvents.map((e, i) => (
+              <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
+                label={{ value: '🐉', position: 'top', fontSize: 12 }} />
+            ))}
+            {tormenterEvents.map((e, i) => (
+              <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3"
+                label={{ value: '💀', position: 'top', fontSize: 12 }} />
+            ))}
+            {playerKeys.map(({ key, name, color }) => (
+              <Line
+                key={key}
+                type="monotone"
+                dataKey={key}
+                name={name}
+                stroke={color}
+                strokeWidth={1.5}
+                dot={false}
+                activeDot={{ r: 4 }}
+                hide={hiddenPlayers.has(key)}
+              />
+            ))}
+          </LineChart>
+        )}
       </ResponsiveContainer>
       <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
         {playerKeysDesc.map(({ key, name, color }) => {
@@ -430,13 +491,19 @@ function TimelineGraph({ timeline, allPlayers }) {
           );
         })}
       </div>
-      <div style={{ display: 'flex', gap: 16, marginTop: 6, flexWrap: 'wrap' }}>
-        {[['radiant', '#4ade80'], ['dire', '#f87171']].map(([team, color]) => (
+      <div style={{ display: 'flex', gap: 16, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        {metric !== 'goldlead' && [['radiant', '#4ade80'], ['dire', '#f87171']].map(([team, color]) => (
           <div key={team} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
             <div style={{ width: 16, height: 2, background: color, borderRadius: 1 }} />
             {team.charAt(0).toUpperCase() + team.slice(1)}
           </div>
         ))}
+        {metric === 'goldlead' && (
+          <div style={{ fontSize: 12, color: '#64748b', display: 'flex', gap: 16 }}>
+            <span style={{ color: '#4ade80' }}>▲ Positive = Radiant leading</span>
+            <span style={{ color: '#f87171' }}>▼ Negative = Dire leading</span>
+          </div>
+        )}
         {roshanEvents.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
             <div style={{ width: 1, height: 14, background: '#a855f7', borderRadius: 1 }} />

@@ -526,3 +526,17 @@ export async function getAllWardPlacements(seasonId = null) {
   const q = seasonId ? `?season_id=${seasonId}` : '';
   return fetchJson(`/ward-placements${q}`);
 }
+
+export async function getPlayerHeroCounters(accountId, seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/players/${accountId}/hero-counters${q}`);
+}
+
+export async function getPlayerStreak(accountId) {
+  return fetchJson(`/players/${accountId}/streak`);
+}
+
+export async function getDraftStats(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/draft-stats${q}`);
+}

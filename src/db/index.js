@@ -3287,6 +3287,72 @@ async function getAllPlayersWardPlacements(seasonId = null) {
   return Object.values(byPlayer);
 }
 
+async function getPlayerHeroCounters(accountId, seasonId = null) {
+  const p = getPool();
+  const params = [accountId];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+
+  const res = await p.query(`
+    WITH my_matches AS (
+      SELECT ps.match_id, ps.team, m.radiant_win
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.account_id = $1${sc}
+    ),
+    enemy_picks AS (
+      SELECT
+        mm.match_id,
+        ps.hero_name, ps.hero_id,
+        COALESCE(n.nickname, ps.persona_name) AS enemy_name,
+        ps.account_id AS enemy_account_id,
+        (mm.team != ps.team) AS is_enemy,
+        CASE WHEN mm.team = 'radiant' THEN mm.radiant_win ELSE NOT mm.radiant_win END AS i_won
+      FROM my_matches mm
+      JOIN player_stats ps ON ps.match_id = mm.match_id AND ps.account_id != $1
+      LEFT JOIN nicknames n ON n.account_id = ps.account_id
+    )
+    SELECT
+      hero_name, hero_id,
+      COUNT(*) FILTER (WHERE is_enemy) AS games_against,
+      SUM(CASE WHEN is_enemy AND i_won THEN 1 ELSE 0 END) AS wins_against,
+      COUNT(*) FILTER (WHERE NOT is_enemy) AS games_with,
+      SUM(CASE WHEN NOT is_enemy AND i_won THEN 1 ELSE 0 END) AS wins_with
+    FROM enemy_picks
+    GROUP BY hero_name, hero_id
+    HAVING COUNT(*) FILTER (WHERE is_enemy) >= 2 OR COUNT(*) FILTER (WHERE NOT is_enemy) >= 2
+    ORDER BY games_against DESC
+    LIMIT 30
+  `, params);
+  return res.rows;
+}
+
+async function getDraftStats(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+
+  const picks = await p.query(`
+    SELECT
+      md.hero_id, md.hero_name,
+      COUNT(*) FILTER (WHERE md.is_pick) AS pick_count,
+      COUNT(*) FILTER (WHERE NOT md.is_pick) AS ban_count,
+      SUM(CASE WHEN md.is_pick AND ((md.team = 'radiant' AND m.radiant_win) OR (md.team = 'dire' AND NOT m.radiant_win)) THEN 1 ELSE 0 END) AS pick_wins,
+      SUM(CASE WHEN md.is_pick THEN 1 ELSE 0 END) AS pick_games,
+      COUNT(DISTINCT md.match_id) FILTER (WHERE md.is_pick) AS matches_picked
+    FROM match_draft md
+    JOIN matches m ON m.match_id = md.match_id
+    WHERE 1=1${sc}
+    GROUP BY md.hero_id, md.hero_name
+    ORDER BY pick_count DESC
+  `, params);
+
+  const totalMatches = await p.query(`
+    SELECT COUNT(*) AS cnt FROM matches WHERE 1=1${sc.replace('m.', '')}
+  `, params);
+
+  return { heroes: picks.rows, totalMatches: parseInt(totalMatches.rows[0]?.cnt || 0) };
+}
+
 module.exports = {
   init,
   getPool,
@@ -3375,4 +3441,6 @@ module.exports = {
   getOpenPrediction,
   getPlayerWardPlacements,
   getAllPlayersWardPlacements,
+  getPlayerHeroCounters,
+  getDraftStats,
 };
