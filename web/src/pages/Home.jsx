@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getHomeStats, getLatestRecap } from '../api';
 import { fmtDate } from '../utils/dates';
+import { useSeason } from '../context/SeasonContext';
 
 function formatHeroName(raw) {
   if (!raw) return '—';
@@ -60,26 +61,27 @@ function MatchRow({ m }) {
 }
 
 export default function Home() {
+  const { seasonId } = useSeason();
   const [stats, setStats] = useState(null);
   const [recap, setRecap] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = () => {
+  const fetchData = useCallback(() => {
     Promise.all([
-      getHomeStats().catch(() => null),
+      getHomeStats(seasonId).catch(() => null),
       getLatestRecap().catch(() => null),
     ]).then(([s, r]) => {
       setStats(s);
       setRecap(r);
       setLoading(false);
     });
-  };
+  }, [seasonId]);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 60000); // refresh every 60s
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
   const totals = stats?.totals || {};
   const recentMatches = stats?.recentMatches || [];

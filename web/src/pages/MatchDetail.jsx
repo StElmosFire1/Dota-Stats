@@ -442,12 +442,12 @@ function TimelineGraph({ timeline, allPlayers }) {
             />
             <ReferenceLine y={0} stroke="#475569" strokeWidth={1.5} />
             {roshanEvents.map((e, i) => (
-              <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
-                label={{ value: '🐉', position: 'top', fontSize: 12 }} />
+              <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2" strokeWidth={2}
+                label={{ value: '🐉', position: 'insideTopRight', fontSize: 13, fill: '#a855f7' }} />
             ))}
             {tormenterEvents.map((e, i) => (
-              <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3"
-                label={{ value: '💀', position: 'top', fontSize: 12 }} />
+              <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3" strokeWidth={2}
+                label={{ value: '💀', position: 'insideTopRight', fontSize: 13, fill: '#f97316' }} />
             ))}
             {towerEvents.map((e, i) => (
               <ReferenceLine key={`tw-${i}`} x={e.t}
@@ -483,12 +483,12 @@ function TimelineGraph({ timeline, allPlayers }) {
               content={(props) => <TimelineTooltip {...props} playerKeyMap={playerKeyMap} metric={metric} />}
             />
             {roshanEvents.map((e, i) => (
-              <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2"
-                label={{ value: '🐉', position: 'top', fontSize: 12 }} />
+              <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2" strokeWidth={2}
+                label={{ value: '🐉', position: 'insideTopRight', fontSize: 13, fill: '#a855f7' }} />
             ))}
             {tormenterEvents.map((e, i) => (
-              <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3"
-                label={{ value: '💀', position: 'top', fontSize: 12 }} />
+              <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3" strokeWidth={2}
+                label={{ value: '💀', position: 'insideTopRight', fontSize: 13, fill: '#f97316' }} />
             ))}
             {towerEvents.map((e, i) => (
               <ReferenceLine key={`ltw-${i}`} x={e.t}

@@ -15,8 +15,8 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// Dota 2 coordinate space mapped to canvas
-const MAP_X_MIN = 62, MAP_X_MAX = 190, MAP_Y_MIN = 73, MAP_Y_MAX = 197;
+// Dota 2 coordinate space mapped to canvas (standard symmetric mapping)
+const MAP_X_MIN = 64, MAP_X_MAX = 192, MAP_Y_MIN = 64, MAP_Y_MAX = 192;
 
 function wardToCanvas(ward, W, H) {
   return {
@@ -46,53 +46,68 @@ function heatColor(t) {
   return stops[stops.length - 1][1];
 }
 
-// Draw a proper density heatmap using Gaussian accumulation.
-// Each point contributes fractional intensity so isolated wards are cool (blue)
-// and frequently-warded spots are hot (red).
-function drawHeatmap(ctx, W, H, points, sigma) {
+// Draw a proper density heatmap using a low-res density grid then upscale.
+// This produces smooth gradients: isolated wards → blue, popular spots → red.
+const HEATMAP_GRID = 128;
+
+function drawHeatmap(ctx, W, H, points, sigmaCanvas) {
   if (!points.length) return;
 
-  const offscreen = document.createElement('canvas');
-  offscreen.width = W;
-  offscreen.height = H;
-  const oc = offscreen.getContext('2d');
-  oc.globalCompositeOperation = 'lighter';
+  const G = HEATMAP_GRID;
 
-  // Use fractional peak intensity so overlapping is required to reach hot colors.
-  // Single isolated ward → t ≈ 0.12 → blue tint
-  // 5+ overlapping wards → t ≈ 0.6+ → yellow/orange
-  // 10+ overlapping → red
-  const peakAlpha = Math.min(0.22, 1.5 / Math.max(1, points.length / 8));
+  // Accumulate density at grid resolution
+  const acc = document.createElement('canvas');
+  acc.width = G; acc.height = G;
+  const ac = acc.getContext('2d');
+  ac.globalCompositeOperation = 'lighter';
+
+  const sigmaG = (sigmaCanvas / W) * G;       // sigma in grid pixels
+  const gradR  = sigmaG * 2.8;               // gradient radius (covers ~3σ)
+  // peakAlpha: scale so isolated wards are cool, dense clusters are hot.
+  // 3.5 / N means it takes ~3.5 fully-overlapping wards to saturate the max channel.
+  const peakAlpha = Math.min(0.45, 3.5 / Math.max(1, points.length));
 
   for (const { px, py } of points) {
-    const r = sigma;
-    const grad = oc.createRadialGradient(px, py, 0, px, py, r);
-    grad.addColorStop(0,   `rgba(255,255,255,${peakAlpha})`);
-    grad.addColorStop(0.3, `rgba(255,255,255,${peakAlpha * 0.65})`);
-    grad.addColorStop(0.7, `rgba(255,255,255,${peakAlpha * 0.2})`);
+    const gx = (px / W) * G;
+    const gy = (py / H) * G;
+    const grad = ac.createRadialGradient(gx, gy, 0, gx, gy, gradR);
+    grad.addColorStop(0,   `rgba(255,255,255,${peakAlpha.toFixed(4)})`);
+    grad.addColorStop(0.5, `rgba(255,255,255,${(peakAlpha * 0.35).toFixed(4)})`);
     grad.addColorStop(1,   'rgba(255,255,255,0)');
-    oc.fillStyle = grad;
-    oc.beginPath();
-    oc.arc(px, py, r, 0, Math.PI * 2);
-    oc.fill();
+    ac.fillStyle = grad;
+    ac.beginPath();
+    ac.arc(gx, gy, gradR, 0, Math.PI * 2);
+    ac.fill();
   }
 
-  const raw = oc.getImageData(0, 0, W, H);
-  const out = ctx.createImageData(W, H);
+  // Read density values
+  const raw = ac.getImageData(0, 0, G, G);
   let maxV = 0;
   for (let i = 0; i < raw.data.length; i += 4) if (raw.data[i] > maxV) maxV = raw.data[i];
   if (maxV === 0) return;
 
+  // Apply colour ramp on a small coloured canvas
+  const colorCanvas = document.createElement('canvas');
+  colorCanvas.width = G; colorCanvas.height = G;
+  const cc = colorCanvas.getContext('2d');
+  const imgData = cc.createImageData(G, G);
   for (let i = 0; i < raw.data.length; i += 4) {
     const t = raw.data[i] / maxV;
-    if (t < 0.04) continue;
+    if (t < 0.01) continue;
     const [r, g, b, a] = heatColor(t);
-    out.data[i]   = r;
-    out.data[i+1] = g;
-    out.data[i+2] = b;
-    out.data[i+3] = a;
+    imgData.data[i]   = r;
+    imgData.data[i+1] = g;
+    imgData.data[i+2] = b;
+    imgData.data[i+3] = a;
   }
-  ctx.putImageData(out, 0, 0);
+  cc.putImageData(imgData, 0, 0);
+
+  // Upscale smoothly to the main canvas — this provides the blur/blend effect
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(colorCanvas, 0, 0, W, H);
+  ctx.restore();
 }
 
 // Draw a diamond (rotated square) for sentry wards to distinguish from observer circles
@@ -168,8 +183,8 @@ function WardCanvas({ placements, selectedPlayer, wardType, playerColorMap, mapL
         if (showObs) {
           for (const ward of (player.obs || [])) {
             const { px, py } = wardToCanvas(ward, W, H);
-            const glowR = 13;
-            const dotR  = 5;
+            const glowR = 11;
+            const dotR  = 4;
             const grad = ctx.createRadialGradient(px, py, 0, px, py, glowR);
             grad.addColorStop(0, hexToRgba(baseColor, 0.65));
             grad.addColorStop(1, hexToRgba(baseColor, 0));

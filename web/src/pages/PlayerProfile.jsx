@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats } from '../api';
+import { useSeason } from '../context/SeasonContext';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import {
@@ -114,6 +115,7 @@ function AchievementBadges({ achievements }) {
 
 export default function PlayerProfile() {
   const { accountId } = useParams();
+  const { seasonId } = useSeason();
   const [data, setData] = useState(null);
   const [positions, setPositions] = useState([]);
   const [ratingHistory, setRatingHistory] = useState([]);
@@ -128,15 +130,15 @@ export default function PlayerProfile() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      getPlayer(accountId).catch(() => null),
-      getPlayerPositions(accountId).catch(() => ({ positions: [] })),
+      getPlayer(accountId, seasonId).catch(() => null),
+      getPlayerPositions(accountId, seasonId).catch(() => ({ positions: [] })),
       getPlayerRatingHistory(accountId).catch(() => ({ history: [] })),
       getPlayerAchievements(accountId).catch(() => ({ achievements: [] })),
       getPlayerNemesis(accountId).catch(() => []),
       getPlayerPredictionStats(accountId).catch(() => null),
-      getPlayerHeroCounters(accountId).catch(() => ({ counters: [] })),
+      getPlayerHeroCounters(accountId, seasonId).catch(() => ({ counters: [] })),
       getPlayerStreak(accountId).catch(() => ({ streak: 0 })),
-      getPlayerDurationStats(accountId).catch(() => ({ stats: [] })),
+      getPlayerDurationStats(accountId, seasonId).catch(() => ({ stats: [] })),
     ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData, durData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
@@ -148,7 +150,7 @@ export default function PlayerProfile() {
       setStreak(streakData?.streak ?? null);
       setDurationStats(durData?.stats || []);
     }).finally(() => setLoading(false));
-  }, [accountId]);
+  }, [accountId, seasonId]);
 
   if (loading) return <div className="loading">Loading player...</div>;
   if (!data) return <div className="error-state">Player not found</div>;

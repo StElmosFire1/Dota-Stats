@@ -93,8 +93,8 @@ export async function getLeaderboard(limit = 50, seasonId = null) {
   return fetchJson(`/leaderboard?limit=${limit}${seasonParam(seasonId)}`);
 }
 
-export async function getPlayer(accountId) {
-  return fetchJson(`/players/${accountId}`);
+export async function getPlayer(accountId, seasonId = null) {
+  return fetchJson(`/players/${accountId}${seasonId ? `?season_id=${seasonId}` : ''}`);
 }
 
 export async function getAllPlayers(seasonId = null) {
@@ -168,8 +168,8 @@ export async function getPlayerHeroes(accountId) {
   return fetchJson(`/players/${accountId}/heroes`);
 }
 
-export async function getPlayerPositions(accountId) {
-  return fetchJson(`/players/${accountId}/positions`);
+export async function getPlayerPositions(accountId, seasonId = null) {
+  return fetchJson(`/players/${accountId}/positions${seasonId ? `?season_id=${seasonId}` : ''}`);
 }
 
 export async function getNicknames() {
@@ -505,8 +505,8 @@ export async function steamLogout() {
   return res.ok;
 }
 
-export async function getHomeStats() {
-  return fetchJson('/home-stats');
+export async function getHomeStats(seasonId = null) {
+  return fetchJson(`/home-stats${seasonId ? `?season_id=${seasonId}` : ''}`);
 }
 
 export async function getLatestRecap() {

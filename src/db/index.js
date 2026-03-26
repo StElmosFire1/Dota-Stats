@@ -1156,7 +1156,7 @@ async function getPlayerRating(playerId) {
   return result.rows[0] || null;
 }
 
-async function getPlayerStats(accountId) {
+async function getPlayerStats(accountId, seasonId = null) {
   const p = getPool();
   const isNumeric = /^\d+$/.test(accountId);
   const isRealAccount = isNumeric && accountId !== '0';
@@ -1177,16 +1177,22 @@ async function getPlayerStats(accountId) {
     );
   }
 
+  // Build season clause for queries that join matches
+  const scParams = [param];
+  const sc = _sc(seasonId, scParams, 'm');
+
   const recentMatches = await p.query(
     `SELECT ps.*, m.date, m.duration, m.radiant_win, m.lobby_name
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE ${whereClause}
+     WHERE ${whereClause}${sc}
      ORDER BY m.date DESC
      LIMIT 20`,
-    [param]
+    scParams
   );
 
+  const avgParams = [param];
+  const avSc = _sc(seasonId, avgParams, 'm');
   const averages = await p.query(
     `SELECT
        COUNT(*) as total_matches,
@@ -1207,10 +1213,13 @@ async function getPlayerStats(accountId) {
        SUM(firstblood_claimed) as total_firstbloods,
        ROUND(100.0 * SUM(firstblood_claimed) / NULLIF(COUNT(*), 0), 1) as fb_rate
      FROM player_stats ps
-     WHERE ${whereClause}`,
-    [param]
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ${whereClause}${avSc}`,
+    avgParams
   );
 
+  const heroParams = [param];
+  const heroSc = _sc(seasonId, heroParams, 'm');
   const heroes = await p.query(
     `SELECT hero_name, hero_id, COUNT(*) as games,
        SUM(CASE WHEN (team = 'radiant' AND m.radiant_win = true) OR (team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
@@ -1221,10 +1230,10 @@ async function getPlayerStats(accountId) {
        ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE ${whereClause} AND ps.hero_id > 0
+     WHERE ${whereClause} AND ps.hero_id > 0${heroSc}
      GROUP BY hero_name, hero_id
      ORDER BY games DESC`,
-    [param]
+    heroParams
   );
 
   for (const row of recentMatches.rows) {
@@ -1771,13 +1780,15 @@ async function getPlayerHeroes(playerKey) {
   return result.rows;
 }
 
-async function getPlayerPositions(playerKey) {
+async function getPlayerPositions(playerKey, seasonId = null) {
   const p = getPool();
   const isNumeric = /^\d+$/.test(playerKey);
   const whereClause = isNumeric && playerKey !== '0'
     ? 'ps.account_id = $1'
     : 'ps.persona_name = $1';
   const param = isNumeric && playerKey !== '0' ? parseInt(playerKey) : playerKey;
+  const params = [param];
+  const sc = _sc(seasonId, params, 'm');
 
   const result = await p.query(
     `SELECT
@@ -1792,10 +1803,10 @@ async function getPlayerPositions(playerKey) {
        ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE ${whereClause} AND ps.position > 0
+     WHERE ${whereClause} AND ps.position > 0${sc}
      GROUP BY ps.position
      ORDER BY games DESC`,
-    [param]
+    params
   );
   return result.rows;
 }
@@ -2952,19 +2963,27 @@ async function getDraftSuggestions(allyHeroIds, enemyHeroIds, bannedHeroIds, pos
   }).sort((a, b) => b.score - a.score).slice(0, 30);
 }
 
-async function getHomeStats() {
+async function getHomeStats(seasonId = null) {
   const p = getPool();
+
+  // Inline season condition without parameterized queries (safe — seasonId is validated as integer or null/string)
+  let matchSc; // condition for the matches table (no alias)
+  let matchScM; // condition with m. alias
+  if (!seasonId) { matchSc = 'is_legacy = false'; matchScM = 'm.is_legacy = false'; }
+  else if (seasonId === 'legacy') { matchSc = 'is_legacy = true'; matchScM = 'm.is_legacy = true'; }
+  else { const id = parseInt(seasonId); matchSc = `season_id = ${id}`; matchScM = `m.season_id = ${id}`; }
+
   const [totals, recentMatches] = await Promise.all([
     p.query(`
       SELECT
-        (SELECT COUNT(*) FROM matches WHERE is_legacy = false)::int AS total_matches,
+        (SELECT COUNT(*) FROM matches WHERE ${matchSc})::int AS total_matches,
         (SELECT COUNT(DISTINCT ps.account_id) FROM player_stats ps
           JOIN matches m ON m.match_id = ps.match_id
-          WHERE m.is_legacy = false AND ps.account_id != 0)::int AS total_players,
-        (SELECT COUNT(*) FROM matches WHERE is_legacy = false AND date >= NOW() - INTERVAL '7 days')::int AS matches_this_week,
+          WHERE ${matchScM} AND ps.account_id != 0)::int AS total_players,
+        (SELECT COUNT(*) FROM matches WHERE ${matchSc} AND date >= NOW() - INTERVAL '7 days')::int AS matches_this_week,
         (SELECT ps2.hero_name FROM player_stats ps2
           JOIN matches m2 ON m2.match_id = ps2.match_id
-          WHERE m2.is_legacy = false AND ps2.hero_name IS NOT NULL
+          WHERE ${matchScM.replace('m.', 'm2.')} AND ps2.hero_name IS NOT NULL
           GROUP BY ps2.hero_name ORDER BY COUNT(*) DESC LIMIT 1) AS most_played_hero
     `),
     p.query(`
@@ -2981,7 +3000,7 @@ async function getHomeStats() {
           WHERE ps5.match_id = m.match_id AND ps5.kills IS NOT NULL
           ORDER BY ps5.kills DESC LIMIT 1) AS top_killer_hero
       FROM matches m
-      WHERE m.is_legacy = false
+      WHERE ${matchScM}
       ORDER BY m.date DESC
       LIMIT 5
     `),

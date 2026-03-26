@@ -451,7 +451,8 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/players/:accountId', async (req, res) => {
     try {
-      const stats = await db.getPlayerStats(req.params.accountId);
+      const seasonId = req.query.season_id || null;
+      const stats = await db.getPlayerStats(req.params.accountId, seasonId);
       res.json(stats);
     } catch (err) {
       console.error('[API] Error fetching player:', err.message);
@@ -1050,7 +1051,8 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/players/:accountId/positions', async (req, res) => {
     try {
-      const positions = await db.getPlayerPositions(req.params.accountId);
+      const seasonId = req.query.season_id || null;
+      const positions = await db.getPlayerPositions(req.params.accountId, seasonId);
       res.json({ positions });
     } catch (err) {
       console.error('[API] Error fetching player positions:', err.message);
@@ -1410,7 +1412,8 @@ NOTES
 
   router.get('/home-stats', async (req, res) => {
     try {
-      const data = await db.getHomeStats();
+      const seasonId = req.query.season_id || null;
+      const data = await db.getHomeStats(seasonId);
       res.json(data);
     } catch (err) {
       console.error('[API] home-stats error:', err);
