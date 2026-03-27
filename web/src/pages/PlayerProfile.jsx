@@ -183,18 +183,20 @@ export default function PlayerProfile() {
             <div className="stat-label">MMR</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value wins">{rating.wins}</div>
+            <div className="stat-value wins">{averages ? parseInt(averages.wins) || 0 : rating.wins}</div>
             <div className="stat-label">Wins</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value losses">{rating.losses}</div>
+            <div className="stat-value losses">{averages ? parseInt(averages.losses) || 0 : rating.losses}</div>
             <div className="stat-label">Losses</div>
           </div>
           <div className="stat-card">
             <div className="stat-value">
-              {rating.games_played > 0
-                ? ((rating.wins / rating.games_played) * 100).toFixed(1) + '%'
-                : '--'}
+              {(() => {
+                const w = averages ? parseInt(averages.wins) || 0 : rating.wins;
+                const g = averages ? parseInt(averages.total_matches) || 0 : rating.games_played;
+                return g > 0 ? ((w / g) * 100).toFixed(1) + '%' : '--';
+              })()}
             </div>
             <div className="stat-label">Win Rate</div>
           </div>

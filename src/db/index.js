@@ -1196,6 +1196,8 @@ async function getPlayerStats(accountId, seasonId = null) {
   const averages = await p.query(
     `SELECT
        COUNT(*) as total_matches,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = false) OR (ps.team = 'dire' AND m.radiant_win = true) THEN 1 ELSE 0 END) as losses,
        ROUND(AVG(kills), 1) as avg_kills,
        ROUND(AVG(deaths), 1) as avg_deaths,
        ROUND(AVG(assists), 1) as avg_assists,
@@ -1286,10 +1288,15 @@ async function getAllPlayers(seasonId = null) {
   const sc = _sc(seasonId, params1, 'm');
   const result = await p.query(
     `SELECT
-       COALESCE(NULLIF(ps.account_id, 0), 0) as account_id,
-       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
+       COALESCE(MAX(NULLIF(ps.account_id, 0)), 0) as account_id,
+       COALESCE(
+         MAX(n.nickname),
+         CASE WHEN MAX(NULLIF(ps.account_id, 0)) IS NOT NULL
+           THEN MAX(NULLIF(ps.account_id, 0))::text
+           ELSE MAX(ps.persona_name) END
+       ) as player_key,
        MAX(ps.persona_name) as persona_name,
-       n.nickname,
+       MAX(n.nickname) as nickname,
        COUNT(DISTINCT ps.match_id) as games_played,
        MAX(m.date) as last_played,
        SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
@@ -1313,9 +1320,7 @@ async function getAllPlayers(seasonId = null) {
      ) team_kills ON true
      WHERE 1=1${sc}
      GROUP BY
-       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
-       COALESCE(NULLIF(ps.account_id, 0), 0),
-       n.nickname
+       COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END)
      ORDER BY games_played DESC`,
     params1
   );
@@ -1396,7 +1401,12 @@ async function getAllPlayers(seasonId = null) {
   for (const row of result.rows) {
     row.persona_name = decodeByteString(row.persona_name);
     row.player_key = decodeByteString(row.player_key);
-    const positions = posByPlayer[row.player_key] || [];
+    // posStats/posKiData are keyed by raw account_id or persona_name (no nickname merge),
+    // so look up by account_id when available, otherwise persona_name.
+    const posLookupKey = row.account_id && row.account_id !== 0
+      ? row.account_id.toString()
+      : row.persona_name;
+    const positions = posByPlayer[posLookupKey] || [];
     if (positions.length > 0) {
       const best = positions.reduce((a, b) => a.score > b.score ? a : b);
       row.best_position = best.position;
