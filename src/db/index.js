@@ -3369,7 +3369,19 @@ async function getAllPlayersWardPlacements(seasonId = null) {
       else if (wp.type === 'sen') byPlayer[id].sen.push({ x: wp.x, y: wp.y });
     }
   }
-  return Object.values(byPlayer);
+
+  // Merge accounts that share the same nickname (multi-account players)
+  const byName = {};
+  for (const entry of Object.values(byPlayer)) {
+    const key = entry.name;
+    if (!byName[key]) {
+      byName[key] = { ...entry };
+    } else {
+      byName[key].obs = byName[key].obs.concat(entry.obs);
+      byName[key].sen = byName[key].sen.concat(entry.sen);
+    }
+  }
+  return Object.values(byName);
 }
 
 async function getPlayerHeroCounters(accountId, seasonId = null) {

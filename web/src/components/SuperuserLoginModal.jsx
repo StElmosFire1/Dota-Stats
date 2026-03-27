@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 
 export default function SuperuserLoginModal() {
   const { showModal, setShowModal, login } = useSuperuser();
+  const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,7 +32,12 @@ export default function SuperuserLoginModal() {
     setError('');
     const result = await login(password);
     setLoading(false);
-    if (!result.success) setError(result.error);
+    if (result.success) {
+      setShowModal(false);
+      navigate('/admin');
+    } else {
+      setError(result.error);
+    }
   };
 
   return (

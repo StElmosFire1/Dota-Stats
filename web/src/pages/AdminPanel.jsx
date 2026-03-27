@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useSeason } from '../context/SeasonContext';
 
@@ -69,9 +69,8 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
 }
 
 export default function AdminPanel() {
-  const { isSuperuser, superuserKey } = useSuperuser();
+  const { isSuperuser, superuserKey, logout } = useSuperuser();
   const { selectedSeason } = useSeason();
-  const navigate = useNavigate();
 
   const [overview, setOverview] = useState(null);
   const [allPlayers, setAllPlayers] = useState([]);
@@ -191,7 +190,7 @@ export default function AdminPanel() {
         setDirePlayers(Array.from({ length: 5 }, () => makeEmptyPlayer('dire')));
         setLobbyName('');
         loadOverview();
-        setTimeout(() => navigate(`/match/${d.matchId}`), 1500);
+        setTimeout(() => { window.location.href = `/match/${d.matchId}`; }, 1500);
       } else {
         setSubmitMsg(d.error || 'Failed to record match.');
       }
@@ -214,7 +213,10 @@ export default function AdminPanel() {
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px 60px' }}>
-      <h1 style={{ marginBottom: 4 }}>🔒 Admin Panel</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <h1 style={{ margin: 0 }}>🔒 Admin Panel</h1>
+        <button className="btn" onClick={logout} style={{ fontSize: '0.85rem' }}>Log out</button>
+      </div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 28 }}>Manage matches, ratings, and data.</p>
 
       {/* Overview */}

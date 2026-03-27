@@ -172,15 +172,17 @@ export default function Players() {
                         <span style={{ color: p.nickname ? '#e0e0e0' : '#555' }}>
                           {p.nickname || '--'}
                         </span>
-                        <button
-                          onClick={() => startEdit(p)}
-                          style={{
-                            background: 'transparent', color: '#666', border: '1px solid #333',
-                            padding: '0.1rem 0.35rem', borderRadius: '3px', cursor: 'pointer', fontSize: '0.7rem',
-                          }}
-                        >
-                          Edit
-                        </button>
+                        {isSuperuser && (
+                          <button
+                            onClick={() => startEdit(p)}
+                            style={{
+                              background: 'transparent', color: '#666', border: '1px solid #333',
+                              padding: '0.1rem 0.35rem', borderRadius: '3px', cursor: 'pointer', fontSize: '0.7rem',
+                            }}
+                          >
+                            Edit
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

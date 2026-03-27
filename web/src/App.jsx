@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import MatchList from './pages/MatchList';
 import MatchDetail from './pages/MatchDetail';
 import Leaderboard from './pages/Leaderboard';
@@ -156,16 +156,17 @@ function SteamButton() {
 }
 
 function SuperuserButton() {
-  const { isSuperuser, logout, setShowModal } = useSuperuser();
+  const { isSuperuser, setShowModal } = useSuperuser();
+  const navigate = useNavigate();
   if (isSuperuser) {
     return (
       <button
         className="btn btn-small"
-        onClick={logout}
-        title="Logged in as superuser — click to log out"
+        onClick={() => navigate('/admin')}
+        title="Go to Admin Panel"
         style={{ marginLeft: 4, background: '#7b3f00', borderColor: '#ff9800', color: '#ff9800' }}
       >
-        &#128081; SU
+        &#128081; Admin
       </button>
     );
   }
@@ -243,7 +244,6 @@ function Nav() {
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/players" className={isActive('/players')}>Players</Link>
         <Link to="/seasons" className={isActive('/seasons')}>Seasons</Link>
-        <Link to="/admin" className={isActive('/admin')}>Admin</Link>
         <DropdownMenu label="Tools">
           <DropdownItem to="/matches">Matches</DropdownItem>
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
