@@ -1014,7 +1014,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.post('/admin/recalculate-ratings', authMiddleware, async (req, res) => {
+  router.post('/admin/recalculate-ratings', requireSuperuser, async (req, res) => {
     try {
       console.log('[API] Recalculating all TrueSkill ratings...');
       await db.recalculateAllRatings();
@@ -1025,7 +1025,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.get('/admin/overview', authMiddleware, async (req, res) => {
+  router.get('/admin/overview', requireSuperuser, async (req, res) => {
     try {
       const p = db.getPool();
       const [matchCount, playerCount, manualCount, activeSeason] = await Promise.all([
@@ -1045,7 +1045,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.post('/admin/matches/manual', authMiddleware, express.json(), async (req, res) => {
+  router.post('/admin/matches/manual', requireSuperuser, express.json(), async (req, res) => {
     try {
       const { date, duration, radiantWin, players, lobbyName, patch, seasonId } = req.body;
       if (!players || !Array.isArray(players) || players.length !== 10) {

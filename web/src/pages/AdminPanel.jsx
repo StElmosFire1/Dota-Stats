@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAdmin } from '../context/AdminContext';
+import { useSuperuser } from '../context/SuperuserContext';
 import { useSeason } from '../context/SeasonContext';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
@@ -69,7 +69,7 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
 }
 
 export default function AdminPanel() {
-  const { isAdmin, adminKey } = useAdmin();
+  const { isSuperuser, superuserKey } = useSuperuser();
   const { selectedSeason } = useSeason();
   const navigate = useNavigate();
 
@@ -96,15 +96,15 @@ export default function AdminPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState('');
 
-  const authHeader = { 'x-upload-key': adminKey };
+  const authHeader = { 'x-superuser-key': superuserKey };
 
   const loadOverview = useCallback(() => {
-    if (!isAdmin) return;
+    if (!isSuperuser) return;
     fetch('/api/admin/overview', { headers: authHeader })
       .then(r => r.json())
       .then(setOverview)
       .catch(() => {});
-  }, [isAdmin, adminKey]);
+  }, [isSuperuser, superuserKey]);
 
   useEffect(() => {
     loadOverview();
@@ -116,7 +116,7 @@ export default function AdminPanel() {
       .then(r => r.json())
       .then(data => setHeroes(data.sort((a, b) => a.localized_name.localeCompare(b.localized_name))))
       .catch(() => {});
-  }, [isAdmin]);
+  }, [isSuperuser]);
 
   const updateRadiant = (idx, changes) => {
     setRadiantPlayers(prev => prev.map((p, i) => i === idx ? { ...p, ...changes } : p));
@@ -202,12 +202,12 @@ export default function AdminPanel() {
     }
   };
 
-  if (!isAdmin) {
+  if (!isSuperuser) {
     return (
       <div style={{ maxWidth: 480, margin: '80px auto', textAlign: 'center' }}>
         <h2 style={{ marginBottom: 16 }}>🔒 Admin Panel</h2>
-        <p style={{ color: 'var(--text-muted)' }}>You must be logged in as admin to access this page.</p>
-        <p style={{ marginTop: 12, fontSize: '0.9rem', color: 'var(--text-muted)' }}>Use the 🔑 Admin button in the top navigation to log in.</p>
+        <p style={{ color: 'var(--text-muted)' }}>You must be logged in as superuser to access this page.</p>
+        <p style={{ marginTop: 12, fontSize: '0.9rem', color: 'var(--text-muted)' }}>Use the 🛡️ Superuser button in the top navigation to log in.</p>
       </div>
     );
   }
