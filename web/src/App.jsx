@@ -243,9 +243,9 @@ function Nav() {
         <Link to="/hero-breakdown" className={isActive('/hero-breakdown')}>Hero Breakdown</Link>
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/players" className={isActive('/players')}>Players</Link>
-        <Link to="/seasons" className={isActive('/seasons')}>Seasons</Link>
+        <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <DropdownMenu label="Tools">
-          <DropdownItem to="/matches">Matches</DropdownItem>
+          <DropdownItem to="/seasons">Seasons</DropdownItem>
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/head-to-head">Head to Head</DropdownItem>
           <DropdownItem to="/compare">Compare Players</DropdownItem>
