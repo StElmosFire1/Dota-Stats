@@ -155,7 +155,7 @@ export default function PlayerProfile() {
   if (loading) return <div className="loading">Loading player...</div>;
   if (!data) return <div className="error-state">Player not found</div>;
 
-  const { rating, nickname, recentMatches, averages, heroes } = data;
+  const { rating, nickname, recentMatches, averages, heroes, seasonMmr } = data;
   const displayName = nickname || rating?.display_name || `Player ${accountId}`;
 
   const totalMatches = averages ? parseInt(averages.total_matches) : 0;
@@ -179,7 +179,7 @@ export default function PlayerProfile() {
       {rating && (
         <div className="stats-grid">
           <div className="stat-card">
-            <div className="stat-value mmr">{rating.mmr}</div>
+            <div className="stat-value mmr">{seasonMmr != null ? seasonMmr : rating.mmr}</div>
             <div className="stat-label">MMR</div>
           </div>
           <div className="stat-card">

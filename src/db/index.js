@@ -1246,12 +1246,33 @@ async function getPlayerStats(accountId, seasonId = null) {
     ratingResult.rows[0].display_name = decodeByteString(ratingResult.rows[0].display_name);
   }
 
+  // Season-specific MMR: find the last rating_history entry for matches in the selected season.
+  // Only meaningful for real Steam accounts (numeric account IDs).
+  let seasonMmr = null;
+  if (isRealAccount) {
+    const smrParams = [parseInt(accountId)];
+    const smrSc = _sc(seasonId, smrParams, 'm');
+    const smrResult = await p.query(
+      `SELECT rh.mmr
+       FROM rating_history rh
+       JOIN matches m ON m.match_id = rh.match_id
+       WHERE rh.player_id = $1${smrSc}
+       ORDER BY rh.recorded_at DESC
+       LIMIT 1`,
+      smrParams
+    );
+    if (smrResult.rows[0]) {
+      seasonMmr = Math.round(smrResult.rows[0].mmr);
+    }
+  }
+
   return {
     rating: ratingResult.rows[0] || null,
     nickname: nicknameResult.rows[0]?.nickname || null,
     recentMatches: recentMatches.rows,
     averages: averages.rows[0] || null,
     heroes: heroes.rows,
+    seasonMmr,
   };
 }
 
