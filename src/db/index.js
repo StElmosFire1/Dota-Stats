@@ -1024,24 +1024,28 @@ async function getLeaderboard(limit = 50) {
   return result.rows;
 }
 
-async function getComputedLeaderboard(seasonId = null) {
+/**
+ * Compute TrueSkill ratings from scratch using only the matches in the
+ * specified season. Returns a plain object keyed by player_id (string).
+ * This is the single source of truth for season-scoped MMR used by both
+ * the leaderboard and player profile pages.
+ */
+async function computeSeasonTrueSkill(seasonId = null) {
   const p = getPool();
   const { getStatsService } = require('../stats/statsService');
   const statsService = getStatsService();
 
-  // Build match filter
   const params = [];
   let matchWhere;
   if (seasonId === 'legacy') {
     matchWhere = 'WHERE m.is_legacy = true';
-  } else if (seasonId) {
+  } else if (seasonId !== null && seasonId !== undefined) {
     params.push(parseInt(seasonId));
     matchWhere = `WHERE m.season_id = $${params.length}`;
   } else {
     matchWhere = 'WHERE m.is_legacy = false';
   }
 
-  // Fetch all match+player data in one query, ordered by match date ASC
   const rows = await p.query(
     `SELECT m.match_id, m.date, m.radiant_win,
             ps.account_id, ps.persona_name, ps.team
@@ -1052,7 +1056,6 @@ async function getComputedLeaderboard(seasonId = null) {
     params
   );
 
-  // Group by match
   const matchMap = new Map();
   for (const row of rows.rows) {
     if (!matchMap.has(row.match_id)) {
@@ -1065,22 +1068,16 @@ async function getComputedLeaderboard(seasonId = null) {
     else matchMap.get(row.match_id).dire.push(entry);
   }
 
-  // Fetch nicknames
-  const nicknamesRes = await p.query('SELECT account_id, nickname FROM nicknames');
-  const nicknames = {};
-  for (const n of nicknamesRes.rows) nicknames[n.account_id.toString()] = n.nickname;
-
-  // Compute TrueSkill in match order
-  const ratings = {}; // id -> { mu, sigma, wins, losses, display_name }
   const DEFAULT_MU = 25, DEFAULT_SIGMA = 8.333;
+  const ratings = {};
 
   for (const [, match] of matchMap) {
     if (match.radiant.length === 0 || match.dire.length === 0) continue;
 
-    const toPlayer = (p) => ({
-      id: p.id,
-      mu: ratings[p.id]?.mu ?? DEFAULT_MU,
-      sigma: ratings[p.id]?.sigma ?? DEFAULT_SIGMA,
+    const toPlayer = (pl) => ({
+      id: pl.id,
+      mu: ratings[pl.id]?.mu ?? DEFAULT_MU,
+      sigma: ratings[pl.id]?.sigma ?? DEFAULT_SIGMA,
     });
 
     const radiant = match.radiant.map(toPlayer);
@@ -1088,9 +1085,9 @@ async function getComputedLeaderboard(seasonId = null) {
     const newRatings = statsService.calculateNewRatings(radiant, dire, match.radiantWin);
 
     for (const r of newRatings) {
-      const isRadiant = radiant.some(p => p.id === r.id);
+      const isRadiant = radiant.some(pl => pl.id === r.id);
       const won = isRadiant ? match.radiantWin : !match.radiantWin;
-      const playerInfo = [...match.radiant, ...match.dire].find(p => p.id === r.id);
+      const playerInfo = [...match.radiant, ...match.dire].find(pl => pl.id === r.id);
       if (!ratings[r.id]) {
         ratings[r.id] = { mu: DEFAULT_MU, sigma: DEFAULT_SIGMA, wins: 0, losses: 0, display_name: playerInfo?.persona_name || r.id };
       }
@@ -1102,6 +1099,19 @@ async function getComputedLeaderboard(seasonId = null) {
       if (playerInfo?.persona_name) ratings[r.id].display_name = playerInfo.persona_name;
     }
   }
+
+  return ratings;
+}
+
+async function getComputedLeaderboard(seasonId = null) {
+  const p = getPool();
+
+  const ratings = await computeSeasonTrueSkill(seasonId);
+
+  // Fetch nicknames
+  const nicknamesRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknames = {};
+  for (const n of nicknamesRes.rows) nicknames[n.account_id.toString()] = n.nickname;
 
   // Build sorted leaderboard array
   const leaderboard = Object.entries(ratings).map(([player_id, r]) => ({
@@ -1246,23 +1256,15 @@ async function getPlayerStats(accountId, seasonId = null) {
     ratingResult.rows[0].display_name = decodeByteString(ratingResult.rows[0].display_name);
   }
 
-  // Season-specific MMR: find the last rating_history entry for matches in the selected season.
-  // Only meaningful for real Steam accounts (numeric account IDs).
+  // Season-specific MMR: recalculate TrueSkill from scratch using only the
+  // selected season's matches. This is the same calculation used by the leaderboard,
+  // so the number shown on the profile always matches the leaderboard ranking.
   let seasonMmr = null;
   if (isRealAccount) {
-    const smrParams = [parseInt(accountId)];
-    const smrSc = _sc(seasonId, smrParams, 'm');
-    const smrResult = await p.query(
-      `SELECT rh.mmr
-       FROM rating_history rh
-       JOIN matches m ON m.match_id = rh.match_id
-       WHERE rh.player_id = $1${smrSc}
-       ORDER BY rh.recorded_at DESC
-       LIMIT 1`,
-      smrParams
-    );
-    if (smrResult.rows[0]) {
-      seasonMmr = Math.round(smrResult.rows[0].mmr);
+    const seasonRatings = await computeSeasonTrueSkill(seasonId);
+    const entry = seasonRatings[accountId.toString()];
+    if (entry) {
+      seasonMmr = entry.mmr ?? Math.round((entry.mu - 3 * entry.sigma) * 100) + 2000;
     }
   }
 
@@ -3637,6 +3639,7 @@ module.exports = {
   deleteMatch,
   getLeaderboard,
   getComputedLeaderboard,
+  computeSeasonTrueSkill,
   updateRating,
   getPlayerRating,
   getPlayerStats,
