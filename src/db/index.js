@@ -1035,6 +1035,26 @@ async function computeSeasonTrueSkill(seasonId = null) {
   const { getStatsService } = require('../stats/statsService');
   const statsService = getStatsService();
 
+  // Build canonical ID map so accounts sharing a nickname are treated as one player.
+  // e.g. if account 111 and account 222 are both nicknamed "Burtle", all their
+  // matches feed into a single TrueSkill rating slot keyed by the lower account ID.
+  const nickRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknameToIds = {};
+  for (const row of nickRes.rows) {
+    const aid = row.account_id.toString();
+    const nick = row.nickname.toLowerCase();
+    if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
+    nicknameToIds[nick].push(aid);
+  }
+  const accountToCanonical = {};
+  for (const ids of Object.values(nicknameToIds)) {
+    if (ids.length < 2) continue; // no merge needed
+    ids.sort();
+    const canonical = ids[0];
+    for (const id of ids) accountToCanonical[id] = canonical;
+  }
+  const getCanonical = (id) => accountToCanonical[id] || id;
+
   const params = [];
   let matchWhere;
   if (seasonId === 'legacy') {
@@ -1061,8 +1081,9 @@ async function computeSeasonTrueSkill(seasonId = null) {
     if (!matchMap.has(row.match_id)) {
       matchMap.set(row.match_id, { radiantWin: row.radiant_win, radiant: [], dire: [] });
     }
-    const id = row.account_id > 0 ? row.account_id.toString() : null;
-    if (!id) continue;
+    const rawId = row.account_id > 0 ? row.account_id.toString() : null;
+    if (!rawId) continue;
+    const id = getCanonical(rawId);
     const entry = { id, persona_name: row.persona_name };
     if (row.team === 'radiant') matchMap.get(row.match_id).radiant.push(entry);
     else matchMap.get(row.match_id).dire.push(entry);
@@ -1074,14 +1095,22 @@ async function computeSeasonTrueSkill(seasonId = null) {
   for (const [, match] of matchMap) {
     if (match.radiant.length === 0 || match.dire.length === 0) continue;
 
-    const toPlayer = (pl) => ({
+    // De-duplicate within a team in case two merged accounts played the same match
+    const dedup = (team) => {
+      const seen = new Set();
+      return team.filter(pl => seen.has(pl.id) ? false : seen.add(pl.id));
+    };
+    const radiant = dedup(match.radiant).map(pl => ({
       id: pl.id,
       mu: ratings[pl.id]?.mu ?? DEFAULT_MU,
       sigma: ratings[pl.id]?.sigma ?? DEFAULT_SIGMA,
-    });
+    }));
+    const dire = dedup(match.dire).map(pl => ({
+      id: pl.id,
+      mu: ratings[pl.id]?.mu ?? DEFAULT_MU,
+      sigma: ratings[pl.id]?.sigma ?? DEFAULT_SIGMA,
+    }));
 
-    const radiant = match.radiant.map(toPlayer);
-    const dire = match.dire.map(toPlayer);
     const newRatings = statsService.calculateNewRatings(radiant, dire, match.radiantWin);
 
     for (const r of newRatings) {
@@ -1100,13 +1129,13 @@ async function computeSeasonTrueSkill(seasonId = null) {
     }
   }
 
-  return ratings;
+  return { ratings, accountToCanonical };
 }
 
 async function getComputedLeaderboard(seasonId = null) {
   const p = getPool();
 
-  const ratings = await computeSeasonTrueSkill(seasonId);
+  const { ratings } = await computeSeasonTrueSkill(seasonId);
 
   // Fetch nicknames
   const nicknamesRes = await p.query('SELECT account_id, nickname FROM nicknames');
@@ -1259,10 +1288,12 @@ async function getPlayerStats(accountId, seasonId = null) {
   // Season-specific MMR: recalculate TrueSkill from scratch using only the
   // selected season's matches. This is the same calculation used by the leaderboard,
   // so the number shown on the profile always matches the leaderboard ranking.
+  // Use the canonical ID (in case this account is merged with another under the same nickname).
   let seasonMmr = null;
   if (isRealAccount) {
-    const seasonRatings = await computeSeasonTrueSkill(seasonId);
-    const entry = seasonRatings[accountId.toString()];
+    const { ratings: seasonRatings, accountToCanonical } = await computeSeasonTrueSkill(seasonId);
+    const canonicalId = accountToCanonical[accountId.toString()] || accountId.toString();
+    const entry = seasonRatings[canonicalId];
     if (entry) {
       seasonMmr = entry.mmr ?? Math.round((entry.mu - 3 * entry.sigma) * 100) + 2000;
     }
