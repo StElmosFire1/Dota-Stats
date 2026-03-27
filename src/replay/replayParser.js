@@ -1065,7 +1065,35 @@ class ReplayParser {
 
       const playerItems = [];
       const purchases = (itemPurchases[slot] || []).slice().reverse();
+
+      // Build a set of all item names this player purchased (normalised, no "item_" prefix)
+      const purchasedNames = new Set(
+        (itemPurchases[slot] || []).map(p => p.itemName.replace(/^item_/, ''))
+      );
+
+      // Cross-validate hero_inventory against the purchase log.
+      // If none of the non-trivial inventory items appear in the purchase log, the
+      // inventory snapshot belongs to the wrong player — fall back to purchase log.
+      const TRIVIAL = new Set([
+        'tpscroll','ward_observer','ward_sentry','ward_dispenser',
+        'smoke_of_deceit','dust','clarity','flask','tango',
+        'enchanted_mango','faerie_fire','blood_grenade','recipe',
+      ]);
+      let inventoryValid = false;
       if (finalItems[slot]) {
+        const nonTrivialInv = Object.values(finalItems[slot])
+          .map(d => d.itemName || '')
+          .filter(n => n && !TRIVIAL.has(n) && !n.startsWith('recipe_'));
+        const matchCount = nonTrivialInv.filter(n => purchasedNames.has(n)).length;
+        // Accept inventory if at least 1 non-trivial item matches purchase history,
+        // OR if the player has no purchase history recorded at all.
+        inventoryValid = nonTrivialInv.length === 0 || matchCount > 0 || purchasedNames.size === 0;
+        if (!inventoryValid) {
+          console.log(`[Replay] slot ${slot}: hero_inventory mismatch (inv=[${nonTrivialInv.join(',')}], purchased=[${[...purchasedNames].join(',')}]) — using purchase log fallback`);
+        }
+      }
+
+      if (finalItems[slot] && inventoryValid) {
         for (const [itemSlot, itemData] of Object.entries(finalItems[slot])) {
           playerItems.push({
             slot: parseInt(itemSlot),
