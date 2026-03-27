@@ -1025,6 +1025,46 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/admin/overview', authMiddleware, async (req, res) => {
+    try {
+      const p = db.getPool();
+      const [matchCount, playerCount, manualCount, activeSeason] = await Promise.all([
+        p.query(`SELECT COUNT(*) FROM matches WHERE is_legacy = false`),
+        p.query(`SELECT COUNT(DISTINCT account_id) FROM player_stats WHERE account_id != 0`),
+        p.query(`SELECT COUNT(*) FROM matches WHERE parse_method = 'manual'`),
+        p.query(`SELECT * FROM seasons WHERE is_active = true LIMIT 1`),
+      ]);
+      res.json({
+        totalMatches: parseInt(matchCount.rows[0].count),
+        totalPlayers: parseInt(playerCount.rows[0].count),
+        manualMatches: parseInt(manualCount.rows[0].count),
+        activeSeason: activeSeason.rows[0] || null,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/matches/manual', authMiddleware, express.json(), async (req, res) => {
+    try {
+      const { date, duration, radiantWin, players, lobbyName, patch, seasonId } = req.body;
+      if (!players || !Array.isArray(players) || players.length !== 10) {
+        return res.status(400).json({ error: 'Exactly 10 players required.' });
+      }
+      const radiantPlayers = players.filter(p => p.team === 'radiant');
+      const direPlayers = players.filter(p => p.team === 'dire');
+      if (radiantPlayers.length !== 5 || direPlayers.length !== 5) {
+        return res.status(400).json({ error: 'Must have exactly 5 Radiant and 5 Dire players.' });
+      }
+      const matchId = await db.createManualMatch({ date, duration, radiantWin, players, lobbyName, patch, seasonId, createdBy: 'admin' });
+      await db.recalculateAllRatings();
+      res.json({ success: true, matchId });
+    } catch (err) {
+      console.error('[API] Error creating manual match:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.put('/matches/:matchId/position', authMiddleware, async (req, res) => {
     try {
       const { slot, position } = req.body;

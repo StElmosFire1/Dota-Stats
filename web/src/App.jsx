@@ -29,6 +29,7 @@ import MultiKills from './pages/MultiKills';
 import WardMap from './pages/WardMap';
 import DraftStats from './pages/DraftStats';
 import Records from './pages/Records';
+import AdminPanel from './pages/AdminPanel';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
@@ -244,6 +245,7 @@ function Nav() {
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <Link to="/upload" className={isActive('/upload')}>Upload</Link>
         <Link to="/seasons" className={isActive('/seasons')}>Seasons</Link>
+        <Link to="/admin" className={isActive('/admin')}>Admin</Link>
         <DropdownMenu label="Tools">
           <DropdownItem to="/head-to-head">Head to Head</DropdownItem>
           <DropdownItem to="/compare">Compare Players</DropdownItem>
@@ -302,6 +304,7 @@ export default function App() {
                 <Route path="/ward-map" element={<WardMap />} />
                 <Route path="/draft-stats" element={<DraftStats />} />
                 <Route path="/records" element={<Records />} />
+                <Route path="/admin" element={<AdminPanel />} />
               </Routes>
             </main>
           </SeasonProvider>

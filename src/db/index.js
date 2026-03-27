@@ -3658,6 +3658,37 @@ async function getComebackMatches(seasonId = null) {
   return comebacks.slice(0, 20);
 }
 
+async function createManualMatch({ date, duration, radiantWin, players, lobbyName, patch, seasonId, createdBy }) {
+  const p = getPool();
+  const matchId = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, patch, season_id)
+       VALUES ($1, $2, $3, 0, $4, $5, $6, 'manual', $7, $8)`,
+      [matchId, date || new Date().toISOString(), duration || 0, radiantWin, lobbyName || 'Manual Entry', createdBy || 'admin', patch || null, seasonId || null]
+    );
+    let radiantSlot = 0;
+    let direSlot = 5;
+    for (const player of players) {
+      const slot = player.team === 'radiant' ? radiantSlot++ : direSlot++;
+      await client.query(
+        `INSERT INTO player_stats (match_id, account_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, position, slot, gpm, xpm, net_worth, hero_damage, hero_healing, last_hits, level, damage_taken, obs_placed, sen_placed)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
+        [matchId, player.accountId || 0, player.personaName || '', player.heroId || 0, player.heroName || '', player.team, player.kills || 0, player.deaths || 0, player.assists || 0, player.position || 0, slot]
+      );
+    }
+    await client.query('COMMIT');
+    return matchId;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   init,
   getPool,
@@ -3754,4 +3785,5 @@ module.exports = {
   getHeroSkillBuilds,
   getPlayerGameDurationStats,
   getComebackMatches,
+  createManualMatch,
 };
