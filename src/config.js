@@ -82,7 +82,7 @@ const config = {
           name: 'Position 6',
           emoji: '🗺️',
           description: 'The position that doesn\'t exist — neither do your contributions.',
-          min: 0,
+          min: 600,
           roleId: process.env.DISCORD_ROLE_POSITION6 || null,
         },
       ],

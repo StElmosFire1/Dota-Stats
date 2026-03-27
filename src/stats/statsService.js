@@ -1,6 +1,6 @@
 const { Rating, quality, rate } = require('ts-trueskill');
 
-const MMR_OFFSET = 2000;
+const MMR_OFFSET = 2600;
 
 class StatsService {
   constructor() {

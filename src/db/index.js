@@ -1149,7 +1149,7 @@ async function getComputedLeaderboard(seasonId = null) {
     nickname: nicknames[player_id] || null,
     mu: r.mu,
     sigma: r.sigma,
-    mmr: r.mmr ?? Math.round((r.mu - 3 * r.sigma) * 100) + 2000,
+    mmr: r.mmr ?? Math.round((r.mu - 3 * r.sigma) * 100) + 2600,
     wins: r.wins,
     losses: r.losses,
     games_played: r.wins + r.losses,
@@ -1295,7 +1295,7 @@ async function getPlayerStats(accountId, seasonId = null) {
     const canonicalId = accountToCanonical[accountId.toString()] || accountId.toString();
     const entry = seasonRatings[canonicalId];
     if (entry) {
-      seasonMmr = entry.mmr ?? Math.round((entry.mu - 3 * entry.sigma) * 100) + 2000;
+      seasonMmr = entry.mmr ?? Math.round((entry.mu - 3 * entry.sigma) * 100) + 2600;
     }
   }
 
@@ -3203,8 +3203,8 @@ async function getMostImproved(days = 30) {
     SELECT
       l.player_id AS account_id,
       COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
-      ROUND((l.mu - 3*l.sigma)*100 + 2000) AS current_mmr,
-      ROUND((e.mu - 3*e.sigma)*100 + 2000) AS start_mmr,
+      ROUND((l.mu - 3*l.sigma)*100 + 2600) AS current_mmr,
+      ROUND((e.mu - 3*e.sigma)*100 + 2600) AS start_mmr,
       ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) AS mmr_delta,
       COUNT(ps.match_id) AS games_in_period
     FROM latest l
