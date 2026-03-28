@@ -1162,8 +1162,9 @@ class ReplayParser {
         const dxPT = normX - pudgePos.x, dyPT = normY - pudgePos.y;
         const distToTarget = Math.sqrt(dxPT * dxPT + dyPT * dyPT);
         if (distToTarget === 0) return false; // degenerate — player somehow clicked on themselves
-        // Hook travels this far in the direction of the click.
-        const hookLen = Math.min(distToTarget, MAX_HOOK_RANGE_NORM);
+        // The click defines the DIRECTION only. The hook always flies the full max range,
+        // so enemies beyond the click point (player clicked short) are still on the path.
+        const hookLen = MAX_HOOK_RANGE_NORM;
         const dirX = dxPT / distToTarget, dirY = dyPT / distToTarget;
 
         for (const eSlot of enemySlots) {
@@ -1219,12 +1220,16 @@ class ReplayParser {
               // Confirmed hero hit — always a genuine attempt
               attempts++; hits++;
             } else {
-              // Hit a creep/non-hero — genuine only if hook path was aimed near an enemy
+              // Hit a creep/non-hero.
+              // Farming hook: only excluded when there was NO enemy anywhere along
+              // the hook path. If an enemy was in the path but Pudge hit a creep
+              // instead (bad timing, creep block), it still counts.
               if (isGenuineAttempt(normX, normY, cast.time)) attempts++;
             }
           } else {
-            // Complete miss — genuine only if hook path was aimed near an enemy
-            if (isGenuineAttempt(normX, normY, cast.time)) attempts++;
+            // Complete miss (hook hit nothing) — always a genuine attempt.
+            // If Pudge bothered to cast it and it hit nothing, he was trying.
+            attempts++;
           }
         }
       } else {
