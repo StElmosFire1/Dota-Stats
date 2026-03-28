@@ -3869,7 +3869,7 @@ async function getPudgeStats(seasonId = null) {
      LEFT JOIN nicknames n ON n.account_id = ps.account_id
      WHERE ps.hero_name = 'npc_dota_hero_pudge'
        AND ps.account_id != 0${sc}
-     GROUP BY ps.account_id, n.nickname
+     GROUP BY COALESCE(n.nickname, ps.account_id::text)
      HAVING COUNT(*) > 0
      ORDER BY total_hook_attempts DESC NULLS LAST, pudge_games DESC`,
     params

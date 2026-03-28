@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getMatches } from '../api';
+import { getMatches, updateMatchMeta } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import { useSuperuser } from '../context/SuperuserContext';
 
 function formatDuration(seconds) {
   if (!seconds) return '--';
@@ -18,23 +19,46 @@ function formatDate(dateStr) {
   });
 }
 
+function formatTime(dateStr) {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleTimeString('en-AU', {
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'Australia/Sydney',
+  });
+}
+
 export default function MatchList() {
   const { seasonId, seasons } = useSeason();
+  const { isSuperuser, superuserKey, setShowModal } = useSuperuser();
   const [data, setData] = useState({ matches: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const limit = 20;
 
-  useEffect(() => {
-    setPage(0);
-  }, [seasonId]);
+  // Inline patch editing state
+  const [editingPatch, setEditingPatch] = useState(null); // matchId being edited
+  const [patchInput, setPatchInput] = useState('');
+  const [savingPatch, setSavingPatch] = useState(null);
+
+  // Bulk patch state
+  const [selected, setSelected] = useState(new Set());
+  const [bulkPatch, setBulkPatch] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState('');
+
+  useEffect(() => { setPage(0); }, [seasonId]);
 
   useEffect(() => {
     setLoading(true);
+    setSelected(new Set());
     getMatches(limit, page * limit, seasonId)
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
+  }, [page, seasonId]);
+
+  const reload = useCallback(() => {
+    getMatches(limit, page * limit, seasonId).then(setData).catch(console.error);
   }, [page, seasonId]);
 
   const totalPages = Math.ceil(data.total / limit);
@@ -45,9 +69,106 @@ export default function MatchList() {
     return s ? s.name : null;
   };
 
+  const startEditPatch = (e, match) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isSuperuser) { setShowModal(true); return; }
+    setEditingPatch(match.match_id);
+    setPatchInput(match.patch || '');
+  };
+
+  const savePatch = async (e, matchId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSavingPatch(matchId);
+    try {
+      await updateMatchMeta(matchId, { patch: patchInput.trim() || null }, superuserKey);
+      setEditingPatch(null);
+      reload();
+    } catch (err) {
+      alert('Failed to save patch: ' + err.message);
+    } finally {
+      setSavingPatch(null);
+    }
+  };
+
+  const cancelEdit = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingPatch(null);
+  };
+
+  const toggleSelect = (e, matchId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(matchId) ? next.delete(matchId) : next.add(matchId);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelected(new Set(data.matches.map(m => m.match_id)));
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const applyBulkPatch = async () => {
+    if (!bulkPatch.trim() && !confirm('Set patch to empty for selected matches?')) return;
+    setBulkSaving(true);
+    setBulkMsg('');
+    let ok = 0, fail = 0;
+    for (const matchId of selected) {
+      try {
+        await updateMatchMeta(matchId, { patch: bulkPatch.trim() || null }, superuserKey);
+        ok++;
+      } catch { fail++; }
+    }
+    setBulkMsg(`Done: ${ok} updated${fail ? `, ${fail} failed` : ''}`);
+    setBulkSaving(false);
+    setSelected(new Set());
+    reload();
+    setTimeout(() => setBulkMsg(''), 4000);
+  };
+
   return (
     <div>
-      <h1 className="page-title">Match History</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: '0.5rem' }}>
+        <h1 className="page-title" style={{ margin: 0 }}>Match History</h1>
+        {!isSuperuser && (
+          <button className="btn btn-sm" onClick={() => setShowModal(true)} style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+            Admin Edit
+          </button>
+        )}
+      </div>
+
+      {isSuperuser && (
+        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>BULK PATCH:</span>
+          <input
+            value={bulkPatch}
+            onChange={e => setBulkPatch(e.target.value)}
+            placeholder="e.g. 7.38c"
+            style={{ width: 100, padding: '3px 8px', fontSize: '0.85rem', background: '#0f172a', border: '1px solid #475569', borderRadius: 4, color: '#f1f5f9' }}
+          />
+          <button
+            className="btn btn-sm"
+            onClick={applyBulkPatch}
+            disabled={bulkSaving || selected.size === 0}
+            style={{ background: selected.size > 0 ? '#2563eb' : undefined }}
+          >
+            {bulkSaving ? 'Saving…' : `Apply to ${selected.size} selected`}
+          </button>
+          {selected.size > 0 ? (
+            <button className="btn btn-sm" onClick={clearSelection} style={{ background: '#374151' }}>Clear</button>
+          ) : (
+            <button className="btn btn-sm" onClick={selectAll} style={{ background: '#374151' }}>Select All</button>
+          )}
+          {bulkMsg && <span style={{ fontSize: '0.8rem', color: '#4ade80' }}>{bulkMsg}</span>}
+        </div>
+      )}
+
       {loading ? (
         <div className="loading">Loading matches...</div>
       ) : data.matches.length === 0 ? (
@@ -58,33 +179,93 @@ export default function MatchList() {
       ) : (
         <>
           <div className="match-list">
-            {data.matches.map((match) => (
-              <Link
-                to={`/match/${match.match_id}`}
-                key={match.match_id}
-                className="match-card"
-              >
-                <div className="match-card-header">
-                  <span className="match-id">#{match.match_id}</span>
-                  <span className="match-date">{formatDate(match.date)}</span>
+            {data.matches.map((match) => {
+              const isEditing = editingPatch === match.match_id;
+              const isSelected = selected.has(match.match_id);
+
+              return (
+                <div key={match.match_id} style={{ position: 'relative' }}>
+                  {isSuperuser && (
+                    <div
+                      onClick={e => toggleSelect(e, match.match_id)}
+                      style={{
+                        position: 'absolute', top: 8, right: 8, zIndex: 2,
+                        width: 18, height: 18, borderRadius: 4,
+                        border: `2px solid ${isSelected ? '#3b82f6' : '#475569'}`,
+                        background: isSelected ? '#3b82f6' : 'transparent',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      {isSelected && <span style={{ color: '#fff', fontSize: 12, lineHeight: 1 }}>✓</span>}
+                    </div>
+                  )}
+                  <Link
+                    to={`/match/${match.match_id}`}
+                    className="match-card"
+                    style={{ display: 'block', textDecoration: 'none' }}
+                  >
+                    <div className="match-card-header">
+                      <span className="match-id">#{match.match_id}</span>
+                      <span className="match-date" style={{ textAlign: 'right' }}>
+                        <div>{formatDate(match.date)}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 1 }}>{formatTime(match.date)}</div>
+                      </span>
+                    </div>
+                    <div className="match-card-body">
+                      <span className={`match-winner ${match.radiant_win ? 'radiant' : 'dire'}`}>
+                        {match.radiant_win ? 'Radiant' : 'Dire'} Victory
+                      </span>
+                      <span className="match-duration">{formatDuration(match.duration)}</span>
+                      <span className="match-players">{match.player_count || '?'} players</span>
+                    </div>
+                    {(match.parse_method || match.patch || match.season_id || isSuperuser) && (
+                      <div className="match-card-footer" style={{ alignItems: 'center' }}>
+                        {match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
+                        {match.lobby_name && <span className="lobby-name">{match.lobby_name}</span>}
+                        {match.season_id && <span className="season-badge">{getSeasonName(match.season_id) || `Season ${match.season_id}`}</span>}
+
+                        {isSuperuser && isEditing ? (
+                          <span onClick={e => e.preventDefault()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <input
+                              autoFocus
+                              value={patchInput}
+                              onChange={e => setPatchInput(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') savePatch(e, match.match_id); if (e.key === 'Escape') cancelEdit(e); }}
+                              placeholder="e.g. 7.38c"
+                              style={{ width: 80, padding: '1px 6px', fontSize: '0.78rem', background: '#0f172a', border: '1px solid #3b82f6', borderRadius: 4, color: '#f1f5f9' }}
+                            />
+                            <button
+                              onClick={e => savePatch(e, match.match_id)}
+                              disabled={savingPatch === match.match_id}
+                              style={{ fontSize: '0.72rem', padding: '1px 6px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}
+                            >
+                              {savingPatch === match.match_id ? '…' : '✓'}
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              style={{ fontSize: '0.72rem', padding: '1px 6px', background: '#374151', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ) : (
+                          <span
+                            onClick={e => startEditPatch(e, match)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: isSuperuser ? 'pointer' : 'default' }}
+                            title={isSuperuser ? 'Click to edit patch' : undefined}
+                          >
+                            <span className="patch-badge">{match.patch ? `Patch ${match.patch}` : (isSuperuser ? '+ Add patch' : '')}</span>
+                            {isSuperuser && match.patch && (
+                              <span style={{ fontSize: '0.7rem', color: '#64748b', lineHeight: 1 }}>✎</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </Link>
                 </div>
-                <div className="match-card-body">
-                  <span className={`match-winner ${match.radiant_win ? 'radiant' : 'dire'}`}>
-                    {match.radiant_win ? 'Radiant' : 'Dire'} Victory
-                  </span>
-                  <span className="match-duration">{formatDuration(match.duration)}</span>
-                  <span className="match-players">{match.player_count || '?'} players</span>
-                </div>
-                {(match.parse_method || match.patch || match.season_id) && (
-                  <div className="match-card-footer">
-                    {match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
-                    {match.lobby_name && <span className="lobby-name">{match.lobby_name}</span>}
-                    {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
-                    {match.season_id && <span className="season-badge">{getSeasonName(match.season_id) || `Season ${match.season_id}`}</span>}
-                  </div>
-                )}
-              </Link>
-            ))}
+              );
+            })}
           </div>
           {totalPages > 1 && (
             <div className="pagination">
