@@ -662,6 +662,54 @@ class ReplayParser {
       item_gem: 875, item_vampiric_talisman: 450,
     };
 
+    // Map of component_item → [assembled_items_that_use_it].
+    // If a component was purchased AND any assembled form of it was also purchased,
+    // the component is hidden in the purchase-log fallback display.
+    const PURCHASE_LOG_COMPONENTS = {
+      // Boots components
+      'item_boots_of_speed':   ['item_phase_boots','item_power_treads','item_arcane_boots','item_travel_boots','item_tranquil_boots','item_boots_of_bearing','item_guardian_greaves'],
+      'item_gloves_of_haste':  ['item_power_treads','item_hand_of_midas','item_assault'],
+      'item_energy_booster':   ['item_arcane_boots','item_soul_booster','item_bloodstone','item_guardian_greaves'],
+      'item_wind_lace':        ['item_tranquil_boots','item_euls_scepter_of_divinity','item_cyclone','item_force_staff','item_drum_of_endurance'],
+      'item_ring_of_regen':    ['item_tranquil_boots','item_headdress','item_buckler','item_mekansm','item_guardian_greaves','item_pipe'],
+      // Damage components
+      'item_blades_of_attack': ['item_phase_boots','item_echo_sabre','item_lesser_crit','item_crystalys','item_greater_crit','item_desolator','item_bloodthorn','item_ancient_guardian','item_overwhelming_blink'],
+      'item_javelin':          ['item_monkey_king_bar','item_dragon_lance','item_hurricane_pike'],
+      'item_demon_edge':       ['item_monkey_king_bar','item_butterfly','item_greater_crit'],
+      'item_mithril_hammer':   ['item_skull_basher','item_black_king_bar','item_lesser_crit','item_maelstrom','item_mjollnir'],
+      'item_robe_of_magi':     ['item_kaya','item_null_talisman','item_witch_blade','item_veil_of_discord'],
+      'item_claymore':         ['item_greater_crit','item_echo_sabre','item_heavens_halberd','item_sange','item_overwhelming_blink'],
+      // Agility/stat components
+      'item_blade_of_alacrity':['item_manta','item_yasha','item_diffusal_blade','item_butterfly','item_sange_and_yasha'],
+      'item_ogre_axe':         ['item_echo_sabre','item_black_king_bar','item_heavens_halberd','item_sange','item_sange_and_yasha','item_kaya_and_sange'],
+      'item_staff_of_wizardry':['item_force_staff','item_euls_scepter_of_divinity','item_cyclone','item_orchid_malevolence','item_dragon_lance','item_hurricane_pike','item_wind_waker','item_witch_blade','item_bloodthorn'],
+      // Strength components
+      'item_belt_of_strength': ['item_sange','item_sange_and_yasha','item_kaya_and_sange','item_ancient_guardian'],
+      'item_gauntlets':        ['item_bracer','item_vanguard','item_dagon'],
+      'item_circlet':          ['item_bracer','item_wraith_band','item_null_talisman'],
+      'item_slippers':         ['item_wraith_band'],
+      'item_mantle':           ['item_null_talisman'],
+      'item_crown':            ['item_dagon','item_scepter_of_divinity'],
+      // Int/Support components
+      'item_point_booster':    ['item_soul_booster','item_bloodstone','item_aghanims_scepter_synth'],
+      'item_shadow_amulet':    ['item_shadow_blade','item_glimmer_cape'],
+      'item_quarterstaff':     ['item_oblivion_staff','item_lesser_crit','item_overwhelming_blink','item_diffusal_blade'],
+      'item_oblivion_staff':   ['item_echo_sabre','item_orchid_malevolence','item_bloodthorn'],
+      // Orbs/misc components
+      'item_mage_slayer':      ['item_bloodthorn'],
+      'item_broadsword':       ['item_crystalys','item_lesser_crit','item_echo_sabre'],
+      'item_chainmail':        ['item_lesser_crit','item_buckler','item_mekansm','item_assault','item_ancient_guardian'],
+      'item_helm_of_iron_will':['item_vanguard','item_crimson_guard'],
+      'item_vitality_booster': ['item_vanguard','item_heart','item_soul_booster'],
+      'item_void_stone':       ['item_perseverance','item_linken_sphere','item_refresher','item_euls_scepter_of_divinity','item_cyclone'],
+      'item_cloak':            ['item_glimmer_cape','item_hood_of_defiance','item_pipe'],
+      'item_platemail':        ['item_assault','item_shivas_guard','item_lotus_orb'],
+      'item_mystic_staff':     ['item_shivas_guard','item_octarine_core','item_scythe','item_ultimate_scepter'],
+      'item_perseverance':     ['item_linken_sphere','item_refresher'],
+      'item_blight_stone':     ['item_desolator'],
+      'item_javelin2':         ['item_monkey_king_bar'], // sometimes listed differently
+    };
+
     // ── Second pass: streaming-mode combat log events ──────────────────────────
     // In streaming mode the parser outputs raw Entry objects with type = the enum
     // name (e.g. "DOTA_COMBATLOG_PURCHASE") and raw fields from the protobuf:
@@ -1382,7 +1430,9 @@ class ReplayParser {
       const mk = multiKills[slot] || { double: 0, triple: 0, ultra: 0, rampage: 0 };
 
       const playerItems = [];
-      const purchases = (itemPurchases[slot] || []).slice().reverse();
+      // Chronological order: first purchase (e.g. Bottle) lands in slot 0.
+      // Reversing puts Bottle last and cuts it off — don't reverse.
+      const purchases = (itemPurchases[slot] || []).slice();
 
       // Build a set of all item names this player purchased (normalised, no "item_" prefix)
       const purchasedNames = new Set(
@@ -1422,27 +1472,34 @@ class ReplayParser {
         }
       }
       if (playerItems.length === 0 && purchases.length > 0) {
+        // Build a full set of item names this player ever purchased, used for component filtering.
+        const allPurchasedNames = new Set(purchases.map(p => p.itemName));
+
         const seen = new Set();
         let itemSlot = 0;
         for (const purchase of purchases) {
-          if (itemSlot >= 9) break; // 6 main + 3 backpack
-          // Skip recipe items — they are components of assembled items and not held separately
-          if (purchase.itemName.startsWith('item_recipe_')) continue;
+          if (itemSlot >= 6) break; // main inventory only (6 slots) — backpack requires true final-inventory data
+          const n = purchase.itemName;
+          // Skip recipe items — they are intermediate components, not held items
+          if (n.startsWith('item_recipe_')) continue;
           // Skip TP scrolls — they have their own dedicated slot in the UI
-          if (purchase.itemName === 'item_tpscroll') continue;
-          // Skip ward dispenser (shop bundle) — individual observer/sentry are the real wards
-          if (purchase.itemName === 'item_ward_dispenser') continue;
-          const key = purchase.itemName;
-          if (!seen.has(key)) {
-            seen.add(key);
+          if (n === 'item_tpscroll') continue;
+          // Skip wards — they have their own ward column and take a shared single slot in-game
+          if (n === 'item_ward_observer' || n === 'item_ward_sentry' || n === 'item_ward_dispenser') continue;
+          // Skip known component items when the assembled version was also purchased.
+          // This prevents e.g. Javelin/Blades of Attack appearing alongside MKB/Echo Sabre.
+          if (PURCHASE_LOG_COMPONENTS[n] && PURCHASE_LOG_COMPONENTS[n].some(assembled => allPurchasedNames.has(assembled))) continue;
+          if (!seen.has(n)) {
+            seen.add(n);
             playerItems.push({
               slot: itemSlot++,
               itemId: 0,
-              itemName: purchase.itemName.replace('item_', ''),
+              itemName: n.replace('item_', ''),
               purchaseTime: purchase.time,
             });
           }
         }
+        console.log(`[Replay] slot ${slot}: purchase-log fallback produced ${playerItems.length} items: [${playerItems.map(i => i.itemName).join(', ')}]`);
       }
 
       // has_scepter: only true for the CONSUMED Aghanim's Blessing form (ultimate_scepter_2 / id 108).
