@@ -529,7 +529,8 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/heroes/:heroId/players', async (req, res) => {
     try {
-      const players = await db.getHeroPlayers(parseInt(req.params.heroId));
+      const seasonId = req.query.season_id || null;
+      const players = await db.getHeroPlayers(parseInt(req.params.heroId), seasonId);
       res.json({ players });
     } catch (err) {
       console.error('[API] Error fetching hero players:', err.message);
@@ -539,7 +540,8 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/hero-meta', async (req, res) => {
     try {
-      const rows = await db.getHeroMetaByPosition();
+      const seasonId = req.query.season_id || null;
+      const rows = await db.getHeroMetaByPosition(seasonId);
       res.json({ rows });
     } catch (err) {
       console.error('[API] Error fetching hero meta:', err.message);

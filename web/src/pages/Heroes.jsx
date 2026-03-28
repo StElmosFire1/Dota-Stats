@@ -41,16 +41,18 @@ const ALL_HEROES = {
 const POSITIONS = { 1: 'Safe Lane Carry', 2: 'Mid Lane', 3: 'Offlane', 4: 'Soft Support', 5: 'Hard Support' };
 
 function HeroMetaTab() {
+  const { seasonId } = useSeason();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePos, setActivePos] = useState(1);
 
   useEffect(() => {
-    getHeroMeta()
+    setLoading(true);
+    getHeroMeta(seasonId)
       .then(d => setRows(d.rows || []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [seasonId]);
 
   const byPos = {};
   for (const r of rows) {
@@ -253,6 +255,8 @@ export default function Heroes({ defaultTab }) {
 
   useEffect(() => {
     setLoading(true);
+    setExpandedHero(null);
+    setHeroPlayerCache({});
     getHeroStats(seasonId)
       .then(data => {
         setPlayedHeroes(data.heroes || []);
@@ -272,7 +276,7 @@ export default function Heroes({ defaultTab }) {
     if (!heroPlayerCache[heroId] && !heroPlayerLoading[heroId]) {
       setHeroPlayerLoading(prev => ({ ...prev, [heroId]: true }));
       try {
-        const data = await getHeroPlayers(heroId);
+        const data = await getHeroPlayers(heroId, seasonId);
         setHeroPlayerCache(prev => ({ ...prev, [heroId]: data.players || [] }));
       } catch {}
       setHeroPlayerLoading(prev => ({ ...prev, [heroId]: false }));

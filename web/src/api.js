@@ -105,8 +105,8 @@ export async function getHeroStats(seasonId = null) {
   return fetchJson(`/heroes?x=1${seasonParam(seasonId)}`);
 }
 
-export async function getHeroPlayers(heroId) {
-  return fetchJson(`/heroes/${heroId}/players`);
+export async function getHeroPlayers(heroId, seasonId = null) {
+  return fetchJson(`/heroes/${heroId}/players?x=1${seasonParam(seasonId)}`);
 }
 
 export async function getOverallStats(seasonId = null) {
@@ -458,8 +458,8 @@ export async function getMostImproved(days = 30) {
   return fetchJson(`/most-improved?days=${days}`);
 }
 
-export async function getHeroMeta() {
-  return fetchJson('/hero-meta');
+export async function getHeroMeta(seasonId = null) {
+  return fetchJson(`/hero-meta?x=1${seasonParam(seasonId)}`);
 }
 
 export async function getMatchPredictions(matchId) {

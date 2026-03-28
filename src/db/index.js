@@ -1888,8 +1888,10 @@ async function getPlayerPositions(playerKey, seasonId = null) {
   return result.rows;
 }
 
-async function getHeroPlayers(heroId) {
+async function getHeroPlayers(heroId, seasonId = null) {
   const p = getPool();
+  const params = [heroId];
+  const sc = _sc(seasonId, params, 'm');
   const result = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_key,
@@ -1906,13 +1908,13 @@ async function getHeroPlayers(heroId) {
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
-     WHERE ps.hero_id = $1
+     WHERE ps.hero_id = $1${sc}
      GROUP BY
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END,
        COALESCE(NULLIF(ps.account_id, 0), 0),
        n.nickname
      ORDER BY games DESC`,
-    [heroId]
+    params
   );
   for (const row of result.rows) {
     row.persona_name = decodeByteString(row.persona_name);
@@ -3235,8 +3237,10 @@ async function getMostImproved(days = 30) {
   return result.rows;
 }
 
-async function getHeroMetaByPosition() {
+async function getHeroMetaByPosition(seasonId = null) {
   const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
   const result = await p.query(`
     SELECT
       ps.hero_id,
@@ -3250,11 +3254,11 @@ async function getHeroMetaByPosition() {
       , 1) AS win_rate
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
-    WHERE ps.hero_id > 0 AND ps.position BETWEEN 1 AND 5 AND m.is_legacy = false
+    WHERE ps.hero_id > 0 AND ps.position BETWEEN 1 AND 5 AND m.is_legacy = false${sc}
     GROUP BY ps.hero_id, ps.hero_name, ps.position
     HAVING COUNT(*) >= 2
     ORDER BY ps.position ASC, games DESC
-  `);
+  `, params);
   return result.rows;
 }
 
