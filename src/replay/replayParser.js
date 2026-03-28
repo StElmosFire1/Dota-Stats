@@ -643,7 +643,8 @@ class ReplayParser {
     const finalItemsTime = {}; // slot → timestamp of the most recent hero_inventory snapshot
     const killedBy = {};       // killedBy[victimSlot][killerSlot] = count
     const supportGoldSpent = {}; // supportGoldSpent[slot] = total gold
-    const hookCasts = [];      // [{time, slot}] — pudge hook cast events
+    const hookCasts      = [];  // [{time, slot}] — pudge hook cast events (from combatlog)
+    const hookUnitOrders = [];  // [{time, slot, normX, normY}] — pudge hook casts from unit-order events (more accurate)
     const hookHits  = [];      // [{time, slot, targetHero, targetName}] — hook damage events
 
     const SUPPORT_ITEM_COSTS = {
@@ -921,13 +922,29 @@ class ReplayParser {
       }
 
       // ── Pudge hook tracking ───────────────────────────────────────────────
-      // Cast: streaming DOTA_COMBATLOG_ABILITY with inflictor=pudge_meat_hook
-      //       blob      ability_cast/ability_use with key=pudge_meat_hook
-      // Hit:  streaming/blob DOTA_COMBATLOG_DAMAGE/damage with inflictor=pudge_meat_hook
+      // Cast (unit-order): "actions" event, key="5" (DOTA_UNIT_ORDER_CAST_POSITION), slot = Pudge's slot.
+      //   x/y are raw game-world coords from the parser — divide by 128 to get normalised interval coords.
+      //   inflictor = CDOTA_Ability_Pudge_MeatHook (when ability entity lookup succeeds).
+      // Cast (combatlog): streaming DOTA_COMBATLOG_ABILITY / blob ability_cast|ability_use, inflictor=pudge_meat_hook
+      // Hit:             streaming DOTA_COMBATLOG_DAMAGE / blob damage, inflictor=pudge_meat_hook
       {
+        // Unit-order cast event (primary, most accurate — provides target position)
+        if (e.type === 'actions' && e.key === '5') {
+          const slot = e.slot;
+          if (slot != null && slot >= 0 && slot < 10) {
+            // Only collect if it's the hook ability (if inflictor available), or store all and filter by Pudge slot later
+            const isHook = !e.inflictor || e.inflictor.includes('MeatHook') || e.inflictor.includes('meat_hook');
+            if (isHook) {
+              const normX = e.x != null ? e.x / 128 : null;
+              const normY = e.y != null ? e.y / 128 : null;
+              hookUnitOrders.push({ time: e.time || 0, slot, normX, normY });
+            }
+          }
+        }
+
         const inf = e.inflictor || e.key || '';
         if (inf === 'pudge_meat_hook') {
-          // Ability cast event
+          // Combatlog cast event (fallback)
           if (e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_cast' || e.type === 'ability_use') {
             const casterName = e.attackername || e.unit || '';
             let castSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
@@ -1105,6 +1122,7 @@ class ReplayParser {
 
     // Coordinate units → Dota2 units: map is ~128 coord units wide ≈ 16384 Dota2 units → 1 coord ≈ 128 Dota2 units
     // Hook range 1300 + 200 buffer = 1500 Dota2 units ≈ 11.72 coord units → use sq threshold 137
+    // Cast position (from unit orders) is in raw game-world coords: divide by 128 to get normalised coords.
     const HOOK_RANGE_SQ = 137;
     const hookStats = {}; // slot → { attempts, hits }
     const pudgeHeroId = 14;
@@ -1117,13 +1135,16 @@ class ReplayParser {
         .filter(p => (p.slot < 5 ? 'radiant' : 'dire') !== myTeam)
         .map(p => p.slot);
 
-      const hasNearbyEnemy = (time) => {
-        const pudgePos = interpolatePos(pSlot, time);
-        if (!pudgePos) return true; // no data — give benefit of the doubt
+      // Check if an enemy hero is within hook range of a given normalised point at a given time.
+      // normX/normY: normalised map coordinates (same as interval event x/y).
+      // Falls back to Pudge's own position if target coords are unavailable.
+      const hasEnemyNearPoint = (normX, normY, time) => {
+        const refPos = (normX != null && normY != null) ? { x: normX, y: normY } : interpolatePos(pSlot, time);
+        if (!refPos) return true; // no data — give benefit of the doubt
         for (const eSlot of enemySlots) {
           const ePos = interpolatePos(eSlot, time);
           if (!ePos) continue;
-          const dx = pudgePos.x - ePos.x, dy = pudgePos.y - ePos.y;
+          const dx = refPos.x - ePos.x, dy = refPos.y - ePos.y;
           if (dx * dx + dy * dy <= HOOK_RANGE_SQ) return true;
         }
         return false;
@@ -1131,29 +1152,38 @@ class ReplayParser {
 
       const myHits = hookHits.filter(h => h.slot === pSlot);
 
-      if (hookCasts.filter(c => c.slot === pSlot).length > 0) {
-        // Cast events available — use them as primary
-        for (const cast of hookCasts.filter(c => c.slot === pSlot)) {
+      // Prefer unit-order casts (have target position) over combatlog casts (only have time).
+      const myUnitOrders   = hookUnitOrders.filter(c => c.slot === pSlot);
+      const myCombatlogCasts = hookCasts.filter(c => c.slot === pSlot);
+      const castsToUse = myUnitOrders.length > 0 ? myUnitOrders : myCombatlogCasts;
+
+      const useTargetPos = myUnitOrders.length > 0; // unit-order casts carry normX/normY
+      console.log(`[Replay] Pudge slot ${pSlot}: ${myUnitOrders.length} unit-order casts, ${myCombatlogCasts.length} combatlog casts, ${myHits.length} hits`);
+
+      if (castsToUse.length > 0) {
+        for (const cast of castsToUse) {
+          const normX = useTargetPos ? cast.normX : null;
+          const normY = useTargetPos ? cast.normY : null;
           const hit = myHits.find(h => h.time >= cast.time && h.time <= cast.time + 2.5);
           if (hit) {
             if (hit.targetHero) {
               attempts++; hits++;
             } else {
-              // Hit a creep — genuine only if a hero was nearby
-              if (hasNearbyEnemy(cast.time)) attempts++;
+              // Hit a non-hero — genuine only if the aim point was near an enemy hero
+              if (hasEnemyNearPoint(normX, normY, cast.time)) attempts++;
             }
           } else {
-            // Complete miss — count as genuine attempt if hero was nearby
-            if (hasNearbyEnemy(cast.time)) attempts++;
+            // Complete miss — count as genuine attempt if the aim point was near an enemy hero
+            if (hasEnemyNearPoint(normX, normY, cast.time)) attempts++;
           }
         }
       } else {
-        // No cast events — infer from hit events only
+        // No cast events at all — infer from hit events only
         for (const hit of myHits) {
           if (hit.targetHero) {
             attempts++; hits++;
           } else {
-            if (hasNearbyEnemy(hit.time)) attempts++;
+            if (hasEnemyNearPoint(null, null, hit.time)) attempts++;
           }
         }
       }

@@ -207,12 +207,27 @@ public class Parse {
         // the order.
         Entity e = ctx.getProcessor(Entities.class).getByIndex(message.getEntindex());
         entry.slot = getPlayerSlotFromEntity(ctx, e);
-        // Integer handle = (Integer)getEntityProperty(e, "m_hAssignedHero", null);
-        // Entity h = ctx.getProcessor(Entities.class).getByHandle(handle);
-        // System.err.println(h.getDtClass().getDtName());
-        // break actions into types?
         entry.key = String.valueOf(message.getOrderType());
-        // System.err.println(message);
+        // For cast orders, include the target position and ability class name.
+        // Order type 5 = CAST_POSITION, 6 = CAST_TARGET, 7 = CAST_TARGET_TREE, 8 = CAST_NO_TARGET.
+        int orderType = message.getOrderType();
+        if (orderType == 5 || orderType == 6 || orderType == 7 || orderType == 8) {
+            if (message.hasPosition()) {
+                entry.x = message.getPosition().getX();
+                entry.y = message.getPosition().getY();
+            }
+            int abilityHandle = message.getAbilityId();
+            if (abilityHandle != 0) {
+                try {
+                    Entity abilityEntity = ctx.getProcessor(Entities.class).getByHandle(abilityHandle);
+                    if (abilityEntity != null) {
+                        entry.inflictor = abilityEntity.getDtClass().getDtName();
+                    }
+                } catch (Exception ex) {
+                    // entity lookup can fail during edge cases — silently ignore
+                }
+            }
+        }
         output(entry);
     }
 
