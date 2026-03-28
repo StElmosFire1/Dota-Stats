@@ -904,6 +904,16 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                           const item = (p.items || []).find(it => it.item_slot === (j + 6));
                           return <ItemIcon key={`bp-${j}`} itemName={item?.item_name} itemId={item?.item_id} />;
                         })}
+                        {(() => {
+                          const neutralItem = (p.items || []).find(it => it.item_slot === 16);
+                          if (!neutralItem) return null;
+                          return (
+                            <>
+                              <span className="backpack-separator" title="Neutral Item">⬡</span>
+                              <ItemIcon itemName={neutralItem.item_name} itemId={neutralItem.item_id} />
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                   )}
@@ -1082,6 +1092,204 @@ function PudgeHookStats({ players }) {
                   <td className="col-stat">{p.hook_attempts}</td>
                   <td className="col-stat">{p.hook_hits}</td>
                   <td className="col-stat">{acc}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Helper: parse building NPC name → readable label ───────────────────────
+function parseBuildingName(npcName) {
+  if (!npcName) return npcName;
+  const n = npcName.replace('npc_dota_', '');
+  // goodguys = radiant, badguys = dire
+  const teamRaw = n.startsWith('goodguys') ? 'Radiant' : n.startsWith('badguys') ? 'Dire' : '';
+  const rest = n.replace(/^(goodguys|badguys)_/, '');
+  // tower: tower1_top, tower2_mid, tower3_bot, tower4 (base T4)
+  const towerM = rest.match(/^tower(\d)(?:_(\w+))?/);
+  if (towerM) {
+    const tier = towerM[1];
+    const lane = towerM[2] ? towerM[2].replace(/^(top|mid|bot|bottom)$/, s => ({ top: 'Top', mid: 'Mid', bot: 'Bot', bottom: 'Bot' }[s] || s)) : 'Base';
+    return `${teamRaw} T${tier} ${lane}`;
+  }
+  // rax: melee_rax_top, range_rax_mid
+  const raxM = rest.match(/^(melee|range)_rax_(\w+)/);
+  if (raxM) return `${teamRaw} ${raxM[1] === 'melee' ? 'Melee' : 'Range'} Barracks ${raxM[2].charAt(0).toUpperCase() + raxM[2].slice(1)}`;
+  if (rest.includes('fort')) return `${teamRaw} Ancient`;
+  if (rest.includes('healer')) return `${teamRaw} Shrine`;
+  return npcName;
+}
+
+// ── BuildingDeathsPanel ─────────────────────────────────────────────────────
+function BuildingDeathsPanel({ timeline }) {
+  if (!timeline || !timeline.events) return null;
+  const buildingEvents = timeline.events.filter(ev => ev.type === 'building');
+  if (buildingEvents.length === 0) return null;
+
+  const sorted = [...buildingEvents].sort((a, b) => a.t - b.t);
+  const radiantDeaths = sorted.filter(ev => ev.team === 'radiant');
+  const direDeaths    = sorted.filter(ev => ev.team === 'dire');
+
+  const BuildingList = ({ events, color }) => (
+    <div style={{ flex: 1 }}>
+      {events.map((ev, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', fontSize: '0.85rem' }}>
+          <span style={{ color: '#888', width: 40, flexShrink: 0 }}>{formatDuration(ev.t)}</span>
+          <span style={{ color }}>{parseBuildingName(ev.building)}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Building Deaths</h3>
+      <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ color: '#4ade80', fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.85rem' }}>Radiant Buildings Lost</div>
+          {radiantDeaths.length === 0
+            ? <div style={{ color: '#555', fontSize: '0.85rem' }}>None</div>
+            : <BuildingList events={radiantDeaths} color="#ccc" />}
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ color: '#f87171', fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.85rem' }}>Dire Buildings Lost</div>
+          {direDeaths.length === 0
+            ? <div style={{ color: '#555', fontSize: '0.85rem' }}>None</div>
+            : <BuildingList events={direDeaths} color="#ccc" />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TeamAbilitiesPanel ──────────────────────────────────────────────────────
+function TeamAbilitiesPanel({ teamAbilities, radiantWin }) {
+  if (!teamAbilities) return null;
+  const { radiant, dire } = teamAbilities;
+  const hasData = (radiant.glyph_count + dire.glyph_count + radiant.scan_count + dire.scan_count) > 0;
+  if (!hasData) return null;
+
+  const TeamRow = ({ label, data, color }) => (
+    <div style={{ flex: 1, minWidth: 180 }}>
+      <div style={{ color, fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.85rem' }}>{label}</div>
+      {data.glyph_count > 0 && (
+        <div style={{ marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+          <span style={{ color: '#aaa' }}>🛡️ Glyph: </span>
+          <span style={{ color: '#fff' }}>{data.glyph_count}× used</span>
+          {data.glyph_times && data.glyph_times.length > 0 && (
+            <span style={{ color: '#888', marginLeft: 6 }}>
+              ({data.glyph_times.map(t => formatDuration(t)).join(', ')})
+            </span>
+          )}
+          {data.glyph_count > 0 && (
+            <span style={{ color: data.glyph_effective > 0 ? '#4ade80' : '#f87171', marginLeft: 6 }}>
+              — {data.glyph_effective}/{data.glyph_count} effective
+            </span>
+          )}
+        </div>
+      )}
+      {data.scan_count > 0 && (
+        <div style={{ fontSize: '0.85rem' }}>
+          <span style={{ color: '#aaa' }}>🔍 Scan: </span>
+          <span style={{ color: '#fff' }}>{data.scan_count}× used</span>
+          {data.scan_times && data.scan_times.length > 0 && (
+            <span style={{ color: '#888', marginLeft: 6 }}>
+              ({data.scan_times.map(t => formatDuration(t)).join(', ')})
+            </span>
+          )}
+        </div>
+      )}
+      {data.glyph_count === 0 && data.scan_count === 0 && (
+        <div style={{ color: '#555', fontSize: '0.85rem' }}>No glyphs or scans used</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Glyph &amp; Scan Usage</h3>
+      <p style={{ color: '#888', fontSize: '0.8rem', margin: '0 0 0.75rem' }}>
+        Glyph is "effective" if no enemy building died within 30s after it was used.
+      </p>
+      <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+        <TeamRow label="Radiant" data={radiant} color="#4ade80" />
+        <TeamRow label="Dire"    data={dire}    color="#f87171" />
+      </div>
+    </div>
+  );
+}
+
+// ── PowerSpikesPanel ────────────────────────────────────────────────────────
+const MAJOR_ITEMS = new Set([
+  'item_blink','item_black_king_bar','item_aghanims_scepter','item_radiance','item_battlefury',
+  'item_monkey_king_bar','item_crystalys','item_daedalus','item_desolator','item_mjollnir',
+  'item_manta','item_butterfly','item_satanic','item_heart','item_assault','item_bloodthorn',
+  'item_silver_edge','item_sange_and_yasha','item_heavens_halberd','item_skadi','item_medusa',
+  'item_boots_of_travel','item_boots_of_travel_2','item_octarine_core','item_kaya_and_sange',
+  'item_bloodstone','item_sheepstick','item_dagon','item_dagon_2','item_dagon_3','item_dagon_4','item_dagon_5',
+  'item_refresher','item_shiva','item_linken','item_pipe','item_crimson_guard','item_vanguard',
+  'item_blade_mail','item_glimmer_cape','item_solar_crest','item_force_staff','item_eul',
+  'item_cyclone','item_aether_lens','item_ghost','item_hurricane_pike','item_witch_blade',
+  'item_gungir','item_pavise','item_yasha_and_kaya','item_mage_slayer',
+]);
+const LEVEL_MILESTONES = [6, 12, 18, 25];
+
+function PowerSpikesPanel({ timeline, allPlayers }) {
+  if (!timeline || !timeline.players) return null;
+  const playersWithData = timeline.players.filter(tp => {
+    const hasLevels  = tp.abilityLog && tp.abilityLog.some(a => LEVEL_MILESTONES.includes(a.heroLevel));
+    const hasItems   = tp.purchaseLog && tp.purchaseLog.some(pu => MAJOR_ITEMS.has(pu.itemName));
+    return hasLevels || hasItems;
+  });
+  if (playersWithData.length === 0) return null;
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Power Spikes <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— level milestones and major items</span></h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact" style={{ tableLayout: 'auto' }}>
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              {LEVEL_MILESTONES.map(lv => <th key={lv} className="col-stat" title={`Time player reached level ${lv}`}>L{lv}</th>)}
+              <th style={{ textAlign: 'left', paddingLeft: 8 }}>Major Items</th>
+            </tr>
+          </thead>
+          <tbody>
+            {timeline.players.map((tp, i) => {
+              const playerInfo = allPlayers.find(p => p.slot === tp.slot);
+              const displayName = playerInfo?.nickname || playerInfo?.persona_name || tp.name || `Slot ${tp.slot}`;
+              const levelTimes = {};
+              if (tp.abilityLog) {
+                for (const a of tp.abilityLog) {
+                  if (LEVEL_MILESTONES.includes(a.heroLevel) && !levelTimes[a.heroLevel]) {
+                    levelTimes[a.heroLevel] = a.time;
+                  }
+                }
+              }
+              const majorItems = (tp.purchaseLog || []).filter(pu => MAJOR_ITEMS.has(pu.itemName));
+              return (
+                <tr key={i}>
+                  <td className="col-player" style={{ color: tp.team === 'radiant' ? '#4ade80' : '#f87171' }}>
+                    {displayName}
+                  </td>
+                  {LEVEL_MILESTONES.map(lv => (
+                    <td key={lv} className="col-stat" style={{ fontSize: '0.8rem' }}>
+                      {levelTimes[lv] != null ? formatDuration(levelTimes[lv]) : '—'}
+                    </td>
+                  ))}
+                  <td style={{ paddingLeft: 8, fontSize: '0.8rem', color: '#ccc' }}>
+                    {majorItems.length === 0 ? '—' : majorItems.map((pu, j) => (
+                      <span key={j} style={{ marginRight: 8 }}>
+                        <span style={{ color: '#aaa' }}>{formatDuration(pu.time)}</span>{' '}
+                        {pu.itemName.replace('item_', '').replace(/_/g, ' ')}
+                      </span>
+                    ))}
+                  </td>
                 </tr>
               );
             })}
@@ -1286,6 +1494,10 @@ export default function MatchDetail() {
       <PudgeHookStats players={allPlayers} />
 
       <TimelineGraph timeline={match.game_timeline} allPlayers={allPlayers} />
+
+      <BuildingDeathsPanel timeline={match.game_timeline} />
+      <TeamAbilitiesPanel teamAbilities={match.team_abilities} radiantWin={match.radiant_win} />
+      <PowerSpikesPanel timeline={match.game_timeline} allPlayers={allPlayers} />
 
       {allPlayers.some(p => p.abilities && p.abilities.length > 0) && (
         <div className="expanded-stats-section">

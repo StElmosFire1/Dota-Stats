@@ -399,6 +399,29 @@ public class Parse {
             if (cle.getType().ordinal() <= 19) {
                 output(combatLogEntry);
             }
+            // Emit team_ability entry for glyph and scan (works in both streaming and blob modes)
+            if ("DOTA_COMBATLOG_ABILITY".equals(combatLogEntry.type) && combatLogEntry.inflictor != null
+                    && (combatLogEntry.inflictor.equals("dota_glyph_of_fortification")
+                        || combatLogEntry.inflictor.toLowerCase().contains("scan"))) {
+                String teamStr = null;
+                if (combatLogEntry.attackername != null) {
+                    String an = combatLogEntry.attackername.toLowerCase();
+                    if (an.contains("goodguys")) teamStr = "radiant";
+                    else if (an.contains("badguys")) teamStr = "dire";
+                }
+                if (teamStr == null && combatLogEntry.inflictor != null) {
+                    String inf = combatLogEntry.inflictor.toLowerCase();
+                    if (inf.startsWith("radiant")) teamStr = "radiant";
+                    else if (inf.startsWith("dire")) teamStr = "dire";
+                }
+                if (teamStr != null) {
+                    Entry teamEntry = new Entry(combatLogEntry.time);
+                    teamEntry.type = "team_ability";
+                    String abilityShort = combatLogEntry.inflictor.equals("dota_glyph_of_fortification") ? "glyph" : "scan";
+                    teamEntry.key = teamStr + "_" + abilityShort;
+                    output(teamEntry);
+                }
+            }
         } catch (Exception e) {
             System.err.println(e);
             System.err.println(cle);
@@ -854,8 +877,8 @@ public class Parse {
     }
 
     private List<Item> getHeroInventory(Context ctx, Entity eHero) {
-        // 0-5: main inventory, 6-8: backpack
-        List<Item> inventoryList = new ArrayList<>(9);
+        // 0-5: main inventory, 6-8: backpack, 16: neutral item slot
+        List<Item> inventoryList = new ArrayList<>(10);
 
         for (int i = 0; i < 9; i++) {
             try {
@@ -866,6 +889,16 @@ public class Parse {
             } catch (Exception e) {
                 // System.err.println(e);
             }
+        }
+
+        // Neutral item slot (slot index 16 in Dota 2 entity data)
+        try {
+            Item neutralItem = getHeroItem(ctx, eHero, 16);
+            if (neutralItem != null) {
+                inventoryList.add(neutralItem);
+            }
+        } catch (Exception e) {
+            // System.err.println(e);
         }
 
         return inventoryList;

@@ -233,6 +233,7 @@ async function init() {
     `);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch VARCHAR(20)`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS season_id INTEGER REFERENCES seasons(id)`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS team_abilities JSONB`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
 
@@ -736,11 +737,12 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
     await client.query('BEGIN');
 
     await client.query(
-      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes, team_abilities)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (match_id) DO UPDATE SET date = EXCLUDED.date,
          game_timeline = COALESCE(EXCLUDED.game_timeline, matches.game_timeline),
-         lane_outcomes = COALESCE(EXCLUDED.lane_outcomes, matches.lane_outcomes)
+         lane_outcomes = COALESCE(EXCLUDED.lane_outcomes, matches.lane_outcomes),
+         team_abilities = COALESCE(EXCLUDED.team_abilities, matches.team_abilities)
          WHERE EXCLUDED.date < NOW() - INTERVAL '10 minutes'`,
       [
         matchStats.matchId,
@@ -756,6 +758,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         seasonId || null,
         matchStats.gameTimeline ? JSON.stringify(matchStats.gameTimeline) : null,
         matchStats.laneOutcomes ? JSON.stringify(matchStats.laneOutcomes) : null,
+        matchStats.teamAbilities ? JSON.stringify(matchStats.teamAbilities) : null,
       ]
     );
 

@@ -653,6 +653,7 @@ class ReplayParser {
     const hookCasts      = [];  // [{time, slot}] — pudge hook cast events (from combatlog)
     const hookUnitOrders = [];  // [{time, slot, normX, normY}] — pudge hook casts from unit-order events (more accurate)
     const hookHits  = [];      // [{time, slot, targetHero, targetName}] — hook damage events
+    const teamAbilitiesRaw = {}; // 'radiant_glyph' | 'dire_glyph' | 'radiant_scan' | 'dire_scan' → [time, ...]
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -1061,6 +1062,14 @@ class ReplayParser {
             heroHealing[slot] = (heroHealing[slot] || 0) + e.value;
           }
         }
+      }
+
+      // ── Team abilities: glyph of fortification and scan ──────────────────
+      // Streaming: type "team_ability", key "radiant_glyph" | "dire_glyph" | "radiant_scan" | "dire_scan"
+      // Blob: same (emitted by Java processExpand → populate → team_abilities map, handled separately below)
+      if (e.type === 'team_ability' && e.key) {
+        if (!teamAbilitiesRaw[e.key]) teamAbilitiesRaw[e.key] = [];
+        teamAbilitiesRaw[e.key].push(e.time || 0);
       }
 
       if (e.type === 'DOTA_COMBATLOG_PLAYERSTATS' && e.slot != null && e.slot >= 0 && e.slot < 10) {
@@ -1749,6 +1758,41 @@ class ReplayParser {
       console.log(`[Draft] First 4 entries: ${draft.slice(0,4).map(d=>`hero=${d.heroId} team=${d.team} pick=${d.isPick}`).join(' | ')}`);
     }
 
+    // ── Team abilities: glyph effectiveness + scan counts ──────────────────
+    // Glyph effectiveness: a glyph is "effective" if no building dies within 30s after it is cast
+    const buildingDeathTimes = gameEvents
+      .filter(ev => ev.type === 'building')
+      .map(ev => ({ t: ev.t, team: ev.team }));
+
+    const buildTeamAbilities = (team) => {
+      const glyphTimes = (teamAbilitiesRaw[`${team}_glyph`] || []);
+      const scanTimes  = (teamAbilitiesRaw[`${team}_scan`]  || []);
+      const enemyTeam  = team === 'radiant' ? 'dire' : 'radiant';
+      const glyphEffective = glyphTimes.filter(gt => {
+        // Effective if enemy team's buildings don't die within 30s after glyph
+        return !buildingDeathTimes.some(ev => ev.team === enemyTeam && ev.t > gt && ev.t <= gt + 30);
+      }).length;
+      return {
+        glyph_count: glyphTimes.length,
+        glyph_times: glyphTimes,
+        glyph_effective: glyphEffective,
+        scan_count: scanTimes.length,
+        scan_times: scanTimes,
+      };
+    };
+    const teamAbilities = {
+      radiant: buildTeamAbilities('radiant'),
+      dire:    buildTeamAbilities('dire'),
+    };
+    const hasTeamAbilities = teamAbilities.radiant.glyph_count > 0 || teamAbilities.dire.glyph_count > 0 ||
+                             teamAbilities.radiant.scan_count  > 0 || teamAbilities.dire.scan_count  > 0;
+    if (hasTeamAbilities) {
+      console.log('[Replay] Team abilities:', JSON.stringify({
+        radiant_glyph: teamAbilities.radiant.glyph_count, radiant_scan: teamAbilities.radiant.scan_count,
+        dire_glyph: teamAbilities.dire.glyph_count, dire_scan: teamAbilities.dire.scan_count,
+      }));
+    }
+
     return {
       matchId,
       duration,
@@ -1758,6 +1802,7 @@ class ReplayParser {
       players: playerList,
       draft,
       parseMethod: 'odota-parser',
+      teamAbilities: hasTeamAbilities ? teamAbilities : null,
       gameTimeline: {
         interval: 30,
         players: playerList.map(p => {

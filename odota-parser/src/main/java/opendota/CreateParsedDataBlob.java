@@ -23,6 +23,7 @@ class ParsedData {
     public Map<String, Integer> cosmetics = new HashMap<>();
     public List<Object> draft_timings = new ArrayList<>();
     public List<PlayerData> players = new ArrayList<>();
+    public Map<String, List<Integer>> team_abilities = new HashMap<>();
 
     public ParsedData() {
         for (int i = 0; i < 10; i++) {
@@ -233,6 +234,11 @@ public class CreateParsedDataBlob {
                     meta.ability_levels.put(e.unit, new HashMap<>());
                 }
                 meta.ability_levels.get(e.unit).put(e.key, e.level);
+                break;
+            case "team_ability":
+                if (e.key != null) {
+                    container.team_abilities.computeIfAbsent(e.key, k -> new ArrayList<>()).add(e.time);
+                }
                 break;
             default:
                 if (e.slot == null || e.slot < 0 || e.slot >= container.players.size()) {
@@ -491,6 +497,29 @@ public class CreateParsedDataBlob {
                     aegisDeathTime = result[1];
                     break;
                 case "DOTA_COMBATLOG_ABILITY":
+                    // Detect team abilities (glyph, scan) before normal hero ability handling
+                    if (e.inflictor != null && (
+                            e.inflictor.equals("dota_glyph_of_fortification") ||
+                            e.inflictor.toLowerCase().contains("scan"))) {
+                        String teamStr = null;
+                        if (e.attackername != null) {
+                            String an = e.attackername.toLowerCase();
+                            if (an.contains("goodguys")) teamStr = "radiant";
+                            else if (an.contains("badguys")) teamStr = "dire";
+                        }
+                        if (teamStr == null && e.inflictor != null) {
+                            String inf = e.inflictor.toLowerCase();
+                            if (inf.startsWith("radiant")) teamStr = "radiant";
+                            else if (inf.startsWith("dire")) teamStr = "dire";
+                        }
+                        if (teamStr != null) {
+                            Entry teamEntry = new Entry(e.time);
+                            teamEntry.type = "team_ability";
+                            String abilityShort = e.inflictor.equals("dota_glyph_of_fortification") ? "glyph" : "scan";
+                            teamEntry.key = teamStr + "_" + abilityShort;
+                            output.add(teamEntry);
+                        }
+                    }
                     handleAbility(e, output, meta);
                     break;
                 case "DOTA_ABILITY_LEVEL":
