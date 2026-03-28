@@ -10,4 +10,6 @@ public class Item {
     // and num_secondary_charges for sentry wards count
     // and is considered not stackable
     Integer num_secondary_charges;
+    // Enhancement level for neutral items (0 = not enhanced, 1/2/3 = sub-enhancement tiers)
+    Integer enhancement_level;
 }

@@ -204,6 +204,7 @@ async function init() {
         item_id INTEGER DEFAULT 0,
         item_name VARCHAR DEFAULT '',
         purchase_time INTEGER DEFAULT 0,
+        enhancement_level INTEGER DEFAULT 0,
         UNIQUE(match_id, slot, item_slot)
       );
     `);
@@ -478,6 +479,7 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ward_placements JSONB DEFAULT '[]'`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS nemesis_hero_name VARCHAR(100) DEFAULT ''`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS nemesis_kills INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_items ADD COLUMN IF NOT EXISTS enhancement_level INTEGER DEFAULT 0`);
 
     console.log('[DB] Schema migrations applied.');
     return true;
@@ -830,10 +832,10 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
       if (player.items && player.items.length > 0) {
         for (const item of player.items) {
           await client.query(
-            `INSERT INTO player_items (match_id, slot, item_slot, item_id, item_name, purchase_time)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO player_items (match_id, slot, item_slot, item_id, item_name, purchase_time, enhancement_level)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (match_id, slot, item_slot) DO NOTHING`,
-            [matchStats.matchId, player.slot || 0, item.slot, item.itemId || 0, item.itemName || '', item.purchaseTime || 0]
+            [matchStats.matchId, player.slot || 0, item.slot, item.itemId || 0, item.itemName || '', item.purchaseTime || 0, item.enhancementLevel || 0]
           );
         }
       }

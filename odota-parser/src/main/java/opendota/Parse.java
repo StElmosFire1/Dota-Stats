@@ -972,6 +972,13 @@ public class Parse {
                 item.num_secondary_charges = numSecondaryCharges;
             }
         } catch (Exception ignored) {}
+        try {
+            // Neutral item enhancement sub-tier (m_nEnhancementLevel: 1/2/3, or 0 if not enhanced)
+            int enhLevel = eItem.getProperty("m_nEnhancementLevel");
+            if (enhLevel > 0) {
+                item.enhancement_level = enhLevel;
+            }
+        } catch (Exception ignored) {}
         return item;
     }
 

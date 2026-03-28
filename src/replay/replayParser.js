@@ -654,6 +654,8 @@ class ReplayParser {
     const hookUnitOrders = [];  // [{time, slot, normX, normY}] — pudge hook casts from unit-order events (more accurate)
     const hookHits  = [];      // [{time, slot, targetHero, targetName}] — hook damage events
     const teamAbilitiesRaw = {}; // 'radiant_glyph' | 'dire_glyph' | 'radiant_scan' | 'dire_scan' → [time, ...]
+    const aegisActive = {};     // slot → pickupTime (while modifier_aegis is held)
+    const smokePerPlayer = {};  // slot → [times] — per-player smoke activations
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -1083,6 +1085,32 @@ class ReplayParser {
           const key = `${team}_smoke`;
           if (!teamAbilitiesRaw[key]) teamAbilitiesRaw[key] = [];
           teamAbilitiesRaw[key].push(e.time || 0);
+          // Per-player tracking
+          if (!smokePerPlayer[casterSlot]) smokePerPlayer[casterSlot] = [];
+          smokePerPlayer[casterSlot].push(e.time || 0);
+        }
+      }
+
+      // ── Aegis of the Immortal tracking ───────────────────────────────────
+      // modifier_aegis ADDED  → player picked up the Aegis
+      // modifier_aegis REMOVED → Aegis was used (< 300s after pickup) or expired (>= 300s)
+      if (e.inflictor === 'modifier_aegis' || (e.key && e.key === 'modifier_aegis')) {
+        const targetName = e.targetname || e.unit || '';
+        const slot = e.slot != null ? e.slot : npcNameToSlot[targetName];
+        const t = e.time || 0;
+        if (slot != null && slot >= 0 && slot < 10) {
+          if (e.type === 'DOTA_COMBATLOG_MODIFIER_ADD' || e.type === 'modifier_add') {
+            aegisActive[slot] = t;
+            gameEvents.push({ t, type: 'aegis', slot, outcome: 'pickup' });
+          } else if (e.type === 'DOTA_COMBATLOG_MODIFIER_REMOVE' || e.type === 'modifier_remove') {
+            const pickupTime = aegisActive[slot];
+            if (pickupTime != null) {
+              const held = t - pickupTime;
+              const outcome = held >= 295 ? 'expired' : 'used';
+              gameEvents.push({ t, type: 'aegis', slot, outcome, heldFor: Math.round(held) });
+              delete aegisActive[slot];
+            }
+          }
         }
       }
 
@@ -1106,7 +1134,7 @@ class ReplayParser {
               const itemName = typeof rawId === 'string' ? rawId.replace(/^item_/, '') :
                                typeof rawId === 'number' ? (ITEM_ID_TO_NAME[rawId] || `id_${rawId}`) : '';
               if (itemName) {
-                snapshot[item.slot] = { itemId: typeof rawId === 'number' ? rawId : 0, itemName, time: currentTime, charges: item.num_charges || 0 };
+                snapshot[item.slot] = { itemId: typeof rawId === 'number' ? rawId : 0, itemName, time: currentTime, charges: item.num_charges || 0, enhancementLevel: item.enhancement_level || 0 };
               }
             }
           }
@@ -1166,7 +1194,8 @@ class ReplayParser {
                   itemId: typeof rawId === 'number' ? rawId : 0,
                   itemName,
                   time: currentTime,
-                  charges: item.num_charges || 0
+                  charges: item.num_charges || 0,
+                  enhancementLevel: item.enhancement_level || 0,
                 };
               }
             }
@@ -1524,6 +1553,7 @@ class ReplayParser {
               itemId: itemData.itemId,
               itemName: itemData.itemName || ITEM_ID_TO_NAME[itemData.itemId] || '',
               purchaseTime: 0,
+              enhancementLevel: itemData.enhancementLevel || 0,
             });
           }
         }
@@ -1859,6 +1889,7 @@ class ReplayParser {
               abilityLevel: a.abilityLevel,
               time: a.time || 0,
             })),
+            smokeTimes: smokePerPlayer[slot] || [],
           };
         }),
         events: gameEvents.sort((a, b) => a.t - b.t),

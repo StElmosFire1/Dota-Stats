@@ -907,10 +907,21 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                         {(() => {
                           const neutralItem = (p.items || []).find(it => it.item_slot === 16);
                           if (!neutralItem) return null;
+                          const enh = neutralItem.enhancement_level || 0;
                           return (
                             <>
                               <span className="backpack-separator" title="Neutral Item">⬡</span>
-                              <ItemIcon itemName={neutralItem.item_name} itemId={neutralItem.item_id} />
+                              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                                <ItemIcon itemName={neutralItem.item_name} itemId={neutralItem.item_id} />
+                                {enh > 0 && (
+                                  <span title={`Sub-enhancement tier ${enh}`} style={{
+                                    position: 'absolute', bottom: -2, right: -4,
+                                    background: enh >= 3 ? '#a855f7' : enh === 2 ? '#3b82f6' : '#22c55e',
+                                    color: '#fff', borderRadius: 4, fontSize: 9, fontWeight: 700,
+                                    padding: '0 2px', lineHeight: '13px', pointerEvents: 'none',
+                                  }}>+{enh}</span>
+                                )}
+                              </span>
                             </>
                           );
                         })()}
@@ -1296,6 +1307,184 @@ function PowerSpikesPanel({ timeline, allPlayers }) {
   );
 }
 
+// ── AegisEventsPanel ────────────────────────────────────────────────────────
+function AegisEventsPanel({ timeline, allPlayers }) {
+  if (!timeline || !timeline.events) return null;
+  const aegisEvents = timeline.events.filter(ev => ev.type === 'aegis');
+  if (aegisEvents.length === 0) return null;
+
+  const slotToName = {};
+  allPlayers.forEach(p => { slotToName[p.slot] = p.nickname || p.persona_name || `Slot ${p.slot}`; });
+  const slotColor = (slot) => slot < 5 ? '#4ade80' : '#f87171';
+
+  // Group pickups with their outcomes
+  const pickups = aegisEvents.filter(e => e.outcome === 'pickup');
+  const outcomes = aegisEvents.filter(e => e.outcome === 'used' || e.outcome === 'expired');
+  const outcomeMap = {};
+  outcomes.forEach(e => { outcomeMap[e.slot] = outcomeMap[e.slot] || []; outcomeMap[e.slot].push(e); });
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Aegis of the Immortal</h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              <th className="col-stat" title="Time aegis was picked up">Picked Up</th>
+              <th className="col-stat" title="What happened to the aegis">Outcome</th>
+              <th className="col-stat" title="Time held before use or expiry">Held For</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pickups.map((ev, i) => {
+              const outcome = (outcomeMap[ev.slot] || []).shift();
+              return (
+                <tr key={i}>
+                  <td className="col-player" style={{ color: slotColor(ev.slot) }}>
+                    {slotToName[ev.slot] || `Slot ${ev.slot}`}
+                  </td>
+                  <td className="col-stat" style={{ fontSize: '0.85rem' }}>{formatDuration(ev.t)}</td>
+                  <td className="col-stat" style={{ fontSize: '0.85rem' }}>
+                    {outcome ? (
+                      <span style={{ color: outcome.outcome === 'used' ? '#facc15' : '#888' }}>
+                        {outcome.outcome === 'used' ? '⚔️ Used' : '⏰ Expired'}
+                        {' '}<span style={{ color: '#888' }}>@ {formatDuration(outcome.t)}</span>
+                      </span>
+                    ) : <span style={{ color: '#555' }}>Unknown</span>}
+                  </td>
+                  <td className="col-stat" style={{ fontSize: '0.85rem', color: '#aaa' }}>
+                    {outcome?.heldFor != null ? `${Math.floor(outcome.heldFor / 60)}m ${outcome.heldFor % 60}s` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── SmokePerPlayerPanel ──────────────────────────────────────────────────────
+function SmokePerPlayerPanel({ timeline, allPlayers }) {
+  if (!timeline || !timeline.players) return null;
+  const playersWithSmoke = timeline.players.filter(tp => tp.smokeTimes && tp.smokeTimes.length > 0);
+  if (playersWithSmoke.length === 0) return null;
+
+  const slotToInfo = {};
+  allPlayers.forEach(p => { slotToInfo[p.slot] = p; });
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Smoke Usage — Per Player</h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              <th className="col-stat">Smokes Called</th>
+              <th style={{ textAlign: 'left', paddingLeft: 8, color: '#888', fontWeight: 400, fontSize: '0.78rem' }}>Activation Times</th>
+            </tr>
+          </thead>
+          <tbody>
+            {playersWithSmoke
+              .sort((a, b) => b.smokeTimes.length - a.smokeTimes.length)
+              .map((tp, i) => {
+                const info = slotToInfo[tp.slot];
+                const name = info?.nickname || info?.persona_name || `Slot ${tp.slot}`;
+                const color = tp.team === 'radiant' ? '#4ade80' : '#f87171';
+                return (
+                  <tr key={i}>
+                    <td className="col-player" style={{ color }}>{name}</td>
+                    <td className="col-stat" style={{ fontWeight: 600 }}>{tp.smokeTimes.length}</td>
+                    <td style={{ paddingLeft: 8, fontSize: '0.8rem', color: '#aaa' }}>
+                      {tp.smokeTimes.map(t => formatDuration(t)).join(', ')}
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── NWSwingPanel ─────────────────────────────────────────────────────────────
+function NWSwingPanel({ timeline, allPlayers }) {
+  if (!timeline || !timeline.players || timeline.players.length === 0) return null;
+
+  // Build team NW per sample time
+  const teamNW = {};
+  for (const tp of timeline.players) {
+    if (!tp.samples) continue;
+    const isRadiant = tp.team === 'radiant';
+    for (const s of tp.samples) {
+      if (!teamNW[s.t]) teamNW[s.t] = { radiant: 0, dire: 0 };
+      if (isRadiant) teamNW[s.t].radiant += s.nw || 0;
+      else teamNW[s.t].dire += s.nw || 0;
+    }
+  }
+
+  const times = Object.keys(teamNW).map(Number).sort((a, b) => a - b);
+  if (times.length < 2) return null;
+
+  // Compute NW advantage at each time (radiant - dire)
+  const advantages = times.map(t => ({ t, adv: teamNW[t].radiant - teamNW[t].dire }));
+
+  // Compute swings: delta in advantage between consecutive samples
+  const swings = [];
+  for (let i = 1; i < advantages.length; i++) {
+    const delta = advantages[i].adv - advantages[i - 1].adv;
+    swings.push({ t1: advantages[i - 1].t, t2: advantages[i].t, delta, from: advantages[i - 1].adv, to: advantages[i].adv });
+  }
+  swings.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const topSwings = swings.slice(0, 6);
+  if (topSwings.length === 0) return null;
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Net Worth Swings <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— biggest gold advantage shifts</span></h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-stat">Time</th>
+              <th className="col-stat">Shift</th>
+              <th style={{ textAlign: 'left', paddingLeft: 8, color: '#888', fontWeight: 400, fontSize: '0.78rem' }}>Before → After</th>
+            </tr>
+          </thead>
+          <tbody>
+            {topSwings.map((sw, i) => {
+              const favor = sw.delta > 0 ? 'Radiant' : 'Dire';
+              const color = sw.delta > 0 ? '#4ade80' : '#f87171';
+              const absGold = Math.abs(sw.delta).toLocaleString();
+              const fmtAdv = (v) => {
+                const sign = v > 0 ? 'R +' : v < 0 ? 'D +' : '±';
+                return `${sign}${Math.abs(v).toLocaleString()}`;
+              };
+              return (
+                <tr key={i}>
+                  <td className="col-stat" style={{ fontSize: '0.85rem', color: '#888' }}>
+                    {formatDuration(sw.t1)}–{formatDuration(sw.t2)}
+                  </td>
+                  <td className="col-stat" style={{ fontWeight: 600, color }}>
+                    {favor} +{absGold}g
+                  </td>
+                  <td style={{ paddingLeft: 8, fontSize: '0.8rem', color: '#888' }}>
+                    {fmtAdv(sw.from)} → {fmtAdv(sw.to)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function MatchDetail() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -1492,8 +1681,11 @@ export default function MatchDetail() {
       <TimelineGraph timeline={match.game_timeline} allPlayers={allPlayers} />
 
       <BuildingDeathsPanel timeline={match.game_timeline} />
+      <AegisEventsPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <TeamAbilitiesPanel teamAbilities={match.team_abilities} radiantWin={match.radiant_win} />
+      <SmokePerPlayerPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <PowerSpikesPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <NWSwingPanel timeline={match.game_timeline} allPlayers={allPlayers} />
 
       {allPlayers.some(p => p.abilities && p.abilities.length > 0) && (
         <div className="expanded-stats-section">
