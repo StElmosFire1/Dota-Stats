@@ -143,4 +143,34 @@ module.exports = [
     content: '🎯 MORE ACCURATE HOOK ATTEMPT DETECTION\nThe underlying replay parser has been upgraded to capture unit order events, giving the hook tracking system access to the exact position the Pudge player aimed at when they cast the hook.\n\nPreviously, hook attempt detection relied on combat log events (which could be missing) and checked whether an enemy was near Pudge\'s own position. The new system:\n\n• Uses unit order events — fires every time without fail, regardless of combat log coverage.\n• Checks the hook\'s full flight path (a line from Pudge in the direction of the click, extended to the maximum possible hook range) rather than a single point.\n• Handles all range edge cases: clicking past an enemy, clicking short of an enemy, and items/talents that extend hook range (Aether Lens +225, level talent +125) are all covered by the 1800-unit range cap.\n• Ability class name is captured — the system confirms the cast is specifically the Meat Hook, not another ability.\n\n🚜 FARMING HOOK FILTER REFINED\nA hook cast is only excluded from the attempt count if it hit a non-hero (creep or neutral) AND no enemy hero was anywhere along the hook\'s flight path. Complete misses always count as genuine attempts — if the hook connected with nothing, the player was clearly trying.',
     author: 'System',
   },
+  {
+    version: '2.6',
+    title: 'Player Tools Page & Captain Win Rate Display',
+    content: '🛠️ PLAYER TOOLS — COMBINED H2H & COMPARE PAGE\nHead to Head and Compare Players have been merged into a single /player-tools page with a tab switcher. Both tools are now season-aware — switch seasons to filter results to only games played in that season.\n\n📊 COMPARE PLAYERS — REDESIGNED BARS\nThe comparison view now uses centre-anchored bars with a percentage advantage indicator, making it immediately clear which player leads in each stat and by how much.\n\n👑 CAPTAIN WIN RATE — GAME COUNT DISPLAY\nThe captain win rate column on the Leaderboard now shows the game count in parentheses (e.g. "75% (4g)") so you can instantly gauge statistical significance. Hovering reveals a full W/L breakdown tooltip.\n\n🔀 SEASON FILTER — SYNERGY THRESHOLD FIX\nThe synergy matrix now uses a minimum of 1 game when a season filter is active (down from 3 for all-time), preventing everyone from showing 100% win rate when the season game count is low.',
+    author: 'System',
+  },
+  {
+    version: '2.7',
+    title: 'Multi-Kill Leaderboard, Most Improved Widget & Match Predictions',
+    content: '💀 MULTI-KILL LEADERBOARD\nThe Multi-Kill Leaderboard has moved from a standalone page into a tab inside the Records & Comebacks page (/records). It\'s fully season-aware and sortable by rampages, ultra kills, triple kills, or double kills.\n\n📈 MOST IMPROVED WIDGET — LEADERBOARD\nThe Leaderboard page now features a Most Improved panel showing the top MMR gainers over the past 30 days, sourced from the rating_history table. Great for spotting players on a hot streak.\n\n🔮 MATCH PREDICTION SYSTEM\nPlayers can now predict match outcomes before a game is recorded.\n• Discord: use !predict <matchId> radiant|dire to submit your call.\n• Web: predictions are viewable via the /api/predictions endpoints.\n\nPlayer prediction accuracy stats appear on individual player profile pages.',
+    author: 'System',
+  },
+  {
+    version: '2.8',
+    title: 'Heroes Page Overhaul — Expandable Rows, Position Meta & Hero Breakdown Tab',
+    content: '🦸 EXPANDABLE HERO ROWS\nThe Hero Stats table now supports expandable rows. Click any hero to lazily load a sub-table showing every inhouse player who has played that hero, along with their individual games, win rate, KDA, and average GPM — all inline without leaving the page.\n\n📊 HERO POSITION META TAB\nA new Position Meta tab on the Heroes page shows win rates for every hero broken down by position (Pos 1–5). Quickly see which heroes dominate each lane role in the inhouse pool.\n\n🏛️ HERO BREAKDOWN TAB\nThe previously separate /hero-breakdown page has been absorbed into the Heroes page as a third tab. Every player\'s full hero history is now one click away inside the Heroes section. The old URL redirects automatically.',
+    author: 'System',
+  },
+  {
+    version: '2.9',
+    title: 'Draft Page Overhaul — Merged Stats & Assistant with Player Pool Selector',
+    content: '📋 DRAFT PAGE — UNIFIED TAB DESIGN\nDraft Statistics and the Draft Assistant have been merged into a single /draft page with two tabs. The old /draft-stats and /draft-assistant URLs redirect automatically.\n\n📊 DRAFT STATS — REAL DATA\nDraft Stats now pulls from player_stats (pick history always present) rather than the match_draft table (only populated from Captain\'s Mode replays). This means the tab is always populated with real hero pick data regardless of replay availability.\n\n🧑‍🤝‍🧑 PLAYER POOL SELECTOR\nThe Draft Assistant tab now includes a Player Pool panel. Search for any registered player and add them to My Team or Enemy Team. Their top heroes appear as clickable chips — tap a hero to instantly populate it into the ally or enemy hero list, feeding the synergy and counter analysis automatically.',
+    author: 'System',
+  },
+  {
+    version: '3.0',
+    title: 'Predictions Overhaul — Accuracy Scoring, Discord Webhook & Home Widget',
+    content: '🔮 PREDICTIONS PAGE — THREE TABS\nThe Predictions page has been rebuilt with three tabs:\n• Submit Prediction — submit your forecast for the season standings.\n• All Predictions — view every prediction submitted by the community.\n• Accuracy Scores — compare predictions to the actual season MMR standings. Scoring: 3 pts for exact rank, 1 pt for correctly placing a player in the top 5.\n\n🏆 ACCURACY LEADERBOARD\nThe Accuracy Scores tab ranks predictors by total score, showing their exact hits, top-5 hits, and overall accuracy for the season.\n\n🏠 HOME PAGE — PREDICTIONS WIDGET\nThe home page now displays a Predictions widget showing how many predictions have been submitted for the active season, with a direct link to the Predictions page.\n\n📣 DISCORD WEBHOOK — PREDICTION NOTIFICATIONS\nSet the DISCORD_WEBHOOK_URL environment variable to receive a Discord notification every time a community member submits a new season prediction.',
+    author: 'System',
+  },
 ];
