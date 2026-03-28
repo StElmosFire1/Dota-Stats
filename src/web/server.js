@@ -60,11 +60,13 @@ setInterval(async () => {
 
 function authMiddleware(req, res, next) {
   const uploadKey = process.env.UPLOAD_KEY;
-  if (!uploadKey) {
-    return res.status(503).json({ error: 'Upload not configured. Set UPLOAD_KEY secret.' });
+  const superuserPassword = process.env.SUPERUSER_PASSWORD;
+  if (!uploadKey && !superuserPassword) {
+    return res.status(503).json({ error: 'Admin not configured. Set UPLOAD_KEY or SUPERUSER_PASSWORD.' });
   }
   const providedKey = req.headers['x-upload-key'];
-  if (providedKey !== uploadKey) {
+  const validKey = (uploadKey && providedKey === uploadKey) || (superuserPassword && providedKey === superuserPassword);
+  if (!validKey) {
     return res.status(403).json({ error: 'Invalid upload key' });
   }
   next();
