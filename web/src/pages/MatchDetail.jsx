@@ -245,7 +245,7 @@ function TimelineGraph({ timeline, allPlayers }) {
   const [metric, setMetric] = useState('nw');
   const [showItems, setShowItems] = useState(false);
   const [hiddenPlayers, setHiddenPlayers] = useState(new Set());
-  const [showMarkers, setShowMarkers] = useState({ rosh: false, torm: false, tower: false, rax: false });
+  const [showMarkers, setShowMarkers] = useState({ rosh: false, torm: false, tower: false, rax: false, courier: false });
   const toggleMarker = (key) => setShowMarkers(prev => ({ ...prev, [key]: !prev[key] }));
   const itemsRef = useRef(null);
 
@@ -374,6 +374,11 @@ function TimelineGraph({ timeline, allPlayers }) {
       });
   }, [timeline]);
 
+  const courierEvents = useMemo(() => {
+    if (!timeline?.events) return [];
+    return timeline.events.filter(e => e.type === 'courier');
+  }, [timeline]);
+
   if (!timeline?.players?.length) return null;
 
   return (
@@ -461,6 +466,12 @@ function TimelineGraph({ timeline, allPlayers }) {
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1.5}
                 label={{ value: '🏛️', position: 'insideTopLeft', fontSize: 10 }} />
             ))}
+            {showMarkers.courier && courierEvents.map((e, i) => (
+              <ReferenceLine key={`cour-${i}`} x={e.t}
+                stroke={e.killedTeam === 'radiant' ? '#f87171' : '#4ade80'}
+                strokeDasharray="2 4" strokeWidth={1.5}
+                label={{ value: '📦', position: 'insideTopRight', fontSize: 10 }} />
+            ))}
             <Area
               type="monotone" dataKey="goldlead" name="Radiant Gold Lead"
               stroke="#4ade80" strokeWidth={2} fill="url(#glGrad)" dot={false} activeDot={{ r: 4 }}
@@ -503,6 +514,12 @@ function TimelineGraph({ timeline, allPlayers }) {
               <ReferenceLine key={`lrax-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1.5}
                 label={{ value: '🏛️', position: 'insideTopLeft', fontSize: 10 }} />
+            ))}
+            {showMarkers.courier && courierEvents.map((e, i) => (
+              <ReferenceLine key={`lcour-${i}`} x={e.t}
+                stroke={e.killedTeam === 'radiant' ? '#f87171' : '#4ade80'}
+                strokeDasharray="2 4" strokeWidth={1.5}
+                label={{ value: '📦', position: 'insideTopRight', fontSize: 10 }} />
             ))}
             {playerKeys.map(({ key, name, color }) => (
               <Line
@@ -629,6 +646,21 @@ function TimelineGraph({ timeline, allPlayers }) {
                 <div style={{ width: 1, height: 12, background: on ? '#f87171' : '#475569', borderRadius: 1 }} />
               </div>
               🏛️ Barracks ({barracksEvents.length})
+            </button>
+          );
+        })()}
+        {courierEvents.length > 0 && (() => {
+          const on = showMarkers.courier;
+          return (
+            <button onClick={() => toggleMarker('courier')} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 4, fontSize: 11,
+              cursor: 'pointer', border: '1px solid', userSelect: 'none', transition: 'all 0.15s',
+              borderColor: on ? '#34d39955' : '#334155',
+              background: on ? '#34d39911' : 'transparent',
+              color: on ? '#34d399' : '#475569',
+            }}>
+              <div style={{ width: 1, height: 12, background: on ? '#34d399' : '#475569', borderRadius: 1 }} />
+              📦 Couriers ({courierEvents.length})
             </button>
           );
         })()}
@@ -1018,6 +1050,9 @@ function ExpandedStats({ players }) {
   );
   if (!hasAny) return null;
 
+  const radiantKills = players.filter(p => p.team === 'radiant').reduce((s, p) => s + (p.kills || 0), 0);
+  const direKills    = players.filter(p => p.team === 'dire').reduce((s, p) => s + (p.kills || 0), 0);
+
   return (
     <div className="expanded-stats-section">
       <h3>Detailed Stats</h3>
@@ -1026,6 +1061,7 @@ function ExpandedStats({ players }) {
           <thead>
             <tr>
               <th className="col-player" title="Player name">Player</th>
+              <th className="col-stat" title="Kill contribution — (kills + assists) ÷ team total kills">KC%</th>
               <th className="col-stat" title="Observer Wards placed">OBS</th>
               <th className="col-stat" title="Sentry Wards placed">SEN</th>
               <th className="col-stat" title="Enemy wards dewarded (destroyed)">DEW</th>
@@ -1038,7 +1074,7 @@ function ExpandedStats({ players }) {
               <th className="col-stat" title="Longest kill streak">KS</th>
               <th className="col-stat" title="Multi-kills (double, triple, ultra, rampage)">MK</th>
               <th className="col-stat" title="Creep score (last hits) at 10 minutes">CS@10</th>
-              <th className="col-stat" title="Attacks or spells dodged/evaded by this player (Butterfly, Windranger passive, Halberd)">EVAD</th>
+              <th className="col-stat" title="Physical attack evasion (RNG dodge — Butterfly, Windrun, Heaven's Halberd only)">EVAD</th>
               <th className="col-stat" title="Long-range kills landed by this player">LRK</th>
             </tr>
           </thead>
@@ -1049,10 +1085,18 @@ function ExpandedStats({ players }) {
               if (p.triple_kills > 0) mkParts.push(`${p.triple_kills}x3`);
               if (p.ultra_kills > 0) mkParts.push(`${p.ultra_kills}x4`);
               if (p.rampages > 0) mkParts.push(`${p.rampages}R`);
+              const teamTotalKills = p.team === 'radiant' ? radiantKills : direKills;
+              const kc = teamTotalKills > 0
+                ? Math.round(((p.kills || 0) + (p.assists || 0)) / teamTotalKills * 100)
+                : 0;
+              const kcColor = kc >= 80 ? '#4ade80' : kc >= 60 ? '#facc15' : kc >= 40 ? '#94a3b8' : '#64748b';
               return (
                 <tr key={i}>
                   <td className="col-player">
                     <PlayerLink player={p} index={i} />
+                  </td>
+                  <td className="col-stat" style={{ color: kcColor, fontWeight: kc >= 70 ? 600 : undefined }}>
+                    {kc}%
                   </td>
                   <td className="col-stat">{p.obs_placed || 0}</td>
                   <td className="col-stat">{p.sen_placed || 0}</td>
@@ -1682,7 +1726,7 @@ function KillHeatmapPanel({ timeline, allPlayers }) {
 }
 
 // ── SupportReportPanel ────────────────────────────────────────────────────────
-function SupportReportPanel({ players }) {
+function SupportReportPanel({ players, timeline }) {
   // Only show if at least one player has meaningful support activity
   const hasData = players.some(p =>
     (p.obs_placed > 0) || (p.sen_placed > 0) || (p.camps_stacked > 0) ||
@@ -1690,6 +1734,27 @@ function SupportReportPanel({ players }) {
     (p.heal_saves > 0) || (p.hero_healing > 0)
   );
   if (!hasData) return null;
+
+  // Smoke success rates computed from timeline (no extra DB column required)
+  const smokeRates = {};
+  if (timeline?.players && timeline?.events) {
+    const killEvs = timeline.events.filter(ev => ev.type === 'kill');
+    timeline.players.forEach(tp => {
+      if (!tp.smokeTimes?.length) return;
+      const team = tp.slot < 5 ? 'radiant' : 'dire';
+      const successes = tp.smokeSuccesses != null
+        ? tp.smokeSuccesses
+        : tp.smokeTimes.filter(smokeT =>
+            killEvs.some(ev => {
+              if (ev.t < smokeT || ev.t > smokeT + 60) return false;
+              if (ev.killerSlot >= 0 && (ev.killerSlot < 5 ? 'radiant' : 'dire') === team) return true;
+              if (ev.assistSlots?.some(as => (as < 5 ? 'radiant' : 'dire') === team)) return true;
+              return false;
+            })
+          ).length;
+      smokeRates[tp.slot] = { total: tp.smokeTimes.length, successes };
+    });
+  }
 
   return (
     <div className="expanded-stats-section">
@@ -1706,6 +1771,7 @@ function SupportReportPanel({ players }) {
               <th className="col-stat" title="Approximate pulls performed (timing-based heuristic)">PULL~</th>
               <th className="col-stat" title="Dust of Appearance activations">DUST</th>
               <th className="col-stat" title="Smoke of Deceit activations">SMKE</th>
+              <th className="col-stat" title="Smoke success rate — % of smokes followed by a same-team kill within 60s">SMKE%</th>
               <th className="col-stat" title="Clutch heals — healed a low-HP ally">SAVE</th>
               <th className="col-stat" title="Healing done to allies via spells/items (excludes self-heal and lifesteal)">HEAL</th>
               <th className="col-stat" title="Healing from lifesteal — Satanic, Octarine, Spec aura etc. This heals the caster, not allies">LSHEAL</th>
@@ -1715,7 +1781,9 @@ function SupportReportPanel({ players }) {
           </thead>
           <tbody>
             {players.map((p, i) => {
-              const teamColor = p.team === 'radiant' ? '#4ade80' : '#f87171';
+              const sr = smokeRates[p.slot];
+              const smokePct = sr?.total > 0 ? Math.round(sr.successes / sr.total * 100) : null;
+              const smokePctColor = smokePct == null ? undefined : smokePct >= 75 ? '#4ade80' : smokePct >= 50 ? '#facc15' : '#64748b';
               return (
                 <tr key={i}>
                   <td className="col-player">
@@ -1732,6 +1800,9 @@ function SupportReportPanel({ players }) {
                     {p.dusts_used || 0}
                   </td>
                   <td className="col-stat">{p.smoke_kills || 0}</td>
+                  <td className="col-stat" style={{ color: smokePctColor }}>
+                    {smokePct != null ? `${smokePct}%` : '—'}
+                  </td>
                   <td className="col-stat" style={{ color: p.heal_saves > 0 ? '#38bdf8' : undefined }}>
                     {p.heal_saves || 0}
                   </td>
@@ -1748,6 +1819,208 @@ function SupportReportPanel({ players }) {
             })}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// ── DeathTimingPanel ──────────────────────────────────────────────────────────
+function DeathTimingPanel({ timeline, allPlayers }) {
+  if (!timeline?.events) return null;
+  const killEvents = timeline.events.filter(ev => ev.type === 'kill' && ev.victimSlot >= 0);
+  if (killEvents.length === 0) return null;
+
+  const BRACKETS = [
+    { label: '<15m',   max: 900  },
+    { label: '15-35m', max: 2100 },
+    { label: '35-45m', max: 2700 },
+    { label: '>45m',   max: Infinity },
+  ];
+  const BRACKET_COLORS = ['#4ade80', '#facc15', '#f97316', '#f87171'];
+
+  const deathsBySlot = {};
+  allPlayers.forEach(p => { deathsBySlot[p.slot] = [0, 0, 0, 0]; });
+  for (const ev of killEvents) {
+    if (deathsBySlot[ev.victimSlot] == null) continue;
+    const bi = BRACKETS.findIndex(b => ev.t < b.max);
+    if (bi >= 0) deathsBySlot[ev.victimSlot][bi]++;
+  }
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Death Timing <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— deaths by game phase</span></h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              {BRACKETS.map((b, i) => (
+                <th key={i} className="col-stat" style={{ color: BRACKET_COLORS[i] }} title={`Deaths in the ${b.label} window`}>{b.label}</th>
+              ))}
+              <th className="col-stat" title="Total deaths">TOT</th>
+              <th className="col-stat" title="Deaths before 15 min as % of total — high = fed laning phase">EARLY%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allPlayers.map((p, i) => {
+              const counts = deathsBySlot[p.slot] || [0, 0, 0, 0];
+              const total = counts.reduce((s, c) => s + c, 0);
+              const earlyPct = total > 0 ? Math.round(counts[0] / total * 100) : null;
+              const earlyColor = earlyPct == null ? undefined : earlyPct >= 60 ? '#f87171' : earlyPct >= 40 ? '#facc15' : '#4ade80';
+              return (
+                <tr key={i}>
+                  <td className="col-player"><PlayerLink player={p} index={i} /></td>
+                  {counts.map((c, bi) => (
+                    <td key={bi} className="col-stat" style={{ color: c > 0 ? BRACKET_COLORS[bi] : '#334155' }}>{c}</td>
+                  ))}
+                  <td className="col-stat">{total}</td>
+                  <td className="col-stat" style={{ color: earlyColor }}>{earlyPct != null ? `${earlyPct}%` : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── ComebackMetricPanel ───────────────────────────────────────────────────────
+function ComebackMetricPanel({ timeline, allPlayers }) {
+  if (!timeline?.players?.length) return null;
+
+  const nwAt15 = {}, nwFinal = {};
+  for (const tp of timeline.players) {
+    const samples = tp.samples || [];
+    if (!samples.length) continue;
+    const best15 = samples.reduce((b, s) => Math.abs(s.t - 900) < Math.abs(b.t - 900) ? s : b, samples[0]);
+    if (Math.abs(best15.t - 900) < 300) nwAt15[tp.slot] = best15.nw || 0;
+    nwFinal[tp.slot] = (samples[samples.length - 1].nw) || 0;
+  }
+
+  const eligible = allPlayers.filter(p => nwAt15[p.slot] != null && nwFinal[p.slot] != null);
+  if (eligible.length < 4) return null;
+
+  const sorted15 = [...eligible].sort((a, b) => nwAt15[b.slot] - nwAt15[a.slot]);
+  const sortedFin = [...eligible].sort((a, b) => nwFinal[b.slot] - nwFinal[a.slot]);
+  const rank15 = {}, rankFin = {};
+  sorted15.forEach((p, i) => { rank15[p.slot] = i + 1; });
+  sortedFin.forEach((p, i) => { rankFin[p.slot] = i + 1; });
+
+  const rows = eligible.map(p => ({
+    ...p, r15: rank15[p.slot], rFin: rankFin[p.slot],
+    delta: rank15[p.slot] - rankFin[p.slot],
+    nw15: nwAt15[p.slot], nwEnd: nwFinal[p.slot],
+  })).sort((a, b) => b.delta - a.delta);
+
+  if (!rows.some(r => Math.abs(r.delta) >= 2)) return null;
+
+  const fmtK = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Comeback Metric <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— NW rank at 15 min vs final (↑ = climbed)</span></h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              <th className="col-stat" title="Net worth rank at ~15 min (1 = richest)">Rank@15</th>
+              <th className="col-stat" title="Net worth at 15 min">NW@15</th>
+              <th className="col-stat" title="Final net worth rank">RankFin</th>
+              <th className="col-stat" title="Final net worth">NW.Fin</th>
+              <th className="col-stat" title="Rank change — positive means climbed the wealth ladder">Δ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p, i) => {
+              const dColor = p.delta > 0 ? '#4ade80' : p.delta < 0 ? '#f87171' : '#94a3b8';
+              return (
+                <tr key={i}>
+                  <td className="col-player"><PlayerLink player={p} index={i} /></td>
+                  <td className="col-stat" style={{ color: '#94a3b8' }}>#{p.r15}</td>
+                  <td className="col-stat" style={{ color: '#facc15' }}>{fmtK(p.nw15)}</td>
+                  <td className="col-stat" style={{ color: '#94a3b8' }}>#{p.rFin}</td>
+                  <td className="col-stat" style={{ color: '#facc15' }}>{fmtK(p.nwEnd)}</td>
+                  <td className="col-stat" style={{ color: dColor, fontWeight: Math.abs(p.delta) >= 3 ? 700 : undefined }}>
+                    {p.delta > 0 ? `+${p.delta}` : p.delta < 0 ? `${p.delta}` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── TeamfightPanel ────────────────────────────────────────────────────────────
+function TeamfightPanel({ timeline, allPlayers }) {
+  if (!timeline?.events) return null;
+  const killEvs = timeline.events
+    .filter(ev => ev.type === 'kill' && ev.killerSlot >= 0 && ev.victimSlot >= 0)
+    .sort((a, b) => a.t - b.t);
+  if (killEvs.length < 2) return null;
+
+  const GAP = 30;
+  const clusters = [];
+  let cur = [killEvs[0]];
+  for (let i = 1; i < killEvs.length; i++) {
+    if (killEvs[i].t - killEvs[i - 1].t <= GAP) {
+      cur.push(killEvs[i]);
+    } else {
+      if (cur.length >= 2) clusters.push(cur);
+      cur = [killEvs[i]];
+    }
+  }
+  if (cur.length >= 2) clusters.push(cur);
+  if (clusters.length === 0) return null;
+
+  const fmtT = s => {
+    const m = Math.floor(Math.abs(s) / 60);
+    const sec = Math.floor(Math.abs(s) % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+  const slotMap = {};
+  allPlayers.forEach(p => { slotMap[p.slot] = p; });
+  const getName = s => { const p = slotMap[s]; return p ? (p.nickname || p.persona_name || `#${s}`) : `#${s}`; };
+  const sc = s => s < 5 ? '#4ade80' : '#f87171';
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Teamfights <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— kill clusters within 30s · {clusters.length} fights</span></h3>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {clusters.map((cluster, ci) => {
+          const rK = cluster.filter(ev => ev.killerSlot < 5).length;
+          const dK = cluster.filter(ev => ev.killerSlot >= 5).length;
+          const winner = rK > dK ? 'radiant' : dK > rK ? 'dire' : 'draw';
+          const wColor = winner === 'radiant' ? '#4ade80' : winner === 'dire' ? '#f87171' : '#94a3b8';
+          return (
+            <div key={ci} style={{
+              background: '#0f172a', border: `1px solid ${wColor}33`,
+              borderRadius: 8, padding: '10px 14px', minWidth: 190, flex: '1 1 190px', maxWidth: 280,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>⚔ {fmtT(cluster[0].t)}</span>
+                <span style={{ fontSize: 11, color: wColor, fontWeight: 700, textTransform: 'uppercase' }}>
+                  {winner === 'draw' ? 'Draw' : `${winner[0].toUpperCase()}${winner.slice(1)} wins`}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: '#475569', marginBottom: 6 }}>
+                {cluster[cluster.length - 1].t - cluster[0].t}s · <span style={{ color: '#4ade80' }}>R {rK}K</span> vs <span style={{ color: '#f87171' }}>D {dK}K</span>
+              </div>
+              {cluster.map((ev, ei) => (
+                <div key={ei} style={{ fontSize: 11, display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <span style={{ color: '#475569', minWidth: 34 }}>{fmtT(ev.t)}</span>
+                  <span style={{ color: sc(ev.killerSlot) }}>{getName(ev.killerSlot)}</span>
+                  <span style={{ color: '#475569' }}>⚔</span>
+                  <span style={{ color: sc(ev.victimSlot) }}>{getName(ev.victimSlot)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1958,7 +2231,10 @@ export default function MatchDetail() {
 
       <KillFeedPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <KillHeatmapPanel timeline={match.game_timeline} allPlayers={allPlayers} />
-      <SupportReportPanel players={allPlayers} />
+      <TeamfightPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <SupportReportPanel players={allPlayers} timeline={match.game_timeline} />
+      <DeathTimingPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <ComebackMetricPanel timeline={match.game_timeline} allPlayers={allPlayers} />
 
       {allPlayers.some(p => p.abilities && p.abilities.length > 0) && (
         <div className="expanded-stats-section">

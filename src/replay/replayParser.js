@@ -932,7 +932,12 @@ class ReplayParser {
           // Courier
           if (tname.includes('courier') || tname.includes('donkey')) {
             const ks = npcNameToSlot[aname];
-            if (ks != null && ks >= 0 && ks < 10 && players[ks]) players[ks].courierKills = (players[ks].courierKills || 0) + 1;
+            if (ks != null && ks >= 0 && ks < 10 && players[ks]) {
+              players[ks].courierKills = (players[ks].courierKills || 0) + 1;
+              // The killed courier belongs to the killer's enemy team
+              const killedTeam = ks < 5 ? 'dire' : 'radiant';
+              gameEvents.push({ t: deathTime, type: 'courier', killerSlot: ks, killedTeam });
+            }
           }
           // Building
           if (tname.includes('tower') || tname.includes('fort') || tname.includes('barracks') || tname.includes('rax')) {
@@ -1764,6 +1769,32 @@ class ReplayParser {
       radiantWin = radiantKills > direKills;
     }
 
+    // --- Smoke success rate ---
+    // For each player's smoke activations, check if a same-team kill happens within 60s
+    const smokeSuccesses = {};
+    const killEventsList = gameEvents.filter(ev => ev.type === 'kill');
+    for (const [slotStr, times] of Object.entries(smokePerPlayer)) {
+      const slot = parseInt(slotStr);
+      const team = slot < 5 ? 'radiant' : 'dire';
+      let successes = 0;
+      for (const smokeT of times) {
+        const windowEnd = smokeT + 60;
+        const hasKill = killEventsList.some(ev => {
+          if (ev.t < smokeT || ev.t > windowEnd) return false;
+          if (ev.killerSlot >= 0) {
+            const kt = ev.killerSlot < 5 ? 'radiant' : 'dire';
+            if (kt === team) return true;
+          }
+          if (Array.isArray(ev.assistSlots)) {
+            if (ev.assistSlots.some(as => (as < 5 ? 'radiant' : 'dire') === team)) return true;
+          }
+          return false;
+        });
+        if (hasKill) successes++;
+      }
+      smokeSuccesses[slot] = successes;
+    }
+
     // --- Draft post-processing ---
     // Step 1: deduplicate by hero_id, preferring entries with a non-null rawTeam
     const draftByHero = new Map();
@@ -1968,6 +1999,7 @@ class ReplayParser {
               time: a.time || 0,
             })),
             smokeTimes: smokePerPlayer[slot] || [],
+            smokeSuccesses: smokeSuccesses[slot] || 0,
           };
         }),
         events: gameEvents.sort((a, b) => a.t - b.t),
