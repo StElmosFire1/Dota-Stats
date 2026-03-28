@@ -2747,14 +2747,14 @@ async function deletePatchNote(id) {
 
 async function seedPatchNotes(notes) {
   const p = getPool();
+  // Remove all System-authored notes and re-insert in the correct sequential order.
+  // published_at is set to NOW() on insert, so inserting in order ensures correct
+  // display ordering on the patch notes page. User-created notes are preserved.
+  await p.query(`DELETE FROM patch_notes WHERE author = 'System'`);
   for (const note of notes) {
     await p.query(`
       INSERT INTO patch_notes (version, title, content, author)
       VALUES ($1, $2, $3, $4)
-      ON CONFLICT (version) DO UPDATE
-        SET title = EXCLUDED.title,
-            content = EXCLUDED.content,
-            author = EXCLUDED.author
     `, [note.version, note.title, note.content, note.author || 'System']);
   }
   console.log(`[DB] Patch notes seeded (${notes.length} entries).`);
