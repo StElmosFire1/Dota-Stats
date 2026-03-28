@@ -430,7 +430,7 @@ function TimelineGraph({ timeline, allPlayers }) {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-            <XAxis dataKey="t" tickFormatter={fmtTime} stroke="#475569" tick={{ fill: '#64748b', fontSize: 11 }} />
+            <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} tickFormatter={fmtTime} stroke="#475569" tick={{ fill: '#64748b', fontSize: 11 }} />
             <YAxis
               tickFormatter={v => { const abs = Math.abs(v); return `${v >= 0 ? '+' : ''}${fmtLargeNum(v)}`; }}
               stroke="#475569" tick={{ fill: '#64748b', fontSize: 11 }} width={52}
@@ -469,6 +469,8 @@ function TimelineGraph({ timeline, allPlayers }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
             <XAxis
               dataKey="t"
+              type="number"
+              domain={['dataMin', 'dataMax']}
               tickFormatter={fmtTime}
               stroke="#475569"
               tick={{ fill: '#64748b', fontSize: 11 }}
@@ -824,7 +826,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                     <td className="col-items">
                       <div className="items-row">
                         {Array.from({ length: 6 }, (_, j) => {
-                          const item = (p.items || []).find(it => it.item_slot === j);
+                          const item = (p.items || []).find(it => it.item_slot === j && it.item_name !== 'aghanims_shard');
                           return <ItemIcon key={j} itemName={item?.item_name} itemId={item?.item_id} />;
                         })}
                         <span className="aghs-indicators">
@@ -843,7 +845,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                         </span>
                         <span className="backpack-separator">|</span>
                         {Array.from({ length: 3 }, (_, j) => {
-                          const item = (p.items || []).find(it => it.item_slot === (j + 6));
+                          const item = (p.items || []).find(it => it.item_slot === (j + 6) && it.item_name !== 'aghanims_shard');
                           return <ItemIcon key={`bp-${j}`} itemName={item?.item_name} itemId={item?.item_id} />;
                         })}
                       </div>
