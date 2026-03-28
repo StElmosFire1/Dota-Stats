@@ -33,6 +33,8 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Achievement badges on player profiles expanded: rampage, ultra kill, first blood, massacre, ward lord/breaker.
 - Player prediction accuracy stats shown on player profiles.
 - Tower kill markers on match timeline (🗼 towers, 🏛️ barracks) — color-coded green/red by which team loses the building; shown on both the gold lead AreaChart and per-player LineChart with legend.
+- Pudge Hook Stats page (/pudge-stats) under Tools — per-player: games as Pudge, win rate, KDA, avg GPM, hook attempts, hook hits, accuracy %, hits/game, attempts/game, rampages. Hook data only populated from replay uploads.
+- Replay file retention: uploaded .dem files are archived after parsing to `REPLAY_STORE_DIR` (default `replay-store/`). Expire after `REPLAY_STORE_DAYS` days (default 7). Superusers can download replays from match detail page ("Download Replay" button) and manage all stored replays from the Admin Panel (load, extend expiry, keep forever, download).
 - Records & Comebacks page (/records) — Hall of Records (all-time single-game bests for kills/GPM/damage/healing etc.), First Blood leaderboard (most FBs with rate), Greatest Comebacks (gold lead deficit overcome, sorted by margin).
 - Player profiles: 🩸 First Bloods stat card (count + rate%), Win Rate by Game Duration section (4 brackets: <25m, 25-35m, 35-45m, >45m).
 - Heroes page: 🔧 Skill Builds tab — hero selector showing most common ability leveled at each skill point with timing and frequency data.
