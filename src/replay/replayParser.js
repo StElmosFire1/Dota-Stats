@@ -644,6 +644,7 @@ class ReplayParser {
     const abilityLevelups = {};
     const finalItems = {};
     const finalItemsTime = {}; // slot → timestamp of the most recent hero_inventory snapshot
+    let _inventoryDebugLogged = false;
     const killedBy = {};       // killedBy[victimSlot][killerSlot] = count
     const supportGoldSpent = {}; // supportGoldSpent[slot] = total gold
     const hookCasts      = [];  // [{time, slot}] — pudge hook cast events (from combatlog)
@@ -992,21 +993,34 @@ class ReplayParser {
         const slot = e.slot;
         const currentTime = e.time || 0;
         if (e.hero_inventory && Array.isArray(e.hero_inventory) && e.hero_inventory.length > 0) {
+          if (!_inventoryDebugLogged) {
+            console.log(`[Replay] FIRST hero_inventory sample (slot=${slot}, time=${currentTime}): ${JSON.stringify(e.hero_inventory.slice(0, 3))}`);
+            _inventoryDebugLogged = true;
+          }
           const snapshot = {};
           for (const item of e.hero_inventory) {
-            if (item && item.id && item.slot != null) {
-              snapshot[item.slot] = {
-                itemId: 0,
-                itemName: item.id.replace(/^item_/, ''),
-                time: currentTime,
-                charges: item.num_charges || 0
-              };
+            if (item && item.slot != null) {
+              const rawId = item.id ?? item.itemid ?? item.item_id ?? null;
+              // Numeric 0 means empty slot
+              if (rawId === 0 || rawId === null) continue;
+              const itemName = typeof rawId === 'string' ? rawId.replace(/^item_/, '') :
+                               typeof rawId === 'number' ? (ITEM_ID_TO_NAME[rawId] || `id_${rawId}`) : '';
+              if (itemName) {
+                snapshot[item.slot] = {
+                  itemId: typeof rawId === 'number' ? rawId : 0,
+                  itemName,
+                  time: currentTime,
+                  charges: item.num_charges || 0
+                };
+              }
             }
           }
           // Always keep the latest snapshot (latest timestamp wins)
-          if (!finalItemsTime[slot] || currentTime >= finalItemsTime[slot]) {
-            finalItems[slot] = snapshot;
-            finalItemsTime[slot] = currentTime;
+          if (Object.keys(snapshot).length > 0) {
+            if (!finalItemsTime[slot] || currentTime >= finalItemsTime[slot]) {
+              finalItems[slot] = snapshot;
+              finalItemsTime[slot] = currentTime;
+            }
           }
         }
       }
@@ -1028,6 +1042,15 @@ class ReplayParser {
     console.log('[Replay] Hero healing by slot:', JSON.stringify(heroHealing));
     console.log('[Replay] Damage taken by slot:', JSON.stringify(damageTaken));
     console.log('[Replay] Support gold spent by slot:', JSON.stringify(supportGoldSpent));
+
+    // Summarise inventory snapshots
+    const invSummary = {};
+    for (let s = 0; s < 10; s++) {
+      invSummary[s] = finalItemsTime[s] != null
+        ? `t=${finalItemsTime[s]}s items=${Object.keys(finalItems[s]||{}).length}`
+        : 'none';
+    }
+    console.log('[Replay] hero_inventory snapshot summary (duration=' + duration + 's):', JSON.stringify(invSummary));
 
     // Compute nemesis per slot (killer who killed victim the most, minimum 2 kills)
     const nemesis = {};
@@ -1298,11 +1321,14 @@ class ReplayParser {
         const snapshotTime = finalItemsTime[slot] || 0;
         const isRecent = duration > 0 ? snapshotTime >= duration - 180 : true;
         inventoryValid = isRecent;
+        const snapItems = Object.entries(finalItems[slot]).map(([s, d]) => `${s}:${d.itemName}`).join(',');
         if (!isRecent) {
-          console.log(`[Replay] slot ${slot}: hero_inventory snapshot is stale (at ${snapshotTime}s, game ended at ${duration}s) — using purchase log fallback`);
+          console.log(`[Replay] slot ${slot}: STALE snapshot (t=${snapshotTime}s, duration=${duration}s) items=[${snapItems}] — purchase log fallback`);
         } else {
-          console.log(`[Replay] slot ${slot}: using hero_inventory snapshot from ${snapshotTime}s (game end ${duration}s)`);
+          console.log(`[Replay] slot ${slot}: OK snapshot t=${snapshotTime}s/${duration}s items=[${snapItems}]`);
         }
+      } else {
+        console.log(`[Replay] slot ${slot}: NO hero_inventory snapshot — purchase log fallback (purchases=${(itemPurchases[slot]||[]).length})`);
       }
 
       if (finalItems[slot] && inventoryValid) {
