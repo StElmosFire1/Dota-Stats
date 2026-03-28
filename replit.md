@@ -26,7 +26,14 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Season buy-in and prize pool management via Stripe.
 - Prize category configuration (leaderboard rank, position MVPs, stat-based awards, custom) with both fixed AUD $ and % of prize pool modes.
 - Steam OpenID sign-in for verified identity on buy-ins.
-- Multi-kill leaderboard page (/multikills) — sortable by rampages, ultra kills, triples, doubles.
+- Multi-kill leaderboard — now lives as a tab inside Records & Comebacks page (/records), season-aware, sortable by rampages/ultra kills/triples/doubles.
+- Head to Head and Compare Players combined into single Player Tools page (/player-tools) with tab switcher; both season-aware. Compare uses improved center-anchored bars with % advantage indicator.
+- Skill Builds tab removed from Heroes page (data not populating meaningfully).
+- Seasons page removed from Tools dropdown — accessible via Admin Panel Quick Links.
+- Players page removed from main nav — accessible via Admin Panel Quick Links.
+- Captain win rate column now shows game count in parentheses e.g. "75% (4g)" with hover tooltip showing W/L breakdown.
+- Synergy matrix threshold: 1 game minimum when season filter is active (vs 3 for all-time) — fixes 100% display for players with few season games.
+- Greatest Comebacks fixed: now correctly computes gold lead from per-player networth samples in game_timeline (previous query looked for non-existent goldLead key).
 - Hero position meta tab on the Heroes page — win rates per hero by position (Pos 1–5).
 - Most Improved widget on the Leaderboard — top MMR gainers over 30 days (from rating_history).
 - Match prediction system: `!predict <matchId> radiant|dire` Discord command + `/api/predictions` endpoints.
