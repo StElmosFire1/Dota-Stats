@@ -99,6 +99,7 @@ public class Parse {
     boolean isDraftStartTimeProcessed = false; // flag to know if draft start time is already handled
 
     boolean isDotaPlusProcessed = false;
+    boolean isFinalItemsWritten = false;
 
     // Variables to track pause timings
     boolean wasPaused = false;
@@ -823,13 +824,40 @@ public class Parse {
                 }
                 isDotaPlusProcessed = true;
             }
+
+            // When the game is over, capture each player's final inventory (main inventory + backpack)
+            if (postGame && !isFinalItemsWritten && init && pr != null) {
+                for (int i = 0; i < numPlayers; i++) {
+                    try {
+                        int heroHandle = getEntityProperty(pr, "m_vecPlayerTeamData.%i.m_hSelectedHero", validIndices[i]);
+                        Entity heroEntity = ctx.getProcessor(Entities.class).getByHandle(heroHandle);
+                        if (heroEntity != null) {
+                            List<Item> finalInventory = getHeroInventory(ctx, heroEntity);
+                            for (Item item : finalInventory) {
+                                Entry finalItemEntry = new Entry(time);
+                                finalItemEntry.type = "final_items";
+                                finalItemEntry.slot = i;
+                                finalItemEntry.key = item.id;
+                                finalItemEntry.itemslot = item.slot;
+                                finalItemEntry.charges = item.num_charges;
+                                finalItemEntry.secondary_charges = item.num_secondary_charges;
+                                output(finalItemEntry);
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println("final_items error slot " + i + ": " + e);
+                    }
+                }
+                isFinalItemsWritten = true;
+            }
         }
     }
 
     private List<Item> getHeroInventory(Context ctx, Entity eHero) {
-        List<Item> inventoryList = new ArrayList<>(6);
+        // 0-5: main inventory, 6-8: backpack
+        List<Item> inventoryList = new ArrayList<>(9);
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 9; i++) {
             try {
                 Item item = getHeroItem(ctx, eHero, i);
                 if (item != null) {
@@ -859,42 +887,58 @@ public class Parse {
     }
 
     /**
-     * Uses "EntityNames" string table and Entities processor
-     * 
+     * Reads a hero item from the given inventory/backpack slot index.
+     * Uses entity class name (getDtClass) as primary source — reliable across all patches.
+     *
      * @param ctx   Context
      * @param eHero Hero entity
-     * @param idx   0-5 - inventory, 6-8 - backpack, 9-16 - stash
-     * @return {@code null} - empty slot. Throws @{@link UnknownItemFoundException}
-     *         if item information can't be extracted
+     * @param idx   0-5 - inventory, 6-8 - backpack
+     * @return {@code null} for empty slot, Item otherwise
      */
     private Item getHeroItem(Context ctx, Entity eHero, int idx) throws UnknownItemFoundException {
-        StringTable stEntityNames = ctx.getProcessor(StringTables.class).forName("EntityNames");
         Entities entities = ctx.getProcessor(Entities.class);
 
         Integer hItem = eHero.getProperty("m_hItems." + Util.arrayIdxToString(idx));
-        if (hItem == 0xFFFFFF) {
+        if (hItem == null || hItem == 0xFFFFFF) {
             return null;
         }
         Entity eItem = entities.getByHandle(hItem);
         if (eItem == null) {
-            throw new UnknownItemFoundException(String.format("Can't find item by its handle (%d)", hItem));
+            return null;
         }
-        String itemName = stEntityNames.getNameByIndex(eItem.getProperty("m_pEntity.m_nameStringableIndex"));
-        if (itemName == null) {
-            throw new UnknownItemFoundException("Can't get item name from EntityName string table");
+
+        // Use entity class name directly — always accurate regardless of patch changes
+        // e.g. "CDOTA_Item_Bottle" → "item_bottle", "CDOTA_Item_Black_King_Bar" → "item_black_king_bar"
+        String dtName = eItem.getDtClass().getDtName();
+        String itemName = null;
+        if (dtName != null && dtName.startsWith("CDOTA_Item_")) {
+            String suffix = dtName.substring("CDOTA_Item_".length());
+            // CamelCase to snake_case: insert _ before each uppercase letter then lowercase everything
+            String snake = suffix.replaceAll("([A-Z])", "_$1").toLowerCase()
+                                 .replaceAll("^_+", "").replaceAll("_+", "_");
+            itemName = "item_" + snake;
+        }
+
+        // Skip empty/placeholder slots
+        if (itemName == null || itemName.equals("item_none") || itemName.equals("item_")) {
+            return null;
         }
 
         Item item = new Item();
         item.id = itemName;
         item.slot = idx;
-        int numCharges = eItem.getProperty("m_iCurrentCharges");
-        if (numCharges != 0) {
-            item.num_charges = numCharges;
-        }
-        int numSecondaryCharges = eItem.getProperty("m_iSecondaryCharges");
-        if (numSecondaryCharges != 0) {
-            item.num_secondary_charges = numSecondaryCharges;
-        }
+        try {
+            int numCharges = eItem.getProperty("m_iCurrentCharges");
+            if (numCharges != 0) {
+                item.num_charges = numCharges;
+            }
+        } catch (Exception ignored) {}
+        try {
+            int numSecondaryCharges = eItem.getProperty("m_iSecondaryCharges");
+            if (numSecondaryCharges != 0) {
+                item.num_secondary_charges = numSecondaryCharges;
+            }
+        } catch (Exception ignored) {}
         return item;
     }
 

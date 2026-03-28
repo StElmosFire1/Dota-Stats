@@ -644,6 +644,7 @@ class ReplayParser {
     const abilityLevelups = {};
     const finalItems = {};
     const finalItemsTime = {}; // slot → timestamp of the most recent hero_inventory snapshot
+    const parsedFinalItems = {}; // slot → [{itemName, slot, charges}] from the parser's final_items blob field
     let _inventoryDebugLogged = false;
     let _intervalKeysLogged = false;
     let _playerStatsKeysLogged = false;
@@ -794,6 +795,22 @@ class ReplayParser {
             if (!itemPurchases[buyerSlot]) itemPurchases[buyerSlot] = [];
             itemPurchases[buyerSlot].push({ itemName, time: e.time || 0 });
           }
+        }
+      }
+
+      // ── Final items (blob mode only) ──────────────────────────────────────
+      // Emitted once at game end by the parser: type "final_items", slot, key (item name with "item_" prefix),
+      // itemslot (inventory slot 0-8), charges, secondary_charges
+      if (e.type === 'final_items' && e.key && e.slot != null) {
+        const slot = e.slot;
+        if (slot >= 0 && slot < 10) {
+          if (!parsedFinalItems[slot]) parsedFinalItems[slot] = [];
+          parsedFinalItems[slot].push({
+            itemName: e.key.startsWith('item_') ? e.key : 'item_' + e.key,
+            slot: e.itemslot != null ? e.itemslot : parsedFinalItems[slot].length,
+            charges: e.charges || null,
+            secondaryCharges: e.secondary_charges || null,
+          });
         }
       }
 
@@ -1439,38 +1456,57 @@ class ReplayParser {
         (itemPurchases[slot] || []).map(p => p.itemName.replace(/^item_/, ''))
       );
 
-      // Validate the hero_inventory snapshot using a TIME CHECK only:
-      // The snapshot must be from the final 90 seconds of the game.
-      // Snapshots from early/mid-game are stale and unreliable.
-      // NOTE: A purchase-log cross-check was previously used here but caused false negatives —
-      // assembled items (Lotus Orb, Eul's, etc.) and Roshan drops (Aegis, Cheese) do not appear
-      // in the purchase log by their final item name, so the cross-check wrongly rejected valid
-      // snapshots and fell back to the purchase log, producing incorrect end-game items.
-      let inventoryValid = false;
-      if (finalItems[slot]) {
-        const snapshotTime = finalItemsTime[slot] || 0;
-        const isRecent = duration > 0 ? snapshotTime >= duration - 180 : true;
-        inventoryValid = isRecent;
-        const snapItems = Object.entries(finalItems[slot]).map(([s, d]) => `${s}:${d.itemName}`).join(',');
-        if (!isRecent) {
-          console.log(`[Replay] slot ${slot}: STALE snapshot (t=${snapshotTime}s, duration=${duration}s) items=[${snapItems}] — purchase log fallback`);
-        } else {
-          console.log(`[Replay] slot ${slot}: OK snapshot t=${snapshotTime}s/${duration}s items=[${snapItems}]`);
-        }
-      } else {
-        console.log(`[Replay] slot ${slot}: NO hero_inventory snapshot — purchase log fallback (purchases=${(itemPurchases[slot]||[]).length})`);
-      }
-
-      if (finalItems[slot] && inventoryValid) {
-        for (const [itemSlot, itemData] of Object.entries(finalItems[slot])) {
+      // ── Priority 1: parser's final_items (entity snapshot at game end — most accurate) ──
+      if (parsedFinalItems[slot] && parsedFinalItems[slot].length > 0) {
+        const items = parsedFinalItems[slot];
+        console.log(`[Replay] slot ${slot}: using parser final_items (${items.length} items): [${items.map(i => i.itemName).join(', ')}]`);
+        // Sort by inventory slot so ordering is correct
+        items.sort((a, b) => a.slot - b.slot);
+        for (const item of items) {
+          const name = item.itemName.replace(/^item_/, '');
           playerItems.push({
-            slot: parseInt(itemSlot),
-            itemId: itemData.itemId,
-            itemName: itemData.itemName || ITEM_ID_TO_NAME[itemData.itemId] || '',
+            slot: item.slot,
+            itemId: 0,
+            itemName: name,
             purchaseTime: 0,
+            charges: item.charges,
+            secondaryCharges: item.secondaryCharges,
+            isBackpack: item.slot >= 6,
           });
         }
       }
+
+      // ── Priority 2: hero_inventory snapshot from interval events ──────────
+      // Validate using a TIME CHECK only: snapshot must be from the final 180 seconds of the game.
+      if (playerItems.length === 0) {
+        let inventoryValid = false;
+        if (finalItems[slot]) {
+          const snapshotTime = finalItemsTime[slot] || 0;
+          const isRecent = duration > 0 ? snapshotTime >= duration - 180 : true;
+          inventoryValid = isRecent;
+          const snapItems = Object.entries(finalItems[slot]).map(([s, d]) => `${s}:${d.itemName}`).join(',');
+          if (!isRecent) {
+            console.log(`[Replay] slot ${slot}: STALE hero_inventory snapshot (t=${snapshotTime}s, duration=${duration}s) — purchase log fallback`);
+          } else {
+            console.log(`[Replay] slot ${slot}: using hero_inventory snapshot t=${snapshotTime}s/${duration}s items=[${snapItems}]`);
+          }
+        } else {
+          console.log(`[Replay] slot ${slot}: NO hero_inventory snapshot — purchase log fallback (purchases=${(itemPurchases[slot]||[]).length})`);
+        }
+
+        if (finalItems[slot] && inventoryValid) {
+          for (const [itemSlot, itemData] of Object.entries(finalItems[slot])) {
+            playerItems.push({
+              slot: parseInt(itemSlot),
+              itemId: itemData.itemId,
+              itemName: itemData.itemName || ITEM_ID_TO_NAME[itemData.itemId] || '',
+              purchaseTime: 0,
+            });
+          }
+        }
+      }
+
+      // ── Priority 3: purchase log reconstruction ───────────────────────────
       if (playerItems.length === 0 && purchases.length > 0) {
         // Build a full set of item names this player ever purchased, used for component filtering.
         const allPurchasedNames = new Set(purchases.map(p => p.itemName));

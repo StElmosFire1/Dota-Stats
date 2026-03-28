@@ -89,6 +89,7 @@ class PlayerData {
     public Boolean pred_vict = false;
     public List<Map<String, Object>> neutral_tokens_log = new ArrayList<>();
     public List<Map<String, Object>> neutral_item_history = new ArrayList<>();
+    public List<Map<String, Object>> final_items = new ArrayList<>();
 }
 
 class Metadata {
@@ -307,6 +308,13 @@ public class CreateParsedDataBlob {
     private void handleArrayField(Entry e, PlayerData player) {
         if ("neutral_item_history".equals(e.type)) {
             handleNeutralItemHistory(e, player.neutral_item_history);
+        } else if ("final_items".equals(e.type)) {
+            Map<String, Object> obj = new HashMap<>();
+            obj.put("key", e.key);
+            obj.put("slot", e.itemslot);
+            if (e.charges != null) obj.put("charges", e.charges);
+            if (e.secondary_charges != null) obj.put("secondary_charges", e.secondary_charges);
+            player.final_items.add(obj);
         } else if (e.interval != null && e.interval) {
             List<Integer> targetList = getPlayerIntegerList(player, e.type);
             targetList.add(e.value);
@@ -1388,7 +1396,7 @@ public class CreateParsedDataBlob {
         return Arrays.asList("times", "gold_t", "lh_t", "dn_t", "xp_t", "obs_log",
                 "sen_log", "obs_left_log", "sen_left_log", "purchase_log", "kills_log",
                 "buyback_log", "runes_log", "connection_log", "neutral_tokens_log",
-                "neutral_item_history").contains(type);
+                "neutral_item_history", "final_items").contains(type);
     }
 
     private boolean isMapField(String type) {
