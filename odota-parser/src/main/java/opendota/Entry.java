@@ -30,6 +30,8 @@ public class Entry implements Cloneable {
     public Integer gold_reason;
     public Integer xp_reason;
     public String valuename;
+    // damage_type bitmask: 1=Physical, 2=Magical, 4=Pure, 8=HP Removal (from S2CombatLogEntry)
+    public Integer damage_type;
     // public Float stun_duration;
     // public Float slow_duration;
     // entity fields

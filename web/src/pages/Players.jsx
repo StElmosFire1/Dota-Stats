@@ -106,12 +106,12 @@ export default function Players() {
               const games = parseInt(p.games_played) || 0;
               const wins = parseInt(p.wins) || 0;
               const winRate = games > 0 ? ((wins / games) * 100).toFixed(0) : '0';
-              const displayName = p.nickname || p.persona_name || `Player ${p.account_id}`;
+              const originalName = p.persona_name || `Player ${p.account_id}`;
               return (
                 <tr key={key || idx}>
                   <td className="col-player">
                     <Link to={getProfileLink(p)} className="player-link">
-                      {displayName}
+                      {originalName}
                     </Link>
                   </td>
                   <td className="col-stat">{games}</td>

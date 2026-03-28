@@ -630,6 +630,7 @@ class ReplayParser {
     const towerDamage = {};
     const heroHealing = {};
     const damageTaken = {};
+    const damageByType = {};  // slot → { physical, magical, pure } — from damage_type bitmask (1=phys, 2=magic, 4=pure)
     const hdPoints = {};   // slot → [{t, cumHd}] — cumulative hero damage snapshots for timeline back-fill
     const wardKills = {};
     const obsPurchased = {};
@@ -984,6 +985,13 @@ class ReplayParser {
             heroDamage[attackerSlot] = (heroDamage[attackerSlot] || 0) + e.value;
             if (!hdPoints[attackerSlot]) hdPoints[attackerSlot] = [];
             hdPoints[attackerSlot].push({ t: e.time || 0, cumHd: heroDamage[attackerSlot] });
+            // Damage type breakdown (damage_type bitmask from Java: 1=physical, 2=magical, 4=pure)
+            if (e.damage_type != null) {
+              if (!damageByType[attackerSlot]) damageByType[attackerSlot] = { physical: 0, magical: 0, pure: 0 };
+              if (e.damage_type & 1)  damageByType[attackerSlot].physical += e.value;
+              else if (e.damage_type & 2) damageByType[attackerSlot].magical += e.value;
+              else if (e.damage_type & 4) damageByType[attackerSlot].pure   += e.value;
+            }
           }
           if (victimName && (victimName.includes('tower') || victimName.includes('fort') || victimName.includes('barracks') || victimName.includes('rax'))) {
             towerDamage[attackerSlot] = (towerDamage[attackerSlot] || 0) + e.value;
@@ -1632,6 +1640,9 @@ class ReplayParser {
         towerDamage: towerDamage[slot] || 0,
         heroHealing: heroHealing[slot] || 0,
         damageTaken: damageTaken[slot] || 0,
+        damagePhysical: (damageByType[slot] || {}).physical || 0,
+        damageMagical: (damageByType[slot] || {}).magical || 0,
+        damagePure: (damageByType[slot] || {}).pure || 0,
         level: p.level,
         netWorth: p.networth || p.gold,
         obsPlaced: p.obsPlaced,

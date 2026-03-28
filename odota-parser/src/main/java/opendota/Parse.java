@@ -15,6 +15,7 @@ import skadistats.clarity.processor.reader.OnTickStart;
 import skadistats.clarity.processor.runner.Context;
 import skadistats.clarity.processor.runner.SimpleRunner;
 import skadistats.clarity.model.CombatLogEntry;
+import skadistats.clarity.model.s2.S2CombatLogEntry;
 import skadistats.clarity.processor.stringtables.StringTables;
 import skadistats.clarity.processor.stringtables.UsesStringTable;
 import skadistats.clarity.source.InputStreamSource;
@@ -380,6 +381,13 @@ public class Parse {
                 combatLogEntry.xp_reason = cle.getXpReason();
             }
 
+            // Damage type (physical/magical/pure) — only on S2CombatLogEntry (Dota 2 Source 2)
+            if (cle instanceof S2CombatLogEntry) {
+                S2CombatLogEntry s2 = (S2CombatLogEntry) cle;
+                if (s2.hasDamageType() && s2.getDamageType() != 0) {
+                    combatLogEntry.damage_type = s2.getDamageType();
+                }
+            }
             combatLogEntry.greevils_greed_stack = greevilsGreedVisitor.visit(time, cle);
             TrackStatus trackStatus = trackVisitor.visit(time, cle);
             if (trackStatus != null) {

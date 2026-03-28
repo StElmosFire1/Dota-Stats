@@ -1307,6 +1307,66 @@ function PowerSpikesPanel({ timeline, allPlayers }) {
   );
 }
 
+// ── DamageBreakdownPanel ─────────────────────────────────────────────────────
+function DamageBreakdownPanel({ players }) {
+  const playersWithBreakdown = (players || []).filter(p =>
+    (p.damage_physical || 0) + (p.damage_magical || 0) + (p.damage_pure || 0) > 0
+  );
+  if (playersWithBreakdown.length === 0) return null;
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Damage Breakdown <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— hero-to-hero damage only</span></h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              <th className="col-stat" title="Physical damage dealt to heroes">Physical</th>
+              <th className="col-stat" title="Magical damage dealt to heroes">Magical</th>
+              <th className="col-stat" title="Pure damage dealt to heroes">Pure</th>
+              <th style={{ paddingLeft: 8, textAlign: 'left', color: '#888', fontWeight: 400, fontSize: '0.78rem' }}>Split</th>
+            </tr>
+          </thead>
+          <tbody>
+            {playersWithBreakdown.map((p, i) => {
+              const phys = p.damage_physical || 0;
+              const mag  = p.damage_magical  || 0;
+              const pure = p.damage_pure     || 0;
+              const total = phys + mag + pure || 1;
+              const pPct = Math.round((phys / total) * 100);
+              const mPct = Math.round((mag  / total) * 100);
+              const uPct = Math.round((pure / total) * 100);
+              const color = p.team === 'radiant' ? '#4ade80' : '#f87171';
+              const name = p.nickname || p.persona_name || `Slot ${p.slot}`;
+              return (
+                <tr key={i}>
+                  <td className="col-player" style={{ color }}>{name}</td>
+                  <td className="col-stat" style={{ color: '#fb923c' }}>{phys.toLocaleString()}</td>
+                  <td className="col-stat" style={{ color: '#60a5fa' }}>{mag.toLocaleString()}</td>
+                  <td className="col-stat" style={{ color: '#a78bfa' }}>{pure.toLocaleString()}</td>
+                  <td style={{ paddingLeft: 8, minWidth: 160 }}>
+                    <div style={{ display: 'flex', height: 10, borderRadius: 4, overflow: 'hidden', gap: 1 }}>
+                      {phys > 0 && <div style={{ flex: pPct, background: '#fb923c' }} title={`Physical ${pPct}%`} />}
+                      {mag  > 0 && <div style={{ flex: mPct, background: '#60a5fa' }} title={`Magical ${mPct}%`} />}
+                      {pure > 0 && <div style={{ flex: uPct, background: '#a78bfa' }} title={`Pure ${uPct}%`} />}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#666', marginTop: 2 }}>
+                      {phys > 0 && <span style={{ color: '#fb923c', marginRight: 6 }}>P {pPct}%</span>}
+                      {mag  > 0 && <span style={{ color: '#60a5fa', marginRight: 6 }}>M {mPct}%</span>}
+                      {pure > 0 && <span style={{ color: '#a78bfa' }}>Pure {uPct}%</span>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── AegisEventsPanel ────────────────────────────────────────────────────────
 function AegisEventsPanel({ timeline, allPlayers }) {
   if (!timeline || !timeline.events) return null;
@@ -1681,6 +1741,7 @@ export default function MatchDetail() {
       <TimelineGraph timeline={match.game_timeline} allPlayers={allPlayers} />
 
       <BuildingDeathsPanel timeline={match.game_timeline} />
+      <DamageBreakdownPanel players={allPlayers} />
       <AegisEventsPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <TeamAbilitiesPanel teamAbilities={match.team_abilities} radiantWin={match.radiant_win} />
       <SmokePerPlayerPanel timeline={match.game_timeline} allPlayers={allPlayers} />

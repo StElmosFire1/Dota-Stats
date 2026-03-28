@@ -480,6 +480,9 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS nemesis_hero_name VARCHAR(100) DEFAULT ''`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS nemesis_kills INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_items ADD COLUMN IF NOT EXISTS enhancement_level INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS damage_physical INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS damage_magical INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS damage_pure INTEGER DEFAULT 0`);
 
     console.log('[DB] Schema migrations applied.');
     return true;
@@ -828,6 +831,16 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
           player.hookHits != null ? player.hookHits : null,
         ]
       );
+
+      // Persist damage type breakdown if available from replay parsing
+      if (player.damagePhysical || player.damageMagical || player.damagePure) {
+        await client.query(
+          `UPDATE player_stats SET damage_physical=$1, damage_magical=$2, damage_pure=$3
+           WHERE match_id=$4 AND slot=$5`,
+          [player.damagePhysical || 0, player.damageMagical || 0, player.damagePure || 0,
+           matchStats.matchId, player.slot || 0]
+        );
+      }
 
       if (player.items && player.items.length > 0) {
         for (const item of player.items) {
