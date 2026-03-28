@@ -687,6 +687,17 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/pudge-stats/games', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const rows = await db.getPudgeGames(seasonId);
+      res.json({ games: rows });
+    } catch (err) {
+      console.error('[API] Error fetching pudge games:', err.message);
+      res.status(500).json({ error: 'Failed to fetch pudge games' });
+    }
+  });
+
   // Superuser-only: download the archived .dem replay file for a match.
   router.get('/replays/:matchId/download', requireSuperuser, async (req, res) => {
     try {

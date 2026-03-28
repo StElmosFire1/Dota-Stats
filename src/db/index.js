@@ -3829,6 +3829,7 @@ module.exports = {
   getComebackMatches,
   createManualMatch,
   getPudgeStats,
+  getPudgeGames,
   setReplayFilePath,
   getReplayFilePath,
   expireOldReplayFiles,
@@ -3871,6 +3872,42 @@ async function getPudgeStats(seasonId = null) {
      GROUP BY ps.account_id, n.nickname
      HAVING COUNT(*) > 0
      ORDER BY total_hook_attempts DESC NULLS LAST, pudge_games DESC`,
+    params
+  );
+  for (const row of result.rows) {
+    row.display_name = decodeByteString(row.display_name);
+  }
+  return result.rows;
+}
+
+async function getPudgeGames(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
+  const result = await p.query(
+    `SELECT
+       ps.match_id,
+       m.date AS start_time,
+       COALESCE(n.nickname, ps.persona_name) AS display_name,
+       ps.account_id,
+       ps.kills,
+       ps.deaths,
+       ps.assists,
+       ps.gpm,
+       CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win)
+            THEN true ELSE false END AS won,
+       ps.hook_attempts,
+       ps.hook_hits,
+       CASE WHEN ps.hook_attempts > 0
+            THEN ROUND(100.0 * ps.hook_hits / ps.hook_attempts, 1)
+            ELSE NULL END AS accuracy
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE ps.hero_name = 'npc_dota_hero_pudge'
+       AND ps.account_id != 0
+       AND ps.hook_attempts IS NOT NULL${sc}
+     ORDER BY m.date DESC`,
     params
   );
   for (const row of result.rows) {

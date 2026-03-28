@@ -458,6 +458,10 @@ export async function getMostImproved(days = 30) {
   return fetchJson(`/most-improved?days=${days}`);
 }
 
+export async function getPudgeGames(seasonId = null) {
+  return fetchJson(`/pudge-stats/games?x=1${seasonParam(seasonId)}`);
+}
+
 export async function getHeroMeta(seasonId = null) {
   return fetchJson(`/hero-meta?x=1${seasonParam(seasonId)}`);
 }
