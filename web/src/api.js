@@ -565,3 +565,26 @@ export async function getComebackMatches(seasonId = null) {
   const q = seasonId ? `?season_id=${seasonId}` : '';
   return fetchJson(`/comeback-matches${q}`);
 }
+
+export async function getPudgeStats(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/pudge-stats${q}`);
+}
+
+export async function getStoredReplays(superuserKey) {
+  const res = await fetch(BASE + '/replays/stored', {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Request failed: ${res.status}`); }
+  return res.json();
+}
+
+export async function extendReplayExpiry(matchId, days, superuserKey) {
+  const res = await fetch(BASE + `/replays/${matchId}/extend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ days }),
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Request failed: ${res.status}`); }
+  return res.json();
+}

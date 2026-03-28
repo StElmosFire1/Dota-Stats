@@ -180,6 +180,8 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS killed_by JSONB DEFAULT '{}'`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_attempts INTEGER DEFAULT NULL`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_hits INTEGER DEFAULT NULL`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_path TEXT DEFAULT NULL`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_expires_at TIMESTAMPTZ DEFAULT NULL`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS patch_notes (
@@ -3808,4 +3810,81 @@ module.exports = {
   getPlayerGameDurationStats,
   getComebackMatches,
   createManualMatch,
+  getPudgeStats,
+  setReplayFilePath,
+  getReplayFilePath,
+  expireOldReplayFiles,
 };
+
+async function getPudgeStats(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
+  const result = await p.query(
+    `SELECT
+       ps.account_id,
+       COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
+       COUNT(*) AS pudge_games,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
+                  OR (ps.team = 'dire'    AND m.radiant_win = false) THEN 1 ELSE 0 END) AS wins,
+       SUM(ps.kills)   AS total_kills,
+       SUM(ps.deaths)  AS total_deaths,
+       SUM(ps.assists) AS total_assists,
+       ROUND(AVG(ps.kills),   1) AS avg_kills,
+       ROUND(AVG(ps.deaths),  1) AS avg_deaths,
+       ROUND(AVG(ps.assists), 1) AS avg_assists,
+       COUNT(CASE WHEN ps.hook_attempts IS NOT NULL THEN 1 END)  AS games_with_hooks,
+       SUM(CASE WHEN ps.hook_attempts IS NOT NULL THEN ps.hook_attempts ELSE 0 END) AS total_hook_attempts,
+       SUM(CASE WHEN ps.hook_hits IS NOT NULL THEN ps.hook_hits ELSE 0 END)         AS total_hook_hits,
+       ROUND(100.0 * SUM(CASE WHEN ps.hook_hits IS NOT NULL THEN ps.hook_hits ELSE 0 END)
+             / NULLIF(SUM(CASE WHEN ps.hook_attempts IS NOT NULL THEN ps.hook_attempts ELSE 0 END), 0), 1)
+             AS hook_accuracy,
+       ROUND(AVG(ps.hook_hits::float) FILTER (WHERE ps.hook_hits IS NOT NULL), 1)     AS avg_hook_hits_per_game,
+       ROUND(AVG(ps.hook_attempts::float) FILTER (WHERE ps.hook_attempts IS NOT NULL), 1) AS avg_hook_attempts_per_game,
+       SUM(ps.rampages)     AS total_rampages,
+       SUM(ps.firstblood_claimed) AS total_firstbloods,
+       ROUND(AVG(ps.hero_damage), 0) AS avg_hero_damage,
+       ROUND(AVG(ps.gpm), 0)         AS avg_gpm
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id
+     WHERE ps.hero_name = 'npc_dota_hero_pudge'
+       AND ps.account_id != 0${sc}
+     GROUP BY ps.account_id, n.nickname
+     HAVING COUNT(*) > 0
+     ORDER BY total_hook_attempts DESC NULLS LAST, pudge_games DESC`,
+    params
+  );
+  for (const row of result.rows) {
+    row.display_name = decodeByteString(row.display_name);
+  }
+  return result.rows;
+}
+
+async function setReplayFilePath(matchId, filePath, expiresAt) {
+  const p = getPool();
+  await p.query(
+    `UPDATE matches SET replay_file_path = $1, replay_file_expires_at = $2 WHERE match_id = $3`,
+    [filePath, expiresAt, matchId]
+  );
+}
+
+async function getReplayFilePath(matchId) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT replay_file_path, replay_file_expires_at FROM matches WHERE match_id = $1`,
+    [matchId]
+  );
+  return res.rows[0] || null;
+}
+
+async function expireOldReplayFiles() {
+  const p = getPool();
+  const res = await p.query(
+    `UPDATE matches SET replay_file_path = NULL, replay_file_expires_at = NULL
+     WHERE replay_file_expires_at IS NOT NULL AND replay_file_expires_at < NOW()
+     RETURNING match_id, replay_file_path`
+  );
+  // Note: caller is responsible for actually deleting the files from disk
+  return res.rows;
+}

@@ -14,6 +14,12 @@ const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/
 
 const CHUNK_DIR = '/tmp/replay-chunks';
 const UPLOAD_DIR = '/tmp/replay-uploads';
+// Replay store: persistent directory where parsed .dem files are kept for download.
+// Override via REPLAY_STORE_DIR env var. Defaults to replay-store/ beside the server file.
+const REPLAY_STORE_DIR = process.env.REPLAY_STORE_DIR
+  || path.join(__dirname, '../../replay-store');
+// How many days to keep uploaded replays (0 or unset = keep forever).
+const REPLAY_STORE_DAYS = parseInt(process.env.REPLAY_STORE_DAYS || '7', 10);
 const uploadJobs = new Map();
 const STALE_JOB_TTL = 30 * 60 * 1000;
 
@@ -22,6 +28,7 @@ function ensureDir(dir) {
 }
 ensureDir(CHUNK_DIR);
 ensureDir(UPLOAD_DIR);
+ensureDir(REPLAY_STORE_DIR);
 
 setInterval(() => {
   const now = Date.now();
@@ -35,6 +42,21 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+// Replay store cleanup: runs every 12 hours, deletes expired files from disk.
+setInterval(async () => {
+  try {
+    const expired = await db.expireOldReplayFiles();
+    for (const row of expired) {
+      if (row.replay_file_path && fs.existsSync(row.replay_file_path)) {
+        try { fs.unlinkSync(row.replay_file_path); } catch (_) {}
+        console.log(`[ReplayStore] Deleted expired replay for match ${row.match_id}`);
+      }
+    }
+  } catch (e) {
+    console.warn('[ReplayStore] Cleanup error:', e.message);
+  }
+}, 12 * 60 * 60 * 1000);
 
 function authMiddleware(req, res, next) {
   const uploadKey = process.env.UPLOAD_KEY;
@@ -648,6 +670,84 @@ function createApiRouter(startupStatus = {}) {
     } catch (err) {
       console.error('[API] Error fetching records:', err.message);
       res.status(500).json({ error: 'Failed to fetch records' });
+    }
+  });
+
+  router.get('/pudge-stats', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const rows = await db.getPudgeStats(seasonId);
+      res.json({ players: rows });
+    } catch (err) {
+      console.error('[API] Error fetching pudge stats:', err.message);
+      res.status(500).json({ error: 'Failed to fetch pudge stats' });
+    }
+  });
+
+  // Superuser-only: download the archived .dem replay file for a match.
+  router.get('/replays/:matchId/download', requireSuperuser, async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      const row = await db.getReplayFilePath(matchId);
+      if (!row || !row.replay_file_path) {
+        return res.status(404).json({ error: 'No replay file stored for this match.' });
+      }
+      if (!fs.existsSync(row.replay_file_path)) {
+        return res.status(404).json({ error: 'Replay file was deleted or has expired.' });
+      }
+      const filename = path.basename(row.replay_file_path);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      fs.createReadStream(row.replay_file_path).pipe(res);
+    } catch (err) {
+      console.error('[API] Replay download error:', err.message);
+      res.status(500).json({ error: 'Download failed' });
+    }
+  });
+
+  // Superuser-only: list all stored replay files (match id, file size, expiry).
+  router.get('/replays/stored', requireSuperuser, async (req, res) => {
+    try {
+      const p = db.getPool();
+      const result = await p.query(
+        `SELECT match_id, replay_file_path, replay_file_expires_at, date
+         FROM matches
+         WHERE replay_file_path IS NOT NULL
+         ORDER BY date DESC`
+      );
+      const rows = result.rows.map(r => {
+        let fileSize = null;
+        if (r.replay_file_path && fs.existsSync(r.replay_file_path)) {
+          try { fileSize = fs.statSync(r.replay_file_path).size; } catch (_) {}
+        }
+        return {
+          matchId: r.match_id,
+          date: r.date,
+          expiresAt: r.replay_file_expires_at,
+          fileSize,
+          available: !!(r.replay_file_path && fs.existsSync(r.replay_file_path)),
+        };
+      });
+      res.json({ replays: rows });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Superuser-only: extend or clear the expiry on a stored replay.
+  router.post('/replays/:matchId/extend', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      const { days } = req.body; // null/0 = keep forever, >0 = extend by N days from now
+      const expiresAt = days > 0 ? new Date(Date.now() + days * 86400 * 1000) : null;
+      await db.setReplayFilePath(
+        matchId,
+        (await db.getReplayFilePath(matchId))?.replay_file_path,
+        expiresAt
+      );
+      res.json({ success: true, expiresAt });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -1906,6 +2006,20 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
       }
     }
 
+    // Archive the replay file so superusers can download it later.
+    try {
+      const safeMatchId = matchStats.matchId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const storedName = `${safeMatchId}.dem`;
+      const storedPath = path.join(REPLAY_STORE_DIR, storedName);
+      fs.copyFileSync(filePath, storedPath);
+      const expiresAt = REPLAY_STORE_DAYS > 0
+        ? new Date(Date.now() + REPLAY_STORE_DAYS * 86400 * 1000)
+        : null;
+      await db.setReplayFilePath(matchStats.matchId, storedPath, expiresAt);
+      console.log(`[API] Replay archived: ${storedPath}${expiresAt ? ` (expires ${expiresAt.toISOString()})` : ' (no expiry)'}`);
+    } catch (archErr) {
+      console.warn(`[API] Could not archive replay for match ${matchStats.matchId}:`, archErr.message);
+    }
     cleanupFile(filePath);
     setJobTerminal(jobId, {
       status: 'complete',

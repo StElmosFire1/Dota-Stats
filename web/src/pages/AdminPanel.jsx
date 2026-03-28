@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useSeason } from '../context/SeasonContext';
+import { getStoredReplays, extendReplayExpiry } from '../api';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
 
@@ -65,6 +66,126 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
       <td><input type="number" min={0} max={50} value={player.deaths} onChange={e => onChange({ deaths: parseInt(e.target.value) || 0 })} style={{ width: 50 }} /></td>
       <td><input type="number" min={0} max={50} value={player.assists} onChange={e => onChange({ assists: parseInt(e.target.value) || 0 })} style={{ width: 50 }} /></td>
     </tr>
+  );
+}
+
+function ReplayManager({ superuserKey }) {
+  const [replays, setReplays] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [extending, setExtending] = useState({});
+
+  function load() {
+    setLoading(true);
+    getStoredReplays(superuserKey)
+      .then(d => { setReplays(d.replays || []); setLoading(false); })
+      .catch(() => { setReplays([]); setLoading(false); });
+  }
+
+  function handleExtend(matchId, days) {
+    setExtending(prev => ({ ...prev, [matchId]: true }));
+    extendReplayExpiry(matchId, days, superuserKey)
+      .then(() => load())
+      .catch(e => alert('Error: ' + e.message))
+      .finally(() => setExtending(prev => ({ ...prev, [matchId]: false })));
+  }
+
+  function handleDownload(matchId) {
+    const url = `/api/replays/${matchId}/download`;
+    fetch(url, { headers: { 'x-superuser-key': superuserKey } })
+      .then(r => {
+        if (!r.ok) return r.json().then(j => { throw new Error(j.error || 'Not available'); });
+        return r.blob();
+      })
+      .then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${matchId}.dem`;
+        a.click();
+      })
+      .catch(err => alert('Download failed: ' + err.message));
+  }
+
+  const fmtSize = bytes => {
+    if (!bytes) return '—';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  };
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const isExpired = d => d && new Date(d) < new Date();
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <h2 style={{ margin: 0 }}>Stored Replays</h2>
+        <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px' }} onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : replays === null ? 'Load' : 'Refresh'}
+        </button>
+        {replays !== null && (
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            {replays.filter(r => r.available).length} / {replays.length} available
+          </span>
+        )}
+      </div>
+      {replays !== null && replays.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No replay files stored yet. Upload replays and they will be archived automatically.</p>
+      )}
+      {replays !== null && replays.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                <th style={{ textAlign: 'left', padding: '6px 8px' }}>Match ID</th>
+                <th style={{ textAlign: 'left', padding: '6px 8px' }}>Date</th>
+                <th style={{ textAlign: 'right', padding: '6px 8px' }}>Size</th>
+                <th style={{ textAlign: 'left', padding: '6px 8px' }}>Expires</th>
+                <th style={{ textAlign: 'center', padding: '6px 8px' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {replays.map(r => (
+                <tr key={r.matchId} style={{ borderBottom: '1px solid var(--border)', opacity: r.available ? 1 : 0.5 }}>
+                  <td style={{ padding: '5px 8px', fontFamily: 'monospace' }}>
+                    <Link to={`/match/${r.matchId}`}>{r.matchId}</Link>
+                  </td>
+                  <td style={{ padding: '5px 8px' }}>{fmtDate(r.date)}</td>
+                  <td style={{ padding: '5px 8px', textAlign: 'right' }}>{fmtSize(r.fileSize)}</td>
+                  <td style={{ padding: '5px 8px' }}>
+                    {r.expiresAt
+                      ? <span style={{ color: isExpired(r.expiresAt) ? '#f87171' : '#facc15' }}>{fmtDate(r.expiresAt)}{isExpired(r.expiresAt) ? ' (expired)' : ''}</span>
+                      : <span style={{ color: '#4ade80' }}>Never</span>}
+                  </td>
+                  <td style={{ padding: '5px 8px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      {r.available && (
+                        <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                          onClick={() => handleDownload(r.matchId)}>
+                          ⬇ Download
+                        </button>
+                      )}
+                      <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                        disabled={extending[r.matchId]}
+                        onClick={() => handleExtend(r.matchId, 7)}>
+                        +7 days
+                      </button>
+                      <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px', color: '#4ade80', borderColor: '#4ade80' }}
+                        disabled={extending[r.matchId]}
+                        onClick={() => handleExtend(r.matchId, 0)}>
+                        Keep Forever
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+        Replays expire after {parseInt(window.__REPLAY_STORE_DAYS__ || 7)} days by default.
+        Set <code>REPLAY_STORE_DAYS=0</code> on the server to keep all replays indefinitely,
+        or use <code>REPLAY_STORE_DIR</code> to set a custom storage path.
+      </p>
+    </section>
   );
 }
 
@@ -397,6 +518,9 @@ export default function AdminPanel() {
           </div>
         </div>
       </section>
+
+      {/* Stored Replays */}
+      <ReplayManager superuserKey={superuserKey} />
 
       {/* Quick Links */}
       <section>

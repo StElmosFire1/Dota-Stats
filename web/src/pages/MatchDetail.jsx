@@ -1143,6 +1143,37 @@ export default function MatchDetail() {
             &#128081; Edit Stats
           </Link>
         )}
+        {isSuperuser && (
+          <a
+            href={`/api/replays/${matchId}/download`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              background: '#1e3a5f', color: '#60a5fa', border: '1px solid #3b82f6',
+              padding: '3px 12px', borderRadius: 4, fontSize: '0.8rem', textDecoration: 'none',
+              fontWeight: 600,
+            }}
+            onClick={e => {
+              e.preventDefault();
+              const key = sessionStorage.getItem('superuserKey') || '';
+              const url = `/api/replays/${matchId}/download`;
+              fetch(url, { headers: { 'x-superuser-key': key } })
+                .then(r => {
+                  if (!r.ok) return r.json().then(j => { throw new Error(j.error || 'Not available'); });
+                  return r.blob();
+                })
+                .then(blob => {
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `${matchId}.dem`;
+                  a.click();
+                })
+                .catch(err => alert('Replay download: ' + err.message));
+            }}
+          >
+            &#11015; Download Replay
+          </a>
+        )}
       </div>
 
       <div className="match-detail-header">
