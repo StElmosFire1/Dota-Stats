@@ -3213,9 +3213,45 @@ async function getMultiKillStats(seasonId = null) {
   return result.rows;
 }
 
-async function getMostImproved(days = 30) {
+async function getMostImproved(days = 30, seasonId = null) {
   const p = getPool();
-  const result = await p.query(`
+  let result;
+  if (seasonId) {
+    result = await p.query(`
+      WITH season_matches AS (
+        SELECT match_id FROM matches WHERE season_id = $1
+      ),
+      latest AS (
+        SELECT DISTINCT ON (rh.player_id) rh.player_id, rh.mu, rh.sigma, rh.recorded_at
+        FROM rating_history rh
+        WHERE rh.match_id IN (SELECT match_id FROM season_matches)
+        ORDER BY rh.player_id, rh.recorded_at DESC
+      ),
+      earliest AS (
+        SELECT DISTINCT ON (rh.player_id) rh.player_id, rh.mu, rh.sigma, rh.recorded_at
+        FROM rating_history rh
+        WHERE rh.match_id IN (SELECT match_id FROM season_matches)
+        ORDER BY rh.player_id, rh.recorded_at ASC
+      )
+      SELECT
+        l.player_id AS account_id,
+        COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
+        ROUND((l.mu - 3*l.sigma)*100 + 2600) AS current_mmr,
+        ROUND((e.mu - 3*e.sigma)*100 + 2600) AS start_mmr,
+        ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) AS mmr_delta,
+        COUNT(ps.match_id) AS games_in_period
+      FROM latest l
+      JOIN earliest e ON e.player_id = l.player_id
+      LEFT JOIN nicknames n ON n.account_id = l.player_id
+      LEFT JOIN player_stats ps ON ps.account_id = l.player_id
+      LEFT JOIN matches m ON m.match_id = ps.match_id AND m.season_id = $1
+      GROUP BY l.player_id, l.mu, l.sigma, e.mu, e.sigma, n.nickname
+      HAVING ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) > 0
+      ORDER BY mmr_delta DESC
+      LIMIT 10`, [seasonId]);
+  } else {
+  const daysInt = parseInt(days) || 30;
+  result = await p.query(`
     WITH latest AS (
       SELECT DISTINCT ON (player_id) player_id, mu, sigma, recorded_at
       FROM rating_history
@@ -3224,7 +3260,7 @@ async function getMostImproved(days = 30) {
     earliest AS (
       SELECT DISTINCT ON (player_id) player_id, mu, sigma, recorded_at
       FROM rating_history
-      WHERE recorded_at >= NOW() - INTERVAL '${parseInt(days)} days'
+      WHERE recorded_at >= NOW() - INTERVAL '1 day' * $1
       ORDER BY player_id, recorded_at ASC
     )
     SELECT
@@ -3238,12 +3274,13 @@ async function getMostImproved(days = 30) {
     JOIN earliest e ON e.player_id = l.player_id
     LEFT JOIN nicknames n ON n.account_id = l.player_id
     LEFT JOIN player_stats ps ON ps.account_id = l.player_id
-    LEFT JOIN matches m ON m.match_id = ps.match_id AND m.date >= NOW() - INTERVAL '${parseInt(days)} days'
+    LEFT JOIN matches m ON m.match_id = ps.match_id AND m.date >= NOW() - INTERVAL '1 day' * $1
     GROUP BY l.player_id, l.mu, l.sigma, e.mu, e.sigma, n.nickname
     HAVING ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) > 0
     ORDER BY mmr_delta DESC
     LIMIT 10
-  `);
+  `, [daysInt]);
+  }
   return result.rows;
 }
 

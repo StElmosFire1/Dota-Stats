@@ -1170,50 +1170,46 @@ function BuildingDeathsPanel({ timeline }) {
 function TeamAbilitiesPanel({ teamAbilities, radiantWin }) {
   if (!teamAbilities) return null;
   const { radiant, dire } = teamAbilities;
-  const hasData = (radiant.glyph_count + dire.glyph_count + radiant.scan_count + dire.scan_count) > 0;
+  const hasData = (radiant.glyph_count + dire.glyph_count + radiant.scan_count + dire.scan_count + (radiant.smoke_count || 0) + (dire.smoke_count || 0)) > 0;
   if (!hasData) return null;
 
+  const AbilityRow = ({ icon, label, count, times, effective, effectiveLabel }) => {
+    if (!count) return null;
+    return (
+      <div style={{ marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+        <span style={{ color: '#aaa' }}>{icon} {label}: </span>
+        <span style={{ color: '#fff' }}>{count}× used</span>
+        {times && times.length > 0 && (
+          <span style={{ color: '#888', marginLeft: 6 }}>
+            ({times.map(t => formatDuration(t)).join(', ')})
+          </span>
+        )}
+        {effective != null && (
+          <span style={{ color: effective > 0 ? '#4ade80' : '#f87171', marginLeft: 6 }}>
+            — {effective}/{count} {effectiveLabel}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const TeamRow = ({ label, data, color }) => (
-    <div style={{ flex: 1, minWidth: 180 }}>
+    <div style={{ flex: 1, minWidth: 200 }}>
       <div style={{ color, fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.85rem' }}>{label}</div>
-      {data.glyph_count > 0 && (
-        <div style={{ marginBottom: '0.4rem', fontSize: '0.85rem' }}>
-          <span style={{ color: '#aaa' }}>🛡️ Glyph: </span>
-          <span style={{ color: '#fff' }}>{data.glyph_count}× used</span>
-          {data.glyph_times && data.glyph_times.length > 0 && (
-            <span style={{ color: '#888', marginLeft: 6 }}>
-              ({data.glyph_times.map(t => formatDuration(t)).join(', ')})
-            </span>
-          )}
-          {data.glyph_count > 0 && (
-            <span style={{ color: data.glyph_effective > 0 ? '#4ade80' : '#f87171', marginLeft: 6 }}>
-              — {data.glyph_effective}/{data.glyph_count} effective
-            </span>
-          )}
-        </div>
-      )}
-      {data.scan_count > 0 && (
-        <div style={{ fontSize: '0.85rem' }}>
-          <span style={{ color: '#aaa' }}>🔍 Scan: </span>
-          <span style={{ color: '#fff' }}>{data.scan_count}× used</span>
-          {data.scan_times && data.scan_times.length > 0 && (
-            <span style={{ color: '#888', marginLeft: 6 }}>
-              ({data.scan_times.map(t => formatDuration(t)).join(', ')})
-            </span>
-          )}
-        </div>
-      )}
-      {data.glyph_count === 0 && data.scan_count === 0 && (
-        <div style={{ color: '#555', fontSize: '0.85rem' }}>No glyphs or scans used</div>
+      <AbilityRow icon="🛡️" label="Glyph" count={data.glyph_count} times={data.glyph_times} effective={data.glyph_effective} effectiveLabel="effective" />
+      <AbilityRow icon="🔍" label="Scan" count={data.scan_count} times={data.scan_times} effective={null} />
+      <AbilityRow icon="💨" label="Smoke" count={data.smoke_count} times={data.smoke_times} effective={data.smoke_effective} effectiveLabel="got a kill" />
+      {!data.glyph_count && !data.scan_count && !data.smoke_count && (
+        <div style={{ color: '#555', fontSize: '0.85rem' }}>No abilities used</div>
       )}
     </div>
   );
 
   return (
     <div className="expanded-stats-section">
-      <h3>Glyph &amp; Scan Usage</h3>
+      <h3>Glyph, Scan &amp; Smoke</h3>
       <p style={{ color: '#888', fontSize: '0.8rem', margin: '0 0 0.75rem' }}>
-        Glyph is "effective" if no enemy building died within 30s after it was used.
+        Glyph is "effective" if no enemy building died within 30s after it was used. Smoke is "effective" if the team scored a kill within 60s of using it.
       </p>
       <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
         <TeamRow label="Radiant" data={radiant} color="#4ade80" />

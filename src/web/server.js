@@ -565,8 +565,9 @@ function createApiRouter(startupStatus = {}) {
   router.get('/most-improved', async (req, res) => {
     try {
       const days = parseInt(req.query.days) || 30;
-      const rows = await db.getMostImproved(days);
-      res.json({ rows, days });
+      const seasonId = req.query.season_id ? parseInt(req.query.season_id) : null;
+      const rows = await db.getMostImproved(days, seasonId);
+      res.json({ rows, days, season_id: seasonId });
     } catch (err) {
       console.error('[API] Error fetching most improved:', err.message);
       res.status(500).json({ error: 'Failed to fetch most improved' });
@@ -582,7 +583,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.post('/predictions/:matchId', async (req, res) => {
+  router.post('/match-predictions/:matchId', async (req, res) => {
     try {
       const matchId = parseInt(req.params.matchId);
       const { predictor_account_id, predictor_name, predicted_winner } = req.body;

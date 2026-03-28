@@ -62,7 +62,8 @@ function StreakBadge({ streak }) {
   );
 }
 
-function MostImprovedWidget({ data, loading }) {
+function MostImprovedWidget({ data, loading, seasonLabel }) {
+  const title = seasonLabel ? `Most Improved — ${seasonLabel}` : 'Most Improved — last 30 days';
   if (loading) return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
@@ -77,7 +78,7 @@ function MostImprovedWidget({ data, loading }) {
       background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
       padding: '16px 20px', marginBottom: 24,
     }}>
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>📈 Most Improved (30 days)</div>
+      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>📈 {title}</div>
       <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
         Not enough rating history yet — data accumulates after more matches.
       </div>
@@ -92,7 +93,7 @@ function MostImprovedWidget({ data, loading }) {
     }}>
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span>📈</span>
-        <span>Most Improved — last 30 days</span>
+        <span>{title}</span>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         {data.slice(0, 5).map((p, i) => (
@@ -139,7 +140,7 @@ function MostImprovedWidget({ data, loading }) {
 }
 
 export default function Leaderboard() {
-  const { seasonId } = useSeason();
+  const { seasonId, seasons } = useSeason();
   const [data, setData] = useState({ leaderboard: [] });
   const [loading, setLoading] = useState(true);
   const [improved, setImproved] = useState([]);
@@ -155,11 +156,11 @@ export default function Leaderboard() {
 
   useEffect(() => {
     setImprovedLoading(true);
-    getMostImproved(30)
+    getMostImproved(30, seasonId || null)
       .then(d => setImproved(d.rows || []))
       .catch(() => setImproved([]))
       .finally(() => setImprovedLoading(false));
-  }, []);
+  }, [seasonId]);
 
   if (loading) return <div className="loading">Loading leaderboard...</div>;
 
@@ -168,7 +169,11 @@ export default function Leaderboard() {
       <h1 className="page-title">Leaderboard</h1>
 
       {/* Most Improved Widget */}
-      <MostImprovedWidget data={improved} loading={improvedLoading} />
+      {(() => {
+        const season = seasons.find(s => s.id === seasonId);
+        const seasonLabel = season ? (season.name || `Season ${season.id}`) : null;
+        return <MostImprovedWidget data={improved} loading={improvedLoading} seasonLabel={seasonLabel} />;
+      })()}
 
       {/* Tier legend — worst to best left to right */}
       <div style={{

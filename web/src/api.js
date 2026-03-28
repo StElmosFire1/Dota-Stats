@@ -454,8 +454,9 @@ export async function getMultiKillStats(seasonId = null) {
   return fetchJson(`/multikills${params.toString() ? '?' + params.toString() : ''}`);
 }
 
-export async function getMostImproved(days = 30) {
-  return fetchJson(`/most-improved?days=${days}`);
+export async function getMostImproved(days = 30, seasonId = null) {
+  const sp = seasonId ? `&season_id=${seasonId}` : '';
+  return fetchJson(`/most-improved?days=${days}${sp}`);
 }
 
 export async function getPudgeGames(seasonId = null) {
@@ -471,7 +472,7 @@ export async function getMatchPredictions(matchId) {
 }
 
 export async function submitMatchPrediction(matchId, predictorName, predictedWinner, predictorAccountId) {
-  const res = await fetch(BASE + `/predictions/${matchId}`, {
+  const res = await fetch(BASE + `/match-predictions/${matchId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ predictor_name: predictorName, predicted_winner: predictedWinner, predictor_account_id: predictorAccountId }),

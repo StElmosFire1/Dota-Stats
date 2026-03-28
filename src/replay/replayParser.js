@@ -1072,6 +1072,20 @@ class ReplayParser {
         teamAbilitiesRaw[e.key].push(e.time || 0);
       }
 
+      // ── Smoke of Deceit activation ────────────────────────────────────────
+      // Fires when a player actually activates the item (puts it on cooldown / applies buff)
+      if ((e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_use' || e.type === 'ability_cast') &&
+          (e.inflictor === 'item_smoke_of_deceit' || e.key === 'item_smoke_of_deceit')) {
+        const casterName = e.attackername || e.unit || '';
+        let casterSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
+        if (casterSlot != null && casterSlot >= 0 && casterSlot < 10) {
+          const team = casterSlot < 5 ? 'radiant' : 'dire';
+          const key = `${team}_smoke`;
+          if (!teamAbilitiesRaw[key]) teamAbilitiesRaw[key] = [];
+          teamAbilitiesRaw[key].push(e.time || 0);
+        }
+      }
+
       if (e.type === 'DOTA_COMBATLOG_PLAYERSTATS' && e.slot != null && e.slot >= 0 && e.slot < 10) {
         if (!_playerStatsKeysLogged) {
           _playerStatsKeysLogged = true;
@@ -1767,10 +1781,19 @@ class ReplayParser {
     const buildTeamAbilities = (team) => {
       const glyphTimes = (teamAbilitiesRaw[`${team}_glyph`] || []);
       const scanTimes  = (teamAbilitiesRaw[`${team}_scan`]  || []);
+      const smokeTimes = (teamAbilitiesRaw[`${team}_smoke`] || []);
       const enemyTeam  = team === 'radiant' ? 'dire' : 'radiant';
+      const isOwnSlot  = team === 'radiant' ? (s => s >= 0 && s < 5) : (s => s >= 5 && s < 10);
       const glyphEffective = glyphTimes.filter(gt => {
         // Effective if enemy team's buildings don't die within 30s after glyph
         return !buildingDeathTimes.some(ev => ev.team === enemyTeam && ev.t > gt && ev.t <= gt + 30);
+      }).length;
+      // Smoke effectiveness: team got a kill within 60s of the smoke use
+      const smokeEffective = smokeTimes.filter(st => {
+        return gameEvents.some(ev =>
+          ev.type === 'kill' && ev.killerSlot >= 0 && isOwnSlot(ev.killerSlot) &&
+          ev.t >= st && ev.t <= st + 60
+        );
       }).length;
       return {
         glyph_count: glyphTimes.length,
@@ -1778,6 +1801,9 @@ class ReplayParser {
         glyph_effective: glyphEffective,
         scan_count: scanTimes.length,
         scan_times: scanTimes,
+        smoke_count: smokeTimes.length,
+        smoke_times: smokeTimes,
+        smoke_effective: smokeEffective,
       };
     };
     const teamAbilities = {
@@ -1785,11 +1811,14 @@ class ReplayParser {
       dire:    buildTeamAbilities('dire'),
     };
     const hasTeamAbilities = teamAbilities.radiant.glyph_count > 0 || teamAbilities.dire.glyph_count > 0 ||
-                             teamAbilities.radiant.scan_count  > 0 || teamAbilities.dire.scan_count  > 0;
+                             teamAbilities.radiant.scan_count  > 0 || teamAbilities.dire.scan_count  > 0 ||
+                             teamAbilities.radiant.smoke_count > 0 || teamAbilities.dire.smoke_count > 0;
     if (hasTeamAbilities) {
       console.log('[Replay] Team abilities:', JSON.stringify({
         radiant_glyph: teamAbilities.radiant.glyph_count, radiant_scan: teamAbilities.radiant.scan_count,
+        radiant_smoke: teamAbilities.radiant.smoke_count,
         dire_glyph: teamAbilities.dire.glyph_count, dire_scan: teamAbilities.dire.scan_count,
+        dire_smoke: teamAbilities.dire.smoke_count,
       }));
     }
 
