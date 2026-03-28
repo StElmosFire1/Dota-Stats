@@ -226,6 +226,19 @@ export default function PlayerProfile() {
               <div className="stat-label">🩸 First Bloods</div>
             </div>
           )}
+          {averages && parseInt(averages.pudge_games_with_hooks) > 0 && (
+            <div className="stat-card" style={{ borderColor: '#a78bfa' }}>
+              <div className="stat-value" style={{ color: '#a78bfa' }}>
+                {parseInt(averages.total_hook_attempts) > 0
+                  ? ((parseInt(averages.total_hook_hits) / parseInt(averages.total_hook_attempts)) * 100).toFixed(1) + '%'
+                  : '—'}
+                <span style={{ fontSize: '0.7em', color: '#64748b', marginLeft: 4 }}>
+                  ({averages.total_hook_hits}/{averages.total_hook_attempts})
+                </span>
+              </div>
+              <div className="stat-label">🪝 Pudge Hook Accuracy</div>
+            </div>
+          )}
         </div>
       )}
 

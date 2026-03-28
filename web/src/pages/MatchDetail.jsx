@@ -995,6 +995,45 @@ function ExpandedStats({ players }) {
   );
 }
 
+function PudgeHookStats({ players }) {
+  const pudgePlayers = players.filter(p =>
+    p.hero_name === 'npc_dota_hero_pudge' && p.hook_attempts != null
+  );
+  if (pudgePlayers.length === 0) return null;
+  return (
+    <div className="expanded-stats-section">
+      <h3>🪝 Pudge Hook Stats</h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              <th className="col-stat" title="Genuine hook attempts (excludes farm hooks with no nearby enemy)">Attempts</th>
+              <th className="col-stat" title="Hooks that hit an enemy hero">Hits</th>
+              <th className="col-stat" title="Hook hit accuracy (hits / attempts)">Accuracy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pudgePlayers.map((p, i) => {
+              const acc = p.hook_attempts > 0
+                ? ((p.hook_hits / p.hook_attempts) * 100).toFixed(1) + '%'
+                : '—';
+              return (
+                <tr key={i}>
+                  <td className="col-player"><PlayerLink player={p} index={i} /></td>
+                  <td className="col-stat">{p.hook_attempts}</td>
+                  <td className="col-stat">{p.hook_hits}</td>
+                  <td className="col-stat">{acc}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function MatchDetail() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -1155,6 +1194,7 @@ export default function MatchDetail() {
       <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} />
 
       <ExpandedStats players={allPlayers} />
+      <PudgeHookStats players={allPlayers} />
 
       <TimelineGraph timeline={match.game_timeline} allPlayers={allPlayers} />
 

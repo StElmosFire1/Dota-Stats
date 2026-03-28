@@ -178,6 +178,8 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS has_shard BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS support_gold_spent INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS killed_by JSONB DEFAULT '{}'`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_attempts INTEGER DEFAULT NULL`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_hits INTEGER DEFAULT NULL`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS patch_notes (
@@ -678,7 +680,8 @@ async function updatePlayerStats(matchId, players) {
           ultra_kills=$33, rampages=$34, kill_streak=$35, smoke_kills=$36,
           first_death=$37, lane_cs_10min=$38, has_scepter=$39, has_shard=$40,
           damage_taken=$41, laning_nw=$42, team=$43,
-          support_gold_spent=$44, killed_by=$45
+          support_gold_spent=$44, killed_by=$45,
+          hook_attempts=$48, hook_hits=$49
         WHERE match_id=$46 AND slot=$47
       `, [
         parseInt(pl.kills)||0, parseInt(pl.deaths)||0, parseInt(pl.assists)||0,
@@ -703,7 +706,9 @@ async function updatePlayerStats(matchId, players) {
         pl.team,
         parseInt(pl.support_gold_spent)||0,
         JSON.stringify(pl.killed_by || {}),
-        matchId, parseInt(pl.slot)
+        matchId, parseInt(pl.slot),
+        pl.hook_attempts != null ? parseInt(pl.hook_attempts) : null,
+        pl.hook_hits != null ? parseInt(pl.hook_hits) : null,
       ]);
     }
     await client.query('COMMIT');
@@ -747,8 +752,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
 
     for (const player of matchStats.players) {
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57)`,
         [
           matchStats.matchId,
           player.accountId || 0,
@@ -805,6 +810,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
           JSON.stringify(player.wardPlacements || []),
           player.nemesisHeroName || '',
           player.nemesisKills || 0,
+          player.hookAttempts != null ? player.hookAttempts : null,
+          player.hookHits != null ? player.hookHits : null,
         ]
       );
 
@@ -1252,7 +1259,10 @@ async function getPlayerStats(accountId, seasonId = null) {
        SUM(deaths) as total_deaths,
        SUM(assists) as total_assists,
        SUM(firstblood_claimed) as total_firstbloods,
-       ROUND(100.0 * SUM(firstblood_claimed) / NULLIF(COUNT(*), 0), 1) as fb_rate
+       ROUND(100.0 * SUM(firstblood_claimed) / NULLIF(COUNT(*), 0), 1) as fb_rate,
+       SUM(CASE WHEN hero_name = 'npc_dota_hero_pudge' AND hook_attempts IS NOT NULL THEN hook_attempts ELSE 0 END) as total_hook_attempts,
+       SUM(CASE WHEN hero_name = 'npc_dota_hero_pudge' AND hook_hits IS NOT NULL THEN hook_hits ELSE 0 END) as total_hook_hits,
+       COUNT(CASE WHEN hero_name = 'npc_dota_hero_pudge' AND hook_attempts IS NOT NULL THEN 1 END) as pudge_games_with_hooks
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      WHERE ${whereClause}${avSc}`,

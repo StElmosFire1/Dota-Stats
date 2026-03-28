@@ -401,6 +401,8 @@ class ReplayParser {
     const wardPlacements = {};
     const gameEvents = [];
     const laningKillsAt10 = {};
+    const allPositions = {};      // slot → [{t, x, y}] sampled every 10s throughout game
+    const posLastSampled = {};    // slot → last sample time
 
     for (const e of events) {
       if (e.type === 'epilogue' && e.key) {
@@ -557,6 +559,15 @@ class ReplayParser {
           if (!laningData[e.slot]) laningData[e.slot] = [];
           laningData[e.slot].push({ time: currentTime, x: e.x, y: e.y, lh: e.lh || 0 });
         }
+        // Full-game position sampling every 10s (used for hook range checks)
+        if (e.x != null && e.y != null) {
+          const prevPos = posLastSampled[e.slot] || -11;
+          if (currentTime - prevPos >= 10) {
+            posLastSampled[e.slot] = currentTime;
+            if (!allPositions[e.slot]) allPositions[e.slot] = [];
+            allPositions[e.slot].push({ t: currentTime, x: e.x, y: e.y });
+          }
+        }
 
         if (e.lh != null && currentTime >= 590 && currentTime <= 610) {
           const prev = laneCs10min[e.slot] || 0;
@@ -632,6 +643,8 @@ class ReplayParser {
     const finalItemsTime = {}; // slot → timestamp of the most recent hero_inventory snapshot
     const killedBy = {};       // killedBy[victimSlot][killerSlot] = count
     const supportGoldSpent = {}; // supportGoldSpent[slot] = total gold
+    const hookCasts = [];      // [{time, slot}] — pudge hook cast events
+    const hookHits  = [];      // [{time, slot, targetHero, targetName}] — hook damage events
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -907,6 +920,38 @@ class ReplayParser {
         if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) damageTaken[targetSlot] = (damageTaken[targetSlot] || 0) + e.value;
       }
 
+      // ── Pudge hook tracking ───────────────────────────────────────────────
+      // Cast: streaming DOTA_COMBATLOG_ABILITY with inflictor=pudge_meat_hook
+      //       blob      ability_cast/ability_use with key=pudge_meat_hook
+      // Hit:  streaming/blob DOTA_COMBATLOG_DAMAGE/damage with inflictor=pudge_meat_hook
+      {
+        const inf = e.inflictor || e.key || '';
+        if (inf === 'pudge_meat_hook') {
+          // Ability cast event
+          if (e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_cast' || e.type === 'ability_use') {
+            const casterName = e.attackername || e.unit || '';
+            let castSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
+            if (castSlot != null && castSlot >= 0 && castSlot < 10) {
+              hookCasts.push({ time: e.time || 0, slot: castSlot });
+            }
+          }
+          // Damage event (hook connected with something)
+          if ((e.type === 'DOTA_COMBATLOG_DAMAGE' || e.type === 'damage') && e.value > 0 && !e.targetillusion) {
+            const attackerName = e.type === 'DOTA_COMBATLOG_DAMAGE' ? e.attackername : e.unit;
+            const targetName   = e.type === 'DOTA_COMBATLOG_DAMAGE' ? e.targetname   : e.key;
+            let attackerSlot = e.slot != null && e.type !== 'DOTA_COMBATLOG_DAMAGE' ? e.slot : npcNameToSlot[attackerName];
+            if (attackerSlot != null && attackerSlot >= 0 && attackerSlot < 10) {
+              hookHits.push({
+                time: e.time || 0,
+                slot: attackerSlot,
+                targetHero: !!e.targethero,
+                targetName: targetName || '',
+              });
+            }
+          }
+        }
+      }
+
       // ── Healing ───────────────────────────────────────────────────────────
       // Streaming: type "DOTA_COMBATLOG_HEAL", healer in e.attackername, target in e.targetname
       // Blob:      type "healing",             healer in e.unit,         target in e.key
@@ -1039,6 +1084,82 @@ class ReplayParser {
 
     if (!matchId) {
       matchId = 'replay_' + Date.now();
+    }
+
+    // ── Pudge hook stat computation ────────────────────────────────────────
+    // Interpolate a player's (x,y) position at a given time from sampled positions.
+    const interpolatePos = (slot, time) => {
+      const samples = allPositions[slot] || [];
+      if (samples.length === 0) return null;
+      let before = null, after = null;
+      for (const s of samples) {
+        if (s.t <= time) before = s;
+        else if (!after) { after = s; break; }
+      }
+      if (before && after) {
+        const frac = (time - before.t) / (after.t - before.t);
+        return { x: before.x + frac * (after.x - before.x), y: before.y + frac * (after.y - before.y) };
+      }
+      return before || after || null;
+    };
+
+    // Coordinate units → Dota2 units: map is ~128 coord units wide ≈ 16384 Dota2 units → 1 coord ≈ 128 Dota2 units
+    // Hook range 1300 + 200 buffer = 1500 Dota2 units ≈ 11.72 coord units → use sq threshold 137
+    const HOOK_RANGE_SQ = 137;
+    const hookStats = {}; // slot → { attempts, hits }
+    const pudgeHeroId = 14;
+
+    const pudgeSlots = Object.values(players).filter(p => p.heroId === pudgeHeroId).map(p => p.slot);
+    for (const pSlot of pudgeSlots) {
+      let attempts = 0, hits = 0;
+      const myTeam = pSlot < 5 ? 'radiant' : 'dire';
+      const enemySlots = Object.values(players)
+        .filter(p => (p.slot < 5 ? 'radiant' : 'dire') !== myTeam)
+        .map(p => p.slot);
+
+      const hasNearbyEnemy = (time) => {
+        const pudgePos = interpolatePos(pSlot, time);
+        if (!pudgePos) return true; // no data — give benefit of the doubt
+        for (const eSlot of enemySlots) {
+          const ePos = interpolatePos(eSlot, time);
+          if (!ePos) continue;
+          const dx = pudgePos.x - ePos.x, dy = pudgePos.y - ePos.y;
+          if (dx * dx + dy * dy <= HOOK_RANGE_SQ) return true;
+        }
+        return false;
+      };
+
+      const myHits = hookHits.filter(h => h.slot === pSlot);
+
+      if (hookCasts.filter(c => c.slot === pSlot).length > 0) {
+        // Cast events available — use them as primary
+        for (const cast of hookCasts.filter(c => c.slot === pSlot)) {
+          const hit = myHits.find(h => h.time >= cast.time && h.time <= cast.time + 2.5);
+          if (hit) {
+            if (hit.targetHero) {
+              attempts++; hits++;
+            } else {
+              // Hit a creep — genuine only if a hero was nearby
+              if (hasNearbyEnemy(cast.time)) attempts++;
+            }
+          } else {
+            // Complete miss — count as genuine attempt if hero was nearby
+            if (hasNearbyEnemy(cast.time)) attempts++;
+          }
+        }
+      } else {
+        // No cast events — infer from hit events only
+        for (const hit of myHits) {
+          if (hit.targetHero) {
+            attempts++; hits++;
+          } else {
+            if (hasNearbyEnemy(hit.time)) attempts++;
+          }
+        }
+      }
+
+      hookStats[pSlot] = { attempts, hits };
+      console.log(`[Replay] Pudge slot ${pSlot}: ${hits} hook hits / ${attempts} genuine attempts`);
     }
 
     const detectedPositions = this._detectPositions(players, laningData, maxTime);
@@ -1210,6 +1331,8 @@ class ReplayParser {
           if (killer?.accountId) acc[String(killer.accountId)] = count;
           return acc;
         }, {}),
+        hookAttempts: hookStats[slot] ? hookStats[slot].attempts : null,
+        hookHits: hookStats[slot] ? hookStats[slot].hits : null,
         wardPlacements: wardPlacements[slot] || [],
         timelineSamples: timelineSamples[slot] || [],
       });
