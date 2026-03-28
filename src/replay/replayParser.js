@@ -1283,33 +1283,20 @@ class ReplayParser {
         (itemPurchases[slot] || []).map(p => p.itemName.replace(/^item_/, ''))
       );
 
-      // Validate the hero_inventory snapshot with two checks:
-      // 1. TIME CHECK: snapshot must be from the final 90 seconds of the game.
-      //    Snapshots from early/mid-game are stale and unreliable.
-      // 2. CROSS-CHECK: at least one non-trivial item must appear in the purchase log.
-      //    If zero items match, the snapshot is attributed to the wrong player.
-      const TRIVIAL = new Set([
-        'tpscroll','ward_observer','ward_sentry','ward_dispenser',
-        'smoke_of_deceit','dust','clarity','flask','tango',
-        'enchanted_mango','faerie_fire','blood_grenade','recipe',
-      ]);
+      // Validate the hero_inventory snapshot using a TIME CHECK only:
+      // The snapshot must be from the final 90 seconds of the game.
+      // Snapshots from early/mid-game are stale and unreliable.
+      // NOTE: A purchase-log cross-check was previously used here but caused false negatives —
+      // assembled items (Lotus Orb, Eul's, etc.) and Roshan drops (Aegis, Cheese) do not appear
+      // in the purchase log by their final item name, so the cross-check wrongly rejected valid
+      // snapshots and fell back to the purchase log, producing incorrect end-game items.
       let inventoryValid = false;
       if (finalItems[slot]) {
         const snapshotTime = finalItemsTime[slot] || 0;
         const isRecent = duration > 0 ? snapshotTime >= duration - 90 : true;
-
-        const nonTrivialInv = Object.values(finalItems[slot])
-          .map(d => d.itemName || '')
-          .filter(n => n && !TRIVIAL.has(n) && !n.startsWith('recipe_'));
-        const matchCount = nonTrivialInv.filter(n => purchasedNames.has(n)).length;
-        const itemsMatch = nonTrivialInv.length === 0 || matchCount > 0 || purchasedNames.size === 0;
-
-        inventoryValid = isRecent && itemsMatch;
-
+        inventoryValid = isRecent;
         if (!isRecent) {
           console.log(`[Replay] slot ${slot}: hero_inventory snapshot is stale (at ${snapshotTime}s, game ended at ${duration}s) — using purchase log fallback`);
-        } else if (!itemsMatch) {
-          console.log(`[Replay] slot ${slot}: hero_inventory mismatch (inv=[${nonTrivialInv.join(',')}], purchased=[${[...purchasedNames].join(',')}]) — using purchase log fallback`);
         } else {
           console.log(`[Replay] slot ${slot}: using hero_inventory snapshot from ${snapshotTime}s (game end ${duration}s)`);
         }
