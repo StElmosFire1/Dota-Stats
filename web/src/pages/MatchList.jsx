@@ -249,16 +249,21 @@ export default function MatchList() {
                             </button>
                           </span>
                         ) : (
-                          <span
-                            onClick={e => startEditPatch(e, match)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: isSuperuser ? 'pointer' : 'default' }}
-                            title={isSuperuser ? 'Click to edit patch' : undefined}
-                          >
-                            <span className="patch-badge">{match.patch ? `Patch ${match.patch}` : (isSuperuser ? '+ Add patch' : '')}</span>
-                            {isSuperuser && match.patch && (
-                              <span style={{ fontSize: '0.7rem', color: '#64748b', lineHeight: 1 }}>✎</span>
-                            )}
-                          </span>
+                          (match.patch || isSuperuser) ? (
+                            <span
+                              onClick={e => startEditPatch(e, match)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: isSuperuser ? 'pointer' : 'default' }}
+                              title={isSuperuser ? 'Click to edit patch' : undefined}
+                            >
+                              {match.patch
+                                ? <span className="patch-badge">Patch {match.patch}</span>
+                                : <span style={{ fontSize: '0.75rem', color: '#64748b', border: '1px dashed #475569', borderRadius: 4, padding: '1px 6px' }}>+ patch</span>
+                              }
+                              {isSuperuser && match.patch && (
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', lineHeight: 1 }}>✎</span>
+                              )}
+                            </span>
+                          ) : null
                         )}
                       </div>
                     )}
