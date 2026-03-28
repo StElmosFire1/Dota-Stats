@@ -1535,9 +1535,75 @@ NOTES
         return res.status(400).json({ error: 'Provide predictor_name and predictions array' });
       }
       await db.savePrediction(req.params.seasonId, predictor_name, predictions);
+
+      const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+      if (webhookUrl) {
+        const picks = [...predictions].sort((a, b) => a.rank - b.rank)
+          .map(p => `**#${p.rank}:** <@${p.player_id}>`)
+          .join('\n');
+        const siteUrl = process.env.SITE_URL || '';
+        const fetch_ = (...a) => import('node-fetch').then(m => m.default(...a));
+        fetch_(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: `🎯 **${predictor_name}** submitted a season prediction!\n${picks}\n[View all predictions](${siteUrl}/predictions)`,
+          }),
+        }).catch(() => {});
+      }
+
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: 'Failed to save prediction' });
+    }
+  });
+
+  router.get('/predictions/:seasonId/accuracy', async (req, res) => {
+    try {
+      const seasonId = parseInt(req.params.seasonId);
+      const predictions = await db.getPredictions(seasonId);
+      const pool = db.getPool();
+
+      const topRows = await pool.query(`
+        SELECT rh.player_id,
+               COALESCE(MAX(n.nickname), MAX(ps.persona_name)) as display_name,
+               MAX(rh.mmr) as mmr
+        FROM rating_history rh
+        JOIN matches m ON m.match_id = rh.match_id
+        LEFT JOIN player_stats ps ON ps.account_id = rh.player_id AND ps.match_id = rh.match_id
+        LEFT JOIN nicknames n ON n.account_id = rh.player_id
+        WHERE m.season_id = $1
+        GROUP BY rh.player_id
+        ORDER BY MAX(rh.mmr) DESC
+        LIMIT 5
+      `, [seasonId]);
+
+      const actualTop5 = topRows.rows.map((r, i) => ({
+        rank: i + 1,
+        player_id: r.player_id.toString(),
+        display_name: r.display_name,
+        mmr: parseInt(r.mmr),
+      }));
+
+      const actualSet = new Set(actualTop5.map(x => x.player_id));
+      const actualByRank = {};
+      actualTop5.forEach(a => { actualByRank[a.rank] = a.player_id; });
+
+      const scored = predictions.map(pred => {
+        const picks = Array.isArray(pred.predictions) ? pred.predictions : [];
+        let score = 0, exactMatches = 0, inTop5 = 0;
+        picks.forEach(pick => {
+          const pid = pick.player_id?.toString();
+          if (actualByRank[pick.rank] === pid) { score += 3; exactMatches++; inTop5++; }
+          else if (actualSet.has(pid)) { score += 1; inTop5++; }
+        });
+        return { ...pred, score, exactMatches, inTop5 };
+      }).sort((a, b) => b.score - a.score);
+
+      res.json({ accuracy: scored, actual: actualTop5 });
+    } catch (err) {
+      console.error('[API] prediction accuracy error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch prediction accuracy' });
     }
   });
 

@@ -5,7 +5,7 @@ import MatchDetail from './pages/MatchDetail';
 import Leaderboard from './pages/Leaderboard';
 import PlayerProfile from './pages/PlayerProfile';
 import Heroes from './pages/Heroes';
-import HeroBreakdown from './pages/HeroBreakdown';
+import Draft from './pages/Draft';
 import Players from './pages/Players';
 import OverallStats from './pages/OverallStats';
 import PositionStats from './pages/PositionStats';
@@ -14,7 +14,6 @@ import Upload from './pages/Upload';
 import Seasons from './pages/Seasons';
 import BuyinSuccess from './pages/BuyinSuccess';
 import PlayerTools from './pages/PlayerTools';
-import DraftAssistant from './pages/DraftAssistant';
 import Predictions from './pages/Predictions';
 import UploadIndicator from './components/UploadIndicator';
 import AiChat from './components/AiChat';
@@ -26,7 +25,6 @@ import PatchNotes from './pages/PatchNotes';
 import Home from './pages/Home';
 import MultiKills from './pages/MultiKills';
 import WardMap from './pages/WardMap';
-import DraftStats from './pages/DraftStats';
 import Records from './pages/Records';
 import AdminPanel from './pages/AdminPanel';
 import PudgeStats from './pages/PudgeStats';
@@ -240,15 +238,13 @@ function Nav() {
         <Link to="/stats" className={isActive('/stats')}>Stats</Link>
         <Link to="/positions" className={isActive('/positions')}>Positions</Link>
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
-        <Link to="/hero-breakdown" className={isActive('/hero-breakdown')}>Hero Breakdown</Link>
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/player-tools">Head to Head / Compare</DropdownItem>
-          <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
+          <DropdownItem to="/draft">Draft Assistant &amp; Stats</DropdownItem>
           <DropdownItem to="/ward-map">Ward Heatmap</DropdownItem>
-          <DropdownItem to="/draft-stats">Draft Statistics</DropdownItem>
           <DropdownItem to="/records">Records &amp; Comebacks</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
@@ -295,12 +291,14 @@ export default function App() {
                 <Route path="/player-tools" element={<PlayerTools />} />
                 <Route path="/head-to-head" element={<PlayerTools />} />
                 <Route path="/compare" element={<PlayerTools />} />
-                <Route path="/draft-assistant" element={<DraftAssistant />} />
+                <Route path="/draft" element={<Draft />} />
+                <Route path="/draft-assistant" element={<Draft />} />
+                <Route path="/draft-stats" element={<Draft />} />
+                <Route path="/hero-breakdown" element={<Heroes defaultTab="breakdown" />} />
                 <Route path="/predictions" element={<Predictions />} />
                 <Route path="/patch-notes" element={<PatchNotes />} />
                 <Route path="/multikills" element={<MultiKills />} />
                 <Route path="/ward-map" element={<WardMap />} />
-                <Route path="/draft-stats" element={<DraftStats />} />
                 <Route path="/records" element={<Records />} />
                 <Route path="/admin" element={<AdminPanel />} />
                 <Route path="/pudge-stats" element={<PudgeStats />} />

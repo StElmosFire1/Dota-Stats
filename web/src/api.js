@@ -366,6 +366,10 @@ export async function getPredictions(seasonId) {
   return fetchJson(`/predictions/${seasonId}`);
 }
 
+export async function getPredictionAccuracy(seasonId) {
+  return fetchJson(`/predictions/${seasonId}/accuracy`);
+}
+
 export async function savePrediction(seasonId, predictorName, predictions) {
   const res = await fetch(BASE + `/predictions/${seasonId}`, {
     method: 'POST',

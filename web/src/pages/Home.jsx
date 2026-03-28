@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getHomeStats, getLatestRecap } from '../api';
+import { getHomeStats, getLatestRecap, getSeasons, getPredictions } from '../api';
 import { fmtDate } from '../utils/dates';
 import { useSeason } from '../context/SeasonContext';
 
@@ -65,6 +65,19 @@ export default function Home() {
   const [stats, setStats] = useState(null);
   const [recap, setRecap] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [predInfo, setPredInfo] = useState(null);
+
+  useEffect(() => {
+    getSeasons().then(s => {
+      const seasons = s.seasons || [];
+      const active = seasons.find(x => x.is_active) || seasons[0];
+      if (active) {
+        getPredictions(active.id)
+          .then(d => setPredInfo({ season: active, count: (d.predictions || []).length }))
+          .catch(() => {});
+      }
+    }).catch(() => {});
+  }, []);
 
   const fetchData = useCallback(() => {
     Promise.all([
@@ -187,6 +200,25 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Predictions widget */}
+      {predInfo && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 22px', marginBottom: 28, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+              🎯 Season Predictions — {predInfo.season.name}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              {predInfo.count > 0
+                ? <>{predInfo.count} prediction{predInfo.count !== 1 ? 's' : ''} submitted — predict who ends up top 5!</>
+                : 'No predictions yet — be the first to predict the top 5!'}
+            </div>
+          </div>
+          <Link to="/predictions" className="btn btn-primary" style={{ fontSize: 13, flexShrink: 0 }}>
+            {predInfo.count > 0 ? 'View Predictions' : 'Make a Prediction'}
+          </Link>
+        </div>
+      )}
 
       {/* Recent matches (shown below when recap is present) */}
       {recap?.ai_blurb && recentMatches.length > 0 && (

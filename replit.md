@@ -35,6 +35,13 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Synergy matrix threshold: 1 game minimum when season filter is active (vs 3 for all-time) — fixes 100% display for players with few season games.
 - Greatest Comebacks fixed: now correctly computes gold lead from per-player networth samples in game_timeline (previous query looked for non-existent goldLead key).
 - Hero position meta tab on the Heroes page — win rates per hero by position (Pos 1–5).
+- Hero Stats table now has expandable rows — click any played hero to see who has played it and their stats on that hero.
+- Heroes page now has a Hero Breakdown tab (formerly a separate page), showing each player's full hero history; /hero-breakdown now redirects to Heroes tab.
+- Draft Assistant and Draft Stats merged into single Draft page (/draft) with two tabs; Draft Stats now uses player_stats picks (always populated) not just Captain's Mode draft data.
+- Draft Assistant now has player pool selector — add players to My Team / Enemy Team to see their hero pools and click to add heroes; player hero pool data drives synergy/counter analysis.
+- Predictions page now has three tabs: Submit Prediction, All Predictions, and Accuracy Scores (compares predictions to actual season standings with exact/in-top-5 scoring).
+- Home page has a Predictions widget showing count of predictions for the active season with a link to submit.
+- Discord webhook support for prediction submissions: set DISCORD_WEBHOOK_URL env var to get notified when someone submits a season prediction.
 - Most Improved widget on the Leaderboard — top MMR gainers over 30 days (from rating_history).
 - Match prediction system: `!predict <matchId> radiant|dire` Discord command + `/api/predictions` endpoints.
 - Achievement badges on player profiles expanded: rampage, ultra kill, first blood, massacre, ward lord/breaker.
