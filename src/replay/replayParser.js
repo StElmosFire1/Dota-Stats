@@ -645,6 +645,8 @@ class ReplayParser {
     const finalItems = {};
     const finalItemsTime = {}; // slot → timestamp of the most recent hero_inventory snapshot
     let _inventoryDebugLogged = false;
+    let _intervalKeysLogged = false;
+    let _playerStatsKeysLogged = false;
     const killedBy = {};       // killedBy[victimSlot][killerSlot] = count
     const supportGoldSpent = {}; // supportGoldSpent[slot] = total gold
     const hookCasts      = [];  // [{time, slot}] — pudge hook cast events (from combatlog)
@@ -832,8 +834,8 @@ class ReplayParser {
             gameEvents.push({ t: deathTime, type: 'roshan', team: roshanTeam, killerSlot: ks != null ? ks : -1 });
             console.log(`[Replay] Roshan killed at ${deathTime}s by ${aname} (slot ${ks}) team=${roshanTeam}`);
           }
-          // Tormenter (NPC: npc_dota_neutral_tormentor)
-          if (tname.includes('tormentor') || tname.includes('tormenter')) {
+          // Tormenter (NPC: npc_dota_neutral_tormentor, also called miniboss internally)
+          if (tname.includes('tormentor') || tname.includes('tormenter') || tname.includes('miniboss')) {
             const ks = npcNameToSlot[aname];
             let tormentTeam = 'unknown';
             if (ks != null && ks >= 0 && ks < 10) tormentTeam = ks < 5 ? 'radiant' : 'dire';
@@ -849,6 +851,13 @@ class ReplayParser {
           if (tname.includes('tower') || tname.includes('fort') || tname.includes('barracks') || tname.includes('rax')) {
             const ks = npcNameToSlot[aname];
             gameEvents.push({ t: deathTime, type: 'building', team: (ks != null && ks >= 0 && ks < 5) ? 'radiant' : 'dire', building: tname });
+          }
+          // Log any non-hero, non-creep NPC death we don't recognise (for debugging)
+          if (!isHeroDeath && !tname.includes('hero') && !tname.includes('creep') &&
+              !tname.includes('tower') && !tname.includes('fort') && !tname.includes('barracks') &&
+              !tname.includes('rax') && !tname.includes('courier') && !tname.includes('donkey') &&
+              !tname.startsWith('dota_')) {
+            console.log(`[Replay] NPC death: ${tname} killed by ${aname} at ${deathTime}s`);
           }
         }
       }
@@ -989,9 +998,68 @@ class ReplayParser {
         }
       }
 
+      if (e.type === 'DOTA_COMBATLOG_PLAYERSTATS' && e.slot != null && e.slot >= 0 && e.slot < 10) {
+        if (!_playerStatsKeysLogged) {
+          _playerStatsKeysLogged = true;
+          console.log('[Replay] FIRST DOTA_COMBATLOG_PLAYERSTATS keys:', JSON.stringify(Object.keys(e)));
+          if (e.hero_inventory) console.log('[Replay] DOTA_COMBATLOG_PLAYERSTATS has hero_inventory:', JSON.stringify(e.hero_inventory.slice(0, 2)));
+          if (e.items) console.log('[Replay] DOTA_COMBATLOG_PLAYERSTATS has items:', JSON.stringify(e.items.slice(0, 2)));
+          if (e.item_0 != null) console.log('[Replay] DOTA_COMBATLOG_PLAYERSTATS item_0..item_5:', e.item_0, e.item_1, e.item_2, e.item_3, e.item_4, e.item_5);
+        }
+        const slot = e.slot;
+        const currentTime = e.time || 0;
+        const invSource = e.hero_inventory || e.items;
+        if (invSource && Array.isArray(invSource) && invSource.length > 0) {
+          const snapshot = {};
+          for (const item of invSource) {
+            if (item && item.slot != null) {
+              const rawId = item.id ?? item.itemid ?? item.item_id ?? null;
+              if (rawId === 0 || rawId === null) continue;
+              const itemName = typeof rawId === 'string' ? rawId.replace(/^item_/, '') :
+                               typeof rawId === 'number' ? (ITEM_ID_TO_NAME[rawId] || `id_${rawId}`) : '';
+              if (itemName) {
+                snapshot[item.slot] = { itemId: typeof rawId === 'number' ? rawId : 0, itemName, time: currentTime, charges: item.num_charges || 0 };
+              }
+            }
+          }
+          if (Object.keys(snapshot).length > 0) {
+            if (!finalItemsTime[slot] || currentTime >= finalItemsTime[slot]) {
+              finalItems[slot] = snapshot;
+              finalItemsTime[slot] = currentTime;
+            }
+          }
+        }
+        // Also check item_0..item_5 style fields
+        if (e.item_0 != null || e.item_1 != null) {
+          const snapshot = {};
+          for (let si = 0; si <= 5; si++) {
+            const rawId = e[`item_${si}`];
+            if (!rawId || rawId === 0) continue;
+            const itemName = typeof rawId === 'string' ? rawId.replace(/^item_/, '') :
+                             typeof rawId === 'number' ? (ITEM_ID_TO_NAME[rawId] || `id_${rawId}`) : '';
+            if (itemName) {
+              snapshot[si] = { itemId: typeof rawId === 'number' ? rawId : 0, itemName, time: currentTime, charges: 0 };
+            }
+          }
+          if (Object.keys(snapshot).length > 0) {
+            if (!finalItemsTime[slot] || currentTime >= finalItemsTime[slot]) {
+              finalItems[slot] = snapshot;
+              finalItemsTime[slot] = currentTime;
+            }
+          }
+        }
+      }
+
       if (e.type === 'interval' && e.slot != null && e.slot >= 0 && e.slot < 10) {
         const slot = e.slot;
         const currentTime = e.time || 0;
+        if (!_intervalKeysLogged && currentTime > 0) {
+          _intervalKeysLogged = true;
+          console.log('[Replay] FIRST interval event keys:', JSON.stringify(Object.keys(e)));
+          if (e.hero_inventory) console.log('[Replay] interval has hero_inventory:', JSON.stringify(e.hero_inventory.slice(0, 2)));
+          if (e.items) console.log('[Replay] interval has items:', JSON.stringify(e.items.slice(0, 2)));
+          if (e.item_0 != null) console.log('[Replay] interval item_0..item_5:', e.item_0, e.item_1, e.item_2, e.item_3, e.item_4, e.item_5);
+        }
         if (e.hero_inventory && Array.isArray(e.hero_inventory) && e.hero_inventory.length > 0) {
           if (!_inventoryDebugLogged) {
             console.log(`[Replay] FIRST hero_inventory sample (slot=${slot}, time=${currentTime}): ${JSON.stringify(e.hero_inventory.slice(0, 3))}`);

@@ -1,0 +1,688 @@
+root@Dota-Stats:~/Dota-Stats# pm2 logs inhouse-bot --lines 2000 --nostream | grep -F '[Replay]'
+2|inhouse- | [Replay] Pudge slot 8: 97 unit-order casts, 50 combatlog casts, 29 hits
+2|inhouse- | [Replay] Pudge slot 8: 24 hook hits / 89 genuine attempts
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":5,"2":1,"3":3,"4":4,"5":2,"6":4,"7":1,"8":3,"9":5}
+2|inhouse- | [Replay] slot 0: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 1: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 2: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 3: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 4: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 5: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 6: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 7: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 8: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] slot 9: using hero_inventory snapshot from 2732s (game end 2732s)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.051,"radiant":"draw","dire":"draw","radiantSlots":[1,2],"direSlots":[6,8]},"mid":{"score":0.624,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[0],"direSlots":[5]},"top":{"score":-0.019,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[7,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 930 total points
+2|inhouse- | [Replay] Ward placements: 109 total (slot0:5, slot1:13, slot4:40, slot5:3, slot6:5, slot9:43)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:40, slot1:46, slot2:45, slot3:36, slot4:110, slot5:50, slot6:49, slot7:36, slot8:28, slot9:95)
+2|inhouse- | [Replay] Final stats: matchId=8715394904, duration=2732s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): I'm a Tomato (hero=86, acct=128956172) K/D/A=16/6/22 HD=56914 TD=2918 HH=1623 DT=48914 OBS=2 SEN=3 STK=1
+2|inhouse- | [Replay]   radiant pos5 : ▪☻▪ (hero=101, acct=195989012) K/D/A=13/12/24 HD=32288 TD=284 HH=0 DT=35564 OBS=8 SEN=5 STK=3
+2|inhouse- | [Replay]   radiant pos1 : MajinDabura (hero=138, acct=35944012) K/D/A=10/5/20 HD=55429 TD=11918 HH=0 DT=42738 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   radiant pos3 : BAD1 (hero=29, acct=277264212) K/D/A=6/6/28 HD=18449 TD=548 HH=6019 DT=44041 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : I'm a Retardo (hero=128, acct=108449472) K/D/A=4/10/22 HD=24641 TD=550 HH=2369 DT=37245 OBS=9 SEN=31 STK=7
+2|inhouse- | [Replay]   dire pos2 (C): Lil B (hero=98, acct=1787090242) K/D/A=10/12/19 HD=50194 TD=1330 HH=0 DT=66907 OBS=1 SEN=2 STK=2
+2|inhouse- | [Replay]   dire pos4 : All Gussied Up (hero=34, acct=193205442) K/D/A=5/4/25 HD=30863 TD=248 HH=34684 DT=38908 OBS=2 SEN=3 STK=8
+2|inhouse- | [Replay]   dire pos1 : WaterBlitz (hero=63, acct=46891042) K/D/A=14/8/16 HD=39399 TD=8699 HH=0 DT=39760 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos3 : Zen (hero=14, acct=172274812) K/D/A=5/14/20 HD=48926 TD=1976 HH=0 DT=77826 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : ArchmagE- (hero=26, acct=1002860692) K/D/A=3/12/22 HD=15275 TD=1306 HH=0 DT=28217 OBS=17 SEN=26 STK=0
+2|inhouse- | [Replay] Draft captured: 13 bans, 10 picks
+2|inhouse- | [Replay] Sending 6c3ef2081ca22f78.dem to parser (89.9 MB)...
+2|inhouse- | [Replay] Parsed 196114 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8745744588,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774609339,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8745744588, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-27T11:02:19.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_mars":0,"npc_dota_hero_ringmaster":1,"npc_dota_hero_axe":2,"npc_dota_hero_sniper":3,"npc_dota_hero_disruptor":4,"npc_dota_hero_kunkka":5,"npc_dota_hero_juggernaut":6,"npc_dota_hero_queenofpain":7,"npc_dota_hero_magnataur":8,"npc_dota_hero_hoodwink":9}
+2|inhouse- | [Replay] Event type counts: {"DOTA_COMBATLOG_GAME_STATE":10,"player_slot":10,"interval":37130,"draft_start":1,"draft_timings":24,"chat":12,"actions":88560,"CHAT_MESSAGE_ITEM_PURCHASE":70,"DOTA_COMBATLOG_MODIFIER_ADD":11618,"DOTA_COMBATLOG_GOLD":3174,"DOTA_COMBATLOG_PURCHASE":583,"DOTA_COMBATLOG_ITEM":1465,"DOTA_COMBATLOG_MODIFIER_REMOVE":11564,"pings":182,"DOTA_COMBATLOG_ABILITY":1652,"DOTA_COMBATLOG_DAMAGE":25487,"DOTA_COMBATLOG_HEAL":4364,"CHAT_MESSAGE_HERO_KILL":90,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_PLAYERSTATS":431,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":4544,"DOTA_COMBATLOG_DEATH":4302,"obs":44,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":59,"sen":80,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":8,"obs_left":39,"CHAT_MESSAGE_SENTRY_WARD_KILLED":30,"sen_left":70,"DOTA_COMBATLOG_ABILITY_TRIGGER":213,"CHAT_MESSAGE_STREAK_KILL":41,"DOTA_COMBATLOG_KILLSTREAK":28,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_SCAN_USED":11,"DOTA_COMBATLOG_MULTIKILL":17,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_RUNE_BOTTLE":11,"chatwheel":7,"neutral_item_history":73,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_GLYPH_USED":4,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"CHAT_MESSAGE_ROSHAN_KILL":3,"CHAT_MESSAGE_AEGIS":3,"CHAT_MESSAGE_MINIBOSS_KILL":2,"CHAT_MESSAGE_BUYBACK":6,"DOTA_COMBATLOG_BUYBACK":6,"CHAT_MESSAGE_INVALID":1,"CHAT_MESSAGE_BANNER_PLANTED":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_DISCONNECT":11,"CHAT_MESSAGE_EFFIGY_KILL":5,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_disruptor","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-42,"type":"DOTA_COMBATLOG_DAMAGE","value":81,"attackername":"npc_dota_hero_kunkka","targetname":"npc_dota_hero_axe","sourcename":"npc_dota_hero_kunkka","targetsourcename":"npc_dota_hero_axe","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-30,"type":"obs","slot":4,"x":179.76855,"y":102.20776,"z":129,"entityleft":false,"ehandle":7537588}
+2|inhouse- | [Replay] Roshan killed at 1428s by npc_dota_hero_kunkka (slot 5) team=dire
+2|inhouse- | [Replay] Roshan killed at 2083s by npc_dota_hero_juggernaut (slot 6) team=dire
+2|inhouse- | [Replay] Roshan killed at 2538s by npc_dota_hero_kunkka (slot 5) team=dire
+2|inhouse- | [Replay] Roshan killed at 2631s by npc_dota_hero_sniper (slot 3) team=radiant
+2|inhouse- | [Replay] Hero damage by slot: {"0":19864,"1":14832,"2":28799,"3":48153,"4":15705,"5":32392,"6":36810,"7":24082,"8":27218,"9":22423}
+2|inhouse- | [Replay] Tower damage by slot: {"0":433,"1":97,"3":2697,"5":8212,"6":13974,"7":936,"8":2815,"9":69}
+2|inhouse- | [Replay] Hero healing by slot: {"1":1609,"6":20845,"9":1313}
+2|inhouse- | [Replay] Damage taken by slot: {"0":37560,"1":25518,"2":41219,"3":26334,"4":29722,"5":49194,"6":37589,"7":30897,"8":44717,"9":20813}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":415,"1":3935,"2":530,"3":270,"4":5795,"5":1345,"6":180,"7":3130,"8":265,"9":4195}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":3,"1":4,"2":2,"3":1,"4":5,"5":3,"6":1,"7":4,"8":2,"9":5}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":-0.514,"radiant":"loss","dire":"win","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":-0.543,"radiant":"loss","dire":"win","radiantSlots":[2],"direSlots":[8]},"top":{"score":-1.524,"radiant":"stomp_loss","dire":"stomp","radiantSlots":[0,1],"direSlots":[6,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 950 total points
+2|inhouse- | [Replay] Ward placements: 124 total (slot1:28, slot2:1, slot4:33, slot5:1, slot7:29, slot8:3, slot9:29)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:20, slot1:75, slot2:32, slot3:35, slot4:91, slot5:55, slot6:34, slot7:67, slot8:33, slot9:80)
+2|inhouse- | [Replay] Final stats: matchId=8745744588, duration=2810s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos3 (C): TANK (hero=129, acct=228770302) K/D/A=4/13/16 HD=19864 TD=433 HH=0 DT=37560 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   radiant pos4 : Vlads Trans GF (hero=131, acct=1024529442) K/D/A=2/12/20 HD=14832 TD=97 HH=1609 DT=25518 OBS=10 SEN=18 STK=1
+2|inhouse- | [Replay]   radiant pos2 : Naruto Uzumaki (hero=2, acct=120048412) K/D/A=14/7/11 HD=28799 TD=0 HH=0 DT=41219 OBS=0 SEN=1 STK=2
+2|inhouse- | [Replay]   radiant pos1 : MajinDabura (hero=35, acct=35944012) K/D/A=13/6/14 HD=48153 TD=2697 HH=0 DT=26334 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos5 : Skankhunt42 (hero=87, acct=186762212) K/D/A=1/16/24 HD=15705 TD=0 HH=0 DT=29722 OBS=12 SEN=21 STK=2
+2|inhouse- | [Replay]   dire pos3 (C): Lemon Burtle (hero=23, acct=1142497072) K/D/A=7/9/25 HD=32392 TD=8212 HH=0 DT=49194 OBS=0 SEN=1 STK=3
+2|inhouse- | [Replay]   dire pos1 : WaterBlitz (hero=8, acct=46891042) K/D/A=21/6/16 HD=36810 TD=13974 HH=20845 DT=37589 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 : ▪☻▪ (hero=39, acct=195989012) K/D/A=14/5/22 HD=24082 TD=936 HH=0 DT=30897 OBS=11 SEN=18 STK=1
+2|inhouse- | [Replay]   dire pos2 : Zen (hero=97, acct=172274812) K/D/A=8/7/19 HD=27218 TD=2815 HH=0 DT=44717 OBS=1 SEN=2 STK=0
+2|inhouse- | [Replay]   dire pos5 : Fyrewurx (hero=123, acct=31033812) K/D/A=4/8/30 HD=22423 TD=69 HH=1313 DT=20813 OBS=10 SEN=19 STK=11
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Sending 724cc44c662195ca.dem to parser (91.3 MB)...
+2|inhouse- | [Replay] Parsed 247021 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8736360984,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774009465,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8736360984, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-20T12:24:25.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_hoodwink":0,"npc_dota_hero_riki":1,"npc_dota_hero_axe":2,"npc_dota_hero_earth_spirit":3,"npc_dota_hero_sniper":4,"npc_dota_hero_spectre":5,"npc_dota_hero_oracle":6,"npc_dota_hero_zuus":7,"npc_dota_hero_treant":8,"npc_dota_hero_pudge":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":34160,"draft_start":1,"draft_timings":24,"chat":18,"DOTA_COMBATLOG_GAME_STATE":6,"actions":117314,"DOTA_COMBATLOG_GOLD":2695,"DOTA_COMBATLOG_MODIFIER_ADD":10907,"DOTA_COMBATLOG_PURCHASE":613,"DOTA_ABILITY_LEVEL":468,"DOTA_COMBATLOG_MODIFIER_REMOVE":10864,"pings":152,"DOTA_COMBATLOG_ITEM":1549,"DOTA_COMBATLOG_ABILITY":2490,"obs":42,"DOTA_COMBATLOG_PLAYERSTATS":356,"sen":82,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":57,"DOTA_COMBATLOG_DAMAGE":38704,"STARTING_ITEM":51,"DOTA_COMBATLOG_XP":4224,"DOTA_COMBATLOG_DEATH":3955,"DOTA_COMBATLOG_HEAL":17569,"CHAT_MESSAGE_SENTRY_WARD_KILLED":20,"sen_left":72,"DOTA_COMBATLOG_ABILITY_TRIGGER":194,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_COURIER_LOST":2,"CHAT_MESSAGE_HERO_KILL":72,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"CHAT_MESSAGE_COURIER_RESPAWNED":2,"CHAT_MESSAGE_ITEM_PURCHASE":62,"CHAT_MESSAGE_GLYPH_USED":9,"obs_left":38,"chatwheel":4,"neutral_item_history":72,"CHAT_MESSAGE_STREAK_KILL":29,"DOTA_COMBATLOG_KILLSTREAK":23,"DOTA_COMBATLOG_MULTIKILL":8,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":11,"CHAT_MESSAGE_BUYBACK":5,"DOTA_COMBATLOG_BUYBACK":5,"CHAT_MESSAGE_SCAN_USED":8,"CHAT_MESSAGE_TOWER_KILL":12,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":19,"CHAT_MESSAGE_MINIBOSS_KILL":2,"CHAT_MESSAGE_BARRACKS_KILL":4,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_EFFIGY_KILL":1,"CHAT_MESSAGE_DISCONNECT":9,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":6,"attackername":"dota_unknown","targetname":"npc_dota_hero_hoodwink","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":0,"type":"DOTA_COMBATLOG_DAMAGE","value":52,"attackername":"npc_dota_hero_spectre","targetname":"npc_dota_hero_earth_spirit","sourcename":"npc_dota_hero_spectre","targetsourcename":"npc_dota_hero_earth_spirit","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"spectre_spectral_dagger"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-26,"type":"obs","slot":8,"x":154.95361,"y":77.44971,"z":129,"entityleft":false,"ehandle":16450466}
+2|inhouse- | [Replay] Roshan killed at 2261s by npc_dota_hero_pudge (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":20117,"1":21876,"2":26731,"3":22960,"4":22176,"5":56372,"6":45816,"7":45881,"8":10127,"9":73191}
+2|inhouse- | [Replay] Tower damage by slot: {"0":87,"1":148,"2":496,"3":338,"5":14267,"6":681,"7":2852,"8":26,"9":3683}
+2|inhouse- | [Replay] Hero healing by slot: {"6":63226,"8":8932}
+2|inhouse- | [Replay] Damage taken by slot: {"0":25660,"1":30046,"2":48844,"3":51613,"4":26558,"5":43661,"6":31455,"7":29870,"8":24277,"9":107902}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":5830,"1":595,"2":570,"3":905,"4":2625,"5":870,"6":6135,"7":335,"8":2845,"9":1660}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Pudge slot 9: 126 unit-order casts, 59 combatlog casts, 39 hits
+2|inhouse- | [Replay] Pudge slot 9: 28 hook hits / 106 genuine attempts
+2|inhouse- | [Replay] Detected positions: {"0":5,"1":1,"2":2,"3":3,"4":4,"5":1,"6":5,"7":2,"8":4,"9":3}
+2|inhouse- | [Replay] slot 0: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 1: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 2: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 3: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 4: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 5: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 6: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 7: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 8: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] slot 9: using hero_inventory snapshot from 2719s (game end 2719s)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.384,"radiant":"win","dire":"loss","radiantSlots":[0,1],"direSlots":[8,9]},"mid":{"score":-0.448,"radiant":"loss","dire":"win","radiantSlots":[2],"direSlots":[7]},"top":{"score":-1.238,"radiant":"stomp_loss","dire":"stomp","radiantSlots":[3,4],"direSlots":[5,6]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 920 total points
+2|inhouse- | [Replay] Ward placements: 124 total (slot0:44, slot1:1, slot2:1, slot3:1, slot4:16, slot6:41, slot7:1, slot8:19)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:95, slot1:31, slot2:33, slot3:46, slot4:46, slot5:47, slot6:116, slot7:48, slot8:57, slot9:40)
+2|inhouse- | [Replay] Final stats: matchId=8736360984, duration=2719s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos5 (C): ▪☻▪ (hero=123, acct=195989012) K/D/A=4/8/12 HD=20117 TD=87 HH=0 DT=25660 OBS=17 SEN=27 STK=1
+2|inhouse- | [Replay]   radiant pos1 : MajinDabura (hero=32, acct=35944012) K/D/A=6/8/13 HD=21876 TD=148 HH=0 DT=30046 OBS=0 SEN=1 STK=0
+2|inhouse- | [Replay]   radiant pos2 : Zen (hero=2, acct=172274812) K/D/A=7/8/7 HD=26731 TD=496 HH=0 DT=48844 OBS=0 SEN=1 STK=0
+2|inhouse- | [Replay]   radiant pos3 : .Xel (hero=107, acct=272544032) K/D/A=6/10/6 HD=22960 TD=338 HH=0 DT=51613 OBS=0 SEN=1 STK=1
+2|inhouse- | [Replay]   radiant pos4 : TANK (hero=35, acct=228770302) K/D/A=1/14/13 HD=22176 TD=0 HH=0 DT=26558 OBS=4 SEN=12 STK=5
+2|inhouse- | [Replay]   dire pos1 (C): BAD1 (hero=67, acct=277264212) K/D/A=19/4/21 HD=56372 TD=14267 HH=0 DT=43661 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos5 : Lemon Burtle (hero=111, acct=1142497072) K/D/A=8/6/21 HD=45816 TD=681 HH=63226 DT=31455 OBS=16 SEN=25 STK=2
+2|inhouse- | [Replay]   dire pos2 : WhiteDeathIsMossad (hero=22, acct=108449472) K/D/A=10/3/21 HD=45881 TD=2852 HH=0 DT=29870 OBS=1 SEN=0 STK=7
+2|inhouse- | [Replay]   dire pos4 : Hoodini (hero=83, acct=161409022) K/D/A=0/4/29 HD=10127 TD=26 HH=8932 DT=24277 OBS=4 SEN=15 STK=0
+2|inhouse- | [Replay]   dire pos3 : Vlads Trans GF (hero=14, acct=1024529442) K/D/A=10/7/19 HD=73191 TD=3683 HH=0 DT=107902 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Sending dec3d0b7f0ab5d6d.dem to parser (98.8 MB)...
+2|inhouse- | [Replay] Parsed 253347 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8724410801,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1773222872,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8724410801, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-11T09:54:32.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_lion":0,"npc_dota_hero_pudge":1,"npc_dota_hero_nevermore":2,"npc_dota_hero_queenofpain":3,"npc_dota_hero_void_spirit":4,"npc_dota_hero_snapfire":5,"npc_dota_hero_sniper":6,"npc_dota_hero_night_stalker":7,"npc_dota_hero_disruptor":8,"npc_dota_hero_primal_beast":9}
+2|inhouse- | [Replay] Event type counts: {"DOTA_COMBATLOG_GAME_STATE":9,"player_slot":10,"interval":38840,"draft_start":1,"draft_timings":24,"actions":139475,"DOTA_COMBATLOG_GOLD":3171,"DOTA_COMBATLOG_MODIFIER_ADD":11870,"DOTA_COMBATLOG_PURCHASE":650,"DOTA_ABILITY_LEVEL":494,"CHAT_MESSAGE_ITEM_PURCHASE":75,"DOTA_COMBATLOG_MODIFIER_REMOVE":11725,"DOTA_COMBATLOG_ITEM":1836,"DOTA_COMBATLOG_ABILITY":2087,"pings":202,"obs":46,"DOTA_COMBATLOG_PLAYERSTATS":421,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":62,"STARTING_ITEM":55,"sen":88,"DOTA_COMBATLOG_DAMAGE":29612,"DOTA_COMBATLOG_DEATH":4580,"CHAT_MESSAGE_HERO_KILL":80,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":4813,"DOTA_COMBATLOG_HEAL":2651,"CHAT_MESSAGE_SENTRY_WARD_KILLED":33,"sen_left":79,"CHAT_MESSAGE_RUNE_BOTTLE":19,"DOTA_COMBATLOG_ABILITY_TRIGGER":19,"chatwheel":16,"CHAT_MESSAGE_GLYPH_USED":7,"obs_left":43,"CHAT_MESSAGE_SCAN_USED":13,"chat":17,"neutral_item_history":68,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":11,"CHAT_MESSAGE_STREAK_KILL":32,"DOTA_COMBATLOG_KILLSTREAK":24,"DOTA_COMBATLOG_MULTIKILL":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":18,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_DISCONNECT":10,"CHAT_MESSAGE_RECONNECT":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"CHAT_MESSAGE_MINIBOSS_KILL":3,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"CHAT_MESSAGE_ROSHAN_KILL":2,"CHAT_MESSAGE_AEGIS":2,"CHAT_MESSAGE_RUNE_DENY":1,"CHAT_MESSAGE_INVALID":1,"CHAT_MESSAGE_BARRACKS_KILL":2,"CHAT_MESSAGE_EFFIGY_KILL":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":9,"type":"DOTA_COMBATLOG_DAMAGE","value":19,"attackername":"npc_dota_hero_disruptor","targetname":"npc_dota_hero_pudge","sourcename":"npc_dota_hero_disruptor","targetsourcename":"npc_dota_hero_pudge","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"disruptor_thunder_strike"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-32,"type":"obs","slot":8,"x":115.42627,"y":127.51587,"z":129,"entityleft":false,"ehandle":9520041}
+2|inhouse- | [Replay] Roshan killed at 1854s by npc_dota_hero_nevermore (slot 2) team=radiant
+2|inhouse- | [Replay] Roshan killed at 2619s by npc_dota_hero_nevermore (slot 2) team=radiant
+2|inhouse- | [Replay] Hero damage by slot: {"0":16549,"1":39805,"2":36962,"3":27966,"4":9839,"5":25607,"6":51905,"7":26156,"8":11319,"9":19833}
+2|inhouse- | [Replay] Tower damage by slot: {"0":132,"1":1852,"2":4747,"3":456,"5":704,"6":8109,"7":3570,"8":249,"9":2642}
+2|inhouse- | [Replay] Hero healing by slot: {"0":514,"1":1212,"3":110,"4":243,"5":7553}
+2|inhouse- | [Replay] Damage taken by slot: {"0":25178,"1":63881,"2":44292,"3":40549,"4":22874,"5":20084,"6":21523,"7":40915,"8":25098,"9":50101}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":5625,"1":355,"2":740,"3":1050,"4":2825,"5":3770,"6":90,"7":295,"8":5525,"9":660}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Pudge slot 1: 77 unit-order casts, 45 combatlog casts, 35 hits
+2|inhouse- | [Replay] Pudge slot 1: 17 hook hits / 54 genuine attempts
+2|inhouse- | [Replay] Detected positions: {"0":5,"1":3,"2":1,"3":2,"4":4,"5":4,"6":1,"7":3,"8":5,"9":2}
+2|inhouse- | [Replay] slot 0: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 1: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 2: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 3: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 4: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 5: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 6: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 7: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 8: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] slot 9: using hero_inventory snapshot from 3005s (game end 3005s)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.565,"radiant":"win","dire":"loss","radiantSlots":[0,2],"direSlots":[5,7]},"mid":{"score":-0.148,"radiant":"draw","dire":"draw","radiantSlots":[3],"direSlots":[9]},"top":{"score":-0.404,"radiant":"loss","dire":"win","radiantSlots":[1,4],"direSlots":[6,8]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 1020 total points
+2|inhouse- | [Replay] Ward placements: 134 total (slot0:42, slot3:4, slot4:21, slot5:27, slot8:37, slot9:3)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:95, slot1:33, slot2:45, slot3:44, slot4:53, slot5:111, slot6:43, slot7:34, slot8:91, slot9:40)
+2|inhouse- | [Replay] Final stats: matchId=8724410801, duration=3005s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos5 (C): King Sting (hero=26, acct=1150345872) K/D/A=4/13/20 HD=16549 TD=132 HH=514 DT=25178 OBS=12 SEN=30 STK=3
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=14, acct=172274812) K/D/A=8/11/13 HD=39805 TD=1852 HH=1212 DT=63881 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos1 : Dosed (hero=11, acct=197226052) K/D/A=7/8/10 HD=36962 TD=4747 HH=0 DT=44292 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos2 : Skankhunt42 (hero=39, acct=186762212) K/D/A=5/9/10 HD=27966 TD=456 HH=110 DT=40549 OBS=2 SEN=2 STK=1
+2|inhouse- | [Replay]   radiant pos4 : Hoodini (hero=126, acct=161409022) K/D/A=3/10/19 HD=9839 TD=0 HH=243 DT=22874 OBS=9 SEN=12 STK=4
+2|inhouse- | [Replay]   dire pos4 (C): Lemon Burtle (hero=128, acct=1142497072) K/D/A=10/2/35 HD=25607 TD=704 HH=7553 DT=20084 OBS=7 SEN=15 STK=2
+2|inhouse- | [Replay]   dire pos1 : MajinDabura (hero=35, acct=35944012) K/D/A=18/3/24 HD=51905 TD=8109 HH=0 DT=21523 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   dire pos3 : Purge, the BOBO's (hero=60, acct=1641007202) K/D/A=11/7/24 HD=26156 TD=3570 HH=0 DT=40915 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos5 : BAD1 (hero=87, acct=277264212) K/D/A=4/11/33 HD=11319 TD=249 HH=0 DT=25098 OBS=15 SEN=27 STK=1
+2|inhouse- | [Replay]   dire pos2 : Schlomo Goldberg (hero=137, acct=108449472) K/D/A=8/6/21 HD=19833 TD=2642 HH=0 DT=50101 OBS=1 SEN=2 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Sending 8ef234a212e38265.dem to parser (100.6 MB)...
+2|inhouse- | [Replay] Parsed 218578 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8723304331,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1773142538,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8723304331, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-10T11:35:38.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_morphling":0,"npc_dota_hero_obsidian_destroyer":1,"npc_dota_hero_techies":2,"npc_dota_hero_ringmaster":3,"npc_dota_hero_centaur":4,"npc_dota_hero_life_stealer":5,"npc_dota_hero_death_prophet":6,"npc_dota_hero_vengefulspirit":7,"npc_dota_hero_abyssal_underlord":8,"npc_dota_hero_disruptor":9}
+2|inhouse- | [Replay] Event type counts: {"DOTA_COMBATLOG_GAME_STATE":10,"player_slot":10,"interval":37100,"draft_start":1,"chat":4,"draft_timings":24,"actions":103913,"CHAT_MESSAGE_ITEM_PURCHASE":67,"DOTA_COMBATLOG_GOLD":2920,"DOTA_COMBATLOG_MODIFIER_ADD":12729,"DOTA_COMBATLOG_PURCHASE":630,"DOTA_ABILITY_LEVEL":511,"chatwheel":27,"DOTA_COMBATLOG_ITEM":1489,"DOTA_COMBATLOG_ABILITY":2265,"DOTA_COMBATLOG_MODIFIER_REMOVE":12666,"pings":229,"DOTA_COMBATLOG_DAMAGE":29600,"DOTA_COMBATLOG_HEAL":4366,"CHAT_MESSAGE_HERO_KILL":91,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_PLAYERSTATS":455,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":4550,"DOTA_COMBATLOG_DEATH":4201,"CHAT_MESSAGE_STREAK_KILL":39,"DOTA_COMBATLOG_MULTIKILL":15,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":59,"STARTING_ITEM":49,"sen":82,"obs":44,"CHAT_MESSAGE_COURIER_LOST":3,"CHAT_MESSAGE_SENTRY_WARD_KILLED":31,"sen_left":74,"CHAT_MESSAGE_COURIER_RESPAWNED":3,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":12,"obs_left":40,"DOTA_COMBATLOG_ABILITY_TRIGGER":20,"CHAT_MESSAGE_RUNE_BOTTLE":13,"DOTA_COMBATLOG_KILLSTREAK":26,"CHAT_MESSAGE_SCAN_USED":9,"CHAT_MESSAGE_GLYPH_USED":8,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":54,"CHAT_MESSAGE_TOWER_KILL":15,"neutral_item_history":69,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"CHAT_MESSAGE_MINIBOSS_KILL":2,"CHAT_MESSAGE_ROSHAN_KILL":2,"CHAT_MESSAGE_AEGIS":2,"CHAT_MESSAGE_RUNE_DENY":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_BUYBACK":6,"DOTA_COMBATLOG_BUYBACK":6,"CHAT_MESSAGE_EFFIGY_KILL":6,"CHAT_MESSAGE_INVALID":1,"CHAT_MESSAGE_SUPER_CREEPS":1,"CHAT_MESSAGE_DISCONNECT":10,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":14,"attackername":"dota_unknown","targetname":"npc_dota_hero_vengefulspirit","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-54,"type":"DOTA_COMBATLOG_DAMAGE","value":18,"attackername":"npc_dota_hero_disruptor","targetname":"npc_dota_hero_obsidian_destroyer","sourcename":"npc_dota_hero_disruptor","targetsourcename":"npc_dota_hero_obsidian_destroyer","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"disruptor_thunder_strike"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":16,"type":"sen","slot":7,"x":102.52734,"y":166.8064,"z":130,"entityleft":false,"ehandle":1885740}
+2|inhouse- | [Replay] Roshan killed at 1613s by npc_dota_hero_obsidian_destroyer (slot 1) team=radiant
+2|inhouse- | [Replay] Roshan killed at 2370s by npc_dota_hero_morphling (slot 0) team=radiant
+2|inhouse- | [Replay] Hero damage by slot: {"0":47067,"1":66238,"2":42217,"3":31175,"4":31262,"5":35286,"6":53580,"7":15153,"8":26627,"9":18171}
+2|inhouse- | [Replay] Tower damage by slot: {"0":21634,"1":2076,"2":66,"3":1138,"4":2182,"5":2204,"6":1622,"8":191,"9":299}
+2|inhouse- | [Replay] Hero healing by slot: {"0":2730,"3":1528,"5":4117,"7":195,"9":132}
+2|inhouse- | [Replay] Damage taken by slot: {"0":33797,"1":39975,"2":47570,"3":24924,"4":72484,"5":81091,"6":68434,"7":25869,"8":48277,"9":32099}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":215,"1":330,"2":3865,"3":5775,"4":220,"5":410,"6":470,"7":5020,"8":460,"9":3030}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":1,"1":2,"2":4,"3":5,"4":3,"5":1,"6":2,"7":5,"8":3,"9":4}
+2|inhouse- | [Replay] slot 0: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 1: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 2: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 3: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 4: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 5: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 6: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 7: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 8: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] slot 9: using hero_inventory snapshot from 2854s (game end 2854s)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":1.127,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[0,3],"direSlots":[8,9]},"mid":{"score":0.414,"radiant":"win","dire":"loss","radiantSlots":[1],"direSlots":[6]},"top":{"score":-0.08,"radiant":"draw","dire":"draw","radiantSlots":[2,4],"direSlots":[5,7]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 970 total points
+2|inhouse- | [Replay] Ward placements: 126 total (slot1:2, slot2:20, slot3:41, slot5:1, slot6:4, slot7:36, slot9:22)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:42, slot1:43, slot2:84, slot3:108, slot4:27, slot5:48, slot6:42, slot7:84, slot8:25, slot9:58)
+2|inhouse- | [Replay] Final stats: matchId=8723304331, duration=2854s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos1 (C): BAD1 (hero=10, acct=277264212) K/D/A=15/4/18 HD=47067 TD=21634 HH=2730 DT=33797 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos2 : ▪☻▪ (hero=76, acct=195989012) K/D/A=21/6/10 HD=66238 TD=2076 HH=0 DT=39975 OBS=2 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos4 : All Gussied Up (hero=105, acct=193205442) K/D/A=8/10/22 HD=42217 TD=66 HH=0 DT=47570 OBS=8 SEN=12 STK=3
+2|inhouse- | [Replay]   radiant pos5 : Lil B (hero=131, acct=1787090242) K/D/A=6/8/38 HD=31175 TD=1138 HH=1528 DT=24924 OBS=12 SEN=29 STK=2
+2|inhouse- | [Replay]   radiant pos3 : :) (hero=96, acct=837738702) K/D/A=3/10/27 HD=31262 TD=2182 HH=0 DT=72484 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos1 (C): MajinDabura (hero=54, acct=35944012) K/D/A=10/5/18 HD=35286 TD=2204 HH=4117 DT=81091 OBS=1 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos2 : I'm a potato (hero=43, acct=125208932) K/D/A=11/6/21 HD=53580 TD=1622 HH=0 DT=68434 OBS=1 SEN=3 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=20, acct=161409022) K/D/A=6/11/21 HD=15153 TD=0 HH=195 DT=25869 OBS=14 SEN=22 STK=4
+2|inhouse- | [Replay]   dire pos3 : TANK (hero=108, acct=228770302) K/D/A=8/12/19 HD=26627 TD=191 HH=0 DT=48277 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   dire pos4 : ~ℰᵝᵊᵊ~ (hero=87, acct=143801632) K/D/A=3/19/25 HD=18171 TD=299 HH=132 DT=32099 OBS=6 SEN=16 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Sending a81411f6932a1880.dem to parser (113.7 MB)...
+2|inhouse- | [Replay] Parsed 265637 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8740476416,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774260026,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8740476416, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-23T10:00:26.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_tiny":0,"npc_dota_hero_luna":1,"npc_dota_hero_treant":2,"npc_dota_hero_viper":3,"npc_dota_hero_axe":4,"npc_dota_hero_sniper":5,"npc_dota_hero_snapfire":6,"npc_dota_hero_lina":7,"npc_dota_hero_kunkka":8,"npc_dota_hero_weaver":9}
+2|inhouse- | [Replay] Event type counts: {"DOTA_COMBATLOG_GAME_STATE":10,"player_slot":10,"interval":40620,"draft_start":1,"draft_timings":24,"chat":15,"actions":126378,"DOTA_COMBATLOG_GOLD":3657,"DOTA_COMBATLOG_MODIFIER_ADD":16315,"DOTA_COMBATLOG_MODIFIER_REMOVE":16205,"DOTA_COMBATLOG_PURCHASE":771,"DOTA_ABILITY_LEVEL":503,"pings":210,"obs":48,"DOTA_COMBATLOG_ITEM":2217,"DOTA_COMBATLOG_PLAYERSTATS":501,"chatwheel":16,"DOTA_COMBATLOG_ABILITY":2271,"CHAT_MESSAGE_PAUSED":2,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":6,"CHAT_MESSAGE_UNPAUSED":2,"game_paused":2,"DOTA_COMBATLOG_DAMAGE":40398,"DOTA_COMBATLOG_XP":5765,"DOTA_COMBATLOG_HEAL":3512,"DOTA_COMBATLOG_DEATH":5160,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"STARTING_ITEM":47,"CHAT_MESSAGE_HERO_KILL":101,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"CHAT_MESSAGE_RUNE_PICKUP":66,"CHAT_MESSAGE_STREAK_KILL":38,"DOTA_COMBATLOG_MULTIKILL":15,"sen":88,"CHAT_MESSAGE_SENTRY_WARD_KILLED":32,"sen_left":82,"DOTA_COMBATLOG_ABILITY_TRIGGER":181,"CHAT_MESSAGE_RUNE_BOTTLE":11,"CHAT_MESSAGE_GLYPH_USED":11,"CHAT_MESSAGE_ITEM_PURCHASE":89,"obs_left":43,"CHAT_MESSAGE_SCAN_USED":14,"CHAT_MESSAGE_TOWER_KILL":12,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":16,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":15,"neutral_item_history":71,"CHAT_MESSAGE_DISCONNECT":11,"CHAT_MESSAGE_RECONNECT":1,"CHAT_MESSAGE_COURIER_LOST":6,"CHAT_MESSAGE_COURIER_RESPAWNED":5,"DOTA_COMBATLOG_KILLSTREAK":23,"CHAT_MESSAGE_MINIBOSS_KILL":3,"CHAT_MESSAGE_BUYBACK":10,"DOTA_COMBATLOG_BUYBACK":10,"CHAT_MESSAGE_ROSHAN_KILL":3,"CHAT_MESSAGE_AEGIS":3,"CHAT_MESSAGE_INVALID":1,"CHAT_MESSAGE_BARRACKS_KILL":2,"CHAT_MESSAGE_EFFIGY_KILL":2,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":9,"attackername":"dota_unknown","targetname":"npc_dota_hero_treant","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-11,"type":"DOTA_COMBATLOG_DAMAGE","value":109,"attackername":"npc_dota_hero_snapfire","targetname":"npc_dota_hero_luna","sourcename":"npc_dota_hero_snapfire","targetsourcename":"npc_dota_hero_luna","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"snapfire_scatterblast"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-45,"type":"obs","slot":3,"x":123.86206,"y":117.94824,"z":129,"entityleft":false,"ehandle":6210483}
+2|inhouse- | [Replay] Roshan killed at 1454s by npc_dota_hero_lina (slot 7) team=dire
+2|inhouse- | [Replay] Roshan killed at 2154s by npc_dota_hero_viper (slot 3) team=radiant
+2|inhouse- | [Replay] Roshan killed at 2927s by npc_dota_hero_luna (slot 1) team=radiant
+2|inhouse- | [Replay] Hero damage by slot: {"0":24441,"1":40589,"2":18315,"3":60169,"4":50078,"5":39185,"6":42191,"7":50844,"8":59799,"9":29249}
+2|inhouse- | [Replay] Tower damage by slot: {"0":269,"1":3008,"3":660,"4":1160,"5":5780,"6":732,"7":15664,"8":2067,"9":2085}
+2|inhouse- | [Replay] Hero healing by slot: {"0":1533,"2":6849,"4":124,"6":5944,"9":250}
+2|inhouse- | [Replay] Damage taken by slot: {"0":45682,"1":51027,"2":43498,"3":52549,"4":54894,"5":32136,"6":38875,"7":50097,"8":68316,"9":50731}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":4815,"1":305,"2":6025,"3":1115,"4":960,"5":300,"6":2060,"7":810,"8":770,"9":12035}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":4,"1":1,"2":5,"3":2,"4":3,"5":1,"6":4,"7":2,"8":3,"9":5}
+2|inhouse- | [Replay] slot 0: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 1: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 2: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 3: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 4: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 5: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 6: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 7: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 8: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] slot 9: using hero_inventory snapshot from 3254s (game end 3254s)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.746,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[1,2],"direSlots":[6,8]},"mid":{"score":0.096,"radiant":"draw","dire":"draw","radiantSlots":[3],"direSlots":[7]},"top":{"score":1.004,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[0,4],"direSlots":[5,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 1100 total points
+2|inhouse- | [Replay] Ward placements: 136 total (slot0:22, slot2:44, slot3:3, slot6:8, slot7:1, slot8:2, slot9:56)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:96, slot1:38, slot2:94, slot3:45, slot4:44, slot5:46, slot6:84, slot7:42, slot8:50, slot9:162)
+2|inhouse- | [Replay] Final stats: matchId=8740476416, duration=3254s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos4 (C): Klevin (hero=19, acct=1156848162) K/D/A=3/10/19 HD=24441 TD=269 HH=1533 DT=45682 OBS=6 SEN=16 STK=3
+2|inhouse- | [Replay]   radiant pos1 : BAD1 (hero=48, acct=277264212) K/D/A=7/9/14 HD=40589 TD=3008 HH=0 DT=51027 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : Hoodini (hero=83, acct=161409022) K/D/A=3/12/24 HD=18315 TD=0 HH=6849 DT=43498 OBS=15 SEN=29 STK=1
+2|inhouse- | [Replay]   radiant pos2 : Jack Stark (hero=47, acct=371437772) K/D/A=12/15/14 HD=60169 TD=660 HH=0 DT=52549 OBS=2 SEN=1 STK=0
+2|inhouse- | [Replay]   radiant pos3 : TANK (hero=2, acct=228770302) K/D/A=15/14/12 HD=50078 TD=1160 HH=124 DT=54894 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos1 (C): Harry (hero=35, acct=108449472) K/D/A=14/12/20 HD=39185 TD=5780 HH=0 DT=32136 OBS=0 SEN=0 STK=7
+2|inhouse- | [Replay]   dire pos4 : Lemon Burtle (hero=128, acct=1142497072) K/D/A=13/4/37 HD=42191 TD=732 HH=5944 DT=38875 OBS=4 SEN=4 STK=4
+2|inhouse- | [Replay]   dire pos2 : MajinDabura (hero=25, acct=35944012) K/D/A=21/9/23 HD=50844 TD=15664 HH=0 DT=50097 OBS=0 SEN=1 STK=2
+2|inhouse- | [Replay]   dire pos3 : Vlads Trans GF (hero=23, acct=1024529442) K/D/A=6/9/36 HD=59799 TD=2067 HH=0 DT=68316 OBS=1 SEN=1 STK=0
+2|inhouse- | [Replay]   dire pos5 : Skankhunt42 (hero=63, acct=186762212) K/D/A=5/7/46 HD=29249 TD=2085 HH=250 DT=50731 OBS=20 SEN=36 STK=0
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Sending aa47bb8b23eed64b.dem to parser (136.6 MB)...
+2|inhouse- | [Replay] Parsed 319212 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8728625755,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1773499786,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8728625755, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-14T14:49:46.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_bristleback":0,"npc_dota_hero_lich":1,"npc_dota_hero_mars":2,"npc_dota_hero_disruptor":3,"npc_dota_hero_broodmother":4,"npc_dota_hero_pudge":5,"npc_dota_hero_riki":6,"npc_dota_hero_undying":7,"npc_dota_hero_treant":8,"npc_dota_hero_batrider":9}
+2|inhouse- | [Replay] Event type counts: {"DOTA_COMBATLOG_GAME_STATE":10,"player_slot":10,"interval":41330,"draft_start":1,"draft_timings":24,"actions":123671,"DOTA_COMBATLOG_GOLD":4622,"DOTA_COMBATLOG_MODIFIER_ADD":30069,"DOTA_COMBATLOG_PURCHASE":734,"DOTA_ABILITY_LEVEL":500,"DOTA_COMBATLOG_MODIFIER_REMOVE":30785,"CHAT_MESSAGE_ITEM_PURCHASE":82,"DOTA_COMBATLOG_ITEM":1618,"CHAT_MESSAGE_PAUSED":6,"chat":36,"pings":190,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":18,"CHAT_MESSAGE_UNPAUSED":6,"game_paused":6,"obs":51,"DOTA_COMBATLOG_PLAYERSTATS":558,"chatwheel":20,"DOTA_COMBATLOG_ABILITY":3401,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"STARTING_ITEM":53,"CHAT_MESSAGE_RUNE_PICKUP":70,"sen":92,"DOTA_COMBATLOG_DAMAGE":59390,"DOTA_COMBATLOG_DEATH":7555,"obs_left":51,"DOTA_COMBATLOG_XP":7891,"DOTA_COMBATLOG_HEAL":5777,"CHAT_MESSAGE_HERO_KILL":115,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"CHAT_MESSAGE_SENTRY_WARD_KILLED":20,"sen_left":90,"DOTA_COMBATLOG_ABILITY_TRIGGER":24,"CHAT_MESSAGE_STREAK_KILL":53,"DOTA_COMBATLOG_MULTIKILL":23,"DOTA_COMBATLOG_KILLSTREAK":33,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":9,"CHAT_MESSAGE_GLYPH_USED":13,"neutral_item_history":70,"CHAT_MESSAGE_TOWER_KILL":18,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":33,"CHAT_MESSAGE_RUNE_BOTTLE":2,"CHAT_MESSAGE_MINIBOSS_KILL":2,"CHAT_MESSAGE_SCAN_USED":7,"CHAT_MESSAGE_ROSHAN_KILL":3,"CHAT_MESSAGE_AEGIS":3,"CHAT_MESSAGE_COURIER_LOST":2,"CHAT_MESSAGE_DISCONNECT":11,"CHAT_MESSAGE_RECONNECT":1,"CHAT_MESSAGE_COURIER_RESPAWNED":2,"CHAT_MESSAGE_BANNER_PLANTED":2,"CHAT_MESSAGE_BARRACKS_KILL":7,"CHAT_MESSAGE_EFFIGY_KILL":8,"CHAT_MESSAGE_BUYBACK":14,"DOTA_COMBATLOG_BUYBACK":14,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":8,"attackername":"dota_unknown","targetname":"npc_dota_hero_lich","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":17,"type":"DOTA_COMBATLOG_DAMAGE","value":50,"attackername":"npc_dota_hero_batrider","targetname":"npc_dota_observer_wards","sourcename":"npc_dota_hero_batrider","targetsourcename":"npc_dota_hero_batrider","attackerhero":true,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-56,"type":"obs","slot":9,"x":125.42871,"y":132.07788,"z":129,"entityleft":false,"ehandle":5342132}
+2|inhouse- | [Replay] Roshan killed at 1751s by npc_dota_hero_broodmother (slot 4) team=radiant
+2|inhouse- | [Replay] Roshan killed at 2458s by npc_dota_hero_riki (slot 6) team=dire
+2|inhouse- | [Replay] Roshan killed at 2671s by npc_dota_hero_mars (slot 2) team=radiant
+2|inhouse- | [Replay] Roshan killed at 3081s by npc_dota_hero_broodmother (slot 4) team=radiant
+2|inhouse- | [Replay] Roshan killed at 3548s by npc_dota_hero_pudge (slot 5) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":71158,"1":65249,"2":33385,"3":26729,"4":44358,"5":64367,"6":79717,"7":40874,"8":16085,"9":59749}
+2|inhouse- | [Replay] Tower damage by slot: {"0":7832,"2":824,"4":9700,"5":1408,"6":4147,"7":1044,"8":31,"9":14134}
+2|inhouse- | [Replay] Hero healing by slot: {"3":195,"6":1800,"7":21567,"8":15229}
+2|inhouse- | [Replay] Damage taken by slot: {"0":82487,"1":32996,"2":46619,"3":37749,"4":69348,"5":101510,"6":46941,"7":87129,"8":42871,"9":63145}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":180,"1":6675,"2":1630,"3":5480,"4":450,"5":1790,"6":950,"7":545,"8":5760,"9":735}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Pudge slot 5: 145 unit-order casts, 43 combatlog casts, 68 hits
+2|inhouse- | [Replay] Pudge slot 5: 14 hook hits / 138 genuine attempts
+2|inhouse- | [Replay] Detected positions: {"0":1,"1":4,"2":3,"3":5,"4":2,"5":5,"6":1,"7":3,"8":4,"9":2}
+2|inhouse- | [Replay] slot 0: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 1: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 2: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 3: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 4: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 5: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 6: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 7: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 8: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] slot 9: using hero_inventory snapshot from 3632s (game end 3632s)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":-1.283,"radiant":"stomp_loss","dire":"stomp","radiantSlots":[0,3],"direSlots":[7,8]},"mid":{"score":-0.316,"radiant":"loss","dire":"win","radiantSlots":[4],"direSlots":[9]},"top":{"score":0.723,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[1,2],"direSlots":[5,6]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 1230 total points
+2|inhouse- | [Replay] Ward placements: 143 total (slot1:46, slot3:32, slot5:15, slot6:1, slot7:2, slot8:44, slot9:3)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:46, slot1:114, slot2:43, slot3:88, slot4:47, slot5:60, slot6:66, slot7:47, slot8:101, slot9:47)
+2|inhouse- | [Replay] Final stats: matchId=8728625755, duration=3632s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos1 (C): WaterBlitz (hero=99, acct=46891042) K/D/A=10/11/26 HD=71158 TD=7832 HH=0 DT=82487 OBS=0 SEN=0 STK=3
+2|inhouse- | [Replay]   radiant pos4 : Zen (hero=31, acct=172274812) K/D/A=9/13/32 HD=65249 TD=0 HH=0 DT=32996 OBS=15 SEN=31 STK=0
+2|inhouse- | [Replay]   radiant pos3 : Charlie Curnow (hero=129, acct=30009442) K/D/A=7/10/32 HD=33385 TD=824 HH=0 DT=46619 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : BAD1 (hero=87, acct=277264212) K/D/A=6/18/29 HD=26729 TD=0 HH=195 DT=37749 OBS=12 SEN=20 STK=5
+2|inhouse- | [Replay]   radiant pos2 : Viking (hero=61, acct=55254802) K/D/A=14/13/14 HD=44358 TD=9700 HH=0 DT=69348 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos5 (C): ▪☻▪ (hero=14, acct=195989012) K/D/A=4/17/27 HD=64367 TD=1408 HH=0 DT=101510 OBS=4 SEN=11 STK=0
+2|inhouse- | [Replay]   dire pos1 : MajinDabura (hero=32, acct=35944012) K/D/A=26/6/21 HD=79717 TD=4147 HH=1800 DT=46941 OBS=0 SEN=1 STK=0
+2|inhouse- | [Replay]   dire pos3 : ℭŘŞĐŴØŁ₣ (hero=85, acct=73447282) K/D/A=16/11/33 HD=40874 TD=1044 HH=21567 DT=87129 OBS=0 SEN=2 STK=0
+2|inhouse- | [Replay]   dire pos4 : Hoodini (hero=83, acct=161409022) K/D/A=1/6/40 HD=16085 TD=31 HH=15229 DT=42871 OBS=17 SEN=27 STK=2
+2|inhouse- | [Replay]   dire pos2 : plz don't rage. I'm Sensitive (hero=65, acct=1002860692) K/D/A=16/10/25 HD=59749 TD=14134 HH=0 DT=63145 OBS=3 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Sending 4085b92f663b9a77.dem to parser (150.0 MB)...
+2|inhouse- | [Replay] Parsed 352078 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8740534526,"gameMode_":2,"gameWinner_":3,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774265849,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8740534526, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-23T11:37:29.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_pudge":0,"npc_dota_hero_ringmaster":1,"npc_dota_hero_sniper":2,"npc_dota_hero_earthshaker":3,"npc_dota_hero_zuus":4,"npc_dota_hero_rattletrap":5,"npc_dota_hero_weaver":6,"npc_dota_hero_invoker":7,"npc_dota_hero_life_stealer":8,"npc_dota_hero_crystal_maiden":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":51370,"draft_start":1,"draft_timings":24,"DOTA_COMBATLOG_GAME_STATE":7,"actions":154426,"DOTA_COMBATLOG_MODIFIER_ADD":27328,"DOTA_COMBATLOG_GOLD":4938,"DOTA_COMBATLOG_PURCHASE":837,"CHAT_MESSAGE_PAUSED":9,"DOTA_ABILITY_LEVEL":548,"chat":66,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":27,"CHAT_MESSAGE_UNPAUSED":9,"game_paused":9,"DOTA_COMBATLOG_MODIFIER_REMOVE":27242,"CHAT_MESSAGE_ITEM_PURCHASE":93,"DOTA_COMBATLOG_ITEM":2088,"pings":270,"DOTA_COMBATLOG_ABILITY":6832,"DOTA_COMBATLOG_DAMAGE":51549,"DOTA_COMBATLOG_HEAL":7680,"CHAT_MESSAGE_HERO_KILL":108,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_PLAYERSTATS":547,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":7527,"DOTA_COMBATLOG_DEATH":7584,"CHAT_MESSAGE_STREAK_KILL":58,"DOTA_COMBATLOG_MULTIKILL":21,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":78,"STARTING_ITEM":50,"obs":63,"sen":119,"CHAT_MESSAGE_SENTRY_WARD_KILLED":33,"sen_left":108,"DOTA_COMBATLOG_KILLSTREAK":45,"CHAT_MESSAGE_RUNE_DENY":4,"CHAT_MESSAGE_RUNE_BOTTLE":10,"chatwheel":34,"CHAT_MESSAGE_COURIER_LOST":5,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"obs_left":58,"neutral_item_history":87,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":18,"CHAT_MESSAGE_GLYPH_USED":7,"CHAT_MESSAGE_TOWER_KILL":16,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":30,"CHAT_MESSAGE_TOWER_DENY":1,"CHAT_MESSAGE_BUYBACK":18,"DOTA_COMBATLOG_BUYBACK":18,"CHAT_MESSAGE_SCAN_USED":15,"CHAT_MESSAGE_MINIBOSS_KILL":2,"CHAT_MESSAGE_ROSHAN_KILL":4,"CHAT_MESSAGE_AEGIS":4,"CHAT_MESSAGE_INVALID":7,"CHAT_MESSAGE_DISCONNECT":11,"CHAT_MESSAGE_RECONNECT":1,"CHAT_MESSAGE_BARRACKS_KILL":7,"CHAT_MESSAGE_BANNER_PLANTED":1,"CHAT_MESSAGE_EFFIGY_KILL":5,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":13,"attackername":"dota_unknown","targetname":"npc_dota_hero_earthshaker","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-50,"type":"DOTA_COMBATLOG_DAMAGE","value":73,"attackername":"npc_dota_hero_weaver","targetname":"npc_dota_hero_ringmaster","sourcename":"npc_dota_hero_weaver","targetsourcename":"npc_dota_hero_ringmaster","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"weaver_shukuchi"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":12,"type":"obs","slot":4,"x":125.49048,"y":120.380615,"z":129,"entityleft":false,"ehandle":11306518}
+2|inhouse- | [Replay] Roshan killed at 1486s by npc_dota_hero_weaver (slot 6) team=dire
+2|inhouse- | [Replay] Roshan killed at 2538s by npc_dota_hero_life_stealer (slot 8) team=dire
+2|inhouse- | [Replay] Roshan killed at 3298s by npc_dota_hero_weaver (slot 6) team=dire
+2|inhouse- | [Replay] Roshan killed at 3598s by npc_dota_creep_goodguys_melee (slot undefined) team=unknown
+2|inhouse- | [Replay] Roshan killed at 3942s by npc_dota_hero_life_stealer (slot 8) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":93834,"1":36611,"2":67477,"3":33157,"4":71129,"5":40226,"6":32705,"7":66781,"8":62921,"9":23025}
+2|inhouse- | [Replay] Tower damage by slot: {"0":585,"2":5395,"3":527,"4":492,"5":150,"6":20570,"7":1699,"8":8214,"9":286}
+2|inhouse- | [Replay] Hero healing by slot: {"1":6,"6":1634,"8":5236}
+2|inhouse- | [Replay] Damage taken by slot: {"0":116793,"1":40845,"2":39619,"3":53459,"4":54144,"5":84799,"6":64729,"7":56932,"8":97885,"9":40250}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":2150,"1":6345,"2":245,"3":6065,"4":220,"5":495,"6":3370,"7":295,"8":190,"9":11415}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Pudge slot 0: 199 unit-order casts, 72 combatlog casts, 46 hits
+2|inhouse- | [Replay] Pudge slot 0: 40 hook hits / 179 genuine attempts
+2|inhouse- | [Replay] Detected positions: {"0":3,"1":4,"2":1,"3":5,"4":2,"5":3,"6":5,"7":2,"8":1,"9":4}
+2|inhouse- | [Replay] slot 0: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 1: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 2: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 3: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 4: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 5: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 6: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 7: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 8: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] slot 9: using hero_inventory snapshot from 4268s (game end 4268s)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.72,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[2,3],"direSlots":[5,9]},"mid":{"score":0.6,"radiant":"stomp","dire":"stomp_loss","radiantSlots":[4],"direSlots":[7]},"top":{"score":-0.835,"radiant":"stomp_loss","dire":"stomp","radiantSlots":[0,1],"direSlots":[6,8]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 1440 total points
+2|inhouse- | [Replay] Ward placements: 182 total (slot0:6, slot1:45, slot2:1, slot3:37, slot4:2, slot5:1, slot6:18, slot9:72)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:63, slot1:116, slot2:53, slot3:98, slot4:37, slot5:43, slot6:83, slot7:35, slot8:53, slot9:171)
+2|inhouse- | [Replay] Final stats: matchId=8740534526, duration=4268s, radiantWin=false, players=10
+2|inhouse- | [Replay]   radiant pos3 (C): Harry (hero=14, acct=108449472) K/D/A=11/11/29 HD=93834 TD=585 HH=0 DT=116793 OBS=0 SEN=6 STK=0
+2|inhouse- | [Replay]   radiant pos4 : Lemon Burtle (hero=131, acct=1142497072) K/D/A=1/10/37 HD=36611 TD=0 HH=6 DT=40845 OBS=16 SEN=27 STK=2
+2|inhouse- | [Replay]   radiant pos1 : MajinDabura (hero=35, acct=35944012) K/D/A=20/10/20 HD=67477 TD=5395 HH=0 DT=39619 OBS=1 SEN=0 STK=3
+2|inhouse- | [Replay]   radiant pos5 : Hoodini (hero=7, acct=161409022) K/D/A=3/13/36 HD=33157 TD=527 HH=0 DT=53459 OBS=12 SEN=27 STK=2
+2|inhouse- | [Replay]   radiant pos2 : ▪☻▪ (hero=22, acct=195989012) K/D/A=18/11/24 HD=71129 TD=492 HH=0 DT=54144 OBS=2 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos3 (C): SPOON ASS (hero=51, acct=130446492) K/D/A=3/14/34 HD=40226 TD=150 HH=0 DT=84799 OBS=1 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos5 : Skankhunt42 (hero=63, acct=186762212) K/D/A=7/11/19 HD=32705 TD=20570 HH=1634 DT=64729 OBS=5 SEN=13 STK=1
+2|inhouse- | [Replay]   dire pos2 : TANK (hero=74, acct=228770302) K/D/A=16/8/19 HD=66781 TD=1699 HH=0 DT=56932 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=54, acct=277264212) K/D/A=26/8/16 HD=62921 TD=8214 HH=5236 DT=97885 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay]   dire pos4 : Klevin (hero=5, acct=1156848162) K/D/A=3/12/24 HD=23025 TD=286 HH=0 DT=40250 OBS=26 SEN=46 STK=0
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending b3a19e1d86220dc7.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Sending 81707679185f3d71.dem to parser (84.3 MB)...
+2|inhouse- | [Replay] Parsed 212414 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8724465574,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1773226768,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8724465574, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-11T10:59:28.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_largo":0,"npc_dota_hero_queenofpain":1,"npc_dota_hero_magnataur":2,"npc_dota_hero_ursa":3,"npc_dota_hero_alchemist":4,"npc_dota_hero_hoodwink":5,"npc_dota_hero_life_stealer":6,"npc_dota_hero_shredder":7,"npc_dota_hero_puck":8,"npc_dota_hero_invoker":9}
+2|inhouse- | [Replay] Event type counts: {"DOTA_COMBATLOG_GAME_STATE":9,"player_slot":10,"interval":32290,"draft_start":1,"draft_timings":24,"chat":9,"actions":109406,"DOTA_COMBATLOG_GOLD":2659,"DOTA_COMBATLOG_MODIFIER_ADD":12732,"DOTA_ABILITY_LEVEL":495,"DOTA_COMBATLOG_PURCHASE":573,"CHAT_MESSAGE_ITEM_PURCHASE":62,"DOTA_COMBATLOG_MODIFIER_REMOVE":12703,"pings":105,"DOTA_COMBATLOG_ITEM":1512,"obs":36,"DOTA_COMBATLOG_PLAYERSTATS":257,"sen":68,"DOTA_COMBATLOG_ABILITY":4209,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":49,"STARTING_ITEM":52,"DOTA_COMBATLOG_DAMAGE":24066,"DOTA_COMBATLOG_HEAL":3426,"DOTA_COMBATLOG_XP":3923,"DOTA_COMBATLOG_DEATH":3333,"CHAT_MESSAGE_RUNE_BOTTLE":15,"CHAT_MESSAGE_COURIER_LOST":2,"CHAT_MESSAGE_COURIER_RESPAWNED":2,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":13,"obs_left":33,"CHAT_MESSAGE_SENTRY_WARD_KILLED":33,"sen_left":59,"CHAT_MESSAGE_SCAN_USED":10,"CHAT_MESSAGE_HERO_KILL":51,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"chatwheel":6,"neutral_item_history":59,"CHAT_MESSAGE_GLYPH_USED":6,"CHAT_MESSAGE_TOWER_DENY":2,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":23,"CHAT_MESSAGE_TOWER_KILL":10,"CHAT_MESSAGE_INVALID":3,"CHAT_MESSAGE_STREAK_KILL":21,"DOTA_COMBATLOG_KILLSTREAK":17,"CHAT_MESSAGE_MINIBOSS_KILL":2,"CHAT_MESSAGE_ROSHAN_KILL":2,"CHAT_MESSAGE_AEGIS":2,"DOTA_COMBATLOG_MULTIKILL":3,"CHAT_MESSAGE_BUYBACK":3,"DOTA_COMBATLOG_BUYBACK":3,"CHAT_MESSAGE_BANNER_PLANTED":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_SUPER_CREEPS":1,"CHAT_MESSAGE_EFFIGY_KILL":2,"CHAT_MESSAGE_DISCONNECT":9,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":0,"slot":0,"targetname":"npc_dota_hero_largo","valuename":"item_quelling_blade"}
+2|inhouse- | [Replay] Sample damage event: {"time":24,"type":"DOTA_COMBATLOG_DAMAGE","value":47,"attackername":"npc_dota_hero_puck","targetname":"npc_dota_hero_queenofpain","sourcename":"npc_dota_hero_puck","targetsourcename":"npc_dota_hero_queenofpain","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":8,"x":128.72485,"y":127.31616,"z":129,"entityleft":false,"ehandle":9896890}
+2|inhouse- | [Replay] Roshan killed at 1327s by npc_dota_hero_ursa (slot 3) team=radiant
+2|inhouse- | [Replay] Roshan killed at 2145s by npc_dota_hero_ursa (slot 3) team=radiant
+2|inhouse- | [Replay] Roshan killed at 2242s by npc_dota_hero_hoodwink (slot 5) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":33391,"1":47190,"2":11840,"3":32065,"4":11216,"5":13062,"6":19501,"7":25531,"8":24121,"9":18551}
+2|inhouse- | [Replay] Tower damage by slot: {"0":3307,"1":3803,"2":391,"3":14114,"4":1971,"5":272,"6":2669,"7":156,"8":900,"9":102}
+2|inhouse- | [Replay] Hero healing by slot: {"0":19296,"6":2879,"9":33}
+2|inhouse- | [Replay] Damage taken by slot: {"0":45039,"1":32240,"2":17547,"3":45649,"4":33986,"5":19183,"6":36864,"7":45969,"8":24707,"9":20840}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":370,"1":335,"2":4975,"3":320,"4":3040,"5":5300,"6":300,"7":90,"8":1215,"9":1545}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":4,"1":2,"2":5,"3":1,"4":3,"5":5,"6":1,"7":3,"8":2,"9":4}
+2|inhouse- | [Replay] slot 0: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 1: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 2: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 3: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 4: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 5: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 6: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 7: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 8: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] slot 9: using hero_inventory snapshot from 2418s (game end 2418s)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.455,"radiant":"win","dire":"loss","radiantSlots":[2,3],"direSlots":[7,9]},"mid":{"score":-0.225,"radiant":"loss","dire":"win","radiantSlots":[1],"direSlots":[8]},"top":{"score":0.352,"radiant":"win","dire":"loss","radiantSlots":[0,4],"direSlots":[5,6]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 820 total points
+2|inhouse- | [Replay] Ward placements: 104 total (slot1:3, slot2:33, slot4:17, slot5:35, slot8:5, slot9:11)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:43, slot1:34, slot2:86, slot3:31, slot4:81, slot5:94, slot6:37, slot7:35, slot8:49, slot9:33)
+2|inhouse- | [Replay] Final stats: matchId=8724465574, duration=2418s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos4 (C): All Gussied Up (hero=155, acct=193205442) K/D/A=4/4/15 HD=33391 TD=3307 HH=19296 DT=45039 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   radiant pos2 : ▪☻▪ (hero=39, acct=195989012) K/D/A=9/6/15 HD=47190 TD=3803 HH=0 DT=32240 OBS=2 SEN=1 STK=0
+2|inhouse- | [Replay]   radiant pos5 : Zen (hero=97, acct=172274812) K/D/A=3/4/18 HD=11840 TD=391 HH=0 DT=17547 OBS=14 SEN=19 STK=0
+2|inhouse- | [Replay]   radiant pos1 : BAD1 (hero=70, acct=277264212) K/D/A=17/3/6 HD=32065 TD=14114 HH=0 DT=45649 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos3 : Skankhunt42 (hero=73, acct=186762212) K/D/A=0/1/15 HD=11216 TD=1971 HH=0 DT=33986 OBS=3 SEN=14 STK=2
+2|inhouse- | [Replay]   dire pos5 (C): MajinDabura (hero=123, acct=35944012) K/D/A=1/8/11 HD=13062 TD=272 HH=0 DT=19183 OBS=12 SEN=23 STK=1
+2|inhouse- | [Replay]   dire pos1 : Dosed (hero=54, acct=197226052) K/D/A=4/2/5 HD=19501 TD=2669 HH=2879 DT=36864 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos3 : ℭŘŞĐŴØŁ₣ (hero=98, acct=73447282) K/D/A=5/9/6 HD=25531 TD=156 HH=0 DT=45969 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   dire pos2 : Schlomo Goldberg (hero=13, acct=108449472) K/D/A=4/5/9 HD=24121 TD=900 HH=0 DT=24707 OBS=3 SEN=2 STK=0
+2|inhouse- | [Replay]   dire pos4 : TANK (hero=74, acct=228770302) K/D/A=4/9/9 HD=18551 TD=102 HH=33 DT=20840 OBS=2 SEN=9 STK=0
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending 991ad71194eb2429.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending 8a519e87abfd7c45.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending 5ce4a954294fd5d6.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] hero_inventory snapshot summary (duration=2036s): {"0":"none","1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none","9":"none"}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] slot 0: NO hero_inventory snapshot — purchase log fallback (purchases=36)
+2|inhouse- | [Replay] slot 1: NO hero_inventory snapshot — purchase log fallback (purchases=64)
+2|inhouse- | [Replay] slot 2: NO hero_inventory snapshot — purchase log fallback (purchases=26)
+2|inhouse- | [Replay] slot 3: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 4: NO hero_inventory snapshot — purchase log fallback (purchases=34)
+2|inhouse- | [Replay] slot 5: NO hero_inventory snapshot — purchase log fallback (purchases=35)
+2|inhouse- | [Replay] slot 6: NO hero_inventory snapshot — purchase log fallback (purchases=31)
+2|inhouse- | [Replay] slot 7: NO hero_inventory snapshot — purchase log fallback (purchases=19)
+2|inhouse- | [Replay] slot 8: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 9: NO hero_inventory snapshot — purchase log fallback (purchases=14)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending b79e3d327f42c343.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] hero_inventory snapshot summary (duration=2036s): {"0":"none","1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none","9":"none"}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] slot 0: NO hero_inventory snapshot — purchase log fallback (purchases=36)
+2|inhouse- | [Replay] slot 1: NO hero_inventory snapshot — purchase log fallback (purchases=64)
+2|inhouse- | [Replay] slot 2: NO hero_inventory snapshot — purchase log fallback (purchases=26)
+2|inhouse- | [Replay] slot 3: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 4: NO hero_inventory snapshot — purchase log fallback (purchases=34)
+2|inhouse- | [Replay] slot 5: NO hero_inventory snapshot — purchase log fallback (purchases=35)
+2|inhouse- | [Replay] slot 6: NO hero_inventory snapshot — purchase log fallback (purchases=31)
+2|inhouse- | [Replay] slot 7: NO hero_inventory snapshot — purchase log fallback (purchases=19)
+2|inhouse- | [Replay] slot 8: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 9: NO hero_inventory snapshot — purchase log fallback (purchases=14)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending 402d49ce433e85c8.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] hero_inventory snapshot summary (duration=2036s): {"0":"none","1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none","9":"none"}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] slot 0: NO hero_inventory snapshot — purchase log fallback (purchases=36)
+2|inhouse- | [Replay] slot 1: NO hero_inventory snapshot — purchase log fallback (purchases=64)
+2|inhouse- | [Replay] slot 2: NO hero_inventory snapshot — purchase log fallback (purchases=26)
+2|inhouse- | [Replay] slot 3: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 4: NO hero_inventory snapshot — purchase log fallback (purchases=34)
+2|inhouse- | [Replay] slot 5: NO hero_inventory snapshot — purchase log fallback (purchases=35)
+2|inhouse- | [Replay] slot 6: NO hero_inventory snapshot — purchase log fallback (purchases=31)
+2|inhouse- | [Replay] slot 7: NO hero_inventory snapshot — purchase log fallback (purchases=19)
+2|inhouse- | [Replay] slot 8: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 9: NO hero_inventory snapshot — purchase log fallback (purchases=14)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks

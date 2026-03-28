@@ -3848,8 +3848,8 @@ async function getPudgeStats(seasonId = null) {
   const sc = _sc(seasonId, params, 'm');
   const result = await p.query(
     `SELECT
-       MAX(ps.account_id) AS account_id,
-       COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
+       ps.account_id AS account_id,
+       COALESCE(MAX(n.nickname), MAX(ps.persona_name)) AS display_name,
        COUNT(*) AS pudge_games,
        SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
                   OR (ps.team = 'dire'    AND m.radiant_win = false) THEN 1 ELSE 0 END) AS wins,
@@ -3876,7 +3876,7 @@ async function getPudgeStats(seasonId = null) {
      LEFT JOIN nicknames n ON n.account_id = ps.account_id
      WHERE ps.hero_name = 'npc_dota_hero_pudge'
        AND ps.account_id != 0${sc}
-     GROUP BY COALESCE(n.nickname, ps.account_id::text)
+     GROUP BY ps.account_id
      HAVING COUNT(*) > 0
      ORDER BY total_hook_attempts DESC NULLS LAST, pudge_games DESC`,
     params
