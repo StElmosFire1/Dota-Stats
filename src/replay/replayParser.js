@@ -1484,17 +1484,27 @@ class ReplayParser {
           if (n.startsWith('item_recipe_')) continue;
           // Skip TP scrolls — they have their own dedicated slot in the UI
           if (n === 'item_tpscroll') continue;
-          // Skip wards — they have their own ward column and take a shared single slot in-game
-          if (n === 'item_ward_observer' || n === 'item_ward_sentry' || n === 'item_ward_dispenser') continue;
+          // Skip ward_dispenser (shop bundle) — individual wards are handled below
+          if (n === 'item_ward_dispenser') continue;
+          // Wards share one inventory slot in-game. Normalise both types to a single slot:
+          // whichever ward type is encountered first claims the slot; the second is deduped.
+          const wardKey = (n === 'item_ward_observer' || n === 'item_ward_sentry') ? '__wards__' : n;
           // Skip known component items when the assembled version was also purchased.
           // This prevents e.g. Javelin/Blades of Attack appearing alongside MKB/Echo Sabre.
           if (PURCHASE_LOG_COMPONENTS[n] && PURCHASE_LOG_COMPONENTS[n].some(assembled => allPurchasedNames.has(assembled))) continue;
-          if (!seen.has(n)) {
-            seen.add(n);
+          if (!seen.has(wardKey)) {
+            seen.add(wardKey);
+            // For the ward slot: if both obs+sentry were purchased use ward_observer icon
+            // (it renders as the combined ward icon on the frontend).
+            // If only one type was purchased, use that type.
+            const hasBoth = allPurchasedNames.has('item_ward_observer') && allPurchasedNames.has('item_ward_sentry');
+            const displayName = wardKey === '__wards__'
+              ? (hasBoth ? 'ward_observer' : n.replace('item_', ''))
+              : n.replace('item_', '');
             playerItems.push({
               slot: itemSlot++,
               itemId: 0,
-              itemName: n.replace('item_', ''),
+              itemName: displayName,
               purchaseTime: purchase.time,
             });
           }
