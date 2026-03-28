@@ -832,8 +832,8 @@ class ReplayParser {
             gameEvents.push({ t: deathTime, type: 'roshan', team: roshanTeam, killerSlot: ks != null ? ks : -1 });
             console.log(`[Replay] Roshan killed at ${deathTime}s by ${aname} (slot ${ks}) team=${roshanTeam}`);
           }
-          // Tormenter
-          if (tname.includes('tormenter')) {
+          // Tormenter (NPC: npc_dota_neutral_tormentor)
+          if (tname.includes('tormentor') || tname.includes('tormenter')) {
             const ks = npcNameToSlot[aname];
             let tormentTeam = 'unknown';
             if (ks != null && ks >= 0 && ks < 10) tormentTeam = ks < 5 ? 'radiant' : 'dire';

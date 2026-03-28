@@ -116,13 +116,14 @@ export default function MatchList() {
     setBulkSaving(true);
     setBulkMsg('');
     let ok = 0, fail = 0;
+    let lastErr = '';
     for (const matchId of selected) {
       try {
         await updateMatchMeta(matchId, { seasonId: bulkSeason ? parseInt(bulkSeason) : null }, superuserKey);
         ok++;
-      } catch { fail++; }
+      } catch (err) { fail++; lastErr = err.message; }
     }
-    setBulkMsg(`Done: ${ok} updated${fail ? `, ${fail} failed` : ''}`);
+    setBulkMsg(`Done: ${ok} updated${fail ? `, ${fail} failed${lastErr ? ` (${lastErr})` : ''}` : ''}`);
     setBulkSaving(false);
     setSelected(new Set());
     reload();
