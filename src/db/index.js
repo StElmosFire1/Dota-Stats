@@ -3848,7 +3848,7 @@ async function getPudgeStats(seasonId = null) {
   const sc = _sc(seasonId, params, 'm');
   const result = await p.query(
     `SELECT
-       ps.account_id AS account_id,
+       MAX(ps.account_id) AS account_id,
        COALESCE(MAX(n.nickname), MAX(ps.persona_name)) AS display_name,
        COUNT(*) AS pudge_games,
        SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
