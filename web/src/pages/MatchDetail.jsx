@@ -245,6 +245,8 @@ function TimelineGraph({ timeline, allPlayers }) {
   const [metric, setMetric] = useState('nw');
   const [showItems, setShowItems] = useState(false);
   const [hiddenPlayers, setHiddenPlayers] = useState(new Set());
+  const [showMarkers, setShowMarkers] = useState({ rosh: false, torm: false, tower: false, rax: false });
+  const toggleMarker = (key) => setShowMarkers(prev => ({ ...prev, [key]: !prev[key] }));
   const itemsRef = useRef(null);
 
   const { chartData, playerKeys, playerKeysDesc, maxTime } = useMemo(() => {
@@ -441,20 +443,20 @@ function TimelineGraph({ timeline, allPlayers }) {
               contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 12 }}
             />
             <ReferenceLine y={0} stroke="#475569" strokeWidth={1.5} />
-            {roshanEvents.map((e, i) => (
+            {showMarkers.rosh && roshanEvents.map((e, i) => (
               <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2" strokeWidth={2}
                 label={{ value: '🐉', position: 'insideTopRight', fontSize: 13, fill: '#a855f7' }} />
             ))}
-            {tormenterEvents.map((e, i) => (
+            {showMarkers.torm && tormenterEvents.map((e, i) => (
               <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3" strokeWidth={2}
                 label={{ value: '💀', position: 'insideTopRight', fontSize: 13, fill: '#f97316' }} />
             ))}
-            {towerEvents.map((e, i) => (
+            {showMarkers.tower && towerEvents.map((e, i) => (
               <ReferenceLine key={`tw-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1}
                 label={{ value: '🗼', position: 'insideTopLeft', fontSize: 10 }} />
             ))}
-            {barracksEvents.map((e, i) => (
+            {showMarkers.rax && barracksEvents.map((e, i) => (
               <ReferenceLine key={`rax-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1.5}
                 label={{ value: '🏛️', position: 'insideTopLeft', fontSize: 10 }} />
@@ -484,20 +486,20 @@ function TimelineGraph({ timeline, allPlayers }) {
             <Tooltip
               content={(props) => <TimelineTooltip {...props} playerKeyMap={playerKeyMap} metric={metric} />}
             />
-            {roshanEvents.map((e, i) => (
+            {showMarkers.rosh && roshanEvents.map((e, i) => (
               <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2" strokeWidth={2}
                 label={{ value: '🐉', position: 'insideTopRight', fontSize: 13, fill: '#a855f7' }} />
             ))}
-            {tormenterEvents.map((e, i) => (
+            {showMarkers.torm && tormenterEvents.map((e, i) => (
               <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3" strokeWidth={2}
                 label={{ value: '💀', position: 'insideTopRight', fontSize: 13, fill: '#f97316' }} />
             ))}
-            {towerEvents.map((e, i) => (
+            {showMarkers.tower && towerEvents.map((e, i) => (
               <ReferenceLine key={`ltw-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1}
                 label={{ value: '🗼', position: 'insideTopLeft', fontSize: 10 }} />
             ))}
-            {barracksEvents.map((e, i) => (
+            {showMarkers.rax && barracksEvents.map((e, i) => (
               <ReferenceLine key={`lrax-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1.5}
                 label={{ value: '🏛️', position: 'insideTopLeft', fontSize: 10 }} />
@@ -545,39 +547,93 @@ function TimelineGraph({ timeline, allPlayers }) {
           );
         })}
       </div>
-      <div style={{ display: 'flex', gap: 16, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        {metric !== 'goldlead' && [['radiant', '#4ade80'], ['dire', '#f87171']].map(([team, color]) => (
-          <div key={team} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-            <div style={{ width: 16, height: 2, background: color, borderRadius: 1 }} />
-            {team.charAt(0).toUpperCase() + team.slice(1)}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {metric !== 'goldlead' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 4 }}>
+            {[['radiant', '#4ade80'], ['dire', '#f87171']].map(([team, color]) => (
+              <div key={team} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b' }}>
+                <div style={{ width: 14, height: 2, background: color, borderRadius: 1 }} />
+                {team.charAt(0).toUpperCase() + team.slice(1)}
+              </div>
+            ))}
           </div>
-        ))}
+        )}
         {metric === 'goldlead' && (
-          <div style={{ fontSize: 12, color: '#64748b', display: 'flex', gap: 16 }}>
-            <span style={{ color: '#4ade80' }}>▲ Positive = Radiant leading</span>
-            <span style={{ color: '#f87171' }}>▼ Negative = Dire leading</span>
+          <div style={{ fontSize: 11, color: '#64748b', display: 'flex', gap: 12, marginRight: 4 }}>
+            <span style={{ color: '#4ade80' }}>▲ Radiant leading</span>
+            <span style={{ color: '#f87171' }}>▼ Dire leading</span>
           </div>
         )}
-        {roshanEvents.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-            <div style={{ width: 1, height: 14, background: '#a855f7', borderRadius: 1 }} />
-            🐉 Roshan killed ({roshanEvents.length}x)
-          </div>
-        )}
-        {tormenterEvents.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-            <div style={{ width: 1, height: 14, background: '#f97316', borderRadius: 1 }} />
-            💀 Tormenter killed ({tormenterEvents.length}x)
-          </div>
-        )}
-        {towerEvents.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-            <div style={{ display: 'flex', gap: 3 }}>
-              <div style={{ width: 1, height: 14, background: '#4ade80', borderRadius: 1 }} />
-              <div style={{ width: 1, height: 14, background: '#f87171', borderRadius: 1 }} />
-            </div>
-            🗼 Towers fallen ({towerEvents.length + barracksEvents.length}x) — green=dire loses, red=radiant loses
-          </div>
+        <div style={{ width: 1, height: 18, background: '#334155', marginRight: 2 }} />
+        <span style={{ fontSize: 11, color: '#475569', marginRight: 2 }}>Markers:</span>
+        {roshanEvents.length > 0 && (() => {
+          const on = showMarkers.rosh;
+          return (
+            <button onClick={() => toggleMarker('rosh')} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 4, fontSize: 11,
+              cursor: 'pointer', border: '1px solid', userSelect: 'none', transition: 'all 0.15s',
+              borderColor: on ? '#a855f755' : '#334155',
+              background: on ? '#a855f711' : 'transparent',
+              color: on ? '#a855f7' : '#475569',
+            }}>
+              <div style={{ width: 1, height: 12, background: on ? '#a855f7' : '#475569', borderRadius: 1 }} />
+              🐉 Rosh ({roshanEvents.length})
+            </button>
+          );
+        })()}
+        {tormenterEvents.length > 0 && (() => {
+          const on = showMarkers.torm;
+          return (
+            <button onClick={() => toggleMarker('torm')} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 4, fontSize: 11,
+              cursor: 'pointer', border: '1px solid', userSelect: 'none', transition: 'all 0.15s',
+              borderColor: on ? '#f9731655' : '#334155',
+              background: on ? '#f9731611' : 'transparent',
+              color: on ? '#f97316' : '#475569',
+            }}>
+              <div style={{ width: 1, height: 12, background: on ? '#f97316' : '#475569', borderRadius: 1 }} />
+              💀 Torm ({tormenterEvents.length})
+            </button>
+          );
+        })()}
+        {towerEvents.length > 0 && (() => {
+          const on = showMarkers.tower;
+          return (
+            <button onClick={() => toggleMarker('tower')} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 4, fontSize: 11,
+              cursor: 'pointer', border: '1px solid', userSelect: 'none', transition: 'all 0.15s',
+              borderColor: on ? '#94a3b855' : '#334155',
+              background: on ? '#94a3b811' : 'transparent',
+              color: on ? '#94a3b8' : '#475569',
+            }}>
+              <div style={{ display: 'flex', gap: 2 }}>
+                <div style={{ width: 1, height: 12, background: on ? '#4ade80' : '#475569', borderRadius: 1 }} />
+                <div style={{ width: 1, height: 12, background: on ? '#f87171' : '#475569', borderRadius: 1 }} />
+              </div>
+              🗼 Towers ({towerEvents.length})
+            </button>
+          );
+        })()}
+        {barracksEvents.length > 0 && (() => {
+          const on = showMarkers.rax;
+          return (
+            <button onClick={() => toggleMarker('rax')} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 4, fontSize: 11,
+              cursor: 'pointer', border: '1px solid', userSelect: 'none', transition: 'all 0.15s',
+              borderColor: on ? '#94a3b855' : '#334155',
+              background: on ? '#94a3b811' : 'transparent',
+              color: on ? '#94a3b8' : '#475569',
+            }}>
+              <div style={{ display: 'flex', gap: 2 }}>
+                <div style={{ width: 1, height: 12, background: on ? '#4ade80' : '#475569', borderRadius: 1 }} />
+                <div style={{ width: 1, height: 12, background: on ? '#f87171' : '#475569', borderRadius: 1 }} />
+              </div>
+              🏛️ Barracks ({barracksEvents.length})
+            </button>
+          );
+        })()}
+        {(towerEvents.length > 0 || barracksEvents.length > 0) && (showMarkers.tower || showMarkers.rax) && (
+          <span style={{ fontSize: 10, color: '#475569', fontStyle: 'italic' }}>green=dire loses · red=radiant loses</span>
         )}
       </div>
       {showItems && timeline?.players?.length > 0 && (
