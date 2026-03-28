@@ -42,7 +42,6 @@ const SUMMARY_COLS = [
   { key: 'hook_accuracy',              label: 'Accuracy',   title: 'Hook hits ÷ genuine attempts' },
   { key: 'avg_hook_hits_per_game',     label: 'Hits/Game',  title: 'Avg hook hits per game (hook-tracked games only)' },
   { key: 'avg_hook_attempts_per_game', label: 'Att/Game',   title: 'Avg genuine attempts per game (hook-tracked games only)' },
-  { key: 'total_rampages',             label: 'Rampages',   title: 'Total rampages on Pudge' },
 ];
 
 const GAME_COLS = [
@@ -119,7 +118,6 @@ function SummaryTab({ players }) {
                   <Th col={SUMMARY_COLS[8]} />
                 </>
               )}
-              <Th col={SUMMARY_COLS[9]} />
             </tr>
           </thead>
           <tbody>
@@ -150,7 +148,6 @@ function SummaryTab({ players }) {
                       <td className="col-stat">{hookGames > 0 ? fmt(p.avg_hook_attempts_per_game, 1) : '—'}</td>
                     </>
                   )}
-                  <td className="col-stat">{parseInt(p.total_rampages) > 0 ? '☠️ ' + p.total_rampages : '—'}</td>
                 </tr>
               );
             })}
