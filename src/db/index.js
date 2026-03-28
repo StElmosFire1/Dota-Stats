@@ -3857,8 +3857,8 @@ async function getPudgeStats(seasonId = null) {
        ROUND(100.0 * SUM(CASE WHEN ps.hook_hits IS NOT NULL THEN ps.hook_hits ELSE 0 END)
              / NULLIF(SUM(CASE WHEN ps.hook_attempts IS NOT NULL THEN ps.hook_attempts ELSE 0 END), 0), 1)
              AS hook_accuracy,
-       ROUND(AVG(ps.hook_hits::float) FILTER (WHERE ps.hook_hits IS NOT NULL), 1)     AS avg_hook_hits_per_game,
-       ROUND(AVG(ps.hook_attempts::float) FILTER (WHERE ps.hook_attempts IS NOT NULL), 1) AS avg_hook_attempts_per_game,
+       ROUND((AVG(ps.hook_hits) FILTER (WHERE ps.hook_hits IS NOT NULL))::NUMERIC, 1)     AS avg_hook_hits_per_game,
+       ROUND((AVG(ps.hook_attempts) FILTER (WHERE ps.hook_attempts IS NOT NULL))::NUMERIC, 1) AS avg_hook_attempts_per_game,
        SUM(ps.rampages)     AS total_rampages,
        SUM(ps.firstblood_claimed) AS total_firstbloods,
        ROUND(AVG(ps.hero_damage), 0) AS avg_hero_damage,
