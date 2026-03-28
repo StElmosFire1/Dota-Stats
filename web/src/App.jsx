@@ -280,7 +280,6 @@ export default function App() {
                 <Route path="/match/:matchId/edit" element={<StatsEditor />} />
                 <Route path="/player/:accountId" element={<PlayerProfile />} />
                 <Route path="/heroes" element={<Heroes />} />
-                <Route path="/hero-breakdown" element={<HeroBreakdown />} />
                 <Route path="/players" element={<Players />} />
                 <Route path="/stats" element={<OverallStats />} />
                 <Route path="/positions" element={<PositionStats />} />
