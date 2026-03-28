@@ -1144,7 +1144,19 @@ class ReplayParser {
 
     console.log(`[Replay] Epilogue player infos: ${epiloguePlayerInfos.length} entries`);
     if (epiloguePlayerInfos.length > 0) {
-      console.log('[Replay] First player info keys:', Object.keys(epiloguePlayerInfos[0]));
+      const pi0 = epiloguePlayerInfos[0];
+      const keys = Object.keys(pi0);
+      console.log('[Replay] First player info keys:', JSON.stringify(keys));
+      // Look for any item-related fields
+      const itemKeys = keys.filter(k => k.toLowerCase().includes('item') || k.toLowerCase().includes('inventory') || k.toLowerCase().includes('slot'));
+      if (itemKeys.length > 0) {
+        console.log('[Replay] Epilogue item-related keys:', JSON.stringify(itemKeys));
+        for (const k of itemKeys) {
+          console.log(`[Replay]   epilogue.${k}:`, JSON.stringify(pi0[k]));
+        }
+      } else {
+        console.log('[Replay] Epilogue player info sample (first 400 chars):', JSON.stringify(pi0).substring(0, 400));
+      }
     }
 
     for (let i = 0; i < epiloguePlayerInfos.length && i < 10; i++) {
@@ -1413,14 +1425,11 @@ class ReplayParser {
         const seen = new Set();
         let itemSlot = 0;
         for (const purchase of purchases) {
-          if (itemSlot >= 6) break;
+          if (itemSlot >= 9) break; // 6 main + 3 backpack
+          // Skip recipe items — they are components of assembled items and not held separately
           if (purchase.itemName.startsWith('item_recipe_')) continue;
-          if (purchase.itemName === 'item_tpscroll' || purchase.itemName === 'item_ward_observer' ||
-              purchase.itemName === 'item_ward_sentry' || purchase.itemName === 'item_ward_dispenser' ||
-              purchase.itemName === 'item_smoke_of_deceit' || purchase.itemName === 'item_dust' ||
-              purchase.itemName === 'item_clarity' || purchase.itemName === 'item_flask' ||
-              purchase.itemName === 'item_tango' || purchase.itemName === 'item_enchanted_mango' ||
-              purchase.itemName === 'item_faerie_fire' || purchase.itemName === 'item_blood_grenade') continue;
+          // Skip ward dispenser (shop bundle) — individual observer/sentry are the real wards
+          if (purchase.itemName === 'item_ward_dispenser') continue;
           const key = purchase.itemName;
           if (!seen.has(key)) {
             seen.add(key);

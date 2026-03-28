@@ -1,0 +1,984 @@
+REAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending 8a519e87abfd7c45.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending 5ce4a954294fd5d6.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] hero_inventory snapshot summary (duration=2036s): {"0":"none","1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none","9":"none"}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] slot 0: NO hero_inventory snapshot — purchase log fallback (purchases=36)
+2|inhouse- | [Replay] slot 1: NO hero_inventory snapshot — purchase log fallback (purchases=64)
+2|inhouse- | [Replay] slot 2: NO hero_inventory snapshot — purchase log fallback (purchases=26)
+2|inhouse- | [Replay] slot 3: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 4: NO hero_inventory snapshot — purchase log fallback (purchases=34)
+2|inhouse- | [Replay] slot 5: NO hero_inventory snapshot — purchase log fallback (purchases=35)
+2|inhouse- | [Replay] slot 6: NO hero_inventory snapshot — purchase log fallback (purchases=31)
+2|inhouse- | [Replay] slot 7: NO hero_inventory snapshot — purchase log fallback (purchases=19)
+2|inhouse- | [Replay] slot 8: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 9: NO hero_inventory snapshot — purchase log fallback (purchases=14)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending b79e3d327f42c343.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] hero_inventory snapshot summary (duration=2036s): {"0":"none","1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none","9":"none"}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] slot 0: NO hero_inventory snapshot — purchase log fallback (purchases=36)
+2|inhouse- | [Replay] slot 1: NO hero_inventory snapshot — purchase log fallback (purchases=64)
+2|inhouse- | [Replay] slot 2: NO hero_inventory snapshot — purchase log fallback (purchases=26)
+2|inhouse- | [Replay] slot 3: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 4: NO hero_inventory snapshot — purchase log fallback (purchases=34)
+2|inhouse- | [Replay] slot 5: NO hero_inventory snapshot — purchase log fallback (purchases=35)
+2|inhouse- | [Replay] slot 6: NO hero_inventory snapshot — purchase log fallback (purchases=31)
+2|inhouse- | [Replay] slot 7: NO hero_inventory snapshot — purchase log fallback (purchases=19)
+2|inhouse- | [Replay] slot 8: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 9: NO hero_inventory snapshot — purchase log fallback (purchases=14)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending 402d49ce433e85c8.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] hero_inventory snapshot summary (duration=2036s): {"0":"none","1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none","9":"none"}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] slot 0: NO hero_inventory snapshot — purchase log fallback (purchases=36)
+2|inhouse- | [Replay] slot 1: NO hero_inventory snapshot — purchase log fallback (purchases=64)
+2|inhouse- | [Replay] slot 2: NO hero_inventory snapshot — purchase log fallback (purchases=26)
+2|inhouse- | [Replay] slot 3: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 4: NO hero_inventory snapshot — purchase log fallback (purchases=34)
+2|inhouse- | [Replay] slot 5: NO hero_inventory snapshot — purchase log fallback (purchases=35)
+2|inhouse- | [Replay] slot 6: NO hero_inventory snapshot — purchase log fallback (purchases=31)
+2|inhouse- | [Replay] slot 7: NO hero_inventory snapshot — purchase log fallback (purchases=19)
+2|inhouse- | [Replay] slot 8: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 9: NO hero_inventory snapshot — purchase log fallback (purchases=14)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
+2|inhouse- | [Replay] Draft captured: 14 bans, 10 picks
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Replay] Sending d76c77d0c65cff70.dem to parser (73.1 MB)...
+2|inhouse- | [Replay] Parsed 154102 events from replay.
+2|inhouse- | [Replay] Epilogue top-level keys: [
+2|inhouse- | [Replay] Epilogue dota fields: {"bitField0_":271,"matchId_":8747064770,"gameMode_":2,"gameWinner_":2,"leagueid_":0,"radiantTeamId_":0,"direTeamId_":0,"radiantTeamTag_":"","direTeamTag_":"","endTime_":1774685254,"memoizedIsInitialized":-1,"memoizedSerializedSize":-1,"memoizedSize":-1,"memoizedHashCode":0}
+2|inhouse- | [Replay] Epilogue extracted: matchId=8747064770, gameMode=2, radiantWin=null, duration=0, gameStartTime=2026-03-28T08:07:34.000Z
+2|inhouse- | [Replay] Duration: epilogue=2036s, maxIntervalTime=2036s
+2|inhouse- | [Replay] NPC name→slot mapping: {"npc_dota_hero_zuus":0,"npc_dota_hero_shadow_shaman":1,"npc_dota_hero_tidehunter":2,"npc_dota_hero_lion":3,"npc_dota_hero_life_stealer":4,"npc_dota_hero_abaddon":5,"npc_dota_hero_vengefulspirit":6,"npc_dota_hero_chaos_knight":7,"npc_dota_hero_queenofpain":8,"npc_dota_hero_monkey_king":9}
+2|inhouse- | [Replay] Event type counts: {"player_slot":10,"interval":28040,"draft_start":1,"draft_timings":24,"CHAT_MESSAGE_DISCONNECT":11,"actions":79868,"chat":20,"DOTA_COMBATLOG_GAME_STATE":7,"CHAT_MESSAGE_RECONNECT":1,"DOTA_COMBATLOG_GOLD":2086,"DOTA_COMBATLOG_MODIFIER_ADD":6324,"DOTA_COMBATLOG_PURCHASE":416,"CHAT_MESSAGE_PAUSED":1,"CHAT_MESSAGE_UNPAUSE_COUNTDOWN":3,"CHAT_MESSAGE_UNPAUSED":1,"game_paused":1,"DOTA_COMBATLOG_ABILITY":1433,"DOTA_COMBATLOG_MODIFIER_REMOVE":6320,"CHAT_MESSAGE_ITEM_PURCHASE":45,"DOTA_COMBATLOG_ITEM":1042,"pings":83,"obs":29,"DOTA_COMBATLOG_PLAYERSTATS":405,"DOTA_COMBATLOG_DAMAGE":18201,"DOTA_COMBATLOG_HEAL":3265,"CHAT_MESSAGE_HERO_KILL":78,"CHAT_MESSAGE_FIRSTBLOOD":1,"DOTA_COMBATLOG_FIRST_BLOOD":1,"DOTA_COMBATLOG_XP":3307,"DOTA_COMBATLOG_DEATH":2662,"sen":51,"CHAT_MESSAGE_NO_BATTLE_POINTS":1,"CHAT_MESSAGE_RUNE_PICKUP":41,"chatwheel":4,"CHAT_MESSAGE_RUNE_BOTTLE":19,"CHAT_MESSAGE_SENTRY_WARD_KILLED":17,"sen_left":46,"obs_left":25,"neutral_item_history":46,"CHAT_MESSAGE_OBSERVER_WARD_KILLED":6,"CHAT_MESSAGE_STREAK_KILL":30,"DOTA_COMBATLOG_KILLSTREAK":21,"CHAT_MESSAGE_GLYPH_USED":8,"CHAT_MESSAGE_TOWER_KILL":14,"DOTA_COMBATLOG_TEAM_BUILDING_KILL":27,"CHAT_MESSAGE_COURIER_LOST":4,"CHAT_MESSAGE_COURIER_RESPAWNED":4,"CHAT_MESSAGE_SCAN_USED":5,"CHAT_MESSAGE_BUYBACK":7,"DOTA_COMBATLOG_BUYBACK":7,"DOTA_COMBATLOG_MULTIKILL":13,"CHAT_MESSAGE_MINIBOSS_KILL":1,"CHAT_MESSAGE_ROSHAN_KILL":1,"CHAT_MESSAGE_AEGIS":1,"CHAT_MESSAGE_BARRACKS_KILL":6,"CHAT_MESSAGE_EFFIGY_KILL":7,"CHAT_MESSAGE_SUPER_CREEPS":1,"cosmetics":1,"dotaplus":1,"epilogue":1}
+2|inhouse- | [Replay] Sample purchase event: {"time":-90,"type":"DOTA_COMBATLOG_PURCHASE","value":10,"attackername":"dota_unknown","targetname":"npc_dota_hero_lion","sourcename":"dota_unknown","targetsourcename":"dota_unknown","attackerhero":false,"targethero":false,"attackerillusion":false,"targetillusion":false,"inflictor":"dota_unknown","valuename":"item_ward_dispenser"}
+2|inhouse- | [Replay] Sample damage event: {"time":-46,"type":"DOTA_COMBATLOG_DAMAGE","value":77,"attackername":"npc_dota_hero_lion","targetname":"npc_dota_hero_chaos_knight","sourcename":"npc_dota_hero_lion","targetsourcename":"npc_dota_hero_chaos_knight","attackerhero":true,"targethero":true,"attackerillusion":false,"targetillusion":false,"inflictor":"lion_impale"}
+2|inhouse- | [Replay] Sample ward event fields: {"time":-54,"type":"obs","slot":0,"x":125.86328,"y":120.29175,"z":129,"entityleft":false,"ehandle":7522361}
+2|inhouse- | [Replay] FIRST interval event keys: ["time","type","unit","slot","gold","lh","xp","x","y","stuns","hero_id","variant","facet_hero_id","hero_inventory","life_state","level","kills","deaths","assists","denies","obs_placed","sen_placed","creeps_stacked","camps_stacked","rune_pickups","randomed","pred_vict","firstblood_claimed","teamfight_participation","towers_killed","roshans_killed","observers_placed","networth","stage"]
+2|inhouse- | [Replay] interval has hero_inventory: []
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_queenofpain at 95s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_queenofpain at 96s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_creep_badguys_ranged at 99s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_hero_life_stealer at 150s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_creep_goodguys_flagbearer at 152s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ghost killed by npc_dota_hero_life_stealer at 156s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_chaos_knight at 172s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_queenofpain at 179s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_life_stealer at 186s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_creep_badguys_ranged at 188s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_queenofpain at 208s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_tidehunter at 216s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_tidehunter at 216s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_tunneler killed by npc_dota_hero_tidehunter at 218s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_taskmaster killed by npc_dota_hero_queenofpain at 218s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_creep_goodguys_flagbearer at 271s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_high_priest killed by npc_dota_hero_lion at 276s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_monkey_king at 277s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_life_stealer at 283s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_neutral_froglet_mage at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_neutral_froglet_mage at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_neutral_froglet_mage at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_neutral_froglet_mage at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 300s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 306s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_life_stealer at 307s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_enraged_wildkin killed by npc_dota_hero_monkey_king at 309s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_champion killed by npc_dota_hero_monkey_king at 314s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_vengefulspirit at 317s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_ursa_warrior killed by npc_dota_hero_monkey_king at 331s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_badguys_siege at 335s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_badguys_siege at 338s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_high_priest killed by npc_dota_creep_badguys_flagbearer at 345s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_siege at 354s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_queenofpain at 374s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_vengefulspirit at 376s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_zuus at 381s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_zuus at 382s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_zuus at 388s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_zuus at 389s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_lion at 390s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_tunneler killed by npc_dota_hero_lion at 391s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_creep_goodguys_melee at 393s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_creep_goodguys_melee at 397s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_enraged_wildkin killed by npc_dota_hero_zuus at 401s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_creep_goodguys_melee at 402s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_taskmaster killed by npc_dota_creep_goodguys_ranged at 403s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_zuus at 405s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_chaos_knight at 410s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_abaddon at 413s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_zuus at 428s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_zuus at 429s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 434s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_hero_life_stealer at 445s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_hero_shadow_shaman at 447s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_creep_goodguys_ranged at 450s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_chaos_knight at 451s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_lion at 495s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 498s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_hero_shadow_shaman at 502s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_hero_life_stealer at 516s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_hero_chaos_knight at 518s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ghost killed by npc_dota_hero_chaos_knight at 525s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_tidehunter at 528s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_tidehunter at 528s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_tidehunter at 531s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_tidehunter at 535s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 535s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_zuus at 566s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ghost killed by npc_dota_creep_badguys_flagbearer at 568s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_zuus at 569s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_zuus at 570s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_hero_monkey_king at 570s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_creep_badguys_flagbearer at 571s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_magi killed by npc_dota_hero_zuus at 572s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_zuus at 573s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 584s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_abaddon at 589s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_neutral_froglet_mage at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_neutral_froglet_mage at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_neutral_tadpole at 600s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_tidehunter at 608s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_tidehunter at 609s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_monkey_king at 611s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_life_stealer at 614s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_creep_goodguys_melee at 618s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_hero_life_stealer at 621s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_tidehunter at 621s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_hero_life_stealer at 625s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_hellcaller killed by npc_dota_creep_goodguys_ranged at 629s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_queenofpain at 634s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_badguys_tower1_mid at 636s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 642s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_tower1_mid at 646s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_harpy_scout killed by npc_dota_hero_zuus at 649s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_harpy_scout killed by npc_dota_hero_zuus at 649s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_harpy_storm killed by npc_dota_hero_zuus at 650s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_tunneler killed by npc_dota_hero_zuus at 663s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_zuus at 663s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_zuus at 663s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_zuus at 664s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_taskmaster killed by npc_dota_hero_zuus at 665s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 670s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_hero_life_stealer at 675s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_zuus at 681s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_zuus at 682s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_siege at 687s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 718s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_life_stealer at 720s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_badguys_tower1_top at 722s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_badguys_tower1_bot at 726s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_life_stealer at 727s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_life_stealer at 730s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_life_stealer at 734s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_life_stealer at 735s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_life_stealer at 738s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_ursa_warrior killed by npc_dota_hero_life_stealer at 774s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_tidehunter at 778s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_tidehunter at 778s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_tidehunter at 778s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_champion killed by npc_dota_hero_life_stealer at 779s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_vengefulspirit at 796s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_creep_goodguys_ranged at 797s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_life_stealer at 802s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_vengefulspirit at 804s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_life_stealer at 810s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_tidehunter at 813s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_tidehunter at 814s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_monkey_king at 816s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_tidehunter at 818s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_monkey_king at 819s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_tidehunter at 820s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_tidehunter at 820s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_tidehunter at 820s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_magi killed by npc_dota_hero_life_stealer at 824s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_vengefulspirit at 825s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_ursa_warrior killed by npc_dota_hero_zuus at 826s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_vengefulspirit at 826s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_champion killed by npc_dota_hero_zuus at 826s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_life_stealer at 828s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_vengefulspirit at 829s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 830s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_monkey_king at 830s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_life_stealer at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_vengefulspirit at 833s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_zuus at 835s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_zuus at 837s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 839s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 840s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_rock_golem killed by npc_dota_hero_life_stealer at 841s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_prowler_shaman killed by npc_dota_hero_chaos_knight at 841s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 841s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 842s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_tidehunter at 846s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_hero_tidehunter at 846s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_tadpole killed by npc_dota_hero_tidehunter at 846s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_prowler_acolyte killed by npc_dota_hero_chaos_knight at 847s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_prowler_acolyte killed by npc_dota_hero_chaos_knight at 851s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_granite_golem killed by npc_dota_hero_life_stealer at 851s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_chaos_knight at 856s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_rock_golem killed by npc_dota_hero_life_stealer at 857s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_tidehunter at 857s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_magi killed by npc_dota_hero_tidehunter at 857s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_tidehunter at 858s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 858s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_chaos_knight at 858s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_chaos_knight at 858s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_life_stealer at 860s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_chaos_knight at 863s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_life_stealer at 864s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_chaos_knight at 865s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_life_stealer at 867s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_chaos_knight at 868s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_life_stealer at 869s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_shadow_shaman at 873s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_tidehunter at 875s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_tidehunter at 884s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_vengefulspirit at 886s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_hellcaller killed by npc_dota_hero_tidehunter at 887s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_vengefulspirit at 889s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_life_stealer at 892s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_enraged_wildkin killed by npc_dota_hero_vengefulspirit at 897s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_life_stealer at 898s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_hero_shadow_shaman at 898s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_neutral_froglet_mage at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_neutral_froglet at 900s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_shadow_shaman at 901s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_monkey_king at 906s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_monkey_king at 910s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 917s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_monkey_king at 919s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_hero_life_stealer at 927s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_vengefulspirit at 935s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_tower1_bot at 944s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_badguys_tower2_mid at 944s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_monkey_king at 949s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_life_stealer at 951s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_chaos_knight at 952s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_life_stealer at 954s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_abaddon at 957s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_abaddon at 958s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_enraged_wildkin killed by npc_dota_hero_life_stealer at 959s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_chaos_knight at 962s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_abaddon at 963s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_taskmaster killed by npc_dota_hero_chaos_knight at 966s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_abaddon at 966s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_chaos_knight at 969s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 975s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_chaos_knight at 980s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_vengefulspirit at 983s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_vengefulspirit at 988s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_alpha_wolf killed by npc_dota_hero_vengefulspirit at 990s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_monkey_king at 1008s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_vengefulspirit at 1010s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_hero_queenofpain at 1010s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_monkey_king at 1012s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_chaos_knight at 1013s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_vengefulspirit at 1016s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_tower2_top at 1019s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_zuus at 1020s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1021s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_zuus at 1022s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_monkey_king at 1026s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_hero_vengefulspirit at 1027s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_monkey_king at 1029s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_zuus at 1030s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_hero_zuus at 1030s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_vengefulspirit at 1032s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_hero_monkey_king at 1033s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_zuus at 1033s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_vengefulspirit at 1033s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_enraged_wildkin killed by npc_dota_hero_chaos_knight at 1039s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_chaos_knight at 1041s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_enraged_wildkin killed by npc_dota_hero_life_stealer at 1043s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_life_stealer at 1044s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_life_stealer at 1045s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_zuus at 1049s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_zuus at 1051s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_zuus at 1051s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll killed by npc_dota_hero_zuus at 1058s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll killed by npc_dota_hero_zuus at 1058s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_zuus at 1059s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_zuus at 1059s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_zuus at 1059s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll_warlord killed by npc_dota_hero_zuus at 1059s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_abaddon at 1061s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_monkey_king at 1067s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_monkey_king at 1068s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_life_stealer at 1081s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_prowler_acolyte killed by npc_dota_hero_life_stealer at 1083s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_monkey_king at 1084s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_prowler_acolyte killed by npc_dota_hero_life_stealer at 1085s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_neutral_prowler_shaman at 1086s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_neutral_black_drake at 1086s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_prowler_shaman killed by npc_dota_hero_life_stealer at 1090s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_zuus at 1091s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_zuus at 1091s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_zuus at 1092s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ghost killed by npc_dota_hero_zuus at 1097s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_hero_zuus at 1098s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_black_dragon killed by npc_dota_hero_life_stealer at 1098s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_hero_zuus at 1098s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_black_drake killed by npc_dota_hero_life_stealer at 1099s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_black_drake killed by npc_dota_hero_life_stealer at 1101s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_chaos_knight at 1106s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_life_stealer at 1108s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_monkey_king at 1108s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_life_stealer at 1108s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_zuus at 1109s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_zuus at 1110s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_chaos_knight at 1110s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_queenofpain at 1111s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 1112s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_hero_queenofpain at 1113s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 1113s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_monkey_king at 1113s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 1114s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_hero_chaos_knight at 1114s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 1115s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_chaos_knight at 1125s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_chaos_knight at 1126s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_magi killed by npc_dota_hero_tidehunter at 1128s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_tidehunter at 1128s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_chaos_knight at 1129s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_tidehunter at 1130s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_chaos_knight at 1132s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_zuus at 1164s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_zuus at 1165s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_hero_zuus at 1165s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1168s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1169s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_badguys_tower2_top at 1171s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_badguys_tower2_top at 1172s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_badguys_tower2_top at 1174s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_badguys_tower2_top at 1176s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1177s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_badguys_tower2_top at 1178s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_badguys_tower2_top at 1180s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_creep_badguys_melee at 1181s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_creep_badguys_melee at 1182s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_badguys_tower2_top at 1184s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_creep_badguys_melee at 1185s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_hero_monkey_king at 1187s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1191s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1196s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_neutral_grown_frog_mage at 1200s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 1200s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 1200s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_hero_life_stealer at 1218s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1226s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll killed by npc_dota_hero_tidehunter at 1231s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll killed by npc_dota_hero_tidehunter at 1231s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1231s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_hero_chaos_knight at 1233s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll_warlord killed by npc_dota_hero_vengefulspirit at 1239s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_vengefulspirit at 1239s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_hero_life_stealer at 1245s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_vengefulspirit at 1248s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_vengefulspirit at 1249s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_alpha_wolf killed by npc_dota_hero_chaos_knight at 1251s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_taskmaster killed by npc_dota_hero_life_stealer at 1252s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_siege at 1252s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_chaos_knight at 1253s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_life_stealer at 1254s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_chaos_knight at 1256s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_life_stealer at 1257s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_monkey_king at 1262s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_zuus at 1268s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_zuus at 1269s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_hellcaller killed by npc_dota_hero_zuus at 1270s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_vengefulspirit at 1272s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_tidehunter at 1273s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_magi killed by npc_dota_hero_tidehunter at 1273s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_tidehunter at 1274s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_vengefulspirit at 1275s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_creep_badguys_flagbearer at 1275s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_zuus at 1275s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_alpha_wolf killed by npc_dota_hero_zuus at 1275s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_vengefulspirit at 1275s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_zuus at 1276s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_vengefulspirit at 1277s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_black_drake killed by npc_dota_hero_monkey_king at 1281s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_enraged_wildkin killed by npc_dota_hero_life_stealer at 1282s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_life_stealer at 1283s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_life_stealer at 1284s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_life_stealer at 1289s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_life_stealer at 1289s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1290s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_life_stealer at 1290s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_monkey_king at 1292s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_zuus at 1303s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_zuus at 1304s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 1306s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 1306s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 1307s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_zuus at 1307s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1308s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_frostbitten_golem killed by npc_dota_hero_zuus at 1313s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_frostbitten_golem killed by npc_dota_hero_zuus at 1314s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ice_shaman killed by npc_dota_hero_zuus at 1315s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_unit_tidehunter_anchor at 1328s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_miniboss at 1334s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_miniboss at 1335s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_miniboss at 1335s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_miniboss at 1335s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_miniboss at 1336s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1359s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1364s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1364s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1364s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1364s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1364s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1370s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1378s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_ursa_warrior killed by npc_dota_hero_zuus at 1380s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_champion killed by npc_dota_hero_zuus at 1381s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_lion at 1386s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_hero_zuus at 1387s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_fel_beast killed by npc_dota_hero_zuus at 1388s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ghost killed by npc_dota_hero_zuus at 1389s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_vengefulspirit at 1400s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_chaos_knight at 1402s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_hellcaller killed by npc_dota_hero_vengefulspirit at 1403s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_vengefulspirit at 1404s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_chaos_knight at 1405s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_monkey_king at 1406s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_monkey_king at 1408s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_monkey_king at 1410s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_vengefulspirit at 1411s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_vengefulspirit at 1411s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_monkey_king at 1413s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1415s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_monkey_king at 1415s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_monkey_king at 1416s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_chaos_knight at 1416s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_chaos_knight at 1419s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_life_stealer at 1422s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_life_stealer at 1422s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_hero_chaos_knight at 1424s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_black_drake killed by npc_dota_hero_monkey_king at 1424s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_hero_life_stealer at 1425s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1427s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_black_dragon killed by npc_dota_hero_monkey_king at 1433s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1436s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_chaos_knight at 1437s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_chaos_knight at 1441s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_creep_badguys_melee at 1445s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_hero_chaos_knight at 1445s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1449s
+2|inhouse- | [Replay] Tormenter killed at 1450s by npc_dota_hero_zuus (slot 0) team=radiant
+2|inhouse- | [Replay] NPC death: npc_dota_miniboss killed by npc_dota_hero_zuus at 1450s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_chaos_knight at 1458s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_queenofpain at 1462s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_monkey_king at 1462s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_chaos_knight at 1463s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_monkey_king at 1464s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_queenofpain at 1466s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_tunneler killed by npc_dota_hero_queenofpain at 1467s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_queenofpain at 1467s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_taskmaster killed by npc_dota_hero_queenofpain at 1467s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll_warlord killed by npc_dota_hero_vengefulspirit at 1468s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_hero_chaos_knight at 1469s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_vengefulspirit at 1470s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_vengefulspirit at 1470s
+2|inhouse- | [Replay] NPC death: npc_dota_dark_troll_warlord_skeleton_warrior killed by npc_dota_hero_vengefulspirit at 1471s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll killed by npc_dota_hero_vengefulspirit at 1472s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_dark_troll killed by npc_dota_hero_vengefulspirit at 1473s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_alpha_wolf killed by npc_dota_hero_chaos_knight at 1477s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_vengefulspirit at 1478s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_vengefulspirit at 1478s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_vengefulspirit at 1478s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_vengefulspirit at 1479s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1480s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_chaos_knight at 1480s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_vengefulspirit at 1486s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_vengefulspirit at 1487s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_chaos_knight at 1487s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog_mage killed by npc_dota_hero_vengefulspirit at 1490s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1491s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog_mage killed by npc_dota_neutral_ancient_frog_mage at 1500s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 1500s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 1500s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_magi killed by npc_dota_hero_chaos_knight at 1503s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_hero_shadow_shaman at 1507s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_chaos_knight at 1507s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_shadow_shaman at 1509s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_chaos_knight at 1510s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_creep_goodguys_melee at 1513s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_rock_golem killed by npc_dota_hero_life_stealer at 1514s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_monkey_king at 1515s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_rock_golem killed by npc_dota_hero_life_stealer at 1517s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_chaos_knight at 1518s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_granite_golem killed by npc_dota_hero_life_stealer at 1518s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_hellcaller killed by npc_dota_hero_monkey_king at 1518s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_monkey_king at 1520s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_life_stealer at 1523s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet killed by npc_dota_hero_chaos_knight at 1523s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_giant_wolf killed by npc_dota_hero_life_stealer at 1524s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_taskmaster killed by npc_dota_hero_monkey_king at 1525s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_monkey_king at 1526s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_froglet_mage killed by npc_dota_hero_chaos_knight at 1526s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1527s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_alpha_wolf killed by npc_dota_hero_life_stealer at 1527s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_monkey_king at 1527s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_vengefulspirit at 1530s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_queenofpain at 1534s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_queenofpain at 1534s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_queenofpain at 1536s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_queenofpain at 1537s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_champion killed by npc_dota_hero_vengefulspirit at 1539s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_chaos_knight at 1539s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_polar_furbolg_ursa_warrior killed by npc_dota_hero_vengefulspirit at 1540s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1543s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_hero_chaos_knight at 1544s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_vengefulspirit at 1546s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_high_priest killed by npc_dota_hero_vengefulspirit at 1547s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_hero_life_stealer at 1547s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog_mage killed by npc_dota_hero_chaos_knight at 1548s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_forest_troll_berserker killed by npc_dota_hero_vengefulspirit at 1549s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_badguys_tower3_mid at 1555s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_tower2_top at 1560s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_roshan at 1562s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_roshan at 1564s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1565s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_roshan at 1566s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1567s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_queenofpain at 1568s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_roshan at 1568s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_badguys_tower3_bot at 1572s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem killed by npc_dota_hero_queenofpain at 1576s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_shadow_shaman_ward_1 at 1576s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_queenofpain at 1580s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_roshan at 1580s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_hero_queenofpain at 1581s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_shadow_shaman_ward_1 at 1581s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_roshan at 1582s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_hero_vengefulspirit at 1583s
+2|inhouse- | [Replay] Roshan killed at 1590s by npc_dota_hero_monkey_king (slot 9) team=dire
+2|inhouse- | [Replay] NPC death: npc_dota_roshan killed by npc_dota_hero_monkey_king at 1590s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1591s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_hero_vengefulspirit at 1600s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_hero_vengefulspirit at 1600s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_hero_vengefulspirit at 1601s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_unit_tidehunter_anchor at 1601s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_1 killed by npc_dota_shadow_shaman_ward_1 at 1602s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1617s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_neutral_mud_golem_split at 1636s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_mud_golem_split killed by npc_dota_neutral_mud_golem_split at 1636s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1664s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_chaos_knight at 1677s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_unit_tidehunter_anchor at 1682s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1691s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_zeus_cloud at 1712s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_tidehunter at 1717s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_tidehunter at 1717s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_tidehunter at 1717s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1720s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1721s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_zeus_cloud at 1758s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_queenofpain at 1769s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_big_thunder_lizard killed by npc_dota_hero_life_stealer at 1771s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_small_thunder_lizard killed by npc_dota_hero_life_stealer at 1772s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_small_thunder_lizard killed by npc_dota_hero_life_stealer at 1772s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_queenofpain at 1774s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_hero_monkey_king at 1778s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_hero_vengefulspirit at 1782s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_chaos_knight at 1784s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_chaos_knight at 1785s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_vengefulspirit at 1792s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1794s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_vengefulspirit at 1798s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_vengefulspirit at 1799s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog_mage killed by npc_dota_neutral_ancient_frog_mage at 1800s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog killed by npc_dota_neutral_ancient_frog at 1800s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 1800s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog_mage killed by npc_dota_neutral_ancient_frog_mage at 1800s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog killed by npc_dota_neutral_ancient_frog at 1800s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_grown_frog killed by npc_dota_neutral_grown_frog at 1800s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_vengefulspirit at 1800s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_vengefulspirit at 1801s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_chaos_knight at 1802s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_vengefulspirit at 1802s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_hero_chaos_knight at 1802s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1803s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_outrunner killed by npc_dota_hero_tidehunter at 1810s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_centaur_khan killed by npc_dota_hero_tidehunter at 1810s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_zuus at 1813s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_warpine_raider killed by npc_dota_hero_zuus at 1813s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_vengefulspirit at 1816s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog killed by npc_dota_hero_zuus at 1825s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog killed by npc_dota_hero_zuus at 1827s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ancient_frog_mage killed by npc_dota_hero_zuus at 1828s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_creep_goodguys_flagbearer at 1832s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_neutral_granite_golem at 1835s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_trickster killed by npc_dota_hero_vengefulspirit at 1837s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_soulstealer killed by npc_dota_hero_vengefulspirit at 1838s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_creep_badguys_ranged at 1839s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_satyr_hellcaller killed by npc_dota_hero_vengefulspirit at 1840s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_creep_goodguys_melee at 1842s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_taskmaster killed by npc_dota_hero_vengefulspirit at 1842s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_vengefulspirit at 1843s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_vengefulspirit at 1843s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold killed by npc_dota_hero_vengefulspirit at 1843s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_kobold_tunneler killed by npc_dota_hero_vengefulspirit at 1843s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_creep_goodguys_ranged at 1845s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_siege_upgraded at 1846s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_granite_golem killed by npc_dota_hero_life_stealer at 1848s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_siege at 1849s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1849s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1852s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1861s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_siege killed by npc_dota_goodguys_siege_upgraded at 1862s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_gnoll_assassin killed by npc_dota_hero_zuus at 1862s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_chaos_knight at 1862s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege killed by npc_dota_hero_monkey_king at 1865s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1866s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_rock_golem killed by npc_dota_hero_zuus at 1872s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_rock_golem killed by npc_dota_hero_zuus at 1873s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_zeus_cloud at 1877s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1878s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_fillers killed by npc_dota_creep_goodguys_melee_upgraded at 1882s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_badguys_tower4 at 1890s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1890s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_unit_tidehunter_anchor at 1893s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1896s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_badguys_tower4 at 1897s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_badguys_tower4 at 1898s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_badguys_tower4 at 1899s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_fillers killed by npc_dota_goodguys_siege_upgraded at 1900s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_badguys_tower4 at 1901s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_fillers killed by npc_dota_creep_goodguys_ranged_upgraded at 1907s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_hero_zuus at 1908s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 1912s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege_upgraded killed by npc_dota_badguys_tower4 at 1919s
+2|inhouse- | [Replay] NPC death: npc_dota_goodguys_siege_upgraded killed by npc_dota_hero_life_stealer at 1919s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_zeus_cloud at 1923s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1924s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_fillers killed by npc_dota_hero_tidehunter at 1926s
+2|inhouse- | [Replay] NPC death: npc_dota_poogie killed by npc_dota_poogie at 1927s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1932s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1932s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1932s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1932s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1932s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 1938s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 1943s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_unit_tidehunter_anchor at 1974s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_zeus_cloud at 1986s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_zuus at 1999s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_mauler killed by npc_dota_hero_zuus at 2000s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_ogre_magi killed by npc_dota_hero_zuus at 2001s
+2|inhouse- | [Replay] NPC death: npc_dota_sentry_wards killed by npc_dota_sentry_wards at 2004s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_enraged_wildkin killed by npc_dota_hero_zuus at 2007s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_zuus at 2008s
+2|inhouse- | [Replay] NPC death: npc_dota_neutral_wildkin killed by npc_dota_hero_zuus at 2008s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_fillers killed by npc_dota_creep_goodguys_melee_upgraded at 2025s
+2|inhouse- | [Replay] NPC death: npc_dota_poogie killed by npc_dota_poogie at 2026s
+2|inhouse- | [Replay] NPC death: npc_dota_observer_wards killed by npc_dota_observer_wards at 2028s
+2|inhouse- | [Replay] NPC death: npc_dota_badguys_fillers killed by npc_dota_goodguys_siege at 2032s
+2|inhouse- | [Replay] NPC death: npc_dota_unit_tidehunter_anchor killed by npc_dota_unit_tidehunter_anchor at 2035s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2036s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_zeus_cloud at 2053s
+2|inhouse- | [Replay] NPC death: npc_dota_zeus_cloud killed by npc_dota_zeus_cloud at 2055s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] NPC death: npc_dota_shadow_shaman_ward_2 killed by npc_dota_shadow_shaman_ward_2 at 2065s
+2|inhouse- | [Replay] Hero damage by slot: {"0":40402,"1":6404,"2":23083,"3":13972,"4":39710,"5":14728,"6":32163,"7":12569,"8":14810,"9":23843}
+2|inhouse- | [Replay] Tower damage by slot: {"0":2119,"1":1892,"2":2785,"3":335,"4":9447,"5":75,"6":1105,"7":714,"8":137,"9":901}
+2|inhouse- | [Replay] Hero healing by slot: {"2":4502,"3":86,"4":1448,"5":9857}
+2|inhouse- | [Replay] Damage taken by slot: {"0":21441,"1":20703,"2":28590,"3":19078,"4":41256,"5":27553,"6":30518,"7":44466,"8":21501,"9":34471}
+2|inhouse- | [Replay] Support gold spent by slot: {"0":330,"1":3765,"2":180,"3":3505,"4":90,"5":1900,"6":380,"7":130,"8":3305}
+2|inhouse- | [Replay] hero_inventory snapshot summary (duration=2036s): {"0":"none","1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none","9":"none"}
+2|inhouse- | [Replay] Epilogue player infos: 10 entries
+2|inhouse- | [Replay] First player info keys: [
+2|inhouse- | [Replay] Detected positions: {"0":2,"1":4,"2":3,"3":5,"4":1,"5":4,"6":2,"7":3,"8":5,"9":1}
+2|inhouse- | [Replay] slot 0: NO hero_inventory snapshot — purchase log fallback (purchases=36)
+2|inhouse- | [Replay] slot 1: NO hero_inventory snapshot — purchase log fallback (purchases=64)
+2|inhouse- | [Replay] slot 2: NO hero_inventory snapshot — purchase log fallback (purchases=26)
+2|inhouse- | [Replay] slot 3: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 4: NO hero_inventory snapshot — purchase log fallback (purchases=34)
+2|inhouse- | [Replay] slot 5: NO hero_inventory snapshot — purchase log fallback (purchases=35)
+2|inhouse- | [Replay] slot 6: NO hero_inventory snapshot — purchase log fallback (purchases=31)
+2|inhouse- | [Replay] slot 7: NO hero_inventory snapshot — purchase log fallback (purchases=19)
+2|inhouse- | [Replay] slot 8: NO hero_inventory snapshot — purchase log fallback (purchases=57)
+2|inhouse- | [Replay] slot 9: NO hero_inventory snapshot — purchase log fallback (purchases=14)
+2|inhouse- | [Replay] Lane outcomes: {"bottom":{"score":0.078,"radiant":"draw","dire":"draw","radiantSlots":[3,4],"direSlots":[5,7]},"mid":{"score":0.189,"radiant":"win","dire":"loss","radiantSlots":[0],"direSlots":[6]},"top":{"score":0.242,"radiant":"win","dire":"loss","radiantSlots":[1,2],"direSlots":[8,9]}}
+2|inhouse- | [Replay] Timeline samples: 10 slots, 690 total points
+2|inhouse- | [Replay] Ward placements: 80 total (slot0:1, slot1:29, slot3:17, slot5:13, slot6:2, slot8:18)
+2|inhouse- | [Replay] Item purchases: 10 slots (slot0:36, slot1:64, slot2:26, slot3:57, slot4:34, slot5:35, slot6:31, slot7:19, slot8:57, slot9:14)
+2|inhouse- | [Replay] Final stats: matchId=8747064770, duration=2036s, radiantWin=true, players=10
+2|inhouse- | [Replay]   radiant pos2 (C): MajinDabura (hero=22, acct=35944012) K/D/A=11/3/31 HD=40402 TD=2119 HH=0 DT=21441 OBS=1 SEN=0 STK=2
+2|inhouse- | [Replay]   radiant pos4 : Not Potato (hero=27, acct=800998702) K/D/A=3/12/30 HD=6404 TD=1892 HH=0 DT=20703 OBS=9 SEN=20 STK=1
+2|inhouse- | [Replay]   radiant pos3 : Zen (hero=29, acct=172274812) K/D/A=13/3/27 HD=23083 TD=2785 HH=4502 DT=28590 OBS=0 SEN=0 STK=0
+2|inhouse- | [Replay]   radiant pos5 : King Sting (hero=26, acct=1150345872) K/D/A=4/11/33 HD=13972 TD=335 HH=86 DT=19078 OBS=7 SEN=10 STK=0
+2|inhouse- | [Replay]   radiant pos1 : WaterBlitz (hero=54, acct=46891042) K/D/A=16/2/21 HD=39710 TD=9447 HH=1448 DT=41256 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos4 (C): TANK (hero=102, acct=228770302) K/D/A=4/11/17 HD=14728 TD=75 HH=9857 DT=27553 OBS=3 SEN=10 STK=0
+2|inhouse- | [Replay]   dire pos2 : Grandmaster Grubble (hero=20, acct=1910138542) K/D/A=11/8/12 HD=32163 TD=1105 HH=0 DT=30518 OBS=1 SEN=1 STK=1
+2|inhouse- | [Replay]   dire pos3 : :) (hero=81, acct=837738702) K/D/A=4/11/17 HD=12569 TD=714 HH=0 DT=44466 OBS=0 SEN=0 STK=1
+2|inhouse- | [Replay]   dire pos5 : Hoodini (hero=39, acct=161409022) K/D/A=5/9/13 HD=14810 TD=137 HH=0 DT=21501 OBS=8 SEN=10 STK=1
+2|inhouse- | [Replay]   dire pos1 : BAD1 (hero=114, acct=277264212) K/D/A=6/8/11 HD=23843 TD=901 HH=0 DT=34471 OBS=0 SEN=0 STK=2
