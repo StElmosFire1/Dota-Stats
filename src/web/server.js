@@ -549,7 +549,8 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/multikills', async (req, res) => {
     try {
-      const rows = await db.getMultiKillStats();
+      const seasonId = req.query.season || null;
+      const rows = await db.getMultiKillStats(seasonId);
       res.json({ rows });
     } catch (err) {
       console.error('[API] Error fetching multikill stats:', err.message);

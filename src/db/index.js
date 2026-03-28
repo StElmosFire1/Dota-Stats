@@ -1815,9 +1815,10 @@ async function getSynergyMatrix(seasonId = null) {
     }
   }
 
+  const minGames = seasonId ? 1 : 3;
   return {
-    teammate: Object.values(teammate).filter(r => r.games >= 3),
-    opponent: Object.values(opponent).filter(r => r.games >= 3),
+    teammate: Object.values(teammate).filter(r => r.games >= minGames),
+    opponent: Object.values(opponent).filter(r => r.games >= minGames),
   };
 }
 
@@ -3175,8 +3176,10 @@ async function findDuplicateMatches() {
   return result.rows;
 }
 
-async function getMultiKillStats() {
+async function getMultiKillStats(seasonId = null) {
   const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
   const result = await p.query(`
     SELECT
       ps.account_id,
@@ -3190,11 +3193,11 @@ async function getMultiKillStats() {
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
     LEFT JOIN nicknames n ON n.account_id = ps.account_id
-    WHERE ps.account_id > 0 AND m.is_legacy = false
+    WHERE ps.account_id > 0${sc}
     GROUP BY ps.account_id, n.nickname
     HAVING SUM(ps.double_kills + ps.triple_kills + ps.ultra_kills + ps.rampages) > 0
     ORDER BY rampages DESC, ultra_kills DESC, triple_kills DESC, double_kills DESC
-  `);
+  `, params);
   return result.rows;
 }
 
@@ -3624,17 +3627,28 @@ async function getComebackMatches(seasonId = null) {
       m.game_timeline
     FROM matches m
     WHERE m.game_timeline IS NOT NULL
-      AND m.game_timeline->'goldLead' IS NOT NULL
-      ${sc.replace('m.', '')}
+      AND m.game_timeline->'players' IS NOT NULL
+      ${sc}
     ORDER BY m.date DESC
   `, params);
 
   const comebacks = [];
   for (const row of rows.rows) {
     try {
-      const gl = row.game_timeline?.goldLead;
-      if (!Array.isArray(gl) || gl.length < 10) continue;
-      const values = gl.map(p => parseFloat(p.goldlead) || 0);
+      const players = row.game_timeline?.players;
+      if (!Array.isArray(players) || players.length < 2) continue;
+      const radiantPlayers = players.filter(pl => pl.team === 'radiant');
+      const direPlayers = players.filter(pl => pl.team === 'dire');
+      if (radiantPlayers.length === 0 || direPlayers.length === 0) continue;
+      const numSamples = Math.max(...players.map(pl => pl.samples?.length || 0));
+      if (numSamples < 10) continue;
+      const values = [];
+      for (let i = 0; i < numSamples; i++) {
+        let radiantNw = 0, direNw = 0;
+        for (const pl of radiantPlayers) { radiantNw += pl.samples?.[i]?.nw || 0; }
+        for (const pl of direPlayers) { direNw += pl.samples?.[i]?.nw || 0; }
+        values.push(radiantNw - direNw);
+      }
       const maxLead = Math.max(...values);
       const minLead = Math.min(...values);
       const finalLead = values[values.length - 1];

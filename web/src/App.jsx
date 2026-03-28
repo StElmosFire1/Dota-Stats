@@ -13,8 +13,7 @@ import Synergy from './pages/Synergy';
 import Upload from './pages/Upload';
 import Seasons from './pages/Seasons';
 import BuyinSuccess from './pages/BuyinSuccess';
-import HeadToHead from './pages/HeadToHead';
-import Compare from './pages/Compare';
+import PlayerTools from './pages/PlayerTools';
 import DraftAssistant from './pages/DraftAssistant';
 import Predictions from './pages/Predictions';
 import UploadIndicator from './components/UploadIndicator';
@@ -243,15 +242,11 @@ function Nav() {
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
         <Link to="/hero-breakdown" className={isActive('/hero-breakdown')}>Hero Breakdown</Link>
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
-        <Link to="/players" className={isActive('/players')}>Players</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <DropdownMenu label="Tools">
-          <DropdownItem to="/seasons">Seasons</DropdownItem>
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
-          <DropdownItem to="/head-to-head">Head to Head</DropdownItem>
-          <DropdownItem to="/compare">Compare Players</DropdownItem>
+          <DropdownItem to="/player-tools">Head to Head / Compare</DropdownItem>
           <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
-          <DropdownItem to="/multikills">Multi-Kill Leaderboard</DropdownItem>
           <DropdownItem to="/ward-map">Ward Heatmap</DropdownItem>
           <DropdownItem to="/draft-stats">Draft Statistics</DropdownItem>
           <DropdownItem to="/records">Records &amp; Comebacks</DropdownItem>
@@ -297,8 +292,9 @@ export default function App() {
                 <Route path="/upload" element={<Upload />} />
                 <Route path="/seasons" element={<Seasons />} />
                 <Route path="/buyin-success" element={<BuyinSuccess />} />
-                <Route path="/head-to-head" element={<HeadToHead />} />
-                <Route path="/compare" element={<Compare />} />
+                <Route path="/player-tools" element={<PlayerTools />} />
+                <Route path="/head-to-head" element={<PlayerTools />} />
+                <Route path="/compare" element={<PlayerTools />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
                 <Route path="/predictions" element={<Predictions />} />
                 <Route path="/patch-notes" element={<PatchNotes />} />

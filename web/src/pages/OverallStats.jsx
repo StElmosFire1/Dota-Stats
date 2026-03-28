@@ -86,7 +86,12 @@ export default function OverallStats() {
                   <td className="col-stat">{row.avg_assists}</td>
                   <td className="col-stat" style={{ color: parseInt(winRate) >= 50 ? '#4ade80' : '#f87171' }}>{winRate}%</td>
                   <td className="col-stat">{row.avg_kill_involvement}%</td>
-                  <td className="col-stat">{captRate === '-' ? '-' : `${captRate}%`}</td>
+                  <td
+                    className="col-stat"
+                    title={row.captain_games > 0 ? `${row.captain_wins}W / ${row.captain_games - row.captain_wins}L as captain` : 'No captain games'}
+                  >
+                    {captRate === '-' ? '-' : `${captRate}% (${row.captain_games}g)`}
+                  </td>
                 </tr>
               );
             })}

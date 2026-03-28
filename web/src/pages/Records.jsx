@@ -1,8 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getPersonalRecords, getFirstBloodStats, getComebackMatches } from '../api';
+import { getPersonalRecords, getFirstBloodStats, getComebackMatches, getMultiKillStats } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { formatHeroName } from '../utils/heroes';
+
+const KILL_TYPES = [
+  { key: 'rampages',    label: 'Rampages',    emoji: '☠️',  color: '#e53935' },
+  { key: 'ultra_kills', label: 'Ultra Kills',  emoji: '⚡',  color: '#8e24aa' },
+  { key: 'triple_kills',label: 'Triple Kills', emoji: '🔥',  color: '#ef6c00' },
+  { key: 'double_kills',label: 'Double Kills', emoji: '⚔️',  color: '#1976d2' },
+];
+
+function KillBadge({ count, color, emoji }) {
+  if (!count || count == 0) return <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>—</span>;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      background: `${color}22`, border: `1px solid ${color}55`,
+      color, borderRadius: 8, padding: '2px 10px',
+      fontSize: 13, fontWeight: 700,
+    }}>
+      {emoji} {count}
+    </span>
+  );
+}
 
 function fmtDuration(s) {
   if (!s) return '';
@@ -24,24 +45,102 @@ const RECORD_ORDER = [
 ];
 
 const RECORD_ICONS = {
-  kills: '⚔️',
-  deaths: '💀',
-  assists: '🤝',
-  gpm: '💰',
-  xpm: '⭐',
-  hero_damage: '🔥',
-  hero_healing: '💚',
-  tower_damage: '🗼',
-  net_worth: '🏆',
-  last_hits: '🎯',
-  level: '📊',
+  kills: '⚔️', deaths: '💀', assists: '🤝', gpm: '💰', xpm: '⭐',
+  hero_damage: '🔥', hero_healing: '💚', tower_damage: '🗼',
+  net_worth: '🏆', last_hits: '🎯', level: '📊',
 };
+
+function MultiKillsTab({ rows, sortKey, setSortKey }) {
+  const sorted = [...rows].sort((a, b) => {
+    if (sortKey === 'total') return Number(b.total_multikills) - Number(a.total_multikills);
+    return Number(b[sortKey]) - Number(a[sortKey]) || Number(b.total_multikills) - Number(a.total_multikills);
+  });
+  const topRampage = sorted.find(r => Number(r.rampages) > 0);
+  const Th = ({ col, label, title }) => (
+    <th className="col-stat" title={title}
+      style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === col ? 'var(--accent-blue)' : '' }}
+      onClick={() => setSortKey(col)}>
+      {label} {sortKey === col ? '▼' : ''}
+    </th>
+  );
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
+        {KILL_TYPES.map(k => (
+          <div key={k.key} style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'var(--bg-card)', border: `1px solid ${k.color}44`,
+            borderRadius: 10, padding: '6px 12px',
+          }}>
+            <span style={{ fontSize: 18 }}>{k.emoji}</span>
+            <div style={{ fontWeight: 600, fontSize: 13, color: k.color }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+      {topRampage && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(229,57,53,0.15) 0%, rgba(142,36,170,0.1) 100%)',
+          border: '1px solid rgba(229,57,53,0.4)', borderRadius: 12,
+          padding: '14px 20px', marginBottom: 20,
+          display: 'flex', alignItems: 'center', gap: 16,
+        }}>
+          <span style={{ fontSize: 32 }}>☠️</span>
+          <div>
+            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 }}>Rampage King</div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>
+              <Link to={`/player/${topRampage.account_id}`} style={{ color: '#e53935', textDecoration: 'none' }}>{topRampage.display_name}</Link>
+            </div>
+            <div style={{ fontSize: 13, color: '#64748b' }}>{topRampage.rampages} rampage{topRampage.rampages > 1 ? 's' : ''} in {topRampage.games_played} games</div>
+          </div>
+        </div>
+      )}
+      {sorted.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#64748b', padding: '3rem' }}>No multi-kills recorded yet</div>
+      ) : (
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard">
+            <thead>
+              <tr>
+                <th className="col-rank">#</th>
+                <th className="col-player">Player</th>
+                <Th col="rampages"     label="☠️ Rampages"  title="5 hero kills within 18s" />
+                <Th col="ultra_kills"  label="⚡ Ultras"     title="4 hero kills within 18s" />
+                <Th col="triple_kills" label="🔥 Triples"    title="3 hero kills within 18s" />
+                <Th col="double_kills" label="⚔️ Doubles"    title="2 hero kills within 18s" />
+                <Th col="total"        label="Total"         title="All multi-kills combined" />
+                <th className="col-stat">Games</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r, i) => (
+                <tr key={r.account_id} className={i < 3 ? `rank-${i + 1}` : ''}>
+                  <td className="col-rank">{i + 1}</td>
+                  <td className="col-player">
+                    <Link to={`/player/${r.account_id}`} className="player-link">{r.display_name}</Link>
+                  </td>
+                  <td className="col-stat"><KillBadge count={r.rampages}     color="#e53935" emoji="☠️" /></td>
+                  <td className="col-stat"><KillBadge count={r.ultra_kills}  color="#8e24aa" emoji="⚡" /></td>
+                  <td className="col-stat"><KillBadge count={r.triple_kills} color="#ef6c00" emoji="🔥" /></td>
+                  <td className="col-stat"><KillBadge count={r.double_kills} color="#1976d2" emoji="⚔️" /></td>
+                  <td className="col-stat" style={{ fontWeight: 700 }}>{r.total_multikills}</td>
+                  <td className="col-stat" style={{ color: '#64748b' }}>{r.games_played}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Records() {
   const { seasonId } = useSeason();
   const [records, setRecords] = useState({});
   const [fbStats, setFbStats] = useState([]);
   const [comebacks, setComebacks] = useState([]);
+  const [multiKills, setMultiKills] = useState([]);
+  const [mkSortKey, setMkSortKey] = useState('rampages');
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('records');
 
@@ -51,10 +150,12 @@ export default function Records() {
       getPersonalRecords(seasonId).catch(() => ({ records: {} })),
       getFirstBloodStats(seasonId).catch(() => ({ stats: [] })),
       getComebackMatches(seasonId).catch(() => ({ matches: [] })),
-    ]).then(([recData, fbData, cbData]) => {
+      getMultiKillStats(seasonId).catch(() => ({ rows: [] })),
+    ]).then(([recData, fbData, cbData, mkData]) => {
       setRecords(recData?.records || {});
       setFbStats(fbData?.stats || []);
       setComebacks(cbData?.matches || []);
+      setMultiKills(mkData?.rows || []);
     }).finally(() => setLoading(false));
   }, [seasonId]);
 
@@ -62,16 +163,13 @@ export default function Records() {
     { key: 'records', label: '🏆 Hall of Records' },
     { key: 'firstblood', label: '🩸 First Blood' },
     { key: 'comebacks', label: '⚡ Greatest Comebacks' },
+    { key: 'multikills', label: '☠️ Multi-Kills' },
   ];
 
   const cardStyle = {
-    background: '#1e293b',
-    border: '1px solid #334155',
-    borderRadius: 10,
-    padding: '1rem 1.25rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
+    background: '#1e293b', border: '1px solid #334155',
+    borderRadius: 10, padding: '1rem 1.25rem',
+    display: 'flex', flexDirection: 'column', gap: 4,
   };
 
   return (
@@ -80,25 +178,21 @@ export default function Records() {
 
       <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         {tabs.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: '8px 18px', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem',
-              background: tab === t.key ? '#4ade80' : '#1e293b',
-              color: tab === t.key ? '#0f172a' : '#94a3b8',
-              border: `1px solid ${tab === t.key ? '#4ade80' : '#334155'}`,
-              fontWeight: tab === t.key ? 700 : 400,
-            }}
-          >
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            padding: '8px 18px', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem',
+            background: tab === t.key ? '#4ade80' : '#1e293b',
+            color: tab === t.key ? '#0f172a' : '#94a3b8',
+            border: `1px solid ${tab === t.key ? '#4ade80' : '#334155'}`,
+            fontWeight: tab === t.key ? 700 : 400,
+          }}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {loading ? (
-        <div className="loading">Loading records...</div>
-      ) : tab === 'records' ? (
+      {loading && <div className="loading">Loading records...</div>}
+
+      {!loading && tab === 'records' && (
         <div>
           <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
             All-time best single-game performances across all inhouse matches.
@@ -120,10 +214,7 @@ export default function Records() {
                     </div>
                   </div>
                   <div style={{ marginTop: 8, borderTop: '1px solid #334155', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <Link
-                      to={`/player/${rec.account_id}`}
-                      style={{ color: '#4ade80', fontWeight: 600, fontSize: '0.95rem', textDecoration: 'none' }}
-                    >
+                    <Link to={`/player/${rec.account_id}`} style={{ color: '#4ade80', fontWeight: 600, fontSize: '0.95rem', textDecoration: 'none' }}>
                       {rec.persona_name}
                     </Link>
                     <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
@@ -139,7 +230,9 @@ export default function Records() {
             })}
           </div>
         </div>
-      ) : tab === 'firstblood' ? (
+      )}
+
+      {!loading && tab === 'firstblood' && (
         <div>
           <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
             Who draws first blood most often. Minimum 5 games.
@@ -178,7 +271,9 @@ export default function Records() {
             </table>
           </div>
         </div>
-      ) : (
+      )}
+
+      {!loading && tab === 'comebacks' && (
         <div>
           <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
             Matches where a team overcame a 5,000+ gold deficit to win. Sorted by comeback size.
@@ -209,15 +304,11 @@ export default function Records() {
                 <div style={{ display: 'flex', gap: '2rem', marginTop: 8, flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ color: '#4ade80', fontSize: '0.75rem', marginBottom: 3 }}>Radiant {match.radiant_win ? '🏆' : ''}</div>
-                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>
-                      {match.radiant_players.join(', ') || '—'}
-                    </div>
+                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>{match.radiant_players.join(', ') || '—'}</div>
                   </div>
                   <div>
                     <div style={{ color: '#f87171', fontSize: '0.75rem', marginBottom: 3 }}>Dire {!match.radiant_win ? '🏆' : ''}</div>
-                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>
-                      {match.dire_players.join(', ') || '—'}
-                    </div>
+                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>{match.dire_players.join(', ') || '—'}</div>
                   </div>
                 </div>
               </div>
@@ -229,6 +320,10 @@ export default function Records() {
             )}
           </div>
         </div>
+      )}
+
+      {!loading && tab === 'multikills' && (
+        <MultiKillsTab rows={multiKills} sortKey={mkSortKey} setSortKey={setMkSortKey} />
       )}
     </div>
   );

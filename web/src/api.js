@@ -444,8 +444,10 @@ export async function addSeasonPayout(seasonId, categoryType, label, amountCents
   return data;
 }
 
-export async function getMultiKillStats() {
-  return fetchJson('/multikills');
+export async function getMultiKillStats(seasonId = null) {
+  const params = new URLSearchParams();
+  if (seasonId) params.set('season', seasonId);
+  return fetchJson(`/multikills${params.toString() ? '?' + params.toString() : ''}`);
 }
 
 export async function getMostImproved(days = 30) {

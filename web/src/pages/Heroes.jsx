@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getHeroStats, getHeroMeta, getHeroSkillBuilds } from '../api';
+import { getHeroStats, getHeroMeta } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { useSeason } from '../context/SeasonContext';
@@ -126,152 +126,6 @@ function HeroMetaTab() {
   );
 }
 
-function fmtAbilityName(name) {
-  if (!name) return name;
-  const parts = name.split('_');
-  return parts.slice(1).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || name;
-}
-
-function SkillBuildsTab() {
-  const { seasonId } = useSeason();
-  const [allHeroIds, setAllHeroIds] = useState([]);
-  const [selectedHeroId, setSelectedHeroId] = useState('');
-  const [builds, setBuilds] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    getHeroStats(seasonId).then(data => {
-      const ids = (data?.heroes || []).filter(h => h.games > 0).map(h => ({ id: h.hero_id, name: h.hero_name }));
-      ids.sort((a, b) => a.name.localeCompare(b.name));
-      setAllHeroIds(ids);
-      if (ids.length && !selectedHeroId) setSelectedHeroId(String(ids[0].id));
-    }).catch(() => {});
-  }, [seasonId]);
-
-  useEffect(() => {
-    if (!selectedHeroId) return;
-    setLoading(true);
-    setBuilds(null);
-    getHeroSkillBuilds(selectedHeroId, seasonId)
-      .then(data => setBuilds(data))
-      .catch(() => setBuilds(null))
-      .finally(() => setLoading(false));
-  }, [selectedHeroId, seasonId]);
-
-  const byLevel = {};
-  if (builds?.builds) {
-    for (const row of builds.builds) {
-      const lvl = row.ability_level;
-      if (!byLevel[lvl]) byLevel[lvl] = [];
-      byLevel[lvl].push(row);
-    }
-  }
-
-  const levels = Object.keys(byLevel).map(Number).sort((a, b) => a - b);
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        <label style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Hero:</label>
-        <select
-          value={selectedHeroId}
-          onChange={e => setSelectedHeroId(e.target.value)}
-          style={{
-            background: '#1e293b', color: '#f8fafc', border: '1px solid #334155',
-            borderRadius: 6, padding: '6px 12px', fontSize: '0.9rem', cursor: 'pointer',
-          }}
-        >
-          {allHeroIds.map(h => (
-            <option key={h.id} value={String(h.id)}>{h.name}</option>
-          ))}
-        </select>
-        {builds && (
-          <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
-            {builds.totalGames} game{builds.totalGames !== 1 ? 's' : ''} of data
-          </span>
-        )}
-      </div>
-
-      {loading && <div style={{ color: '#64748b' }}>Loading builds...</div>}
-
-      {!loading && builds && levels.length === 0 && (
-        <div style={{ color: '#64748b', padding: '2rem 0' }}>
-          No skill build data for this hero yet. Upload replays to populate.
-        </div>
-      )}
-
-      {!loading && builds && levels.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
-            Most common ability leveled at each skill point. Attribute bonus hidden.
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {levels.map(lvl => {
-              const top = byLevel[lvl][0];
-              const totalOcc = byLevel[lvl].reduce((s, r) => s + parseInt(r.occurrences), 0);
-              const pct = Math.round(100 * parseInt(top.occurrences) / Math.max(totalOcc, 1));
-              return (
-                <div key={lvl} style={{
-                  background: '#1e293b', border: '1px solid #334155', borderRadius: 8,
-                  padding: '8px 12px', minWidth: 90, textAlign: 'center',
-                }}>
-                  <div style={{ color: '#64748b', fontSize: '0.7rem', marginBottom: 3 }}>
-                    Lvl {lvl}
-                  </div>
-                  <div style={{
-                    color: '#4ade80', fontSize: '0.75rem', fontWeight: 600,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    maxWidth: 100,
-                  }} title={fmtAbilityName(top.ability_name)}>
-                    {fmtAbilityName(top.ability_name)}
-                  </div>
-                  <div style={{ color: '#94a3b8', fontSize: '0.65rem', marginTop: 2 }}>
-                    {pct}% · ~{Math.round(top.avg_time / 60)}m
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ marginTop: '1.5rem' }}>
-            <h4 style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Ability Details</h4>
-            <div className="scoreboard-wrapper">
-              <table className="scoreboard">
-                <thead>
-                  <tr>
-                    <th>Skill Level</th>
-                    <th>Ability</th>
-                    <th className="col-stat">Occurrences</th>
-                    <th className="col-stat">Avg Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {levels.flatMap(lvl =>
-                    byLevel[lvl].slice(0, 3).map((row, i) => (
-                      <tr key={`${lvl}-${i}`} style={{ opacity: i === 0 ? 1 : 0.6 }}>
-                        {i === 0 ? (
-                          <td rowSpan={Math.min(byLevel[lvl].length, 3)} style={{ verticalAlign: 'middle', color: '#60a5fa', fontWeight: 700 }}>
-                            {lvl}
-                          </td>
-                        ) : null}
-                        <td style={{ color: i === 0 ? '#f8fafc' : '#94a3b8', fontSize: '0.85rem' }}>
-                          {fmtAbilityName(row.ability_name)}
-                        </td>
-                        <td className="col-stat">{row.occurrences}</td>
-                        <td className="col-stat">{Math.floor(row.avg_time / 60)}:{String(Math.round(row.avg_time % 60)).padStart(2, '0')}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function Heroes() {
   const { seasonId } = useSeason();
   const [playedHeroes, setPlayedHeroes] = useState([]);
@@ -368,7 +222,6 @@ export default function Heroes() {
   const TABS = [
     { key: 'stats', label: 'Hero Stats' },
     { key: 'meta', label: '📍 Position Meta' },
-    { key: 'builds', label: '🔧 Skill Builds' },
   ];
 
   return (
@@ -392,7 +245,6 @@ export default function Heroes() {
       </div>
 
       {tab === 'meta' && <HeroMetaTab />}
-      {tab === 'builds' && <SkillBuildsTab />}
 
       {tab === 'stats' && !loading && (
         <>
