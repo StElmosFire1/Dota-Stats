@@ -1085,14 +1085,15 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.put('/matches/:matchId/meta', authMiddleware, async (req, res) => {
+  router.put('/matches/:matchId/meta', authMiddleware, express.json(), async (req, res) => {
     try {
       const { patch, seasonId, date } = req.body;
+      console.log(`[API] updateMatchMeta: matchId=${req.params.matchId}, patch=${patch}, seasonId=${seasonId}, date=${date}`);
       await db.updateMatchMeta(req.params.matchId, { patch, seasonId, date });
       res.json({ success: true });
     } catch (err) {
       console.error('[API] Error updating match meta:', err.message);
-      res.status(500).json({ error: 'Failed to update match' });
+      res.status(500).json({ error: err.message || 'Failed to update match' });
     }
   });
 

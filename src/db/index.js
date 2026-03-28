@@ -644,11 +644,18 @@ async function updateMatchMeta(matchId, { patch, seasonId, date }) {
   const updates = [];
   const params = [];
   if (patch !== undefined) { updates.push(`patch = $${params.length + 1}`); params.push(patch || null); }
-  if (seasonId !== undefined) { updates.push(`season_id = $${params.length + 1}`); params.push(seasonId || null); }
+  if (seasonId !== undefined) {
+    const sid = (seasonId === null || seasonId === '' || seasonId === 0) ? null : parseInt(seasonId);
+    if (sid !== null && isNaN(sid)) throw new Error(`Invalid seasonId: ${seasonId}`);
+    updates.push(`season_id = $${params.length + 1}`);
+    params.push(sid);
+  }
   if (date !== undefined && date) { updates.push(`date = $${params.length + 1}`); params.push(new Date(date).toISOString()); }
   if (updates.length === 0) return;
   params.push(matchId);
-  await p.query(`UPDATE matches SET ${updates.join(', ')} WHERE match_id = $${params.length}`, params);
+  const sql = `UPDATE matches SET ${updates.join(', ')} WHERE match_id = $${params.length}`;
+  console.log(`[DB] updateMatchMeta: ${sql} [${params.join(', ')}]`);
+  await p.query(sql, params);
 }
 
 async function updateMatchDetails(matchId, { radiant_win, duration, lobby_name }) {
