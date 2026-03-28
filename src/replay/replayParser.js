@@ -608,11 +608,14 @@ class ReplayParser {
     const maxIntervalTime = Object.values(maxTime).length > 0
       ? Math.max(...Object.values(maxTime))
       : 0;
-    if (maxIntervalTime > 0) {
+    // Only use maxIntervalTime as a fallback — it can be inflated by post-game interval events
+    // that continue for 60–120+ seconds after the game ends. The epilogue duration is preferred.
+    if (duration === 0 && maxIntervalTime > 0) {
       duration = maxIntervalTime;
     } else if (duration > 100000) {
       duration = 0;
     }
+    console.log(`[Replay] Duration: epilogue=${duration}s, maxIntervalTime=${maxIntervalTime}s`);
 
     const npcNameToSlot = {};
     for (const [slot, p] of Object.entries(players)) {
@@ -1293,7 +1296,7 @@ class ReplayParser {
       let inventoryValid = false;
       if (finalItems[slot]) {
         const snapshotTime = finalItemsTime[slot] || 0;
-        const isRecent = duration > 0 ? snapshotTime >= duration - 90 : true;
+        const isRecent = duration > 0 ? snapshotTime >= duration - 180 : true;
         inventoryValid = isRecent;
         if (!isRecent) {
           console.log(`[Replay] slot ${slot}: hero_inventory snapshot is stale (at ${snapshotTime}s, game ended at ${duration}s) — using purchase log fallback`);
@@ -1337,12 +1340,18 @@ class ReplayParser {
         }
       }
 
+      // has_scepter: only true for the CONSUMED Aghanim's Blessing form (ultimate_scepter_2 / id 108).
+      // A regular physical Aghanim's Scepter (ultimate_scepter) sits in inventory slots 0–5 and
+      // is already shown as an item icon — the dedicated indicator is for the consumed/gifted upgrade only.
       const hasScepter = playerItems.some(i =>
-          i.itemName === 'ultimate_scepter' || i.itemName === 'ultimate_scepter_2' ||
-          i.itemId === 108) ||
-        (itemPurchases[slot] || []).some(i => i.itemName === 'item_ultimate_scepter' || i.itemName === 'item_ultimate_scepter_2');
-      const hasShard = playerItems.some(i => i.itemName === 'aghanims_shard') ||
-        (itemPurchases[slot] || []).some(i => i.itemName === 'item_aghanims_shard');
+        i.itemName === 'ultimate_scepter_2' || i.itemId === 108);
+
+      // has_shard: true when the shard was purchased AND is no longer in the physical inventory
+      // (slots 0–8), meaning it was consumed and the hero has the upgrade.
+      // If shard is still physically in inventory it shows as a normal item icon.
+      const shardPurchased = (itemPurchases[slot] || []).some(i => i.itemName === 'item_aghanims_shard');
+      const shardInPhysicalInv = playerItems.some(i => i.itemName === 'aghanims_shard' && i.slot <= 8);
+      const hasShard = shardPurchased && !shardInPhysicalInv;
 
       playerList.push({
         accountId: p.accountId || 0,

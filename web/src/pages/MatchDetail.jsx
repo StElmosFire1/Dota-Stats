@@ -826,7 +826,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                     <td className="col-items">
                       <div className="items-row">
                         {Array.from({ length: 6 }, (_, j) => {
-                          const item = (p.items || []).find(it => it.item_slot === j && it.item_name !== 'aghanims_shard');
+                          const item = (p.items || []).find(it => it.item_slot === j);
                           return <ItemIcon key={j} itemName={item?.item_name} itemId={item?.item_id} />;
                         })}
                         <span className="aghs-indicators">
@@ -845,7 +845,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                         </span>
                         <span className="backpack-separator">|</span>
                         {Array.from({ length: 3 }, (_, j) => {
-                          const item = (p.items || []).find(it => it.item_slot === (j + 6) && it.item_name !== 'aghanims_shard');
+                          const item = (p.items || []).find(it => it.item_slot === (j + 6));
                           return <ItemIcon key={`bp-${j}`} itemName={item?.item_name} itemId={item?.item_id} />;
                         })}
                       </div>
