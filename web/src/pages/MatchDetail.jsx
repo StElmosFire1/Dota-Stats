@@ -1766,7 +1766,9 @@ function SupportReportPanel({ players, timeline }) {
               <th className="col-player">Player</th>
               <th className="col-stat" title="Observer wards placed">OBS</th>
               <th className="col-stat" title="Sentry wards placed">SEN</th>
-              <th className="col-stat" title="Enemy wards dewarded">DEW</th>
+              <th className="col-stat" title="Enemy wards dewarded by this player">DEW</th>
+              <th className="col-stat" title="This player's wards killed by enemies (lower = better placement)">YDEW</th>
+              <th className="col-stat" title="Average lifespan of this player's wards before being dewarded (M:SS — longer = better)">W.LIFE</th>
               <th className="col-stat" title="Camps stacked">STK</th>
               <th className="col-stat" title="Approximate pulls performed (timing-based heuristic)">PULL~</th>
               <th className="col-stat" title="Dust of Appearance activations">DUST</th>
@@ -1792,6 +1794,14 @@ function SupportReportPanel({ players, timeline }) {
                   <td className="col-stat">{p.obs_placed || 0}</td>
                   <td className="col-stat">{p.sen_placed || 0}</td>
                   <td className="col-stat">{p.wards_killed || 0}</td>
+                  <td className="col-stat" style={{ color: p.ward_dewarded_count > 0 ? '#f87171' : undefined }}>
+                    {p.ward_dewarded_count || 0}
+                  </td>
+                  <td className="col-stat" style={{ color: p.ward_avg_lifespan > 0 ? '#94a3b8' : undefined }}>
+                    {p.ward_avg_lifespan > 0
+                      ? `${Math.floor(p.ward_avg_lifespan / 60)}:${String(p.ward_avg_lifespan % 60).padStart(2, '0')}`
+                      : '—'}
+                  </td>
                   <td className="col-stat">{p.camps_stacked || 0}</td>
                   <td className="col-stat" style={{ color: p.pull_count > 0 ? '#a78bfa' : undefined }}>
                     {p.pull_count || 0}
