@@ -1120,12 +1120,76 @@ class ReplayParser {
       return before || after || null;
     };
 
-    // Coordinate units → Dota2 units: map is ~128 coord units wide ≈ 16384 Dota2 units → 1 coord ≈ 128 Dota2 units
-    // Hook range 1300 + 200 buffer = 1500 Dota2 units ≈ 11.72 coord units → use sq threshold 137
-    // Cast position (from unit orders) is in raw game-world coords: divide by 128 to get normalised coords.
-    const HOOK_RANGE_SQ = 137;
-    const hookStats = {}; // slot → { attempts, hits }
+    // ── Hook geometry constants ──────────────────────────────────────────────
+    // All distances in normalised coords (1 unit = 128 Dota2 units).
+    //
+    // MAX_HOOK_RANGE: generous cap covering every realistic scenario:
+    //   Base range 1300 + Aether Lens 225 + level talent 125 + margin 150 = 1800 Dota2 units
+    const MAX_HOOK_RANGE_NORM  = 1800 / 128;         // ≈ 14.06 normalised units
+    //
+    // HOOK_PATH_RADIUS: how close to the hook's flight path an enemy must be for the
+    // cast to count as "aimed at that hero".  400 Dota2 units is wide enough to catch
+    // slight mis-predictions and movement dodges without including enemies that are
+    // clearly off to the side.
+    const HOOK_PATH_RADIUS_NORM = 400 / 128;         // ≈ 3.125 normalised units
+    const HOOK_PATH_RADIUS_SQ   = HOOK_PATH_RADIUS_NORM * HOOK_PATH_RADIUS_NORM; // ≈ 9.77
+    //
+    // FALLBACK_RANGE: used when we only have Pudge's position (no target point) — old behaviour.
+    const FALLBACK_RANGE_SQ = (1500 / 128) * (1500 / 128); // ≈ 137
+
+    const hookStats  = {}; // slot → { attempts, hits }
     const pudgeHeroId = 14;
+
+    // ── Genuine-attempt filter ──────────────────────────────────────────────
+    // Returns true when an enemy hero is within the hook's collision cylinder along
+    // its trajectory from Pudge toward the clicked target point.
+    //
+    // Handles three edge cases automatically:
+    //  1. Player clicked PAST the enemy (hook falls short on range) — the line
+    //     segment extends to MAX_HOOK_RANGE so the enemy is still on the path.
+    //  2. Items/talents extending range (Aether Lens +225, talent +125) — covered
+    //     by the generous MAX_HOOK_RANGE cap.
+    //  3. Player aimed NEAR but not exactly at the hero — HOOK_PATH_RADIUS gives
+    //     a 400-unit-wide cylinder around the trajectory.
+    //
+    // Falls back to a simpler radius check when either position is unavailable
+    // (e.g. combatlog casts that carry no target coords, or missing interval data).
+    const makeGenuineAttemptChecker = (pSlot, enemySlots) => (normX, normY, time) => {
+      const pudgePos = interpolatePos(pSlot, time);
+
+      // ── Line-segment path check (used when we have both Pudge pos + target) ──
+      if (pudgePos && normX != null && normY != null) {
+        const dxPT = normX - pudgePos.x, dyPT = normY - pudgePos.y;
+        const distToTarget = Math.sqrt(dxPT * dxPT + dyPT * dyPT);
+        if (distToTarget === 0) return false; // degenerate — player somehow clicked on themselves
+        // Hook travels this far in the direction of the click.
+        const hookLen = Math.min(distToTarget, MAX_HOOK_RANGE_NORM);
+        const dirX = dxPT / distToTarget, dirY = dyPT / distToTarget;
+
+        for (const eSlot of enemySlots) {
+          const ePos = interpolatePos(eSlot, time);
+          if (!ePos) continue;
+          // Project enemy onto hook line; clamp to [0, hookLen]
+          const ex = ePos.x - pudgePos.x, ey = ePos.y - pudgePos.y;
+          const t  = Math.max(0, Math.min(hookLen, ex * dirX + ey * dirY));
+          const cx = pudgePos.x + t * dirX, cy = pudgePos.y + t * dirY;
+          const px = ePos.x - cx, py = ePos.y - cy;
+          if (px * px + py * py <= HOOK_PATH_RADIUS_SQ) return true;
+        }
+        return false;
+      }
+
+      // ── Fallback: radius check from the best available reference point ──
+      const refPos = pudgePos || (normX != null ? { x: normX, y: normY } : null);
+      if (!refPos) return true; // no position data at all — give benefit of the doubt
+      for (const eSlot of enemySlots) {
+        const ePos = interpolatePos(eSlot, time);
+        if (!ePos) continue;
+        const dx = refPos.x - ePos.x, dy = refPos.y - ePos.y;
+        if (dx * dx + dy * dy <= FALLBACK_RANGE_SQ) return true;
+      }
+      return false;
+    };
 
     const pudgeSlots = Object.values(players).filter(p => p.heroId === pudgeHeroId).map(p => p.slot);
     for (const pSlot of pudgeSlots) {
@@ -1135,46 +1199,32 @@ class ReplayParser {
         .filter(p => (p.slot < 5 ? 'radiant' : 'dire') !== myTeam)
         .map(p => p.slot);
 
-      // Check if an enemy hero is within hook range of a given normalised point at a given time.
-      // normX/normY: normalised map coordinates (same as interval event x/y).
-      // Falls back to Pudge's own position if target coords are unavailable.
-      const hasEnemyNearPoint = (normX, normY, time) => {
-        const refPos = (normX != null && normY != null) ? { x: normX, y: normY } : interpolatePos(pSlot, time);
-        if (!refPos) return true; // no data — give benefit of the doubt
-        for (const eSlot of enemySlots) {
-          const ePos = interpolatePos(eSlot, time);
-          if (!ePos) continue;
-          const dx = refPos.x - ePos.x, dy = refPos.y - ePos.y;
-          if (dx * dx + dy * dy <= HOOK_RANGE_SQ) return true;
-        }
-        return false;
-      };
+      const isGenuineAttempt = makeGenuineAttemptChecker(pSlot, enemySlots);
 
-      const myHits = hookHits.filter(h => h.slot === pSlot);
-
-      // Prefer unit-order casts (have target position) over combatlog casts (only have time).
-      const myUnitOrders   = hookUnitOrders.filter(c => c.slot === pSlot);
+      const myHits          = hookHits.filter(h => h.slot === pSlot);
+      const myUnitOrders    = hookUnitOrders.filter(c => c.slot === pSlot);
       const myCombatlogCasts = hookCasts.filter(c => c.slot === pSlot);
-      const castsToUse = myUnitOrders.length > 0 ? myUnitOrders : myCombatlogCasts;
+      const castsToUse      = myUnitOrders.length > 0 ? myUnitOrders : myCombatlogCasts;
+      const useTargetPos    = myUnitOrders.length > 0;
 
-      const useTargetPos = myUnitOrders.length > 0; // unit-order casts carry normX/normY
       console.log(`[Replay] Pudge slot ${pSlot}: ${myUnitOrders.length} unit-order casts, ${myCombatlogCasts.length} combatlog casts, ${myHits.length} hits`);
 
       if (castsToUse.length > 0) {
         for (const cast of castsToUse) {
           const normX = useTargetPos ? cast.normX : null;
           const normY = useTargetPos ? cast.normY : null;
-          const hit = myHits.find(h => h.time >= cast.time && h.time <= cast.time + 2.5);
+          const hit   = myHits.find(h => h.time >= cast.time && h.time <= cast.time + 2.5);
           if (hit) {
             if (hit.targetHero) {
+              // Confirmed hero hit — always a genuine attempt
               attempts++; hits++;
             } else {
-              // Hit a non-hero — genuine only if the aim point was near an enemy hero
-              if (hasEnemyNearPoint(normX, normY, cast.time)) attempts++;
+              // Hit a creep/non-hero — genuine only if hook path was aimed near an enemy
+              if (isGenuineAttempt(normX, normY, cast.time)) attempts++;
             }
           } else {
-            // Complete miss — count as genuine attempt if the aim point was near an enemy hero
-            if (hasEnemyNearPoint(normX, normY, cast.time)) attempts++;
+            // Complete miss — genuine only if hook path was aimed near an enemy
+            if (isGenuineAttempt(normX, normY, cast.time)) attempts++;
           }
         }
       } else {
@@ -1183,7 +1233,7 @@ class ReplayParser {
           if (hit.targetHero) {
             attempts++; hits++;
           } else {
-            if (hasEnemyNearPoint(null, null, hit.time)) attempts++;
+            if (isGenuineAttempt(null, null, hit.time)) attempts++;
           }
         }
       }
