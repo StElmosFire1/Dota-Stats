@@ -56,7 +56,7 @@ The dashboard emphasizes clear data presentation, sortable tables, and detailed 
 
 **Technical Implementations & Feature Specifications:**
 
-- **Replay Parsing:** Utilizes OpenDota's production Java-based `odota/parser` as a local service to extract detailed match statistics from `.dem` replay files (KDA, GPM, damage, healing, items, skill builds, multi-kills, streaks, lane CS).
+- **Replay Parsing:** Utilizes OpenDota's production Java-based `odota/parser` as a local service to extract detailed match statistics from `.dem` replay files (KDA, GPM, damage, healing, items, skill builds, multi-kills, streaks, lane CS). Extended via `S2CombatLogEntry` cast to unlock: assist players per kill, kill location coordinates, kill-time networth, spell evasion counts, heal saves, lifesteal vs spell healing split, long-range kills, dust usage, pull count (timing heuristic).
 - **Lobby-Based Recording:** The bot monitors Dota 2 lobbies via the Game Coordinator, recording basic match outcomes for TrueSkill calculations.
 - **Friend Lobby Auto-Detection:** The bot's Steam account monitors friends' rich presence to automatically detect and join Dota 2 lobbies.
 - **Auto-Detect System (OpenDota Fallback):** Can poll OpenDota to identify and record recent practice lobby matches for players with public data.

@@ -381,12 +381,32 @@ public class Parse {
                 combatLogEntry.xp_reason = cle.getXpReason();
             }
 
-            // Damage type (physical/magical/pure) — only on S2CombatLogEntry (Dota 2 Source 2)
+            // Extended S2CombatLogEntry fields (Source 2 only — all Dota 2 replays are S2)
             if (cle instanceof S2CombatLogEntry) {
                 S2CombatLogEntry s2 = (S2CombatLogEntry) cle;
+                // Damage type bitmask: 1=Physical, 2=Magical, 4=Pure
                 if (s2.hasDamageType() && s2.getDamageType() != 0) {
                     combatLogEntry.damage_type = s2.getDamageType();
                 }
+                // Location of the event in game-world coordinates
+                float lx = s2.getLocationX(), ly = s2.getLocationY();
+                if (lx != 0 || ly != 0) {
+                    combatLogEntry.x = lx;
+                    combatLogEntry.y = ly;
+                }
+                // Networth of the involved unit at event time (typically attacker for kills)
+                int nw = s2.getNetworth();
+                if (nw > 0) combatLogEntry.networth = nw;
+                // Assist players — list of player slot indices who assisted this kill
+                java.util.List<Integer> assists = s2.getAssistPlayers();
+                if (assists != null && !assists.isEmpty()) {
+                    combatLogEntry.assist_players = new java.util.ArrayList<>(assists);
+                }
+                // Boolean flags
+                if (s2.isLongRangeKill())      combatLogEntry.long_range_kill     = true;
+                if (s2.isHealSave())           combatLogEntry.heal_save           = true;
+                if (s2.isHealFromLifesteal())  combatLogEntry.heal_from_lifesteal = true;
+                if (s2.isSpellEvaded())        combatLogEntry.spell_evaded        = true;
             }
             combatLogEntry.greevils_greed_stack = greevilsGreedVisitor.visit(time, cle);
             TrackStatus trackStatus = trackVisitor.visit(time, cle);

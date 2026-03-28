@@ -657,6 +657,13 @@ class ReplayParser {
     const teamAbilitiesRaw = {}; // 'radiant_glyph' | 'dire_glyph' | 'radiant_scan' | 'dire_scan' → [time, ...]
     const aegisActive = {};     // slot → pickupTime (while modifier_aegis is held)
     const smokePerPlayer = {};  // slot → [times] — per-player smoke activations
+    const evasionCount = {};    // slot → count of spells/attacks evaded
+    const healingByType = {};   // slot → { spell: N, lifesteal: N }
+    const healSaves = {};       // slot → count of clutch heals (low-HP target)
+    const longRangeKills = {};  // slot → count of long-range kills
+    const dustsUsed = {};       // slot → count of dust activations
+    const pullCount = {};       // slot → approximate pull count (timing-based)
+    const lastPullTime = {};    // slot → time of last counted pull (dedup cooldown)
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -883,7 +890,18 @@ class ReplayParser {
                 if (!killedBy[victimSlot]) killedBy[victimSlot] = {};
                 killedBy[victimSlot][killerSlot] = (killedBy[victimSlot][killerSlot] || 0) + 1;
               }
-              gameEvents.push({ t: deathTime, type: 'kill', killerSlot: killerSlot != null ? killerSlot : -1, victimSlot });
+              gameEvents.push({
+                t: deathTime, type: 'kill',
+                killerSlot: killerSlot != null ? killerSlot : -1, victimSlot,
+                assistSlots: Array.isArray(e.assist_players) ? e.assist_players : [],
+                locationX: e.x || null,
+                locationY: e.y || null,
+                victimNetworth: e.networth || null,
+              });
+              // Long-range kill flag
+              if (e.long_range_kill && killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
+                longRangeKills[killerSlot] = (longRangeKills[killerSlot] || 0) + 1;
+              }
               if (deathTime <= 600) {
                 if (!laningKillsAt10[victimSlot]) laningKillsAt10[victimSlot] = { k: 0, d: 0, a: 0 };
                 laningKillsAt10[victimSlot].d++;
@@ -1004,6 +1022,30 @@ class ReplayParser {
             damageTaken[victimSlot] = (damageTaken[victimSlot] || 0) + e.value;
           }
         }
+        // Evasion / dodge tracking — spell_evaded=true means the victim dodged this attack/spell
+        if (e.type === 'DOTA_COMBATLOG_DAMAGE' && e.spell_evaded && e.targethero && !e.targetillusion) {
+          const evSlot = npcNameToSlot[e.targetname];
+          if (evSlot != null && evSlot >= 0 && evSlot < 10) {
+            evasionCount[evSlot] = (evasionCount[evSlot] || 0) + 1;
+          }
+        }
+        // Pull tracking — hero hits a neutral camp in pull timing window (first 15 min)
+        // Standard pull timing: player attacks camp between :35–:52 of each minute
+        if (e.type === 'DOTA_COMBATLOG_DAMAGE' && e.attackerhero && !e.attackerillusion &&
+            e.targetname && e.targetname.includes('npc_dota_neutral') &&
+            !e.targetname.includes('roshan') && (e.time || 0) < 900) {
+          const attSlot = npcNameToSlot[e.attackername];
+          if (attSlot != null && attSlot >= 0 && attSlot < 10) {
+            const t = e.time || 0;
+            const tMod = t % 60;
+            const lastPull = lastPullTime[attSlot] || -120;
+            // Pull window: 35–52 seconds into each minute; deduplicate within 45s
+            if (tMod >= 35 && tMod <= 52 && t - lastPull > 45) {
+              pullCount[attSlot] = (pullCount[attSlot] || 0) + 1;
+              lastPullTime[attSlot] = t;
+            }
+          }
+        }
       }
       if (e.type === 'damage_taken' && e.value > 0) {          // blob-only victim-centric event
         let targetSlot = e.slot; if (targetSlot == null && e.unit) targetSlot = npcNameToSlot[e.unit];
@@ -1070,6 +1112,14 @@ class ReplayParser {
           const isSelfHeal = !targetName || healerName === targetName;
           if (e.targethero && !e.targetillusion && !isSelfHeal) {
             heroHealing[slot] = (heroHealing[slot] || 0) + e.value;
+            // Track lifesteal vs direct spell healing
+            if (!healingByType[slot]) healingByType[slot] = { spell: 0, lifesteal: 0 };
+            if (e.heal_from_lifesteal) healingByType[slot].lifesteal += e.value;
+            else healingByType[slot].spell += e.value;
+          }
+          // Heal save: true when target was at low HP (applies to self-heals too)
+          if (e.heal_save) {
+            healSaves[slot] = (healSaves[slot] || 0) + 1;
           }
         }
       }
@@ -1096,6 +1146,17 @@ class ReplayParser {
           // Per-player tracking
           if (!smokePerPlayer[casterSlot]) smokePerPlayer[casterSlot] = [];
           smokePerPlayer[casterSlot].push(e.time || 0);
+        }
+      }
+
+      // ── Dust of Appearance activation ─────────────────────────────────────
+      // item_dust fires an ability use event when the player pops it (like smoke)
+      if ((e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_use' || e.type === 'ability_cast') &&
+          (e.inflictor === 'item_dust' || e.key === 'item_dust')) {
+        const casterName = e.attackername || e.unit || '';
+        let casterSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
+        if (casterSlot != null && casterSlot >= 0 && casterSlot < 10) {
+          dustsUsed[casterSlot] = (dustsUsed[casterSlot] || 0) + 1;
         }
       }
 
@@ -1688,6 +1749,12 @@ class ReplayParser {
         hookHits: hookStats[slot] ? hookStats[slot].hits : null,
         wardPlacements: wardPlacements[slot] || [],
         timelineSamples: timelineSamples[slot] || [],
+        evasionCount: evasionCount[slot] || 0,
+        longRangeKills: longRangeKills[slot] || 0,
+        healSaves: healSaves[slot] || 0,
+        lifestealHealing: (healingByType[slot] || {}).lifesteal || 0,
+        dustsUsed: dustsUsed[slot] || 0,
+        pullCount: pullCount[slot] || 0,
       });
     }
 

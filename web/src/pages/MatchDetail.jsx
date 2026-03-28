@@ -1038,6 +1038,8 @@ function ExpandedStats({ players }) {
               <th className="col-stat" title="Longest kill streak">KS</th>
               <th className="col-stat" title="Multi-kills (double, triple, ultra, rampage)">MK</th>
               <th className="col-stat" title="Creep score (last hits) at 10 minutes">CS@10</th>
+              <th className="col-stat" title="Attacks or spells dodged/evaded by this player (Butterfly, Windranger passive, Halberd)">EVAD</th>
+              <th className="col-stat" title="Long-range kills landed by this player">LRK</th>
             </tr>
           </thead>
           <tbody>
@@ -1064,6 +1066,12 @@ function ExpandedStats({ players }) {
                   <td className="col-stat">{p.kill_streak || 0}</td>
                   <td className="col-stat">{mkParts.join(' ') || '-'}</td>
                   <td className="col-stat">{p.lane_cs_10min || '-'}</td>
+                  <td className="col-stat" style={{ color: p.evasion_count > 0 ? '#a78bfa' : undefined }}>
+                    {p.evasion_count || 0}
+                  </td>
+                  <td className="col-stat" style={{ color: p.long_range_kills > 0 ? '#fbbf24' : undefined }}>
+                    {p.long_range_kills || 0}
+                  </td>
                 </tr>
               );
             })}
@@ -1545,6 +1553,206 @@ function NWSwingPanel({ timeline, allPlayers }) {
   );
 }
 
+// ── KillFeedPanel ────────────────────────────────────────────────────────────
+function KillFeedPanel({ timeline, allPlayers }) {
+  if (!timeline || !timeline.events) return null;
+  const killEvents = timeline.events.filter(ev => ev.type === 'kill');
+  if (killEvents.length === 0) return null;
+
+  const slotToPlayer = {};
+  allPlayers.forEach(p => { slotToPlayer[p.slot] = p; });
+
+  const getName = (slot) => {
+    const p = slotToPlayer[slot];
+    return p ? (p.nickname || p.persona_name || `Slot ${slot}`) : (slot >= 0 ? `Slot ${slot}` : '?');
+  };
+  const slotColor = (slot) => slot < 5 ? '#4ade80' : '#f87171';
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Kill Feed <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— {killEvents.length} hero kills</span></h3>
+      <div className="scoreboard-wrapper" style={{ maxHeight: 380, overflowY: 'auto' }}>
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-stat" style={{ width: 52 }}>Time</th>
+              <th style={{ textAlign: 'left', paddingLeft: 8 }}>Kill</th>
+              <th style={{ textAlign: 'left', paddingLeft: 8 }}>Assisters</th>
+              <th className="col-stat" title="Victim's net worth at death">NW</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...killEvents].sort((a, b) => a.t - b.t).map((ev, i) => {
+              const assists = Array.isArray(ev.assistSlots) ? ev.assistSlots.filter(s => s !== ev.killerSlot && s !== ev.victimSlot) : [];
+              return (
+                <tr key={i}>
+                  <td className="col-stat" style={{ fontSize: '0.82rem', color: '#888' }}>{formatDuration(ev.t)}</td>
+                  <td style={{ paddingLeft: 8, fontSize: '0.88rem' }}>
+                    <span style={{ color: slotColor(ev.killerSlot), fontWeight: 600 }}>
+                      {getName(ev.killerSlot)}
+                    </span>
+                    <span style={{ color: '#555', margin: '0 5px' }}>⚔</span>
+                    <span style={{ color: slotColor(ev.victimSlot) }}>
+                      {getName(ev.victimSlot)}
+                    </span>
+                  </td>
+                  <td style={{ paddingLeft: 8, fontSize: '0.82rem', color: '#aaa' }}>
+                    {assists.length > 0
+                      ? assists.map(s => <span key={s} style={{ color: slotColor(s), marginRight: 4 }}>{getName(s)}</span>)
+                      : <span style={{ color: '#444' }}>—</span>}
+                  </td>
+                  <td className="col-stat" style={{ fontSize: '0.82rem', color: '#facc15' }}>
+                    {ev.victimNetworth ? `${Math.round(ev.victimNetworth / 100) * 100}g` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── KillHeatmapPanel ──────────────────────────────────────────────────────────
+// Maps kill locationX/Y (Dota 2 game-world coordinates) to a minimap SVG.
+// Game coordinate space: X right, Y up, range roughly 0–16384.
+// SVG space: X right, Y down, 500×500 px.
+function KillHeatmapPanel({ timeline, allPlayers }) {
+  if (!timeline || !timeline.events) return null;
+  const killEvents = timeline.events.filter(ev => ev.type === 'kill' && ev.locationX != null && ev.locationY != null);
+  if (killEvents.length < 3) return null;   // need enough points to be useful
+
+  const MAP_SIZE = 16384;
+  const SVG = 500;
+  const toSvg = (gx, gy) => ({
+    x: Math.round((gx / MAP_SIZE) * SVG),
+    y: Math.round(SVG - (gy / MAP_SIZE) * SVG),
+  });
+
+  const slotToPlayer = {};
+  allPlayers.forEach(p => { slotToPlayer[p.slot] = p; });
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Kill Heatmap <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— {killEvents.length} located kills</span></h3>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={SVG} height={SVG} viewBox={`0 0 ${SVG} ${SVG}`} style={{ background: '#111', borderRadius: 6, display: 'block', margin: '0 auto' }}>
+          {/* Map background */}
+          <rect width={SVG} height={SVG} fill="#0f1a10" rx="4" />
+          {/* River — approximate diagonal band across the map */}
+          <polygon
+            points="195,500 245,500 295,310 265,295 220,295 160,310"
+            fill="#1c3a5e" opacity="0.55"
+          />
+          <polygon
+            points="220,295 265,295 300,155 320,0 270,0 240,155"
+            fill="#1c3a5e" opacity="0.55"
+          />
+          {/* Radiant base — bottom-left */}
+          <rect x="4" y="410" width="70" height="70" fill="#14532d" rx="3" opacity="0.55" />
+          <text x="8" y="494" fill="#4ade80" fontSize="9" fontFamily="monospace">RADIANT</text>
+          {/* Dire base — top-right */}
+          <rect x="425" y="18" width="70" height="70" fill="#450a0a" rx="3" opacity="0.55" />
+          <text x="428" y="101" fill="#f87171" fontSize="9" fontFamily="monospace">DIRE</text>
+          {/* Kill dots */}
+          {killEvents.map((ev, i) => {
+            const pos = toSvg(ev.locationX, ev.locationY);
+            const killerTeam = slotToPlayer[ev.killerSlot]?.team;
+            const color = killerTeam === 'radiant' ? '#4ade80' : killerTeam === 'dire' ? '#f87171' : '#facc15';
+            return (
+              <circle
+                key={i}
+                cx={pos.x} cy={pos.y} r={5}
+                fill={color}
+                opacity={0.75}
+                stroke="#000" strokeWidth={0.8}
+              >
+                <title>{formatDuration(ev.t)}</title>
+              </circle>
+            );
+          })}
+        </svg>
+        <p style={{ fontSize: '0.75rem', color: '#555', textAlign: 'center', marginTop: 4 }}>
+          Green = Radiant kill · Red = Dire kill · Map is approximate
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── SupportReportPanel ────────────────────────────────────────────────────────
+function SupportReportPanel({ players }) {
+  // Only show if at least one player has meaningful support activity
+  const hasData = players.some(p =>
+    (p.obs_placed > 0) || (p.sen_placed > 0) || (p.camps_stacked > 0) ||
+    (p.support_gold_spent > 0) || (p.dusts_used > 0) || (p.pull_count > 0) ||
+    (p.heal_saves > 0) || (p.hero_healing > 0)
+  );
+  if (!hasData) return null;
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Support Report <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— vision, utility &amp; lane support</span></h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              <th className="col-stat" title="Observer wards placed">OBS</th>
+              <th className="col-stat" title="Sentry wards placed">SEN</th>
+              <th className="col-stat" title="Enemy wards dewarded">DEW</th>
+              <th className="col-stat" title="Camps stacked">STK</th>
+              <th className="col-stat" title="Approximate pulls performed (timing-based heuristic)">PULL~</th>
+              <th className="col-stat" title="Dust of Appearance activations">DUST</th>
+              <th className="col-stat" title="Smoke of Deceit activations">SMKE</th>
+              <th className="col-stat" title="Clutch heals — healed a low-HP ally">SAVE</th>
+              <th className="col-stat" title="Healing done to allies via spells/items (excludes self-heal and lifesteal)">HEAL</th>
+              <th className="col-stat" title="Healing from lifesteal — Satanic, Octarine, Spec aura etc. This heals the caster, not allies">LSHEAL</th>
+              <th className="col-stat" title="Total stun duration dealt (seconds)">STUN</th>
+              <th className="col-stat" title="Gold spent on support items">S.GOLD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {players.map((p, i) => {
+              const teamColor = p.team === 'radiant' ? '#4ade80' : '#f87171';
+              return (
+                <tr key={i}>
+                  <td className="col-player">
+                    <PlayerLink player={p} index={i} />
+                  </td>
+                  <td className="col-stat">{p.obs_placed || 0}</td>
+                  <td className="col-stat">{p.sen_placed || 0}</td>
+                  <td className="col-stat">{p.wards_killed || 0}</td>
+                  <td className="col-stat">{p.camps_stacked || 0}</td>
+                  <td className="col-stat" style={{ color: p.pull_count > 0 ? '#a78bfa' : undefined }}>
+                    {p.pull_count || 0}
+                  </td>
+                  <td className="col-stat" style={{ color: p.dusts_used > 0 ? '#facc15' : undefined }}>
+                    {p.dusts_used || 0}
+                  </td>
+                  <td className="col-stat">{p.smoke_kills || 0}</td>
+                  <td className="col-stat" style={{ color: p.heal_saves > 0 ? '#38bdf8' : undefined }}>
+                    {p.heal_saves || 0}
+                  </td>
+                  <td className="col-stat">{p.hero_healing ? formatNumber(p.hero_healing) : 0}</td>
+                  <td className="col-stat" style={{ color: p.lifesteal_healing > 0 ? '#fb923c' : undefined }}>
+                    {p.lifesteal_healing ? formatNumber(p.lifesteal_healing) : 0}
+                  </td>
+                  <td className="col-stat">{p.stun_duration ? p.stun_duration.toFixed(1) : '0'}</td>
+                  <td className="col-stat" style={{ color: p.support_gold_spent > 1000 ? '#fbbf24' : undefined }}>
+                    {p.support_gold_spent ? formatNumber(p.support_gold_spent) : 0}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function MatchDetail() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -1747,6 +1955,10 @@ export default function MatchDetail() {
       <SmokePerPlayerPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <PowerSpikesPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <NWSwingPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+
+      <KillFeedPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <KillHeatmapPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <SupportReportPanel players={allPlayers} />
 
       {allPlayers.some(p => p.abilities && p.abilities.length > 0) && (
         <div className="expanded-stats-section">

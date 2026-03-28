@@ -32,6 +32,12 @@ public class Entry implements Cloneable {
     public String valuename;
     // damage_type bitmask: 1=Physical, 2=Magical, 4=Pure, 8=HP Removal (from S2CombatLogEntry)
     public Integer damage_type;
+    // S2CombatLogEntry extended fields
+    public List<Integer> assist_players; // slot indices of players who assisted a kill
+    public Boolean long_range_kill;      // true if kill was long-range
+    public Boolean heal_save;            // true if heal was a clutch save (low HP target)
+    public Boolean heal_from_lifesteal;  // true if healing came from lifesteal, not a spell
+    public Boolean spell_evaded;         // true if an attack/spell was evaded/dodged
     // public Float stun_duration;
     // public Float slow_duration;
     // entity fields
