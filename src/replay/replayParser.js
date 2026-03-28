@@ -1428,6 +1428,8 @@ class ReplayParser {
           if (itemSlot >= 9) break; // 6 main + 3 backpack
           // Skip recipe items — they are components of assembled items and not held separately
           if (purchase.itemName.startsWith('item_recipe_')) continue;
+          // Skip TP scrolls — they have their own dedicated slot in the UI
+          if (purchase.itemName === 'item_tpscroll') continue;
           // Skip ward dispenser (shop bundle) — individual observer/sentry are the real wards
           if (purchase.itemName === 'item_ward_dispenser') continue;
           const key = purchase.itemName;
