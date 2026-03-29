@@ -1362,6 +1362,10 @@ function createApiRouter(startupStatus = {}) {
   });
 
   router.post('/upload/init', authMiddleware, (req, res) => {
+    const parserCheck = getReplayParser();
+    if (!parserCheck?.parserReady) {
+      return res.status(503).json({ error: 'Parser service is not running. Replay parsing unavailable.' });
+    }
     const { fileName, fileSize, totalChunks, patch } = req.body;
     if (!fileName || !fileSize || !totalChunks) {
       return res.status(400).json({ error: 'Missing fileName, fileSize, or totalChunks' });

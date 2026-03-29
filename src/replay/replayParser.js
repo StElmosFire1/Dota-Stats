@@ -126,6 +126,7 @@ class ReplayParser {
     }
     this.parserProcess = null;
     this.parserReady = false;
+    this._shutdownRequested = false;
   }
 
   async startParserService() {
@@ -138,49 +139,57 @@ class ReplayParser {
     }
 
     return new Promise((resolve) => {
-      console.log('[Replay] Starting parser service on port', PARSER_PORT);
-      this.parserProcess = spawn('java', ['-jar', PARSER_JAR], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        detached: false,
-      });
-
-      this.parserProcess.stderr.on('data', (data) => {
-        const msg = data.toString().trim();
-        if (msg) console.log('[Parser]', msg);
-      });
-
-      this.parserProcess.stdout.on('data', () => {});
-
-      this.parserProcess.on('error', (err) => {
-        console.error('[Replay] Parser failed to start:', err.message);
-        this.parserReady = false;
-        resolve(false);
-      });
-
-      this.parserProcess.on('exit', (code) => {
-        console.log('[Replay] Parser exited with code', code);
-        this.parserReady = false;
-      });
-
-      const checkHealth = async (retries = 15) => {
-        for (let i = 0; i < retries; i++) {
-          try {
-            const res = await fetch(`http://localhost:${PARSER_PORT}/healthz`, { timeout: 2000 });
-            if (res.ok) {
-              console.log('[Replay] Parser service is ready.');
-              this.parserReady = true;
-              resolve(true);
-              return;
-            }
-          } catch {}
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-        console.error('[Replay] Parser service failed to become ready.');
-        resolve(false);
-      };
-
-      checkHealth();
+      this._launchParser(resolve);
     });
+  }
+
+  _launchParser(resolveInitial) {
+    console.log('[Replay] Starting parser service on port', PARSER_PORT);
+    this.parserProcess = spawn('java', ['-jar', PARSER_JAR], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: false,
+    });
+
+    this.parserProcess.stderr.on('data', (data) => {
+      const msg = data.toString().trim();
+      if (msg) console.log('[Parser]', msg);
+    });
+
+    this.parserProcess.stdout.on('data', () => {});
+
+    this.parserProcess.on('error', (err) => {
+      console.error('[Replay] Parser failed to start:', err.message);
+      this.parserReady = false;
+      if (resolveInitial) { resolveInitial(false); resolveInitial = null; }
+    });
+
+    this.parserProcess.on('exit', (code, signal) => {
+      console.warn(`[Replay] Parser exited (code=${code}, signal=${signal}) — restarting in 5s...`);
+      this.parserReady = false;
+      if (resolveInitial) { resolveInitial(false); resolveInitial = null; }
+      setTimeout(() => {
+        if (!this._shutdownRequested) this._launchParser(null);
+      }, 5000);
+    });
+
+    const checkHealth = async (retries = 20) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await fetch(`http://localhost:${PARSER_PORT}/healthz`, { timeout: 2000 });
+          if (res.ok) {
+            console.log('[Replay] Parser service is ready.');
+            this.parserReady = true;
+            if (resolveInitial) { resolveInitial(true); resolveInitial = null; }
+            return;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      console.error('[Replay] Parser service failed to become ready.');
+      if (resolveInitial) { resolveInitial(false); resolveInitial = null; }
+    };
+
+    checkHealth();
   }
 
   async downloadReplay(url, filename) {
@@ -2392,6 +2401,7 @@ class ReplayParser {
   }
 
   shutdown() {
+    this._shutdownRequested = true;
     if (this.parserProcess) {
       this.parserProcess.kill();
       this.parserProcess = null;
