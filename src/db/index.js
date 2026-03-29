@@ -496,6 +496,18 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS sen_dewarded_count INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS sen_avg_lifespan INTEGER DEFAULT NULL`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS server_logs (
+        id SERIAL PRIMARY KEY,
+        level VARCHAR(10) NOT NULL DEFAULT 'error',
+        source VARCHAR(100),
+        message TEXT NOT NULL,
+        details JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_server_logs_created ON server_logs(created_at DESC)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -2014,6 +2026,7 @@ async function recalculateAllRatings() {
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM ratings');
+    await client.query('DELETE FROM rating_history');
 
     const matches = await client.query(
       'SELECT match_id FROM matches ORDER BY date ASC'
@@ -2086,12 +2099,19 @@ async function recalculateAllRatings() {
                display_name = COALESCE(NULLIF($3, ''), ratings.display_name)`,
             [r.id, '', player?.persona_name || r.id, r.mu, r.sigma, r.mmr, won ? 1 : 0, won ? 0 : 1]
           );
+          const numericPid = /^\d+$/.test(String(r.id)) ? parseInt(r.id) : null;
+          if (numericPid) {
+            await client.query(
+              `INSERT INTO rating_history (player_id, mmr, mu, sigma, match_id) VALUES ($1, $2, $3, $4, $5)`,
+              [numericPid, r.mmr, r.mu, r.sigma, match.match_id]
+            );
+          }
         }
       }
     }
 
     await client.query('COMMIT');
-    console.log('[DB] Ratings recalculated from all matches.');
+    console.log('[DB] Ratings and rating_history recalculated from all matches.');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -3819,6 +3839,187 @@ async function createManualMatch({ date, duration, radiantWin, players, lobbyNam
   }
 }
 
+async function logServerError(level, source, message, details = null) {
+  try {
+    const p = getPool();
+    await p.query(
+      `INSERT INTO server_logs (level, source, message, details) VALUES ($1, $2, $3, $4)`,
+      [level || 'error', source || 'server', message, details ? JSON.stringify(details) : null]
+    );
+  } catch (_) {}
+}
+
+async function getServerLogs(limit = 200, level = null) {
+  const p = getPool();
+  const params = [limit];
+  const levelClause = level ? ` AND level = $2` : '';
+  if (level) params.push(level);
+  const result = await p.query(
+    `SELECT id, level, source, message, details, created_at
+     FROM server_logs
+     WHERE 1=1${levelClause}
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    params
+  );
+  return result.rows;
+}
+
+// Re-parse a match from updated stats, preserving season, match ID, created_at, and lobby name.
+// Saves and restores manually-set player positions.
+async function reparseMatchFromStats(matchId, matchStats, patch) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Preserve season_id and lobby_name from the existing match
+    const existing = await client.query(
+      `SELECT season_id, lobby_name, recorded_by FROM matches WHERE match_id = $1`,
+      [matchId]
+    );
+    if (existing.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const { season_id, lobby_name, recorded_by } = existing.rows[0];
+
+    // Preserve manually-set player positions (slot -> position)
+    const posResult = await client.query(
+      `SELECT slot, position FROM player_stats WHERE match_id = $1`,
+      [matchId]
+    );
+    const savedPositions = {};
+    for (const row of posResult.rows) {
+      if (row.position && row.position > 0) savedPositions[row.slot] = row.position;
+    }
+
+    // Clear old data for this match
+    await client.query(`DELETE FROM player_stats WHERE match_id = $1`, [matchId]);
+    await client.query(`DELETE FROM player_items WHERE match_id = $1`, [matchId]);
+    await client.query(`DELETE FROM player_abilities WHERE match_id = $1`, [matchId]);
+    await client.query(`DELETE FROM match_draft WHERE match_id = $1`, [matchId]);
+
+    // Update match-level fields (keep season_id, lobby_name)
+    await client.query(
+      `UPDATE matches SET
+         duration = $1, game_mode = $2, radiant_win = $3,
+         parse_method = $4, patch = COALESCE($5, patch),
+         game_timeline = COALESCE($6, game_timeline),
+         lane_outcomes = COALESCE($7, lane_outcomes),
+         team_abilities = COALESCE($8, team_abilities),
+         recorded_by = $9
+       WHERE match_id = $10`,
+      [
+        matchStats.duration || 0,
+        matchStats.gameMode || 0,
+        matchStats.radiantWin,
+        (matchStats.parseMethod || 'replay-reparse') + ' [reparsed]',
+        patch || null,
+        matchStats.gameTimeline ? JSON.stringify(matchStats.gameTimeline) : null,
+        matchStats.laneOutcomes ? JSON.stringify(matchStats.laneOutcomes) : null,
+        matchStats.teamAbilities ? JSON.stringify(matchStats.teamAbilities) : null,
+        recorded_by ? `${recorded_by} [reparsed]` : 'reparse',
+        matchId,
+      ]
+    );
+
+    // Re-insert player stats
+    for (const player of matchStats.players) {
+      const slot = player.slot || 0;
+      const restoredPosition = savedPositions[slot] || player.position || 0;
+      await client.query(
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69)`,
+        [
+          matchId, player.accountId || 0, player.discordId || '', player.personaname || '',
+          player.heroId || 0, player.heroName || '', player.team || 'radiant',
+          player.kills || 0, player.deaths || 0, player.assists || 0,
+          player.lastHits || 0, player.denies || 0, player.goldPerMin || 0, player.xpPerMin || 0,
+          player.heroDamage || 0, player.towerDamage || 0, player.heroHealing || 0,
+          player.level || 0, player.netWorth || 0, restoredPosition,
+          player.isCaptain || false, player.obsPlaced || 0, player.senPlaced || 0,
+          player.creepsStacked || 0, player.campsStacked || 0, player.damageTaken || 0,
+          slot, player.runePickups || 0, player.stunDuration || 0,
+          player.towersKilled || 0, player.roshansKilled || 0,
+          player.teamfightParticipation || 0, player.firstbloodClaimed || 0,
+          player.wardsKilled || 0, player.obsPurchased || 0, player.senPurchased || 0,
+          player.buybacks || 0, player.courierKills || 0, player.tpScrollsUsed || 0,
+          player.doubleKills || 0, player.tripleKills || 0, player.ultraKills || 0,
+          player.rampages || 0, player.killStreak || 0, player.smokeKills || 0,
+          player.firstDeath || 0, player.laneCs10min || 0,
+          player.hasScepter || false, player.hasShard || false,
+          player.laningNw != null ? player.laningNw : null,
+          player.supportGoldSpent || 0,
+          JSON.stringify(player.killedBy || {}),
+          JSON.stringify(player.wardPlacements || []),
+          player.nemesisHeroName || '', player.nemesisKills || 0,
+          player.hookAttempts != null ? player.hookAttempts : null,
+          player.hookHits != null ? player.hookHits : null,
+          player.evasionCount || 0, player.longRangeKills || 0,
+          player.healSaves || 0, player.lifestealHealing || 0,
+          player.dustsUsed || 0, player.pullCount || 0,
+          player.wardDewardedCount || 0, player.wardAvgLifespan || null,
+          player.obsDewardedCount || 0, player.obsAvgLifespan || null,
+          player.senDewardedCount || 0, player.senAvgLifespan || null,
+        ]
+      );
+
+      if (player.damagePhysical || player.damageMagical || player.damagePure) {
+        await client.query(
+          `UPDATE player_stats SET damage_physical=$1, damage_magical=$2, damage_pure=$3
+           WHERE match_id=$4 AND slot=$5`,
+          [player.damagePhysical || 0, player.damageMagical || 0, player.damagePure || 0, matchId, slot]
+        );
+      }
+
+      if (player.items && player.items.length > 0) {
+        for (const item of player.items) {
+          await client.query(
+            `INSERT INTO player_items (match_id, slot, item_slot, item_id, item_name, purchase_time, enhancement_level)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (match_id, slot, item_slot) DO UPDATE SET
+               item_id = EXCLUDED.item_id, item_name = EXCLUDED.item_name,
+               purchase_time = EXCLUDED.purchase_time, enhancement_level = EXCLUDED.enhancement_level`,
+            [matchId, slot, item.slot, item.itemId || 0, item.itemName || '', item.purchaseTime || 0, item.enhancementLevel || 0]
+          );
+        }
+      }
+
+      if (player.abilities && player.abilities.length > 0) {
+        for (const ability of player.abilities) {
+          await client.query(
+            `INSERT INTO player_abilities (match_id, slot, ability_name, ability_level, time)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [matchId, slot, ability.abilityName || '', ability.abilityLevel || 0, ability.time || 0]
+          );
+        }
+      }
+    }
+
+    if (matchStats.draft && matchStats.draft.length > 0) {
+      for (const d of matchStats.draft) {
+        if (!d.heroId || d.heroId <= 0) continue;
+        await client.query(
+          `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (match_id, order_num) DO UPDATE SET hero_id=EXCLUDED.hero_id, is_pick=EXCLUDED.is_pick, team=EXCLUDED.team`,
+          [matchId, d.heroId, d.isPick, d.order || 0, typeof d.team === 'string' ? (d.team === 'radiant' ? 0 : 1) : (d.team === 2 ? 0 : d.team === 3 ? 1 : (d.team || 0))]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    console.log(`[DB] Match ${matchId} reparsed successfully.`);
+    return { matchId, radiantWin: matchStats.radiantWin, seasonId: season_id };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function setMatchWinner(matchId, radiantWin, correctedBy) {
   const p = getPool();
   const result = await p.query(
@@ -3937,6 +4138,9 @@ module.exports = {
   setReplayFilePath,
   getReplayFilePath,
   expireOldReplayFiles,
+  logServerError,
+  getServerLogs,
+  reparseMatchFromStats,
 };
 
 async function getPudgeStats(seasonId = null) {

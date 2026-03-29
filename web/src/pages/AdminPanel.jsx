@@ -73,6 +73,13 @@ function ReplayManager({ superuserKey }) {
   const [replays, setReplays] = useState(null);
   const [loading, setLoading] = useState(false);
   const [extending, setExtending] = useState({});
+  const [reparsing, setReparsing] = useState({});
+  const [reparseMsg, setReparseMsg] = useState({});
+  const [reparseAllStatus, setReparseAllStatus] = useState(null);
+  const [reparseAllLoading, setReparseAllLoading] = useState(false);
+  const [setPermanentLoading, setSetPermanentLoading] = useState(false);
+  const [setPermanentMsg, setSetPermanentMsg] = useState('');
+  const authHeader = { 'x-superuser-key': superuserKey };
 
   function load() {
     setLoading(true);
@@ -91,7 +98,7 @@ function ReplayManager({ superuserKey }) {
 
   function handleDownload(matchId) {
     const url = `/api/replays/${matchId}/download`;
-    fetch(url, { headers: { 'x-superuser-key': superuserKey } })
+    fetch(url, { headers: authHeader })
       .then(r => {
         if (!r.ok) return r.json().then(j => { throw new Error(j.error || 'Not available'); });
         return r.blob();
@@ -105,6 +112,60 @@ function ReplayManager({ superuserKey }) {
       .catch(err => alert('Download failed: ' + err.message));
   }
 
+  function handleReparse(matchId) {
+    if (!window.confirm(`Re-parse stored replay for match ${matchId}?\n\nThis will update all stats and recalculate MMR for all matches. Season assignment is preserved.`)) return;
+    setReparsing(prev => ({ ...prev, [matchId]: true }));
+    setReparseMsg(prev => ({ ...prev, [matchId]: '' }));
+    fetch(`/api/admin/reparse-replay/${matchId}`, { method: 'POST', headers: authHeader })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          setReparseMsg(prev => ({ ...prev, [matchId]: '✓ Reparsed + MMR updated' }));
+        } else {
+          setReparseMsg(prev => ({ ...prev, [matchId]: `Error: ${d.error}` }));
+        }
+      })
+      .catch(e => setReparseMsg(prev => ({ ...prev, [matchId]: `Failed: ${e.message}` })))
+      .finally(() => setReparsing(prev => ({ ...prev, [matchId]: false })));
+  }
+
+  function handleReparseAll() {
+    if (!window.confirm(`Re-parse ALL stored replays?\n\nThis runs in the background and may take a long time. It updates stats for every replay on file and recalculates MMR for all players. Season assignments are preserved.`)) return;
+    setReparseAllLoading(true);
+    fetch('/api/admin/reparse-all-replays', { method: 'POST', headers: authHeader })
+      .then(r => r.json())
+      .then(d => {
+        setReparseAllStatus(d);
+        if (d.running || d.success) {
+          const poll = setInterval(() => {
+            fetch('/api/admin/reparse-all-status', { headers: authHeader })
+              .then(r => r.json())
+              .then(s => {
+                setReparseAllStatus(s);
+                if (s.status?.phase === 'complete' || !s.running) clearInterval(poll);
+              })
+              .catch(() => clearInterval(poll));
+          }, 3000);
+        }
+      })
+      .catch(e => setReparseAllStatus({ error: e.message }))
+      .finally(() => setReparseAllLoading(false));
+  }
+
+  function handleSetAllPermanent() {
+    if (!window.confirm('Set ALL stored replays to never expire?')) return;
+    setSetPermanentLoading(true);
+    setSetPermanentMsg('');
+    fetch('/api/admin/replays/set-all-permanent', { method: 'POST', headers: authHeader })
+      .then(r => r.json())
+      .then(d => {
+        setSetPermanentMsg(d.message || d.error || 'Done.');
+        if (replays) load();
+      })
+      .catch(e => setSetPermanentMsg('Failed: ' + e.message))
+      .finally(() => setSetPermanentLoading(false));
+  }
+
   const fmtSize = bytes => {
     if (!bytes) return '—';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
@@ -115,7 +176,7 @@ function ReplayManager({ superuserKey }) {
 
   return (
     <section style={{ marginBottom: 36 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>Stored Replays</h2>
         <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px' }} onClick={load} disabled={loading}>
           {loading ? 'Loading…' : replays === null ? 'Load' : 'Refresh'}
@@ -125,7 +186,37 @@ function ReplayManager({ superuserKey }) {
             {replays.filter(r => r.available).length} / {replays.length} available
           </span>
         )}
+        <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px', color: '#4ade80', borderColor: '#4ade80' }}
+          onClick={handleSetAllPermanent} disabled={setPermanentLoading}>
+          {setPermanentLoading ? 'Setting…' : '♾️ Set All Permanent'}
+        </button>
+        {setPermanentMsg && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{setPermanentMsg}</span>}
+        <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px', color: '#a78bfa', borderColor: '#a78bfa' }}
+          onClick={handleReparseAll} disabled={reparseAllLoading}>
+          🔄 Re-parse All
+        </button>
       </div>
+      {reparseAllStatus && (
+        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.82rem' }}>
+          {reparseAllStatus.error ? (
+            <span style={{ color: '#f87171' }}>Error: {reparseAllStatus.error}</span>
+          ) : reparseAllStatus.status ? (
+            <span>
+              Re-parse: {reparseAllStatus.status.phase === 'complete' ? '✓ Complete' : '⏳ Running'} —&nbsp;
+              {reparseAllStatus.status.done}/{reparseAllStatus.status.total} done,&nbsp;
+              {reparseAllStatus.status.failed} failed,&nbsp;
+              {reparseAllStatus.status.remaining} remaining
+              {reparseAllStatus.status.errors?.length > 0 && (
+                <div style={{ color: '#f87171', marginTop: 4 }}>
+                  {reparseAllStatus.status.errors.slice(0, 5).map((e, i) => <div key={i}>{e}</div>)}
+                </div>
+              )}
+            </span>
+          ) : (
+            <span>{reparseAllStatus.message}</span>
+          )}
+        </div>
+      )}
       {replays !== null && replays.length === 0 && (
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No replay files stored yet. Upload replays and they will be archived automatically.</p>
       )}
@@ -162,6 +253,14 @@ function ReplayManager({ superuserKey }) {
                           ⬇ Download
                         </button>
                       )}
+                      {r.available && (
+                        <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px', color: '#a78bfa', borderColor: '#a78bfa' }}
+                          disabled={reparsing[r.matchId]}
+                          onClick={() => handleReparse(r.matchId)}
+                          title="Re-parse this replay and update all stats + MMR">
+                          {reparsing[r.matchId] ? '⏳' : '🔄'} Re-parse
+                        </button>
+                      )}
                       <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px' }}
                         disabled={extending[r.matchId]}
                         onClick={() => handleExtend(r.matchId, 7)}>
@@ -170,9 +269,14 @@ function ReplayManager({ superuserKey }) {
                       <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px', color: '#4ade80', borderColor: '#4ade80' }}
                         disabled={extending[r.matchId]}
                         onClick={() => handleExtend(r.matchId, 0)}>
-                        Keep Forever
+                        ♾️ Forever
                       </button>
                     </div>
+                    {reparseMsg[r.matchId] && (
+                      <div style={{ fontSize: '0.75rem', color: reparseMsg[r.matchId].startsWith('✓') ? '#4ade80' : '#f87171', marginTop: 4 }}>
+                        {reparseMsg[r.matchId]}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -181,9 +285,91 @@ function ReplayManager({ superuserKey }) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-        Replays expire after {parseInt(window.__REPLAY_STORE_DAYS__ || 7)} days by default.
-        Set <code>REPLAY_STORE_DAYS=0</code> on the server to keep all replays indefinitely,
-        or use <code>REPLAY_STORE_DIR</code> to set a custom storage path.
+        Replays are kept permanently by default. Set <code>REPLAY_STORE_DAYS=N</code> to auto-expire after N days.
+        Use <code>REPLAY_STORE_DIR</code> to set a custom storage path.
+      </p>
+    </section>
+  );
+}
+
+function ErrorLogViewer({ superuserKey }) {
+  const [logs, setLogs] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [level, setLevel] = useState('');
+  const [clearMsg, setClearMsg] = useState('');
+  const authHeader = { 'x-superuser-key': superuserKey };
+
+  function load() {
+    setLoading(true);
+    const params = new URLSearchParams({ limit: 100 });
+    if (level) params.set('level', level);
+    fetch(`/api/admin/error-log?${params}`, { headers: authHeader })
+      .then(r => r.json())
+      .then(d => { setLogs(d.logs || []); setLoading(false); })
+      .catch(() => { setLogs([]); setLoading(false); });
+  }
+
+  function handleClear() {
+    if (!window.confirm('Clear server logs older than 30 days?')) return;
+    fetch('/api/admin/error-log?days=30', { method: 'DELETE', headers: authHeader })
+      .then(r => r.json())
+      .then(d => { setClearMsg(d.message || 'Done.'); load(); })
+      .catch(e => setClearMsg('Error: ' + e.message));
+  }
+
+  const levelColor = l => ({ error: '#f87171', warn: '#facc15', info: '#60a5fa' }[l] || '#aaa');
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0 }}>Server Error Log</h2>
+        <select value={level} onChange={e => setLevel(e.target.value)} style={{ fontSize: '0.82rem', padding: '2px 6px' }}>
+          <option value="">All levels</option>
+          <option value="error">Errors only</option>
+          <option value="warn">Warnings only</option>
+          <option value="info">Info only</option>
+        </select>
+        <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px' }} onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : logs === null ? 'Load' : 'Refresh'}
+        </button>
+        {logs !== null && (
+          <>
+            <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px', color: '#f87171', borderColor: '#f87171' }} onClick={handleClear}>
+              🗑 Clear Old
+            </button>
+            {clearMsg && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{clearMsg}</span>}
+          </>
+        )}
+      </div>
+      {logs !== null && logs.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No server logs found. Errors encountered during API calls will appear here.</p>
+      )}
+      {logs !== null && logs.length > 0 && (
+        <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', position: 'sticky', top: 0, background: 'var(--bg)' }}>
+                <th style={{ textAlign: 'left', padding: '5px 8px', width: 60 }}>Level</th>
+                <th style={{ textAlign: 'left', padding: '5px 8px', width: 140 }}>When</th>
+                <th style={{ textAlign: 'left', padding: '5px 8px', width: 160 }}>Source</th>
+                <th style={{ textAlign: 'left', padding: '5px 8px' }}>Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map(l => (
+                <tr key={l.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '4px 8px', color: levelColor(l.level), fontWeight: 600 }}>{l.level?.toUpperCase()}</td>
+                  <td style={{ padding: '4px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Date(l.created_at).toLocaleString('en-AU')}</td>
+                  <td style={{ padding: '4px 8px', fontFamily: 'monospace', color: '#a78bfa' }}>{l.source}</td>
+                  <td style={{ padding: '4px 8px', wordBreak: 'break-all' }}>{l.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+        Shows server-side errors logged during API operations. Useful for diagnosing replay parse failures and data issues.
       </p>
     </section>
   );
@@ -521,6 +707,9 @@ export default function AdminPanel() {
 
       {/* Stored Replays */}
       <ReplayManager superuserKey={superuserKey} />
+
+      {/* Server Error Log */}
+      <ErrorLogViewer superuserKey={superuserKey} />
 
       {/* Quick Links */}
       <section>

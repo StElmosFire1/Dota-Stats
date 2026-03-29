@@ -2126,7 +2126,7 @@ export default function MatchDetail() {
   const handleCorrectWinner = async (radiantWin) => {
     const currentWinner = match.radiant_win ? 'Radiant' : 'Dire';
     const newWinner = radiantWin ? 'Radiant' : 'Dire';
-    if (!confirm(`Change winner from ${currentWinner} to ${newWinner}? This will update the result display but will NOT retroactively recalculate MMR ratings.`)) return;
+    if (!confirm(`Change winner from ${currentWinner} to ${newWinner}?\n\nThis will update the result and automatically recalculate MMR ratings for all players across all matches. May take a few seconds.`)) return;
     setCorrectingWinner(true);
     try {
       const key = sessionStorage.getItem('superuserKey') || '';
@@ -2140,7 +2140,7 @@ export default function MatchDetail() {
         throw new Error(j.error || 'Failed');
       }
       setMatch(prev => ({ ...prev, radiant_win: radiantWin }));
-      alert(`Winner updated to ${newWinner}. Note: MMR ratings from this match were not recalculated.`);
+      alert(`Winner updated to ${newWinner}. MMR ratings have been recalculated for all players.`);
     } catch (err) {
       alert('Failed: ' + err.message);
     } finally {

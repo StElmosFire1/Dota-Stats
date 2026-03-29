@@ -18,8 +18,8 @@ const UPLOAD_DIR = '/tmp/replay-uploads';
 // Override via REPLAY_STORE_DIR env var. Defaults to replay-store/ beside the server file.
 const REPLAY_STORE_DIR = process.env.REPLAY_STORE_DIR
   || path.join(__dirname, '../../replay-store');
-// How many days to keep uploaded replays (0 or unset = keep forever).
-const REPLAY_STORE_DAYS = parseInt(process.env.REPLAY_STORE_DAYS || '7', 10);
+// How many days to keep uploaded replays (0 = keep forever, which is the default).
+const REPLAY_STORE_DAYS = parseInt(process.env.REPLAY_STORE_DAYS || '0', 10);
 const uploadJobs = new Map();
 const STALE_JOB_TTL = 30 * 60 * 1000;
 
@@ -1108,8 +1108,10 @@ function createApiRouter(startupStatus = {}) {
       }
       const result = await db.setMatchWinner(req.params.matchId, radiantWin, req.session?.user?.steamId || 'admin');
       if (!result) return res.status(404).json({ error: 'Match not found' });
-      console.log(`[Admin] Match ${req.params.matchId} winner corrected to ${radiantWin ? 'Radiant' : 'Dire'} by ${req.session?.user?.steamId || 'admin'}`);
-      res.json({ success: true, matchId: result.match_id, radiantWin: result.radiant_win });
+      console.log(`[Admin] Match ${req.params.matchId} winner corrected to ${radiantWin ? 'Radiant' : 'Dire'} — recalculating all ratings...`);
+      await db.recalculateAllRatings();
+      console.log(`[Admin] Ratings recalculated after winner correction on match ${req.params.matchId}`);
+      res.json({ success: true, matchId: result.match_id, radiantWin: result.radiant_win, ratingsRecalculated: true });
     } catch (err) {
       console.error('[API] Error correcting match winner:', err.message);
       res.status(500).json({ error: err.message || 'Failed to update winner' });
@@ -1152,9 +1154,134 @@ function createApiRouter(startupStatus = {}) {
     try {
       console.log('[API] Recalculating all TrueSkill ratings...');
       await db.recalculateAllRatings();
-      res.json({ success: true, message: 'Ratings recalculated from all match history.' });
+      res.json({ success: true, message: 'Ratings and rating history recalculated from all match history.' });
     } catch (err) {
       console.error('[API] Error recalculating ratings:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Reparse a single stored replay for a given match (updates stats, preserves season).
+  router.post('/admin/reparse-replay/:matchId', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      const row = await db.getReplayFilePath(matchId);
+      if (!row || !row.replay_file_path) {
+        return res.status(404).json({ error: 'No replay file stored for this match.' });
+      }
+      if (!fs.existsSync(row.replay_file_path)) {
+        return res.status(404).json({ error: 'Replay file no longer exists on disk.' });
+      }
+      const replayParser = getReplayParser();
+      if (!replayParser?.parserReady) {
+        return res.status(503).json({ error: 'Replay parser is not available.' });
+      }
+      console.log(`[Admin] Re-parsing stored replay for match ${matchId}...`);
+      const matchStats = await replayParser.parseReplayFull(row.replay_file_path);
+      if (!matchStats || matchStats.matchId.toString() !== matchId.toString()) {
+        return res.status(400).json({ error: `Replay match ID mismatch: file contains ${matchStats?.matchId}, expected ${matchId}.` });
+      }
+      const result = await db.reparseMatchFromStats(matchId, matchStats, req.body?.patch || null);
+      if (!result) return res.status(404).json({ error: 'Match not found in database.' });
+      console.log(`[Admin] Re-parse complete for match ${matchId}. Recalculating ratings...`);
+      await db.recalculateAllRatings();
+      res.json({ success: true, matchId, radiantWin: matchStats.radiantWin, message: 'Match reparsed and ratings recalculated.' });
+    } catch (err) {
+      console.error(`[Admin] Reparse error for match ${req.params.matchId}:`, err.message);
+      await db.logServerError('error', 'admin/reparse-replay', err.message, { matchId: req.params.matchId, stack: err.stack });
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Queue all stored replays for re-parsing (one at a time, async).
+  const reparseQueue = [];
+  let reparseRunning = false;
+  let reparseStatus = null;
+
+  async function drainReparseQueue() {
+    if (reparseRunning) return;
+    reparseRunning = true;
+    while (reparseQueue.length > 0) {
+      const { matchId, filePath } = reparseQueue.shift();
+      try {
+        const replayParser = getReplayParser();
+        const matchStats = await replayParser.parseReplayFull(filePath);
+        if (matchStats && matchStats.matchId.toString() === matchId.toString()) {
+          await db.reparseMatchFromStats(matchId, matchStats, null);
+          reparseStatus.done++;
+          console.log(`[Admin] Re-parsed ${matchId} (${reparseStatus.done}/${reparseStatus.total})`);
+        } else {
+          reparseStatus.failed++;
+          reparseStatus.errors.push(`${matchId}: match ID mismatch`);
+        }
+      } catch (err) {
+        reparseStatus.failed++;
+        reparseStatus.errors.push(`${matchId}: ${err.message}`);
+        console.error(`[Admin] Reparse-all error for ${matchId}:`, err.message);
+      }
+      reparseStatus.remaining = reparseQueue.length;
+    }
+    if (reparseStatus) {
+      console.log(`[Admin] Reparse-all complete. Recalculating ratings...`);
+      try { await db.recalculateAllRatings(); } catch (e) { console.error('[Admin] Reparse-all rating recalc error:', e.message); }
+      reparseStatus.phase = 'complete';
+    }
+    reparseRunning = false;
+  }
+
+  router.post('/admin/reparse-all-replays', requireSuperuser, async (req, res) => {
+    if (reparseRunning) {
+      return res.json({ running: true, status: reparseStatus });
+    }
+    const p = db.getPool();
+    const rows = await p.query(`SELECT match_id, replay_file_path FROM matches WHERE replay_file_path IS NOT NULL ORDER BY date DESC`);
+    const available = rows.rows.filter(r => r.replay_file_path && fs.existsSync(r.replay_file_path));
+    if (available.length === 0) {
+      return res.json({ success: true, queued: 0, message: 'No stored replay files found on disk.' });
+    }
+    reparseStatus = { total: available.length, done: 0, failed: 0, remaining: available.length, errors: [], phase: 'running' };
+    reparseQueue.length = 0;
+    for (const r of available) reparseQueue.push({ matchId: r.match_id, filePath: r.replay_file_path });
+    drainReparseQueue();
+    res.json({ success: true, queued: available.length, message: `Queued ${available.length} replays for re-parsing.` });
+  });
+
+  router.get('/admin/reparse-all-status', requireSuperuser, async (req, res) => {
+    res.json({ running: reparseRunning, status: reparseStatus });
+  });
+
+  // Set all stored replays to never expire.
+  router.post('/admin/replays/set-all-permanent', requireSuperuser, async (req, res) => {
+    try {
+      const p = db.getPool();
+      const result = await p.query(
+        `UPDATE matches SET replay_file_expires_at = NULL WHERE replay_file_path IS NOT NULL RETURNING match_id`
+      );
+      res.json({ success: true, updated: result.rowCount, message: `${result.rowCount} replays set to never expire.` });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Server error log viewer (for Replit diagnostics).
+  router.get('/admin/error-log', requireSuperuser, async (req, res) => {
+    try {
+      const level = req.query.level || null;
+      const limit = Math.min(parseInt(req.query.limit || '100'), 500);
+      const logs = await db.getServerLogs(limit, level);
+      res.json({ logs });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/admin/error-log', requireSuperuser, async (req, res) => {
+    try {
+      const p = db.getPool();
+      const olderThan = req.query.days ? parseInt(req.query.days) : 30;
+      await p.query(`DELETE FROM server_logs WHERE created_at < NOW() - ($1 || ' days')::INTERVAL`, [olderThan]);
+      res.json({ success: true, message: `Cleared logs older than ${olderThan} days.` });
+    } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
@@ -2139,6 +2266,7 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
       status: 'error',
       error: err.message,
     });
+    db.logServerError('error', 'replay-upload', err.message, { jobId, stack: err.stack?.slice(0, 1000) }).catch(() => {});
   }
 }
 
