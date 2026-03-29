@@ -1913,7 +1913,7 @@ class ReplayParser {
         ultraKills: mk.ultra,
         rampages: mk.rampage,
         killStreak: killStreaks[slot] || 0,
-        smokeKills: smokeKills[slot] || 0,
+        smokeKills: (smokePerPlayer[slot] || []).length,
         firstDeath: firstDeathSlot.slot === slot ? 1 : 0,
         laneCs10min: laneCs10min[slot] || 0,
         laningNw: laningNwAtEight[slot] ? laningNwAtEight[slot].nw : null,

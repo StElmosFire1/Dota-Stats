@@ -873,7 +873,14 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                   </td>
                   <td className="col-hero">{getHeroName(p.hero_id, p.hero_name)}</td>
                   <td className="col-stat kills">{p.kills}</td>
-                  <td className="col-stat deaths">{p.deaths}</td>
+                  <td className="col-stat deaths">
+                    {p.deaths}
+                    {p.dead_time_seconds != null && (
+                      <span style={{ color: '#64748b', fontSize: '0.8em', marginLeft: 3 }}>
+                        ({Math.floor(p.dead_time_seconds / 60)}:{String(p.dead_time_seconds % 60).padStart(2, '0')})
+                      </span>
+                    )}
+                  </td>
                   <td className="col-stat assists">{p.assists}</td>
                   {hasDetailedStats && (
                     <>
@@ -1780,7 +1787,6 @@ function SupportReportPanel({ players, timeline }) {
               <th className="col-stat" title="Dust of Appearance activations">DUST</th>
               <th className="col-stat" title="Smoke of Deceit activations">SMKE</th>
               <th className="col-stat" title="Smoke success rate — % of smokes followed by a same-team kill within 60s">SMKE%</th>
-              <th className="col-stat" title="Clutch heals — healed a low-HP ally">SAVE</th>
               <th className="col-stat" title="Healing done to allies via spells/items (excludes self-heal and lifesteal)">HEAL</th>
               <th className="col-stat" title="Total stun duration dealt (seconds)">STUN</th>
               <th className="col-stat" title="Gold spent on support items">S.GOLD</th>
@@ -1825,9 +1831,6 @@ function SupportReportPanel({ players, timeline }) {
                   <td className="col-stat">{p.smoke_kills || 0}</td>
                   <td className="col-stat" style={{ color: smokePctColor }}>
                     {smokePct != null ? `${smokePct}%` : '—'}
-                  </td>
-                  <td className="col-stat" style={{ color: p.heal_saves > 0 ? '#38bdf8' : undefined }}>
-                    {p.heal_saves || 0}
                   </td>
                   <td className="col-stat">{p.hero_healing ? formatNumber(p.hero_healing) : 0}</td>
                   <td className="col-stat">{p.stun_duration ? p.stun_duration.toFixed(1) : '0'}</td>
