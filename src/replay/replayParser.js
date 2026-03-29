@@ -1565,6 +1565,78 @@ class ReplayParser {
     console.log('[Replay] Detected positions:', JSON.stringify(detectedPositions));
 
     const durationMin = Math.max(duration / 60, 1);
+
+    // --- Ward uptime computation ---
+    // Match obs_left/sen_left events back to placements to compute avg lifespan of killed wards.
+    // Java parser emits ownerSlot (m_hOwnerEntity) and x/y on all ward events.
+    // Matching strategy: slot-based FIFO (oldest unmatched placement of same type/slot).
+    // Fallback: position proximity for events where ownerSlot is null.
+    const WARD_POS_THRESHOLD = 128;  // game units; wards placed within this are treated as same
+    const wardDewardedCount = {};    // slot → # of that player's wards killed by enemies
+    const wardLifespanSums = {};     // slot → total lifespan (seconds) of killed wards
+    const wardLifespanCounts = {};   // slot → number of killed wards with a matched placement
+
+    // Deep-copy placements so we can mark them matched
+    const placementPool = {};
+    for (const [slotStr, arr] of Object.entries(wardPlacements)) {
+      placementPool[parseInt(slotStr)] = arr.map(p => ({ ...p, matched: false }));
+    }
+
+    // Sort deaths and placements by time
+    wardDeaths.sort((a, b) => a.t - b.t);
+    for (const pool of Object.values(placementPool)) pool.sort((a, b) => a.t - b.t);
+
+    for (const death of wardDeaths) {
+      if (!death.killed) continue;   // natural expiry — skip for avg lifespan (ward did its job)
+
+      let matched = false;
+
+      // Attempt 1: slot-based matching
+      if (death.ownerSlot != null) {
+        const pool = placementPool[death.ownerSlot] || [];
+        // Find earliest unmatched placement of same type placed BEFORE this death
+        for (const placement of pool) {
+          if (!placement.matched && placement.type === death.type && placement.t < death.t) {
+            placement.matched = true;
+            const lifespan = death.t - placement.t;
+            wardDewardedCount[death.ownerSlot] = (wardDewardedCount[death.ownerSlot] || 0) + 1;
+            wardLifespanSums[death.ownerSlot] = (wardLifespanSums[death.ownerSlot] || 0) + lifespan;
+            wardLifespanCounts[death.ownerSlot] = (wardLifespanCounts[death.ownerSlot] || 0) + 1;
+            matched = true;
+            break;
+          }
+        }
+      }
+
+      // Attempt 2: position-based fallback (when ownerSlot unknown or no slot match)
+      if (!matched && death.x != null && death.y != null) {
+        let bestDist = WARD_POS_THRESHOLD, bestPlacement = null, bestSlot = null;
+        for (const [slotNum, pool] of Object.entries(placementPool)) {
+          const slot = parseInt(slotNum);
+          for (const placement of pool) {
+            if (placement.matched || placement.type !== death.type || placement.t >= death.t) continue;
+            const dx = (placement.x || 0) - death.x;
+            const dy = (placement.y || 0) - death.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < bestDist) { bestDist = dist; bestPlacement = placement; bestSlot = slot; }
+          }
+        }
+        if (bestPlacement && bestSlot != null) {
+          bestPlacement.matched = true;
+          const lifespan = death.t - bestPlacement.t;
+          wardDewardedCount[bestSlot] = (wardDewardedCount[bestSlot] || 0) + 1;
+          wardLifespanSums[bestSlot] = (wardLifespanSums[bestSlot] || 0) + lifespan;
+          wardLifespanCounts[bestSlot] = (wardLifespanCounts[bestSlot] || 0) + 1;
+        }
+      }
+    }
+
+    // Compute avg lifespan (seconds) per slot
+    const wardAvgLifespan = {};
+    for (const [slotStr, count] of Object.entries(wardLifespanCounts)) {
+      if (count > 0) wardAvgLifespan[parseInt(slotStr)] = Math.round(wardLifespanSums[parseInt(slotStr)] / count);
+    }
+
     const playerList = [];
 
     for (let slot = 0; slot < 10; slot++) {
@@ -1786,77 +1858,6 @@ class ReplayParser {
       const radiantKills = playerList.filter(p => p.team === 'radiant').reduce((s, p) => s + p.kills, 0);
       const direKills = playerList.filter(p => p.team === 'dire').reduce((s, p) => s + p.kills, 0);
       radiantWin = radiantKills > direKills;
-    }
-
-    // --- Ward uptime computation ---
-    // Match obs_left/sen_left events back to placements to compute avg lifespan of killed wards.
-    // Java parser emits ownerSlot (m_hOwnerEntity) and x/y on all ward events.
-    // Matching strategy: slot-based FIFO (oldest unmatched placement of same type/slot).
-    // Fallback: position proximity for events where ownerSlot is null.
-    const WARD_POS_THRESHOLD = 128;  // game units; wards placed within this are treated as same
-    const wardDewardedCount = {};    // slot → # of that player's wards killed by enemies
-    const wardLifespanSums = {};     // slot → total lifespan (seconds) of killed wards
-    const wardLifespanCounts = {};   // slot → number of killed wards with a matched placement
-
-    // Deep-copy placements so we can mark them matched
-    const placementPool = {};
-    for (const [slotStr, arr] of Object.entries(wardPlacements)) {
-      placementPool[parseInt(slotStr)] = arr.map(p => ({ ...p, matched: false }));
-    }
-
-    // Sort deaths and placements by time
-    wardDeaths.sort((a, b) => a.t - b.t);
-    for (const pool of Object.values(placementPool)) pool.sort((a, b) => a.t - b.t);
-
-    for (const death of wardDeaths) {
-      if (!death.killed) continue;   // natural expiry — skip for avg lifespan (ward did its job)
-
-      let matched = false;
-
-      // Attempt 1: slot-based matching
-      if (death.ownerSlot != null) {
-        const pool = placementPool[death.ownerSlot] || [];
-        // Find earliest unmatched placement of same type placed BEFORE this death
-        for (const placement of pool) {
-          if (!placement.matched && placement.type === death.type && placement.t < death.t) {
-            placement.matched = true;
-            const lifespan = death.t - placement.t;
-            wardDewardedCount[death.ownerSlot] = (wardDewardedCount[death.ownerSlot] || 0) + 1;
-            wardLifespanSums[death.ownerSlot] = (wardLifespanSums[death.ownerSlot] || 0) + lifespan;
-            wardLifespanCounts[death.ownerSlot] = (wardLifespanCounts[death.ownerSlot] || 0) + 1;
-            matched = true;
-            break;
-          }
-        }
-      }
-
-      // Attempt 2: position-based fallback (when ownerSlot unknown or no slot match)
-      if (!matched && death.x != null && death.y != null) {
-        let bestDist = WARD_POS_THRESHOLD, bestPlacement = null, bestSlot = null;
-        for (const [slotNum, pool] of Object.entries(placementPool)) {
-          const slot = parseInt(slotNum);
-          for (const placement of pool) {
-            if (placement.matched || placement.type !== death.type || placement.t >= death.t) continue;
-            const dx = (placement.x || 0) - death.x;
-            const dy = (placement.y || 0) - death.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < bestDist) { bestDist = dist; bestPlacement = placement; bestSlot = slot; }
-          }
-        }
-        if (bestPlacement && bestSlot != null) {
-          bestPlacement.matched = true;
-          const lifespan = death.t - bestPlacement.t;
-          wardDewardedCount[bestSlot] = (wardDewardedCount[bestSlot] || 0) + 1;
-          wardLifespanSums[bestSlot] = (wardLifespanSums[bestSlot] || 0) + lifespan;
-          wardLifespanCounts[bestSlot] = (wardLifespanCounts[bestSlot] || 0) + 1;
-        }
-      }
-    }
-
-    // Compute avg lifespan (seconds) per slot
-    const wardAvgLifespan = {};
-    for (const [slotStr, count] of Object.entries(wardLifespanCounts)) {
-      if (count > 0) wardAvgLifespan[parseInt(slotStr)] = Math.round(wardLifespanSums[parseInt(slotStr)] / count);
     }
 
     // --- Smoke success rate ---

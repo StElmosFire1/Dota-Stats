@@ -2178,6 +2178,145 @@ export default function MatchDetail() {
         )}
       </div>
 
+      {isSuperuser && (
+        <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#0f1923', border: '1px solid #1e3a2e', borderRadius: '6px' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: showMeta ? '0.75rem' : 0 }}>
+            {!showMeta && (
+              <button
+                onClick={() => setShowMeta(true)}
+                style={{
+                  background: 'transparent', color: '#94a3b8', border: '1px solid #334155',
+                  padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+                }}
+              >
+                ✏️ Edit Patch / Season
+              </button>
+            )}
+            <button
+              onClick={handleClearHash}
+              disabled={clearingHash}
+              title="Clears the duplicate-prevention fingerprint so this replay can be re-uploaded"
+              style={{
+                background: 'transparent', color: '#94a3b8', border: '1px solid #334155',
+                padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+              }}
+            >
+              {clearingHash ? 'Clearing...' : '🔄 Allow Re-upload'}
+            </button>
+            {!showDelete ? (
+              <button
+                onClick={() => setShowDelete(true)}
+                style={{
+                  background: 'transparent', color: '#f87171', border: '1px solid #7f1d1d',
+                  padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+                }}
+              >
+                🗑️ Delete Match
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  placeholder="Reason (optional)"
+                  value={deleteReason}
+                  onChange={e => setDeleteReason(e.target.value)}
+                  style={{
+                    background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
+                    padding: '0.35rem 0.6rem', borderRadius: '4px', fontSize: '0.8rem', minWidth: '150px',
+                  }}
+                />
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  style={{
+                    background: '#7f1d1d', color: '#fca5a5', border: '1px solid #ef4444',
+                    padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+                  }}
+                >
+                  {deleting ? 'Deleting...' : 'Confirm Delete'}
+                </button>
+                <button
+                  onClick={() => setShowDelete(false)}
+                  style={{
+                    background: 'transparent', color: '#888', border: '1px solid #444',
+                    padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          {showMeta && (
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.75rem', background: '#1a1a2e', borderRadius: '6px', border: '1px solid #334155' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <label style={{ color: '#888', fontSize: '0.75rem' }}>Patch</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 7.38"
+                  value={metaPatch}
+                  onChange={e => setMetaPatch(e.target.value)}
+                  style={{
+                    background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
+                    padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem', width: '100px',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <label style={{ color: '#888', fontSize: '0.75rem' }}>Season</label>
+                <select
+                  value={metaSeason}
+                  onChange={e => setMetaSeason(e.target.value)}
+                  style={{
+                    background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
+                    padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem',
+                  }}
+                >
+                  <option value="">None</option>
+                  {seasons.map(s => (
+                    <option key={s.id} value={String(s.id)}>{s.name}{s.is_active ? ' ★' : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <label style={{ color: '#888', fontSize: '0.75rem' }}>Date Played</label>
+                <input
+                  type="datetime-local"
+                  value={metaDate}
+                  onChange={e => setMetaDate(e.target.value)}
+                  style={{
+                    background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
+                    padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'flex-end' }}>
+                <button
+                  onClick={handleSaveMeta}
+                  disabled={savingMeta}
+                  style={{
+                    background: '#2563eb', color: 'white', border: 'none',
+                    padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+                  }}
+                >
+                  {savingMeta ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setShowMeta(false); setMetaPatch(match.patch || ''); setMetaSeason(match.season_id ? String(match.season_id) : ''); setMetaDate(match.date ? new Date(match.date).toISOString().slice(0, 16) : ''); }}
+                  style={{
+                    background: 'transparent', color: '#888', border: '1px solid #444',
+                    padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="match-detail-header">
         <h1>Match #{match.match_id}</h1>
         <div className="match-meta">
@@ -2274,143 +2413,6 @@ export default function MatchDetail() {
         </div>
       )}
 
-      <div style={{ marginTop: '2rem', borderTop: '1px solid #333', paddingTop: '1rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: showMeta ? '0.75rem' : 0, flexWrap: 'wrap' }}>
-          {!showMeta && (
-            <button
-              onClick={() => setShowMeta(true)}
-              style={{
-                background: 'transparent', color: '#666', border: '1px solid #444',
-                padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
-              }}
-            >
-              Edit Patch / Season
-            </button>
-          )}
-          <button
-            onClick={handleClearHash}
-            disabled={clearingHash}
-            title="Clears the duplicate-prevention fingerprint so this replay can be re-uploaded (useful to pick up draft data)"
-            style={{
-              background: 'transparent', color: '#666', border: '1px solid #444',
-              padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
-            }}
-          >
-            {clearingHash ? 'Clearing...' : 'Allow Re-upload'}
-          </button>
-        </div>
-
-        {showMeta && (
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem', padding: '0.75rem', background: '#1a1a2e', borderRadius: '6px', border: '1px solid #334155' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ color: '#888', fontSize: '0.75rem' }}>Patch</label>
-              <input
-                type="text"
-                placeholder="e.g. 7.38"
-                value={metaPatch}
-                onChange={e => setMetaPatch(e.target.value)}
-                style={{
-                  background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
-                  padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem', width: '100px',
-                }}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ color: '#888', fontSize: '0.75rem' }}>Season</label>
-              <select
-                value={metaSeason}
-                onChange={e => setMetaSeason(e.target.value)}
-                style={{
-                  background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
-                  padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem',
-                }}
-              >
-                <option value="">None</option>
-                {seasons.map(s => (
-                  <option key={s.id} value={String(s.id)}>{s.name}{s.is_active ? ' ★' : ''}</option>
-                ))}
-              </select>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ color: '#888', fontSize: '0.75rem' }}>Date Played</label>
-              <input
-                type="datetime-local"
-                value={metaDate}
-                onChange={e => setMetaDate(e.target.value)}
-                style={{
-                  background: '#0d1117', color: '#e0e0e0', border: '1px solid #444',
-                  padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem',
-                }}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'flex-end' }}>
-              <button
-                onClick={handleSaveMeta}
-                disabled={savingMeta}
-                style={{
-                  background: '#2563eb', color: 'white', border: 'none',
-                  padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
-                }}
-              >
-                {savingMeta ? 'Saving...' : 'Save'}
-              </button>
-              <button
-                onClick={() => { setShowMeta(false); setMetaPatch(match.patch || ''); setMetaSeason(match.season_id ? String(match.season_id) : ''); setMetaDate(match.date ? new Date(match.date).toISOString().slice(0, 16) : ''); }}
-                style={{
-                  background: 'transparent', color: '#888', border: '1px solid #444',
-                  padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!showDelete ? (
-          <button
-            onClick={() => setShowDelete(true)}
-            style={{
-              background: 'transparent', color: '#666', border: '1px solid #444',
-              padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
-            }}
-          >
-            Delete Match
-          </button>
-        ) : (
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="text"
-              placeholder="Reason (optional)"
-              value={deleteReason}
-              onChange={e => setDeleteReason(e.target.value)}
-              style={{
-                background: '#1a1a2e', color: '#e0e0e0', border: '1px solid #444',
-                padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem', flex: '1', minWidth: '150px',
-              }}
-            />
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              style={{
-                background: '#c0392b', color: 'white', border: 'none',
-                padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
-              }}
-            >
-              {deleting ? 'Deleting...' : 'Confirm Delete'}
-            </button>
-            <button
-              onClick={() => setShowDelete(false)}
-              style={{
-                background: 'transparent', color: '#888', border: '1px solid #444',
-                padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
