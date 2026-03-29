@@ -115,14 +115,6 @@ public class Parse {
     int[] prevLifeState = new int[10];
     // slotDeathGameTime[i]: game time (seconds) when this slot most recently died
     int[] slotDeathGameTime = new int[10];
-    // slotHeroEntity[i]: most recently seen hero entity for slot i (used to read HP)
-    Entity[] slotHeroEntity = new Entity[10];
-    // Death-prevention modifiers for HP-at-cast enrichment
-    static final java.util.Set<String> DEATH_PREVENTION_MODS = new java.util.HashSet<>(java.util.Arrays.asList(
-        "modifier_shallow_grave",
-        "modifier_oracle_false_promise",
-        "modifier_omniknight_guardian_angel"
-    ));
 
     public Parse(InputStream input, OutputStream output, boolean blob) throws IOException {
         greevilsGreedVisitor = new GreevilsGreedVisitor(name_to_slot);
@@ -437,30 +429,6 @@ public class Parse {
                 if (gameStartTime == 0) {
                     gameStartTime = combatLogEntry.time;
                     flushLogBuffer();
-                }
-            }
-            // ── HP enrichment for death-prevention modifier_add events ─────────────
-            // When a Dazzle Shallow Grave / Oracle False Promise / Omni Guardian Angel is
-            // applied, look up the target's current HP + max HP from the hero entity so
-            // Node.js can determine how close to death the target actually was.
-            if (combatLogEntry.type.equals("DOTA_COMBATLOG_MODIFIER_ADD")
-                    && combatLogEntry.inflictor != null
-                    && DEATH_PREVENTION_MODS.contains(combatLogEntry.inflictor)) {
-                try {
-                    Integer targetSlot = combatLogEntry.targetname != null
-                            ? name_to_slot.get(combatLogEntry.targetname)
-                            : null;
-                    if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
-                        Entity heroEnt = slotHeroEntity[targetSlot];
-                        if (heroEnt != null) {
-                            Integer hp = getEntityProperty(heroEnt, "m_iHealth", null);
-                            Integer maxHp = getEntityProperty(heroEnt, "m_iMaxHealth", null);
-                            if (hp != null)    combatLogEntry.hp     = hp;
-                            if (maxHp != null) combatLogEntry.max_hp = maxHp;
-                        }
-                    }
-                } catch (Exception ex) {
-                    // Non-critical — just skip HP enrichment for this event
                 }
             }
             if (cle.getType().ordinal() <= 19) {
@@ -953,7 +921,6 @@ public class Parse {
                         int heroHandle = getEntityProperty(pr, "m_vecPlayerTeamData.%i.m_hSelectedHero", validIndices[i]);
                         Entity heroEnt = ctx.getProcessor(Entities.class).getByHandle(heroHandle);
                         if (heroEnt == null) continue;
-                        slotHeroEntity[i] = heroEnt; // keep entity ref for HP lookups in combat log handler
                         Integer lifeState = getEntityProperty(heroEnt, "m_lifeState", null);
                         if (lifeState == null) continue;
                         int prev = prevLifeState[i];

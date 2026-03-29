@@ -684,7 +684,6 @@ class ReplayParser {
     const heroKillGoldByTime = {}; // Math.round(t) → total gold paid out for hero kills at that second
     const deathsBySlot = {};          // slot → [deathTime, …] — fallback estimate when hero_respawn events are absent
     const heroRespawnSeconds = {};    // slot → total exact seconds spent dead (from hero_respawn entity events emitted by Java parser)
-    const deathPreventionCount = {}; // slot → count of death-prevention modifier applications (shallow grave, false promise, guardian angel)
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -1217,32 +1216,6 @@ class ReplayParser {
         if (casterSlot != null && casterSlot >= 128 && casterSlot <= 132) casterSlot = casterSlot - 128 + 5;
         if (casterSlot != null && casterSlot >= 0 && casterSlot < 10) {
           dustsUsed[casterSlot] = (dustsUsed[casterSlot] || 0) + 1;
-        }
-      }
-
-      // ── Death Prevention tracking (SAVE column) ───────────────────────────
-      // Track modifiers whose sole purpose is preventing a hero from dying.
-      // Tracked via MODIFIER_ADD (confirms buff actually applied to target).
-      //   modifier_shallow_grave           → Dazzle's Shallow Grave
-      //   modifier_oracle_false_promise    → Oracle's False Promise (ult)
-      //   modifier_omniknight_guardian_angel → Omniknight's Guardian Angel (ult)
-      // In streaming mode: type=DOTA_COMBATLOG_MODIFIER_ADD, inflictor=modifier name,
-      //   targetname=recipient NPC, attackername=caster NPC
-      // In blob mode:      type=modifier_add, key=modifier name, unit=recipient NPC
-      const DEATH_PREVENTION_MODIFIERS = new Set([
-        'modifier_shallow_grave',
-        'modifier_oracle_false_promise',
-        'modifier_omniknight_guardian_angel',
-      ]);
-      if (e.type === 'DOTA_COMBATLOG_MODIFIER_ADD' || e.type === 'modifier_add') {
-        const modName = e.inflictor || e.key || '';
-        if (DEATH_PREVENTION_MODIFIERS.has(modName)) {
-          // In streaming mode the recipient is in targetname; blob mode uses unit
-          const recipientName = e.targetname || e.unit || '';
-          let recipientSlot = e.slot != null && e.type === 'modifier_add' ? e.slot : npcNameToSlot[recipientName];
-          if (recipientSlot != null && recipientSlot >= 0 && recipientSlot < 10) {
-            deathPreventionCount[recipientSlot] = (deathPreventionCount[recipientSlot] || 0) + 1;
-          }
         }
       }
 
@@ -1996,7 +1969,6 @@ class ReplayParser {
           }
           return Math.round(totalDead);
         })(),
-        deathPreventionCount: deathPreventionCount[slot] || 0,
       });
     }
 

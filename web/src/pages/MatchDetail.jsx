@@ -1061,7 +1061,6 @@ function ExpandedStats({ players }) {
               <th className="col-stat" title="Creep score (last hits) at 10 minutes">CS@10</th>
               <th className="col-stat" title="Long-range kills landed by this player">LRK</th>
               <th className="col-stat" title="Estimated total time spent dead (mm:ss). Calculated from death timings using an approximated respawn formula — requires replay data.">DEAD</th>
-              <th className="col-stat" title="Times a death-prevention spell was applied to this player: Shallow Grave (Dazzle), False Promise (Oracle), Guardian Angel (Omniknight). Requires replay data.">SAVE</th>
             </tr>
           </thead>
           <tbody>
@@ -1105,9 +1104,6 @@ function ExpandedStats({ players }) {
                   </td>
                   <td className="col-stat" style={{ color: deadSecs > 180 ? '#f87171' : deadSecs > 60 ? '#fbbf24' : undefined }}>
                     {deadFmt}
-                  </td>
-                  <td className="col-stat" style={{ color: p.death_prevention_count > 0 ? '#a78bfa' : undefined }}>
-                    {p.death_prevention_count || '-'}
                   </td>
                 </tr>
               );
