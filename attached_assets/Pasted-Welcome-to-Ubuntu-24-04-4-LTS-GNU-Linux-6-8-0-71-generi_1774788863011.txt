@@ -1,0 +1,1003 @@
+Welcome to Ubuntu 24.04.4 LTS (GNU/Linux 6.8.0-71-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Sun Mar 29 00:08:14 UTC 2026
+
+  System load:  0.24              Processes:             112
+  Usage of /:   8.9% of 66.76GB   Users logged in:       0
+  Memory usage: 25%               IPv4 address for eth0: 170.64.182.110
+  Swap usage:   0%                IPv4 address for eth0: 10.49.0.5
+
+Expanded Security Maintenance for Applications is not enabled.
+
+4 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** System restart required ***
+Last login: Sat Mar 28 15:36:46 2026 from 162.243.188.66
+root@Dota-Stats:~# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+remote: Enumerating objects: 28, done.
+remote: Counting objects: 100% (28/28), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 15 (delta 10), reused 15 (delta 10), pack-reused 0 (from 0)
+Unpacking objects: 100% (15/15), 245.68 KiB | 811.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   128a946..c1ed083  main       -> origin/main
+Updating 128a946..c1ed083
+Fast-forward
+ src/db/index.js                                          |   8 ++++++--
+ src/replay/replayParser.js                               | 102 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++------
+ web/dist/assets/{index-DUK0xspD.js => index-BbfdlWLL.js} |   2 +-
+ web/dist/index.html                                      |   2 +-
+ web/src/pages/MatchDetail.jsx                            |  12 +++++++++++-
+ 5 files changed, 115 insertions(+), 11 deletions(-)
+ rename web/dist/assets/{index-DUK0xspD.js => index-BbfdlWLL.js} (80%)
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 409763   │ 0s     │ 141  │ online    │ 0%       │ 17.8mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+Already up to date.
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 410055   │ 0s     │ 142  │ online    │ 0%       │ 17.1mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+remote: Enumerating objects: 24, done.
+remote: Counting objects: 100% (24/24), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 13 (delta 9), reused 13 (delta 9), pack-reused 0 (from 0)
+Unpacking objects: 100% (13/13), 244.29 KiB | 617.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   c1ed083..3bd09b6  main       -> origin/main
+Updating c1ed083..3bd09b6
+Fast-forward
+ src/replay/replayParser.js                               | 143 ++++++++++++++++++++++++++++++++++++++--------------------------------------
+ web/dist/assets/{index-BbfdlWLL.js => index-XygJ3CeK.js} |  12 +++----
+ web/dist/index.html                                      |   2 +-
+ web/src/pages/MatchDetail.jsx                            | 276 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++------------------------------------------------------------------------
+ 4 files changed, 218 insertions(+), 215 deletions(-)
+ rename web/dist/assets/{index-BbfdlWLL.js => index-XygJ3CeK.js} (80%)
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 410112   │ 0s     │ 143  │ online    │ 0%       │ 17.8mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# -- Matches recorded via replay upload where radiant team had FEWER kills
+-- but system says they won — potential wrong results
+SELECT m.match_id, m.radiant_win, m.parse_method,
+       SUM(CASE WHEN ps.team='radiant' THEN ps.kills ELSE 0 END) as rad_kills,
+       SUM(CASE WHEN ps.team='dire' THEN ps.kills ELSE 0 END) as dire_kills
+FROM matches m
+JOIN player_stats ps ON ps.match_id = m.match_id
+WHERE m.parse_method LIKE '%parser%' OR m.parse_method LIKE '%replay%' OR m.parse_method LIKE '%web%'
+GROUP BY m.match_id, m.radiant_win, m.parse_method
+HAVING (m.radiant_win = true AND SUM(CASE WHEN ps.team='radiant' THEN ps.kills ELSE 0 END) < SUM(CASE WHEN ps.team='dire' THEN ps.kills ELSE 0 END))
+   OR  (m.radiant_win = false AND SUM(CASE WHEN ps.team='dire' THEN ps.kills ELSE 0 END) < SUM(CASE WHEN ps.team='radiant' THEN ps.kills ELSE 0 END));
+--: command not found
+--: command not found
+SELECT: command not found
+-bash: syntax error near unexpected token `CASE'
+-bash: syntax error near unexpected token `CASE'
+FROM: command not found
+JOIN: command not found
+WHERE: command not found
+GROUP: command not found
+-bash: syntax error near unexpected token `m.radiant_win'
+-bash: syntax error near unexpected token `m.radiant_win'
+root@Dota-Stats:~/Dota-Stats# ^C
+root@Dota-Stats:~/Dota-Stats# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           197M  1.1M  196M   1% /run
+/dev/vda1        67G  6.0G   61G   9% /
+tmpfs           985M  1.1M  984M   1% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+/dev/vda16      881M  114M  705M  14% /boot
+/dev/vda15      105M  6.2M   99M   6% /boot/efi
+tmpfs           197M   12K  197M   1% /run/user/0
+root@Dota-Stats:~/Dota-Stats# psql $DATABASE_URL
+psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: FATAL:  role "root" does not exist
+root@Dota-Stats:~/Dota-Stats# ^[[200~psql "$DATABASE_URL"~
+psql: command not found
+root@Dota-Stats:~/Dota-Stats# psql "$DATABASE_URL"
+psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: FATAL:  role "root" does not exist
+root@Dota-Stats:~/Dota-Stats# echo $DATABASE_URL
+# Then copy-paste that URL and run: psql "postgresql://user:pass@host/db"
+
+root@Dota-Stats:~/Dota-Stats# pm2 env 0 | grep DATABASE
+[PM2][ERROR] Modules with id 0 not found
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+remote: Enumerating objects: 147, done.
+remote: Counting objects: 100% (147/147), done.
+remote: Compressing objects: 100% (17/17), done.
+remote: Total 121 (delta 86), reused 121 (delta 86), pack-reused 0 (from 0)
+Receiving objects: 100% (121/121), 363.35 KiB | 1.17 MiB/s, done.
+Resolving deltas: 100% (86/86), completed with 19 local objects.
+From https://github.com/StElmosFire1/Dota-Stats
+   3bd09b6..c4b379c  main       -> origin/main
+Updating 3bd09b6..c4b379c
+Fast-forward
+ attached_assets/image_1774747970758.png        | Bin 0 -> 50155 bytes
+ attached_assets/image_1774748956317.png        | Bin 0 -> 8049 bytes
+ attached_assets/image_1774750032039.png        | Bin 0 -> 13192 bytes
+ attached_assets/image_1774750421293.png        | Bin 0 -> 4774 bytes
+ odota-parser/src/main/java/opendota/Parse.java |  50 ++++++++++++++++++++++++++++++++
+ replit.md                                      |   7 ++++-
+ src/db/index.js                                | 249 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ src/replay/replayParser.js                     | 179 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------------
+ src/web/server.js                              | 150 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ web/dist/assets/index-DMlbYE-w.js              | 141 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ web/dist/assets/index-XygJ3CeK.js              | 135 -------------------------------------------------------------------------------------
+ web/dist/index.html                            |   2 +-
+ web/src/pages/AdminPanel.jsx                   | 201 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----
+ web/src/pages/Heroes.jsx                       |  13 +++++++--
+ web/src/pages/MatchDetail.jsx                  | 117 +++++++++++++++++++++++++++++++++++++++++++++++++++----------------------
+ 15 files changed, 1035 insertions(+), 209 deletions(-)
+ create mode 100644 attached_assets/image_1774747970758.png
+ create mode 100644 attached_assets/image_1774748956317.png
+ create mode 100644 attached_assets/image_1774750032039.png
+ create mode 100644 attached_assets/image_1774750421293.png
+ create mode 100644 web/dist/assets/index-DMlbYE-w.js
+ delete mode 100644 web/dist/assets/index-XygJ3CeK.js
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 412647   │ 0s     │ 144  │ online    │ 0%       │ 18.4mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+remote: Enumerating objects: 29, done.
+remote: Counting objects: 100% (29/29), done.
+remote: Compressing objects: 100% (6/6), done.
+remote: Total 18 (delta 11), reused 15 (delta 8), pack-reused 0 (from 0)
+Unpacking objects: 100% (18/18), 174.44 KiB | 453.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   c4b379c..0a92302  main       -> origin/main
+Updating c4b379c..0a92302
+Fast-forward
+ attached_assets/image_1774766340871.png        | Bin 0 -> 186280 bytes
+ odota-parser/src/main/java/opendota/Parse.java |  15 ++++++++++++++-
+ src/replay/replayParser.js                     |  75 ++++++++++++++++++++++++++++++++++++++++++++++++---------------------------
+ 3 files changed, 62 insertions(+), 28 deletions(-)
+ create mode 100644 attached_assets/image_1774766340871.png
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 417858   │ 0s     │ 145  │ online    │ 0%       │ 18.6mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴──���─────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+remote: Enumerating objects: 24, done.
+remote: Counting objects: 100% (24/24), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 13 (delta 9), reused 13 (delta 9), pack-reused 0 (from 0)
+Unpacking objects: 100% (13/13), 245.80 KiB | 637.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   0a92302..96deedb  main       -> origin/main
+Updating 0a92302..96deedb
+Fast-forward
+ src/replay/replayParser.js                               |  2 +-
+ web/dist/assets/{index-DMlbYE-w.js => index-C8CiSZ4v.js} |  2 +-
+ web/dist/index.html                                      |  2 +-
+ web/src/pages/MatchDetail.jsx                            | 13 ++++++++-----
+ 4 files changed, 11 insertions(+), 8 deletions(-)
+ rename web/dist/assets/{index-DMlbYE-w.js => index-C8CiSZ4v.js} (95%)
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 418086   │ 0s     │ 146  │ online    │ 0%       │ 18.1mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+remote: Enumerating objects: 9, done.
+remote: Counting objects: 100% (9/9), done.
+remote: Compressing objects: 100% (1/1), done.
+remote: Total 5 (delta 3), reused 5 (delta 3), pack-reused 0 (from 0)
+Unpacking objects: 100% (5/5), 1.38 KiB | 176.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   96deedb..31b2827  main       -> origin/main
+Updating 96deedb..31b2827
+Fast-forward
+ src/replay/replayParser.js | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 418419   │ 0s     │ 147  │ online    │ 0%       │ 17.8mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+Already up to date.
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 418590   │ 0s     │ 148  │ online    │ 0%       │ 17.6mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+Already up to date.
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 418645   │ 0s     │ 149  │ online    │ 0%       │ 18.3mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# git pull origin main
+node src/index.js
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+        at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited with code 1
+[Steam] Logged in successfully.
+[Steam] Login error: LoggedInElsewhere
+[Startup] Steam login failed: LoggedInElsewhere
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          NO
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:418776) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+^C
+[Shutdown] Graceful shutdown...
+[Discord] Bot shut down.
+[Replay] Parser service stopped.
+[Dota2 GC] Error leaving lobby: Cannot send GC message, not logged into Steam Client
+[Steam] Shut down.
+root@Dota-Stats:~/Dota-Stats# git pull origin main
+node src/index.js
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+        at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited with code 1
+[Steam] Logged in successfully.
+[Steam] Login error: LoggedInElsewhere
+[Startup] Steam login failed: LoggedInElsewhere
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          NO
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:418819) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+# Kill the old Java parser still holding port 5600
+fuser -k 5600/tcp
+
+# Also kill any leftover node process
+pkill -f "node src/index.js"
+
+# Wait a moment then start fresh
+sleep 2 && node src/index.js
+^C
+[Shutdown] Graceful shutdown...
+[Discord] Bot shut down.
+[Replay] Parser service stopped.
+[Dota2 GC] Error leaving lobby: Cannot send GC message, not logged into Steam Client
+[Steam] Shut down.
+root@Dota-Stats:~/Dota-Stats# # Kill the old Java parser still holding port 5600
+fuser -k 5600/tcp
+
+# Also kill any leftover node process
+pkill -f "node src/index.js"
+
+# Wait a moment then start fresh
+sleep 2 && node src/index.js
+5600/tcp:            418657
+[dotenv@17.3.1] injecting env (9) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          YES (connected)
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:418888) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+^C
+[Shutdown] Graceful shutdown...
+[Discord] Bot shut down.
+[Replay] Parser service stopped.
+[Dota2 GC] Left practice lobby.
+[Steam] Shut down.
+root@Dota-Stats:~/Dota-Stats# fuser -k 5600/tcp 2>/dev/null
+pkill -f "node src/index.js" 2>/dev/null
+sleep 2
+nohup node src/index.js > bot.log 2>&1 &
+echo "Bot started, PID: $!"
+[1] 420225
+Bot started, PID: 420225
+root@Dota-Stats:~/Dota-Stats# tail -50 ~/Dota-Stats/bot.log
+nohup: ignoring input
+[dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Steam] Login error: LoggedInElsewhere
+[Startup] Steam login failed: LoggedInElsewhere
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          NO
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:420225) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+root@Dota-Stats:~/Dota-Stats# lsof -i :5600
+COMMAND    PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+java    420237 root    6u  IPv6 3538322      0t0  TCP *:5600 (LISTEN)
+root@Dota-Stats:~/Dota-Stats# # Kill ALL java and node processes
+pkill -9 -f "stats-0.1.0.jar"
+pkill -9 -f "node src/index.js"
+sleep 3
+
+# Verify port 5600 is free
+lsof -i :5600
+
+# Restart
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 8
+
+# Check it started cleanly
+tail -30 ~/Dota-Stats/bot.log
+[1]+  Killed                  nohup node src/index.js > bot.log 2>&1
+[1] 421727
+nohup: ignoring input
+[dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+root@Dota-Stats:~/Dota-Stats# pkill -9 -f "stats-0.1.0.jar"
+pkill -9 -f "node src/index.js"
+sleep 3
+
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 8 && tail -30 ~/Dota-Stats/bot.log
+[1]+  Killed                  nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1
+[1] 421801
+nohup: ignoring input
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+root@Dota-Stats:~/Dota-Stats# # 1. Is the node process still alive?
+ps aux | grep "node src/index.js" | grep -v grep
+
+# 2. Is the Java parser still running?
+lsof -i :5600
+
+# 3. What's at the end of the log?
+tail -30 ~/Dota-Stats/bot.log
+root      421801  0.9  9.6 22316780 194536 pts/0 Sl   10:45   0:05 node src/index.js
+COMMAND    PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+java    421814 root    6u  IPv6 3555266      0t0  TCP *:5600 (LISTEN)
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          YES (connected)
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:421801) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+root@Dota-Stats:~/Dota-Stats# pkill -9 -f "stats-0.1.0.jar"
+pkill -9 -f "node src/index.js"
+sleep 3
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 3 && tail -f ~/Dota-Stats/bot.log
+[1]+  Killed                  nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1
+[1] 423146
+nohup: ignoring input
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          YES (connected)
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:423146) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+tail -20 ~/Dota-Stats/bot.log
+cd ~/Dota-Stats
+git pull origin main
+
+pkill -9 -f "stats-0.1.0.jar"
+pkill -9 -f "node src/index.js"
+sleep 3
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 8 && tail -20 ~/Dota-Stats/bot.log
+^C
+root@Dota-Stats:~/Dota-Stats# tail -20 ~/Dota-Stats/bot.log
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          YES (connected)
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:423146) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+git pull origin main
+
+pkill -9 -f "stats-0.1.0.jar"
+pkill -9 -f "node src/index.js"
+sleep 3
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 8 && tail -20 ~/Dota-Stats/bot.log
+remote: Enumerating objects: 35, done.
+remote: Counting objects: 100% (35/35), done.
+remote: Compressing objects: 100% (9/9), done.
+remote: Total 35 (delta 24), reused 35 (delta 24), pack-reused 0 (from 0)
+Unpacking objects: 100% (35/35), 270.00 KiB | 667.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   31b2827..35ebf9d  main       -> origin/main
+Updating 31b2827..35ebf9d
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-git-pull-origin-main-node-sr_1774770845800.txt | 108 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-git-pull-origin-main-node-sr_1774771040153.txt | 175 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ attached_assets/image_1774775695151.png                                                          | Bin 0 -> 10227 bytes
+ attached_assets/image_1774775705102.png                                                          | Bin 0 -> 6011 bytes
+ attached_assets/image_1774776322835.png                                                          | Bin 0 -> 82802 bytes
+ attached_assets/image_1774781079409.png                                                          | Bin 0 -> 57789 bytes
+ attached_assets/image_1774781141401.png                                                          | Bin 0 -> 48459 bytes
+ attached_assets/image_1774781808403.png                                                          | Bin 0 -> 84544 bytes
+ attached_assets/image_1774782892745.png                                                          | Bin 0 -> 37672 bytes
+ attached_assets/image_1774784648730.png                                                          | Bin 0 -> 84544 bytes
+ src/replay/replayParser.js                                                                       |  84 ++++++++++++++++++++++++++++-----------------------
+ src/web/server.js                                                                                |   4 +++
+ 12 files changed, 334 insertions(+), 37 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-git-pull-origin-main-node-sr_1774770845800.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-git-pull-origin-main-node-sr_1774771040153.txt
+ create mode 100644 attached_assets/image_1774775695151.png
+ create mode 100644 attached_assets/image_1774775705102.png
+ create mode 100644 attached_assets/image_1774776322835.png
+ create mode 100644 attached_assets/image_1774781079409.png
+ create mode 100644 attached_assets/image_1774781141401.png
+ create mode 100644 attached_assets/image_1774781808403.png
+ create mode 100644 attached_assets/image_1774782892745.png
+ create mode 100644 attached_assets/image_1774784648730.png
+[1]+  Killed                  nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1
+[1] 423243
+nohup: ignoring input
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+root@Dota-Stats:~/Dota-Stats# lsof -i :5000
+COMMAND      PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+node\x20/ 418645 root   26u  IPv4 3522373      0t0  TCP *:5000 (LISTEN)
+root@Dota-Stats:~/Dota-Stats# # Kill the ghost process directly by PID
+kill -9 418645
+
+sleep 2
+
+# Check port 5000 is now free
+lsof -i :5000
+
+# Check if PID 423243 (our latest bot) is still alive
+ps aux | grep "node src" | grep -v grep
+root      423243  1.2  9.8 22318020 198752 pts/0 Sl   11:56   0:04 node src/index.js
+root@Dota-Stats:~/Dota-Stats# kill -9 423243
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 10 && tail -25 ~/Dota-Stats/bot.log
+[1]+  Killed                  nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1
+[1] 424158
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:424158) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+        at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+[Parser] at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+root@Dota-Stats:~/Dota-Stats# # Nuclear restart — kills whatever is on ports 5000 and 5600
+fuser -k 5000/tcp 2>/dev/null; fuser -k 5600/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+ 423397 423258[2] 424874
+root@Dota-Stats:~/Dota-Stats# # See exactly what's on port 5600
+lsof -i :5600
+
+# Kill it explicitly by PID (replace XXXXX with the PID shown)
+kill -9 XXXXX
+
+# Verify port is free
+lsof -i :5600
+
+# Now restart
+fuser -k 5000/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 10 && tail -25 ~/Dota-Stats/bot.log
+COMMAND      PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+node\x20/ 424847 root   21u  IPv6 3582683      0t0  TCP localhost:48546->localhost:5600 (ESTABLISHED)
+java      424858 root    6u  IPv6 3577843      0t0  TCP *:5600 (LISTEN)
+java      424858 root    9u  IPv6 3582684      0t0  TCP localhost:5600->localhost:48546 (ESTABLISHED)
+java      424858 root   10u  IPv6 3582653      0t0  TCP localhost:5600->localhost:40302 (ESTABLISHED)
+node      424874 root   20u  IPv6 3582652      0t0  TCP localhost:40302->localhost:5600 (ESTABLISHED)
+-bash: kill: XXXXX: arguments must be process or job IDs
+COMMAND      PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+node\x20/ 424847 root   21u  IPv6 3582683      0t0  TCP localhost:48546->localhost:5600 (ESTABLISHED)
+java      424858 root    6u  IPv6 3577843      0t0  TCP *:5600 (LISTEN)
+java      424858 root    9u  IPv6 3582684      0t0  TCP localhost:5600->localhost:48546 (ESTABLISHED)
+java      424858 root   10u  IPv6 3582653      0t0  TCP localhost:5600->localhost:40302 (ESTABLISHED)
+node      424874 root   20u  IPv6 3582652      0t0  TCP localhost:40302->localhost:5600 (ESTABLISHED)
+ 424847[3] 426550
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Steam] Session replaced by another login — Steam disconnected. Bot continues running without Steam.
+[Steam] Marked offline in health status (reason: LogonSessionReplaced)
+[Dota2 GC] Disconnected from GC: 2
+root@Dota-Stats:~/Dota-Stats# kill -9 424847 424858
+sleep 2
+lsof -i :5600  # Should show nothing
+-bash: kill: (424847) - No such process
+COMMAND    PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+node    424874 root   20u  IPv6 3585097      0t0  TCP localhost:38182->localhost:5600 (ESTABLISHED)
+java    427330 root    6u  IPv6 3585085      0t0  TCP *:5600 (LISTEN)
+java    427330 root    9u  IPv6 3585104      0t0  TCP localhost:5600->localhost:38182 (ESTABLISHED)
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+git pull origin main
+
+pkill -9 -f "stats-0.1.0.jar"
+fuser -k 5000/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 12 && tail -30 ~/Dota-Stats/bot.log
+remote: Enumerating objects: 34, done.
+remote: Counting objects: 100% (34/34), done.
+remote: Compressing objects: 100% (11/11), done.
+remote: Total 27 (delta 18), reused 23 (delta 14), pack-reused 0 (from 0)
+Unpacking objects: 100% (27/27), 193.04 KiB | 520.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   35ebf9d..7ce675a  main       -> origin/main
+Updating 35ebf9d..7ce675a
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-pkill-9-f-stats-0-1-0-jar-pk_1774785425367.txt | 139 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ attached_assets/image_1774785225089.png                                                          | Bin 0 -> 90639 bytes
+ attached_assets/image_1774785636036.png                                                          | Bin 0 -> 35142 bytes
+ attached_assets/image_1774785686476.png                                                          | Bin 0 -> 7731 bytes
+ attached_assets/image_1774785803718.png                                                          | Bin 0 -> 14918 bytes
+ attached_assets/image_1774786178118.png                                                          | Bin 0 -> 86870 bytes
+ src/replay/replayParser.js                                                                       |  50 +++++++++++++++++++++++++++++++++++---
+ src/web/server.js                                                                                |   1 +
+ 8 files changed, 187 insertions(+), 3 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-pkill-9-f-stats-0-1-0-jar-pk_1774785425367.txt
+ create mode 100644 attached_assets/image_1774785225089.png
+ create mode 100644 attached_assets/image_1774785636036.png
+ create mode 100644 attached_assets/image_1774785686476.png
+ create mode 100644 attached_assets/image_1774785803718.png
+ create mode 100644 attached_assets/image_1774786178118.png
+ 426526[4] 427473
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+        at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+[Parser] at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+[Parser] at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+
+# 1. Pull the JS smoke fix
+git pull origin main
+
+# 2. Rebuild the JAR
+cd odota-parser
+mvn package -q -DskipTests
+cd ..
+
+# 3. Full restart (kills old Java, starts fresh)
+pkill -9 -f "stats-0.1.0.jar"
+fuser -k 5000/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 12 && tail -20 ~/Dota-Stats/bot.log
+remote: Enumerating objects: 6, done.
+remote: Counting objects: 100% (6/6), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 4 (delta 2), reused 4 (delta 2), pack-reused 0 (from 0)
+Unpacking objects: 100% (4/4), 1.77 KiB | 454.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   7ce675a..c922e4c  main       -> origin/main
+Updating 7ce675a..c922e4c
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Nuclear-restart-kills-whatev_1774786522334.txt | 58 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 58 insertions(+)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Nuclear-restart-kills-whatev_1774786522334.txt
+ 427431[5] 433815
+[Parser] at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+[Parser] at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+[Parser] at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+[Parser] at java.base/sun.nio.ch.Net.bind(Net.java:577)
+[Parser] at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+[Parser] at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+
+# Pull the fix + rebuild the JAR (fixes items, dead time, killfeed)
+git pull origin main
+cd odota-parser && mvn package -q -DskipTests && cd ..
+
+# Restart — Java cleanup is now handled automatically by the bot itself
+fuser -k 5000/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 15 && tail -25 ~/Dota-Stats/bot.log
+remote: Enumerating objects: 12, done.
+remote: Counting objects: 100% (12/12), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 7 (delta 4), reused 7 (delta 4), pack-reused 0 (from 0)
+Unpacking objects: 100% (7/7), 2.16 KiB | 221.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   c922e4c..ab22598  main       -> origin/main
+Updating c922e4c..ab22598
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-kill-9-424847-424858-sleep-2_1774786619097.txt | 72 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/replay/replayParser.js                                                                       |  6 ++++--
+ 2 files changed, 76 insertions(+), 2 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-kill-9-424847-424858-sleep-2_1774786619097.txt
+ 433788[6] 435590
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main"
+[Parser] java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+[Parser] at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+[Parser] at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+[Parser] at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+root@Dota-Stats:~/Dota-Stats# git pull origin main && cd odota-parser && mvn package -q -DskipTests && cd ..
+remote: Enumerating objects: 16, done.
+remote: Counting objects: 100% (16/16), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 11 (delta 7), reused 10 (delta 6), pack-reused 0 (from 0)
+Unpacking objects: 100% (11/11), 99.92 KiB | 351.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   ab22598..8b79b66  main       -> origin/main
+Updating ab22598..8b79b66
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-cd-Dota-Stats-1-Pull-the-JS-_1774787785483.txt |  50 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ attached_assets/image_1774788132254.png                                                          | Bin 0 -> 119447 bytes
+ src/replay/replayParser.js                                                                       |  48 +++++++++++++++---------------------------------
+ 3 files changed, 65 insertions(+), 33 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-cd-Dota-Stats-1-Pull-the-JS-_1774787785483.txt
+ create mode 100644 attached_assets/image_1774788132254.png
+root@Dota-Stats:~/Dota-Stats# 
