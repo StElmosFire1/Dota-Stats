@@ -649,21 +649,6 @@ function TimelineGraph({ timeline, allPlayers }) {
             </button>
           );
         })()}
-        {courierEvents.length > 0 && (() => {
-          const on = showMarkers.courier;
-          return (
-            <button onClick={() => toggleMarker('courier')} style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 4, fontSize: 11,
-              cursor: 'pointer', border: '1px solid', userSelect: 'none', transition: 'all 0.15s',
-              borderColor: on ? '#34d39955' : '#334155',
-              background: on ? '#34d39911' : 'transparent',
-              color: on ? '#34d399' : '#475569',
-            }}>
-              <div style={{ width: 1, height: 12, background: on ? '#34d399' : '#475569', borderRadius: 1 }} />
-              📦 Couriers ({courierEvents.length})
-            </button>
-          );
-        })()}
         {(towerEvents.length > 0 || barracksEvents.length > 0) && (showMarkers.tower || showMarkers.rax) && (
           <span style={{ fontSize: 10, color: '#475569', fontStyle: 'italic' }}>green=dire loses · red=radiant loses</span>
         )}
@@ -1074,7 +1059,6 @@ function ExpandedStats({ players }) {
               <th className="col-stat" title="Longest kill streak">KS</th>
               <th className="col-stat" title="Multi-kills (double, triple, ultra, rampage)">MK</th>
               <th className="col-stat" title="Creep score (last hits) at 10 minutes">CS@10</th>
-              <th className="col-stat" title="Physical attack evasion (RNG dodge — Butterfly, Windrun, Heaven's Halberd only)">EVAD</th>
               <th className="col-stat" title="Long-range kills landed by this player">LRK</th>
             </tr>
           </thead>
@@ -1110,9 +1094,6 @@ function ExpandedStats({ players }) {
                   <td className="col-stat">{p.kill_streak || 0}</td>
                   <td className="col-stat">{mkParts.join(' ') || '-'}</td>
                   <td className="col-stat">{p.lane_cs_10min || '-'}</td>
-                  <td className="col-stat" style={{ color: p.evasion_count > 0 ? '#a78bfa' : undefined }}>
-                    {p.evasion_count || 0}
-                  </td>
                   <td className="col-stat" style={{ color: p.long_range_kills > 0 ? '#fbbf24' : undefined }}>
                     {p.long_range_kills || 0}
                   </td>
@@ -1284,16 +1265,20 @@ function TeamAbilitiesPanel({ teamAbilities, radiantWin }) {
 
 // ── PowerSpikesPanel ────────────────────────────────────────────────────────
 const MAJOR_ITEMS = new Set([
-  'item_blink','item_black_king_bar','item_aghanims_scepter','item_radiance','item_battlefury',
+  'item_blink','item_black_king_bar','item_ultimate_scepter','item_ultimate_scepter_2','item_aghanims_shard',
+  'item_radiance','item_battlefury',
   'item_monkey_king_bar','item_crystalys','item_daedalus','item_desolator','item_mjollnir',
   'item_manta','item_butterfly','item_satanic','item_heart','item_assault','item_bloodthorn',
-  'item_silver_edge','item_sange_and_yasha','item_heavens_halberd','item_skadi','item_medusa',
+  'item_silver_edge','item_sange_and_yasha','item_heavens_halberd','item_skadi',
   'item_boots_of_travel','item_boots_of_travel_2','item_octarine_core','item_kaya_and_sange',
   'item_bloodstone','item_sheepstick','item_dagon','item_dagon_2','item_dagon_3','item_dagon_4','item_dagon_5',
   'item_refresher','item_shiva','item_linken','item_pipe','item_crimson_guard','item_vanguard',
   'item_blade_mail','item_glimmer_cape','item_solar_crest','item_force_staff','item_eul',
   'item_cyclone','item_aether_lens','item_ghost','item_hurricane_pike','item_witch_blade',
   'item_gungir','item_pavise','item_yasha_and_kaya','item_mage_slayer',
+  'item_disperser','item_nullifier','item_overwhelming_blink','item_swift_blink','item_arcane_blink',
+  'item_harpoon','item_gleipnir','item_wind_waker','item_fallen_sky','item_kaya',
+  'item_sange','item_yasha','item_mekansm','item_guardian_greaves',
 ]);
 const LEVEL_MILESTONES = [6, 12, 18, 25];
 
@@ -1767,8 +1752,10 @@ function SupportReportPanel({ players, timeline }) {
               <th className="col-stat" title="Observer wards placed">OBS</th>
               <th className="col-stat" title="Sentry wards placed">SEN</th>
               <th className="col-stat" title="Enemy wards dewarded by this player">DEW</th>
-              <th className="col-stat" title="This player's wards killed by enemies (lower = better placement)">YDEW</th>
-              <th className="col-stat" title="Average lifespan of this player's wards before being dewarded (M:SS — longer = better)">W.LIFE</th>
+              <th className="col-stat" title="Your observer wards killed by enemies">O.DEW</th>
+              <th className="col-stat" title="Avg lifespan of your observer wards that were killed (M:SS)">O.LIFE</th>
+              <th className="col-stat" title="Your sentry wards killed by enemies">S.DEW</th>
+              <th className="col-stat" title="Avg lifespan of your sentry wards that were killed (M:SS)">S.LIFE</th>
               <th className="col-stat" title="Camps stacked">STK</th>
               <th className="col-stat" title="Approximate pulls performed (timing-based heuristic)">PULL~</th>
               <th className="col-stat" title="Dust of Appearance activations">DUST</th>
@@ -1776,7 +1763,6 @@ function SupportReportPanel({ players, timeline }) {
               <th className="col-stat" title="Smoke success rate — % of smokes followed by a same-team kill within 60s">SMKE%</th>
               <th className="col-stat" title="Clutch heals — healed a low-HP ally">SAVE</th>
               <th className="col-stat" title="Healing done to allies via spells/items (excludes self-heal and lifesteal)">HEAL</th>
-              <th className="col-stat" title="Healing from lifesteal — Satanic, Octarine, Spec aura etc. This heals the caster, not allies">LSHEAL</th>
               <th className="col-stat" title="Total stun duration dealt (seconds)">STUN</th>
               <th className="col-stat" title="Gold spent on support items">S.GOLD</th>
             </tr>
@@ -1794,12 +1780,20 @@ function SupportReportPanel({ players, timeline }) {
                   <td className="col-stat">{p.obs_placed || 0}</td>
                   <td className="col-stat">{p.sen_placed || 0}</td>
                   <td className="col-stat">{p.wards_killed || 0}</td>
-                  <td className="col-stat" style={{ color: p.ward_dewarded_count > 0 ? '#f87171' : undefined }}>
-                    {p.ward_dewarded_count || 0}
+                  <td className="col-stat" style={{ color: p.obs_dewarded_count > 0 ? '#f87171' : undefined }}>
+                    {p.obs_dewarded_count || 0}
                   </td>
-                  <td className="col-stat" style={{ color: p.ward_avg_lifespan > 0 ? '#94a3b8' : undefined }}>
-                    {p.ward_avg_lifespan > 0
-                      ? `${Math.floor(p.ward_avg_lifespan / 60)}:${String(p.ward_avg_lifespan % 60).padStart(2, '0')}`
+                  <td className="col-stat" style={{ color: p.obs_avg_lifespan > 0 ? '#94a3b8' : undefined }}>
+                    {p.obs_avg_lifespan > 0
+                      ? `${Math.floor(p.obs_avg_lifespan / 60)}:${String(p.obs_avg_lifespan % 60).padStart(2, '0')}`
+                      : '—'}
+                  </td>
+                  <td className="col-stat" style={{ color: p.sen_dewarded_count > 0 ? '#f87171' : undefined }}>
+                    {p.sen_dewarded_count || 0}
+                  </td>
+                  <td className="col-stat" style={{ color: p.sen_avg_lifespan > 0 ? '#94a3b8' : undefined }}>
+                    {p.sen_avg_lifespan > 0
+                      ? `${Math.floor(p.sen_avg_lifespan / 60)}:${String(p.sen_avg_lifespan % 60).padStart(2, '0')}`
                       : '—'}
                   </td>
                   <td className="col-stat">{p.camps_stacked || 0}</td>
@@ -1817,9 +1811,6 @@ function SupportReportPanel({ players, timeline }) {
                     {p.heal_saves || 0}
                   </td>
                   <td className="col-stat">{p.hero_healing ? formatNumber(p.hero_healing) : 0}</td>
-                  <td className="col-stat" style={{ color: p.lifesteal_healing > 0 ? '#fb923c' : undefined }}>
-                    {p.lifesteal_healing ? formatNumber(p.lifesteal_healing) : 0}
-                  </td>
                   <td className="col-stat">{p.stun_duration ? p.stun_duration.toFixed(1) : '0'}</td>
                   <td className="col-stat" style={{ color: p.support_gold_spent > 1000 ? '#fbbf24' : undefined }}>
                     {p.support_gold_spent ? formatNumber(p.support_gold_spent) : 0}

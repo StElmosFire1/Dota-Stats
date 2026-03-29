@@ -975,12 +975,17 @@ class ReplayParser {
       // Streaming: type "DOTA_COMBATLOG_BUYBACK", hero in e.attackername or e.targetname
       // Blob:      type "buyback_log", slot in e.slot
       if (e.type === 'DOTA_COMBATLOG_BUYBACK') {
-        // The buying hero may appear in either field depending on parser version
+        // In streaming mode: e.value contains the player slot (same as blob mode handleBuyback uses e.value)
+        // attackername/targetname may also contain the hero NPC name for name-to-slot lookup
         const heroName = e.attackername || e.targetname;
         let slot = heroName ? npcNameToSlot[heroName] : null;
-        // Some builds put the slot index directly
         if (slot == null && e.slot != null) {
           slot = e.slot;
+          if (slot >= 128 && slot <= 132) slot = slot - 128 + 5;
+        }
+        // e.value is the most reliable field — used by blob parser's handleBuyback
+        if (slot == null && e.value != null) {
+          slot = e.value;
           if (slot >= 128 && slot <= 132) slot = slot - 128 + 5;
         }
         if (slot != null && slot >= 0 && slot < 10) combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
@@ -1160,6 +1165,7 @@ class ReplayParser {
           (e.inflictor === 'item_smoke_of_deceit' || e.key === 'item_smoke_of_deceit')) {
         const casterName = e.attackername || e.unit || '';
         let casterSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
+        if (casterSlot != null && casterSlot >= 128 && casterSlot <= 132) casterSlot = casterSlot - 128 + 5;
         if (casterSlot != null && casterSlot >= 0 && casterSlot < 10) {
           const team = casterSlot < 5 ? 'radiant' : 'dire';
           const key = `${team}_smoke`;
@@ -1177,6 +1183,7 @@ class ReplayParser {
           (e.inflictor === 'item_dust' || e.key === 'item_dust')) {
         const casterName = e.attackername || e.unit || '';
         let casterSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
+        if (casterSlot != null && casterSlot >= 128 && casterSlot <= 132) casterSlot = casterSlot - 128 + 5;
         if (casterSlot != null && casterSlot >= 0 && casterSlot < 10) {
           dustsUsed[casterSlot] = (dustsUsed[casterSlot] || 0) + 1;
         }
@@ -1572,9 +1579,15 @@ class ReplayParser {
     // Matching strategy: slot-based FIFO (oldest unmatched placement of same type/slot).
     // Fallback: position proximity for events where ownerSlot is null.
     const WARD_POS_THRESHOLD = 128;  // game units; wards placed within this are treated as same
-    const wardDewardedCount = {};    // slot → # of that player's wards killed by enemies
-    const wardLifespanSums = {};     // slot → total lifespan (seconds) of killed wards
-    const wardLifespanCounts = {};   // slot → number of killed wards with a matched placement
+    const wardDewardedCount = {};    // slot → # of that player's wards killed by enemies (all types)
+    const wardLifespanSums = {};     // slot → total lifespan (seconds) of killed wards (all types)
+    const wardLifespanCounts = {};   // slot → number of killed wards with a matched placement (all types)
+    const obsDewardedCount = {};     // slot → # of obs wards killed
+    const obsLifespanSums = {};      // slot → total lifespan of killed obs wards
+    const obsLifespanCounts = {};    // slot → number of killed obs wards with a matched placement
+    const senDewardedCount = {};     // slot → # of sen wards killed
+    const senLifespanSums = {};      // slot → total lifespan of killed sen wards
+    const senLifespanCounts = {};    // slot → number of killed sen wards with a matched placement
 
     // Deep-copy placements so we can mark them matched
     const placementPool = {};
@@ -1599,9 +1612,19 @@ class ReplayParser {
           if (!placement.matched && placement.type === death.type && placement.t < death.t) {
             placement.matched = true;
             const lifespan = death.t - placement.t;
-            wardDewardedCount[death.ownerSlot] = (wardDewardedCount[death.ownerSlot] || 0) + 1;
-            wardLifespanSums[death.ownerSlot] = (wardLifespanSums[death.ownerSlot] || 0) + lifespan;
-            wardLifespanCounts[death.ownerSlot] = (wardLifespanCounts[death.ownerSlot] || 0) + 1;
+            const s = death.ownerSlot;
+            wardDewardedCount[s] = (wardDewardedCount[s] || 0) + 1;
+            wardLifespanSums[s] = (wardLifespanSums[s] || 0) + lifespan;
+            wardLifespanCounts[s] = (wardLifespanCounts[s] || 0) + 1;
+            if (death.type === 'obs') {
+              obsDewardedCount[s] = (obsDewardedCount[s] || 0) + 1;
+              obsLifespanSums[s] = (obsLifespanSums[s] || 0) + lifespan;
+              obsLifespanCounts[s] = (obsLifespanCounts[s] || 0) + 1;
+            } else {
+              senDewardedCount[s] = (senDewardedCount[s] || 0) + 1;
+              senLifespanSums[s] = (senLifespanSums[s] || 0) + lifespan;
+              senLifespanCounts[s] = (senLifespanCounts[s] || 0) + 1;
+            }
             matched = true;
             break;
           }
@@ -1627,14 +1650,32 @@ class ReplayParser {
           wardDewardedCount[bestSlot] = (wardDewardedCount[bestSlot] || 0) + 1;
           wardLifespanSums[bestSlot] = (wardLifespanSums[bestSlot] || 0) + lifespan;
           wardLifespanCounts[bestSlot] = (wardLifespanCounts[bestSlot] || 0) + 1;
+          if (death.type === 'obs') {
+            obsDewardedCount[bestSlot] = (obsDewardedCount[bestSlot] || 0) + 1;
+            obsLifespanSums[bestSlot] = (obsLifespanSums[bestSlot] || 0) + lifespan;
+            obsLifespanCounts[bestSlot] = (obsLifespanCounts[bestSlot] || 0) + 1;
+          } else {
+            senDewardedCount[bestSlot] = (senDewardedCount[bestSlot] || 0) + 1;
+            senLifespanSums[bestSlot] = (senLifespanSums[bestSlot] || 0) + lifespan;
+            senLifespanCounts[bestSlot] = (senLifespanCounts[bestSlot] || 0) + 1;
+          }
         }
       }
     }
 
-    // Compute avg lifespan (seconds) per slot
+    // Compute avg lifespan (seconds) per slot — all wards combined
     const wardAvgLifespan = {};
     for (const [slotStr, count] of Object.entries(wardLifespanCounts)) {
       if (count > 0) wardAvgLifespan[parseInt(slotStr)] = Math.round(wardLifespanSums[parseInt(slotStr)] / count);
+    }
+    // Compute obs/sen avg lifespans separately
+    const obsAvgLifespan = {};
+    for (const [slotStr, count] of Object.entries(obsLifespanCounts)) {
+      if (count > 0) obsAvgLifespan[parseInt(slotStr)] = Math.round(obsLifespanSums[parseInt(slotStr)] / count);
+    }
+    const senAvgLifespan = {};
+    for (const [slotStr, count] of Object.entries(senLifespanCounts)) {
+      if (count > 0) senAvgLifespan[parseInt(slotStr)] = Math.round(senLifespanSums[parseInt(slotStr)] / count);
     }
 
     const playerList = [];
@@ -1726,6 +1767,13 @@ class ReplayParser {
       if (playerItems.length === 0 && purchases.length > 0) {
         // Build a full set of item names this player ever purchased, used for component filtering.
         const allPurchasedNames = new Set(purchases.map(p => p.itemName));
+        // Consumables that leave inventory when used — should not appear in end-of-game items
+        const PURCHASE_LOG_CONSUMABLES = new Set([
+          'item_clarity','item_flask','item_tango','item_enchanted_mango',
+          'item_faerie_fire','item_blood_grenade','item_tome_of_knowledge',
+          'item_smoke_of_deceit','item_dust','item_sentry_ward_obsolete',
+          'item_infused_raindrop',
+        ]);
 
         const seen = new Set();
         let itemSlot = 0;
@@ -1738,6 +1786,8 @@ class ReplayParser {
           if (n === 'item_tpscroll') continue;
           // Skip ward_dispenser (shop bundle) — individual wards are handled below
           if (n === 'item_ward_dispenser') continue;
+          // Skip consumables that get used and leave inventory
+          if (PURCHASE_LOG_CONSUMABLES.has(n)) continue;
           // Wards share one inventory slot in-game. Normalise both types to a single slot:
           // whichever ward type is encountered first claims the slot; the second is deduped.
           const wardKey = (n === 'item_ward_observer' || n === 'item_ward_sentry') ? '__wards__' : n;
@@ -1843,6 +1893,10 @@ class ReplayParser {
         hookHits: hookStats[slot] ? hookStats[slot].hits : null,
         wardDewardedCount: wardDewardedCount[slot] || 0,
         wardAvgLifespan: wardAvgLifespan[slot] || null,
+        obsDewardedCount: obsDewardedCount[slot] || 0,
+        obsAvgLifespan: obsAvgLifespan[slot] || null,
+        senDewardedCount: senDewardedCount[slot] || 0,
+        senAvgLifespan: senAvgLifespan[slot] || null,
         wardPlacements: wardPlacements[slot] || [],
         timelineSamples: timelineSamples[slot] || [],
         evasionCount: evasionCount[slot] || 0,
@@ -2067,14 +2121,17 @@ class ReplayParser {
         players: playerList.map(p => {
           const slot = p.slot;
           const rawPurchases = itemPurchases[slot] || [];
+          const TIMELINE_SKIP = new Set([
+            'item_tpscroll','item_ward_observer','item_ward_sentry','item_ward_dispenser',
+            'item_smoke_of_deceit','item_dust','item_clarity','item_flask',
+            'item_tango','item_enchanted_mango','item_faerie_fire','item_blood_grenade',
+            'item_tome_of_knowledge','item_infused_raindrop','item_sentry_ward_obsolete',
+          ]);
           const purchaseLog = rawPurchases.filter(pu => {
             const n = pu.itemName;
             if (!n) return false;
             if (n.startsWith('item_recipe_')) return false;
-            const skip = ['item_tpscroll','item_ward_observer','item_ward_sentry','item_ward_dispenser',
-              'item_smoke_of_deceit','item_dust','item_clarity','item_flask',
-              'item_tango','item_enchanted_mango','item_faerie_fire','item_blood_grenade','item_tome_of_knowledge'];
-            if (skip.includes(n)) return false;
+            if (TIMELINE_SKIP.has(n)) return false;
             return true;
           }).map(pu => ({ itemName: pu.itemName, time: pu.time || 0 }));
           return {

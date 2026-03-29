@@ -35,7 +35,12 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Synergy matrix threshold: 1 game minimum when season filter is active (vs 3 for all-time) — fixes 100% display for players with few season games.
 - Greatest Comebacks fixed: now correctly computes gold lead from per-player networth samples in game_timeline (previous query looked for non-existent goldLead key).
 - Hero position meta tab on the Heroes page — win rates per hero by position (Pos 1–5).
-- Hero Stats table now has expandable rows — click any played hero to see who has played it and their stats on that hero.
+- Hero Stats table now has expandable rows — click any played hero to see who has played it and their stats on that hero. Pudge (hero_id=14) shows hook accuracy (hits/attempts/%) in the expanded view.
+- Support Report: YDEW/W.LIFE split into O.DEW/O.LIFE (observer) + S.DEW/S.LIFE (sentry) — separate OBS/SEN deward tracking in DB (obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan). LSHEAL column removed.
+- Power Spikes panel: fixed item names (item_ultimate_scepter replaces item_aghanims_scepter, added shard + more items). Courier markers removed from timeline. EVAD column removed from Detailed Stats.
+- Buyback tracking improved: e.value used as slot fallback for streaming DOTA_COMBATLOG_BUYBACK events.
+- Smoke/dust slot normalization: Dire Valve slots (128-132) now correctly mapped to 5-9 for per-player smoke/dust tracking.
+- Purchase log fallback (Priority 3): consumables (clarity, tango, mango, flask, faerie fire, smoke, dust, etc.) now filtered from end-of-game item reconstruction.
 - Heroes page now has a Hero Breakdown tab (formerly a separate page), showing each player's full hero history; /hero-breakdown now redirects to Heroes tab.
 - Draft Assistant and Draft Stats merged into single Draft page (/draft) with two tabs; Draft Stats now uses player_stats picks (always populated) not just Captain's Mode draft data.
 - Draft Assistant now has player pool selector — add players to My Team / Enemy Team to see their hero pools and click to add heroes; player hero pool data drives synergy/counter analysis.

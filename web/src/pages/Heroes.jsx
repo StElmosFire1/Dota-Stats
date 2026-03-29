@@ -481,7 +481,7 @@ export default function Heroes({ defaultTab }) {
                             ) : heroPlayers.length === 0 ? (
                               <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>No player data found.</span>
                             ) : (
-                              <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%', maxWidth: 700 }}>
+                              <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%', maxWidth: 800 }}>
                                 <thead>
                                   <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
                                     <th style={{ padding: '2px 10px 6px 0', fontWeight: 600 }}>Player</th>
@@ -490,6 +490,7 @@ export default function Heroes({ defaultTab }) {
                                     <th style={{ padding: '2px 10px 6px 0', fontWeight: 600 }}>Win%</th>
                                     <th style={{ padding: '2px 10px 6px 0', fontWeight: 600 }}>K/D/A</th>
                                     <th style={{ padding: '2px 10px 6px 0', fontWeight: 600 }}>GPM</th>
+                                    {h.hero_id === 14 && <th style={{ padding: '2px 10px 6px 0', fontWeight: 600, color: '#fb923c' }} title="Hook hits / attempts (accuracy %)">Hook Acc</th>}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -497,6 +498,9 @@ export default function Heroes({ defaultTab }) {
                                     const pName = p.nickname || p.persona_name || p.player_key;
                                     const wr = parseInt(p.games) > 0 ? Math.round(parseInt(p.wins) / parseInt(p.games) * 100) : 0;
                                     const link = p.account_id > 0 ? `/player/${p.account_id}` : null;
+                                    const hookAttempts = parseInt(p.total_hook_attempts || 0);
+                                    const hookHits = parseInt(p.total_hook_hits || 0);
+                                    const hookAcc = hookAttempts > 0 ? Math.round(hookHits / hookAttempts * 100) : null;
                                     return (
                                       <tr key={p.player_key}>
                                         <td style={{ padding: '3px 10px 3px 0' }}>
@@ -511,7 +515,12 @@ export default function Heroes({ defaultTab }) {
                                         <td style={{ padding: '3px 10px 3px 0', color: 'var(--text-secondary)' }}>
                                           {parseFloat(p.avg_kills||0).toFixed(1)}/{parseFloat(p.avg_deaths||0).toFixed(1)}/{parseFloat(p.avg_assists||0).toFixed(1)}
                                         </td>
-                                        <td style={{ padding: '3px 0 3px 0', color: 'var(--text-muted)' }}>{p.avg_gpm ? parseInt(p.avg_gpm).toLocaleString() : '—'}</td>
+                                        <td style={{ padding: '3px 10px 3px 0', color: 'var(--text-muted)' }}>{p.avg_gpm ? parseInt(p.avg_gpm).toLocaleString() : '—'}</td>
+                                        {h.hero_id === 14 && (
+                                          <td style={{ padding: '3px 0 3px 0', color: hookAcc != null ? (hookAcc >= 40 ? '#4ade80' : hookAcc >= 25 ? '#facc15' : '#f87171') : '#334155' }}>
+                                            {hookAcc != null ? `${hookHits}/${hookAttempts} (${hookAcc}%)` : '—'}
+                                          </td>
+                                        )}
                                       </tr>
                                     );
                                   })}
