@@ -1,0 +1,175 @@
+root@Dota-Stats:~/Dota-Stats# git pull origin main
+node src/index.js
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+        at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited with code 1
+[Steam] Logged in successfully.
+[Steam] Login error: LoggedInElsewhere
+[Startup] Steam login failed: LoggedInElsewhere
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          NO
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:418776) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+^C
+[Shutdown] Graceful shutdown...
+[Discord] Bot shut down.
+[Replay] Parser service stopped.
+[Dota2 GC] Error leaving lobby: Cannot send GC message, not logged into Steam Client
+[Steam] Shut down.
+root@Dota-Stats:~/Dota-Stats# git pull origin main
+node src/index.js
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+        at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited with code 1
+[Steam] Logged in successfully.
+[Steam] Login error: LoggedInElsewhere
+[Startup] Steam login failed: LoggedInElsewhere
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          NO
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:418819) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+# Kill the old Java parser still holding port 5600
+fuser -k 5600/tcp
+
+# Also kill any leftover node process
+pkill -f "node src/index.js"
+
+# Wait a moment then start fresh
+sleep 2 && node src/index.js
+^C
+[Shutdown] Graceful shutdown...
+[Discord] Bot shut down.
+[Replay] Parser service stopped.
+[Dota2 GC] Error leaving lobby: Cannot send GC message, not logged into Steam Client
+[Steam] Shut down.
+root@Dota-Stats:~/Dota-Stats# # Kill the old Java parser still holding port 5600
+fuser -k 5600/tcp
+
+# Also kill any leftover node process
+pkill -f "node src/index.js"
+
+# Wait a moment then start fresh
+sleep 2 && node src/index.js
+5600/tcp:            418657
+[dotenv@17.3.1] injecting env (9) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          YES (connected)
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:418888) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+^C
+[Shutdown] Graceful shutdown...
+[Discord] Bot shut down.
+[Replay] Parser service stopped.
+[Dota2 GC] Left practice lobby.
+[Steam] Shut down.
+root@Dota-Stats:~/Dota-Stats# 
