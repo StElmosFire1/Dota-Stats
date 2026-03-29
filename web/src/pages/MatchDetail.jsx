@@ -1060,6 +1060,8 @@ function ExpandedStats({ players }) {
               <th className="col-stat" title="Multi-kills (double, triple, ultra, rampage)">MK</th>
               <th className="col-stat" title="Creep score (last hits) at 10 minutes">CS@10</th>
               <th className="col-stat" title="Long-range kills landed by this player">LRK</th>
+              <th className="col-stat" title="Estimated total time spent dead (mm:ss). Calculated from death timings using an approximated respawn formula — requires replay data.">DEAD</th>
+              <th className="col-stat" title="Times Shallow Grave (Dazzle) was cast on this player. Requires replay data.">GRAVE</th>
             </tr>
           </thead>
           <tbody>
@@ -1074,6 +1076,10 @@ function ExpandedStats({ players }) {
                 ? Math.round(((p.kills || 0) + (p.assists || 0)) / teamTotalKills * 100)
                 : 0;
               const kcColor = kc >= 80 ? '#4ade80' : kc >= 60 ? '#facc15' : kc >= 40 ? '#94a3b8' : '#64748b';
+              const deadSecs = p.dead_time_seconds;
+              const deadFmt = deadSecs != null
+                ? `${Math.floor(deadSecs / 60)}:${String(deadSecs % 60).padStart(2, '0')}`
+                : '-';
               return (
                 <tr key={i}>
                   <td className="col-player">
@@ -1096,6 +1102,12 @@ function ExpandedStats({ players }) {
                   <td className="col-stat">{p.lane_cs_10min || '-'}</td>
                   <td className="col-stat" style={{ color: p.long_range_kills > 0 ? '#fbbf24' : undefined }}>
                     {p.long_range_kills || 0}
+                  </td>
+                  <td className="col-stat" style={{ color: deadSecs > 180 ? '#f87171' : deadSecs > 60 ? '#fbbf24' : undefined }}>
+                    {deadFmt}
+                  </td>
+                  <td className="col-stat" style={{ color: p.shallow_grave_count > 0 ? '#a78bfa' : undefined }}>
+                    {p.shallow_grave_count || '-'}
                   </td>
                 </tr>
               );

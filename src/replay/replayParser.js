@@ -682,6 +682,8 @@ class ReplayParser {
     const pullCount = {};       // slot → approximate pull count (timing-based)
     const lastPullTime = {};    // slot → time of last counted pull (dedup cooldown)
     const heroKillGoldByTime = {}; // Math.round(t) → total gold paid out for hero kills at that second
+    const deathsBySlot = {};       // slot → [{deathTime}] for dead-time estimation
+    const shallowGraveCount = {}; // slot → count of shallow_grave casts received
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -936,6 +938,9 @@ class ReplayParser {
               if (e.long_range_kill && killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
                 longRangeKills[killerSlot] = (longRangeKills[killerSlot] || 0) + 1;
               }
+              // Death time tracking (for total dead time computation)
+              if (!deathsBySlot[victimSlot]) deathsBySlot[victimSlot] = [];
+              deathsBySlot[victimSlot].push(deathTime);
               if (deathTime <= 600) {
                 if (!laningKillsAt10[victimSlot]) laningKillsAt10[victimSlot] = { k: 0, d: 0, a: 0 };
                 laningKillsAt10[victimSlot].d++;
@@ -1211,6 +1216,18 @@ class ReplayParser {
         if (casterSlot != null && casterSlot >= 128 && casterSlot <= 132) casterSlot = casterSlot - 128 + 5;
         if (casterSlot != null && casterSlot >= 0 && casterSlot < 10) {
           dustsUsed[casterSlot] = (dustsUsed[casterSlot] || 0) + 1;
+        }
+      }
+
+      // ── Shallow Grave (Dazzle) cast tracking ──────────────────────────────
+      // Count how many times each player received a shallow_grave cast (proxy for saves)
+      // Streaming: inflictor = 'shallow_grave', targetname = target NPC name
+      if ((e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_use' || e.type === 'ability_cast') &&
+          (e.inflictor === 'shallow_grave' || e.key === 'shallow_grave')) {
+        const targetName = e.targetname || e.key2 || '';
+        let targetSlot = targetName ? npcNameToSlot[targetName] : null;
+        if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
+          shallowGraveCount[targetSlot] = (shallowGraveCount[targetSlot] || 0) + 1;
         }
       }
 
@@ -1930,6 +1947,24 @@ class ReplayParser {
         lifestealHealing: (healingByType[slot] || {}).lifesteal || 0,
         dustsUsed: dustsUsed[slot] || 0,
         pullCount: pullCount[slot] || 0,
+        deadTimeSeconds: (() => {
+          // Estimate total seconds spent dead using simplified Dota 2 respawn formula:
+          //   respawn_time ≈ 10 + (estimated_level_at_death - 1) * 2.5 seconds
+          // Hero level at time of death is interpolated linearly from final level.
+          // Cap to remaining game time so we don't count dead time past the game end.
+          const deaths = deathsBySlot[slot] || [];
+          const finalLevel = p.level || 1;
+          const matchDur = duration > 0 ? duration : 1;
+          let totalDead = 0;
+          for (const deathTime of deaths) {
+            const estimatedLevel = Math.max(1, Math.min(25, Math.round(finalLevel * deathTime / matchDur)));
+            const respawnTime = Math.round(10 + (estimatedLevel - 1) * 2.5);
+            const remaining = Math.max(0, matchDur - deathTime);
+            totalDead += Math.min(respawnTime, remaining);
+          }
+          return Math.round(totalDead);
+        })(),
+        shallowGraveCount: shallowGraveCount[slot] || 0,
       });
     }
 
