@@ -683,7 +683,7 @@ class ReplayParser {
     const lastPullTime = {};    // slot → time of last counted pull (dedup cooldown)
     const heroKillGoldByTime = {}; // Math.round(t) → total gold paid out for hero kills at that second
     const deathsBySlot = {};       // slot → [{deathTime}] for dead-time estimation
-    const shallowGraveCount = {}; // slot → count of shallow_grave casts received
+    const deathPreventionCount = {}; // slot → count of death-prevention modifier applications (shallow grave, false promise, guardian angel)
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -1219,15 +1219,29 @@ class ReplayParser {
         }
       }
 
-      // ── Shallow Grave (Dazzle) cast tracking ──────────────────────────────
-      // Count how many times each player received a shallow_grave cast (proxy for saves)
-      // Streaming: inflictor = 'shallow_grave', targetname = target NPC name
-      if ((e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_use' || e.type === 'ability_cast') &&
-          (e.inflictor === 'shallow_grave' || e.key === 'shallow_grave')) {
-        const targetName = e.targetname || e.key2 || '';
-        let targetSlot = targetName ? npcNameToSlot[targetName] : null;
-        if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
-          shallowGraveCount[targetSlot] = (shallowGraveCount[targetSlot] || 0) + 1;
+      // ── Death Prevention tracking (SAVE column) ───────────────────────────
+      // Track modifiers whose sole purpose is preventing a hero from dying.
+      // Tracked via MODIFIER_ADD (confirms buff actually applied to target).
+      //   modifier_shallow_grave           → Dazzle's Shallow Grave
+      //   modifier_oracle_false_promise    → Oracle's False Promise (ult)
+      //   modifier_omniknight_guardian_angel → Omniknight's Guardian Angel (ult)
+      // In streaming mode: type=DOTA_COMBATLOG_MODIFIER_ADD, inflictor=modifier name,
+      //   targetname=recipient NPC, attackername=caster NPC
+      // In blob mode:      type=modifier_add, key=modifier name, unit=recipient NPC
+      const DEATH_PREVENTION_MODIFIERS = new Set([
+        'modifier_shallow_grave',
+        'modifier_oracle_false_promise',
+        'modifier_omniknight_guardian_angel',
+      ]);
+      if (e.type === 'DOTA_COMBATLOG_MODIFIER_ADD' || e.type === 'modifier_add') {
+        const modName = e.inflictor || e.key || '';
+        if (DEATH_PREVENTION_MODIFIERS.has(modName)) {
+          // In streaming mode the recipient is in targetname; blob mode uses unit
+          const recipientName = e.targetname || e.unit || '';
+          let recipientSlot = e.slot != null && e.type === 'modifier_add' ? e.slot : npcNameToSlot[recipientName];
+          if (recipientSlot != null && recipientSlot >= 0 && recipientSlot < 10) {
+            deathPreventionCount[recipientSlot] = (deathPreventionCount[recipientSlot] || 0) + 1;
+          }
         }
       }
 
@@ -1964,7 +1978,7 @@ class ReplayParser {
           }
           return Math.round(totalDead);
         })(),
-        shallowGraveCount: shallowGraveCount[slot] || 0,
+        deathPreventionCount: deathPreventionCount[slot] || 0,
       });
     }
 
