@@ -110,9 +110,24 @@ public class Parse {
     boolean doBlob = false;
     List<Entry> finalList = new ArrayList<Entry>();
 
+    // Life-state tracking for exact dead-time measurement (per player slot)
+    // prevLifeState[i]: last seen m_lifeState value (0=alive, 1=dying, 2=dead; -1=unknown)
+    int[] prevLifeState = new int[10];
+    // slotDeathGameTime[i]: game time (seconds) when this slot most recently died
+    int[] slotDeathGameTime = new int[10];
+    // slotHeroEntity[i]: most recently seen hero entity for slot i (used to read HP)
+    Entity[] slotHeroEntity = new Entity[10];
+    // Death-prevention modifiers for HP-at-cast enrichment
+    static final java.util.Set<String> DEATH_PREVENTION_MODS = new java.util.HashSet<>(java.util.Arrays.asList(
+        "modifier_shallow_grave",
+        "modifier_oracle_false_promise",
+        "modifier_omniknight_guardian_angel"
+    ));
+
     public Parse(InputStream input, OutputStream output, boolean blob) throws IOException {
         greevilsGreedVisitor = new GreevilsGreedVisitor(name_to_slot);
         trackVisitor = new TrackVisitor();
+        java.util.Arrays.fill(prevLifeState, -1); // -1 means "not yet observed"
 
         is = input;
         os = output;
@@ -422,6 +437,30 @@ public class Parse {
                 if (gameStartTime == 0) {
                     gameStartTime = combatLogEntry.time;
                     flushLogBuffer();
+                }
+            }
+            // ── HP enrichment for death-prevention modifier_add events ─────────────
+            // When a Dazzle Shallow Grave / Oracle False Promise / Omni Guardian Angel is
+            // applied, look up the target's current HP + max HP from the hero entity so
+            // Node.js can determine how close to death the target actually was.
+            if (combatLogEntry.type.equals("DOTA_COMBATLOG_MODIFIER_ADD")
+                    && combatLogEntry.inflictor != null
+                    && DEATH_PREVENTION_MODS.contains(combatLogEntry.inflictor)) {
+                try {
+                    Integer targetSlot = combatLogEntry.targetname != null
+                            ? name_to_slot.get(combatLogEntry.targetname)
+                            : null;
+                    if (targetSlot != null && targetSlot >= 0 && targetSlot < 10) {
+                        Entity heroEnt = slotHeroEntity[targetSlot];
+                        if (heroEnt != null) {
+                            Integer hp = getEntityProperty(heroEnt, "m_iHealth", null);
+                            Integer maxHp = getEntityProperty(heroEnt, "m_iMaxHealth", null);
+                            if (hp != null)    combatLogEntry.hp     = hp;
+                            if (maxHp != null) combatLogEntry.max_hp = maxHp;
+                        }
+                    }
+                } catch (Exception ex) {
+                    // Non-critical — just skip HP enrichment for this event
                 }
             }
             if (cle.getType().ordinal() <= 19) {
@@ -900,6 +939,50 @@ public class Parse {
                     }
                 }
                 isFinalItemsWritten = true;
+            }
+
+            // ── Per-tick hero life-state tracking (exact dead time) ────────────────
+            // Runs every tick (not just at intervals) to capture precise death→respawn transitions.
+            // m_lifeState values: 0 = alive, 1 = dying/respawning, 2 = dead
+            // When we see a 0→2 transition we record the death game time.
+            // When we see a 2→0 transition the hero just respawned — we emit a hero_respawn
+            // event with the exact dead duration in seconds so Node.js can sum them up.
+            if (init) {
+                for (int i = 0; i < numPlayers; i++) {
+                    try {
+                        int heroHandle = getEntityProperty(pr, "m_vecPlayerTeamData.%i.m_hSelectedHero", validIndices[i]);
+                        Entity heroEnt = ctx.getProcessor(Entities.class).getByHandle(heroHandle);
+                        if (heroEnt == null) continue;
+                        slotHeroEntity[i] = heroEnt; // keep entity ref for HP lookups in combat log handler
+                        Integer lifeState = getEntityProperty(heroEnt, "m_lifeState", null);
+                        if (lifeState == null) continue;
+                        int prev = prevLifeState[i];
+                        if (prev == -1) {
+                            // First time we see this slot — just record state, don't emit
+                            prevLifeState[i] = lifeState;
+                            continue;
+                        }
+                        if (prev != lifeState) {
+                            if (lifeState == 2) {
+                                // Hero just died (0→2 or 1→2)
+                                slotDeathGameTime[i] = time;
+                            } else if (lifeState == 0 && prev == 2) {
+                                // Hero just respawned (2→0)
+                                int deadDuration = time - slotDeathGameTime[i];
+                                if (deadDuration > 0 && deadDuration < 300) { // sanity: ignore >5min stints
+                                    Entry respawnEntry = new Entry(time);
+                                    respawnEntry.type = "hero_respawn";
+                                    respawnEntry.slot = i;
+                                    respawnEntry.value = deadDuration; // exact seconds spent dead
+                                    output(respawnEntry);
+                                }
+                            }
+                            prevLifeState[i] = lifeState;
+                        }
+                    } catch (Exception ex) {
+                        // Ignore per-slot errors (entity may not be available yet)
+                    }
+                }
             }
         }
     }

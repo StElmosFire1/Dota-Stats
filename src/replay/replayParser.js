@@ -682,7 +682,8 @@ class ReplayParser {
     const pullCount = {};       // slot → approximate pull count (timing-based)
     const lastPullTime = {};    // slot → time of last counted pull (dedup cooldown)
     const heroKillGoldByTime = {}; // Math.round(t) → total gold paid out for hero kills at that second
-    const deathsBySlot = {};       // slot → [{deathTime}] for dead-time estimation
+    const deathsBySlot = {};          // slot → [deathTime, …] — fallback estimate when hero_respawn events are absent
+    const heroRespawnSeconds = {};    // slot → total exact seconds spent dead (from hero_respawn entity events emitted by Java parser)
     const deathPreventionCount = {}; // slot → count of death-prevention modifier applications (shallow grave, false promise, guardian angel)
 
     const SUPPORT_ITEM_COSTS = {
@@ -1242,6 +1243,17 @@ class ReplayParser {
           if (recipientSlot != null && recipientSlot >= 0 && recipientSlot < 10) {
             deathPreventionCount[recipientSlot] = (deathPreventionCount[recipientSlot] || 0) + 1;
           }
+        }
+      }
+
+      // ── Exact dead-time from entity life-state events ─────────────────────
+      // The Java parser emits a hero_respawn event each time m_lifeState transitions
+      // 2→0 (dead→alive) for a hero entity.  e.slot = player slot, e.value = seconds dead.
+      // We accumulate these so we can use exact values instead of the formula estimate.
+      if (e.type === 'hero_respawn' && e.slot != null && e.value != null) {
+        const s = Number(e.slot);
+        if (s >= 0 && s < 10) {
+          heroRespawnSeconds[s] = (heroRespawnSeconds[s] || 0) + Number(e.value);
         }
       }
 
@@ -1962,7 +1974,13 @@ class ReplayParser {
         dustsUsed: dustsUsed[slot] || 0,
         pullCount: pullCount[slot] || 0,
         deadTimeSeconds: (() => {
-          // Estimate total seconds spent dead using simplified Dota 2 respawn formula:
+          // Prefer exact dead time sourced from entity life-state transitions (hero_respawn
+          // events emitted by the Java parser — available from replays parsed with the upgraded
+          // parser that watches m_lifeState changes per tick).
+          if (heroRespawnSeconds[slot] != null) {
+            return Math.round(heroRespawnSeconds[slot]);
+          }
+          // Fallback: estimate total seconds spent dead using simplified Dota 2 respawn formula:
           //   respawn_time ≈ 10 + (estimated_level_at_death - 1) * 2.5 seconds
           // Hero level at time of death is interpolated linearly from final level.
           // Cap to remaining game time so we don't count dead time past the game end.

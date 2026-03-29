@@ -38,6 +38,8 @@ public class Entry implements Cloneable {
     public Boolean heal_save;            // true if heal was a clutch save (low HP target)
     public Boolean heal_from_lifesteal;  // true if healing came from lifesteal, not a spell
     public Boolean spell_evaded;         // true if an attack/spell was evaded/dodged
+    public Integer hp;                   // current HP of target entity (populated for death-prevention modifier_add events)
+    public Integer max_hp;               // max HP of target entity (populated for death-prevention modifier_add events)
     // public Float stun_duration;
     // public Float slow_duration;
     // entity fields
