@@ -1,0 +1,139 @@
+root@Dota-Stats:~/Dota-Stats# pkill -9 -f "stats-0.1.0.jar"
+pkill -9 -f "node src/index.js"
+sleep 3
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 3 && tail -f ~/Dota-Stats/bot.log
+[1]+  Killed                  nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1
+[1] 423146
+nohup: ignoring input
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          YES (connected)
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:423146) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+tail -20 ~/Dota-Stats/bot.log
+cd ~/Dota-Stats
+git pull origin main
+
+pkill -9 -f "stats-0.1.0.jar"
+pkill -9 -f "node src/index.js"
+sleep 3
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 8 && tail -20 ~/Dota-Stats/bot.log
+^C
+root@Dota-Stats:~/Dota-Stats# tail -20 ~/Dota-Stats/bot.log
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+  - Discord:        YES
+  - Database:       YES
+  - Steam:          YES (connected)
+  - Replay parser:  YES (full stats)
+  - TrueSkill MMR:  YES
+  - Google Sheets:  DORMANT
+  - Match poller:   DORMANT
+  - Lobby/monitor:  DORMANT
+[Web] Dashboard running on port 5000
+[Startup] All systems ready.
+
+[Discord] Bot online as Dota Bot#5597
+[Discord] Weekly recap scheduled (Mondays 9am AEST).
+(node:423146) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+git pull origin main
+
+pkill -9 -f "stats-0.1.0.jar"
+pkill -9 -f "node src/index.js"
+sleep 3
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 8 && tail -20 ~/Dota-Stats/bot.log
+remote: Enumerating objects: 35, done.
+remote: Counting objects: 100% (35/35), done.
+remote: Compressing objects: 100% (9/9), done.
+remote: Total 35 (delta 24), reused 35 (delta 24), pack-reused 0 (from 0)
+Unpacking objects: 100% (35/35), 270.00 KiB | 667.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   31b2827..35ebf9d  main       -> origin/main
+Updating 31b2827..35ebf9d
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-git-pull-origin-main-node-sr_1774770845800.txt | 108 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-git-pull-origin-main-node-sr_1774771040153.txt | 175 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ attached_assets/image_1774775695151.png                                                          | Bin 0 -> 10227 bytes
+ attached_assets/image_1774775705102.png                                                          | Bin 0 -> 6011 bytes
+ attached_assets/image_1774776322835.png                                                          | Bin 0 -> 82802 bytes
+ attached_assets/image_1774781079409.png                                                          | Bin 0 -> 57789 bytes
+ attached_assets/image_1774781141401.png                                                          | Bin 0 -> 48459 bytes
+ attached_assets/image_1774781808403.png                                                          | Bin 0 -> 84544 bytes
+ attached_assets/image_1774782892745.png                                                          | Bin 0 -> 37672 bytes
+ attached_assets/image_1774784648730.png                                                          | Bin 0 -> 84544 bytes
+ src/replay/replayParser.js                                                                       |  84 ++++++++++++++++++++++++++++-----------------------
+ src/web/server.js                                                                                |   4 +++
+ 12 files changed, 334 insertions(+), 37 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-git-pull-origin-main-node-sr_1774770845800.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-git-pull-origin-main-node-sr_1774771040153.txt
+ create mode 100644 attached_assets/image_1774775695151.png
+ create mode 100644 attached_assets/image_1774775705102.png
+ create mode 100644 attached_assets/image_1774776322835.png
+ create mode 100644 attached_assets/image_1774781079409.png
+ create mode 100644 attached_assets/image_1774781141401.png
+ create mode 100644 attached_assets/image_1774781808403.png
+ create mode 100644 attached_assets/image_1774782892745.png
+ create mode 100644 attached_assets/image_1774784648730.png
+[1]+  Killed                  nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1
+[1] 423243
+nohup: ignoring input
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[DB] Patch notes seeded (29 entries).
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Steam] Logging in...
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)

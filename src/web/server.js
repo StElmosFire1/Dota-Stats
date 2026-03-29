@@ -272,6 +272,7 @@ function createApiRouter(startupStatus = {}) {
   const router = express.Router();
 
   router.get('/health', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
     let dbOk = false;
     try {
       const db = require('../db');
