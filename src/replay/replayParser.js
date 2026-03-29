@@ -1774,34 +1774,33 @@ class ReplayParser {
       }
 
       // ── Priority 2: hero_inventory snapshot from interval events ──────────
-      // Validate using a TIME CHECK only: snapshot must be from the final 180 seconds of the game.
-      if (playerItems.length === 0) {
-        let inventoryValid = false;
-        if (finalItems[slot]) {
-          const snapshotTime = finalItemsTime[slot] || 0;
-          const isRecent = duration > 0 ? snapshotTime >= duration - 180 : true;
-          inventoryValid = isRecent;
-          const snapItems = Object.entries(finalItems[slot]).map(([s, d]) => `${s}:${d.itemName}`).join(',');
-          if (!isRecent) {
-            console.log(`[Replay] slot ${slot}: STALE hero_inventory snapshot (t=${snapshotTime}s, duration=${duration}s) — purchase log fallback`);
-          } else {
-            console.log(`[Replay] slot ${slot}: using hero_inventory snapshot t=${snapshotTime}s/${duration}s items=[${snapItems}]`);
-          }
+      // Use the latest available snapshot.  We prefer snapshots from the SECOND HALF of the game
+      // (more likely to reflect the final build), but we will use ANY snapshot rather than falling
+      // to the unreliable purchase-log reconstruction.  The purchase log does not track sells, so it
+      // produces double-boots and early-game items — always worse than an older snapshot.
+      if (playerItems.length === 0 && finalItems[slot]) {
+        const snapshotTime = finalItemsTime[slot] || 0;
+        const midGame = duration > 0 ? duration / 2 : 0;
+        const isSecondHalf = snapshotTime >= midGame;
+        const snapItems = Object.entries(finalItems[slot]).map(([s, d]) => `${s}:${d.itemName}`).join(',');
+
+        if (isSecondHalf) {
+          console.log(`[Replay] slot ${slot}: using hero_inventory snapshot t=${snapshotTime}s/${duration}s items=[${snapItems}]`);
         } else {
-          console.log(`[Replay] slot ${slot}: NO hero_inventory snapshot — purchase log fallback (purchases=${(itemPurchases[slot]||[]).length})`);
+          console.log(`[Replay] slot ${slot}: using EARLY hero_inventory snapshot t=${snapshotTime}s/${duration}s (still better than purchase log) items=[${snapItems}]`);
         }
 
-        if (finalItems[slot] && inventoryValid) {
-          for (const [itemSlot, itemData] of Object.entries(finalItems[slot])) {
-            playerItems.push({
-              slot: parseInt(itemSlot),
-              itemId: itemData.itemId,
-              itemName: itemData.itemName || ITEM_ID_TO_NAME[itemData.itemId] || '',
-              purchaseTime: 0,
-              enhancementLevel: itemData.enhancementLevel || 0,
-            });
-          }
+        for (const [itemSlot, itemData] of Object.entries(finalItems[slot])) {
+          playerItems.push({
+            slot: parseInt(itemSlot),
+            itemId: itemData.itemId,
+            itemName: itemData.itemName || ITEM_ID_TO_NAME[itemData.itemId] || '',
+            purchaseTime: 0,
+            enhancementLevel: itemData.enhancementLevel || 0,
+          });
         }
+      } else if (playerItems.length === 0) {
+        console.log(`[Replay] slot ${slot}: NO hero_inventory snapshot — purchase log fallback (purchases=${(itemPurchases[slot]||[]).length})`);
       }
 
       // ── Priority 3: purchase log reconstruction ───────────────────────────

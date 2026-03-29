@@ -76,6 +76,7 @@ public class Parse {
     int gameStartTime = 0;
     boolean postGame = false; // true when ancient destroyed
     boolean epilogue = false;
+    boolean itemPropertyLogged = false; // one-time log for which item property name works
     private Gson g = new Gson();
     HashMap<String, Integer> name_to_slot = new HashMap<String, Integer>();
     HashMap<String, Integer> abilities_tracking = new HashMap<String, Integer>();
@@ -1009,7 +1010,19 @@ public class Parse {
     private Item getHeroItem(Context ctx, Entity eHero, int idx) throws UnknownItemFoundException {
         Entities entities = ctx.getProcessor(Entities.class);
 
-        Integer hItem = eHero.getProperty("m_hItems." + Util.arrayIdxToString(idx));
+        // Try both property name variants — Valve renamed m_hItems to m_vecItems in a patch
+        // (same pattern as m_hAbilities → m_vecAbilities)
+        String idxStr = Util.arrayIdxToString(idx);
+        Integer hItem = eHero.getProperty("m_hItems." + idxStr);
+        boolean usedVec = false;
+        if (hItem == null) {
+            hItem = eHero.getProperty("m_vecItems." + idxStr);
+            if (hItem != null) usedVec = true;
+        }
+        if (!itemPropertyLogged && hItem != null && hItem != 0xFFFFFF) {
+            System.err.println("[Parser] item handle property: " + (usedVec ? "m_vecItems" : "m_hItems") + " (slot idx=" + idx + ")");
+            itemPropertyLogged = true;
+        }
         if (hItem == null || hItem == 0xFFFFFF) {
             return null;
         }
