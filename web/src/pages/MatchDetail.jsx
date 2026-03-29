@@ -748,7 +748,7 @@ function PlayerLink({ player, index }) {
 function ItemIcon({ itemName, itemId }) {
   if (!itemName && !itemId) return <div className="item-icon empty" />;
   // Treat Dota's "no item" slot as empty
-  if (itemName === 'item_empty' || itemId === 0) return <div className="item-icon empty" />;
+  if (itemName === 'item_empty') return <div className="item-icon empty" />;
   const url = getItemImageUrl(itemName, itemId);
   if (!url) return <div className="item-icon empty" />;
   return (
@@ -882,12 +882,11 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                   <td className="col-stat kills">{p.kills}</td>
                   <td className="col-stat deaths">
                     {p.deaths}
-                    <br />
-                    <span style={{ color: '#64748b', fontSize: '0.75em' }}>
-                      {p.dead_time_seconds != null
-                        ? `(${Math.floor(p.dead_time_seconds / 60)}:${String(p.dead_time_seconds % 60).padStart(2, '0')})`
-                        : ''}
-                    </span>
+                    {p.dead_time_seconds != null && (
+                      <span style={{ color: '#64748b', fontSize: '0.78em', marginLeft: 3 }}>
+                        ({Math.floor(p.dead_time_seconds / 60)}:{String(p.dead_time_seconds % 60).padStart(2, '0')})
+                      </span>
+                    )}
                   </td>
                   <td className="col-stat assists">{p.assists}</td>
                   {hasDetailedStats && (
@@ -1194,8 +1193,9 @@ function BuildingDeathsPanel({ timeline }) {
   if (buildingEvents.length === 0) return null;
 
   const sorted = [...buildingEvents].sort((a, b) => a.t - b.t);
-  const radiantDeaths = sorted.filter(ev => ev.team === 'radiant');
-  const direDeaths    = sorted.filter(ev => ev.team === 'dire');
+  // ev.team is the KILLER's team; the building that died belongs to the opposite team
+  const radiantDeaths = sorted.filter(ev => ev.team === 'dire');    // dire killed → radiant lost
+  const direDeaths    = sorted.filter(ev => ev.team === 'radiant'); // radiant killed → dire lost
 
   const BuildingList = ({ events, color }) => (
     <div style={{ flex: 1 }}>
