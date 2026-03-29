@@ -1,0 +1,72 @@
+root@Dota-Stats:~/Dota-Stats# kill -9 424847 424858
+sleep 2
+lsof -i :5600  # Should show nothing
+-bash: kill: (424847) - No such process
+COMMAND    PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+node    424874 root   20u  IPv6 3585097      0t0  TCP localhost:38182->localhost:5600 (ESTABLISHED)
+java    427330 root    6u  IPv6 3585085      0t0  TCP *:5600 (LISTEN)
+java    427330 root    9u  IPv6 3585104      0t0  TCP localhost:5600->localhost:38182 (ESTABLISHED)
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+git pull origin main
+
+pkill -9 -f "stats-0.1.0.jar"
+fuser -k 5000/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 12 && tail -30 ~/Dota-Stats/bot.log
+remote: Enumerating objects: 34, done.
+remote: Counting objects: 100% (34/34), done.
+remote: Compressing objects: 100% (11/11), done.
+remote: Total 27 (delta 18), reused 23 (delta 14), pack-reused 0 (from 0)
+Unpacking objects: 100% (27/27), 193.04 KiB | 520.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   35ebf9d..7ce675a  main       -> origin/main
+Updating 35ebf9d..7ce675a
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-pkill-9-f-stats-0-1-0-jar-pk_1774785425367.txt | 139 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ attached_assets/image_1774785225089.png                                                          | Bin 0 -> 90639 bytes
+ attached_assets/image_1774785636036.png                                                          | Bin 0 -> 35142 bytes
+ attached_assets/image_1774785686476.png                                                          | Bin 0 -> 7731 bytes
+ attached_assets/image_1774785803718.png                                                          | Bin 0 -> 14918 bytes
+ attached_assets/image_1774786178118.png                                                          | Bin 0 -> 86870 bytes
+ src/replay/replayParser.js                                                                       |  50 +++++++++++++++++++++++++++++++++++---
+ src/web/server.js                                                                                |   1 +
+ 8 files changed, 187 insertions(+), 3 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-pkill-9-f-stats-0-1-0-jar-pk_1774785425367.txt
+ create mode 100644 attached_assets/image_1774785225089.png
+ create mode 100644 attached_assets/image_1774785636036.png
+ create mode 100644 attached_assets/image_1774785686476.png
+ create mode 100644 attached_assets/image_1774785803718.png
+ create mode 100644 attached_assets/image_1774786178118.png
+ 426526[4] 427473
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+        at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+[Parser] at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+[Parser] at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
