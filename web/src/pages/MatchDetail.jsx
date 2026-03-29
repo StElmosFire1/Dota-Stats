@@ -747,6 +747,8 @@ function PlayerLink({ player, index }) {
 
 function ItemIcon({ itemName, itemId }) {
   if (!itemName && !itemId) return <div className="item-icon empty" />;
+  // Treat Dota's "no item" slot as empty
+  if (itemName === 'item_empty' || itemId === 0) return <div className="item-icon empty" />;
   const url = getItemImageUrl(itemName, itemId);
   if (!url) return <div className="item-icon empty" />;
   return (
@@ -755,7 +757,12 @@ function ItemIcon({ itemName, itemId }) {
       alt={itemName || ''}
       className="item-icon"
       title={itemName ? itemName.replace('item_', '').replace(/_/g, ' ') : ''}
-      onError={e => { e.target.style.display = 'none'; }}
+      onError={e => {
+        e.target.style.display = 'none';
+        const empty = document.createElement('div');
+        empty.className = 'item-icon empty';
+        e.target.parentNode?.insertBefore(empty, e.target);
+      }}
     />
   );
 }

@@ -1243,9 +1243,9 @@ class ReplayParser {
       }
 
       // ── Smoke of Deceit activation ────────────────────────────────────────
-      // Fires when a player actually activates the item (puts it on cooldown / applies buff)
-      if ((e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_use' || e.type === 'ability_cast') &&
-          (e.inflictor === 'item_smoke_of_deceit' || e.key === 'item_smoke_of_deceit' ||
+      // Match on inflictor or key containing smoke_of_deceit regardless of event type,
+      // since the exact combat log type varies by replay version.
+      if ((e.inflictor === 'item_smoke_of_deceit' || e.key === 'item_smoke_of_deceit' ||
            e.inflictor === 'smoke_of_deceit' || e.key === 'smoke_of_deceit')) {
         const casterName = e.attackername || e.unit || '';
         let casterSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
@@ -1262,9 +1262,8 @@ class ReplayParser {
       }
 
       // ── Dust of Appearance activation ─────────────────────────────────────
-      // item_dust fires an ability use event when the player pops it (like smoke)
-      if ((e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_use' || e.type === 'ability_cast') &&
-          (e.inflictor === 'item_dust' || e.key === 'item_dust' ||
+      // Match on inflictor or key regardless of event type (same reason as smoke).
+      if ((e.inflictor === 'item_dust' || e.key === 'item_dust' ||
            e.inflictor === 'dust' || e.key === 'dust')) {
         const casterName = e.attackername || e.unit || '';
         let casterSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
