@@ -10,6 +10,11 @@ I prefer iterative development, with a focus on delivering core features first a
 `git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main`
 The lock file warning that sometimes appears is harmless — the push itself succeeds.
 
+**DO server deploy:** The bot runs under PM2. Standard deploy command:
+`cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env`
+Never use `nohup node src/index.js` directly — it bypasses PM2 and creates ghost processes.
+After rebuilding the Java JAR (`cd odota-parser && mvn package -q -DskipTests`), run the PM2 restart to pick it up.
+
 ## System Architecture
 The bot is built on Node.js using `discord.js` for Discord integration and a custom Steam client (`steam-user`, `dota2-user`) for Dota 2 Game Coordinator (GC) interactions. Data persistence is handled primarily via PostgreSQL.
 

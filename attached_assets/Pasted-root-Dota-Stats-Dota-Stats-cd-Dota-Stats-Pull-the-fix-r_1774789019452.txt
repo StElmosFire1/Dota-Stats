@@ -1,0 +1,78 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+
+# Pull the fix + rebuild the JAR (fixes items, dead time, killfeed)
+git pull origin main
+cd odota-parser && mvn package -q -DskipTests && cd ..
+
+# Restart — Java cleanup is now handled automatically by the bot itself
+fuser -k 5000/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 15 && tail -25 ~/Dota-Stats/bot.log
+remote: Enumerating objects: 12, done.
+remote: Counting objects: 100% (12/12), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 7 (delta 4), reused 7 (delta 4), pack-reused 0 (from 0)
+Unpacking objects: 100% (7/7), 2.16 KiB | 221.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   c922e4c..ab22598  main       -> origin/main
+Updating c922e4c..ab22598
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-kill-9-424847-424858-sleep-2_1774786619097.txt | 72 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/replay/replayParser.js                                                                       |  6 ++++--
+ 2 files changed, 76 insertions(+), 2 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-kill-9-424847-424858-sleep-2_1774786619097.txt
+ 433788[6] 435590
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main"
+[Parser] java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+[Parser] at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+[Parser] at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+[Parser] at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+root@Dota-Stats:~/Dota-Stats# git pull origin main && cd odota-parser && mvn package -q -DskipTests && cd ..
+remote: Enumerating objects: 16, done.
+remote: Counting objects: 100% (16/16), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 11 (delta 7), reused 10 (delta 6), pack-reused 0 (from 0)
+Unpacking objects: 100% (11/11), 99.92 KiB | 351.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   ab22598..8b79b66  main       -> origin/main
+Updating ab22598..8b79b66
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-cd-Dota-Stats-1-Pull-the-JS-_1774787785483.txt |  50 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ attached_assets/image_1774788132254.png                                                          | Bin 0 -> 119447 bytes
+ src/replay/replayParser.js                                                                       |  48 +++++++++++++++---------------------------------
+ 3 files changed, 65 insertions(+), 33 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-cd-Dota-Stats-1-Pull-the-JS-_1774787785483.txt
+ create mode 100644 attached_assets/image_1774788132254.png
+root@Dota-Stats:~/Dota-Stats# fuser -k 5000/tcp 2>/dev/null; pkill -f "stats-0.1.0.jar" 2>/dev/null; sleep 2; cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env
+ 435579Already up to date.
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 440390   │ 0s     │ 157  │ online    │ 0%       │ 17.6mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats/odota-parser && mvn package -q -DskipTests
