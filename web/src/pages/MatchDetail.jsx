@@ -882,11 +882,12 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                   <td className="col-stat kills">{p.kills}</td>
                   <td className="col-stat deaths">
                     {p.deaths}
-                    {p.dead_time_seconds != null && (
-                      <span style={{ color: '#64748b', fontSize: '0.8em', marginLeft: 3 }}>
-                        ({Math.floor(p.dead_time_seconds / 60)}:{String(p.dead_time_seconds % 60).padStart(2, '0')})
-                      </span>
-                    )}
+                    <br />
+                    <span style={{ color: '#64748b', fontSize: '0.75em' }}>
+                      {p.dead_time_seconds != null
+                        ? `(${Math.floor(p.dead_time_seconds / 60)}:${String(p.dead_time_seconds % 60).padStart(2, '0')})`
+                        : ''}
+                    </span>
                   </td>
                   <td className="col-stat assists">{p.assists}</td>
                   {hasDetailedStats && (
@@ -1074,7 +1075,6 @@ function ExpandedStats({ players }) {
               <th className="col-stat" title="Multi-kills (double, triple, ultra, rampage)">MK</th>
               <th className="col-stat" title="Creep score (last hits) at 10 minutes">CS@10</th>
               <th className="col-stat" title="Long-range kills landed by this player">LRK</th>
-              <th className="col-stat" title="Estimated total time spent dead (mm:ss). Calculated from death timings using an approximated respawn formula — requires replay data.">DEAD</th>
             </tr>
           </thead>
           <tbody>
@@ -1115,9 +1115,6 @@ function ExpandedStats({ players }) {
                   <td className="col-stat">{p.lane_cs_10min || '-'}</td>
                   <td className="col-stat" style={{ color: p.long_range_kills > 0 ? '#fbbf24' : undefined }}>
                     {p.long_range_kills || 0}
-                  </td>
-                  <td className="col-stat" style={{ color: deadSecs > 180 ? '#f87171' : deadSecs > 60 ? '#fbbf24' : undefined }}>
-                    {deadFmt}
                   </td>
                 </tr>
               );
