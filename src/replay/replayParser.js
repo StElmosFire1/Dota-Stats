@@ -1971,13 +1971,35 @@ class ReplayParser {
       });
     }
 
+    if (radiantWin === null) {
+      // ── Fallback 1: ancient destruction from building death events ────────
+      // DOTA_COMBATLOG_DEATH fires for all NPC deaths, including the ancient.
+      // "npc_dota_goodguys_fort" dying → Radiant ancient destroyed → DIRE wins.
+      // "npc_dota_badguys_fort" dying → Dire ancient destroyed → RADIANT wins.
+      // This is 100% reliable regardless of kill counts or epilogue data.
+      for (const ev of gameEvents) {
+        if (ev.type !== 'building') continue;
+        const b = (ev.building || '').toLowerCase();
+        if (b.includes('goodguys') && b.includes('fort')) {
+          radiantWin = false; // Radiant ancient destroyed → Dire wins
+          console.log(`[Replay] Winner from ancient destruction: "${ev.building}" died → Dire wins`);
+          break;
+        }
+        if (b.includes('badguys') && b.includes('fort')) {
+          radiantWin = true; // Dire ancient destroyed → Radiant wins
+          console.log(`[Replay] Winner from ancient destruction: "${ev.building}" died → Radiant wins`);
+          break;
+        }
+      }
+    }
+
     if (radiantWin === null && playerList.length > 0) {
-      // FALLBACK: epilogue did not provide a winner. This is UNRELIABLE and can produce wrong results
-      // (e.g. if Dire wins but Radiant had more kills). The epilogue dota fields should be checked.
+      // ── Fallback 2: kill count (UNRELIABLE — last resort only) ───────────
+      // Only used when neither the epilogue nor building events tell us who won.
       const radiantKills = playerList.filter(p => p.team === 'radiant').reduce((s, p) => s + p.kills, 0);
       const direKills = playerList.filter(p => p.team === 'dire').reduce((s, p) => s + p.kills, 0);
       radiantWin = radiantKills > direKills;
-      console.error(`[Replay] *** WINNER FALLBACK TRIGGERED *** matchId=${matchId} — epilogue matchOutcome was missing/0. Using kill count: Radiant ${radiantKills} vs Dire ${direKills} kills → ${radiantWin ? 'Radiant' : 'Dire'} win. THIS MAY BE WRONG — verify manually.`);
+      console.error(`[Replay] *** WINNER KILL-COUNT FALLBACK *** matchId=${matchId} — neither epilogue nor ancient destruction gave a winner. Radiant ${radiantKills} vs Dire ${direKills} kills → ${radiantWin ? 'Radiant' : 'Dire'} win. MAY BE WRONG — verify manually.`);
     }
 
     // --- Kill bounty annotation ---
