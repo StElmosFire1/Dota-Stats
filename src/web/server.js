@@ -1100,6 +1100,22 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.put('/matches/:matchId/winner', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { radiantWin } = req.body;
+      if (typeof radiantWin !== 'boolean') {
+        return res.status(400).json({ error: 'radiantWin must be a boolean' });
+      }
+      const result = await db.setMatchWinner(req.params.matchId, radiantWin, req.session?.user?.steamId || 'admin');
+      if (!result) return res.status(404).json({ error: 'Match not found' });
+      console.log(`[Admin] Match ${req.params.matchId} winner corrected to ${radiantWin ? 'Radiant' : 'Dire'} by ${req.session?.user?.steamId || 'admin'}`);
+      res.json({ success: true, matchId: result.match_id, radiantWin: result.radiant_win });
+    } catch (err) {
+      console.error('[API] Error correcting match winner:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to update winner' });
+    }
+  });
+
   router.get('/synergy/heatmap', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

@@ -1607,12 +1607,23 @@ function KillFeedPanel({ timeline, allPlayers }) {
               <th className="col-stat" style={{ width: 52 }}>Time</th>
               <th style={{ textAlign: 'left', paddingLeft: 8 }}>Kill</th>
               <th style={{ textAlign: 'left', paddingLeft: 8 }}>Assisters</th>
-              <th className="col-stat" title="Victim's net worth at death">NW</th>
+              <th className="col-stat" title="Total gold bounty distributed to the killing team from this kill (from replays). Falls back to victim net worth if bounty data unavailable.">Gold</th>
             </tr>
           </thead>
           <tbody>
             {[...killEvents].sort((a, b) => a.t - b.t).map((ev, i) => {
               const assists = Array.isArray(ev.assistSlots) ? ev.assistSlots.filter(s => s !== ev.killerSlot && s !== ev.victimSlot) : [];
+              const hasBounty = ev.killBounty > 0;
+              const goldDisplay = hasBounty
+                ? `${ev.killBounty}g`
+                : ev.victimNetworth
+                  ? `~${Math.round(ev.victimNetworth / 100) * 100}g`
+                  : '—';
+              const goldTitle = hasBounty
+                ? `Bounty: ${ev.killBounty}g distributed to team`
+                : ev.victimNetworth
+                  ? `Victim net worth at death: ${ev.victimNetworth}g (bounty data not available for this match)`
+                  : '';
               return (
                 <tr key={i}>
                   <td className="col-stat" style={{ fontSize: '0.82rem', color: '#888' }}>{formatDuration(ev.t)}</td>
@@ -1630,8 +1641,8 @@ function KillFeedPanel({ timeline, allPlayers }) {
                       ? assists.map(s => <span key={s} style={{ color: slotColor(s), marginRight: 4 }}>{getName(s)}</span>)
                       : <span style={{ color: '#444' }}>—</span>}
                   </td>
-                  <td className="col-stat" style={{ fontSize: '0.82rem', color: '#facc15' }}>
-                    {ev.victimNetworth ? `${Math.round(ev.victimNetworth / 100) * 100}g` : '—'}
+                  <td className="col-stat" title={goldTitle} style={{ fontSize: '0.82rem', color: hasBounty ? '#facc15' : '#7a6a30' }}>
+                    {goldDisplay}
                   </td>
                 </tr>
               );
@@ -2045,6 +2056,7 @@ export default function MatchDetail() {
   const [metaDate, setMetaDate] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
   const [clearingHash, setClearingHash] = useState(false);
+  const [correctingWinner, setCorrectingWinner] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -2108,6 +2120,31 @@ export default function MatchDetail() {
       alert('Failed: ' + err.message);
     } finally {
       setClearingHash(false);
+    }
+  };
+
+  const handleCorrectWinner = async (radiantWin) => {
+    const currentWinner = match.radiant_win ? 'Radiant' : 'Dire';
+    const newWinner = radiantWin ? 'Radiant' : 'Dire';
+    if (!confirm(`Change winner from ${currentWinner} to ${newWinner}? This will update the result display but will NOT retroactively recalculate MMR ratings.`)) return;
+    setCorrectingWinner(true);
+    try {
+      const key = sessionStorage.getItem('superuserKey') || '';
+      const res = await fetch(`/api/matches/${matchId}/winner`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-superuser-key': key },
+        body: JSON.stringify({ radiantWin }),
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        throw new Error(j.error || 'Failed');
+      }
+      setMatch(prev => ({ ...prev, radiant_win: radiantWin }));
+      alert(`Winner updated to ${newWinner}. Note: MMR ratings from this match were not recalculated.`);
+    } catch (err) {
+      alert('Failed: ' + err.message);
+    } finally {
+      setCorrectingWinner(false);
     }
   };
 
@@ -2193,6 +2230,17 @@ export default function MatchDetail() {
               }}
             >
               {clearingHash ? 'Clearing...' : '🔄 Allow Re-upload'}
+            </button>
+            <button
+              onClick={() => handleCorrectWinner(!match.radiant_win)}
+              disabled={correctingWinner}
+              title={`Current winner: ${match.radiant_win ? 'Radiant' : 'Dire'}. Click to flip to ${match.radiant_win ? 'Dire' : 'Radiant'}.`}
+              style={{
+                background: 'transparent', color: '#fbbf24', border: '1px solid #78350f',
+                padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+              }}
+            >
+              {correctingWinner ? 'Saving...' : `⚖️ Flip Winner (now: ${match.radiant_win ? 'Radiant' : 'Dire'})`}
             </button>
             {!showDelete ? (
               <button

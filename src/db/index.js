@@ -3819,6 +3819,21 @@ async function createManualMatch({ date, duration, radiantWin, players, lobbyNam
   }
 }
 
+async function setMatchWinner(matchId, radiantWin, correctedBy) {
+  const p = getPool();
+  const result = await p.query(
+    `UPDATE matches SET radiant_win = $1, recorded_by = recorded_by || ' [winner corrected by ' || $2 || ']'
+     WHERE match_id = $3 RETURNING match_id, radiant_win`,
+    [radiantWin, correctedBy || 'admin', matchId]
+  );
+  if (result.rows.length === 0) return null;
+
+  // Also flip the player team win/loss in rating_history for this match
+  // (we don't retroactively recalculate TrueSkill, but we can note it was corrected)
+  console.log(`[DB] Winner corrected for match ${matchId}: radiant_win=${radiantWin} by ${correctedBy}`);
+  return result.rows[0];
+}
+
 module.exports = {
   init,
   getPool,
@@ -3829,6 +3844,7 @@ module.exports = {
   getMatchCount,
   getMatch,
   deleteMatch,
+  setMatchWinner,
   getLeaderboard,
   getComputedLeaderboard,
   computeSeasonTrueSkill,

@@ -430,15 +430,31 @@ class ReplayParser {
 
             gameMode = dota.gameMode || dota.gameMode_ || dota.game_mode || dota.game_mode_ || 0;
 
-            const rw = dota.radiantWin != null ? dota.radiantWin :
-                       dota.radiantWin_ != null ? dota.radiantWin_ :
-                       dota.radiant_win != null ? dota.radiant_win :
-                       dota.radiant_win_ != null ? dota.radiant_win_ :
-                       (dota.matchOutcome || dota.matchOutcome_ || dota.match_outcome || dota.match_outcome_);
-            if (typeof rw === 'boolean') {
-              radiantWin = rw;
-            } else if (typeof rw === 'number') {
-              radiantWin = rw === 2;
+            // Try explicit boolean radiant_win field first (some proto versions)
+            const rwBool = dota.radiantWin != null ? dota.radiantWin :
+                           dota.radiantWin_ != null ? dota.radiantWin_ :
+                           dota.radiant_win != null ? dota.radiant_win :
+                           dota.radiant_win_ != null ? dota.radiant_win_ : null;
+            if (typeof rwBool === 'boolean') {
+              radiantWin = rwBool;
+            } else {
+              // Try numeric matchOutcome: 2=Radiant wins, 3=Dire wins, 0=Unknown
+              // IMPORTANT: cannot use || chain here because 0 is falsy but meaningful (UNKNOWN)
+              const moFields = ['matchOutcome', 'matchOutcome_', 'match_outcome', 'match_outcome_'];
+              let matchOutcomeVal = null;
+              for (const f of moFields) {
+                if (dota[f] != null) { matchOutcomeVal = dota[f]; break; }
+              }
+              if (typeof matchOutcomeVal === 'number' && matchOutcomeVal > 0) {
+                radiantWin = matchOutcomeVal === 2;
+                console.log(`[Replay] Winner from matchOutcome=${matchOutcomeVal}: ${radiantWin ? 'Radiant' : 'Dire'}`);
+              } else if (typeof matchOutcomeVal === 'string') {
+                // Some proto versions serialize enum as string name
+                radiantWin = matchOutcomeVal === 'RAD_VICTORY' || matchOutcomeVal === 'k_ETeamFight_Radiant';
+                console.log(`[Replay] Winner from matchOutcome string "${matchOutcomeVal}": ${radiantWin ? 'Radiant' : 'Dire'}`);
+              } else {
+                console.warn(`[Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=${matchOutcomeVal}. Will attempt fallback.`);
+              }
             }
 
             const endTime = Number(dota.endTime || dota.endTime_ || dota.end_time || dota.end_time_ || 0);
@@ -665,6 +681,7 @@ class ReplayParser {
     const dustsUsed = {};       // slot → count of dust activations
     const pullCount = {};       // slot → approximate pull count (timing-based)
     const lastPullTime = {};    // slot → time of last counted pull (dedup cooldown)
+    const heroKillGoldByTime = {}; // Math.round(t) → total gold paid out for hero kills at that second
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -993,6 +1010,14 @@ class ReplayParser {
         let slot = e.slot;
         if (slot != null && slot >= 128 && slot <= 132) slot = slot - 128 + 5;
         if (slot != null && slot >= 0 && slot < 10) combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
+      }
+
+      // ── Hero kill gold bounty ──────────────────────────────────────────────
+      // DOTA_COMBATLOG_GOLD events with gold_reason=5 (DOTA_GOLD_HERO_KILL) fire for each
+      // player who receives gold from a hero kill. e.value is the amount received.
+      if (e.type === 'DOTA_COMBATLOG_GOLD' && e.gold_reason === 5 && e.value > 0) {
+        const t = Math.round(e.time || 0);
+        heroKillGoldByTime[t] = (heroKillGoldByTime[t] || 0) + e.value;
       }
 
       // ── Ability level-up ──────────────────────────────────────────────────
@@ -1909,9 +1934,23 @@ class ReplayParser {
     }
 
     if (radiantWin === null && playerList.length > 0) {
+      // FALLBACK: epilogue did not provide a winner. This is UNRELIABLE and can produce wrong results
+      // (e.g. if Dire wins but Radiant had more kills). The epilogue dota fields should be checked.
       const radiantKills = playerList.filter(p => p.team === 'radiant').reduce((s, p) => s + p.kills, 0);
       const direKills = playerList.filter(p => p.team === 'dire').reduce((s, p) => s + p.kills, 0);
       radiantWin = radiantKills > direKills;
+      console.error(`[Replay] *** WINNER FALLBACK TRIGGERED *** matchId=${matchId} — epilogue matchOutcome was missing/0. Using kill count: Radiant ${radiantKills} vs Dire ${direKills} kills → ${radiantWin ? 'Radiant' : 'Dire'} win. THIS MAY BE WRONG — verify manually.`);
+    }
+
+    // --- Kill bounty annotation ---
+    // GOLD events with reason=5 (hero kill) fire in the same game tick as the DEATH event.
+    // After rounding both to the nearest second, they match exactly.
+    // We use the exact second only (no window) to avoid double-counting back-to-back kills.
+    for (const ev of gameEvents) {
+      if (ev.type !== 'kill') continue;
+      const tRound = Math.round(ev.t);
+      const bounty = heroKillGoldByTime[tRound] || 0;
+      if (bounty > 0) ev.killBounty = bounty;
     }
 
     // --- Smoke success rate ---
