@@ -1,0 +1,50 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+
+# 1. Pull the JS smoke fix
+git pull origin main
+
+# 2. Rebuild the JAR
+cd odota-parser
+mvn package -q -DskipTests
+cd ..
+
+# 3. Full restart (kills old Java, starts fresh)
+pkill -9 -f "stats-0.1.0.jar"
+fuser -k 5000/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 12 && tail -20 ~/Dota-Stats/bot.log
+remote: Enumerating objects: 6, done.
+remote: Counting objects: 100% (6/6), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 4 (delta 2), reused 4 (delta 2), pack-reused 0 (from 0)
+Unpacking objects: 100% (4/4), 1.77 KiB | 454.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+ * branch            main       -> FETCH_HEAD
+   7ce675a..c922e4c  main       -> origin/main
+Updating 7ce675a..c922e4c
+Fast-forward
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Nuclear-restart-kills-whatev_1774786522334.txt | 58 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 58 insertions(+)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Nuclear-restart-kills-whatev_1774786522334.txt
+ 427431[5] 433815
+[Parser] at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+[Parser] at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+[Parser] at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+[Parser] at java.base/sun.nio.ch.Net.bind(Net.java:577)
+[Parser] at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+[Parser] at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
