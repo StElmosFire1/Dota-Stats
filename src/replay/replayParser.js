@@ -684,6 +684,9 @@ class ReplayParser {
     const heroKillGoldByTime = {}; // Math.round(t) → total gold paid out for hero kills at that second
     const deathsBySlot = {};          // slot → [deathTime, …] — fallback estimate when hero_respawn events are absent
     const heroRespawnSeconds = {};    // slot → total exact seconds spent dead (from hero_respawn entity events emitted by Java parser)
+    let smokeEventLogged = false;     // diagnostic: log first smoke event seen
+    let dustEventLogged = false;      // diagnostic: log first dust event seen
+    let respawnEventLogged = false;   // diagnostic: log first hero_respawn event seen
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
@@ -1189,6 +1192,21 @@ class ReplayParser {
         teamAbilitiesRaw[e.key].push(e.time || 0);
       }
 
+      // ── Diagnostic: log any event mentioning smoke/dust in key fields ────
+      // One-time sample per item type so we can confirm event structure in logs
+      if (!smokeEventLogged && (
+          (e.inflictor && e.inflictor.includes('smoke_of_deceit')) ||
+          (e.key && e.key.includes('smoke_of_deceit')))) {
+        console.log('[Replay][DIAG] smoke event sample:', JSON.stringify({ type: e.type, key: e.key, inflictor: e.inflictor, attackername: e.attackername, slot: e.slot, unit: e.unit }));
+        smokeEventLogged = true;
+      }
+      if (!dustEventLogged && (
+          (e.inflictor && (e.inflictor.includes('item_dust') || e.inflictor === 'dust')) ||
+          (e.key && (e.key.includes('item_dust') || e.key === 'dust')))) {
+        console.log('[Replay][DIAG] dust event sample:', JSON.stringify({ type: e.type, key: e.key, inflictor: e.inflictor, attackername: e.attackername, slot: e.slot, unit: e.unit }));
+        dustEventLogged = true;
+      }
+
       // ── Smoke of Deceit activation ────────────────────────────────────────
       // Fires when a player actually activates the item (puts it on cooldown / applies buff)
       if ((e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_use' || e.type === 'ability_cast') &&
@@ -1226,6 +1244,10 @@ class ReplayParser {
       if (e.type === 'hero_respawn' && e.slot != null && e.value != null) {
         const s = Number(e.slot);
         if (s >= 0 && s < 10) {
+          if (!respawnEventLogged) {
+            console.log('[Replay][DIAG] hero_respawn event received:', JSON.stringify({ slot: e.slot, value: e.value, time: e.time }));
+            respawnEventLogged = true;
+          }
           heroRespawnSeconds[s] = (heroRespawnSeconds[s] || 0) + Number(e.value);
         }
       }
@@ -2146,6 +2168,7 @@ class ReplayParser {
     console.log(`[Replay] Item purchases: ${totalPurchaseSlots} slots${purchaseBreakdown ? ` (${purchaseBreakdown})` : ' — NONE CAPTURED'}`);
 
     console.log(`[Replay] Final stats: matchId=${matchId}, duration=${duration}s, radiantWin=${radiantWin}, players=${playerList.length}`);
+    console.log(`[Replay][DIAG] Totals — dustsUsed: ${JSON.stringify(dustsUsed)}, smokePerPlayer: ${JSON.stringify(Object.fromEntries(Object.entries(smokePerPlayer).map(([k,v])=>[k,v.length])))}, heroRespawnSecs: ${JSON.stringify(heroRespawnSeconds)}`);
     for (const p of playerList) {
       console.log(`[Replay]   ${p.team} pos${p.position} ${p.isCaptain ? '(C)' : ''}: ${p.personaname} (hero=${p.heroId}, acct=${p.accountId}) K/D/A=${p.kills}/${p.deaths}/${p.assists} HD=${p.heroDamage} TD=${p.towerDamage} HH=${p.heroHealing} DT=${p.damageTaken} OBS=${p.obsPlaced} SEN=${p.senPlaced} STK=${p.campsStacked}`);
     }
