@@ -127,6 +127,7 @@ class ReplayParser {
     this.parserProcess = null;
     this.parserReady = false;
     this._shutdownRequested = false;
+    this._adoptedMonitor = null;
   }
 
   async startParserService() {
@@ -143,7 +144,22 @@ class ReplayParser {
     });
   }
 
-  _launchParser(resolveInitial) {
+  async _launchParser(resolveInitial) {
+    if (this._shutdownRequested) return;
+
+    // If the port is already healthy (orphaned Java from a previous run), adopt it
+    try {
+      const res = await fetch(`http://localhost:${PARSER_PORT}/healthz`, { timeout: 2000 });
+      if (res.ok) {
+        console.log('[Replay] Adopted existing parser service on port', PARSER_PORT);
+        this.parserReady = true;
+        if (resolveInitial) { resolveInitial(true); resolveInitial = null; }
+        // Monitor the adopted process by polling health
+        this._monitorAdopted();
+        return;
+      }
+    } catch {}
+
     console.log('[Replay] Starting parser service on port', PARSER_PORT);
     this.parserProcess = spawn('java', ['-jar', PARSER_JAR], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -164,16 +180,22 @@ class ReplayParser {
     });
 
     this.parserProcess.on('exit', (code, signal) => {
-      console.warn(`[Replay] Parser exited (code=${code}, signal=${signal}) — restarting in 5s...`);
+      const isBind = code === 1;
+      if (isBind) {
+        console.warn(`[Replay] Parser failed to bind port ${PARSER_PORT} — adopting existing process...`);
+      } else {
+        console.warn(`[Replay] Parser exited (code=${code}, signal=${signal}) — restarting in 5s...`);
+      }
       this.parserReady = false;
       if (resolveInitial) { resolveInitial(false); resolveInitial = null; }
       setTimeout(() => {
         if (!this._shutdownRequested) this._launchParser(null);
-      }, 5000);
+      }, isBind ? 1000 : 5000);
     });
 
     const checkHealth = async (retries = 20) => {
       for (let i = 0; i < retries; i++) {
+        if (this._shutdownRequested) return;
         try {
           const res = await fetch(`http://localhost:${PARSER_PORT}/healthz`, { timeout: 2000 });
           if (res.ok) {
@@ -190,6 +212,28 @@ class ReplayParser {
     };
 
     checkHealth();
+  }
+
+  _monitorAdopted() {
+    if (this._adoptedMonitor) return;
+    this._adoptedMonitor = setInterval(async () => {
+      if (this._shutdownRequested || this.parserProcess) {
+        clearInterval(this._adoptedMonitor);
+        this._adoptedMonitor = null;
+        return;
+      }
+      try {
+        const res = await fetch(`http://localhost:${PARSER_PORT}/healthz`, { timeout: 2000 });
+        if (!res.ok) throw new Error('unhealthy');
+        this.parserReady = true;
+      } catch {
+        console.warn('[Replay] Adopted parser became unavailable — restarting...');
+        this.parserReady = false;
+        clearInterval(this._adoptedMonitor);
+        this._adoptedMonitor = null;
+        setTimeout(() => this._launchParser(null), 2000);
+      }
+    }, 10000);
   }
 
   async downloadReplay(url, filename) {
