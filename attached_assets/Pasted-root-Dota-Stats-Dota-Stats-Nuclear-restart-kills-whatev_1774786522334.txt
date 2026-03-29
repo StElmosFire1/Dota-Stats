@@ -1,0 +1,58 @@
+root@Dota-Stats:~/Dota-Stats# # Nuclear restart — kills whatever is on ports 5000 and 5600
+fuser -k 5000/tcp 2>/dev/null; fuser -k 5600/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+ 423397 423258[2] 424874
+root@Dota-Stats:~/Dota-Stats# # See exactly what's on port 5600
+lsof -i :5600
+
+# Kill it explicitly by PID (replace XXXXX with the PID shown)
+kill -9 XXXXX
+
+# Verify port is free
+lsof -i :5600
+
+# Now restart
+fuser -k 5000/tcp 2>/dev/null
+sleep 2
+nohup node src/index.js > ~/Dota-Stats/bot.log 2>&1 &
+sleep 10 && tail -25 ~/Dota-Stats/bot.log
+COMMAND      PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+node\x20/ 424847 root   21u  IPv6 3582683      0t0  TCP localhost:48546->localhost:5600 (ESTABLISHED)
+java      424858 root    6u  IPv6 3577843      0t0  TCP *:5600 (LISTEN)
+java      424858 root    9u  IPv6 3582684      0t0  TCP localhost:5600->localhost:48546 (ESTABLISHED)
+java      424858 root   10u  IPv6 3582653      0t0  TCP localhost:5600->localhost:40302 (ESTABLISHED)
+node      424874 root   20u  IPv6 3582652      0t0  TCP localhost:40302->localhost:5600 (ESTABLISHED)
+-bash: kill: XXXXX: arguments must be process or job IDs
+COMMAND      PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+node\x20/ 424847 root   21u  IPv6 3582683      0t0  TCP localhost:48546->localhost:5600 (ESTABLISHED)
+java      424858 root    6u  IPv6 3577843      0t0  TCP *:5600 (LISTEN)
+java      424858 root    9u  IPv6 3582684      0t0  TCP localhost:5600->localhost:48546 (ESTABLISHED)
+java      424858 root   10u  IPv6 3582653      0t0  TCP localhost:5600->localhost:40302 (ESTABLISHED)
+node      424874 root   20u  IPv6 3582652      0t0  TCP localhost:40302->localhost:5600 (ESTABLISHED)
+ 424847[3] 426550
+[Steam] Logged in successfully.
+[Dota2 GC] Connected to Game Coordinator.
+[Steam] Dota 2 GC is ready!
+[Dota2 GC] Unhandled GC message: msgType=4004 (726 bytes)
+[Startup] Steam connected.
+
+[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Parser] Exception in thread "main" java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+        at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+[Replay] Parser exited (code=1, signal=null) — restarting in 5s...
+[Steam] Session replaced by another login — Steam disconnected. Bot continues running without Steam.
+[Steam] Marked offline in health status (reason: LogonSessionReplaced)
+[Dota2 GC] Disconnected from GC: 2
