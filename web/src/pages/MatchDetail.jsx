@@ -2431,6 +2431,21 @@ export default function MatchDetail() {
               {match.mmr_diff} MMR gap
             </span>
           )}
+          {match.has_replay && (
+            <a
+              href={`/api/replays/${match.match_id}/download`}
+              download
+              title="Download the .dem replay file for this match"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.4)',
+                color: '#818cf8', borderRadius: 8, padding: '2px 10px',
+                fontSize: 12, fontWeight: 600, textDecoration: 'none', cursor: 'pointer',
+              }}
+            >
+              ⬇ Download Replay
+            </a>
+          )}
         </div>
       </div>
 

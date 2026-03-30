@@ -429,6 +429,9 @@ function createApiRouter(startupStatus = {}) {
           }
         }
       }
+      // Indicate whether a replay file is stored and downloadable for this match.
+      const replayRow = await db.getReplayFilePath(req.params.matchId).catch(() => null);
+      match.has_replay = !!(replayRow?.replay_file_path && fs.existsSync(replayRow.replay_file_path));
       res.json(match);
     } catch (err) {
       console.error('[API] Error fetching match:', err.message);
@@ -702,8 +705,8 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  // Superuser-only: download the archived .dem replay file for a match.
-  router.get('/replays/:matchId/download', requireSuperuser, async (req, res) => {
+  // Public: download the archived .dem replay file for a match.
+  router.get('/replays/:matchId/download', async (req, res) => {
     try {
       const { matchId } = req.params;
       const row = await db.getReplayFilePath(matchId);
