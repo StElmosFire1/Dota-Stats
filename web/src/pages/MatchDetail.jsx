@@ -1845,7 +1845,7 @@ function SupportReportPanel({ players, timeline }) {
 }
 
 // ── DeathTimingPanel ──────────────────────────────────────────────────────────
-function DeathTimingPanel({ timeline, allPlayers }) {
+function DeathTimingPanel({ timeline, allPlayers, duration }) {
   if (!timeline?.events) return null;
   const killEvents = timeline.events.filter(ev => ev.type === 'kill' && ev.victimSlot >= 0);
   if (killEvents.length === 0) return null;
@@ -1858,13 +1858,30 @@ function DeathTimingPanel({ timeline, allPlayers }) {
   ];
   const BRACKET_COLORS = ['#4ade80', '#facc15', '#f97316', '#f87171'];
 
+  const matchDur = duration || Math.max(...killEvents.map(ev => ev.t), 1200);
+  const slotLevel = {};
+  allPlayers.forEach(p => { slotLevel[p.slot] = p.level || 25; });
+
   const deathsBySlot = {};
-  allPlayers.forEach(p => { deathsBySlot[p.slot] = [0, 0, 0, 0]; });
+  const deadSecsBySlot = {};
+  allPlayers.forEach(p => {
+    deathsBySlot[p.slot] = [0, 0, 0, 0];
+    deadSecsBySlot[p.slot] = [0, 0, 0, 0];
+  });
+
   for (const ev of killEvents) {
     if (deathsBySlot[ev.victimSlot] == null) continue;
     const bi = BRACKETS.findIndex(b => ev.t < b.max);
-    if (bi >= 0) deathsBySlot[ev.victimSlot][bi]++;
+    if (bi < 0) continue;
+    deathsBySlot[ev.victimSlot][bi]++;
+    // Estimate respawn time for this death
+    const finalLevel = slotLevel[ev.victimSlot] || 25;
+    const estLevel = Math.max(1, Math.min(25, Math.round(finalLevel * ev.t / matchDur)));
+    const respawn = Math.round(10 + (estLevel - 1) * 2.5);
+    deadSecsBySlot[ev.victimSlot][bi] += Math.min(respawn, Math.max(0, matchDur - ev.t));
   }
+
+  const fmtSecs = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   return (
     <div className="expanded-stats-section">
@@ -1875,31 +1892,35 @@ function DeathTimingPanel({ timeline, allPlayers }) {
             <tr>
               <th className="col-player">Player</th>
               {BRACKETS.map((b, i) => (
-                <th key={i} className="col-stat" style={{ color: BRACKET_COLORS[i] }} title={`Deaths in the ${b.label} window`}>{b.label}</th>
+                <th key={i} className="col-stat" style={{ color: BRACKET_COLORS[i], minWidth: 80 }} title={`Deaths and estimated time spent dead in the ${b.label} window`}>{b.label}</th>
               ))}
               <th className="col-stat" title="Total deaths">TOT</th>
-              <th className="col-stat" title="Total time spent dead (mm:ss) — requires replay data">DEAD</th>
+              <th className="col-stat" title="Total time spent dead (mm:ss) — exact if replay uploaded, otherwise estimated">DEAD</th>
               <th className="col-stat" title="Deaths before 15 min as % of total — high = fed laning phase">EARLY%</th>
             </tr>
           </thead>
           <tbody>
             {allPlayers.map((p, i) => {
               const counts = deathsBySlot[p.slot] || [0, 0, 0, 0];
+              const deadSecs = deadSecsBySlot[p.slot] || [0, 0, 0, 0];
               const total = counts.reduce((s, c) => s + c, 0);
               const earlyPct = total > 0 ? Math.round(counts[0] / total * 100) : null;
               const earlyColor = earlyPct == null ? undefined : earlyPct >= 60 ? '#f87171' : earlyPct >= 40 ? '#facc15' : '#4ade80';
+              const totalDeadFmt = p.dead_time_seconds != null
+                ? fmtSecs(p.dead_time_seconds)
+                : total > 0 ? fmtSecs(deadSecs.reduce((s, c) => s + c, 0)) : '—';
               return (
                 <tr key={i}>
                   <td className="col-player"><PlayerLink player={p} index={i} /></td>
                   {counts.map((c, bi) => (
-                    <td key={bi} className="col-stat" style={{ color: c > 0 ? BRACKET_COLORS[bi] : '#334155' }}>{c}</td>
+                    <td key={bi} className="col-stat" style={{ color: c > 0 ? BRACKET_COLORS[bi] : '#334155' }}>
+                      {c > 0
+                        ? <>{c} <span style={{ color: '#64748b', fontSize: '0.78em' }}>({fmtSecs(deadSecs[bi])})</span></>
+                        : 0}
+                    </td>
                   ))}
                   <td className="col-stat">{total}</td>
-                  <td className="col-stat" style={{ color: '#64748b' }}>
-                    {p.dead_time_seconds != null
-                      ? `${Math.floor(p.dead_time_seconds / 60)}:${String(p.dead_time_seconds % 60).padStart(2, '0')}`
-                      : '—'}
-                  </td>
+                  <td className="col-stat" style={{ color: '#64748b' }}>{totalDeadFmt}</td>
                   <td className="col-stat" style={{ color: earlyColor }}>{earlyPct != null ? `${earlyPct}%` : '—'}</td>
                 </tr>
               );
@@ -2435,7 +2456,7 @@ export default function MatchDetail() {
       <KillHeatmapPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <TeamfightPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <SupportReportPanel players={allPlayers} timeline={match.game_timeline} />
-      <DeathTimingPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <DeathTimingPanel timeline={match.game_timeline} allPlayers={allPlayers} duration={match.duration} />
       <ComebackMetricPanel timeline={match.game_timeline} allPlayers={allPlayers} />
 
       {allPlayers.some(p => p.abilities && p.abilities.length > 0) && (
