@@ -1056,9 +1056,12 @@ class ReplayParser {
       }
 
       // ── Hero kill gold bounty ──────────────────────────────────────────────
-      // DOTA_COMBATLOG_GOLD with gold_reason=2 (DOTA_GOLD_HERO_KILL in clarity-protobuf 5.4).
-      // Fires once per receiving player — we sum them to get total gold distributed for the kill.
-      if (e.type === 'DOTA_COMBATLOG_GOLD' && e.gold_reason === 2 && e.value > 0) {
+      // Capture ALL DOTA_COMBATLOG_GOLD events — the gold_reason enum value for
+      // hero kills differs across proto versions (2 in clarity-protobuf 5.4, 5 in
+      // older protos), so we collect everything and let the time-window matching
+      // below associate gold to kills. Building/roshan gold is rare enough at any
+      // given second to not materially affect accuracy.
+      if (e.type === 'DOTA_COMBATLOG_GOLD' && e.value > 0) {
         const t = Math.round(e.time || 0);
         if (!heroKillGoldByTime[t]) heroKillGoldByTime[t] = 0;
         heroKillGoldByTime[t] += e.value;
@@ -2062,12 +2065,25 @@ class ReplayParser {
     }
 
     // --- Kill bounty annotation ---
-    // DOTA_COMBATLOG_GOLD (reason=2) fires in the same tick as DOTA_COMBATLOG_DEATH.
-    // Exact-second matching is sufficient — no window needed since both events share the same timestamp.
-    for (const ev of gameEvents) {
-      if (ev.type !== 'kill') continue;
-      const bounty = heroKillGoldByTime[Math.round(ev.t)] || 0;
-      if (bounty > 0) ev.killBounty = bounty;
+    // Gold events sometimes land in an adjacent second to the kill (the game
+    // distributes gold in a tick that rounds differently to the death event).
+    // We sort kills by time and let each one greedily claim the nearest unclaimed
+    // gold bucket within ±1 second, so simultaneous kills each get their own bucket.
+    const usedBuckets = new Set();
+    const sortedKills = gameEvents.filter(ev => ev.type === 'kill').sort((a, b) => a.t - b.t);
+    for (const ev of sortedKills) {
+      const tRound = Math.round(ev.t);
+      let bestKey = null, bestTotal = 0;
+      for (let dt = -1; dt <= 1; dt++) {
+        const key = tRound + dt;
+        if (usedBuckets.has(key)) continue;
+        const bucket = heroKillGoldByTime[key];
+        if (bucket && bucket > bestTotal) { bestTotal = bucket; bestKey = key; }
+      }
+      if (bestKey !== null) {
+        ev.killBounty = bestTotal;
+        usedBuckets.add(bestKey);
+      }
     }
 
     // --- Smoke success rate ---

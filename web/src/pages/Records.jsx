@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getPersonalRecords, getFirstBloodStats, getComebackMatches, getMultiKillStats } from '../api';
+import { getPersonalRecords, getFirstBloodStats, getComebackMatches, getMultiKillStats, getSeasonPlayerRecords } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { formatHeroName } from '../utils/heroes';
 
@@ -141,6 +141,7 @@ export default function Records() {
   const [comebacks, setComebacks] = useState([]);
   const [multiKills, setMultiKills] = useState([]);
   const [mkSortKey, setMkSortKey] = useState('rampages');
+  const [seasonRecs, setSeasonRecs] = useState({ positive: {}, negative: {} });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('records');
 
@@ -151,16 +152,19 @@ export default function Records() {
       getFirstBloodStats(seasonId).catch(() => ({ stats: [] })),
       getComebackMatches(seasonId).catch(() => ({ matches: [] })),
       getMultiKillStats(seasonId).catch(() => ({ rows: [] })),
-    ]).then(([recData, fbData, cbData, mkData]) => {
+      getSeasonPlayerRecords(seasonId).catch(() => ({ positive: {}, negative: {} })),
+    ]).then(([recData, fbData, cbData, mkData, srData]) => {
       setRecords(recData?.records || {});
       setFbStats(fbData?.stats || []);
       setComebacks(cbData?.matches || []);
       setMultiKills(mkData?.rows || []);
+      setSeasonRecs(srData || { positive: {}, negative: {} });
     }).finally(() => setLoading(false));
   }, [seasonId]);
 
   const tabs = [
     { key: 'records', label: '🏆 Hall of Records' },
+    { key: 'season', label: '📊 Season Records' },
     { key: 'firstblood', label: '🩸 First Blood' },
     { key: 'comebacks', label: '⚡ Greatest Comebacks' },
     { key: 'multikills', label: '☠️ Multi-Kills' },
@@ -231,6 +235,66 @@ export default function Records() {
           </div>
         </div>
       )}
+
+      {!loading && tab === 'season' && (() => {
+        const { positive = {}, negative = {} } = seasonRecs;
+        const posCards = [
+          { key: 'most_wins',          emoji: '🏆', label: 'Most Wins',          field: 'wins',         fmt: v => `${v}W` },
+          { key: 'most_kills',         emoji: '⚔️', label: 'Most Kills',         field: 'total_kills',  fmt: v => v.toLocaleString() },
+          { key: 'most_assists',       emoji: '🤝', label: 'Most Assists',        field: 'total_assists', fmt: v => v.toLocaleString() },
+          { key: 'most_damage',        emoji: '🔥', label: 'Most Hero Damage',    field: 'total_damage', fmt: v => `${Math.round(v/1000)}k` },
+          { key: 'most_healing',       emoji: '💚', label: 'Most Healing',        field: 'total_healing',fmt: v => `${Math.round(v/1000)}k` },
+          { key: 'best_win_rate',      emoji: '📈', label: 'Best Win Rate (5+ games)', field: 'win_rate', fmt: v => `${v}%` },
+          { key: 'longest_win_streak', emoji: '🔥', label: 'Longest Win Streak',  field: 'max_streak',   fmt: v => `${v}W` },
+          { key: 'most_games',         emoji: '🎮', label: 'Most Games Played',   field: 'games_played', fmt: v => `${v} games` },
+        ];
+        const negCards = [
+          { key: 'most_deaths',         emoji: '💀', label: 'Most Deaths',          field: 'total_deaths', fmt: v => v.toLocaleString() },
+          { key: 'most_losses',         emoji: '😞', label: 'Most Losses',          field: 'losses',       fmt: v => `${v}L` },
+          { key: 'worst_win_rate',      emoji: '📉', label: 'Worst Win Rate (5+ games)', field: 'win_rate', fmt: v => `${v}%` },
+          { key: 'longest_loss_streak', emoji: '❌', label: 'Longest Loss Streak',  field: 'max_streak',   fmt: v => `${v}L` },
+        ];
+
+        const RecCard = ({ rec, card, color }) => {
+          if (!rec) return (
+            <div style={{ ...cardStyle, opacity: 0.4 }}>
+              <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.emoji} {card.label}</div>
+              <div style={{ color: '#334155', fontSize: '1.4rem', fontWeight: 700 }}>—</div>
+            </div>
+          );
+          const val = rec[card.field];
+          const gp = rec.games_played ? ` (${rec.games_played}g)` : '';
+          return (
+            <div style={{ ...cardStyle, borderColor: `${color}44` }}>
+              <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.emoji} {card.label}</div>
+              <div style={{ color, fontSize: '1.6rem', fontWeight: 700, lineHeight: 1.2, marginTop: 4 }}>
+                {val != null ? card.fmt(parseInt(val)) : '—'}
+              </div>
+              <div style={{ marginTop: 8, borderTop: '1px solid #334155', paddingTop: 8 }}>
+                <Link to={`/player/${rec.account_id}`} style={{ color: '#4ade80', fontWeight: 600, fontSize: '0.95rem', textDecoration: 'none' }}>
+                  {rec.display_name}
+                </Link>
+                <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{gp}</span>
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div>
+            <h2 style={{ color: '#4ade80', marginBottom: '0.5rem', fontSize: '1.1rem' }}>🏅 Positive Records</h2>
+            <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.85rem' }}>Aggregate season totals — most wins, kills, assists, damage, healing, and streaks.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+              {posCards.map(c => <RecCard key={c.key} rec={positive[c.key]} card={c} color="#4ade80" />)}
+            </div>
+            <h2 style={{ color: '#f87171', marginBottom: '0.5rem', fontSize: '1.1rem' }}>💀 Negative Records</h2>
+            <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.85rem' }}>Most deaths, most losses, worst win rate, and longest loss streak.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
+              {negCards.map(c => <RecCard key={c.key} rec={negative[c.key]} card={c} color="#f87171" />)}
+            </div>
+          </div>
+        );
+      })()}
 
       {!loading && tab === 'firstblood' && (
         <div>

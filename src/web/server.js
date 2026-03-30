@@ -683,6 +683,17 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/season-player-records', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.getSeasonPlayerRecords(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] Error fetching season player records:', err.message);
+      res.status(500).json({ error: 'Failed to fetch season player records' });
+    }
+  });
+
   router.get('/pudge-stats', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

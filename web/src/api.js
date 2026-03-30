@@ -557,6 +557,11 @@ export async function getPersonalRecords(seasonId = null) {
   return fetchJson(`/records${q}`);
 }
 
+export async function getSeasonPlayerRecords(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/season-player-records${q}`);
+}
+
 export async function getFirstBloodStats(seasonId = null) {
   const q = seasonId ? `?season_id=${seasonId}` : '';
   return fetchJson(`/first-blood-stats${q}`);

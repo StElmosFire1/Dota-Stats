@@ -1614,7 +1614,7 @@ function KillFeedPanel({ timeline, allPlayers }) {
       <h3>Kill Feed <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— {killEvents.length} hero kills</span></h3>
       <div className="scoreboard-wrapper" style={{ maxHeight: 380, overflowY: 'auto' }}>
         <table className="scoreboard compact">
-          <thead>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: '#0f172a' }}>
             <tr>
               <th className="col-stat" style={{ width: 52 }}>Time</th>
               <th style={{ textAlign: 'left', paddingLeft: 8 }}>Kill</th>

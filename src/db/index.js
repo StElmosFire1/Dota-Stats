@@ -4046,6 +4046,114 @@ async function setMatchWinner(matchId, radiantWin, correctedBy) {
   return result.rows[0];
 }
 
+async function getSeasonPlayerRecords(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId
+    ? ` AND m.season_id = $${params.push(parseInt(seasonId))}`
+    : ' AND m.is_legacy = false';
+
+  // Aggregate stats per player
+  const aggRes = await p.query(`
+    SELECT
+      ps.account_id,
+      COALESCE(n.nickname, MAX(ps.persona_name)) as display_name,
+      COUNT(*)::int as games_played,
+      SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int as wins,
+      SUM(CASE WHEN NOT((ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win)) THEN 1 ELSE 0 END)::int as losses,
+      SUM(ps.kills)::int   as total_kills,
+      SUM(ps.deaths)::int  as total_deaths,
+      SUM(ps.assists)::int as total_assists,
+      ROUND(AVG(ps.gpm))::int as avg_gpm,
+      SUM(ps.hero_damage)::bigint as total_damage,
+      SUM(ps.hero_healing)::bigint as total_healing
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    LEFT JOIN nicknames n ON n.account_id = ps.account_id
+    WHERE ps.account_id > 0 AND NOT m.is_deleted ${sc}
+    GROUP BY ps.account_id, n.nickname
+    HAVING COUNT(*) >= 1
+  `, params);
+
+  // Streak calculation — gaps-and-islands technique
+  const streakRes = await p.query(`
+    WITH ordered AS (
+      SELECT
+        ps.account_id,
+        COALESCE(n.nickname, ps.persona_name) as display_name,
+        m.date,
+        CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END as won,
+        ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.date) as rn
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      LEFT JOIN nicknames n ON n.account_id = ps.account_id
+      WHERE ps.account_id > 0 AND NOT m.is_deleted ${sc}
+    ),
+    grouped AS (
+      SELECT *, rn - ROW_NUMBER() OVER (PARTITION BY account_id, won ORDER BY rn) as grp
+      FROM ordered
+    ),
+    streaks AS (
+      SELECT account_id, display_name, won, COUNT(*)::int as streak_len
+      FROM grouped
+      GROUP BY account_id, display_name, won, grp
+    )
+    SELECT account_id, display_name, won, MAX(streak_len)::int as max_streak
+    FROM streaks
+    GROUP BY account_id, display_name, won
+  `, params);
+
+  const agg = aggRes.rows;
+  const streaks = streakRes.rows;
+
+  const minGamesForRate = 5;
+
+  const pickBest = (rows, field, ascending = false) => {
+    const sorted = [...rows].filter(r => r[field] != null && parseInt(r[field]) > 0)
+      .sort((a, b) => ascending
+        ? parseInt(a[field]) - parseInt(b[field])
+        : parseInt(b[field]) - parseInt(a[field]));
+    return sorted[0] || null;
+  };
+
+  const pickBestWinRate = (rows, ascending = false) => {
+    const eligible = rows.filter(r => r.games_played >= minGamesForRate);
+    const sorted = [...eligible].sort((a, b) => {
+      const rateA = a.wins / a.games_played;
+      const rateB = b.wins / b.games_played;
+      return ascending ? rateA - rateB : rateB - rateA;
+    });
+    const r = sorted[0];
+    if (!r) return null;
+    return { ...r, win_rate: Math.round((r.wins / r.games_played) * 100) };
+  };
+
+  const pickBestStreak = (rows, won) => {
+    const filtered = rows.filter(r => r.won === won);
+    const sorted = [...filtered].sort((a, b) => b.max_streak - a.max_streak);
+    return sorted[0] || null;
+  };
+
+  return {
+    positive: {
+      most_wins:       pickBest(agg, 'wins'),
+      most_kills:      pickBest(agg, 'total_kills'),
+      most_assists:    pickBest(agg, 'total_assists'),
+      most_damage:     pickBest(agg, 'total_damage'),
+      most_healing:    pickBest(agg, 'total_healing'),
+      best_win_rate:   pickBestWinRate(agg, false),
+      longest_win_streak: pickBestStreak(streaks, 1),
+      most_games:      pickBest(agg, 'games_played'),
+    },
+    negative: {
+      most_deaths:       pickBest(agg, 'total_deaths'),
+      worst_win_rate:    pickBestWinRate(agg, true),
+      longest_loss_streak: pickBestStreak(streaks, 0),
+      most_losses:       pickBest(agg, 'losses'),
+    },
+  };
+}
+
 module.exports = {
   init,
   getPool,
@@ -4139,6 +4247,7 @@ module.exports = {
   getPlayerHeroCounters,
   getDraftStats,
   getPersonalRecords,
+  getSeasonPlayerRecords,
   getFirstBloodStats,
   getHeroSkillBuilds,
   getPlayerGameDurationStats,
