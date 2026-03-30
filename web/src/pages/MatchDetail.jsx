@@ -880,14 +880,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                   </td>
                   <td className="col-hero">{getHeroName(p.hero_id, p.hero_name)}</td>
                   <td className="col-stat kills">{p.kills}</td>
-                  <td className="col-stat deaths">
-                    {p.deaths}
-                    {p.dead_time_seconds != null && (
-                      <span style={{ color: '#64748b', fontSize: '0.78em', marginLeft: 3 }}>
-                        ({Math.floor(p.dead_time_seconds / 60)}:{String(p.dead_time_seconds % 60).padStart(2, '0')})
-                      </span>
-                    )}
-                  </td>
+                  <td className="col-stat deaths">{p.deaths}</td>
                   <td className="col-stat assists">{p.assists}</td>
                   {hasDetailedStats && (
                     <>
@@ -1885,6 +1878,7 @@ function DeathTimingPanel({ timeline, allPlayers }) {
                 <th key={i} className="col-stat" style={{ color: BRACKET_COLORS[i] }} title={`Deaths in the ${b.label} window`}>{b.label}</th>
               ))}
               <th className="col-stat" title="Total deaths">TOT</th>
+              <th className="col-stat" title="Total time spent dead (mm:ss) — requires replay data">DEAD</th>
               <th className="col-stat" title="Deaths before 15 min as % of total — high = fed laning phase">EARLY%</th>
             </tr>
           </thead>
@@ -1901,6 +1895,11 @@ function DeathTimingPanel({ timeline, allPlayers }) {
                     <td key={bi} className="col-stat" style={{ color: c > 0 ? BRACKET_COLORS[bi] : '#334155' }}>{c}</td>
                   ))}
                   <td className="col-stat">{total}</td>
+                  <td className="col-stat" style={{ color: '#64748b' }}>
+                    {p.dead_time_seconds != null
+                      ? `${Math.floor(p.dead_time_seconds / 60)}:${String(p.dead_time_seconds % 60).padStart(2, '0')}`
+                      : '—'}
+                  </td>
                   <td className="col-stat" style={{ color: earlyColor }}>{earlyPct != null ? `${earlyPct}%` : '—'}</td>
                 </tr>
               );
