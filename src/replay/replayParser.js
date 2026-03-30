@@ -2063,19 +2063,25 @@ class ReplayParser {
     }
 
     // --- Kill bounty annotation ---
-    // Match kill events to GOLD events within a ±2 second window.
-    // The window handles sub-second timing differences between the death tick and
-    // the gold distribution ticks. We pick the second with the highest gold total
-    // within the window to avoid attributing unrelated gold (e.g. building kills).
-    for (const ev of gameEvents) {
-      if (ev.type !== 'kill') continue;
+    // DOTA_COMBATLOG_GOLD events (one per receiving player) are the direct source of
+    // bounty data. They fire in the same tick as the death event. We sort kills by
+    // time and greedily claim the nearest unclaimed gold bucket within ±2s, so two
+    // kills close together each get their own bucket rather than sharing.
+    const usedBuckets = new Set();
+    const killEvs = gameEvents.filter(ev => ev.type === 'kill').sort((a, b) => a.t - b.t);
+    for (const ev of killEvs) {
       const tRound = Math.round(ev.t);
-      let best = 0;
+      let bestKey = null, bestTotal = 0;
       for (let dt = -2; dt <= 2; dt++) {
-        const bucket = heroKillGoldByTime[tRound + dt];
-        if (bucket && bucket.total > best) best = bucket.total;
+        const key = tRound + dt;
+        if (usedBuckets.has(key)) continue;
+        const bucket = heroKillGoldByTime[key];
+        if (bucket && bucket.total > bestTotal) { bestTotal = bucket.total; bestKey = key; }
       }
-      if (best > 0) ev.killBounty = best;
+      if (bestKey !== null) {
+        ev.killBounty = bestTotal;
+        usedBuckets.add(bestKey);
+      }
     }
 
     // --- Smoke success rate ---
