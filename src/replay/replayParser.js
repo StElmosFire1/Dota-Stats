@@ -1056,13 +1056,12 @@ class ReplayParser {
       }
 
       // ── Hero kill gold bounty ──────────────────────────────────────────────
-      // DOTA_COMBATLOG_GOLD events fire for each player receiving gold.
-      // We capture all of them (regardless of gold_reason, since proto enum values
-      // differ across Dota versions) and match to kills by time window.
-      if (e.type === 'DOTA_COMBATLOG_GOLD' && e.value > 0) {
+      // DOTA_COMBATLOG_GOLD with gold_reason=2 (DOTA_GOLD_HERO_KILL in clarity-protobuf 5.4).
+      // Fires once per receiving player — we sum them to get total gold distributed for the kill.
+      if (e.type === 'DOTA_COMBATLOG_GOLD' && e.gold_reason === 2 && e.value > 0) {
         const t = Math.round(e.time || 0);
-        if (!heroKillGoldByTime[t]) heroKillGoldByTime[t] = { total: 0, reason: e.gold_reason };
-        heroKillGoldByTime[t].total += e.value;
+        if (!heroKillGoldByTime[t]) heroKillGoldByTime[t] = 0;
+        heroKillGoldByTime[t] += e.value;
       }
 
       // ── Ability level-up ──────────────────────────────────────────────────
@@ -2063,25 +2062,12 @@ class ReplayParser {
     }
 
     // --- Kill bounty annotation ---
-    // DOTA_COMBATLOG_GOLD events (one per receiving player) are the direct source of
-    // bounty data. They fire in the same tick as the death event. We sort kills by
-    // time and greedily claim the nearest unclaimed gold bucket within ±2s, so two
-    // kills close together each get their own bucket rather than sharing.
-    const usedBuckets = new Set();
-    const killEvs = gameEvents.filter(ev => ev.type === 'kill').sort((a, b) => a.t - b.t);
-    for (const ev of killEvs) {
-      const tRound = Math.round(ev.t);
-      let bestKey = null, bestTotal = 0;
-      for (let dt = -2; dt <= 2; dt++) {
-        const key = tRound + dt;
-        if (usedBuckets.has(key)) continue;
-        const bucket = heroKillGoldByTime[key];
-        if (bucket && bucket.total > bestTotal) { bestTotal = bucket.total; bestKey = key; }
-      }
-      if (bestKey !== null) {
-        ev.killBounty = bestTotal;
-        usedBuckets.add(bestKey);
-      }
+    // DOTA_COMBATLOG_GOLD (reason=2) fires in the same tick as DOTA_COMBATLOG_DEATH.
+    // Exact-second matching is sufficient — no window needed since both events share the same timestamp.
+    for (const ev of gameEvents) {
+      if (ev.type !== 'kill') continue;
+      const bounty = heroKillGoldByTime[Math.round(ev.t)] || 0;
+      if (bounty > 0) ev.killBounty = bounty;
     }
 
     // --- Smoke success rate ---
