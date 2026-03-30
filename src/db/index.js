@@ -4070,7 +4070,7 @@ async function getSeasonPlayerRecords(seasonId = null) {
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
     LEFT JOIN nicknames n ON n.account_id = ps.account_id
-    WHERE ps.account_id > 0 AND NOT m.is_deleted ${sc}
+    WHERE ps.account_id > 0 ${sc}
     GROUP BY ps.account_id, n.nickname
     HAVING COUNT(*) >= 1
   `, params);
@@ -4087,7 +4087,7 @@ async function getSeasonPlayerRecords(seasonId = null) {
       FROM player_stats ps
       JOIN matches m ON m.match_id = ps.match_id
       LEFT JOIN nicknames n ON n.account_id = ps.account_id
-      WHERE ps.account_id > 0 AND NOT m.is_deleted ${sc}
+      WHERE ps.account_id > 0 ${sc}
     ),
     grouped AS (
       SELECT *, rn - ROW_NUMBER() OVER (PARTITION BY account_id, won ORDER BY rn) as grp
