@@ -1056,11 +1056,13 @@ class ReplayParser {
       }
 
       // ── Hero kill gold bounty ──────────────────────────────────────────────
-      // DOTA_COMBATLOG_GOLD events with gold_reason=5 (DOTA_GOLD_HERO_KILL) fire for each
-      // player who receives gold from a hero kill. e.value is the amount received.
-      if (e.type === 'DOTA_COMBATLOG_GOLD' && e.gold_reason === 5 && e.value > 0) {
+      // DOTA_COMBATLOG_GOLD events fire for each player receiving gold.
+      // We capture all of them (regardless of gold_reason, since proto enum values
+      // differ across Dota versions) and match to kills by time window.
+      if (e.type === 'DOTA_COMBATLOG_GOLD' && e.value > 0) {
         const t = Math.round(e.time || 0);
-        heroKillGoldByTime[t] = (heroKillGoldByTime[t] || 0) + e.value;
+        if (!heroKillGoldByTime[t]) heroKillGoldByTime[t] = { total: 0, reason: e.gold_reason };
+        heroKillGoldByTime[t].total += e.value;
       }
 
       // ── Ability level-up ──────────────────────────────────────────────────
@@ -2061,14 +2063,19 @@ class ReplayParser {
     }
 
     // --- Kill bounty annotation ---
-    // GOLD events with reason=5 (hero kill) fire in the same game tick as the DEATH event.
-    // After rounding both to the nearest second, they match exactly.
-    // We use the exact second only (no window) to avoid double-counting back-to-back kills.
+    // Match kill events to GOLD events within a ±2 second window.
+    // The window handles sub-second timing differences between the death tick and
+    // the gold distribution ticks. We pick the second with the highest gold total
+    // within the window to avoid attributing unrelated gold (e.g. building kills).
     for (const ev of gameEvents) {
       if (ev.type !== 'kill') continue;
       const tRound = Math.round(ev.t);
-      const bounty = heroKillGoldByTime[tRound] || 0;
-      if (bounty > 0) ev.killBounty = bounty;
+      let best = 0;
+      for (let dt = -2; dt <= 2; dt++) {
+        const bucket = heroKillGoldByTime[tRound + dt];
+        if (bucket && bucket.total > best) best = bucket.total;
+      }
+      if (best > 0) ev.killBounty = best;
     }
 
     // --- Smoke success rate ---
