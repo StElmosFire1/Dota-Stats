@@ -1546,6 +1546,89 @@ async function getDiscordIdsForMatch(matchId) {
   return result.rows;
 }
 
+async function getTopDuos(seasonId = null, minGames = 3) {
+  const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
+  const minParam = params.length + 1;
+  params.push(minGames);
+  const result = await p.query(
+    `SELECT
+       LEAST(ps1.account_id, ps2.account_id) as p1_id,
+       GREATEST(ps1.account_id, ps2.account_id) as p2_id,
+       COALESCE(MAX(n1.nickname), MAX(ps1.persona_name)) as p1_name,
+       COALESCE(MAX(n2.nickname), MAX(ps2.persona_name)) as p2_name,
+       COUNT(*) as games,
+       SUM(CASE WHEN (ps1.team = 'radiant' AND m.radiant_win = true) OR (ps1.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins
+     FROM player_stats ps1
+     JOIN player_stats ps2
+       ON ps2.match_id = ps1.match_id
+       AND ps2.team = ps1.team
+       AND ps2.account_id > ps1.account_id
+       AND ps1.account_id != 0
+       AND ps2.account_id != 0
+     LEFT JOIN nicknames n1 ON n1.account_id = ps1.account_id
+     LEFT JOIN nicknames n2 ON n2.account_id = ps2.account_id
+     JOIN matches m ON m.match_id = ps1.match_id
+     WHERE 1=1${sc}
+     GROUP BY LEAST(ps1.account_id, ps2.account_id), GREATEST(ps1.account_id, ps2.account_id)
+     HAVING COUNT(*) >= $${minParam}
+     ORDER BY (SUM(CASE WHEN (ps1.team = 'radiant' AND m.radiant_win = true) OR (ps1.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END)::float / COUNT(*)) DESC, COUNT(*) DESC
+     LIMIT 50`,
+    params
+  );
+  return result.rows;
+}
+
+async function getPlayerConnections(accountId, seasonId = null) {
+  const p = getPool();
+  const pid = parseInt(accountId);
+  const tParams = [pid];
+  const tSc = _sc(seasonId, tParams, 'm');
+  const oParams = [pid];
+  const oSc = _sc(seasonId, oParams, 'm');
+
+  const [teammatesRes, opponentsRes] = await Promise.all([
+    p.query(
+      `SELECT
+         ps2.account_id as partner_id,
+         COALESCE(MAX(n.nickname), MAX(ps2.persona_name)) as partner_name,
+         COUNT(*) as games,
+         SUM(CASE WHEN (ps1.team = 'radiant' AND m.radiant_win = true) OR (ps1.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins
+       FROM player_stats ps1
+       JOIN player_stats ps2 ON ps2.match_id = ps1.match_id AND ps2.team = ps1.team AND ps2.account_id != ps1.account_id AND ps2.account_id != 0
+       LEFT JOIN nicknames n ON n.account_id = ps2.account_id
+       JOIN matches m ON m.match_id = ps1.match_id
+       WHERE ps1.account_id = $1${tSc}
+       GROUP BY ps2.account_id
+       ORDER BY COUNT(*) DESC
+       LIMIT 10`,
+      tParams
+    ),
+    p.query(
+      `SELECT
+         ps2.account_id as opp_id,
+         COALESCE(MAX(n.nickname), MAX(ps2.persona_name)) as opp_name,
+         COUNT(*) as games,
+         SUM(CASE WHEN (ps1.team = 'radiant' AND m.radiant_win = true) OR (ps1.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins
+       FROM player_stats ps1
+       JOIN player_stats ps2 ON ps2.match_id = ps1.match_id AND ps2.team != ps1.team AND ps2.account_id != 0
+       LEFT JOIN nicknames n ON n.account_id = ps2.account_id
+       JOIN matches m ON m.match_id = ps1.match_id
+       WHERE ps1.account_id = $1${oSc}
+       GROUP BY ps2.account_id
+       ORDER BY COUNT(*) DESC
+       LIMIT 10`,
+      oParams
+    ),
+  ]);
+
+  return {
+    teammates: teammatesRes.rows,
+    opponents: opponentsRes.rows,
+  };
+}
+
 async function getPlayerFormBatch(seasonId = null) {
   const p = getPool();
   const params = [];
@@ -2919,7 +3002,7 @@ async function getPlayerAchievements(accountId) {
     if (cur > maxStreak) maxStreak = cur;
   }
 
-  const [mkRes, fbRes, wardRes] = await Promise.all([
+  const [mkRes, fbRes, wardRes, singleGameRes, posRes] = await Promise.all([
     p.query(
       `SELECT SUM(rampages) AS rampages, SUM(ultra_kills) AS ultra_kills, SUM(triple_kills) AS triple_kills,
               SUM(double_kills) AS double_kills, MAX(kills) AS max_kills
@@ -2939,6 +3022,19 @@ async function getPlayerAchievements(accountId) {
        WHERE ps.account_id = $1 AND m.is_legacy = false`,
       [pid]
     ),
+    p.query(
+      `SELECT MAX(hero_damage) AS max_damage, MAX(gpm) AS max_gpm
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT position, COUNT(*) AS cnt FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND ps.position > 0 AND m.is_legacy = false
+       GROUP BY position`,
+      [pid]
+    ),
   ]);
 
   const rampages = parseInt(mkRes.rows[0]?.rampages) || 0;
@@ -2949,26 +3045,39 @@ async function getPlayerAchievements(accountId) {
   const firstBloods = parseInt(fbRes.rows[0]?.fbs) || 0;
   const wardsPlaced = parseInt(wardRes.rows[0]?.wards_placed) || 0;
   const wardsKilled = parseInt(wardRes.rows[0]?.wards_killed) || 0;
+  const maxDamage = parseInt(singleGameRes.rows[0]?.max_damage) || 0;
+  const maxGpm = parseInt(singleGameRes.rows[0]?.max_gpm) || 0;
+  const posCounts = {};
+  for (const r of posRes.rows) posCounts[r.position] = parseInt(r.cnt) || 0;
+  const carryGames = posCounts[1] || 0;
+  const supportGames = (posCounts[4] || 0) + (posCounts[5] || 0);
 
   const ACHIEVEMENTS = [
-    { key: 'veteran_25',    label: 'Veteran',          desc: '25 games played',              icon: '🎖️',  earned: games >= 25 },
-    { key: 'veteran_50',    label: 'Battle-Hardened',   desc: '50 games played',              icon: '⚔️',  earned: games >= 50 },
-    { key: 'veteran_100',   label: 'Centurion',         desc: '100 games played',             icon: '🏆',  earned: games >= 100 },
-    { key: 'streak_5',      label: 'On Fire',           desc: '5-game win streak',            icon: '🔥',  earned: maxStreak >= 5 },
-    { key: 'streak_10',     label: 'Unstoppable',       desc: '10-game win streak',           icon: '💥',  earned: maxStreak >= 10 },
-    { key: 'deathless',     label: 'Untouchable',       desc: 'Won a game with 0 deaths',     icon: '🛡️',  earned: deathlessGames > 0 },
-    { key: 'captain_5',     label: 'Born Leader',       desc: 'Captained 5+ matches',         icon: '👑',  earned: captainGames >= 5 },
-    { key: 'all_positions', label: 'Versatile',         desc: 'Played all 5 positions',       icon: '🎭',  earned: positionsPlayed >= 5 },
-    { key: 'hero_diversity',label: 'Jack of All Trades', desc: '15+ different heroes',        icon: '🃏',  earned: uniqueHeroes >= 15 },
-    { key: 'specialist',    label: 'Specialist',        desc: '10+ games on one hero',        icon: '🎯',  earned: maxOnOneHero >= 10 },
-    { key: 'rampage',       label: 'RAMPAGE',           desc: 'Achieved at least one rampage',icon: '☠️',  earned: rampages > 0 },
-    { key: 'ultra_kill',    label: 'Ultra Kill',        desc: 'Got an Ultra Kill',            icon: '⚡',  earned: ultraKills > 0 },
-    { key: 'multikill_10',  label: 'Kill Artist',       desc: '10+ multi-kills (combined)',   icon: '🔪',  earned: (doubleKills + tripleKills + ultraKills + rampages) >= 10 },
-    { key: 'first_blood',   label: 'First Blood',       desc: 'Claimed first blood',          icon: '💉',  earned: firstBloods > 0 },
-    { key: 'bloodthirsty',  label: 'Bloodthirsty',      desc: '10+ first bloods overall',     icon: '🩸',  earned: firstBloods >= 10 },
-    { key: 'massacre',      label: 'Massacre',          desc: '20+ kills in a single game',   icon: '💀',  earned: maxKills >= 20 },
-    { key: 'ward_lord',     label: 'Ward Lord',         desc: '200+ wards placed',            icon: '👁️',  earned: wardsPlaced >= 200 },
-    { key: 'ward_breaker',  label: 'Ward Breaker',      desc: '50+ enemy wards killed',       icon: '🔍',  earned: wardsKilled >= 50 },
+    { key: 'veteran_25',      label: 'Veteran',            desc: '25 games played',                    icon: '🎖️',  earned: games >= 25 },
+    { key: 'veteran_50',      label: 'Battle-Hardened',    desc: '50 games played',                    icon: '⚔️',  earned: games >= 50 },
+    { key: 'veteran_100',     label: 'Centurion',          desc: '100 games played',                   icon: '🏆',  earned: games >= 100 },
+    { key: 'veteran_200',     label: 'Elder',              desc: '200 games played',                   icon: '🌟',  earned: games >= 200 },
+    { key: 'streak_5',        label: 'On Fire',            desc: '5-game win streak',                  icon: '🔥',  earned: maxStreak >= 5 },
+    { key: 'streak_10',       label: 'Unstoppable',        desc: '10-game win streak',                 icon: '💥',  earned: maxStreak >= 10 },
+    { key: 'deathless',       label: 'Untouchable',        desc: 'Won a game with 0 deaths',           icon: '🛡️',  earned: deathlessGames > 0 },
+    { key: 'deathless_5',     label: 'Ghost',              desc: '5+ deathless game wins',             icon: '👻',  earned: deathlessGames >= 5 },
+    { key: 'captain_5',       label: 'Born Leader',        desc: 'Captained 5+ matches',               icon: '👑',  earned: captainGames >= 5 },
+    { key: 'all_positions',   label: 'Versatile',          desc: 'Played all 5 positions',             icon: '🎭',  earned: positionsPlayed >= 5 },
+    { key: 'carry_king',      label: 'Carry King',         desc: '20+ games as Safe Lane (Pos 1)',     icon: '⚔️',  earned: carryGames >= 20 },
+    { key: 'support_master',  label: 'Support Master',     desc: '20+ games as Support (Pos 4/5)',     icon: '🩺',  earned: supportGames >= 20 },
+    { key: 'hero_diversity',  label: 'Jack of All Trades', desc: '15+ different heroes',               icon: '🃏',  earned: uniqueHeroes >= 15 },
+    { key: 'hero_diversity_25', label: 'Hero Collector',  desc: '25+ different heroes',               icon: '📚',  earned: uniqueHeroes >= 25 },
+    { key: 'specialist',      label: 'Specialist',         desc: '10+ games on one hero',              icon: '🎯',  earned: maxOnOneHero >= 10 },
+    { key: 'rampage',         label: 'RAMPAGE',            desc: 'Achieved at least one rampage',      icon: '☠️',  earned: rampages > 0 },
+    { key: 'ultra_kill',      label: 'Ultra Kill',         desc: 'Got an Ultra Kill',                  icon: '⚡',  earned: ultraKills > 0 },
+    { key: 'multikill_10',    label: 'Kill Artist',        desc: '10+ multi-kills (combined)',         icon: '🔪',  earned: (doubleKills + tripleKills + ultraKills + rampages) >= 10 },
+    { key: 'first_blood',     label: 'First Blood',        desc: 'Claimed first blood',                icon: '💉',  earned: firstBloods > 0 },
+    { key: 'bloodthirsty',    label: 'Bloodthirsty',       desc: '10+ first bloods overall',           icon: '🩸',  earned: firstBloods >= 10 },
+    { key: 'massacre',        label: 'Massacre',           desc: '20+ kills in a single game',         icon: '💀',  earned: maxKills >= 20 },
+    { key: 'big_damage',      label: 'Demolisher',         desc: '30,000+ hero damage in one game',    icon: '💣',  earned: maxDamage >= 30000 },
+    { key: 'efficient',       label: 'Gold Factory',       desc: '600+ GPM in a single game',          icon: '💰',  earned: maxGpm >= 600 },
+    { key: 'ward_lord',       label: 'Ward Lord',          desc: '200+ wards placed',                  icon: '👁️',  earned: wardsPlaced >= 200 },
+    { key: 'ward_breaker',    label: 'Ward Breaker',       desc: '50+ enemy wards killed',             icon: '🔍',  earned: wardsKilled >= 50 },
   ];
   return ACHIEVEMENTS;
 }
@@ -4448,6 +4557,8 @@ module.exports = {
   getMatchRatings,
   getPlayerRatingsReceived,
   getDiscordIdsForMatch,
+  getTopDuos,
+  getPlayerConnections,
   getPlayerFormBatch,
   getPositionAverages,
   getHeroMatchups,

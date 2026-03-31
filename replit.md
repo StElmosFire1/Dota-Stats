@@ -57,6 +57,8 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Hero Tier List tab on Heroes page — heroes ranked S/A/B/C/D by inhouse win rate; minimum 2 games; color-coded tier cards.
 - Hero Matchups tab on Heroes page — select any hero to see win rate vs every opponent they've faced; filterable, sortable table with advantage bar.
 - Player Benchmarks section on player profiles — compares GPM, Damage, LH, Healing vs server average for the player's most-played position; color-coded bars with +/- % indicator.
+- Achievement system expanded: veteran_200 (Elder), deathless_5 (Ghost), carry_king (20+ Pos 1 games), support_master (20+ Pos 4/5 games), hero_diversity_25 (Hero Collector), big_damage (30k+ dmg in one game), efficient (600+ GPM in one game) — 7 new badges added.
+- Player Network page (/social) under Tools → shows Top Duos tab (best teammate win-rate pairings, min-games filter) and Player Connections tab (select a player to see their top 10 teammates + top 10 opponents with win rates).
 - Match prediction system: `!predict <matchId> radiant|dire` Discord command + `/api/predictions` endpoints.
 - Achievement badges on player profiles expanded: rampage, ultra kill, first blood, massacre, ward lord/breaker.
 - Player prediction accuracy stats shown on player profiles.

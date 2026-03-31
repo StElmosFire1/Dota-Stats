@@ -536,6 +536,27 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/social-graph', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const minGames = parseInt(req.query.min_games) || 3;
+      const duos = await db.getTopDuos(seasonId, minGames);
+      res.json({ duos });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch social graph' });
+    }
+  });
+
+  router.get('/player-connections/:accountId', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.getPlayerConnections(req.params.accountId, seasonId);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch player connections' });
+    }
+  });
+
   router.get('/player-form', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
