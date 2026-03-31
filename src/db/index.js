@@ -2837,17 +2837,22 @@ async function deletePatchNote(id) {
 
 async function seedPatchNotes(notes) {
   const p = getPool();
-  // Remove all System-authored notes and re-insert in the correct sequential order.
-  // published_at is set to NOW() on insert, so inserting in order ensures correct
-  // display ordering on the patch notes page. User-created notes are preserved.
-  await p.query(`DELETE FROM patch_notes WHERE author = 'System'`);
+  // Upsert by version — preserves user-created notes and sets correct historical dates.
+  // On conflict (same version), update title/content/author/published_at from seed data
+  // so dates are always correct regardless of when the row was first inserted.
   for (const note of notes) {
     await p.query(`
-      INSERT INTO patch_notes (version, title, content, author)
-      VALUES ($1, $2, $3, $4)
-    `, [note.version, note.title, note.content, note.author || 'System']);
+      INSERT INTO patch_notes (version, title, content, author, published_at)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (version) DO UPDATE SET
+        title        = EXCLUDED.title,
+        content      = EXCLUDED.content,
+        author       = EXCLUDED.author,
+        published_at = EXCLUDED.published_at
+      WHERE patch_notes.author = 'System'
+    `, [note.version, note.title, note.content, note.author || 'System', note.published_at]);
   }
-  console.log(`[DB] Patch notes seeded (${notes.length} entries).`);
+  console.log(`[DB] Patch notes seeded/updated (${notes.length} entries).`);
 }
 
 async function getPlayerNemesis(accountId) {
