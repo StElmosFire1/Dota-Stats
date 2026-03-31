@@ -551,6 +551,17 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_server_logs_created ON server_logs(created_at DESC)`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS match_notes (
+        id SERIAL PRIMARY KEY,
+        match_id BIGINT NOT NULL,
+        content TEXT NOT NULL,
+        added_by VARCHAR(100) NOT NULL DEFAULT 'admin',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_match_notes_match ON match_notes(match_id)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -4529,6 +4540,29 @@ async function getSeasonPlayerRecords(seasonId = null) {
   };
 }
 
+async function getMatchNotes(matchId) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT id, match_id, content, added_by, created_at FROM match_notes WHERE match_id = $1 ORDER BY created_at ASC`,
+    [matchId]
+  );
+  return res.rows;
+}
+
+async function addMatchNote(matchId, content, addedBy) {
+  const p = getPool();
+  const res = await p.query(
+    `INSERT INTO match_notes (match_id, content, added_by) VALUES ($1, $2, $3) RETURNING *`,
+    [matchId, content, addedBy || 'admin']
+  );
+  return res.rows[0];
+}
+
+async function deleteMatchNote(noteId) {
+  const p = getPool();
+  await p.query(`DELETE FROM match_notes WHERE id = $1`, [noteId]);
+}
+
 module.exports = {
   init,
   getPool,
@@ -4649,6 +4683,9 @@ module.exports = {
   logServerError,
   getServerLogs,
   reparseMatchFromStats,
+  getMatchNotes,
+  addMatchNote,
+  deleteMatchNote,
 };
 
 async function getPudgeStats(seasonId = null) {

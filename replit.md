@@ -59,6 +59,9 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Player Benchmarks section on player profiles — compares GPM, Damage, LH, Healing vs server average for the player's most-played position; color-coded bars with +/- % indicator.
 - Achievement system expanded: veteran_200 (Elder), deathless_5 (Ghost), carry_king (20+ Pos 1 games), support_master (20+ Pos 4/5 games), hero_diversity_25 (Hero Collector), big_damage (30k+ dmg in one game), efficient (600+ GPM in one game) — 7 new badges added.
 - Player Network page (/social) under Tools → shows Top Duos tab (best teammate win-rate pairings, min-games filter) and Player Connections tab (select a player to see their top 10 teammates + top 10 opponents with win rates).
+- AI match commentary: after every recorded match, Grok generates a witty MVP one-liner + 2-sentence match narrative, sent as a follow-up Discord message (async, non-blocking).
+- Hot streak milestone announcements: 5-win streak sends 🔥🔥🔥 callout, 10-win streak sends 🏆🔥🏆 LEGENDARY callout; runs for ALL recording paths (replay upload, !record, lobby auto).
+- Match notes: admins can add/delete text notes to any match via the web dashboard (match detail page); stored in `match_notes` DB table; visible to all users once added.
 - Match prediction system: `!predict <matchId> radiant|dire` Discord command + `/api/predictions` endpoints.
 - Achievement badges on player profiles expanded: rampage, ultra kill, first blood, massacre, ward lord/breaker.
 - Player prediction accuracy stats shown on player profiles.

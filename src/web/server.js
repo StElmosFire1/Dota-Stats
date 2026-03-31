@@ -364,6 +364,35 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/matches/:matchId/notes', async (req, res) => {
+    try {
+      const notes = await db.getMatchNotes(req.params.matchId);
+      res.json(notes);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/matches/:matchId/notes', express.json(), authMiddleware, async (req, res) => {
+    try {
+      const { content, added_by } = req.body;
+      if (!content || !content.trim()) return res.status(400).json({ error: 'content is required' });
+      const note = await db.addMatchNote(req.params.matchId, content.trim(), added_by || 'admin');
+      res.json(note);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/notes/:noteId', authMiddleware, async (req, res) => {
+    try {
+      await db.deleteMatchNote(req.params.noteId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.put('/matches/:matchId/draft', express.json(), requireSuperuser, async (req, res) => {
     try {
       const { entries } = req.body;

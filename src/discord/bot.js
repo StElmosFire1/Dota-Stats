@@ -6,7 +6,7 @@ const { getSheetsStore } = require('../sheets/sheetsStore');
 const { getReplayParser } = require('../replay/replayParser');
 const { getOpenDota } = require('../api/opendota');
 const db = require('../db');
-const { generateWeeklyRecapBlurb, generatePlayerAnalysis, generatePlayerRoast, generateMatchMvpBlurb } = require('../services/groqService');
+const { generateWeeklyRecapBlurb, generatePlayerAnalysis, generatePlayerRoast, generateMatchMvpBlurb, generateMatchNarrative } = require('../services/groqService');
 
 let steamAvailable = false;
 
@@ -930,34 +930,10 @@ class DiscordBot {
           const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
 
-          const streakCallouts = [];
-          if (msg.guild) {
-            for (const p of matchStats.players.filter(p => p.accountId && p.accountId !== 0)) {
-              const rating = await db.getPlayerRating(p.accountId.toString()).catch(() => null);
-              if (rating) await this._updateMmrRoles(msg.guild, p.accountId.toString(), rating.mmr).catch(() => {});
-
-              const streak = await db.getPlayerCurrentStreak(p.accountId).catch(() => 0);
-              const name = p.personaname || `ID:${p.accountId}`;
-              if (streak >= 3) {
-                const fireEmoji = '\u{1F525}';
-                const prefix = streak >= 5 ? fireEmoji.repeat(3) : fireEmoji;
-                streakCallouts.push(`${prefix} **${name}** is on a **${streak}-game win streak!**`);
-              } else if (streak <= -3) {
-                const skullEmoji = String.fromCodePoint(0x1F480);
-                const prefix = Math.abs(streak) >= 5 ? skullEmoji.repeat(3) : skullEmoji;
-                streakCallouts.push(`${prefix} **${name}** is on a **${Math.abs(streak)}-game losing streak...**`);
-              }
-            }
-          }
-
           await this._markRecorded(matchStats.matchId, 'replay-upload');
 
           await statusMsg.edit(`Replay parsed! Match **${matchStats.matchId}** recorded with full stats.`);
           await this._sendMatchSummary(matchStats, 'Replay Upload', msg.channel);
-
-          if (streakCallouts.length > 0) {
-            await msg.channel.send(`\u{1F3C6} **Streak Watch:**\n${streakCallouts.join('\n')}`).catch(() => {});
-          }
 
           replayParser.cleanup(filePath);
           return;
@@ -1228,6 +1204,98 @@ class DiscordBot {
       const announceChannel = channel.guild?.channels?.cache?.get(config.discord.announceChannelId);
       if (announceChannel) await announceChannel.send({ embeds: [embed] }).catch(() => {});
     }
+
+    // Streak callouts — runs for ALL recording paths
+    ;(async () => {
+      try {
+        const streakCallouts = [];
+        const milestones = [];
+        const guild = channel.guild;
+        for (const p of matchStats.players.filter(q => q.accountId && q.accountId !== 0)) {
+          if (guild) {
+            const rating = await db.getPlayerRating(p.accountId.toString()).catch(() => null);
+            if (rating) await this._updateMmrRoles(guild, p.accountId.toString(), rating.mmr).catch(() => {});
+          }
+          const streak = await db.getPlayerCurrentStreak(p.accountId).catch(() => 0);
+          const name = p.personaname || `ID:${p.accountId}`;
+          const fire = '\u{1F525}';
+          const skull = '\u{1F480}';
+          const trophy = '\u{1F3C6}';
+          if (streak === 10) {
+            milestones.push(`${trophy}${fire}${trophy} **LEGENDARY! ${name} just hit a 10-GAME WIN STREAK!** ${trophy}${fire}${trophy}`);
+          } else if (streak === 5) {
+            milestones.push(`${fire}${fire}${fire} **${name} is on FIRE \u2014 5-game win streak!** ${fire}${fire}${fire}`);
+          } else if (streak >= 3) {
+            streakCallouts.push(`${fire} **${name}** is on a **${streak}-game win streak!**`);
+          } else if (streak === -10) {
+            milestones.push(`${skull}${skull}${skull} **${name} has lost 10 in a row...** someone help them.`);
+          } else if (streak === -5) {
+            milestones.push(`${skull}${skull} **${name}** is on a brutal 5-game losing skid. F.`);
+          } else if (streak <= -3) {
+            streakCallouts.push(`${skull} **${name}** is on a **${Math.abs(streak)}-game losing streak...**`);
+          }
+        }
+        for (const m of milestones) {
+          await channel.send(m).catch(() => {});
+        }
+        if (streakCallouts.length > 0) {
+          await channel.send(`\u{1F3C6} **Streak Watch:**\n${streakCallouts.join('\n')}`).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[Bot] Streak callout failed:', err.message);
+      }
+    })();
+
+    // Fire AI commentary async — don't block match recording
+    const topDamage = [...allPlayers].sort((a, b) => (b.heroDamage || 0) - (a.heroDamage || 0))[0];
+    const topRampageAi = allPlayers.find(p => (p.rampages || 0) > 0);
+    const radiantKillsAi = radiant.reduce((s, p) => s + (p.kills || 0), 0);
+    const direKillsAi = dire.reduce((s, p) => s + (p.kills || 0), 0);
+    const loserKills = matchStats.radiantWin ? direKillsAi : radiantKillsAi;
+    const winnerKills = matchStats.radiantWin ? radiantKillsAi : direKillsAi;
+    const isBlowout = winnerKills >= 3 * Math.max(loserKills, 1);
+    const mvpKdaVal = mvp
+      ? (mvp.deaths > 0 ? `${((mvp.kills + mvp.assists) / mvp.deaths).toFixed(2)}` : `${mvp.kills + mvp.assists} (deathless)`)
+      : null;
+
+    ;(async () => {
+      try {
+        const [mvpBlurb, narrative] = await Promise.all([
+          mvp ? generateMatchMvpBlurb({
+            name: mvp.personaname || 'Unknown',
+            heroName: this._heroDisplayName(mvp.heroName, mvp.heroId),
+            kills: mvp.kills,
+            deaths: mvp.deaths,
+            assists: mvp.assists,
+            damage: mvp.heroDamage,
+            gpm: mvp.goldPerMin,
+            team: mvp.team,
+          }) : Promise.resolve(null),
+          generateMatchNarrative({
+            winner: matchStats.radiantWin ? 'Radiant' : 'Dire',
+            durationMins: Math.floor((matchStats.duration || 0) / 60),
+            totalKills,
+            mvpName: mvp ? (mvp.personaname || 'Unknown') : null,
+            mvpHero: mvp ? this._heroDisplayName(mvp.heroName, mvp.heroId) : null,
+            mvpKda: mvpKdaVal,
+            topDamager: topDamage ? (topDamage.personaname || 'Unknown') : null,
+            topDamage: topDamage?.heroDamage,
+            hasRampage: !!topRampageAi,
+            rampageName: topRampageAi ? (topRampageAi.personaname || 'Unknown') : null,
+            isBlowout,
+            radiantKills: radiantKillsAi,
+            direKills: direKillsAi,
+            loserTeam: matchStats.radiantWin ? 'Dire' : 'Radiant',
+          }),
+        ]);
+        const parts = [mvpBlurb, narrative].filter(Boolean);
+        if (parts.length > 0) {
+          await channel.send(`\u{1F916} **AI Commentary**\n${parts.join('\n\n')}`).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[Grok] Post-match commentary failed:', err.message);
+      }
+    })();
   }
 
   async _cmdHeroStats(msg, args) {

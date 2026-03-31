@@ -178,6 +178,33 @@ async function generateMatchMvpBlurb({ name, heroName, kills, deaths, assists, d
 }
 
 /**
+ * Generate an AI narrative summary of a full match.
+ */
+async function generateMatchNarrative({ winner, durationMins, totalKills, mvpName, mvpHero, mvpKda, topDamager, topDamage, hasRampage, rampageName, isBlowout, radiantKills, direKills, loserTeam }) {
+  if (!getClient()) return null;
+  try {
+    const lines = [
+      `${winner} won in ${durationMins} minutes.`,
+      `Score: Radiant ${radiantKills} - Dire ${direKills} (${totalKills} total kills).`,
+      mvpName ? `MVP candidate: ${mvpName} on ${mvpHero || 'Unknown'} with ${mvpKda} KDA.` : '',
+      topDamager ? `Top damage: ${topDamager} dealt ${topDamage ? parseInt(topDamage).toLocaleString() : '?'} damage.` : '',
+      hasRampage ? `${rampageName || 'Someone'} got a RAMPAGE!` : '',
+      isBlowout ? `${loserTeam} got absolutely destroyed.` : '',
+    ].filter(Boolean).join(' ');
+
+    return await ask([
+      'You are a hype commentator for an OCE Dota 2 inhouse community.',
+      'Write a punchy 2-sentence match recap based on the data below.',
+      'Be specific, colourful, and a little dramatic. Plain prose only — no bullet points, no headers.',
+      lines,
+    ].join('\n'), 120, 0.9);
+  } catch (err) {
+    console.error('[Grok] Match narrative failed:', err.message);
+    return null;
+  }
+}
+
+/**
  * Conversational Grok chat for the web dashboard.
  * Strictly restricted to Dota 2 and this server's inhouse stats.
  */
@@ -224,5 +251,6 @@ module.exports = {
   generatePlayerAnalysis,
   generatePlayerRoast,
   generateMatchMvpBlurb,
+  generateMatchNarrative,
   generateChatResponse,
 };

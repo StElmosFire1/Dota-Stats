@@ -2095,6 +2095,111 @@ function TeamfightPanel({ timeline, allPlayers }) {
   );
 }
 
+function MatchNotes({ matchId, isAdmin, adminKey }) {
+  const [notes, setNotes] = useState([]);
+  const [newNote, setNewNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+
+  useEffect(() => {
+    fetch(`/api/matches/${matchId}/notes`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setNotes(data); })
+      .catch(() => {});
+  }, [matchId]);
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    if (!newNote.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/matches/${matchId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-upload-key': adminKey },
+        body: JSON.stringify({ content: newNote.trim(), added_by: 'admin' }),
+      });
+      if (res.ok) {
+        const note = await res.json();
+        setNotes(prev => [...prev, note]);
+        setNewNote('');
+      }
+    } catch {} finally { setSaving(false); }
+  }
+
+  async function handleDelete(noteId) {
+    setDeleting(noteId);
+    try {
+      await fetch(`/api/notes/${noteId}`, {
+        method: 'DELETE',
+        headers: { 'x-upload-key': adminKey },
+      });
+      setNotes(prev => prev.filter(n => n.id !== noteId));
+    } catch {} finally { setDeleting(null); }
+  }
+
+  if (notes.length === 0 && !isAdmin) return null;
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>📝 Match Notes</h3>
+      {notes.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+          {notes.map(note => (
+            <div key={note.id} style={{
+              background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)',
+              borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+            }}>
+              <div>
+                <div style={{ color: 'var(--text-primary)', fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.content}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4 }}>
+                  {note.added_by} · {new Date(note.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+              {isAdmin && (
+                <button
+                  onClick={() => handleDelete(note.id)}
+                  disabled={deleting === note.id}
+                  title="Delete note"
+                  style={{
+                    background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer',
+                    fontSize: 16, padding: '2px 6px', lineHeight: 1, flexShrink: 0,
+                  }}
+                >✕</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {isAdmin && (
+        <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
+          <textarea
+            value={newNote}
+            onChange={e => setNewNote(e.target.value)}
+            placeholder="Add a match note or highlight (e.g. 'Closest game of the season — insane comeback')…"
+            rows={3}
+            style={{
+              background: 'rgba(255,255,255,0.04)', border: '1px solid #334155',
+              color: 'var(--text-primary)', borderRadius: 6, padding: '8px 10px',
+              fontSize: 13, resize: 'vertical', fontFamily: 'inherit',
+            }}
+          />
+          <div>
+            <button
+              type="submit"
+              disabled={saving || !newNote.trim()}
+              style={{
+                background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.5)',
+                color: '#818cf8', padding: '6px 18px', borderRadius: 6, cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
+              }}
+            >{saving ? 'Saving…' : 'Add Note'}</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export default function MatchDetail() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -2495,6 +2600,8 @@ export default function MatchDetail() {
       <SupportReportPanel players={allPlayers} timeline={match.game_timeline} />
       <DeathTimingPanel timeline={match.game_timeline} allPlayers={allPlayers} duration={match.duration} />
       <ComebackMetricPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+
+      <MatchNotes matchId={matchId} isAdmin={isAdmin} adminKey={adminKey} />
 
       {allPlayers.some(p => p.abilities && p.abilities.length > 0) && (
         <div className="expanded-stats-section">
