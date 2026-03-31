@@ -462,6 +462,13 @@ async function init() {
             USING NULLIF(TRIM(account_id::text), '')::bigint;
         END IF;
 
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'nicknames' AND column_name = 'discord_id'
+        ) THEN
+          ALTER TABLE nicknames ADD COLUMN discord_id VARCHAR(100) DEFAULT '';
+        END IF;
+
         IF EXISTS (
           SELECT 1 FROM information_schema.columns
           WHERE table_name = 'ratings' AND column_name = 'player_id'
@@ -1419,6 +1426,19 @@ async function setNickname(accountId, nickname) {
   return nickname.trim();
 }
 
+async function setDiscordId(accountId, discordId) {
+  const p = getPool();
+  const existing = await p.query('SELECT id FROM nicknames WHERE account_id = $1', [accountId]);
+  if (existing.rows.length === 0) {
+    throw new Error('Player has no nickname entry — set a nickname first.');
+  }
+  await p.query(
+    `UPDATE nicknames SET discord_id = $1, updated_at = NOW() WHERE account_id = $2`,
+    [(discordId || '').trim(), accountId]
+  );
+  return (discordId || '').trim();
+}
+
 async function getAllNicknames() {
   const p = getPool();
   const result = await p.query('SELECT * FROM nicknames ORDER BY updated_at DESC');
@@ -1440,6 +1460,7 @@ async function getAllPlayers(seasonId = null) {
        ) as player_key,
        MAX(ps.persona_name) as persona_name,
        MAX(n.nickname) as nickname,
+       MAX(n.discord_id) as discord_id,
        COUNT(DISTINCT ps.match_id) as games_played,
        MAX(m.date) as last_played,
        SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
@@ -4241,6 +4262,7 @@ module.exports = {
   getPlayerStats,
   getNickname,
   setNickname,
+  setDiscordId,
   getAllNicknames,
   getAllPlayers,
   getHeroStats,

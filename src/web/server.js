@@ -522,6 +522,20 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.post('/players/:accountId/discord', requireSuperuser, async (req, res) => {
+    try {
+      const { discord_id } = req.body;
+      const accountId = parseInt(req.params.accountId);
+      if (isNaN(accountId) || accountId <= 0) {
+        return res.status(400).json({ error: 'Invalid account ID' });
+      }
+      const result = await db.setDiscordId(accountId, discord_id);
+      res.json({ accountId, discord_id: result });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to set Discord ID' });
+    }
+  });
+
   router.get('/heroes', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

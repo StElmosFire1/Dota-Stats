@@ -190,6 +190,20 @@ export async function setNickname(accountId, nickname, superuserKey) {
   return data;
 }
 
+export async function setPlayerDiscordId(accountId, discordId, superuserKey) {
+  const res = await fetch(BASE + `/players/${accountId}/discord`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Superuser-Key': superuserKey,
+    },
+    body: JSON.stringify({ discord_id: discordId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to set Discord ID');
+  return data;
+}
+
 export async function getSeasons() {
   return fetchJson('/seasons');
 }
