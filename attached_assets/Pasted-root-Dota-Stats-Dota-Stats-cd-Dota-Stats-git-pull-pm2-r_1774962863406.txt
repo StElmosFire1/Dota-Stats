@@ -1,0 +1,67 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git pull && pm2 restart 2 --update-env
+Already up to date.
+[PM2] Applying action restartProcessId on app [2](ids: [ '2' ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot        │ fork     │ 188  │ online    │ 0%       │ 17.8mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# curl -v -X POST http://localhost:5000/api/admin/test-discord-notify \
+  -H 'x-superuser-key: Terror!'
+* Host localhost:5000 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+*   Trying [::1]:5000...
+* connect to ::1 port 5000 from ::1 port 47916 failed: Connection refused
+*   Trying 127.0.0.1:5000...
+* connect to 127.0.0.1 port 5000 from 127.0.0.1 port 46650 failed: Connection refused
+* Failed to connect to localhost port 5000 after 0 ms: Couldn't connect to server
+* Closing connection
+curl: (7) Failed to connect to localhost port 5000 after 0 ms: Couldn't connect to server
+root@Dota-Stats:~/Dota-Stats# curl -v -X POST http://localhost:5000/api/admin/test-discord-notify   -H 'x-superuser-key: Terror!'
+* Host localhost:5000 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+*   Trying [::1]:5000...
+* connect to ::1 port 5000 from ::1 port 51984 failed: Connection refused
+*   Trying 127.0.0.1:5000...
+* Connected to localhost (127.0.0.1) port 5000
+> POST /api/admin/test-discord-notify HTTP/1.1
+> Host: localhost:5000
+> User-Agent: curl/8.5.0
+> Accept: */*
+> x-superuser-key: Terror!
+> 
+< HTTP/1.1 404 Not Found
+< Cross-Origin-Opener-Policy: same-origin
+< Cross-Origin-Resource-Policy: same-origin
+< Origin-Agent-Cluster: ?1
+< Referrer-Policy: no-referrer
+< Strict-Transport-Security: max-age=31536000; includeSubDomains
+< X-Content-Type-Options: nosniff
+< X-DNS-Prefetch-Control: off
+< X-Download-Options: noopen
+< X-Frame-Options: SAMEORIGIN
+< X-Permitted-Cross-Domain-Policies: none
+< X-XSS-Protection: 0
+< Access-Control-Allow-Origin: *
+< Content-Security-Policy: default-src 'none'
+< Content-Type: text/html; charset=utf-8
+< Content-Length: 169
+< Date: Tue, 31 Mar 2026 13:14:09 GMT
+< Connection: keep-alive
+< Keep-Alive: timeout=5
+< 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot POST /api/admin/test-discord-notify</pre>
+</body>
+</html>
+* Connection #0 to host localhost left intact
+root@Dota-Stats:~/Dota-Stats# 
