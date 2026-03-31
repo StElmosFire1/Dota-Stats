@@ -1634,43 +1634,56 @@ class ReplayParser {
 
       console.log(`[Replay] Pudge slot ${pSlot}: ${myUnitOrders.length} unit-order casts, ${myCombatlogCasts.length} combatlog casts, ${myHits.length} hits`);
 
+      const castLog = []; // per-cast detail for cross-reference report
+
       if (castsToUse.length > 0) {
         for (const cast of castsToUse) {
           const normX = useTargetPos ? cast.normX : null;
           const normY = useTargetPos ? cast.normY : null;
           const hit   = myHits.find(h => h.time >= cast.time && h.time <= cast.time + 2.5);
+          let outcome, hitTarget = null, countedAttempt = false, countedHit = false;
           if (hit) {
             if (hit.targetHero) {
               // Confirmed hero hit — always a genuine attempt
               attempts++; hits++;
+              outcome = 'hero_hit';
+              hitTarget = hit.targetName || hit.targetHero || null;
+              countedAttempt = true; countedHit = true;
             } else {
               // Hit a creep/non-hero.
-              // Farming hook: only excluded when there was NO enemy anywhere along
-              // the hook path. If an enemy was in the path but Pudge hit a creep
-              // instead (bad timing, creep block), it still counts.
-              if (isGenuineAttempt(normX, normY, cast.time)) attempts++;
+              const genuine = isGenuineAttempt(normX, normY, cast.time);
+              if (genuine) attempts++;
+              outcome = genuine ? 'creep_hit_genuine' : 'farming_hook';
+              hitTarget = hit.targetName || 'creep';
+              countedAttempt = genuine; countedHit = false;
             }
           } else {
             // Complete miss (hook hit nothing) — always a genuine attempt.
-            // If Pudge bothered to cast it and it hit nothing, he was trying.
             attempts++;
+            outcome = 'miss'; countedAttempt = true; countedHit = false;
           }
+          castLog.push({ time: Math.round(cast.time), outcome, hitTarget, countedAttempt, countedHit });
         }
       } else {
         // No cast events at all — infer from hit events only
         for (const hit of myHits) {
+          let outcome, countedAttempt = false, countedHit = false;
+          const hitTarget = hit.targetName || (hit.targetHero ? 'hero' : 'creep');
           if (hit.targetHero) {
             attempts++; hits++;
+            outcome = 'hero_hit'; countedAttempt = true; countedHit = true;
           } else {
-            if (isGenuineAttempt(null, null, hit.time)) attempts++;
+            const genuine = isGenuineAttempt(null, null, hit.time);
+            if (genuine) attempts++;
+            outcome = genuine ? 'creep_hit_genuine' : 'farming_hook';
+            countedAttempt = genuine; countedHit = false;
           }
+          castLog.push({ time: Math.round(hit.time), outcome, hitTarget, countedAttempt, countedHit });
         }
       }
 
-      const castTimes = castsToUse.length > 0
-        ? castsToUse.map(c => Math.round(c.time))
-        : myHits.map(h => Math.round(h.time));
-      hookStats[pSlot] = { attempts, hits, castTimes };
+      const castTimes = castLog.map(c => c.time);
+      hookStats[pSlot] = { attempts, hits, castTimes, castLog };
       console.log(`[Replay] Pudge slot ${pSlot}: ${hits} hook hits / ${attempts} genuine attempts`);
     }
 
@@ -1997,6 +2010,7 @@ class ReplayParser {
         hookAttempts: hookStats[slot] ? hookStats[slot].attempts : null,
         hookHits: hookStats[slot] ? hookStats[slot].hits : null,
         hookCastTimes: hookStats[slot] ? hookStats[slot].castTimes : null,
+        hookCastLog: hookStats[slot] ? hookStats[slot].castLog : null,
         wardDewardedCount: wardDewardedCount[slot] || 0,
         wardAvgLifespan: wardAvgLifespan[slot] || null,
         obsDewardedCount: obsDewardedCount[slot] || 0,

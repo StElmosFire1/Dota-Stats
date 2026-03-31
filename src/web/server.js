@@ -683,6 +683,92 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/matches/:matchId/hook-report.txt', async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      const p = db.getPool();
+      const matchRes = await p.query('SELECT * FROM matches WHERE match_id = $1', [matchId]);
+      if (matchRes.rows.length === 0) return res.status(404).send('Match not found');
+      const match = matchRes.rows[0];
+
+      const playersRes = await p.query(
+        `SELECT ps.*, COALESCE(n.nickname, ps.persona_name) as display_name
+         FROM player_stats ps
+         LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+         WHERE ps.match_id = $1 AND ps.hero_name = 'npc_dota_hero_pudge'
+         ORDER BY ps.slot`,
+        [matchId]
+      );
+      const pudgePlayers = playersRes.rows;
+      if (pudgePlayers.length === 0) return res.status(404).send('No Pudge players found in this match.');
+
+      const fmtTime = (s) => {
+        if (s == null) return '?';
+        const m = Math.floor(s / 60), sec = s % 60;
+        return `${m}:${String(sec).padStart(2, '0')}`;
+      };
+
+      const outcomeLabel = {
+        hero_hit: 'HERO HIT ✓',
+        miss: 'MISS',
+        creep_hit_genuine: 'CREEP HIT (enemy nearby — counted as attempt)',
+        farming_hook: 'FARMING HOOK (no enemy in path — NOT counted as attempt)',
+      };
+
+      const durationSecs = match.duration || 0;
+      let lines = [];
+      lines.push(`PUDGE HOOK ACCURACY VERIFICATION REPORT`);
+      lines.push(`Match #${matchId}  |  Duration: ${fmtTime(durationSecs)}  |  Date: ${match.date ? new Date(match.date).toUTCString() : 'unknown'}`);
+      lines.push(`Generated: ${new Date().toUTCString()}`);
+      lines.push(`${'='.repeat(70)}`);
+      lines.push('');
+      lines.push('HOW TO READ THIS REPORT');
+      lines.push('  - Scrub to each cast timestamp in your replay to verify it manually.');
+      lines.push('  - "HERO HIT" = hook connected with enemy hero → counted as attempt AND hit.');
+      lines.push('  - "MISS" = hook hit nothing → counted as attempt (not a hit).');
+      lines.push('  - "CREEP HIT (enemy nearby)" = hit a creep, but an enemy was in the path → counted as attempt.');
+      lines.push('  - "FARMING HOOK" = hit a creep/unit with no enemy near path → NOT counted as attempt or hit.');
+      lines.push('  - Accuracy = Hits / Genuine Attempts  (farming hooks excluded from denominator).');
+      lines.push('');
+
+      for (const p of pudgePlayers) {
+        const castLog = Array.isArray(p.hook_cast_log) ? p.hook_cast_log : [];
+        const acc = p.hook_attempts > 0
+          ? ((p.hook_hits / p.hook_attempts) * 100).toFixed(1) + '%'
+          : 'N/A';
+
+        lines.push(`${'─'.repeat(70)}`);
+        lines.push(`PLAYER: ${p.display_name}  (Team: ${p.team}, Slot: ${p.slot})`);
+        lines.push(`SUMMARY: ${castLog.length} total casts  |  ${p.hook_attempts ?? '?'} genuine attempts  |  ${p.hook_hits ?? '?'} hero hits  |  Accuracy: ${acc}`);
+        lines.push('');
+
+        if (castLog.length === 0) {
+          lines.push('  No per-cast data available. Re-parse this replay to generate the detailed log.');
+        } else {
+          lines.push(`  #    TIME     OUTCOME`);
+          lines.push(`  ${'─'.repeat(60)}`);
+          castLog.forEach((entry, i) => {
+            const label = outcomeLabel[entry.outcome] || entry.outcome;
+            const target = entry.hitTarget ? `  → ${entry.hitTarget}` : '';
+            lines.push(`  ${String(i + 1).padStart(3)}  ${fmtTime(entry.time).padEnd(7)}  ${label}${target}`);
+          });
+        }
+        lines.push('');
+      }
+
+      lines.push(`${'='.repeat(70)}`);
+      lines.push('END OF REPORT');
+
+      const body = lines.join('\n');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="hook-report-match-${matchId}.txt"`);
+      res.send(body);
+    } catch (err) {
+      console.error('[API] Error generating hook report:', err.message);
+      res.status(500).send('Failed to generate hook report');
+    }
+  });
+
   router.get('/season-player-records', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
