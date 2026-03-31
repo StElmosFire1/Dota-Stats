@@ -1626,13 +1626,31 @@ class ReplayParser {
 
       const isGenuineAttempt = makeGenuineAttemptChecker(pSlot, enemySlots);
 
-      const myHits          = hookHits.filter(h => h.slot === pSlot);
-      const myUnitOrders    = hookUnitOrders.filter(c => c.slot === pSlot);
-      const myCombatlogCasts = hookCasts.filter(c => c.slot === pSlot);
-      const castsToUse      = myUnitOrders.length > 0 ? myUnitOrders : myCombatlogCasts;
-      const useTargetPos    = myUnitOrders.length > 0;
+      // Deduplicate cast events: a single hook press can emit multiple identical
+      // events within fractions of a second (one per tick while the order is
+      // queued). Merge any events within CAST_DEDUP_WINDOW seconds of the
+      // previous one, keeping only the first (which carries the target coords).
+      const CAST_DEDUP_WINDOW = 2.0; // seconds — well below the minimum hook CD (~8s)
+      const dedupCasts = (arr) => {
+        const sorted = [...arr].sort((a, b) => a.time - b.time);
+        const out = [];
+        let lastTime = -Infinity;
+        for (const c of sorted) {
+          if (c.time - lastTime > CAST_DEDUP_WINDOW) {
+            out.push(c);
+            lastTime = c.time;
+          }
+        }
+        return out;
+      };
 
-      console.log(`[Replay] Pudge slot ${pSlot}: ${myUnitOrders.length} unit-order casts, ${myCombatlogCasts.length} combatlog casts, ${myHits.length} hits`);
+      const myHits           = hookHits.filter(h => h.slot === pSlot);
+      const myUnitOrders     = dedupCasts(hookUnitOrders.filter(c => c.slot === pSlot));
+      const myCombatlogCasts = dedupCasts(hookCasts.filter(c => c.slot === pSlot));
+      const castsToUse       = myUnitOrders.length > 0 ? myUnitOrders : myCombatlogCasts;
+      const useTargetPos     = myUnitOrders.length > 0;
+
+      console.log(`[Replay] Pudge slot ${pSlot}: ${myUnitOrders.length} unit-order casts (deduped), ${myCombatlogCasts.length} combatlog casts (deduped), ${myHits.length} hits`);
 
       const castLog = []; // per-cast detail for cross-reference report
 
