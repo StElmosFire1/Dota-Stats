@@ -1648,8 +1648,10 @@ class ReplayParser {
       const castsToUse    = hookCasts.filter(c => c.slot === pSlot)
                               .sort((a, b) => a.time - b.time);
 
-      // For each combatlog cast, find the nearest unit-order within ±3s to get coords.
-      const COORD_MATCH_WINDOW = 3.0;
+      // For each combatlog cast, find the nearest unit-order within ±1s to get coords.
+      // Unit-orders fire at the moment the player clicks; the combatlog event fires
+      // when the ability activates (same tick — hook has no cast time). 1s is generous.
+      const COORD_MATCH_WINDOW = 1.0;
       const enrichedCasts = castsToUse.map(cast => {
         let best = null, bestDiff = Infinity;
         for (const uo of myUnitOrders) {
