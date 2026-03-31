@@ -832,6 +832,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
               <th className="col-player" title="Player name">Player</th>
               <th className="col-stat" title="Position (1-5) — click to edit" style={{ minWidth: '50px' }}>Pos</th>
               <th className="col-hero" title="Hero played">Hero</th>
+              <th className="col-stat" title="Hero Level">Lvl</th>
               <th className="col-stat" title="Kills">K</th>
               <th className="col-stat" title="Deaths">D</th>
               <th className="col-stat" title="Assists">A</th>
@@ -879,6 +880,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                     <PositionSelect player={p} matchId={matchId} onUpdate={onPositionUpdate} />
                   </td>
                   <td className="col-hero">{getHeroName(p.hero_id, p.hero_name)}</td>
+                  <td className="col-stat" style={{ color: p.level >= 25 ? '#fbbf24' : p.level >= 20 ? '#a78bfa' : '#94a3b8', fontWeight: p.level >= 25 ? 700 : 400 }}>{p.level || '—'}</td>
                   <td className="col-stat kills">{p.kills}</td>
                   <td className="col-stat deaths">{p.deaths}</td>
                   <td className="col-stat assists">{p.assists}</td>
@@ -1118,11 +1120,22 @@ function ExpandedStats({ players }) {
   );
 }
 
+function fmtGameTime(secs) {
+  if (secs == null) return '?';
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function PudgeHookStats({ players }) {
+  const [expanded, setExpanded] = React.useState({});
   const pudgePlayers = players.filter(p =>
     p.hero_name === 'npc_dota_hero_pudge' && p.hook_attempts != null
   );
   if (pudgePlayers.length === 0) return null;
+
+  const toggleExpand = (idx) => setExpanded(prev => ({ ...prev, [idx]: !prev[idx] }));
+
   return (
     <div className="expanded-stats-section">
       <h3>🪝 Pudge Hook Stats</h3>
@@ -1131,9 +1144,11 @@ function PudgeHookStats({ players }) {
           <thead>
             <tr>
               <th className="col-player">Player</th>
+              <th className="col-stat" title="Total hook casts recorded from replay">Casts</th>
               <th className="col-stat" title="Genuine hook attempts (excludes farm hooks with no nearby enemy)">Attempts</th>
               <th className="col-stat" title="Hooks that hit an enemy hero">Hits</th>
               <th className="col-stat" title="Hook hit accuracy (hits / attempts)">Accuracy</th>
+              <th className="col-stat">Timeline</th>
             </tr>
           </thead>
           <tbody>
@@ -1141,13 +1156,46 @@ function PudgeHookStats({ players }) {
               const acc = p.hook_attempts > 0
                 ? ((p.hook_hits / p.hook_attempts) * 100).toFixed(1) + '%'
                 : '—';
+              const times = Array.isArray(p.hook_cast_times) ? p.hook_cast_times : [];
+              const isOpen = expanded[i];
               return (
-                <tr key={i}>
-                  <td className="col-player"><PlayerLink player={p} index={i} /></td>
-                  <td className="col-stat">{p.hook_attempts}</td>
-                  <td className="col-stat">{p.hook_hits}</td>
-                  <td className="col-stat">{acc}</td>
-                </tr>
+                <React.Fragment key={i}>
+                  <tr>
+                    <td className="col-player"><PlayerLink player={p} index={i} /></td>
+                    <td className="col-stat" style={{ color: '#94a3b8' }}>{times.length > 0 ? times.length : '—'}</td>
+                    <td className="col-stat">{p.hook_attempts}</td>
+                    <td className="col-stat">{p.hook_hits}</td>
+                    <td className="col-stat">{acc}</td>
+                    <td className="col-stat">
+                      {times.length > 0
+                        ? <button onClick={() => toggleExpand(i)} style={{ background: 'none', border: '1px solid #334155', borderRadius: 4, color: '#60a5fa', cursor: 'pointer', padding: '2px 8px', fontSize: '0.8rem' }}>
+                            {isOpen ? '▲ Hide' : '▼ Show'}
+                          </button>
+                        : <span style={{ color: '#475569' }}>No data</span>
+                      }
+                    </td>
+                  </tr>
+                  {isOpen && times.length > 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '8px 12px', background: '#0f172a' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 6 }}>
+                          Hook cast timestamps ({times.length} total) — requires parsed replay
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {times.map((t, j) => (
+                            <span key={j} style={{
+                              background: '#1e293b', border: '1px solid #334155',
+                              borderRadius: 4, padding: '2px 8px',
+                              color: '#cbd5e1', fontSize: '0.8rem', fontFamily: 'monospace'
+                            }}>
+                              #{j + 1} {fmtGameTime(t)}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>

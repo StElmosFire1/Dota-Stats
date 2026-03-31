@@ -1667,7 +1667,10 @@ class ReplayParser {
         }
       }
 
-      hookStats[pSlot] = { attempts, hits };
+      const castTimes = castsToUse.length > 0
+        ? castsToUse.map(c => Math.round(c.time))
+        : myHits.map(h => Math.round(h.time));
+      hookStats[pSlot] = { attempts, hits, castTimes };
       console.log(`[Replay] Pudge slot ${pSlot}: ${hits} hook hits / ${attempts} genuine attempts`);
     }
 
@@ -1993,6 +1996,7 @@ class ReplayParser {
         }, {}),
         hookAttempts: hookStats[slot] ? hookStats[slot].attempts : null,
         hookHits: hookStats[slot] ? hookStats[slot].hits : null,
+        hookCastTimes: hookStats[slot] ? hookStats[slot].castTimes : null,
         wardDewardedCount: wardDewardedCount[slot] || 0,
         wardAvgLifespan: wardAvgLifespan[slot] || null,
         obsDewardedCount: obsDewardedCount[slot] || 0,
