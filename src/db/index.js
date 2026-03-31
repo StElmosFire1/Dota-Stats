@@ -3123,7 +3123,14 @@ async function getPlayerByDiscordId(discordId) {
 
 async function getPatchNotes() {
   const p = getPool();
-  const res = await p.query(`SELECT * FROM patch_notes ORDER BY published_at DESC`);
+  // Sort by version numerically (major DESC, minor DESC) so versions with the
+  // same published_at date are always in the correct order (e.g. 4.1 > 3.3 > 3.2).
+  const res = await p.query(`
+    SELECT * FROM patch_notes
+    ORDER BY
+      split_part(version, '.', 1)::int DESC,
+      split_part(version, '.', 2)::int DESC
+  `);
   return res.rows;
 }
 
@@ -3158,6 +3165,23 @@ async function deletePatchNote(id) {
 
 async function seedPatchNotes(notes) {
   const p = getPool();
+
+  // Guard: ensure seed array is in strictly ascending version order.
+  // Versions are "major.minor" strings — compare numerically.
+  const parseVer = v => v.split('.').map(Number);
+  for (let i = 1; i < notes.length; i++) {
+    const [aMaj, aMin] = parseVer(notes[i - 1].version);
+    const [bMaj, bMin] = parseVer(notes[i].version);
+    const aNum = aMaj * 1000 + aMin;
+    const bNum = bMaj * 1000 + bMin;
+    if (bNum <= aNum) {
+      throw new Error(
+        `[DB] patchNotes.js is out of order: v${notes[i - 1].version} appears before v${notes[i].version}. ` +
+        `Fix the order in src/data/patchNotes.js before starting the bot.`
+      );
+    }
+  }
+
   // Upsert by version — preserves user-created notes and sets correct historical dates.
   // New rows get announced_at = NULL so the Discord bot can detect and announce them.
   // ON CONFLICT (existing row): update title/content/author/published_at but DON'T
