@@ -1152,17 +1152,26 @@ class ReplayParser {
       }
 
       // ── Pudge hook tracking ───────────────────────────────────────────────
-      // Cast (unit-order): "actions" event, key="5" (DOTA_UNIT_ORDER_CAST_POSITION), slot = Pudge's slot.
-      //   x/y are raw game-world coords from the parser — divide by 128 to get normalised interval coords.
-      //   inflictor = CDOTA_Ability_Pudge_MeatHook (when ability entity lookup succeeds).
-      // Cast (combatlog): streaming DOTA_COMBATLOG_ABILITY / blob ability_cast|ability_use, inflictor=pudge_meat_hook
-      // Hit:             streaming DOTA_COMBATLOG_DAMAGE / blob damage, inflictor=pudge_meat_hook
+      // CAST COUNTING — authoritative source:
+      //   DOTA_COMBATLOG_ABILITY fires exactly once per ability activation from
+      //   the Dota 2 engine combat log (same moment the cooldown begins).
+      //   ability_cast / ability_use are parser-generated and can fire multiple
+      //   times for the same cast — do NOT use them for counting.
+      //
+      // TARGET COORDINATES — from unit-order events:
+      //   "actions" key='5' (DOTA_UNIT_ORDER_CAST_POSITION) carries the click
+      //   target (x,y), used only for the geometric accuracy check. These events
+      //   fire many times per cast (once per tick while queued) so they are
+      //   collected separately and correlated by timestamp — never counted directly.
+      //
+      // HIT DETECTION:
+      //   DOTA_COMBATLOG_DAMAGE with inflictor=pudge_meat_hook fires once per
+      //   entity the hook connects with.
       {
-        // Unit-order cast event (primary, most accurate — provides target position)
+        // ── Coordinates only (not counted as casts) ──
         if (e.type === 'actions' && e.key === '5') {
           const slot = e.slot;
           if (slot != null && slot >= 0 && slot < 10) {
-            // Only collect if it's the hook ability (if inflictor available), or store all and filter by Pudge slot later
             const isHook = !e.inflictor || e.inflictor.includes('MeatHook') || e.inflictor.includes('meat_hook');
             if (isHook) {
               const normX = e.x != null ? e.x / 128 : null;
@@ -1174,15 +1183,17 @@ class ReplayParser {
 
         const inf = e.inflictor || e.key || '';
         if (inf === 'pudge_meat_hook') {
-          // Combatlog cast event (fallback)
-          if (e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_cast' || e.type === 'ability_use') {
+          // ── Authoritative cast event: combatlog only ──
+          // DOTA_COMBATLOG_ABILITY fires exactly once when the ability activates
+          // (same tick the cooldown starts). ability_cast / ability_use omitted.
+          if (e.type === 'DOTA_COMBATLOG_ABILITY') {
             const casterName = e.attackername || e.unit || '';
             let castSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
             if (castSlot != null && castSlot >= 0 && castSlot < 10) {
               hookCasts.push({ time: e.time || 0, slot: castSlot });
             }
           }
-          // Damage event (hook connected with something)
+          // ── Hit detection ──
           if ((e.type === 'DOTA_COMBATLOG_DAMAGE' || e.type === 'damage') && e.value > 0 && !e.targetillusion) {
             const attackerName = e.type === 'DOTA_COMBATLOG_DAMAGE' ? e.attackername : e.unit;
             const targetName   = e.type === 'DOTA_COMBATLOG_DAMAGE' ? e.targetname   : e.key;
@@ -1626,38 +1637,36 @@ class ReplayParser {
 
       const isGenuineAttempt = makeGenuineAttemptChecker(pSlot, enemySlots);
 
-      // Deduplicate cast events: a single hook press can emit multiple identical
-      // events within fractions of a second (one per tick while the order is
-      // queued). Merge any events within CAST_DEDUP_WINDOW seconds of the
-      // previous one, keeping only the first (which carries the target coords).
-      const CAST_DEDUP_WINDOW = 2.0; // seconds — well below the minimum hook CD (~8s)
-      const dedupCasts = (arr) => {
-        const sorted = [...arr].sort((a, b) => a.time - b.time);
-        const out = [];
-        let lastTime = -Infinity;
-        for (const c of sorted) {
-          if (c.time - lastTime > CAST_DEDUP_WINDOW) {
-            out.push(c);
-            lastTime = c.time;
-          }
+      // ── Cast processing setup ─────────────────────────────────────────────
+      // hookCasts (DOTA_COMBATLOG_ABILITY only) is the authoritative cast list.
+      // hookUnitOrders carries target x/y coordinates; we look up the nearest
+      // unit-order to each combatlog cast to enrich it with target position.
+      // Unit-orders are NEVER counted directly — they fire many times per cast.
+      const myHits        = hookHits.filter(h => h.slot === pSlot);
+      const myUnitOrders  = hookUnitOrders.filter(c => c.slot === pSlot)
+                              .sort((a, b) => a.time - b.time);
+      const castsToUse    = hookCasts.filter(c => c.slot === pSlot)
+                              .sort((a, b) => a.time - b.time);
+
+      // For each combatlog cast, find the nearest unit-order within ±3s to get coords.
+      const COORD_MATCH_WINDOW = 3.0;
+      const enrichedCasts = castsToUse.map(cast => {
+        let best = null, bestDiff = Infinity;
+        for (const uo of myUnitOrders) {
+          const diff = Math.abs(uo.time - cast.time);
+          if (diff < bestDiff && diff <= COORD_MATCH_WINDOW) { best = uo; bestDiff = diff; }
         }
-        return out;
-      };
+        return { ...cast, normX: best ? best.normX : null, normY: best ? best.normY : null };
+      });
 
-      const myHits           = hookHits.filter(h => h.slot === pSlot);
-      const myUnitOrders     = dedupCasts(hookUnitOrders.filter(c => c.slot === pSlot));
-      const myCombatlogCasts = dedupCasts(hookCasts.filter(c => c.slot === pSlot));
-      const castsToUse       = myUnitOrders.length > 0 ? myUnitOrders : myCombatlogCasts;
-      const useTargetPos     = myUnitOrders.length > 0;
-
-      console.log(`[Replay] Pudge slot ${pSlot}: ${myUnitOrders.length} unit-order casts (deduped), ${myCombatlogCasts.length} combatlog casts (deduped), ${myHits.length} hits`);
+      console.log(`[Replay] Pudge slot ${pSlot}: ${castsToUse.length} combatlog casts, ${myUnitOrders.length} unit-order coord events, ${myHits.length} hits`);
 
       const castLog = []; // per-cast detail for cross-reference report
 
-      if (castsToUse.length > 0) {
-        for (const cast of castsToUse) {
-          const normX = useTargetPos ? cast.normX : null;
-          const normY = useTargetPos ? cast.normY : null;
+      if (enrichedCasts.length > 0) {
+        for (const cast of enrichedCasts) {
+          const normX = cast.normX;
+          const normY = cast.normY;
           const hit   = myHits.find(h => h.time >= cast.time && h.time <= cast.time + 2.5);
           let outcome, hitTarget = null, countedAttempt = false, countedHit = false;
           if (hit) {
