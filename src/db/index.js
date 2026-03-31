@@ -199,6 +199,30 @@ async function init() {
     `);
 
     await p.query(`
+      CREATE TABLE IF NOT EXISTS scheduled_games (
+        id SERIAL PRIMARY KEY,
+        scheduled_at TIMESTAMPTZ NOT NULL,
+        note TEXT DEFAULT '',
+        created_by VARCHAR(200) DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        is_cancelled BOOLEAN NOT NULL DEFAULT FALSE
+      );
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS match_ratings (
+        id SERIAL PRIMARY KEY,
+        match_id VARCHAR NOT NULL,
+        rater_account_id BIGINT NOT NULL,
+        rated_account_id BIGINT NOT NULL,
+        attitude_score INTEGER CHECK (attitude_score BETWEEN 1 AND 10),
+        is_mvp_vote BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (match_id, rater_account_id, rated_account_id)
+      );
+    `);
+
+    await p.query(`
       CREATE TABLE IF NOT EXISTS player_items (
         id SERIAL PRIMARY KEY,
         match_id VARCHAR NOT NULL,
@@ -1442,6 +1466,83 @@ async function setDiscordId(accountId, discordId) {
 async function getAllNicknames() {
   const p = getPool();
   const result = await p.query('SELECT * FROM nicknames ORDER BY updated_at DESC');
+  return result.rows;
+}
+
+async function scheduleGame(scheduledAt, note, createdBy) {
+  const p = getPool();
+  const result = await p.query(
+    `INSERT INTO scheduled_games (scheduled_at, note, created_by) VALUES ($1, $2, $3) RETURNING *`,
+    [scheduledAt, note || '', createdBy || '']
+  );
+  return result.rows[0];
+}
+
+async function getUpcomingGames() {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT * FROM scheduled_games WHERE is_cancelled = FALSE AND scheduled_at >= NOW() - INTERVAL '2 hours' ORDER BY scheduled_at ASC`
+  );
+  return result.rows;
+}
+
+async function cancelGame(id) {
+  const p = getPool();
+  const result = await p.query(
+    `UPDATE scheduled_games SET is_cancelled = TRUE WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  return result.rows[0];
+}
+
+async function saveMatchRating(matchId, raterAccountId, ratedAccountId, attitudeScore, isMvpVote) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO match_ratings (match_id, rater_account_id, rated_account_id, attitude_score, is_mvp_vote)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (match_id, rater_account_id, rated_account_id)
+     DO UPDATE SET attitude_score = $4, is_mvp_vote = $5`,
+    [matchId, raterAccountId, ratedAccountId, attitudeScore || null, isMvpVote || false]
+  );
+}
+
+async function getMatchRatings(matchId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT mr.*, n.nickname, n.discord_id FROM match_ratings mr
+     LEFT JOIN nicknames n ON n.account_id = mr.rated_account_id
+     WHERE mr.match_id = $1`,
+    [matchId]
+  );
+  return result.rows;
+}
+
+async function getPlayerRatingsReceived(accountId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE is_mvp_vote = TRUE) as mvp_votes,
+       COUNT(*) as total_ratings,
+       ROUND(AVG(attitude_score) FILTER (WHERE attitude_score IS NOT NULL), 1) as avg_attitude,
+       COUNT(*) FILTER (WHERE attitude_score IS NOT NULL) as attitude_ratings
+     FROM match_ratings
+     WHERE rated_account_id = $1`,
+    [accountId]
+  );
+  return result.rows[0];
+}
+
+async function getDiscordIdsForMatch(matchId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT ps.account_id, ps.persona_name, ps.team, ps.hero_name,
+            COALESCE(n.nickname, ps.persona_name) as display_name,
+            COALESCE(n.discord_id, '') as discord_id
+     FROM player_stats ps
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE ps.match_id = $1 AND ps.account_id != 0`,
+    [matchId]
+  );
   return result.rows;
 }
 
@@ -4264,6 +4365,13 @@ module.exports = {
   setNickname,
   setDiscordId,
   getAllNicknames,
+  scheduleGame,
+  getUpcomingGames,
+  cancelGame,
+  saveMatchRating,
+  getMatchRatings,
+  getPlayerRatingsReceived,
+  getDiscordIdsForMatch,
   getAllPlayers,
   getHeroStats,
   getOverallStats,

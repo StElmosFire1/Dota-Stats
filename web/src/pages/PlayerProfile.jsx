@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -125,6 +125,7 @@ export default function PlayerProfile() {
   const [heroCounters, setHeroCounters] = useState([]);
   const [streak, setStreak] = useState(null);
   const [durationStats, setDurationStats] = useState([]);
+  const [communityRatings, setCommunityRatings] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -139,7 +140,8 @@ export default function PlayerProfile() {
       getPlayerHeroCounters(accountId, seasonId).catch(() => ({ counters: [] })),
       getPlayerStreak(accountId).catch(() => ({ streak: 0 })),
       getPlayerDurationStats(accountId, seasonId).catch(() => ({ stats: [] })),
-    ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData, durData]) => {
+      getPlayerCommunityRatings(accountId).catch(() => null),
+    ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData, durData, ratingData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
@@ -149,6 +151,7 @@ export default function PlayerProfile() {
       setHeroCounters(counterData?.counters || []);
       setStreak(streakData?.streak ?? null);
       setDurationStats(durData?.stats || []);
+      setCommunityRatings(ratingData?.ratings || null);
     }).finally(() => setLoading(false));
   }, [accountId, seasonId]);
 
@@ -245,6 +248,41 @@ export default function PlayerProfile() {
       <RatingChart history={ratingHistory} />
 
       <AchievementBadges achievements={achievements} />
+
+      {communityRatings && (parseInt(communityRatings.mvp_votes) > 0 || parseInt(communityRatings.attitude_ratings) > 0) && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-title">⭐ Community Ratings</h2>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+            Voted by teammates after matches — ratings are anonymous.
+          </p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {parseInt(communityRatings.mvp_votes) > 0 && (
+              <div style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+                padding: '14px 20px', minWidth: 120, textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#fbbf24' }}>
+                  {communityRatings.mvp_votes} ⭐
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>MVP Votes</div>
+              </div>
+            )}
+            {communityRatings.avg_attitude && (
+              <div style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+                padding: '14px 20px', minWidth: 120, textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: parseFloat(communityRatings.avg_attitude) >= 7 ? '#4ade80' : parseFloat(communityRatings.avg_attitude) >= 5 ? '#fbbf24' : '#f87171' }}>
+                  {communityRatings.avg_attitude}/10
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Attitude Score ({communityRatings.attitude_ratings} ratings)
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {predictionStats && parseInt(predictionStats.total) > 0 && (
         <section style={{ marginBottom: 24 }}>

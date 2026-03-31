@@ -601,6 +601,39 @@ export async function getPudgeStats(seasonId = null) {
   return fetchJson(`/pudge-stats${q}`);
 }
 
+export async function getSchedule() {
+  return fetchJson('/schedule');
+}
+
+export async function createScheduledGame(scheduledAt, note, superuserKey) {
+  const res = await fetch(BASE + '/schedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+    body: JSON.stringify({ scheduled_at: scheduledAt, note }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to schedule game');
+  return data;
+}
+
+export async function cancelScheduledGame(id, superuserKey) {
+  const res = await fetch(BASE + `/schedule/${id}`, {
+    method: 'DELETE',
+    headers: { 'X-Superuser-Key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to cancel game');
+  return data;
+}
+
+export async function getPlayerCommunityRatings(accountId) {
+  return fetchJson(`/ratings/player/${accountId}`);
+}
+
+export async function getMatchRatings(matchId) {
+  return fetchJson(`/ratings/match/${matchId}`);
+}
+
 export async function getStoredReplays(superuserKey) {
   const res = await fetch(BASE + '/replays/stored', {
     headers: { 'x-superuser-key': superuserKey },

@@ -28,6 +28,7 @@ import WardMap from './pages/WardMap';
 import Records from './pages/Records';
 import AdminPanel from './pages/AdminPanel';
 import PudgeStats from './pages/PudgeStats';
+import Schedule from './pages/Schedule';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
@@ -249,6 +250,7 @@ function Nav() {
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
+          <DropdownItem to="/schedule">Game Schedule</DropdownItem>
         </DropdownMenu>
       </div>
       <SeasonSelector />
@@ -301,6 +303,7 @@ export default function App() {
                 <Route path="/records" element={<Records />} />
                 <Route path="/admin" element={<AdminPanel />} />
                 <Route path="/pudge-stats" element={<PudgeStats />} />
+                <Route path="/schedule" element={<Schedule />} />
               </Routes>
             </main>
           </SeasonProvider>

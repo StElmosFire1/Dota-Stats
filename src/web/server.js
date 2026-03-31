@@ -536,6 +536,54 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/schedule', async (req, res) => {
+    try {
+      const games = await db.getUpcomingGames();
+      res.json({ games });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch schedule' });
+    }
+  });
+
+  router.post('/schedule', requireSuperuser, async (req, res) => {
+    try {
+      const { scheduled_at, note } = req.body;
+      if (!scheduled_at) return res.status(400).json({ error: 'scheduled_at required' });
+      const game = await db.scheduleGame(scheduled_at, note, req.body.created_by || 'admin');
+      res.json({ game });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to schedule game' });
+    }
+  });
+
+  router.delete('/schedule/:id', requireSuperuser, async (req, res) => {
+    try {
+      const game = await db.cancelGame(parseInt(req.params.id));
+      if (!game) return res.status(404).json({ error: 'Game not found' });
+      res.json({ game });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to cancel game' });
+    }
+  });
+
+  router.get('/ratings/match/:matchId', async (req, res) => {
+    try {
+      const ratings = await db.getMatchRatings(req.params.matchId);
+      res.json({ ratings });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch match ratings' });
+    }
+  });
+
+  router.get('/ratings/player/:accountId', async (req, res) => {
+    try {
+      const ratings = await db.getPlayerRatingsReceived(req.params.accountId);
+      res.json({ ratings });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch player ratings' });
+    }
+  });
+
   router.get('/heroes', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

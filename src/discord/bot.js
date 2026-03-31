@@ -31,10 +31,12 @@ class DiscordBot {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
       ],
     });
     this.prefix = config.discord.prefix;
     this.lobbyChannelId = null;
+    this.pendingRatingSessions = new Map();
     this._setupHandlers();
   }
 
@@ -170,6 +172,12 @@ class DiscordBot {
     this.client.on('messageCreate', async (msg) => {
       if (msg.author.bot) return;
 
+      const isDM = !msg.guild;
+      if (isDM && this.pendingRatingSessions.has(msg.author.id)) {
+        await this._handleRatingReply(msg);
+        return;
+      }
+
       if (msg.attachments.size > 0) {
         const demFile = msg.attachments.find((a) => a.name && a.name.endsWith('.dem'));
         if (demFile) {
@@ -199,6 +207,10 @@ class DiscordBot {
           case 'match': await this._cmdMatch(msg, args); break;
           case 'predict': await this._cmdPredict(msg, args); break;
           case 'predictions': await this._cmdPredictions(msg, args); break;
+          case 'balance': await this._cmdBalance(msg, args); break;
+          case 'schedule': await this._cmdSchedule(msg, args); break;
+          case 'upcoming': await this._cmdUpcoming(msg); break;
+          case 'cancel': await this._cmdCancelGame(msg, args); break;
           default: break;
         }
       } catch (err) {
@@ -242,11 +254,34 @@ class DiscordBot {
           ].join('\n'),
         },
         {
+          name: '⚖️ Team Balancer',
+          value: [
+            '`!balance @p1 @p2 @p3 ... @p10` - Suggest the most balanced 5v5 split based on MMR',
+            'Works with @mentions (if Discord ID linked) or player nicknames',
+          ].join('\n'),
+        },
+        {
+          name: '📅 Schedule',
+          value: [
+            '`!upcoming` - List upcoming scheduled games',
+            '`!schedule 2026-04-10 20:00 Weekly inhouse` - Schedule a game (AEST time)',
+            '`!cancel <id>` - Cancel a scheduled game by ID',
+          ].join('\n'),
+        },
+        {
           name: '🎯 Predictions',
           value: [
             '`!predict <matchId> <radiant|dire>` - Predict who wins a match',
             '`!predictions <matchId>` - See all predictions for a match',
             'Results auto-reveal after match is recorded!',
+          ].join('\n'),
+        },
+        {
+          name: '⭐ Post-Match Ratings',
+          value: [
+            'After each match, the bot DMs players to vote for MVP and rate teammates\' attitude (1–10)',
+            'Requires Discord ID linked to your account (ask an admin)',
+            'Ratings are anonymous and appear on player profiles',
           ].join('\n'),
         },
         {
@@ -556,6 +591,7 @@ class DiscordBot {
     } catch (err) {
       console.error('[DB] Record match error:', err.message);
     }
+    setTimeout(() => this._initiateRatingSession(matchStats).catch(e => console.error('[Ratings] DM error:', e.message)), 3000);
   }
 
   async _markRecorded(matchId, source) {
@@ -1598,6 +1634,230 @@ class DiscordBot {
     }
 
     await msg.channel.send({ embeds: [embed] });
+  }
+
+  async _cmdBalance(msg, args) {
+    const mentions = [...msg.mentions.users.values()];
+    const names = args.filter(a => !a.startsWith('<@'));
+
+    if (mentions.length === 0 && names.length === 0) {
+      return msg.reply('Usage: `!balance @player1 @player2 ... @player10` — mention all players to balance into two teams.');
+    }
+
+    const allAccounts = [];
+
+    for (const user of mentions) {
+      const nick = await db.getAllNicknames().then(ns => ns.find(n => n.discord_id === user.id));
+      if (!nick) { allAccounts.push({ name: user.username, mmr: 2600 }); continue; }
+      const rating = await db.getPlayerRating(nick.account_id.toString());
+      allAccounts.push({ name: nick.nickname, mmr: rating ? rating.mmr : 2600 });
+    }
+
+    for (const name of names) {
+      const nicks = await db.getAllNicknames();
+      const nick = nicks.find(n => (n.nickname || '').toLowerCase() === name.toLowerCase());
+      if (!nick) { allAccounts.push({ name, mmr: 2600 }); continue; }
+      const rating = await db.getPlayerRating(nick.account_id.toString());
+      allAccounts.push({ name: nick.nickname, mmr: rating ? rating.mmr : 2600 });
+    }
+
+    if (allAccounts.length < 2) {
+      return msg.reply('Need at least 2 players to balance teams.');
+    }
+
+    const n = allAccounts.length;
+    const half = Math.floor(n / 2);
+    const indices = Array.from({ length: n }, (_, i) => i);
+
+    function combinations(arr, k) {
+      if (k === 0) return [[]];
+      if (arr.length < k) return [];
+      const [first, ...rest] = arr;
+      return [
+        ...combinations(rest, k - 1).map(c => [first, ...c]),
+        ...combinations(rest, k),
+      ];
+    }
+
+    const combos = combinations(indices, half);
+    let bestDiff = Infinity, bestTeamA = [], bestTeamB = [];
+
+    for (const comboA of combos) {
+      const comboB = indices.filter(i => !comboA.includes(i));
+      const mmrA = comboA.reduce((s, i) => s + allAccounts[i].mmr, 0);
+      const mmrB = comboB.reduce((s, i) => s + allAccounts[i].mmr, 0);
+      const diff = Math.abs(mmrA - mmrB);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestTeamA = comboA.map(i => allAccounts[i]);
+        bestTeamB = comboB.map(i => allAccounts[i]);
+      }
+    }
+
+    const fmtTeam = (team) => team.map(p => `**${p.name}** (${p.mmr})`).join('\n');
+    const avgA = Math.round(bestTeamA.reduce((s, p) => s + p.mmr, 0) / bestTeamA.length);
+    const avgB = Math.round(bestTeamB.reduce((s, p) => s + p.mmr, 0) / bestTeamB.length);
+
+    const embed = new EmbedBuilder()
+      .setTitle('⚖️ Balanced Teams')
+      .setColor(0x6366f1)
+      .setDescription(`MMR difference: **${bestDiff}** | ${n} players balanced`)
+      .addFields(
+        { name: `🟢 Team A — avg ${avgA} MMR`, value: fmtTeam(bestTeamA) || 'None', inline: true },
+        { name: `🔴 Team B — avg ${avgB} MMR`, value: fmtTeam(bestTeamB) || 'None', inline: true },
+      )
+      .setFooter({ text: 'Coin flip to decide sides!' });
+
+    await msg.channel.send({ embeds: [embed] });
+  }
+
+  async _cmdSchedule(msg, args) {
+    if (!config.superuserKey || msg.member?.roles?.cache?.size === undefined) {
+      // allow from any channel if configured
+    }
+    if (args.length < 2) {
+      return msg.reply('Usage: `!schedule YYYY-MM-DD HH:MM [note]` — e.g. `!schedule 2026-04-05 20:00 Weekly inhouse`');
+    }
+    const datePart = args[0];
+    const timePart = args[1];
+    const note = args.slice(2).join(' ');
+    const scheduledAt = new Date(`${datePart}T${timePart}:00+10:00`);
+    if (isNaN(scheduledAt.getTime())) {
+      return msg.reply('Invalid date/time format. Use `YYYY-MM-DD HH:MM` (AEST).');
+    }
+    const game = await db.scheduleGame(scheduledAt, note, msg.author.username);
+    const embed = new EmbedBuilder()
+      .setTitle('📅 Game Scheduled!')
+      .setColor(0x4ade80)
+      .addFields(
+        { name: 'When', value: scheduledAt.toLocaleString('en-AU', { timeZone: 'Australia/Sydney', dateStyle: 'full', timeStyle: 'short' }), inline: false },
+        { name: 'Note', value: note || '—', inline: false },
+        { name: 'ID', value: `#${game.id}`, inline: true },
+        { name: 'Scheduled by', value: msg.author.username, inline: true },
+      );
+    await msg.channel.send({ embeds: [embed] });
+  }
+
+  async _cmdUpcoming(msg) {
+    const games = await db.getUpcomingGames();
+    if (games.length === 0) {
+      return msg.reply('No upcoming games scheduled. Use `!schedule YYYY-MM-DD HH:MM [note]` to add one.');
+    }
+    const embed = new EmbedBuilder()
+      .setTitle('📅 Upcoming Games')
+      .setColor(0x6366f1)
+      .setDescription(games.map(g => {
+        const when = new Date(g.scheduled_at).toLocaleString('en-AU', { timeZone: 'Australia/Sydney', dateStyle: 'medium', timeStyle: 'short' });
+        const note = g.note ? ` — ${g.note}` : '';
+        return `**#${g.id}** ${when}${note}`;
+      }).join('\n'));
+    await msg.channel.send({ embeds: [embed] });
+  }
+
+  async _cmdCancelGame(msg, args) {
+    const id = parseInt(args[0]);
+    if (isNaN(id)) return msg.reply('Usage: `!cancel <game_id>` — use `!upcoming` to see game IDs.');
+    const game = await db.cancelGame(id);
+    if (!game) return msg.reply(`No game found with ID #${id}.`);
+    await msg.reply(`✅ Game #${id} cancelled.`);
+  }
+
+  async _initiateRatingSession(matchStats) {
+    if (!matchStats || !matchStats.matchId || !matchStats.players) return;
+    const players = await db.getDiscordIdsForMatch(matchStats.matchId.toString());
+    const withDiscord = players.filter(p => p.discord_id && p.discord_id.trim() !== '');
+    if (withDiscord.length === 0) return;
+
+    for (const rater of withDiscord) {
+      try {
+        const teammates = players.filter(p => p.account_id !== rater.account_id);
+        if (teammates.length === 0) continue;
+
+        const user = await this.client.users.fetch(rater.discord_id).catch(() => null);
+        if (!user) continue;
+
+        const session = {
+          matchId: matchStats.matchId.toString(),
+          raterAccountId: rater.account_id,
+          teammates,
+          step: 'mvp',
+        };
+        this.pendingRatingSessions.set(rater.discord_id, session);
+
+        const teammateList = teammates.map((p, i) => `**${i + 1}.** ${p.display_name} (${p.team === 'radiant' ? '🟢' : '🔴'})`).join('\n');
+        const embed = new EmbedBuilder()
+          .setTitle(`⭐ Match #${matchStats.matchId} — Rate Your Teammates`)
+          .setColor(0xfbbf24)
+          .setDescription(
+            `The inhouse just finished! Take 30 seconds to rate your teammates.\n\n` +
+            `**Step 1 of 2 — MVP Vote**\nWho was the MVP? Reply with just the number:\n\n${teammateList}\n\n` +
+            `_(Reply \`skip\` to skip this step)_`
+          );
+
+        await user.send({ embeds: [embed] });
+
+        setTimeout(() => {
+          if (this.pendingRatingSessions.has(rater.discord_id)) {
+            this.pendingRatingSessions.delete(rater.discord_id);
+          }
+        }, 30 * 60 * 1000);
+
+      } catch (e) {
+        console.error(`[Ratings] Could not DM ${rater.display_name}:`, e.message);
+      }
+    }
+  }
+
+  async _handleRatingReply(msg) {
+    const session = this.pendingRatingSessions.get(msg.author.id);
+    if (!session) return;
+
+    const content = msg.content.trim().toLowerCase();
+
+    if (session.step === 'mvp') {
+      if (content !== 'skip') {
+        const num = parseInt(content);
+        if (!isNaN(num) && num >= 1 && num <= session.teammates.length) {
+          const mvpPlayer = session.teammates[num - 1];
+          await db.saveMatchRating(session.matchId, session.raterAccountId, mvpPlayer.account_id, null, true);
+          await msg.reply(`✅ MVP vote recorded for **${mvpPlayer.display_name}**!`);
+        } else {
+          await msg.reply(`Please reply with a number between 1 and ${session.teammates.length}, or \`skip\`.`);
+          return;
+        }
+      }
+
+      session.step = 'attitude';
+      this.pendingRatingSessions.set(msg.author.id, session);
+
+      const teammateList = session.teammates.map((p, i) => `**${i + 1}.** ${p.display_name}`).join('\n');
+      const embed = new EmbedBuilder()
+        .setTitle(`👍 Step 2 of 2 — Attitude Ratings`)
+        .setColor(0x4ade80)
+        .setDescription(
+          `Rate each teammate's attitude / enjoyment to play with (1–10).\n` +
+          `Reply with ${session.teammates.length} space-separated numbers in this order:\n\n` +
+          `${teammateList}\n\n` +
+          `**Example:** \`8 9 7 6 8\`\n_(Reply \`skip\` to skip)_`
+        );
+      await msg.author.send({ embeds: [embed] });
+
+    } else if (session.step === 'attitude') {
+      if (content !== 'skip') {
+        const scores = msg.content.trim().split(/\s+/).map(Number);
+        if (scores.length !== session.teammates.length || scores.some(s => isNaN(s) || s < 1 || s > 10)) {
+          await msg.reply(`Please send exactly ${session.teammates.length} numbers (1–10), space-separated. Or reply \`skip\`.`);
+          return;
+        }
+        for (let i = 0; i < session.teammates.length; i++) {
+          await db.saveMatchRating(session.matchId, session.raterAccountId, session.teammates[i].account_id, scores[i], false);
+        }
+        await msg.reply('✅ Attitude ratings saved! Thanks for the feedback.');
+      } else {
+        await msg.reply('Ratings skipped. See you next game!');
+      }
+      this.pendingRatingSessions.delete(msg.author.id);
+    }
   }
 
   async start() {
