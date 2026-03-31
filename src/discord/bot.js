@@ -1947,18 +1947,42 @@ class DiscordBot {
   }
 
   async _announceNewPatchNotes() {
-    const unannounced = await db.getUnannouncedPatchNotes().catch(() => []);
-    if (!unannounced.length) return;
+    const unannounced = await db.getUnannouncedPatchNotes().catch(err => {
+      console.error('[PatchNotes] Failed to fetch unannounced notes:', err.message);
+      return [];
+    });
 
-    const channelId = config.discord.announceChannelId || this.lobbyChannelId;
-    if (!channelId) {
-      // No channel configured — still mark as announced so we don't retry forever
-      for (const n of unannounced) await db.markPatchNoteAnnounced(n.id).catch(() => {});
+    if (!unannounced.length) {
+      console.log('[PatchNotes] No new patch notes to announce.');
       return;
     }
 
-    const channel = this.client.channels.cache.get(channelId);
-    if (!channel) return;
+    console.log(`[PatchNotes] ${unannounced.length} unannounced note(s): ${unannounced.map(n => `v${n.version}`).join(', ')}`);
+
+    const channelId = config.discord.announceChannelId || this.lobbyChannelId;
+    if (!channelId) {
+      // No channel configured on this instance — skip silently. Do NOT mark as
+      // announced so the production bot (with ANNOUNCE_CHANNEL_ID set) can still post them.
+      console.log('[PatchNotes] No announce channel configured — skipping (notes remain pending for production bot).');
+      return;
+    }
+
+    // Try cache first, fall back to a fetch in case the cache isn't populated yet
+    let channel = this.client.channels.cache.get(channelId);
+    if (!channel) {
+      console.log(`[PatchNotes] Channel ${channelId} not in cache, fetching...`);
+      channel = await this.client.channels.fetch(channelId).catch(err => {
+        console.error(`[PatchNotes] Could not fetch channel ${channelId}:`, err.message);
+        return null;
+      });
+    }
+
+    if (!channel) {
+      console.error(`[PatchNotes] Announce channel ${channelId} not found — notes remain pending for next restart.`);
+      return;
+    }
+
+    console.log(`[PatchNotes] Posting to #${channel.name || channelId}...`);
 
     for (const note of unannounced) {
       try {
@@ -1971,9 +1995,9 @@ class DiscordBot {
 
         await channel.send({ embeds: [embed] });
         await db.markPatchNoteAnnounced(note.id);
-        console.log(`[Discord] Announced patch note v${note.version}`);
+        console.log(`[PatchNotes] Announced v${note.version} successfully.`);
       } catch (err) {
-        console.error(`[Discord] Failed to announce patch note v${note.version}:`, err.message);
+        console.error(`[PatchNotes] Failed to announce v${note.version}:`, err.message);
       }
     }
   }
