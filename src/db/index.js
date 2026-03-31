@@ -2562,12 +2562,12 @@ async function getPlayerStreaks(seasonId = null) {
     whereClause += ' AND m.is_legacy = false';
   }
   const result = await p.query(
-    `SELECT ps.account_id, m.date, ps.team, m.radiant_win,
-            ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.date DESC) as rn
+    `SELECT ps.account_id, m.date, m.match_id, ps.team, m.radiant_win,
+            ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.match_id DESC) as rn
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      ${whereClause}
-     ORDER BY ps.account_id, m.date DESC`,
+     ORDER BY ps.account_id, m.match_id DESC`,
     params
   );
   const byPlayer = {};
@@ -2892,7 +2892,7 @@ async function getPlayerCurrentStreak(accountId) {
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
     WHERE ps.account_id = $1 AND m.is_legacy = false
-    ORDER BY m.date DESC
+    ORDER BY m.match_id DESC
     LIMIT 15
   `, [accountId]);
 
@@ -4105,15 +4105,15 @@ async function getSeasonPlayerRecords(seasonId = null) {
     HAVING COUNT(*) >= 1
   `, params);
 
-  // Streak calculation — gaps-and-islands technique
+  // Streak calculation — gaps-and-islands technique, ordered by match_id (game sequence)
   const streakRes = await p.query(`
     WITH ordered AS (
       SELECT
         ps.account_id,
         COALESCE(n.nickname, ps.persona_name) as display_name,
-        m.date,
+        m.match_id,
         CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END as won,
-        ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.date) as rn
+        ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.match_id) as rn
       FROM player_stats ps
       JOIN matches m ON m.match_id = ps.match_id
       LEFT JOIN nicknames n ON n.account_id = ps.account_id
