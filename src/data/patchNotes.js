@@ -209,4 +209,32 @@ module.exports = [
     content: '📊 SEASON RECORDS TAB\nThe Records & Comebacks page now includes a Season Records tab — a card-based awards board showing who leads (and trails) across every meaningful stat category for the selected season.\n\n🏅 POSITIVE RECORDS\n• Most Wins, Most Kills, Most Assists\n• Most Hero Damage, Most Tower Damage, Most Healing\n• Best Win Rate (5+ games), Longest Win Streak, Most Games Played\n• Most First Bloods, Most Rampages, Most Roshans Killed\n• Most Towers Destroyed\n• 👁️ Vision King — most wards placed total\n• 🔍 Ward Hunter — most enemy wards destroyed\n• 📦 Stack God — most camps stacked\n• 🧲 CC King — most hard CC seconds applied (stuns, hexes, cyclone)\n\n💀 NEGATIVE RECORDS — Hall of Shame\n• Most Deaths, Most Losses, Worst Win Rate (5+ games), Longest Loss Streak\n• ☠️ Highest Avg Deaths/Game (5+ games)\n• 💸 Most Buybacks\n• 🪦 Most Diebacks — bought back then died again within 2 minutes\n• ⏳ Most Time Dead — total minutes spent on the respawn timer across the season\n• 🗑️ Worst Observer Ward Lifespan — whose wards get found and killed fastest (min 3 dewarded)\n• 📉 Lowest Avg GPM (5+ games)\n\n🪝 PUDGE HOOK REPORT\nA downloadable per-cast hook accuracy report is now available on any match where Pudge was played and a replay was parsed. The report lists every hook cast with its timestamp, outcome (hero hit / miss / creep hit / farming hook), whether it counted as an attempt, and which target was hit. Use it to cross-reference accuracy claims against the actual replay.\n\n🔬 HOOK TRACKING ACCURACY OVERHAUL\nThe hook cast detection system has been fundamentally rewritten for correctness:\n• Cast counting is now driven by the Dota 2 combat log ability event — fires exactly once at the moment the hook activates and the cooldown begins. Cancelled casts (where the player queued then cancelled before the hook fired) are now correctly excluded.\n• Previously, unit-order events were used as the primary cast source. These fire multiple times per cast (once per tick while the order is pending in the queue), which inflated cast counts significantly.\n• Unit-order events are still used, but only to supply the target coordinates (click position) for the farming-hook geometry check — they are never counted as casts.\n• Coordinate matching window tightened from 3 seconds to 1 second.\n\n📏 LEVEL COLUMN — MATCH SCOREBOARD\nA Lvl column has been added to the match detail scoreboard, showing each player\'s final hero level. Level 25 is highlighted gold; level 20+ in purple.',
     author: 'System',
   },
+  {
+    version: '3.2',
+    title: 'Player Network, Form Guide, Hero Tier List & Player Benchmarks',
+    published_at: '2026-03-31',
+    content: '🌐 PLAYER NETWORK PAGE\nNew social page at /social under Tools — visualise connections across the server.\n• Top Duos tab: best teammate win-rate pairings with a minimum-games filter.\n• Player Connections tab: select any player to see their top 10 teammates and top 10 opponents with win rates.\n\n📈 LEADERBOARD UPGRADES\n• Most Improved widget — highlights the top MMR gainers over the last 30 days, drawn from rating history.\n• Form Guide — the last 10 game results are shown as green (W) / red (L) dots next to every player on the leaderboard; season-aware.\n\n🏆 HERO TIER LIST\nNew tab on the Heroes page ranking every hero S → D by inhouse win rate (minimum 2 games). Colour-coded tier cards make the power curve easy to read at a glance.\n\n⚔️ HERO MATCHUPS\nNew tab on the Heroes page — select any hero to see win rate vs every opponent hero they have faced; filterable, sortable table with an advantage bar.\n\n📊 PLAYER BENCHMARKS\nNew section on every player profile — compares that player\'s GPM, Damage, Last Hits, and Healing against the server average for their most-played position. Colour-coded bars with +/- % indicator make strengths and weaknesses immediately clear.',
+    author: 'System',
+  },
+  {
+    version: '3.3',
+    title: 'AI Match Commentary, Hot Streak Callouts & Match Notes',
+    published_at: '2026-03-31',
+    content: '🤖 AI MATCH COMMENTARY\nAfter every recorded match the bot generates a Grok-powered write-up sent as a follow-up Discord message:\n• MVP one-liner — a witty single sentence calling out the standout performer.\n• Match narrative — a 2-sentence summary of the game\'s story.\nRuns asynchronously so it never delays the main scoreboard post.\n\n🔥 HOT STREAK MILESTONES\nThe bot now calls out player win streaks on every recording path (replay upload, !record, lobby auto):\n• 5-win streak → 🔥🔥🔥 callout in the match channel.\n• 10-win streak → 🏆🔥🏆 LEGENDARY announcement.\n\n📝 MATCH NOTES\nAdmins can now attach text notes to any match from the match detail page on the web dashboard.\n• Notes are stored in the database and visible to all users.\n• Multiple notes can be added per match; each can be deleted by an admin.\n• Useful for flagging disputed games, recording context, or leaving reminders.',
+    author: 'System',
+  },
+  {
+    version: '4.0',
+    title: 'Match Scoreboard Image',
+    published_at: '2026-03-31',
+    content: '🖼️ MATCH SCOREBOARD IMAGE\nAfter every recorded match the bot generates a polished PNG scoreboard card and posts it directly to Discord — no need to open the dashboard to see the result.\n\nThe card includes:\n• Winner announcement and match duration.\n• Radiant and Dire kill totals.\n• Per-player row: hero name, K/D/A, GPM, hero damage, and healing dealt.\n• A highlights strip calling out standout stats (top damage, top GPM, etc.).\n\nThe image is generated server-side using @napi-rs/canvas and sent as a Discord attachment. Gracefully degrades to the text scoreboard if image generation fails.',
+    author: 'System',
+  },
+  {
+    version: '4.1',
+    title: 'Patch Notes Auto-Announce',
+    published_at: '2026-03-31',
+    content: '📋 PATCH NOTE AUTO-ANNOUNCEMENTS\nBot updates are now automatically posted to Discord whenever a new version is detected on startup.\n\nHow it works:\n• Each bot version is tracked in the database with an announced flag.\n• On startup, any unannounced versions are posted as formatted Discord embeds to the announcements channel.\n• Once posted, the version is marked so it never fires again — no duplicate announcements across restarts.\n\nGoing forward, patch notes are updated by the developer as part of every feature release — no more missing changelog entries.',
+    author: 'System',
+  },
 ];

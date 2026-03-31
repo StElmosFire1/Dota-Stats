@@ -562,6 +562,9 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_notes_match ON match_notes(match_id)`);
 
+    // announced_at: NULL = not yet announced to Discord; existing rows backfilled with NOW()
+    await p.query(`ALTER TABLE patch_notes ADD COLUMN IF NOT EXISTS announced_at TIMESTAMPTZ DEFAULT NOW()`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -3156,12 +3159,13 @@ async function deletePatchNote(id) {
 async function seedPatchNotes(notes) {
   const p = getPool();
   // Upsert by version — preserves user-created notes and sets correct historical dates.
-  // On conflict (same version), update title/content/author/published_at from seed data
-  // so dates are always correct regardless of when the row was first inserted.
+  // New rows get announced_at = NULL so the Discord bot can detect and announce them.
+  // ON CONFLICT (existing row): update title/content/author/published_at but DON'T
+  // touch announced_at — that would re-announce already-posted notes.
   for (const note of notes) {
     await p.query(`
-      INSERT INTO patch_notes (version, title, content, author, published_at)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO patch_notes (version, title, content, author, published_at, announced_at)
+      VALUES ($1, $2, $3, $4, $5, NULL)
       ON CONFLICT (version) DO UPDATE SET
         title        = EXCLUDED.title,
         content      = EXCLUDED.content,
@@ -3171,6 +3175,19 @@ async function seedPatchNotes(notes) {
     `, [note.version, note.title, note.content, note.author || 'System', note.published_at]);
   }
   console.log(`[DB] Patch notes seeded/updated (${notes.length} entries).`);
+}
+
+async function getUnannouncedPatchNotes() {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT * FROM patch_notes WHERE announced_at IS NULL ORDER BY published_at ASC`
+  );
+  return res.rows;
+}
+
+async function markPatchNoteAnnounced(id) {
+  const p = getPool();
+  await p.query(`UPDATE patch_notes SET announced_at = NOW() WHERE id = $1`, [id]);
 }
 
 async function getPlayerNemesis(accountId) {
@@ -4686,6 +4703,8 @@ module.exports = {
   getMatchNotes,
   addMatchNote,
   deleteMatchNote,
+  getUnannouncedPatchNotes,
+  markPatchNoteAnnounced,
 };
 
 async function getPudgeStats(seasonId = null) {

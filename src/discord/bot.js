@@ -1946,6 +1946,38 @@ class DiscordBot {
     }
   }
 
+  async _announceNewPatchNotes() {
+    const unannounced = await db.getUnannouncedPatchNotes().catch(() => []);
+    if (!unannounced.length) return;
+
+    const channelId = config.discord.announceChannelId || this.lobbyChannelId;
+    if (!channelId) {
+      // No channel configured — still mark as announced so we don't retry forever
+      for (const n of unannounced) await db.markPatchNoteAnnounced(n.id).catch(() => {});
+      return;
+    }
+
+    const channel = this.client.channels.cache.get(channelId);
+    if (!channel) return;
+
+    for (const note of unannounced) {
+      try {
+        const embed = new EmbedBuilder()
+          .setTitle(`\u{1F4CB} Bot Update \u2014 v${note.version} | ${note.title}`)
+          .setColor(0x60a5fa)
+          .setDescription(note.content.slice(0, 2000))
+          .setFooter({ text: `Released ${new Date(note.published_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}` })
+          .setTimestamp();
+
+        await channel.send({ embeds: [embed] });
+        await db.markPatchNoteAnnounced(note.id);
+        console.log(`[Discord] Announced patch note v${note.version}`);
+      } catch (err) {
+        console.error(`[Discord] Failed to announce patch note v${note.version}:`, err.message);
+      }
+    }
+  }
+
   async start() {
     if (!config.discord.token) throw new Error('DISCORD_TOKEN not configured.');
     await this.client.login(config.discord.token);
@@ -1957,6 +1989,9 @@ class DiscordBot {
         this._postWeeklyRecap();
       }, { timezone: 'UTC' });
       console.log('[Discord] Weekly recap scheduled (Mondays 9am AEST).');
+
+      // Announce any new patch notes after a short delay (let channel cache populate)
+      setTimeout(() => this._announceNewPatchNotes().catch(() => {}), 8000);
     });
   }
 
