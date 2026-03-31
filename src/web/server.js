@@ -2097,6 +2097,58 @@ NOTES
     }
   });
 
+  // Temporary test endpoint — trigger Discord notification for the latest match
+  router.post('/admin/test-discord-notify', requireSuperuser, async (req, res) => {
+    try {
+      const { Pool } = require('pg');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const latest = await pool.query(
+        `SELECT m.match_id, m.radiant_win, m.duration
+         FROM matches m ORDER BY m.date DESC LIMIT 1`
+      );
+      if (!latest.rows.length) return res.status(404).json({ error: 'No matches found' });
+
+      const row = latest.rows[0];
+      const matchId = row.match_id;
+
+      const players = await pool.query(
+        `SELECT ps.*, COALESCE(n.nickname, ps.persona_name) AS display_name
+         FROM player_stats ps
+         LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+         WHERE ps.match_id = $1`, [matchId]
+      );
+      await pool.end();
+
+      const matchStats = {
+        matchId,
+        radiantWin: row.radiant_win,
+        duration: row.duration,
+        players: players.rows.map(p => ({
+          team: p.team,
+          accountId: p.account_id,
+          personaname: p.display_name || p.persona_name || `Player ${p.slot}`,
+          heroName: p.hero_name,
+          heroId: p.hero_id,
+          kills: p.kills || 0,
+          deaths: p.deaths || 0,
+          assists: p.assists || 0,
+          goldPerMin: p.gold_per_min || 0,
+          heroDamage: p.hero_damage || 0,
+          supportGoldSpent: p.support_gold_spent || 0,
+          level: p.level || 0,
+        })),
+      };
+
+      getDiscordBot().notifyWebUpload(matchStats).catch(err =>
+        console.error('[TestNotify] Error:', err.message)
+      );
+      res.json({ ok: true, matchId, players: matchStats.players.length });
+    } catch (err) {
+      console.error('[TestNotify]', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Patch notes
   router.get('/patch-notes', async (req, res) => {
     try {
