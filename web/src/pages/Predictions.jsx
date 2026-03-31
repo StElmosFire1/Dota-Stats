@@ -55,6 +55,10 @@ export default function Predictions() {
       setError('Please enter your name and select a player for each rank.');
       return;
     }
+    if (new Set(myPicks).size < myPicks.length) {
+      setError('Each rank must have a different player — remove duplicates before submitting.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -141,14 +145,11 @@ export default function Predictions() {
                 style={{ flex: 1, background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 8px' }}
               >
                 <option value="">Select player…</option>
-                {players
-                  .filter(p => !myPicks.includes(p.player_id?.toString()) || myPicks[rank - 1] === p.player_id?.toString())
-                  .map(p => (
-                    <option key={p.player_id} value={p.player_id}>
-                      {p.nickname || p.display_name || p.player_id}
-                    </option>
-                  ))
-                }
+                {players.map(p => (
+                  <option key={p.player_id} value={p.player_id}>
+                    {p.nickname || p.display_name || p.player_id}
+                  </option>
+                ))}
               </select>
             </div>
           ))}
