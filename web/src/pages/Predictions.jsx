@@ -1,5 +1,108 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getPredictions, getPredictionAccuracy, savePrediction, getSeasons, getLeaderboard } from '../api';
+
+function SearchableSelect({ players, value, onChange, placeholder = 'Search player…' }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const selected = players.find(p => p.player_id?.toString() === value?.toString());
+  const displayName = p => p.nickname || p.display_name || p.player_id;
+
+  const filtered = players.filter(p =>
+    displayName(p).toLowerCase().includes(query.toLowerCase())
+  );
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSelect = (p) => {
+    onChange(p.player_id?.toString());
+    setQuery('');
+    setOpen(false);
+  };
+
+  const handleClear = (e) => {
+    e.stopPropagation();
+    onChange('');
+    setQuery('');
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flex: 1 }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: 'var(--bg-input)', border: `1px solid ${open ? 'var(--accent)' : 'var(--border)'}`,
+          borderRadius: 6, padding: '6px 10px', cursor: 'pointer', userSelect: 'none',
+          minHeight: 34,
+        }}
+      >
+        <span style={{ flex: 1, fontSize: 14, color: selected ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+          {selected ? displayName(selected) : <span style={{ color: 'var(--text-muted)' }}>Select player…</span>}
+        </span>
+        {selected && (
+          <span
+            onClick={handleClear}
+            style={{ color: 'var(--text-muted)', fontSize: 12, padding: '0 2px', cursor: 'pointer' }}
+            title="Clear"
+          >✕</span>
+        )}
+        <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 6, marginTop: 2, boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          maxHeight: 220, display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder={placeholder}
+              style={{
+                width: '100%', background: 'var(--bg-input)', color: 'var(--text-primary)',
+                border: '1px solid var(--border)', borderRadius: 4, padding: '4px 8px',
+                fontSize: 13, boxSizing: 'border-box',
+              }}
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--text-muted)' }}>No players found</div>
+            ) : filtered.map(p => (
+              <div
+                key={p.player_id}
+                onClick={() => handleSelect(p)}
+                style={{
+                  padding: '7px 12px', fontSize: 14, cursor: 'pointer',
+                  background: p.player_id?.toString() === value?.toString() ? 'var(--accent-muted, rgba(99,102,241,0.15))' : 'transparent',
+                  color: p.player_id?.toString() === value?.toString() ? 'var(--accent)' : 'var(--text-primary)',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = p.player_id?.toString() === value?.toString() ? 'var(--accent-muted, rgba(99,102,241,0.15))' : 'transparent'}
+              >
+                {displayName(p)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Predictions() {
   const [seasons, setSeasons] = useState([]);
@@ -21,7 +124,12 @@ export default function Predictions() {
     Promise.all([getSeasons(), getLeaderboard(100)])
       .then(([s, lb]) => {
         setSeasons(s.seasons || []);
-        setPlayers(lb.leaderboard || []);
+        const sorted = (lb.leaderboard || []).slice().sort((a, b) => {
+          const nameA = (a.nickname || a.display_name || '').toLowerCase();
+          const nameB = (b.nickname || b.display_name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+        setPlayers(sorted);
         const active = (s.seasons || []).find(x => x.is_active) || (s.seasons || [])[0];
         if (active) setSelectedSeason(active.id);
       })
@@ -122,7 +230,6 @@ export default function Predictions() {
           <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 16 }}>Submit Your Prediction</div>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
             Pick who you think will finish in the top 5 by the end of the season.
-            {process.env.NODE_ENV !== 'production' && ' A Discord notification is sent when predictions are submitted (if configured).'}
           </p>
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Your name / nickname</label>
@@ -131,7 +238,7 @@ export default function Predictions() {
               value={myName}
               onChange={e => setMyName(e.target.value)}
               placeholder="Enter your name…"
-              style={{ width: '100%', background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}
+              style={{ width: '100%', background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', boxSizing: 'border-box' }}
             />
           </div>
           {[1, 2, 3, 4, 5].map(rank => (
@@ -139,18 +246,11 @@ export default function Predictions() {
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: medalColor(rank), display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
                 {rank}
               </div>
-              <select
+              <SearchableSelect
+                players={players}
                 value={myPicks[rank - 1]}
-                onChange={e => setMyPicks(p => { const n = [...p]; n[rank - 1] = e.target.value; return n; })}
-                style={{ flex: 1, background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 8px' }}
-              >
-                <option value="">Select player…</option>
-                {players.map(p => (
-                  <option key={p.player_id} value={p.player_id}>
-                    {p.nickname || p.display_name || p.player_id}
-                  </option>
-                ))}
-              </select>
+                onChange={val => setMyPicks(p => { const n = [...p]; n[rank - 1] = val; return n; })}
+              />
             </div>
           ))}
           {error && <div style={{ color: 'var(--accent-red)', fontSize: 13, marginTop: 8 }}>{error}</div>}
