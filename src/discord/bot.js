@@ -151,9 +151,18 @@ class DiscordBot {
     }
   }
 
+  async _getAnnounceChannel() {
+    const channelId = config.discord.announceChannelId || this.lobbyChannelId;
+    if (!channelId) return null;
+    let channel = this.client.channels.cache.get(channelId);
+    if (!channel) {
+      channel = await this.client.channels.fetch(channelId).catch(() => null);
+    }
+    return channel || null;
+  }
+
   async notifyMatchRecorded(matchStats) {
-    if (!this.lobbyChannelId) return;
-    const channel = this.client.channels.cache.get(this.lobbyChannelId);
+    const channel = await this._getAnnounceChannel();
     if (!channel) return;
 
     try {
@@ -161,6 +170,19 @@ class DiscordBot {
       await this._sendMatchSummary(matchStats, '', channel);
     } catch (err) {
       console.error('[Discord] Notify error:', err.message);
+    }
+  }
+
+  async notifyWebUpload(matchStats) {
+    const channel = await this._getAnnounceChannel();
+    if (!channel) {
+      console.log('[Discord] Web upload: no announce channel configured, skipping Discord notification.');
+      return;
+    }
+    try {
+      await this._sendMatchSummary(matchStats, 'Replay Upload', channel);
+    } catch (err) {
+      console.error('[Discord] Web upload notify error:', err.message);
     }
   }
 

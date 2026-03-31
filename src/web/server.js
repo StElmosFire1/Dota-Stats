@@ -11,6 +11,7 @@ const db = require('../db');
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
 const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/groqService');
+const { getDiscordBot } = require('../discord/bot');
 
 const CHUNK_DIR = '/tmp/replay-chunks';
 const UPLOAD_DIR = '/tmp/replay-uploads';
@@ -2507,6 +2508,11 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
       replaceReason,
     });
     console.log(`[API] Upload job ${jobId} complete: match ${matchStats.matchId}`);
+
+    // Notify Discord async — non-blocking so upload response isn't held up
+    getDiscordBot().notifyWebUpload(matchStats).catch(err =>
+      console.error('[Discord] Web upload notification failed:', err.message)
+    );
   } catch (err) {
     console.error(`[API] Upload job ${jobId} error:`, err);
     cleanupFile(filePath);
