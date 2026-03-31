@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getLeaderboard, getMostImproved } from '../api';
+import { getLeaderboard, getMostImproved, getPlayerForm } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
 const MMR_TIERS = [
@@ -139,17 +139,43 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
   );
 }
 
+function FormDots({ results }) {
+  if (!results || results.length === 0) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>;
+  return (
+    <div style={{ display: 'flex', gap: 3, alignItems: 'center', justifyContent: 'center' }}>
+      {results.map((r, i) => (
+        <span
+          key={i}
+          title={r === 'W' ? 'Win' : 'Loss'}
+          style={{
+            width: 9, height: 9, borderRadius: '50%',
+            background: r === 'W' ? 'var(--accent-green, #4caf50)' : 'var(--accent-red, #f44336)',
+            display: 'inline-block', flexShrink: 0,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function Leaderboard() {
   const { seasonId, seasons } = useSeason();
   const [data, setData] = useState({ leaderboard: [] });
   const [loading, setLoading] = useState(true);
   const [improved, setImproved] = useState([]);
   const [improvedLoading, setImprovedLoading] = useState(true);
+  const [playerForm, setPlayerForm] = useState({});
 
   useEffect(() => {
     setLoading(true);
-    getLeaderboard(100, seasonId)
-      .then(setData)
+    Promise.all([
+      getLeaderboard(100, seasonId),
+      getPlayerForm(seasonId).catch(() => ({ form: {} })),
+    ])
+      .then(([lb, formData]) => {
+        setData(lb);
+        setPlayerForm(formData.form || {});
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [seasonId]);
@@ -222,6 +248,7 @@ export default function Leaderboard() {
                 <th className="col-stat" title="Total games played">Games</th>
                 <th className="col-stat" title="Win percentage">Win %</th>
                 <th className="col-stat" title="Current win or loss streak">Streak</th>
+                <th className="col-stat" title="Last 10 games — green=win, red=loss, left=most recent">Form</th>
               </tr>
             </thead>
             <tbody>
@@ -247,6 +274,9 @@ export default function Leaderboard() {
                       {p.streak
                         ? <StreakBadge streak={p.streak} />
                         : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                    </td>
+                    <td className="col-stat">
+                      <FormDots results={playerForm[p.player_id?.toString()] || []} />
                     </td>
                   </tr>
                 );

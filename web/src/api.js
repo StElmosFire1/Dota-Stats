@@ -601,6 +601,21 @@ export async function getPudgeStats(seasonId = null) {
   return fetchJson(`/pudge-stats${q}`);
 }
 
+export async function getPlayerForm(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/player-form${q}`);
+}
+
+export async function getPositionAverages(seasonId = null) {
+  const q = seasonId ? `?season_id=${seasonId}` : '';
+  return fetchJson(`/position-averages${q}`);
+}
+
+export async function getHeroMatchups(heroId, seasonId = null) {
+  const q = new URLSearchParams({ hero_id: heroId, ...(seasonId ? { season_id: seasonId } : {}) });
+  return fetchJson(`/hero-matchups?${q}`);
+}
+
 export async function getSchedule() {
   return fetchJson('/schedule');
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -126,6 +126,7 @@ export default function PlayerProfile() {
   const [streak, setStreak] = useState(null);
   const [durationStats, setDurationStats] = useState([]);
   const [communityRatings, setCommunityRatings] = useState(null);
+  const [positionAverages, setPositionAverages] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -141,7 +142,8 @@ export default function PlayerProfile() {
       getPlayerStreak(accountId).catch(() => ({ streak: 0 })),
       getPlayerDurationStats(accountId, seasonId).catch(() => ({ stats: [] })),
       getPlayerCommunityRatings(accountId).catch(() => null),
-    ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData, durData, ratingData]) => {
+      getPositionAverages(seasonId).catch(() => ({ averages: [] })),
+    ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData, durData, ratingData, avgData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
@@ -152,6 +154,7 @@ export default function PlayerProfile() {
       setStreak(streakData?.streak ?? null);
       setDurationStats(durData?.stats || []);
       setCommunityRatings(ratingData?.ratings || null);
+      setPositionAverages(avgData?.averages || []);
     }).finally(() => setLoading(false));
   }, [accountId, seasonId]);
 
@@ -485,6 +488,58 @@ export default function PlayerProfile() {
           </div>
         </section>
       )}
+
+      {(() => {
+        if (!positions.length || !positionAverages.length) return null;
+        const mainPos = positions.filter(p => p.position > 0).sort((a, b) => b.games - a.games)[0];
+        if (!mainPos) return null;
+        const serverAvg = positionAverages.find(a => parseInt(a.position) === parseInt(mainPos.position));
+        if (!serverAvg) return null;
+        const posLabel = POS_NAMES[mainPos.position] || `Pos ${mainPos.position}`;
+        const stats = [
+          { label: 'KDA', player: `${parseFloat(mainPos.avg_kills || 0).toFixed(1)}/${parseFloat(mainPos.avg_deaths || 0).toFixed(1)}/${parseFloat(mainPos.avg_assists || 0).toFixed(1)}`, server: `${parseFloat(serverAvg.avg_kills).toFixed(1)}/${parseFloat(serverAvg.avg_deaths).toFixed(1)}/${parseFloat(serverAvg.avg_assists).toFixed(1)}`, pVal: null, sVal: null, noBar: true },
+          { label: 'GPM', player: Math.round(mainPos.avg_gpm || 0), server: Math.round(serverAvg.avg_gpm), pVal: parseFloat(mainPos.avg_gpm || 0), sVal: parseFloat(serverAvg.avg_gpm), higherBetter: true },
+          { label: 'Damage', player: Math.round(mainPos.avg_hero_damage || 0).toLocaleString(), server: Math.round(serverAvg.avg_hero_damage).toLocaleString(), pVal: parseFloat(mainPos.avg_hero_damage || 0), sVal: parseFloat(serverAvg.avg_hero_damage), higherBetter: true },
+          { label: 'LH', player: Math.round(mainPos.avg_last_hits || 0), server: Math.round(serverAvg.avg_last_hits), pVal: parseFloat(mainPos.avg_last_hits || 0), sVal: parseFloat(serverAvg.avg_last_hits), higherBetter: true },
+          { label: 'Healing', player: Math.round(mainPos.avg_hero_healing || 0).toLocaleString(), server: Math.round(serverAvg.avg_hero_healing).toLocaleString(), pVal: parseFloat(mainPos.avg_hero_healing || 0), sVal: parseFloat(serverAvg.avg_hero_healing), higherBetter: true },
+        ];
+        return (
+          <section>
+            <h2 className="section-title">How You Compare — {posLabel}</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+              Your averages vs all players at {posLabel} across all inhouse games.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {stats.map(s => {
+                const pv = parseFloat(s.pVal) || 0;
+                const sv = parseFloat(s.sVal) || 0;
+                const isAbove = s.higherBetter ? pv >= sv : pv <= sv;
+                const diff = sv > 0 ? ((pv - sv) / sv * 100) : 0;
+                const diffLabel = diff > 0 ? `+${diff.toFixed(1)}%` : `${diff.toFixed(1)}%`;
+                const maxBar = Math.max(pv, sv, 1);
+                return (
+                  <div key={s.label}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 600, minWidth: 80 }}>{s.label}</span>
+                      <span style={{ fontWeight: 700, color: s.noBar ? 'var(--text-primary)' : (isAbove ? 'var(--accent-green, #4caf50)' : 'var(--accent-red, #f44336)') }}>
+                        You: {s.player}
+                      </span>
+                      <span style={{ color: 'var(--text-muted)' }}>Server: {s.server}</span>
+                      {!s.noBar && <span style={{ color: isAbove ? 'var(--accent-green, #4caf50)' : 'var(--accent-red, #f44336)', minWidth: 52, textAlign: 'right' }}>{diffLabel}</span>}
+                    </div>
+                    {!s.noBar && (
+                      <div style={{ position: 'relative', height: 8, background: '#333', borderRadius: 4, overflow: 'visible' }}>
+                        <div style={{ width: `${Math.min((pv / maxBar) * 100, 100)}%`, height: '100%', background: isAbove ? 'var(--accent-green, #4caf50)' : 'var(--accent-red, #f44336)', borderRadius: 4 }} />
+                        <div style={{ position: 'absolute', top: 0, left: `${Math.min((sv / maxBar) * 100, 100)}%`, width: 2, height: '100%', background: 'var(--text-muted)', transform: 'translateX(-50%)' }} title={`Server avg: ${s.server}`} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })()}
 
       {heroes && heroes.length > 0 && (
         <section>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles } from '../api';
+import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { Link } from 'react-router-dom';
@@ -240,6 +240,178 @@ function HeroBreakdownTab() {
   );
 }
 
+function HeroTierTab({ playedHeroes, totalMatches }) {
+  const TIER_DEFS = [
+    { key: 'S', label: 'S Tier', min: 0.60, color: '#ff6b35', desc: '60%+ win rate' },
+    { key: 'A', label: 'A Tier', min: 0.55, color: '#f7c59f', desc: '55–60%' },
+    { key: 'B', label: 'B Tier', min: 0.48, color: '#efefd0', desc: '48–55%' },
+    { key: 'C', label: 'C Tier', min: 0.42, color: '#99b2dd', desc: '42–48%' },
+    { key: 'D', label: 'D Tier', min: 0,    color: '#f45b69', desc: 'Below 42%' },
+  ];
+  const qualified = playedHeroes
+    .map(h => ({
+      ...h,
+      games: parseInt(h.games) || 0,
+      wins: parseInt(h.wins) || 0,
+    }))
+    .filter(h => h.games >= 2)
+    .map(h => ({ ...h, wr: h.wins / h.games }))
+    .sort((a, b) => b.wr - a.wr);
+
+  const tiers = TIER_DEFS.map(tier => {
+    const heroes = qualified.filter(h => {
+      const idx = TIER_DEFS.indexOf(tier);
+      const nextMin = idx > 0 ? TIER_DEFS[idx - 1].min : Infinity;
+      return h.wr >= tier.min && h.wr < nextMin;
+    });
+    return { ...tier, heroes };
+  });
+
+  if (qualified.length === 0) {
+    return <p style={{ color: 'var(--text-muted)', padding: 20 }}>Not enough data yet (need at least 2 games per hero).</p>;
+  }
+
+  return (
+    <div>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: 13 }}>
+        Heroes with 2+ picks, ranked by inhouse win rate. Left = more recent season context adjusts thresholds.
+      </p>
+      {tiers.map(tier => tier.heroes.length > 0 && (
+        <div key={tier.key} style={{ marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <span style={{
+              background: tier.color, color: '#111', fontWeight: 700, fontSize: 18,
+              padding: '2px 14px', borderRadius: 6, minWidth: 48, textAlign: 'center',
+            }}>{tier.key}</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{tier.desc}</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {tier.heroes.map(h => (
+              <div key={h.hero_id} style={{
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: 8, padding: '8px 12px', minWidth: 140,
+                display: 'flex', flexDirection: 'column', gap: 4,
+              }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{h.hero_name}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  {(h.wr * 100).toFixed(1)}% ({h.wins}W–{h.games - h.wins}L)
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8 }}>
+        {qualified.length} heroes with data out of {Object.keys(ALL_HEROES).length} total. Minimum 2 games required.
+      </p>
+    </div>
+  );
+}
+
+function HeroMatchupsTab() {
+  const { seasonId } = useSeason();
+  const [selectedHero, setSelectedHero] = useState('');
+  const [matchups, setMatchups] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState('matchups');
+  const [sortDir, setSortDir] = useState(-1);
+
+  const heroOptions = Object.entries(ALL_HEROES).sort((a, b) => a[1].localeCompare(b[1]));
+
+  useEffect(() => {
+    if (!selectedHero) return;
+    setLoading(true);
+    getHeroMatchups(selectedHero, seasonId)
+      .then(d => setMatchups(d.matchups || []))
+      .catch(() => setMatchups([]))
+      .finally(() => setLoading(false));
+  }, [selectedHero, seasonId]);
+
+  const handleSort = (f) => {
+    if (sortField === f) setSortDir(d => -d);
+    else { setSortField(f); setSortDir(-1); }
+  };
+
+  const displayed = [...matchups]
+    .filter(r => !search || r.opp_hero_name?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const av = sortField === 'wr' ? (parseInt(a.matchups) > 0 ? parseInt(a.wins) / parseInt(a.matchups) : -1) : (parseFloat(a[sortField]) ?? -1);
+      const bv = sortField === 'wr' ? (parseInt(b.matchups) > 0 ? parseInt(b.wins) / parseInt(b.matchups) : -1) : (parseFloat(b[sortField]) ?? -1);
+      return (av - bv) * sortDir;
+    });
+
+  const si = (f) => sortField === f ? (sortDir > 0 ? ' ▲' : ' ▼') : '';
+
+  return (
+    <div>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
+        Select a hero to see how it performs against every opponent faced in inhousees.
+      </p>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select
+          value={selectedHero}
+          onChange={e => setSelectedHero(e.target.value)}
+          style={{ padding: '6px 12px', borderRadius: 6, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14 }}
+        >
+          <option value="">— Select a hero —</option>
+          {heroOptions.map(([id, name]) => (
+            <option key={id} value={id}>{name}</option>
+          ))}
+        </select>
+        {matchups.length > 0 && (
+          <input
+            placeholder="Filter opponent…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ padding: '6px 12px', borderRadius: 6, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, width: 180 }}
+          />
+        )}
+      </div>
+      {loading && <div className="loading">Loading matchup data…</div>}
+      {!loading && selectedHero && matchups.length === 0 && (
+        <p style={{ color: 'var(--text-muted)' }}>No matchup data found for this hero.</p>
+      )}
+      {!loading && displayed.length > 0 && (
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard">
+            <thead>
+              <tr>
+                <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('opp_hero_name')}>Opponent{si('opp_hero_name')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('matchups')}>Games{si('matchups')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')}>Wins{si('wins')}</th>
+                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wr')}>Win %{si('wr')}</th>
+                <th className="col-stat" title="Win rate bar">Advantage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayed.map(r => {
+                const games = parseInt(r.matchups) || 0;
+                const wins = parseInt(r.wins) || 0;
+                const wr = games > 0 ? wins / games : 0;
+                const colour = wr >= 0.55 ? 'var(--accent-green, #4caf50)' : wr <= 0.45 ? 'var(--accent-red, #f44336)' : 'var(--text-muted)';
+                return (
+                  <tr key={r.opp_hero_id}>
+                    <td className="col-player">{r.opp_hero_name}</td>
+                    <td className="col-stat">{games}</td>
+                    <td className="col-stat wins">{wins}</td>
+                    <td className="col-stat" style={{ color: colour, fontWeight: 600 }}>{(wr * 100).toFixed(1)}%</td>
+                    <td className="col-stat">
+                      <div style={{ background: '#333', borderRadius: 4, height: 8, width: 80, overflow: 'hidden' }}>
+                        <div style={{ width: `${wr * 100}%`, height: '100%', background: colour, borderRadius: 4 }} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Heroes({ defaultTab }) {
   const { seasonId } = useSeason();
   const [playedHeroes, setPlayedHeroes] = useState([]);
@@ -352,6 +524,8 @@ export default function Heroes({ defaultTab }) {
 
   const TABS = [
     { key: 'stats', label: 'Hero Stats' },
+    { key: 'tier', label: '🏅 Tier List' },
+    { key: 'matchups', label: '⚔️ Matchups' },
     { key: 'meta', label: '📍 Position Meta' },
     { key: 'breakdown', label: '🏛️ Hero Breakdown' },
   ];
@@ -375,6 +549,8 @@ export default function Heroes({ defaultTab }) {
         ))}
       </div>
 
+      {tab === 'tier' && <HeroTierTab playedHeroes={playedHeroes} totalMatches={totalMatches} />}
+      {tab === 'matchups' && <HeroMatchupsTab />}
       {tab === 'meta' && <HeroMetaTab />}
       {tab === 'breakdown' && <HeroBreakdownTab />}
 

@@ -536,6 +536,37 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/player-form', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const form = await db.getPlayerFormBatch(seasonId);
+      res.json({ form });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch player form' });
+    }
+  });
+
+  router.get('/position-averages', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const averages = await db.getPositionAverages(seasonId);
+      res.json({ averages });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch position averages' });
+    }
+  });
+
+  router.get('/hero-matchups', async (req, res) => {
+    try {
+      const { hero_id, season_id } = req.query;
+      if (!hero_id) return res.status(400).json({ error: 'hero_id required' });
+      const matchups = await db.getHeroMatchups(hero_id, season_id || null);
+      res.json({ matchups });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch hero matchups' });
+    }
+  });
+
   router.get('/schedule', async (req, res) => {
     try {
       const games = await db.getUpcomingGames();

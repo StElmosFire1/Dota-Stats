@@ -1546,6 +1546,79 @@ async function getDiscordIdsForMatch(matchId) {
   return result.rows;
 }
 
+async function getPlayerFormBatch(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
+  const result = await p.query(
+    `SELECT
+       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_id,
+       json_agg(
+         CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 'W' ELSE 'L' END
+         ORDER BY m.match_id DESC
+       ) as results
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE 1=1${sc}
+     GROUP BY CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END`,
+    params
+  );
+  const form = {};
+  for (const row of result.rows) {
+    form[row.player_id] = (row.results || []).slice(0, 10);
+  }
+  return form;
+}
+
+async function getPositionAverages(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
+  const result = await p.query(
+    `SELECT
+       ps.position,
+       COUNT(*) as games,
+       ROUND(AVG(ps.kills), 2) as avg_kills,
+       ROUND(AVG(ps.deaths), 2) as avg_deaths,
+       ROUND(AVG(ps.assists), 2) as avg_assists,
+       ROUND(AVG(ps.gpm), 0) as avg_gpm,
+       ROUND(AVG(ps.xpm), 0) as avg_xpm,
+       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+       ROUND(AVG(ps.last_hits), 0) as avg_last_hits,
+       ROUND(AVG(ps.hero_healing), 0) as avg_hero_healing,
+       ROUND(AVG(ps.tower_damage), 0) as avg_tower_damage
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.position > 0${sc}
+     GROUP BY ps.position
+     ORDER BY ps.position`,
+    params
+  );
+  return result.rows;
+}
+
+async function getHeroMatchups(heroId, seasonId = null) {
+  const p = getPool();
+  const params = [parseInt(heroId)];
+  const sc = _sc(seasonId, params, 'm');
+  const result = await p.query(
+    `SELECT
+       ps2.hero_id as opp_hero_id,
+       ps2.hero_name as opp_hero_name,
+       COUNT(*) as matchups,
+       SUM(CASE WHEN (ps1.team = 'radiant' AND m.radiant_win = true) OR (ps1.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins
+     FROM player_stats ps1
+     JOIN player_stats ps2 ON ps2.match_id = ps1.match_id AND ps2.team != ps1.team AND ps2.hero_id > 0
+     JOIN matches m ON m.match_id = ps1.match_id
+     WHERE ps1.hero_id = $1${sc}
+     GROUP BY ps2.hero_id, ps2.hero_name
+     HAVING COUNT(*) >= 1
+     ORDER BY matchups DESC, wins DESC`,
+    params
+  );
+  return result.rows;
+}
+
 async function getAllPlayers(seasonId = null) {
   const p = getPool();
   const params1 = [];
@@ -2076,7 +2149,10 @@ async function getPlayerPositions(playerKey, seasonId = null) {
        ROUND(AVG(ps.assists), 1) as avg_assists,
        ROUND(AVG(ps.gpm), 0) as avg_gpm,
        ROUND(AVG(ps.xpm), 0) as avg_xpm,
-       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage
+       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+       ROUND(AVG(ps.last_hits), 0) as avg_last_hits,
+       ROUND(AVG(ps.hero_healing), 0) as avg_hero_healing,
+       ROUND(AVG(ps.tower_damage), 0) as avg_tower_damage
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      WHERE ${whereClause} AND ps.position > 0${sc}
@@ -4372,6 +4448,9 @@ module.exports = {
   getMatchRatings,
   getPlayerRatingsReceived,
   getDiscordIdsForMatch,
+  getPlayerFormBatch,
+  getPositionAverages,
+  getHeroMatchups,
   getAllPlayers,
   getHeroStats,
   getOverallStats,

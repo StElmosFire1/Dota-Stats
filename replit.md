@@ -53,6 +53,10 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Home page has a Predictions widget showing count of predictions for the active season with a link to submit.
 - Discord webhook support for prediction submissions: set DISCORD_WEBHOOK_URL env var to get notified when someone submits a season prediction.
 - Most Improved widget on the Leaderboard — top MMR gainers over 30 days (from rating_history).
+- Form Guide on Leaderboard — last 10 game results shown as green (W) / red (L) dots next to each player; season-aware; fetched from `/api/player-form`.
+- Hero Tier List tab on Heroes page — heroes ranked S/A/B/C/D by inhouse win rate; minimum 2 games; color-coded tier cards.
+- Hero Matchups tab on Heroes page — select any hero to see win rate vs every opponent they've faced; filterable, sortable table with advantage bar.
+- Player Benchmarks section on player profiles — compares GPM, Damage, LH, Healing vs server average for the player's most-played position; color-coded bars with +/- % indicator.
 - Match prediction system: `!predict <matchId> radiant|dire` Discord command + `/api/predictions` endpoints.
 - Achievement badges on player profiles expanded: rampage, ultra kill, first blood, massacre, ward lord/breaker.
 - Player prediction accuracy stats shown on player profiles.
