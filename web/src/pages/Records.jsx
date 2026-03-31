@@ -239,20 +239,35 @@ export default function Records() {
       {!loading && tab === 'season' && (() => {
         const { positive = {}, negative = {} } = seasonRecs;
         const posCards = [
-          { key: 'most_wins',          emoji: '🏆', label: 'Most Wins',          field: 'wins',         fmt: v => `${v}W` },
-          { key: 'most_kills',         emoji: '⚔️', label: 'Most Kills',         field: 'total_kills',  fmt: v => v.toLocaleString() },
-          { key: 'most_assists',       emoji: '🤝', label: 'Most Assists',        field: 'total_assists', fmt: v => v.toLocaleString() },
-          { key: 'most_damage',        emoji: '🔥', label: 'Most Hero Damage',    field: 'total_damage', fmt: v => `${Math.round(v/1000)}k` },
-          { key: 'most_healing',       emoji: '💚', label: 'Most Healing',        field: 'total_healing',fmt: v => `${Math.round(v/1000)}k` },
-          { key: 'best_win_rate',      emoji: '📈', label: 'Best Win Rate (5+ games)', field: 'win_rate', fmt: v => `${v}%` },
-          { key: 'longest_win_streak', emoji: '🔥', label: 'Longest Win Streak',  field: 'max_streak',   fmt: v => `${v}W` },
-          { key: 'most_games',         emoji: '🎮', label: 'Most Games Played',   field: 'games_played', fmt: v => `${v} games` },
+          { key: 'most_wins',           emoji: '🏆', label: 'Most Wins',                   field: 'wins',               fmt: v => `${v}W` },
+          { key: 'most_kills',          emoji: '⚔️',  label: 'Most Kills',                  field: 'total_kills',        fmt: v => v.toLocaleString() },
+          { key: 'most_assists',        emoji: '🤝', label: 'Most Assists',                 field: 'total_assists',      fmt: v => v.toLocaleString() },
+          { key: 'most_damage',         emoji: '🔥', label: 'Most Hero Damage',             field: 'total_damage',       fmt: v => `${Math.round(v/1000)}k` },
+          { key: 'most_tower_damage',   emoji: '🏗️',  label: 'Most Tower Damage',           field: 'total_tower_damage', fmt: v => `${Math.round(v/1000)}k` },
+          { key: 'most_healing',        emoji: '💚', label: 'Most Healing',                 field: 'total_healing',      fmt: v => `${Math.round(v/1000)}k` },
+          { key: 'best_win_rate',       emoji: '📈', label: 'Best Win Rate (5+ games)',      field: 'win_rate',           fmt: v => `${v}%` },
+          { key: 'longest_win_streak',  emoji: '🔥', label: 'Longest Win Streak',           field: 'max_streak',         fmt: v => `${v}W` },
+          { key: 'most_games',          emoji: '🎮', label: 'Most Games Played',            field: 'games_played',       fmt: v => `${v} games` },
+          { key: 'most_firstbloods',    emoji: '🩸', label: 'Most First Bloods',            field: 'total_firstbloods',  fmt: v => `${v}` },
+          { key: 'most_rampages',       emoji: '🔱', label: 'Most Rampages',                field: 'total_rampages',     fmt: v => `${v}` },
+          { key: 'most_roshans',        emoji: '🐉', label: 'Most Roshans Killed',          field: 'total_roshans',      fmt: v => `${v}` },
+          { key: 'most_towers_killed',  emoji: '🏚️',  label: 'Most Towers Destroyed',       field: 'total_towers_killed',fmt: v => `${v}` },
+          { key: 'vision_king',         emoji: '👁️',  label: 'Vision King (Wards Placed)',   field: 'total_wards_placed', fmt: v => `${v}` },
+          { key: 'ward_hunter',         emoji: '🔍', label: 'Ward Hunter (Wards Killed)',   field: 'total_wards_killed', fmt: v => `${v}` },
+          { key: 'stack_god',           emoji: '📦', label: 'Stack God (Camps Stacked)',    field: 'total_stacks',       fmt: v => `${v}` },
+          { key: 'most_stun_duration',  emoji: '🧲', label: 'CC King (Hard CC Seconds)',   field: 'total_stun_duration', fmt: v => `${v}s` },
         ];
         const negCards = [
-          { key: 'most_deaths',         emoji: '💀', label: 'Most Deaths',          field: 'total_deaths', fmt: v => v.toLocaleString() },
-          { key: 'most_losses',         emoji: '😞', label: 'Most Losses',          field: 'losses',       fmt: v => `${v}L` },
-          { key: 'worst_win_rate',      emoji: '📉', label: 'Worst Win Rate (5+ games)', field: 'win_rate', fmt: v => `${v}%` },
-          { key: 'longest_loss_streak', emoji: '❌', label: 'Longest Loss Streak',  field: 'max_streak',   fmt: v => `${v}L` },
+          { key: 'most_deaths',          emoji: '💀', label: 'Most Deaths',                  field: 'total_deaths',       fmt: v => v.toLocaleString() },
+          { key: 'most_losses',          emoji: '😞', label: 'Most Losses',                  field: 'losses',             fmt: v => `${v}L` },
+          { key: 'worst_win_rate',       emoji: '📉', label: 'Worst Win Rate (5+ games)',     field: 'win_rate',           fmt: v => `${v}%` },
+          { key: 'longest_loss_streak',  emoji: '❌', label: 'Longest Loss Streak',          field: 'max_streak',         fmt: v => `${v}L` },
+          { key: 'worst_avg_deaths',     emoji: '☠️',  label: 'Avg Deaths/Game (5+ games)',   field: 'avg_deaths_display', fmt: v => `${v.toFixed ? v.toFixed(1) : v}/game` },
+          { key: 'most_buybacks',        emoji: '💸', label: 'Most Buybacks',                field: 'total_buybacks',     fmt: v => `${v}` },
+          { key: 'most_diebacks',        emoji: '🪦', label: 'Most Diebacks (BB → death ≤2m)', field: 'total_diebacks',  fmt: v => `${v}` },
+          { key: 'most_dead_time',       emoji: '⏳', label: 'Most Time Dead',               field: 'total_dead_minutes', fmt: v => `${v}m` },
+          { key: 'worst_obs_efficiency', emoji: '🗑️',  label: 'Worst Obs Ward Lifespan (3+ dewards)', field: 'avg_obs_lifespan', fmt: v => `${v}s avg` },
+          { key: 'lowest_avg_gpm',       emoji: '📉', label: 'Lowest Avg GPM (5+ games)',   field: 'avg_gpm',            fmt: v => `${v} GPM` },
         ];
 
         const RecCard = ({ rec, card, color }) => {
@@ -268,7 +283,7 @@ export default function Records() {
             <div style={{ ...cardStyle, borderColor: `${color}44` }}>
               <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.emoji} {card.label}</div>
               <div style={{ color, fontSize: '1.6rem', fontWeight: 700, lineHeight: 1.2, marginTop: 4 }}>
-                {val != null ? card.fmt(parseInt(val)) : '—'}
+                {val != null ? card.fmt(Number(val)) : '—'}
               </div>
               <div style={{ marginTop: 8, borderTop: '1px solid #334155', paddingTop: 8 }}>
                 <Link to={`/player/${rec.account_id}`} style={{ color: '#4ade80', fontWeight: 600, fontSize: '0.95rem', textDecoration: 'none' }}>
@@ -283,12 +298,12 @@ export default function Records() {
         return (
           <div>
             <h2 style={{ color: '#4ade80', marginBottom: '0.5rem', fontSize: '1.1rem' }}>🏅 Positive Records</h2>
-            <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.85rem' }}>Aggregate season totals — most wins, kills, assists, damage, healing, and streaks.</p>
+            <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.85rem' }}>Aggregate season totals — replay-derived stats show — where no data exists yet.</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
               {posCards.map(c => <RecCard key={c.key} rec={positive[c.key]} card={c} color="#4ade80" />)}
             </div>
             <h2 style={{ color: '#f87171', marginBottom: '0.5rem', fontSize: '1.1rem' }}>💀 Negative Records</h2>
-            <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.85rem' }}>Most deaths, most losses, worst win rate, and longest loss streak.</p>
+            <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.85rem' }}>The hall of shame — diebacks, ward inefficiency, and other dubious honours.</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
               {negCards.map(c => <RecCard key={c.key} rec={negative[c.key]} card={c} color="#f87171" />)}
             </div>

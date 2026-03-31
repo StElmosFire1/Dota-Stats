@@ -692,6 +692,7 @@ class ReplayParser {
     const multiKills = {};
     const killStreaks = {};
     const combatLogBuybacks = {};
+    const buybackTimes = {};         // slot → [timestamp, …] — for dieback detection
     const firstDeathSlot = { time: Infinity, slot: -1 };
     const itemPurchases = {};
     const abilityLevelups = {};
@@ -1048,11 +1049,19 @@ class ReplayParser {
           slot = e.value;
           if (slot >= 128 && slot <= 132) slot = slot - 128 + 5;
         }
-        if (slot != null && slot >= 0 && slot < 10) combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
+        if (slot != null && slot >= 0 && slot < 10) {
+          combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
+          if (!buybackTimes[slot]) buybackTimes[slot] = [];
+          buybackTimes[slot].push(e.time || 0);
+        }
       } else if (e.type === 'buyback_log') {
         let slot = e.slot;
         if (slot != null && slot >= 128 && slot <= 132) slot = slot - 128 + 5;
-        if (slot != null && slot >= 0 && slot < 10) combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
+        if (slot != null && slot >= 0 && slot < 10) {
+          combatLogBuybacks[slot] = (combatLogBuybacks[slot] || 0) + 1;
+          if (!buybackTimes[slot]) buybackTimes[slot] = [];
+          buybackTimes[slot].push(e.time || 0);
+        }
       }
 
       // ── Hero kill gold bounty ──────────────────────────────────────────────
@@ -2013,6 +2022,18 @@ class ReplayParser {
         obsPurchased: obsPurchased[slot] || 0,
         senPurchased: senPurchased[slot] || 0,
         buybacks: combatLogBuybacks[slot] || p.buybacks || 0,
+        diebackCount: (() => {
+          // Dieback = player buys back, then dies again within 120 seconds.
+          const bbTimes   = buybackTimes[slot] || [];
+          const deathTimes = deathsBySlot[slot] || [];
+          if (bbTimes.length === 0 || deathTimes.length === 0) return 0;
+          let count = 0;
+          for (const death of deathTimes) {
+            // Check if any buyback occurred in the 0–120s window before this death
+            if (bbTimes.some(bb => death > bb && death - bb <= 120)) count++;
+          }
+          return count;
+        })(),
         courierKills: p.courierKills || 0,
         tpScrollsUsed: tpScrollsUsed[slot] || 0,
         doubleKills: mk.double,

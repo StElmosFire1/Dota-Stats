@@ -182,6 +182,7 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_hits INTEGER DEFAULT NULL`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_cast_times JSONB DEFAULT NULL`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_cast_log JSONB DEFAULT NULL`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS dieback_count INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_path TEXT DEFAULT NULL`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_expires_at TIMESTAMPTZ DEFAULT NULL`);
 
@@ -804,8 +805,8 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
 
     for (const player of matchStats.players) {
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log, dieback_count)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73)`,
         [
           matchStats.matchId,
           player.accountId || 0,
@@ -879,6 +880,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
           player.deadTimeSeconds != null ? player.deadTimeSeconds : null,
           player.hookCastTimes ? JSON.stringify(player.hookCastTimes) : null,
           player.hookCastLog ? JSON.stringify(player.hookCastLog) : null,
+          player.diebackCount || 0,
         ]
       );
 
@@ -3943,8 +3945,8 @@ async function reparseMatchFromStats(matchId, matchStats, patch) {
       const slot = player.slot || 0;
       const restoredPosition = savedPositions[slot] || player.position || 0;
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log, dieback_count)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73)`,
         [
           matchId, player.accountId || 0, player.discordId || '', player.personaname || '',
           player.heroId || 0, player.heroName || '', player.team || 'radiant',
@@ -3979,6 +3981,7 @@ async function reparseMatchFromStats(matchId, matchStats, patch) {
           player.deadTimeSeconds != null ? player.deadTimeSeconds : null,
           player.hookCastTimes ? JSON.stringify(player.hookCastTimes) : null,
           player.hookCastLog ? JSON.stringify(player.hookCastLog) : null,
+          player.diebackCount || 0,
         ]
       );
 
@@ -4072,7 +4075,23 @@ async function getSeasonPlayerRecords(seasonId = null) {
       SUM(ps.assists)::int as total_assists,
       ROUND(AVG(ps.gpm))::int as avg_gpm,
       SUM(ps.hero_damage)::bigint as total_damage,
-      SUM(ps.hero_healing)::bigint as total_healing
+      SUM(ps.hero_healing)::bigint as total_healing,
+      SUM(ps.rampages)::int as total_rampages,
+      SUM(ps.obs_placed + ps.sen_placed)::int as total_wards_placed,
+      ROUND(SUM(ps.stun_duration))::int as total_stun_duration,
+      SUM(ps.roshans_killed)::int as total_roshans,
+      SUM(ps.camps_stacked)::int as total_stacks,
+      SUM(ps.wards_killed)::int as total_wards_killed,
+      SUM(ps.tower_damage)::bigint as total_tower_damage,
+      SUM(ps.towers_killed)::int as total_towers_killed,
+      SUM(ps.firstblood_claimed)::int as total_firstbloods,
+      SUM(ps.buybacks)::int as total_buybacks,
+      ROUND(SUM(COALESCE(ps.dead_time_seconds, 0)) / 60.0)::int as total_dead_minutes,
+      SUM(ps.dieback_count)::int as total_diebacks,
+      ROUND(AVG(ps.deaths), 2) as avg_deaths_per_game,
+      -- Obs ward lifespan: average across games where wards were dewarded (lower = worse placement)
+      ROUND(AVG(CASE WHEN ps.obs_dewarded_count > 0 THEN ps.obs_avg_lifespan ELSE NULL END))::int as avg_obs_lifespan,
+      SUM(CASE WHEN ps.obs_dewarded_count > 0 THEN ps.obs_dewarded_count ELSE 0 END)::int as total_obs_dewarded
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
     LEFT JOIN nicknames n ON n.account_id = ps.account_id
@@ -4140,22 +4159,60 @@ async function getSeasonPlayerRecords(seasonId = null) {
     return sorted[0] || null;
   };
 
+  // Worst obs ward efficiency: ascending avg_obs_lifespan, min 3 wards dewarded
+  const pickWorstObsEfficiency = (rows) => {
+    const eligible = rows.filter(r => r.total_obs_dewarded >= 3 && r.avg_obs_lifespan != null);
+    const sorted = [...eligible].sort((a, b) => parseInt(a.avg_obs_lifespan) - parseInt(b.avg_obs_lifespan));
+    return sorted[0] || null;
+  };
+
+  // Worst avg deaths per game: ascending, min games threshold
+  const pickWorstAvgDeaths = (rows) => {
+    const eligible = rows.filter(r => r.games_played >= minGamesForRate);
+    const sorted = [...eligible].sort((a, b) => parseFloat(b.avg_deaths_per_game) - parseFloat(a.avg_deaths_per_game));
+    const r = sorted[0];
+    if (!r) return null;
+    return { ...r, avg_deaths_display: parseFloat(r.avg_deaths_per_game).toFixed(1) };
+  };
+
+  // Lowest avg GPM: ascending, min games threshold
+  const pickLowestAvgGpm = (rows) => {
+    const eligible = rows.filter(r => r.games_played >= minGamesForRate && r.avg_gpm > 0);
+    const sorted = [...eligible].sort((a, b) => parseInt(a.avg_gpm) - parseInt(b.avg_gpm));
+    return sorted[0] || null;
+  };
+
   return {
     positive: {
-      most_wins:       pickBest(agg, 'wins'),
-      most_kills:      pickBest(agg, 'total_kills'),
-      most_assists:    pickBest(agg, 'total_assists'),
-      most_damage:     pickBest(agg, 'total_damage'),
-      most_healing:    pickBest(agg, 'total_healing'),
-      best_win_rate:   pickBestWinRate(agg, false),
-      longest_win_streak: pickBestStreak(streaks, 1),
-      most_games:      pickBest(agg, 'games_played'),
+      most_wins:            pickBest(agg, 'wins'),
+      most_kills:           pickBest(agg, 'total_kills'),
+      most_assists:         pickBest(agg, 'total_assists'),
+      most_damage:          pickBest(agg, 'total_damage'),
+      most_healing:         pickBest(agg, 'total_healing'),
+      best_win_rate:        pickBestWinRate(agg, false),
+      longest_win_streak:   pickBestStreak(streaks, 1),
+      most_games:           pickBest(agg, 'games_played'),
+      most_rampages:        pickBest(agg, 'total_rampages'),
+      vision_king:          pickBest(agg, 'total_wards_placed'),
+      most_stun_duration:   pickBest(agg, 'total_stun_duration'),
+      most_roshans:         pickBest(agg, 'total_roshans'),
+      stack_god:            pickBest(agg, 'total_stacks'),
+      ward_hunter:          pickBest(agg, 'total_wards_killed'),
+      most_tower_damage:    pickBest(agg, 'total_tower_damage'),
+      most_towers_killed:   pickBest(agg, 'total_towers_killed'),
+      most_firstbloods:     pickBest(agg, 'total_firstbloods'),
     },
     negative: {
-      most_deaths:       pickBest(agg, 'total_deaths'),
-      worst_win_rate:    pickBestWinRate(agg, true),
-      longest_loss_streak: pickBestStreak(streaks, 0),
-      most_losses:       pickBest(agg, 'losses'),
+      most_deaths:            pickBest(agg, 'total_deaths'),
+      most_losses:            pickBest(agg, 'losses'),
+      worst_win_rate:         pickBestWinRate(agg, true),
+      longest_loss_streak:    pickBestStreak(streaks, 0),
+      most_buybacks:          pickBest(agg, 'total_buybacks'),
+      most_dead_time:         pickBest(agg, 'total_dead_minutes'),
+      most_diebacks:          pickBest(agg, 'total_diebacks'),
+      worst_avg_deaths:       pickWorstAvgDeaths(agg),
+      worst_obs_efficiency:   pickWorstObsEfficiency(agg),
+      lowest_avg_gpm:         pickLowestAvgGpm(agg),
     },
   };
 }
