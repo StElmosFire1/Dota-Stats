@@ -60,6 +60,7 @@ A web dashboard (React + Vite frontend, Express backend) provides a comprehensiv
 - Achievement system expanded: veteran_200 (Elder), deathless_5 (Ghost), carry_king (20+ Pos 1 games), support_master (20+ Pos 4/5 games), hero_diversity_25 (Hero Collector), big_damage (30k+ dmg in one game), efficient (600+ GPM in one game) — 7 new badges added.
 - Player Network page (/social) under Tools → shows Top Duos tab (best teammate win-rate pairings, min-games filter) and Player Connections tab (select a player to see their top 10 teammates + top 10 opponents with win rates).
 - AI match commentary: after every recorded match, Grok generates a witty MVP one-liner + 2-sentence match narrative, sent as a follow-up Discord message (async, non-blocking).
+- Scoreboard image: after every recorded match, a PNG scoreboard card is generated (using @napi-rs/canvas) and sent to Discord. Shows winner, duration, kills, K/D/A, GPM, damage, healing per player, and highlights strip. Gracefully degrades if canvas unavailable.
 - Hot streak milestone announcements: 5-win streak sends 🔥🔥🔥 callout, 10-win streak sends 🏆🔥🏆 LEGENDARY callout; runs for ALL recording paths (replay upload, !record, lobby auto).
 - Match notes: admins can add/delete text notes to any match via the web dashboard (match detail page); stored in `match_notes` DB table; visible to all users once added.
 - Match prediction system: `!predict <matchId> radiant|dire` Discord command + `/api/predictions` endpoints.

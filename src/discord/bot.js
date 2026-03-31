@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const cron = require('node-cron');
 const { config, getMmrTier } = require('../config');
 const { getStatsService } = require('../stats/statsService');
@@ -7,6 +7,7 @@ const { getReplayParser } = require('../replay/replayParser');
 const { getOpenDota } = require('../api/opendota');
 const db = require('../db');
 const { generateWeeklyRecapBlurb, generatePlayerAnalysis, generatePlayerRoast, generateMatchMvpBlurb, generateMatchNarrative } = require('../services/groqService');
+const { generateScoreboardImage } = require('../services/scoreboardImage');
 
 let steamAvailable = false;
 
@@ -1199,6 +1200,23 @@ class DiscordBot {
     embed.setFooter({ text: `Match #${matchStats.matchId} \u2022 ${sourceText} \u2022 MMR updated` }).setTimestamp();
 
     await channel.send({ embeds: [embed] });
+
+    // Generate and send the scoreboard image
+    ;(async () => {
+      try {
+        const imgBuf = await generateScoreboardImage(matchStats);
+        if (imgBuf) {
+          const attachment = new AttachmentBuilder(imgBuf, { name: `scoreboard_${matchStats.matchId || Date.now()}.png` });
+          await channel.send({ files: [attachment] }).catch(() => {});
+          if (config.discord.announceChannelId && channel.id !== config.discord.announceChannelId) {
+            const ac = channel.guild?.channels?.cache?.get(config.discord.announceChannelId);
+            if (ac) await ac.send({ files: [new AttachmentBuilder(imgBuf, { name: `scoreboard_${matchStats.matchId || Date.now()}.png` })] }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.error('[ScoreboardImage] Send failed:', err.message);
+      }
+    })();
 
     if (config.discord.announceChannelId && channel.id !== config.discord.announceChannelId) {
       const announceChannel = channel.guild?.channels?.cache?.get(config.discord.announceChannelId);
