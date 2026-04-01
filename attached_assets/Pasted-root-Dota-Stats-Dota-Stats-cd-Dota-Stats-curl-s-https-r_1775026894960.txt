@@ -1,0 +1,82 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+curl -s https://raw.githubusercontent.com/StElmosFire1/Dota-Stats/main/src/services/scoreboardImage.js -o /tmp/check.js
+root@Dota-Stats:~/Dota-Stats# pm2 restart 2 --update-env
+[PM2] Applying action restartProcessId on app [2](ids: [ '2' ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 509791   │ 0s     │ 191  │ online    │ 0%       │ 17.1mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴──���─────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# curl -s -X POST http://localhost:5000/api/admin/test-discord-notify \
+  -H 'x-superuser-key: Terror!'
+{"ok":true,"matchId":"8751679735","players":10}root@Dota-Stats:~/Dota-Stats# 
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+
+# 1. Widen canvas
+sed -i 's/^const W\s*=\s*860;/const W       = 1000;/' src/services/scoreboardImage.js
+
+# 2. Replace colPositions with new layout including LVL and BLDG
+node -e "
+const fs = require('fs');
+let f = fs.readFileSync('src/services/scoreboardImage.js', 'utf8');
+f = f.replace(
+  /function colPositions\(\) \{[\s\S]*?\n\}/,
+  \`function colPositions() {
+  return {
+    k:    540,
+    d:    580,
+    a:    620,
+    lvl:  662,
+    gpm:  710,
+    dmg:  768,
+    bldg: 828,
+    heal: 888,
+  };
+}\`
+);
+fs.writeFileSync('src/services/scoreboardImage.js', f);
+console.log('colPositions updated');
+"
+
+# 3. Add LVL and BLDG to column header function
+node -e "
+const fs = require('fs');
+let f = fs.readFileSync('src/services/scoreboardImage.js', 'utf8');
+f = f.replace(
+  \`for (const [label, cx] of [['K', cols.k], ['D', cols.d], ['A', cols.a], ['GPM', cols.gpm], ['DMG', cols.dmg], ['HEAL', cols.heal]]) {\`,
+  \`for (const [label, cx] of [['K', cols.k], ['D', cols.d], ['A', cols.a], ['LVL', cols.lvl], ['GPM', cols.gpm], ['DMG', cols.dmg], ['BLDG', cols.bldg], ['HEAL', cols.heal]]) {\`
+);
+fs.writeFileSync('src/services/scoreboardImage.js', f);
+console.log('headers updated');
+"
+
+# 4. Add LVL and BLDG rendering after assists in drawPlayerRow
+node -e "
+const fs = require('fs');
+let f = fs.readFileSync('src/services/scoreboardImage.js', 'utf8');
+const oldBlock = \`  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(String(p.assists || 0), cols.a, y + ROW_H / 2 - 1);
+
+  // GPM\`;
+const newBlock = \`  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(String(p.assists || 0), cols.a, y + ROW_H / 2 - 1);
+
+  // LVL
+  const lvl = p.level || 0;
+  ctx.font = '12px \"Arial\"';
+  ctx.fillStyle = lvl >= 25 ? '#fbbf24' : lvl >= 20 ? '#a78bfa' : '#64748b';
+pm2 restart 2 --update-envLVL" src/services/scoreboardImage.jsf8');H / 2 - 1);
+colPositions updated
+headers updated
+LVL added
+BLDG added
+11
+[PM2] Applying action restartProcessId on app [2](ids: [ '2' ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 509900   │ 0s     │ 192  │ online    │ 0%       │ 18.5mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴──���─────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# 
