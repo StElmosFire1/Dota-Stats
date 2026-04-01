@@ -1335,25 +1335,6 @@ class DiscordBot {
       }
     })();
 
-    // Multi-kill callouts
-    ;(async () => {
-      try {
-        const mkLines = [];
-        for (const p of matchStats.players) {
-          const name = `**${p.personaname || `ID:${p.accountId}`}**`;
-          if ((p.rampages || 0) > 0) mkLines.unshift(`\u{1F480}\u{1F525} ${name} — **RAMPAGE!!!**`);
-          else if ((p.ultra_kills || 0) > 0) mkLines.push(`\u{1F4A5} ${name} — **ULTRA KILL**`);
-          else if ((p.triple_kills || 0) > 0) mkLines.push(`\u{26A1} ${name} — **Triple Kill**`);
-          else if ((p.double_kills || 0) > 0) mkLines.push(`\u2694\uFE0F ${name} — Double Kill`);
-        }
-        if (mkLines.length > 0) {
-          await channel.send(`\u{1F3AF} **Kill Highlights:**\n${mkLines.join('\n')}`).catch(() => {});
-        }
-      } catch (err) {
-        console.error('[Bot] Multi-kill callout failed:', err.message);
-      }
-    })();
-
     // Fire AI commentary async — don't block match recording
     const topDamage = [...allPlayers].sort((a, b) => (b.heroDamage || 0) - (a.heroDamage || 0))[0];
     const topRampageAi = allPlayers.find(p => (p.rampages || 0) > 0);
