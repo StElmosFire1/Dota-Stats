@@ -2051,26 +2051,71 @@ async function getOverallStats(seasonId = null) {
     row.avg_kill_involvement = kis.length > 0 ? Math.round(kis.reduce((a, b) => a + b, 0) / kis.length) : 0;
   }
 
-  const params4 = [];
-  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId))}` : '';
-  const posData = await p.query(`
-    SELECT ps.account_id, ps.position,
-      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) as win_rate
-    FROM player_stats ps
-    JOIN matches m ON m.match_id = ps.match_id
-    WHERE ps.account_id != 0 AND ps.position BETWEEN 1 AND 5${sc4}
-    GROUP BY ps.account_id, ps.position
-    HAVING COUNT(*) >= 2
-    ORDER BY ps.account_id, win_rate DESC
-  `, params4);
-  const bestPosByAcct = {};
-  for (const row of posData.rows) {
-    const acct = row.account_id.toString();
-    if (!bestPosByAcct[acct]) bestPosByAcct[acct] = parseInt(row.position);
+  const paramsBP1 = [];
+  const scBP1 = _sc(seasonId, paramsBP1, 'm');
+  const posStats = await p.query(
+    `SELECT
+       ps.account_id::text as player_key,
+       ps.position,
+       COUNT(*) as games,
+       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins,
+       ROUND(AVG(ps.kills), 1) as avg_kills,
+       ROUND(AVG(ps.deaths), 1) as avg_deaths,
+       ROUND(AVG(ps.assists), 1) as avg_assists
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.account_id != 0 AND ps.position > 0${scBP1}
+     GROUP BY ps.account_id, ps.position`,
+    paramsBP1
+  );
+
+  const paramsBP2 = [];
+  const scBP2 = _sc(seasonId, paramsBP2, 'm');
+  const posKiData = await p.query(
+    `SELECT ps.account_id::text as player_key, ps.position, ps.match_id, ps.team, ps.kills, ps.assists
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.account_id != 0 AND ps.position > 0${scBP2}`,
+    paramsBP2
+  );
+  const kiByPlayerPos = {};
+  for (const row of posKiData.rows) {
+    const posKey = `${row.player_key}_${row.position}`;
+    const tk = teamKillsMap[`${row.match_id}_${row.team}`] || 1;
+    const ki = ((parseInt(row.kills) + parseInt(row.assists)) / tk) * 100;
+    if (!kiByPlayerPos[posKey]) kiByPlayerPos[posKey] = [];
+    kiByPlayerPos[posKey].push(ki);
   }
+
+  const posByPlayer = {};
+  for (const row of posStats.rows) {
+    const key = row.player_key;
+    if (!posByPlayer[key]) posByPlayer[key] = [];
+    const g = parseInt(row.games) || 1;
+    const w = parseInt(row.wins) || 0;
+    const k = parseFloat(row.avg_kills) || 0;
+    const d = parseFloat(row.avg_deaths) || 1;
+    const a = parseFloat(row.avg_assists) || 0;
+    const kda = (k + a) / Math.max(1, d);
+    const winRate = w / g;
+    const posKey = `${key}_${row.position}`;
+    const kis = kiByPlayerPos[posKey] || [];
+    const avgKi = kis.length > 0 ? kis.reduce((x, y) => x + y, 0) / kis.length : 0;
+    const score = Math.min(10, (winRate * 4.0) + Math.min(3.0, kda * 0.6) + Math.min(3.0, avgKi / 25));
+    posByPlayer[key].push({ position: parseInt(row.position), score: Math.round(score * 10) / 10 });
+  }
+
   for (const row of result.rows) {
-    const acct = row.account_id?.toString();
-    row.best_position = acct ? (bestPosByAcct[acct] || null) : null;
+    const key = row.account_id?.toString();
+    const positions = key ? (posByPlayer[key] || []) : [];
+    if (positions.length > 0) {
+      const best = positions.reduce((a, b) => a.score > b.score ? a : b);
+      row.best_position = best.position;
+      row.best_position_score = best.score;
+    } else {
+      row.best_position = null;
+      row.best_position_score = null;
+    }
   }
 
   return result.rows;
