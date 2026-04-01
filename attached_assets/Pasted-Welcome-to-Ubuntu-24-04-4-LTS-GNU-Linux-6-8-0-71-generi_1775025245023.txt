@@ -1,0 +1,79 @@
+Welcome to Ubuntu 24.04.4 LTS (GNU/Linux 6.8.0-71-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Wed Apr  1 06:32:26 UTC 2026
+
+  System load:  0.0                Processes:             116
+  Usage of /:   11.7% of 66.76GB   Users logged in:       0
+  Memory usage: 35%                IPv4 address for eth0: 170.64.182.110
+  Swap usage:   0%                 IPv4 address for eth0: 10.49.0.5
+
+Expanded Security Maintenance for Applications is not enabled.
+
+7 updates can be applied immediately.
+2 of these updates are standard security updates.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** System restart required ***
+Last login: Tue Mar 31 06:22:31 2026 from 162.243.190.66
+root@Dota-Stats:~# pm2 logs 2 --lines 50 | grep -i "scoreboard\|canvas\|napi"
+^C                  
+root@Dota-Stats:~# cd ~/Dota-Stats && node -e "require('@napi-rs/canvas'); console.log('canvas OK')"
+node:internal/modules/cjs/loader:1210
+  throw err;
+  ^
+
+Error: Cannot find module '@napi-rs/canvas'
+Require stack:
+- /root/Dota-Stats/[eval]
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+    at Module._load (node:internal/modules/cjs/loader:1038:27)
+    at Module.require (node:internal/modules/cjs/loader:1289:19)
+    at require (node:internal/modules/helpers:182:18)
+    at [eval]:1:1
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:118:14
+    at [eval]-wrapper:6:24
+    at runScript (node:internal/process/execution:101:62)
+    at evalScript (node:internal/process/execution:133:3) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/root/Dota-Stats/[eval]' ]
+}
+
+Node.js v20.20.1
+root@Dota-Stats:~/Dota-Stats# npm install
+pm2 restart 2 --update-env
+
+added 3 packages, and audited 232 packages in 3s
+
+46 packages are looking for funding
+  run `npm fund` for details
+
+1 high severity vulnerability
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.12.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.12.1
+npm notice To update run: npm install -g npm@11.12.1
+npm notice
+[PM2] Applying action restartProcessId on app [2](ids: [ '2' ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot        │ fork     │ 190  │ online    │ 0%       │ 18.3mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && node -e "require('@napi-rs/canvas'); console.log('canvas OK')"
+canvas OK
+root@Dota-Stats:~/Dota-Stats# 
