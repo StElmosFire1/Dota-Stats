@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const cron = require('node-cron');
 const { config, getMmrTier } = require('../config');
 const { getStatsService } = require('../stats/statsService');
@@ -33,7 +33,9 @@ class DiscordBot {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMessageReactions,
       ],
+      partials: [Partials.Message, Partials.Channel, Partials.Reaction],
     });
     this.prefix = config.discord.prefix;
     this.lobbyChannelId = null;
@@ -192,6 +194,42 @@ class DiscordBot {
       this.client.user.setActivity('Dota 2 Inhouse | !help', { type: 3 });
     });
 
+    this.client.on('messageReactionAdd', async (reaction, user) => {
+      if (user.bot) return;
+      try {
+        if (reaction.partial) await reaction.fetch();
+        if (reaction.message.partial) await reaction.message.fetch();
+        const game = await db.getScheduledGameByRsvpMessage(reaction.message.id).catch(() => null);
+        if (!game) return;
+        const emoji = reaction.emoji.name;
+        if (emoji === '\u2705') {
+          await db.addScheduleRsvp(game.id, user.id, user.username, 'yes').catch(() => {});
+        } else if (emoji === '\u274C') {
+          await db.addScheduleRsvp(game.id, user.id, user.username, 'no').catch(() => {});
+        }
+        await this._updateRsvpEmbed(reaction.message, game.id).catch(() => {});
+      } catch (err) {
+        console.error('[RSVP] reactionAdd error:', err.message);
+      }
+    });
+
+    this.client.on('messageReactionRemove', async (reaction, user) => {
+      if (user.bot) return;
+      try {
+        if (reaction.partial) await reaction.fetch();
+        if (reaction.message.partial) await reaction.message.fetch();
+        const game = await db.getScheduledGameByRsvpMessage(reaction.message.id).catch(() => null);
+        if (!game) return;
+        const emoji = reaction.emoji.name;
+        if (emoji === '\u2705' || emoji === '\u274C') {
+          await db.removeScheduleRsvp(game.id, user.id).catch(() => {});
+          await this._updateRsvpEmbed(reaction.message, game.id).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[RSVP] reactionRemove error:', err.message);
+      }
+    });
+
     this.client.on('messageCreate', async (msg) => {
       if (msg.author.bot) return;
 
@@ -231,9 +269,14 @@ class DiscordBot {
           case 'predict': await this._cmdPredict(msg, args); break;
           case 'predictions': await this._cmdPredictions(msg, args); break;
           case 'balance': await this._cmdBalance(msg, args); break;
+          case 'rematch': await this._cmdRematch(msg); break;
           case 'schedule': await this._cmdSchedule(msg, args); break;
           case 'upcoming': await this._cmdUpcoming(msg); break;
           case 'cancel': await this._cmdCancelGame(msg, args); break;
+          case 'rank': await this._cmdRank(msg, args); break;
+          case 'meta': await this._cmdMeta(msg, args); break;
+          case 'mystats': await this._cmdMyStats(msg); break;
+          case 'reportcard': await this._cmdReportCard(msg, args); break;
           default: break;
         }
       } catch (err) {
@@ -268,18 +311,22 @@ class DiscordBot {
           name: '**Stats & Rankings**',
           value: [
             '`!top [count]` - Show leaderboard (default top 10)',
+            '`!rank [@user]` - Your MMR rank, tier, and leaderboard position',
             '`!stats [@user]` - Show your stats (or @mention another player)',
+            '`!mystats` - Your personal stats summary (sent via DM)',
             '`!history` - Show recent match history',
             '`!match <id>` - Show scoreboard for a specific match',
             '`!herostats <hero>` - Win rate & top players for a hero',
+            '`!meta [days]` - Top 10 most-picked heroes this week (or last N days)',
             '`!vs @user` - Your head-to-head record against someone',
-            '`!recap` - This week\'s highlights & fun stats',
+            '`!recap` - This week\'s highlights, Player of Week & fun stats',
           ].join('\n'),
         },
         {
           name: '⚖️ Team Balancer',
           value: [
             '`!balance @p1 @p2 @p3 ... @p10` - Suggest the most balanced 5v5 split based on MMR',
+            '`!rematch` - Re-balance last game\'s players for an instant rematch',
             'Works with @mentions (if Discord ID linked) or player nicknames',
           ].join('\n'),
         },
@@ -287,8 +334,9 @@ class DiscordBot {
           name: '📅 Schedule',
           value: [
             '`!upcoming` - List upcoming scheduled games',
-            '`!schedule 2026-04-10 20:00 Weekly inhouse` - Schedule a game (AEST time)',
+            '`!schedule 2026-04-10 20:00 Weekly inhouse` - Schedule a game (AEST) + auto RSVP post',
             '`!cancel <id>` - Cancel a scheduled game by ID',
+            'React ✅/❌ on the RSVP post to mark yourself in or out!',
           ].join('\n'),
         },
         {
@@ -303,6 +351,7 @@ class DiscordBot {
           name: '⭐ Post-Match Ratings',
           value: [
             'After each match, the bot DMs players to vote for MVP and rate teammates\' attitude (1–10)',
+            '`!reportcard [on|off]` - Toggle post-match report card DMs for yourself',
             'Requires Discord ID linked to your account (ask an admin)',
             'Ratings are anonymous and appear on player profiles',
           ].join('\n'),
@@ -1286,6 +1335,25 @@ class DiscordBot {
       }
     })();
 
+    // Multi-kill callouts
+    ;(async () => {
+      try {
+        const mkLines = [];
+        for (const p of matchStats.players) {
+          const name = `**${p.personaname || `ID:${p.accountId}`}**`;
+          if ((p.rampages || 0) > 0) mkLines.unshift(`\u{1F480}\u{1F525} ${name} — **RAMPAGE!!!**`);
+          else if ((p.ultra_kills || 0) > 0) mkLines.push(`\u{1F4A5} ${name} — **ULTRA KILL**`);
+          else if ((p.triple_kills || 0) > 0) mkLines.push(`\u{26A1} ${name} — **Triple Kill**`);
+          else if ((p.double_kills || 0) > 0) mkLines.push(`\u2694\uFE0F ${name} — Double Kill`);
+        }
+        if (mkLines.length > 0) {
+          await channel.send(`\u{1F3AF} **Kill Highlights:**\n${mkLines.join('\n')}`).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[Bot] Multi-kill callout failed:', err.message);
+      }
+    })();
+
     // Fire AI commentary async — don't block match recording
     const topDamage = [...allPlayers].sort((a, b) => (b.heroDamage || 0) - (a.heroDamage || 0))[0];
     const topRampageAi = allPlayers.find(p => (p.rampages || 0) > 0);
@@ -1523,6 +1591,26 @@ class DiscordBot {
         });
       }
 
+      const [potw, cotw] = await Promise.all([
+        db.getPlayerOfWeek(7).catch(() => null),
+        db.getCurseOfWeek(7).catch(() => null),
+      ]);
+
+      if (potw) {
+        embed.addFields({
+          name: '\u{1F451} Player of the Week',
+          value: `**${potw.player_name}** — ${potw.wins}W/${parseInt(potw.games) - parseInt(potw.wins)}L in ${potw.games} games · ${parseFloat(potw.avg_kda).toFixed(2)} avg KDA`,
+          inline: false,
+        });
+      }
+      if (cotw) {
+        embed.addFields({
+          name: '\u{1F480} Curse of the Week',
+          value: `**${cotw.player_name}** — ${cotw.total_deaths} deaths in ${cotw.games} games`,
+          inline: false,
+        });
+      }
+
       const awards = this._buildAwardsFromFun(fun);
       if (awards.length > 0) {
         const chunks = [];
@@ -1646,6 +1734,26 @@ class DiscordBot {
         embed.addFields({ name: '\u2B50 Top Performers', value: topLines.join('\n'), inline: false });
       }
 
+      const [potw, cotw] = await Promise.all([
+        db.getPlayerOfWeek(7).catch(() => null),
+        db.getCurseOfWeek(7).catch(() => null),
+      ]);
+
+      if (potw) {
+        embed.addFields({
+          name: '\u{1F451} Player of the Week',
+          value: `**${potw.player_name}** — ${potw.wins}W/${parseInt(potw.games) - parseInt(potw.wins)}L in ${potw.games} games · ${parseFloat(potw.avg_kda).toFixed(2)} avg KDA`,
+          inline: false,
+        });
+      }
+      if (cotw) {
+        embed.addFields({
+          name: '\u{1F480} Curse of the Week',
+          value: `**${cotw.player_name}** — ${cotw.total_deaths} deaths in ${cotw.games} games`,
+          inline: false,
+        });
+      }
+
       const awards = this._buildAwardsFromFun(fun);
       if (awards.length > 0) {
         const chunks = [];
@@ -1744,6 +1852,167 @@ class DiscordBot {
     await msg.channel.send({ embeds: [embed] });
   }
 
+  async _cmdRank(msg, args) {
+    const targetUser = msg.mentions.users.first() || msg.author;
+    const reg = await db.getPlayerByDiscordId(targetUser.id);
+    if (!reg) {
+      const isSelf = targetUser.id === msg.author.id;
+      return msg.reply(isSelf
+        ? 'You\'re not registered. Use `!register <steam_id>` first.'
+        : `${targetUser.username} hasn't registered their Steam account yet.`);
+    }
+    const [rating, leaderboard] = await Promise.all([
+      db.getPlayerRating(reg.account_id_32),
+      db.getLeaderboard(200),
+    ]);
+    if (!rating) return msg.reply(`No rating data found for ${targetUser.username} yet.`);
+
+    const pos = leaderboard.findIndex(r => r.player_id?.toString() === reg.account_id_32?.toString()) + 1;
+    const tier = getMmrTier(rating.mmr);
+    const tiers = config.discord.mmrRoles.tiers;
+    const currentTierIdx = tiers.findIndex(t => t.min <= rating.mmr && (!tiers[tiers.indexOf(t) - 1] || tiers[tiers.indexOf(t) - 1].min > rating.mmr));
+    const nextTier = tiers.slice().reverse().find(t => t.min > rating.mmr);
+    const gapText = nextTier ? `**${nextTier.min - rating.mmr} MMR** to reach ${nextTier.emoji} ${nextTier.name}` : '🎩 Peak tier achieved';
+    const winRate = (rating.wins + rating.losses) > 0 ? ((rating.wins / (rating.wins + rating.losses)) * 100).toFixed(0) : '0';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${tier.emoji} ${reg.display_name || targetUser.username} — Rank`)
+      .setColor(0x6366f1)
+      .addFields(
+        { name: 'MMR', value: `**${rating.mmr}**`, inline: true },
+        { name: 'Tier', value: `${tier.emoji} ${tier.name}`, inline: true },
+        { name: 'Leaderboard', value: pos > 0 ? `#${pos} of ${leaderboard.length}` : 'Unranked', inline: true },
+        { name: 'Record', value: `${rating.wins}W — ${rating.losses}L (${winRate}% WR)`, inline: true },
+        { name: 'Next milestone', value: gapText, inline: false },
+      )
+      .setFooter({ text: 'Use !top for the full leaderboard' });
+    await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdRematch(msg) {
+    const lastMatch = await db.getLastMatchPlayers();
+    if (!lastMatch || lastMatch.players.length === 0) {
+      return msg.reply('No recent match found to rematch.');
+    }
+
+    const allAccounts = [];
+    for (const p of lastMatch.players) {
+      const rating = await db.getPlayerRating(p.account_id?.toString()).catch(() => null);
+      allAccounts.push({ name: p.display_name || p.persona_name || `ID:${p.account_id}`, mmr: rating ? rating.mmr : 2600 });
+    }
+
+    if (allAccounts.length < 2) return msg.reply('Not enough players in the last match.');
+
+    const n = allAccounts.length;
+    const half = Math.floor(n / 2);
+    const indices = Array.from({ length: n }, (_, i) => i);
+
+    function combinations(arr, k) {
+      if (k === 0) return [[]];
+      if (arr.length < k) return [];
+      const [first, ...rest] = arr;
+      return [...combinations(rest, k - 1).map(c => [first, ...c]), ...combinations(rest, k)];
+    }
+
+    const combos = combinations(indices, half);
+    let bestDiff = Infinity, bestTeamA = [], bestTeamB = [];
+    for (const comboA of combos) {
+      const comboB = indices.filter(i => !comboA.includes(i));
+      const mmrA = comboA.reduce((s, i) => s + allAccounts[i].mmr, 0);
+      const mmrB = comboB.reduce((s, i) => s + allAccounts[i].mmr, 0);
+      const diff = Math.abs(mmrA - mmrB);
+      if (diff < bestDiff) { bestDiff = diff; bestTeamA = comboA.map(i => allAccounts[i]); bestTeamB = comboB.map(i => allAccounts[i]); }
+    }
+
+    const fmtTeam = (team) => team.map(p => `**${p.name}** (${p.mmr})`).join('\n');
+    const avgA = Math.round(bestTeamA.reduce((s, p) => s + p.mmr, 0) / bestTeamA.length);
+    const avgB = Math.round(bestTeamB.reduce((s, p) => s + p.mmr, 0) / bestTeamB.length);
+
+    const embed = new EmbedBuilder()
+      .setTitle(`\u267B\uFE0F Rematch — Match #${lastMatch.matchId}`)
+      .setColor(0x6366f1)
+      .setDescription(`Rebalanced from the last game's ${allAccounts.length} players | MMR diff: **${bestDiff}**`)
+      .addFields(
+        { name: `\u{1F7E2} Team A — avg ${avgA} MMR`, value: fmtTeam(bestTeamA) || 'None', inline: true },
+        { name: `\u{1F534} Team B — avg ${avgB} MMR`, value: fmtTeam(bestTeamB) || 'None', inline: true },
+      )
+      .setFooter({ text: 'Coin flip for sides!' });
+    await msg.channel.send({ embeds: [embed] });
+  }
+
+  async _cmdMeta(msg, args) {
+    const days = parseInt(args[0]) || 7;
+    const capped = Math.min(days, 90);
+    const rows = await db.getHeroMetaWeek(capped);
+    if (!rows || rows.length === 0) return msg.reply(`No hero data in the last ${capped} days.`);
+
+    const lines = rows.slice(0, 10).map((h, i) => {
+      const heroName = (h.hero_name || '').replace('npc_dota_hero_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const wr = h.picks > 0 ? ((parseInt(h.wins) / parseInt(h.picks)) * 100).toFixed(0) : '0';
+      const bar = wr >= 60 ? '🟢' : wr >= 45 ? '🟡' : '🔴';
+      const medal = ['\u{1F947}', '\u{1F948}', '\u{1F949}'][i] || `${i + 1}.`;
+      return `${medal} **${heroName}** — ${h.picks} picks · ${wr}% WR ${bar}`;
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle(`\u{1F4CA} Hero Meta — Last ${capped} Days`)
+      .setColor(0x9b59b6)
+      .setDescription(lines.join('\n'))
+      .setFooter({ text: `Top 10 most-picked heroes · Use !meta 30 for last 30 days` });
+    await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdMyStats(msg) {
+    const reg = await db.getPlayerByDiscordId(msg.author.id);
+    if (!reg) return msg.reply('You\'re not registered. Use `!register <steam_id>` to link your account.');
+
+    const [stats, rating, streak] = await Promise.all([
+      db.getPlayerStats(reg.account_id_32, null),
+      db.getPlayerRating(reg.account_id_32),
+      db.getPlayerCurrentStreak(reg.account_id_32).catch(() => 0),
+    ]);
+
+    if (!rating) return msg.reply('No stats found yet — play some matches first!');
+
+    const tier = getMmrTier(rating.mmr);
+    const winRate = (rating.wins + rating.losses) > 0 ? ((rating.wins / (rating.wins + rating.losses)) * 100).toFixed(0) : '0';
+    const kda = stats?.avg_deaths > 0 ? ((parseFloat(stats.avg_kills || 0) + parseFloat(stats.avg_assists || 0)) / parseFloat(stats.avg_deaths)).toFixed(2) : 'Perfect';
+    const streakText = streak > 0 ? `\u{1F525} ${streak}W streak` : streak < 0 ? `\u{1F480} ${Math.abs(streak)}L streak` : 'No streak';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`\u{1F4CA} ${reg.display_name || msg.author.username} — Personal Stats`)
+      .setColor(0x3b82f6)
+      .addFields(
+        { name: 'MMR', value: `**${rating.mmr}** ${tier.emoji} ${tier.name}`, inline: true },
+        { name: 'Record', value: `${rating.wins}W—${rating.losses}L (${winRate}% WR)`, inline: true },
+        { name: 'Streak', value: streakText, inline: true },
+        { name: 'Avg K/D/A', value: stats ? `${parseFloat(stats.avg_kills||0).toFixed(1)}/${parseFloat(stats.avg_deaths||0).toFixed(1)}/${parseFloat(stats.avg_assists||0).toFixed(1)}` : '—', inline: true },
+        { name: 'KDA Ratio', value: `${kda}`, inline: true },
+        { name: 'Avg GPM', value: stats ? `${Math.round(parseFloat(stats.avg_gpm||0))}` : '—', inline: true },
+      )
+      .setFooter({ text: 'Full profile at the web dashboard · !reportcard off to stop post-game DMs' });
+
+    try {
+      await msg.author.send({ embeds: [embed] });
+      await msg.reply('\u{1F4EC} Sent your stats to your DMs!');
+    } catch {
+      await msg.reply({ embeds: [embed] });
+    }
+  }
+
+  async _cmdReportCard(msg, args) {
+    const sub = (args[0] || '').toLowerCase();
+    if (sub !== 'on' && sub !== 'off') {
+      const current = await db.getPlayerReportCardOptOut(msg.author.id);
+      return msg.reply(`Post-match report card DMs are currently **${current ? 'OFF' : 'ON'}** for you. Use \`!reportcard off\` or \`!reportcard on\` to change.`);
+    }
+    const optOut = sub === 'off';
+    await db.setPlayerReportCardOptOut(msg.author.id, optOut);
+    return msg.reply(optOut
+      ? '\u2705 You\'ve opted **out** of post-match report card DMs.'
+      : '\u2705 You\'ve opted **in** to post-match report card DMs.');
+  }
+
   async _cmdBalance(msg, args) {
     const mentions = [...msg.mentions.users.values()];
     const names = args.filter(a => !a.startsWith('<@'));
@@ -1834,16 +2103,28 @@ class DiscordBot {
       return msg.reply('Invalid date/time format. Use `YYYY-MM-DD HH:MM` (AEST).');
     }
     const game = await db.scheduleGame(scheduledAt, note, msg.author.username);
+    const when = scheduledAt.toLocaleString('en-AU', { timeZone: 'Australia/Sydney', dateStyle: 'full', timeStyle: 'short' });
     const embed = new EmbedBuilder()
       .setTitle('📅 Game Scheduled!')
       .setColor(0x4ade80)
       .addFields(
-        { name: 'When', value: scheduledAt.toLocaleString('en-AU', { timeZone: 'Australia/Sydney', dateStyle: 'full', timeStyle: 'short' }), inline: false },
+        { name: 'When', value: when, inline: false },
         { name: 'Note', value: note || '—', inline: false },
         { name: 'ID', value: `#${game.id}`, inline: true },
         { name: 'Scheduled by', value: msg.author.username, inline: true },
       );
     await msg.channel.send({ embeds: [embed] });
+
+    // Post RSVP embed
+    const rsvpEmbed = new EmbedBuilder()
+      .setTitle(`\u{1F9E0} RSVP — Inhouse ${when}`)
+      .setColor(0x3b82f6)
+      .setDescription(`Are you **in** for this game? React below!\n\n\u2705 **In** | \u274C **Out**\n\n_Check-ins are not binding — just helps gauge numbers!_`)
+      .setFooter({ text: `Game ID #${game.id} · ${note || 'Weekly Inhouse'}` });
+    const rsvpMsg = await msg.channel.send({ embeds: [rsvpEmbed] });
+    await rsvpMsg.react('\u2705').catch(() => {});
+    await rsvpMsg.react('\u274C').catch(() => {});
+    await db.saveRsvpMessageId(game.id, rsvpMsg.id, msg.channel.id).catch(() => {});
   }
 
   async _cmdUpcoming(msg) {
@@ -1868,6 +2149,18 @@ class DiscordBot {
     const game = await db.cancelGame(id);
     if (!game) return msg.reply(`No game found with ID #${id}.`);
     await msg.reply(`✅ Game #${id} cancelled.`);
+  }
+
+  async _updateRsvpEmbed(message, gameId) {
+    const rsvps = await db.getScheduleRsvps(gameId);
+    const inList = rsvps.filter(r => r.status === 'yes').map(r => r.username);
+    const outList = rsvps.filter(r => r.status === 'no').map(r => r.username);
+    const embed = EmbedBuilder.from(message.embeds[0])
+      .setFields(
+        { name: `\u2705 In (${inList.length})`, value: inList.length > 0 ? inList.join(', ') : '_No one yet_', inline: true },
+        { name: `\u274C Out (${outList.length})`, value: outList.length > 0 ? outList.join(', ') : '_No one yet_', inline: true },
+      );
+    await message.edit({ embeds: [embed] });
   }
 
   async _initiateRatingSession(matchStats) {

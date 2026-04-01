@@ -1,0 +1,55 @@
+Discord — Post-Match
+Hero portraits/icons in the scoreboard image instead of text names - Yes (maybe keep name also? If space permits)
+Multi-kill callouts in the match embed (double/triple/ultra/rampage announcements with sound-like emphasis) - Explain more please I am confused about this one
+"Curse of the week" callout for the player with most deaths across recent games - Sure
+!rematch command that suggests a rebalanced rematch from the last game's players - Yes
+Vote-based MVP after each game (players react to Discord message, winner announced after timer) - Yes (would need to then link MVP’s back to the website player profiles)
+Post-match "report card" DM — each player gets a private summary of their own stats + where they ranked among all 10 - YES, but players need the option to opt out of these messages.
+Discord — Commands
+!mystats — quick personal stats DM without needing the website - Yes
+!vs @player1 @player2 — head-to-head record in Discord - Yes
+!hero HeroName — quick hero win rate and top players for that hero - Yes
+!meta — this week's most picked/banned heroes with win rates - Yes
+!schedule improvements — RSVP reactions so you can see who's confirmed for a game night - Yes (we are currently putting manual messages in discord asking who wants to play, how can we utilize this/the bot?)
+!rank — shows your current MMR tier, position on leaderboard, gap to next tier - Yes
+Discord — Automation
+Weekly/monthly leaderboard snapshot automatically posted to the announce channel - Yes
+Player of the Week announcement (best KDA, most wins, highest MMR gain) - Yes
+Season countdown announcements as a season end date approaches - Yes
+Automatic voice channel creation for Radiant/Dire teams when a game is about to start - We already have channels, not required. Would be nice as a future tool to automatically move players once game starts (pick ban phase). Don’t know how we do that though, maybe research and advise.
+Patch note links auto-posted when a new Dota patch drops (external, not just your internal changelog) - No
+
+Website — Stats & Analysis
+MMR trend graph on player profiles (line chart over time, not just current number) - I thought we already have a line chart? If not show me what it would look like
+Win rate over time chart per player (weekly rolling window) - Okay
+Gold/XP advantage over time graph pulled from replay data (comeback visualization) - Where would this go?
+Ward placement heatmap on the map image - on what image?
+Kill location heatmap - Only if it is a genuine heatmap. I don’t want red blobs everywhere, it needs to be a genuine heatmap.
+Hero matchup win rates (how Hero A does against Hero B in your pool) - okay
+Draft combo analysis — which two/three-hero combinations win most often - okay
+Position/lane meta page — which heroes dominate each role this season - okay
+"Cold/hot hero" widget — heroes with the biggest win rate swing this month vs overall - okay
+Website — Player Profiles
+Favourite ally and nemesis (who you win/lose most with and against) - Yes
+"Report card" section — auto-generated strengths/weaknesses (e.g. "High KDA support, low ward uptime") - okay
+Longest win/loss streaks with dates - okay
+Best/worst hero by win rate (minimum game threshold) - okay
+Performance vs top-MMR opponents specifically - okay
+Website — Match Detail
+Kill feed timeline — scrollable event log (First Blood, multi-kills, Roshan, etc.) - okay
+Ability build viewer per player (already tracking skill builds — surface it on the match page) - explain further please
+Side-by-side team comparison panel (total wards, damage taken, stuns, etc.) - okay but make it good
+Downloadable match replay directly from the match detail page - okay
+Website — Community & Admin
+Tournament bracket creator built into the admin panel (single/double elim, round robin) - Yes
+Season prize pool tracker visible to all players (current pot, contributors, payout breakdown) - yes
+Public hall of fame page — all-time record holders per stat category - yes
+Player availability/scheduling calendar (who's free this week) - maybe something for future state, remember this and research
+"Suggest a feature" or feedback form that posts to a Discord mod channel - yes
+Commissioner tools page — bulk MMR reset, season archiving, manual match edits, transfer prize pool - yes
+Website — UI/UX
+Dark/light mode toggle - yes
+Mobile-responsive overhaul (most dashboards are desktop-only) - yes
+Hero icons/portraits throughout (match detail, leaderboard, player profiles) - yes
+Shareable match links with Open Graph preview image (the scoreboard card as the preview) - yes
+Notification bell — subscribe to alerts when a new game is scheduled - maybe future state with other scheduling features

@@ -565,6 +565,28 @@ async function init() {
     // announced_at: NULL = not yet announced to Discord; existing rows backfilled with NOW()
     await p.query(`ALTER TABLE patch_notes ADD COLUMN IF NOT EXISTS announced_at TIMESTAMPTZ DEFAULT NOW()`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS schedule_rsvps (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER NOT NULL,
+        discord_id TEXT NOT NULL,
+        username TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'yes',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(game_id, discord_id)
+      )
+    `);
+    await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS rsvp_message_id TEXT`);
+    await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS rsvp_channel_id TEXT`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS player_preferences (
+        discord_id TEXT PRIMARY KEY,
+        report_card_optout BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -4729,6 +4751,17 @@ module.exports = {
   deleteMatchNote,
   getUnannouncedPatchNotes,
   markPatchNoteAnnounced,
+  getHeroMetaWeek,
+  getLastMatchPlayers,
+  getCurseOfWeek,
+  getPlayerOfWeek,
+  addScheduleRsvp,
+  removeScheduleRsvp,
+  getScheduleRsvps,
+  getScheduledGameByRsvpMessage,
+  saveRsvpMessageId,
+  getPlayerReportCardOptOut,
+  setPlayerReportCardOptOut,
 };
 
 async function getPudgeStats(seasonId = null) {
@@ -4836,6 +4869,125 @@ async function expireOldReplayFiles() {
      WHERE replay_file_expires_at IS NOT NULL AND replay_file_expires_at < NOW()
      RETURNING match_id, replay_file_path`
   );
-  // Note: caller is responsible for actually deleting the files from disk
   return res.rows;
+}
+
+async function getHeroMetaWeek(days = 7) {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT
+      ps.hero_name,
+      ps.hero_id,
+      COUNT(*) as picks,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    WHERE m.date >= NOW() - ($1 * INTERVAL '1 day')
+      AND ps.hero_name IS NOT NULL AND ps.hero_name != ''
+    GROUP BY ps.hero_name, ps.hero_id
+    ORDER BY picks DESC
+    LIMIT 15
+  `, [days]);
+  return result.rows;
+}
+
+async function getLastMatchPlayers() {
+  const p = getPool();
+  const matchRes = await p.query(`SELECT match_id FROM matches ORDER BY date DESC LIMIT 1`);
+  if (matchRes.rows.length === 0) return null;
+  const matchId = matchRes.rows[0].match_id;
+  const playersRes = await p.query(`
+    SELECT ps.account_id, ps.persona_name, ps.team,
+           COALESCE(n.nickname, ps.persona_name) as display_name
+    FROM player_stats ps
+    LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text AND ps.account_id::text != '0'
+    WHERE ps.match_id::text = $1::text
+  `, [matchId]);
+  return { matchId, players: playersRes.rows };
+}
+
+async function getCurseOfWeek(days = 7) {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT
+      COALESCE(MAX(n.nickname), MAX(ps.persona_name)) as player_name,
+      SUM(ps.deaths) as total_deaths,
+      COUNT(DISTINCT ps.match_id) as games
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text AND ps.account_id::text != '0'
+    WHERE m.date >= NOW() - ($1 * INTERVAL '1 day')
+      AND ps.account_id::text != '0'
+    GROUP BY COALESCE(n.nickname, ps.persona_name)
+    ORDER BY total_deaths DESC
+    LIMIT 1
+  `, [days]);
+  return result.rows[0] || null;
+}
+
+async function getPlayerOfWeek(days = 7) {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT
+      COALESCE(MAX(n.nickname), MAX(ps.persona_name)) as player_name,
+      COUNT(DISTINCT ps.match_id) as games,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins,
+      ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE (ps.kills + ps.assists)::float END), 2) as avg_kda
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text AND ps.account_id::text != '0'
+    WHERE m.date >= NOW() - ($1 * INTERVAL '1 day')
+      AND ps.account_id::text != '0'
+    GROUP BY COALESCE(n.nickname, ps.persona_name)
+    HAVING COUNT(DISTINCT ps.match_id) >= 2
+    ORDER BY wins DESC, avg_kda DESC
+    LIMIT 1
+  `, [days]);
+  return result.rows[0] || null;
+}
+
+async function addScheduleRsvp(gameId, discordId, username, status) {
+  const p = getPool();
+  await p.query(`
+    INSERT INTO schedule_rsvps (game_id, discord_id, username, status)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (game_id, discord_id) DO UPDATE SET status = $4, username = $3, updated_at = NOW()
+  `, [gameId, discordId, username, status]);
+}
+
+async function removeScheduleRsvp(gameId, discordId) {
+  const p = getPool();
+  await p.query(`DELETE FROM schedule_rsvps WHERE game_id = $1 AND discord_id = $2`, [gameId, discordId]);
+}
+
+async function getScheduleRsvps(gameId) {
+  const p = getPool();
+  const result = await p.query(`SELECT * FROM schedule_rsvps WHERE game_id = $1 ORDER BY updated_at ASC`, [gameId]);
+  return result.rows;
+}
+
+async function getScheduledGameByRsvpMessage(messageId) {
+  const p = getPool();
+  const result = await p.query(`SELECT * FROM scheduled_games WHERE rsvp_message_id = $1`, [messageId]);
+  return result.rows[0] || null;
+}
+
+async function saveRsvpMessageId(gameId, messageId, channelId) {
+  const p = getPool();
+  await p.query(`UPDATE scheduled_games SET rsvp_message_id = $2, rsvp_channel_id = $3 WHERE id = $1`, [gameId, messageId, channelId]);
+}
+
+async function getPlayerReportCardOptOut(discordId) {
+  const p = getPool();
+  const result = await p.query(`SELECT report_card_optout FROM player_preferences WHERE discord_id = $1`, [discordId]);
+  return result.rows[0]?.report_card_optout || false;
+}
+
+async function setPlayerReportCardOptOut(discordId, optOut) {
+  const p = getPool();
+  await p.query(`
+    INSERT INTO player_preferences (discord_id, report_card_optout)
+    VALUES ($1, $2)
+    ON CONFLICT (discord_id) DO UPDATE SET report_card_optout = $2, updated_at = NOW()
+  `, [discordId, optOut]);
 }
