@@ -676,3 +676,24 @@ export async function extendReplayExpiry(matchId, days, superuserKey) {
   if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Request failed: ${res.status}`); }
   return res.json();
 }
+
+
+export async function getPlayerAlly(accountId, seasonId = null) {
+  const url = `/player/${accountId}/ally${seasonId ? `?season=${seasonId}` : ''}`;
+  return fetchJson(url);
+}
+
+export async function getPlayerWinRateHistory(accountId, seasonId = null) {
+  const url = `/player/${accountId}/win-rate-history${seasonId ? `?season=${seasonId}` : ''}`;
+  return fetchJson(url);
+}
+
+export async function getHallOfFame(seasonId = null) {
+  const url = `/hall-of-fame${seasonId ? `?season=${seasonId}` : ''}`;
+  return fetchJson(url);
+}
+
+export async function getPlayerBenchmarks(seasonId = null) {
+  const url = `/benchmarks${seasonId ? `?season=${seasonId}` : ''}`;
+  return fetchJson(url);
+}

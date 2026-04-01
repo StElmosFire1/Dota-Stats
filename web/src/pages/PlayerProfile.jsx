@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
+import HeroIcon from '../components/HeroIcon';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -121,6 +122,8 @@ export default function PlayerProfile() {
   const [ratingHistory, setRatingHistory] = useState([]);
   const [achievements, setAchievements] = useState([]);
   const [nemesis, setNemesis] = useState([]);
+  const [allies, setAllies] = useState([]);
+  const [winRateHistory, setWinRateHistory] = useState([]);
   const [predictionStats, setPredictionStats] = useState(null);
   const [heroCounters, setHeroCounters] = useState([]);
   const [streak, setStreak] = useState(null);
@@ -137,18 +140,29 @@ export default function PlayerProfile() {
       getPlayerRatingHistory(accountId).catch(() => ({ history: [] })),
       getPlayerAchievements(accountId).catch(() => ({ achievements: [] })),
       getPlayerNemesis(accountId).catch(() => []),
+      getPlayerAlly(accountId, seasonId).catch(() => []),
+      getPlayerWinRateHistory(accountId, seasonId).catch(() => ({ history: [] })),
       getPlayerPredictionStats(accountId).catch(() => null),
       getPlayerHeroCounters(accountId, seasonId).catch(() => ({ counters: [] })),
       getPlayerStreak(accountId).catch(() => ({ streak: 0 })),
       getPlayerDurationStats(accountId, seasonId).catch(() => ({ stats: [] })),
       getPlayerCommunityRatings(accountId).catch(() => null),
       getPositionAverages(seasonId).catch(() => ({ averages: [] })),
-    ]).then(([playerData, posData, histData, achData, nemData, predData, counterData, streakData, durData, ratingData, avgData]) => {
+    ]).then(([playerData, posData, histData, achData, nemData, allyData, wrHistData, predData, counterData, streakData, durData, ratingData, avgData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
       setAchievements(achData?.achievements || []);
       setNemesis(Array.isArray(nemData) ? nemData : []);
+      setAllies(Array.isArray(allyData) ? allyData : []);
+      const rawRows = Array.isArray(wrHistData) ? wrHistData : (wrHistData?.history || []);
+      const WINDOW = 5;
+      const computed = rawRows.map((row, idx) => {
+        const slice = rawRows.slice(Math.max(0, idx - WINDOW + 1), idx + 1);
+        const wins = slice.filter(r => parseInt(r.won) === 1).length;
+        return { match_num: idx + 1, win_rate: Math.round((wins / slice.length) * 100) };
+      });
+      setWinRateHistory(computed);
       setPredictionStats(predData?.stats || null);
       setHeroCounters(counterData?.counters || []);
       setStreak(streakData?.streak ?? null);
@@ -173,14 +187,32 @@ export default function PlayerProfile() {
     <div>
       <Link to="/players" className="back-link">&larr; Back to players</Link>
 
-      <h1 className="page-title">
-        {displayName}
-        {nickname && rating?.display_name && nickname !== rating.display_name && (
-          <span style={{ fontSize: '0.6em', color: '#888', marginLeft: '0.5rem' }}>
-            ({rating.display_name})
-          </span>
-        )}
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 0 }}>
+        <h1 className="page-title" style={{ marginBottom: 0 }}>
+          {displayName}
+          {nickname && rating?.display_name && nickname !== rating.display_name && (
+            <span style={{ fontSize: '0.6em', color: '#888', marginLeft: '0.5rem' }}>
+              ({rating.display_name})
+            </span>
+          )}
+        </h1>
+        <button
+          onClick={() => {
+            const url = window.location.href;
+            navigator.clipboard?.writeText(url).then(() => {
+              const btn = document.getElementById('share-btn');
+              if (btn) { btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = '🔗 Share'; }, 2000); }
+            }).catch(() => {
+              window.prompt('Copy this link:', url);
+            });
+          }}
+          id="share-btn"
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+            borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          }}
+        >🔗 Share</button>
+      </div>
 
       {rating && (
         <div className="stats-grid">
@@ -249,6 +281,24 @@ export default function PlayerProfile() {
       )}
 
       <RatingChart history={ratingHistory} />
+
+      {winRateHistory.length >= 3 && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-title">📈 Rolling Win Rate</h2>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, marginTop: -8 }}>
+            5-game rolling win rate over time.
+          </p>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={winRateHistory} margin={{ top: 5, right: 16, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="match_num" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} label={{ value: 'Game #', position: 'insideBottomRight', offset: 0, fontSize: 11, fill: 'var(--text-muted)' }} />
+              <YAxis domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <Tooltip formatter={v => [`${v}%`, 'Win Rate']} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }} />
+              <Line type="monotone" dataKey="win_rate" stroke="var(--accent)" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </section>
+      )}
 
       <AchievementBadges achievements={achievements} />
 
@@ -351,6 +401,39 @@ export default function PlayerProfile() {
                       Last seen on {formatHeroName(n.last_hero)}
                     </div>
                   )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {allies.length > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-title">🤝 Best Allies</h2>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, marginTop: -8 }}>
+            Players you win most with (min. 3 games together).
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {allies.slice(0, 5).map((a, i) => {
+              const games = parseInt(a.games_together) || 0;
+              const wins = parseInt(a.wins_together) || 0;
+              const wr = games > 0 ? Math.round((wins / games) * 100) : 0;
+              return (
+                <div key={i} style={{
+                  background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+                  padding: '14px 18px', minWidth: 160, flex: 1,
+                }}>
+                  <div style={{ fontSize: 20, marginBottom: 6 }}>🤝</div>
+                  <Link to={`/player/${a.account_id}`} style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>
+                    {a.display_name || `Player ${a.account_id}`}
+                  </Link>
+                  <div style={{ fontSize: 13, marginTop: 6 }}>
+                    <span style={{ color: wr >= 60 ? 'var(--radiant-color)' : wr >= 45 ? 'var(--text-primary)' : 'var(--dire-color)', fontWeight: 700 }}>
+                      {wr}% WR
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>({games} games)</span>
+                  </div>
                 </div>
               );
             })}

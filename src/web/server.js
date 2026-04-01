@@ -2088,6 +2088,53 @@ NOTES
     }
   });
 
+  router.get('/player/:id/ally', async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const ally = await db.getPlayerAlly(req.params.id, seasonId);
+      res.json(ally);
+    } catch (err) {
+      console.error('[API] ally error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch ally data' });
+    }
+  });
+
+  router.get('/player/:id/win-rate-history', async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const history = await db.getPlayerWinRateHistory(req.params.id, seasonId);
+      res.json({ history });
+    } catch (err) {
+      console.error('[API] win-rate-history error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch win rate history' });
+    }
+  });
+
+  router.get('/hall-of-fame', async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const [records, career] = await Promise.all([
+        db.getPersonalRecords(seasonId),
+        db.getHallOfFameCareerStats(seasonId),
+      ]);
+      res.json({ records, career });
+    } catch (err) {
+      console.error('[API] hall-of-fame error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hall of fame data' });
+    }
+  });
+
+  router.get('/benchmarks', async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const data = await db.getPlayerBenchmarkAverages(seasonId);
+      res.json({ benchmarks: data });
+    } catch (err) {
+      console.error('[API] benchmarks error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch benchmark data' });
+    }
+  });
+
   router.get('/admin/duplicate-matches', authMiddleware, async (req, res) => {
     try {
       const duplicates = await db.findDuplicateMatches();

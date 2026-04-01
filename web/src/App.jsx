@@ -30,6 +30,8 @@ import AdminPanel from './pages/AdminPanel';
 import PudgeStats from './pages/PudgeStats';
 import Schedule from './pages/Schedule';
 import Social from './pages/Social';
+import HallOfFame from './pages/HallOfFame';
+import PlayerBenchmarks from './pages/PlayerBenchmarks';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
@@ -225,6 +227,43 @@ function DropdownItem({ to, children }) {
   );
 }
 
+function ThemeToggle() {
+  const [isDark, setIsDark] = React.useState(() => {
+    const stored = localStorage.getItem('theme');
+    if (stored) return stored !== 'light';
+    return true;
+  });
+
+  React.useEffect(() => {
+    if (isDark) {
+      document.body.classList.remove('light-theme');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.body.classList.add('light-theme');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDark]);
+
+  React.useEffect(() => {
+    const stored = localStorage.getItem('theme');
+    if (stored === 'light') {
+      document.body.classList.add('light-theme');
+      setIsDark(false);
+    }
+  }, []);
+
+  return (
+    <button
+      className="btn btn-small"
+      onClick={() => setIsDark(d => !d)}
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      style={{ marginLeft: 4, fontSize: 14, padding: '4px 8px' }}
+    >
+      {isDark ? '☀️' : '🌙'}
+    </button>
+  );
+}
+
 function Nav() {
   const location = useLocation();
   const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
@@ -254,8 +293,14 @@ function Nav() {
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
           <DropdownItem to="/social">Player Network</DropdownItem>
         </DropdownMenu>
+        <DropdownMenu label="More">
+          <DropdownItem to="/hall-of-fame">🏆 Hall of Fame</DropdownItem>
+          <DropdownItem to="/benchmarks">📊 Player Benchmarks</DropdownItem>
+          <DropdownItem to="/multikills">💀 Multi-Kill Records</DropdownItem>
+        </DropdownMenu>
       </div>
       <SeasonSelector />
+      <ThemeToggle />
       <SteamButton />
       <AdminButton />
       <SuperuserButton />
@@ -308,6 +353,8 @@ export default function App() {
                 <Route path="/schedule" element={<Schedule />} />
                 <Route path="/social" element={<Social />} />
                 <Route path="/player-network" element={<Social />} />
+                <Route path="/hall-of-fame" element={<HallOfFame />} />
+                <Route path="/benchmarks" element={<PlayerBenchmarks />} />
               </Routes>
             </main>
           </SeasonProvider>

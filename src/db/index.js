@@ -583,9 +583,13 @@ async function init() {
       CREATE TABLE IF NOT EXISTS player_preferences (
         discord_id TEXT PRIMARY KEY,
         report_card_optout BOOLEAN NOT NULL DEFAULT FALSE,
+        report_card_optin BOOLEAN NOT NULL DEFAULT FALSE,
+        ratings_optout BOOLEAN NOT NULL DEFAULT FALSE,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await p.query(`ALTER TABLE player_preferences ADD COLUMN IF NOT EXISTS report_card_optin BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE player_preferences ADD COLUMN IF NOT EXISTS ratings_optout BOOLEAN NOT NULL DEFAULT FALSE`);
 
     console.log('[DB] Schema migrations applied.');
     return true;
@@ -4762,6 +4766,12 @@ module.exports = {
   saveRsvpMessageId,
   getPlayerReportCardOptOut,
   setPlayerReportCardOptOut,
+  getPlayerRatingsOptOut,
+  setPlayerRatingsOptOut,
+  getPlayerAlly,
+  getPlayerWinRateHistory,
+  getHallOfFameCareerStats,
+  getPlayerBenchmarkAverages,
 };
 
 async function getPudgeStats(seasonId = null) {
@@ -4979,15 +4989,133 @@ async function saveRsvpMessageId(gameId, messageId, channelId) {
 
 async function getPlayerReportCardOptOut(discordId) {
   const p = getPool();
-  const result = await p.query(`SELECT report_card_optout FROM player_preferences WHERE discord_id = $1`, [discordId]);
-  return result.rows[0]?.report_card_optout || false;
+  const result = await p.query(`SELECT report_card_optin FROM player_preferences WHERE discord_id = $1`, [discordId]);
+  return result.rows[0]?.report_card_optin || false;
 }
 
-async function setPlayerReportCardOptOut(discordId, optOut) {
+async function setPlayerReportCardOptOut(discordId, optIn) {
   const p = getPool();
   await p.query(`
-    INSERT INTO player_preferences (discord_id, report_card_optout)
+    INSERT INTO player_preferences (discord_id, report_card_optin)
     VALUES ($1, $2)
-    ON CONFLICT (discord_id) DO UPDATE SET report_card_optout = $2, updated_at = NOW()
+    ON CONFLICT (discord_id) DO UPDATE SET report_card_optin = $2, updated_at = NOW()
+  `, [discordId, optIn]);
+}
+
+async function getPlayerRatingsOptOut(discordId) {
+  const p = getPool();
+  const result = await p.query(`SELECT ratings_optout FROM player_preferences WHERE discord_id = $1`, [discordId]);
+  return result.rows[0]?.ratings_optout || false;
+}
+
+async function setPlayerRatingsOptOut(discordId, optOut) {
+  const p = getPool();
+  await p.query(`
+    INSERT INTO player_preferences (discord_id, ratings_optout)
+    VALUES ($1, $2)
+    ON CONFLICT (discord_id) DO UPDATE SET ratings_optout = $2, updated_at = NOW()
   `, [discordId, optOut]);
+}
+
+async function getPlayerAlly(accountId, seasonId = null) {
+  const p = getPool();
+  const params = [accountId];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const result = await p.query(`
+    SELECT
+      ally.account_id,
+      COALESCE(n.nickname, MAX(ally.persona_name)) AS display_name,
+      COUNT(DISTINCT ps.match_id) AS games_together,
+      SUM(CASE
+        WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win)
+        THEN 1 ELSE 0
+      END) AS wins_together
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    JOIN player_stats ally ON ally.match_id::text = ps.match_id::text
+      AND ally.team = ps.team
+      AND ally.account_id::text != ps.account_id::text
+      AND ally.account_id::text != '0'
+    LEFT JOIN nicknames n ON n.account_id::text = ally.account_id::text
+    WHERE ps.account_id::text = $1::text${sc}
+    GROUP BY ally.account_id
+    HAVING COUNT(DISTINCT ps.match_id) >= 3
+    ORDER BY wins_together DESC, games_together DESC
+    LIMIT 5
+  `, params);
+  return result.rows;
+}
+
+async function getPlayerWinRateHistory(accountId, seasonId = null) {
+  const p = getPool();
+  const params = [accountId];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const result = await p.query(`
+    SELECT
+      m.match_id,
+      m.date,
+      CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win)
+        THEN 1 ELSE 0
+      END AS won
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    WHERE ps.account_id::text = $1::text${sc}
+    ORDER BY m.date ASC
+  `, params);
+  return result.rows;
+}
+
+async function getHallOfFameCareerStats(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const result = await p.query(`
+    SELECT
+      ps.account_id,
+      COALESCE(n.nickname, ps.persona_name) AS display_name,
+      COUNT(DISTINCT ps.match_id) AS games,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins,
+      SUM(CASE WHEN (ps.team = 'radiant' AND NOT m.radiant_win) OR (ps.team = 'dire' AND m.radiant_win) THEN 1 ELSE 0 END) AS losses,
+      ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE (ps.kills + ps.assists)::float END), 2) AS avg_kda,
+      ROUND(AVG(ps.gpm)) AS avg_gpm,
+      SUM(ps.kills) AS total_kills
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text
+    WHERE ps.account_id::text != '0'${sc}
+    GROUP BY ps.account_id, COALESCE(n.nickname, ps.persona_name)
+    HAVING COUNT(DISTINCT ps.match_id) >= 3
+    ORDER BY wins DESC, games DESC
+  `, params);
+  return result.rows;
+}
+
+async function getPlayerBenchmarkAverages(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const result = await p.query(`
+    SELECT
+      ps.account_id,
+      COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
+      COUNT(DISTINCT ps.match_id) AS games,
+      ROUND(AVG(ps.kills), 2) AS avg_kills,
+      ROUND(AVG(ps.deaths), 2) AS avg_deaths,
+      ROUND(AVG(ps.assists), 2) AS avg_assists,
+      ROUND(AVG(ps.gpm)) AS avg_gpm,
+      ROUND(AVG(ps.xpm)) AS avg_xpm,
+      ROUND(AVG(ps.hero_damage)) AS avg_hero_damage,
+      ROUND(AVG(ps.tower_damage)) AS avg_tower_damage,
+      ROUND(AVG(ps.hero_healing)) AS avg_healing,
+      ROUND(AVG(ps.last_hits)) AS avg_last_hits,
+      ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE (ps.kills + ps.assists)::float END), 2) AS avg_kda
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text
+    WHERE ps.account_id::text != '0'${sc}
+    GROUP BY ps.account_id, COALESCE(n.nickname, MAX(ps.persona_name))
+    HAVING COUNT(DISTINCT ps.match_id) >= 3
+    ORDER BY games DESC
+  `, params);
+  return result.rows;
 }
