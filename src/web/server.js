@@ -2134,6 +2134,7 @@ NOTES
           assists: p.assists || 0,
           goldPerMin: p.gpm || 0,
           heroDamage: p.hero_damage || 0,
+          towerDamage: p.tower_damage || 0,
           heroHealing: p.hero_healing || 0,
           supportGoldSpent: p.support_gold_spent || 0,
           level: p.level || 0,
