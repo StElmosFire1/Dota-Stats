@@ -278,6 +278,8 @@ class DiscordBot {
           case 'mystats': await this._cmdMyStats(msg); break;
           case 'reportcard': await this._cmdReportCard(msg, args); break;
           case 'ratings': await this._cmdRatings(msg, args); break;
+          case 'streak': await this._cmdStreak(msg, args); break;
+          case 'tournament': await this._cmdTournament(msg, args); break;
           default: break;
         }
       } catch (err) {
@@ -356,6 +358,13 @@ class DiscordBot {
             '`!reportcard on` - **Opt in** to receive your personal stats DM after each match',
             '`!reportcard off` - Opt out of personal stats DMs',
             'Ratings are anonymous and appear on player profiles',
+          ].join('\n'),
+        },
+        {
+          name: '🔥 Streaks & Tournaments',
+          value: [
+            '`!streak [@user]` - Check your (or another player\'s) current win/loss streak',
+            '`!tournament` - List active and upcoming tournaments',
           ].join('\n'),
         },
         {
@@ -2398,6 +2407,89 @@ class DiscordBot {
       // Announce any new patch notes after a short delay (let channel cache populate)
       setTimeout(() => this._announceNewPatchNotes().catch(() => {}), 8000);
     });
+  }
+
+  async _cmdStreak(msg, args) {
+    const mentioned = msg.mentions.users.first();
+    const targetUser = mentioned || msg.author;
+    const reg = await db.getPlayerByDiscordId(targetUser.id);
+    if (!reg) {
+      const hint = targetUser.id === msg.author.id
+        ? 'You\'re not registered. Use `!register <steam_id>` to link your Steam account.'
+        : `${targetUser.username} hasn't registered their Steam account yet.`;
+      return msg.reply(hint);
+    }
+
+    const [streak, rating, recentMatches] = await Promise.all([
+      db.getPlayerCurrentStreak(reg.account_id_32).catch(() => 0),
+      db.getPlayerRating(reg.account_id_32).catch(() => null),
+      db.getPlayerRecentResults(reg.account_id_32, 10).catch(() => []),
+    ]);
+
+    const displayName = reg.display_name || targetUser.username;
+    const mmr = rating ? rating.mmr : null;
+    const wins = rating ? rating.wins : 0;
+    const losses = rating ? rating.losses : 0;
+    const wr = (wins + losses) > 0 ? ((wins / (wins + losses)) * 100).toFixed(0) : 0;
+
+    let streakEmoji, streakDesc, color;
+    if (streak >= 10) { streakEmoji = '🔥🔥🔥'; streakDesc = `ON FIRE — ${streak} wins in a row!`; color = 0xff4500; }
+    else if (streak >= 5) { streakEmoji = '🔥🔥'; streakDesc = `Hot streak — ${streak} wins in a row`; color = 0xff6600; }
+    else if (streak >= 3) { streakEmoji = '🔥'; streakDesc = `${streak}-game win streak`; color = 0xf59e0b; }
+    else if (streak === 0) { streakEmoji = '➖'; streakDesc = 'No active streak'; color = 0x64748b; }
+    else if (streak <= -10) { streakEmoji = '💀💀💀'; streakDesc = `STRUGGLING — ${Math.abs(streak)} losses in a row`; color = 0x7f1d1d; }
+    else if (streak <= -5) { streakDesc = `Cold streak — ${Math.abs(streak)} losses in a row`; streakEmoji = '❄️'; color = 0x1e40af; }
+    else { streakEmoji = '📉'; streakDesc = `${Math.abs(streak)}-game losing streak`; color = 0xef4444; }
+
+    const last10 = recentMatches.slice(0, 10).map(m => m.won ? '✅' : '❌').join(' ');
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${streakEmoji} ${displayName} — Streak`)
+      .setColor(color)
+      .addFields(
+        { name: 'Current Streak', value: streakDesc, inline: false },
+        { name: 'Record', value: `${wins}W — ${losses}L (${wr}% WR)`, inline: true },
+        ...(mmr ? [{ name: 'MMR', value: `${mmr}`, inline: true }] : []),
+        ...(last10 ? [{ name: 'Last 10 Results', value: last10 || '—', inline: false }] : []),
+      )
+      .setFooter({ text: 'Use !stats for full profile' });
+
+    await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdTournament(msg, args) {
+    const tournaments = await db.getTournaments().catch(() => []);
+
+    const active = tournaments.filter(t => t.status === 'active');
+    const upcoming = tournaments.filter(t => t.status === 'upcoming');
+    const completed = tournaments.filter(t => t.status === 'completed').slice(0, 3);
+
+    if (tournaments.length === 0) {
+      return msg.reply('No tournaments found. Create one at the web dashboard!');
+    }
+
+    const fmtTournament = (t) => {
+      const fmt = t.format === 'double_elim' ? 'Double Elim' : 'Single Elim';
+      const players = t.participant_count || 0;
+      return `**${t.name}** — ${fmt} · ${players} players`;
+    };
+
+    const embed = new EmbedBuilder()
+      .setTitle('🏆 Tournaments')
+      .setColor(0xf59e0b);
+
+    if (active.length > 0) {
+      embed.addFields({ name: '🏆 Active', value: active.map(fmtTournament).join('\n'), inline: false });
+    }
+    if (upcoming.length > 0) {
+      embed.addFields({ name: '⏳ Upcoming', value: upcoming.map(fmtTournament).join('\n'), inline: false });
+    }
+    if (completed.length > 0) {
+      embed.addFields({ name: '✅ Recent Completed', value: completed.map(fmtTournament).join('\n'), inline: false });
+    }
+
+    embed.setFooter({ text: 'View full brackets at the web dashboard → /tournaments' });
+    await msg.reply({ embeds: [embed] });
   }
 
   async shutdown() {

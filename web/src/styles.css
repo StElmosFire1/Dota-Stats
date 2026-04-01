@@ -1368,3 +1368,32 @@ th.col-stat {
 .admin-badge:hover {
   background: rgba(255, 200, 50, 0.25);
 }
+
+/* ===== TOURNAMENT PAGE ===== */
+.tournament-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .tournament-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== HALL OF FAME / BENCHMARKS ===== */
+@media (max-width: 600px) {
+  .hof-records-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .hof-career-table {
+    min-width: 520px;
+  }
+
+  .benchmarks-table {
+    min-width: 580px;
+  }
+}

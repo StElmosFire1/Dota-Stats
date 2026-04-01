@@ -2238,6 +2238,26 @@ NOTES
       if (!winnerId) return res.status(400).json({ error: 'winnerId required' });
       const matches = await db.setTournamentMatchWinner(req.params.matchId, winnerId);
       res.json({ matches });
+
+      // Discord notification — fire-and-forget
+      try {
+        const match = (matches || []).find(m => String(m.id) === String(req.params.matchId));
+        if (match && match.tournament_id) {
+          const tournament = await db.getTournamentById(match.tournament_id);
+          if (tournament && match.winner_name) {
+            const roundMatches = matches.filter(m => m.round === match.round);
+            const maxRound = Math.max(...matches.map(m => m.round));
+            const roundLabel = match.round === maxRound && roundMatches.length === 1 ? '🏆 Grand Final' : `Round ${match.round}`;
+            const loserName = String(match.winner_id) === String(match.p1_id) ? match.p2_name : match.p1_name;
+            const notifyMsg = loserName
+              ? `🏆 **${tournament.name}** — ${roundLabel}: **${match.winner_name}** def. ${loserName}`
+              : `🏆 **${tournament.name}** — ${roundLabel}: **${match.winner_name}** advances!`;
+            getDiscordBot()._notifyChannel(notifyMsg);
+          }
+        }
+      } catch (notifyErr) {
+        console.warn('[Tournament] Discord notify failed:', notifyErr.message);
+      }
     } catch (err) {
       console.error('[API] set winner error:', err.message);
       res.status(500).json({ error: err.message || 'Failed to set winner' });

@@ -1,0 +1,58 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats && git stash && git pull && npm run build && pm2 restart 2 --update-env
+Saved working directory and index state WIP on main: 8b848e4 Add endpoint to test Discord notifications
+Updating 8b848e4..8b526e0
+Fast-forward
+ attached_assets/Pasted-Discord-Post-Match-Hero-portraits-icons-in-the-scoreboa_1775031681198.txt |  55 +++++++++
+ attached_assets/Pasted-Welcome-to-Ubuntu-24-04-4-LTS-GNU-Linux-6-8-0-71-generi_1775025245023.txt |  79 +++++++++++++
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-cd-Dota-Stats-curl-s-https-r_1775026894960.txt |  82 ++++++++++++++
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-cd-Dota-Stats-git-pull-pm2-r_1774962863406.txt |  67 +++++++++++
+ attached_assets/image_1774963098896.png                                                          | Bin 0 -> 155573 bytes
+ attached_assets/image_1775025699867.png                                                          | Bin 0 -> 90455 bytes
+ attached_assets/image_1775026659888.png                                                          | Bin 0 -> 25314 bytes
+ attached_assets/image_1775026765131.png                                                          | Bin 0 -> 90455 bytes
+ attached_assets/image_1775026932711.png                                                          | Bin 0 -> 98359 bytes
+ attached_assets/image_1775030177625.png                                                          | Bin 0 -> 103892 bytes
+ attached_assets/image_1775030501873.png                                                          | Bin 0 -> 40267 bytes
+ replit.md                                                                                        |   2 +-
+ src/db/index.js                                                                                  | 661 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ src/discord/bot.js                                                                               | 371 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ src/services/scoreboardImage.js                                                                  | 205 ++++++++++++++++++---------------
+ src/web/server.js                                                                                | 169 ++++++++++++++++++++++++++-
+ web/dist/assets/index-CQ5QB_pB.js                                                                | 141 -----------------------
+ web/dist/assets/index-CTgWdCc5.css                                                               |   1 +
+ web/dist/assets/index-DmFDX30z.js                                                                | 141 +++++++++++++++++++++++
+ web/dist/assets/index-Duk-i4YF.css                                                               |   1 -
+ web/dist/index.html                                                                              |   4 +-
+ web/src/App.jsx                                                                                  |  51 +++++++++
+ web/src/api.js                                                                                   |  96 ++++++++++++++++
+ web/src/components/HeroIcon.jsx                                                                  |  55 +++++++++
+ web/src/pages/HallOfFame.jsx                                                                     | 152 +++++++++++++++++++++++++
+ web/src/pages/PlayerBenchmarks.jsx                                                               | 140 +++++++++++++++++++++++
+ web/src/pages/PlayerProfile.jsx                                                                  | 190 +++++++++++++++++++++++++------
+ web/src/pages/Tournaments.jsx                                                                    | 443 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ web/src/styles.css                                                                               | 144 ++++++++++++++++++++++-
+ 29 files changed, 2941 insertions(+), 309 deletions(-)
+ create mode 100644 attached_assets/Pasted-Discord-Post-Match-Hero-portraits-icons-in-the-scoreboa_1775031681198.txt
+ create mode 100644 attached_assets/Pasted-Welcome-to-Ubuntu-24-04-4-LTS-GNU-Linux-6-8-0-71-generi_1775025245023.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-cd-Dota-Stats-curl-s-https-r_1775026894960.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-cd-Dota-Stats-git-pull-pm2-r_1774962863406.txt
+ create mode 100644 attached_assets/image_1774963098896.png
+ create mode 100644 attached_assets/image_1775025699867.png
+ create mode 100644 attached_assets/image_1775026659888.png
+ create mode 100644 attached_assets/image_1775026765131.png
+ create mode 100644 attached_assets/image_1775026932711.png
+ create mode 100644 attached_assets/image_1775030177625.png
+ create mode 100644 attached_assets/image_1775030501873.png
+ delete mode 100644 web/dist/assets/index-CQ5QB_pB.js
+ create mode 100644 web/dist/assets/index-CTgWdCc5.css
+ create mode 100644 web/dist/assets/index-DmFDX30z.js
+ delete mode 100644 web/dist/assets/index-Duk-i4YF.css
+ create mode 100644 web/src/components/HeroIcon.jsx
+ create mode 100644 web/src/pages/HallOfFame.jsx
+ create mode 100644 web/src/pages/PlayerBenchmarks.jsx
+ create mode 100644 web/src/pages/Tournaments.jsx
+npm error Missing script: "build"
+npm error
+npm error To see a list of scripts, run:
+npm error   npm run
+npm error A complete log of this run can be found in: /root/.npm/_logs/2026-04-01T11_29_29_742Z-debug-0.log

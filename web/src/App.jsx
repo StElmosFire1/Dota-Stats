@@ -1,42 +1,43 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import MatchList from './pages/MatchList';
-import MatchDetail from './pages/MatchDetail';
-import Leaderboard from './pages/Leaderboard';
-import PlayerProfile from './pages/PlayerProfile';
-import Heroes from './pages/Heroes';
-import Draft from './pages/Draft';
-import Players from './pages/Players';
-import OverallStats from './pages/OverallStats';
-import PositionStats from './pages/PositionStats';
-import Synergy from './pages/Synergy';
-import Upload from './pages/Upload';
-import Seasons from './pages/Seasons';
-import BuyinSuccess from './pages/BuyinSuccess';
-import PlayerTools from './pages/PlayerTools';
-import Predictions from './pages/Predictions';
 import UploadIndicator from './components/UploadIndicator';
 import AiChat from './components/AiChat';
 import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
 import SuperuserLoginModal from './components/SuperuserLoginModal';
-import StatsEditor from './pages/StatsEditor';
-import PatchNotes from './pages/PatchNotes';
-import Home from './pages/Home';
-import MultiKills from './pages/MultiKills';
-import WardMap from './pages/WardMap';
-import Records from './pages/Records';
-import AdminPanel from './pages/AdminPanel';
-import PudgeStats from './pages/PudgeStats';
-import Schedule from './pages/Schedule';
-import Social from './pages/Social';
-import HallOfFame from './pages/HallOfFame';
-import PlayerBenchmarks from './pages/PlayerBenchmarks';
-import Tournaments from './pages/Tournaments';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
+
+const MatchList = lazy(() => import('./pages/MatchList'));
+const MatchDetail = lazy(() => import('./pages/MatchDetail'));
+const Leaderboard = lazy(() => import('./pages/Leaderboard'));
+const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
+const Heroes = lazy(() => import('./pages/Heroes'));
+const Draft = lazy(() => import('./pages/Draft'));
+const Players = lazy(() => import('./pages/Players'));
+const OverallStats = lazy(() => import('./pages/OverallStats'));
+const PositionStats = lazy(() => import('./pages/PositionStats'));
+const Synergy = lazy(() => import('./pages/Synergy'));
+const Upload = lazy(() => import('./pages/Upload'));
+const Seasons = lazy(() => import('./pages/Seasons'));
+const BuyinSuccess = lazy(() => import('./pages/BuyinSuccess'));
+const PlayerTools = lazy(() => import('./pages/PlayerTools'));
+const Predictions = lazy(() => import('./pages/Predictions'));
+const StatsEditor = lazy(() => import('./pages/StatsEditor'));
+const PatchNotes = lazy(() => import('./pages/PatchNotes'));
+const Home = lazy(() => import('./pages/Home'));
+const MultiKills = lazy(() => import('./pages/MultiKills'));
+const WardMap = lazy(() => import('./pages/WardMap'));
+const Records = lazy(() => import('./pages/Records'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const PudgeStats = lazy(() => import('./pages/PudgeStats'));
+const Schedule = lazy(() => import('./pages/Schedule'));
+const Social = lazy(() => import('./pages/Social'));
+const HallOfFame = lazy(() => import('./pages/HallOfFame'));
+const PlayerBenchmarks = lazy(() => import('./pages/PlayerBenchmarks'));
+const Tournaments = lazy(() => import('./pages/Tournaments'));
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -323,6 +324,7 @@ export default function App() {
             <SuperuserLoginModal />
             <UploadIndicator />
             <main className="container">
+              <Suspense fallback={<div className="loading">Loading…</div>}>
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
@@ -360,6 +362,7 @@ export default function App() {
                 <Route path="/hall-of-fame" element={<HallOfFame />} />
                 <Route path="/benchmarks" element={<PlayerBenchmarks />} />
               </Routes>
+              </Suspense>
             </main>
           </SeasonProvider>
         </SuperuserProvider>

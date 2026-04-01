@@ -227,7 +227,7 @@ function TournamentDetail() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,280px) 1fr', gap: 24, marginTop: 16 }}>
+      <div className="tournament-layout">
         <div>
           <h2 className="section-title">Participants ({participants.length})</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

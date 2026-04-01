@@ -3394,6 +3394,19 @@ async function getPlayerNemesis(accountId) {
   return res.rows;
 }
 
+async function getPlayerRecentResults(accountId, limit = 10) {
+  const p = getPool();
+  const res = await p.query(`
+    SELECT (ps.team = 'radiant') = m.radiant_win AS won
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = $1 AND m.is_legacy = false
+    ORDER BY m.match_id DESC
+    LIMIT $2
+  `, [accountId, limit]);
+  return res.rows;
+}
+
 async function getPlayerCurrentStreak(accountId) {
   const p = getPool();
   const res = await p.query(`
@@ -4836,6 +4849,7 @@ module.exports = {
   getPlayerByDiscordId,
   getDraftSuggestions,
   findDuplicateMatches,
+  getPlayerRecentResults,
   getPlayerCurrentStreak,
   getPlayerNemesis,
   getHomeStats,
