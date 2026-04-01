@@ -164,7 +164,8 @@ export default function PlayerProfile() {
   const [achievements, setAchievements] = useState([]);
   const [nemesis, setNemesis] = useState([]);
   const [allies, setAllies] = useState([]);
-  const [winRateHistory, setWinRateHistory] = useState([]);
+  const [rawWinRateHistory, setRawWinRateHistory] = useState([]);
+  const [wrWindow, setWrWindow] = useState(5);
   const [predictionStats, setPredictionStats] = useState(null);
   const [heroCounters, setHeroCounters] = useState([]);
   const [streak, setStreak] = useState(null);
@@ -197,13 +198,7 @@ export default function PlayerProfile() {
       setNemesis(Array.isArray(nemData) ? nemData : []);
       setAllies(Array.isArray(allyData) ? allyData : []);
       const rawRows = Array.isArray(wrHistData) ? wrHistData : (wrHistData?.history || []);
-      const WINDOW = 5;
-      const computed = rawRows.map((row, idx) => {
-        const slice = rawRows.slice(Math.max(0, idx - WINDOW + 1), idx + 1);
-        const wins = slice.filter(r => parseInt(r.won) === 1).length;
-        return { match_num: idx + 1, win_rate: Math.round((wins / slice.length) * 100) };
-      });
-      setWinRateHistory(computed);
+      setRawWinRateHistory(rawRows);
       setPredictionStats(predData?.stats || null);
       setHeroCounters(counterData?.counters || []);
       setStreak(streakData?.streak ?? null);
@@ -217,6 +212,12 @@ export default function PlayerProfile() {
   if (!data) return <div className="error-state">Player not found</div>;
 
   const { rating, nickname, recentMatches, averages, heroes, seasonMmr } = data;
+  const winRateHistory = rawWinRateHistory.map((row, idx) => {
+    const windowSize = wrWindow === 0 ? rawWinRateHistory.length : wrWindow;
+    const slice = rawWinRateHistory.slice(Math.max(0, idx - windowSize + 1), idx + 1);
+    const wins = slice.filter(r => parseInt(r.won) === 1).length;
+    return { match_num: idx + 1, win_rate: Math.round((wins / slice.length) * 100) };
+  });
   const displayName = nickname || rating?.display_name || `Player ${accountId}`;
 
   const totalMatches = averages ? parseInt(averages.total_matches) : 0;
@@ -323,11 +324,27 @@ export default function PlayerProfile() {
 
       <RatingChart history={ratingHistory} />
 
-      {winRateHistory.length >= 3 && (
+      {rawWinRateHistory.length >= 3 && (
         <section style={{ marginBottom: 24 }}>
-          <h2 className="section-title">📈 Rolling Win Rate</h2>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, marginTop: -8 }}>
-            5-game rolling win rate over time.
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+            <h2 className="section-title" style={{ margin: 0 }}>📈 Rolling Win Rate</h2>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[5, 10, 20, 0].map(w => (
+                <button
+                  key={w}
+                  onClick={() => setWrWindow(w)}
+                  style={{
+                    background: wrWindow === w ? 'var(--accent-blue)' : 'var(--bg-secondary)',
+                    color: wrWindow === w ? '#fff' : 'var(--text-muted)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >{w === 0 ? 'All' : w}</button>
+              ))}
+            </div>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+            {wrWindow === 0 ? 'Cumulative win rate over all games.' : `${wrWindow}-game rolling win rate over time.`}
           </p>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={winRateHistory} margin={{ top: 5, right: 16, left: -10, bottom: 5 }}>

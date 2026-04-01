@@ -627,6 +627,7 @@ async function init() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await p.query(`ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS bracket VARCHAR(10) DEFAULT 'W'`);
 
     console.log('[DB] Schema migrations applied.');
     return true;
@@ -5355,6 +5356,9 @@ async function removeTournamentParticipant(tournamentId, accountId) {
 async function generateTournamentBracket(tournamentId) {
   const p = getPool();
   await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1`, [parseInt(tournamentId)]);
+  const tournamentRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [parseInt(tournamentId)]);
+  const tournament = tournamentRes.rows[0];
+  if (!tournament) throw new Error('Tournament not found');
   const participants = await getTournamentParticipants(tournamentId);
   const n = participants.length;
   if (n < 2) throw new Error('Need at least 2 participants');
@@ -5368,20 +5372,66 @@ async function generateTournamentBracket(tournamentId) {
     if (i % 2 === 0) snaked.push(positions[i]);
     else snaked.unshift(positions[i]);
   }
-  seeded.forEach((p, i) => { slots[snaked[i]] = p; });
+  seeded.forEach((player, i) => { slots[snaked[i]] = player; });
   const pairs = [];
   for (let i = 0; i < size; i += 2) {
     pairs.push([slots[i], slots[i + 1]]);
   }
+
+  if (tournament.format === 'double_elim') {
+    return generateDoubleElimBracket(parseInt(tournamentId), pairs, size);
+  }
+
   const inserts = pairs.map((pair, slot) =>
     p.query(
-      `INSERT INTO tournament_matches (tournament_id, round, slot, p1_id, p2_id)
-       VALUES ($1, 1, $2, $3, $4)`,
+      `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id)
+       VALUES ($1, 'W', 1, $2, $3, $4)`,
       [parseInt(tournamentId), slot + 1, pair[0]?.account_id || null, pair[1]?.account_id || null]
     )
   );
   await Promise.all(inserts);
   await p.query(`UPDATE tournaments SET status = 'active' WHERE id = $1`, [parseInt(tournamentId)]);
+  return getTournamentMatches(tournamentId);
+}
+
+async function generateDoubleElimBracket(tournamentId, pairs, size) {
+  const p = getPool();
+  const wbRounds = Math.log2(size);
+  const lbRounds = wbRounds > 1 ? 2 * (wbRounds - 1) : 0;
+
+  for (let s = 0; s < pairs.length; s++) {
+    await p.query(
+      `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id) VALUES ($1, 'W', 1, $2, $3, $4)`,
+      [tournamentId, s + 1, pairs[s][0]?.account_id || null, pairs[s][1]?.account_id || null]
+    );
+  }
+
+  for (let r = 2; r <= wbRounds; r++) {
+    const matchCount = size / Math.pow(2, r);
+    for (let s = 1; s <= matchCount; s++) {
+      await p.query(
+        `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id) VALUES ($1, 'W', $2, $3, NULL, NULL)`,
+        [tournamentId, r, s]
+      );
+    }
+  }
+
+  for (let r = 1; r <= lbRounds; r++) {
+    const matchCount = size / Math.pow(2, Math.floor((r + 1) / 2) + 1);
+    for (let s = 1; s <= matchCount; s++) {
+      await p.query(
+        `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id) VALUES ($1, 'L', $2, $3, NULL, NULL)`,
+        [tournamentId, r, s]
+      );
+    }
+  }
+
+  await p.query(
+    `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id) VALUES ($1, 'GF', 1, 1, NULL, NULL)`,
+    [tournamentId]
+  );
+
+  await p.query(`UPDATE tournaments SET status = 'active' WHERE id = $1`, [tournamentId]);
   return getTournamentMatches(tournamentId);
 }
 
@@ -5410,33 +5460,39 @@ async function setTournamentMatchWinner(matchId, winnerId) {
   const matchRes = await p.query(`SELECT * FROM tournament_matches WHERE id = $1`, [parseInt(matchId)]);
   const match = matchRes.rows[0];
   if (!match) throw new Error('Match not found');
+
+  const tournamentRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [match.tournament_id]);
+  const tournament = tournamentRes.rows[0];
+  const isDoubleElim = tournament?.format === 'double_elim';
+
   await p.query(`UPDATE tournament_matches SET winner_id = $2 WHERE id = $1`, [parseInt(matchId), BigInt(winnerId)]);
   const loserId = BigInt(winnerId) === BigInt(match.p1_id) ? match.p2_id : match.p1_id;
-  if (loserId) {
-    await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`,
-      [match.tournament_id, loserId]);
-  }
-  const allMatches = await p.query(`SELECT * FROM tournament_matches WHERE tournament_id = $1 AND round = $2`, [match.tournament_id, match.round]);
-  const allDone = allMatches.rows.every(m => m.winner_id != null || (m.p1_id == null && m.p2_id == null) || (m.p1_id != null && m.p2_id == null));
-  if (allDone) {
-    const winners = allMatches.rows
-      .filter(m => m.winner_id != null)
-      .map(m => m.winner_id);
-    const byes = allMatches.rows
-      .filter(m => m.p1_id != null && m.p2_id == null)
-      .map(m => m.p1_id);
-    const nextPlayers = [...winners, ...byes];
-    if (nextPlayers.length === 1) {
-      await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [match.tournament_id]);
-    } else {
-      const nextRound = match.round + 1;
-      const existing = await p.query(`SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = $1 AND round = $2`, [match.tournament_id, nextRound]);
-      if (parseInt(existing.rows[0].count) === 0) {
-        for (let i = 0; i < nextPlayers.length; i += 2) {
-          await p.query(
-            `INSERT INTO tournament_matches (tournament_id, round, slot, p1_id, p2_id) VALUES ($1, $2, $3, $4, $5)`,
-            [match.tournament_id, nextRound, Math.floor(i / 2) + 1, nextPlayers[i] || null, nextPlayers[i + 1] || null]
-          );
+
+  if (isDoubleElim) {
+    await _routeDoubleElim(p, match, BigInt(winnerId), loserId ? BigInt(loserId) : null);
+  } else {
+    if (loserId) {
+      await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`,
+        [match.tournament_id, loserId]);
+    }
+    const allMatches = await p.query(`SELECT * FROM tournament_matches WHERE tournament_id = $1 AND round = $2`, [match.tournament_id, match.round]);
+    const allDone = allMatches.rows.every(m => m.winner_id != null || (m.p1_id == null && m.p2_id == null) || (m.p1_id != null && m.p2_id == null));
+    if (allDone) {
+      const winners = allMatches.rows.filter(m => m.winner_id != null).map(m => m.winner_id);
+      const byes = allMatches.rows.filter(m => m.p1_id != null && m.p2_id == null).map(m => m.p1_id);
+      const nextPlayers = [...winners, ...byes];
+      if (nextPlayers.length === 1) {
+        await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [match.tournament_id]);
+      } else {
+        const nextRound = match.round + 1;
+        const existing = await p.query(`SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round = $2`, [match.tournament_id, nextRound]);
+        if (parseInt(existing.rows[0].count) === 0) {
+          for (let i = 0; i < nextPlayers.length; i += 2) {
+            await p.query(
+              `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id) VALUES ($1, 'W', $2, $3, $4, $5)`,
+              [match.tournament_id, nextRound, Math.floor(i / 2) + 1, nextPlayers[i] || null, nextPlayers[i + 1] || null]
+            );
+          }
         }
       }
     }
@@ -5444,17 +5500,115 @@ async function setTournamentMatchWinner(matchId, winnerId) {
   return getTournamentMatches(match.tournament_id);
 }
 
+async function _routeDoubleElim(p, match, winnerId, loserId) {
+  const tid = match.tournament_id;
+  const bracket = match.bracket || 'W';
+  const round = match.round;
+  const slot = match.slot;
+
+  const maxWBRes = await p.query(`SELECT MAX(round) as max_round FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W'`, [tid]);
+  const wbRounds = parseInt(maxWBRes.rows[0].max_round) || 1;
+  const lbRounds = wbRounds > 1 ? 2 * (wbRounds - 1) : 0;
+
+  const placePlayer = async (targetBracket, targetRound, targetSlot, position, playerId) => {
+    if (!playerId) return;
+    await p.query(
+      `UPDATE tournament_matches SET ${position}_id = $1 WHERE tournament_id = $2 AND bracket = $3 AND round = $4 AND slot = $5`,
+      [playerId, tid, targetBracket, targetRound, targetSlot]
+    );
+  };
+
+  if (bracket === 'GF') {
+    await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [tid]);
+    if (loserId) {
+      await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`, [tid, loserId]);
+    }
+    return;
+  }
+
+  if (bracket === 'W') {
+    if (round === wbRounds) {
+      await placePlayer('GF', 1, 1, 'p1', winnerId);
+      if (lbRounds === 0) {
+        await placePlayer('GF', 1, 1, 'p2', loserId);
+      } else {
+        await placePlayer('L', lbRounds, 1, 'p2', loserId);
+      }
+    } else {
+      const nextSlot = Math.ceil(slot / 2);
+      const position = slot % 2 === 1 ? 'p1' : 'p2';
+      await placePlayer('W', round + 1, nextSlot, position, winnerId);
+      if (round === 1) {
+        const lbSlot = Math.ceil(slot / 2);
+        const lbPosition = slot % 2 === 1 ? 'p1' : 'p2';
+        await placePlayer('L', 1, lbSlot, lbPosition, loserId);
+      } else {
+        await placePlayer('L', 2 * (round - 1), slot, 'p2', loserId);
+      }
+    }
+    if (loserId) {
+      const needsElim = bracket === 'W' && false;
+      if (needsElim) {
+        await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`, [tid, loserId]);
+      }
+    }
+  } else if (bracket === 'L') {
+    if (loserId) {
+      await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`, [tid, loserId]);
+    }
+    if (round === lbRounds) {
+      await placePlayer('GF', 1, 1, 'p2', winnerId);
+    } else if (round % 2 === 1) {
+      await placePlayer('L', round + 1, slot, 'p1', winnerId);
+    } else {
+      const nextSlot = Math.ceil(slot / 2);
+      const position = slot % 2 === 1 ? 'p1' : 'p2';
+      await placePlayer('L', round + 1, nextSlot, position, winnerId);
+    }
+  }
+
+  const gfRes = await p.query(`SELECT * FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'GF'`, [tid]);
+  const gf = gfRes.rows[0];
+  if (gf && gf.p1_id && gf.p2_id && !gf.winner_id) {
+  }
+}
+
 async function clearTournamentMatchWinner(matchId) {
   const p = getPool();
   const matchRes = await p.query(`SELECT * FROM tournament_matches WHERE id = $1`, [parseInt(matchId)]);
   const match = matchRes.rows[0];
   if (!match || !match.winner_id) return;
-  const loserId = match.winner_id === match.p1_id ? match.p2_id : match.p1_id;
+
+  const tournamentRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [match.tournament_id]);
+  const tournament = tournamentRes.rows[0];
+  const isDoubleElim = tournament?.format === 'double_elim';
+
+  const loserId = BigInt(match.winner_id) === BigInt(match.p1_id) ? match.p2_id : match.p1_id;
   await p.query(`UPDATE tournament_matches SET winner_id = NULL WHERE id = $1`, [parseInt(matchId)]);
-  if (loserId) {
-    await p.query(`UPDATE tournament_participants SET eliminated = FALSE WHERE tournament_id = $1 AND account_id = $2`,
-      [match.tournament_id, loserId]);
+
+  if (isDoubleElim) {
+    if (loserId) {
+      await p.query(`UPDATE tournament_participants SET eliminated = FALSE WHERE tournament_id = $1 AND account_id = $2`,
+        [match.tournament_id, loserId]);
+    }
+    await p.query(`UPDATE tournament_matches SET winner_id = NULL, p1_id = NULL, p2_id = NULL WHERE tournament_id = $1 AND bracket IN ('GF') AND winner_id IS NULL`, [match.tournament_id]);
+    await p.query(
+      `UPDATE tournament_matches SET p1_id = CASE WHEN p1_id = $2 THEN NULL ELSE p1_id END, p2_id = CASE WHEN p2_id = $2 THEN NULL ELSE p2_id END, winner_id = NULL WHERE tournament_id = $1 AND id != $3 AND (p1_id = $2 OR p2_id = $2)`,
+      [match.tournament_id, BigInt(match.winner_id), parseInt(matchId)]
+    );
+    if (loserId) {
+      await p.query(
+        `UPDATE tournament_matches SET p1_id = CASE WHEN p1_id = $2 THEN NULL ELSE p1_id END, p2_id = CASE WHEN p2_id = $2 THEN NULL ELSE p2_id END, winner_id = NULL WHERE tournament_id = $1 AND (p1_id = $2 OR p2_id = $2)`,
+        [match.tournament_id, BigInt(loserId)]
+      );
+    }
+    await p.query(`UPDATE tournaments SET status = 'active' WHERE id = $1 AND status = 'completed'`, [match.tournament_id]);
+  } else {
+    if (loserId) {
+      await p.query(`UPDATE tournament_participants SET eliminated = FALSE WHERE tournament_id = $1 AND account_id = $2`,
+        [match.tournament_id, loserId]);
+    }
+    await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round > $2`, [match.tournament_id, match.round]);
   }
-  await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1 AND round > $2`, [match.tournament_id, match.round]);
   return getTournamentMatches(match.tournament_id);
 }

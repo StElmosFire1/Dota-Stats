@@ -19,6 +19,44 @@ function RoundName(round, totalRounds) {
   return `Round ${round}`;
 }
 
+function LBRoundName(round, totalLBRounds) {
+  if (round === totalLBRounds) return 'LB Final';
+  if (round % 2 === 1) return `LB Round ${Math.ceil(round / 2)}`;
+  return `LB Round ${round / 2} (Drop-in)`;
+}
+
+function ChampionBanner({ matches, tournament }) {
+  let champion = null;
+  if (tournament.format === 'double_elim') {
+    const gf = matches.find(m => m.bracket === 'GF' && m.winner_id);
+    if (gf) champion = { name: gf.winner_name, id: gf.winner_id };
+  } else {
+    const maxRound = Math.max(...matches.map(m => m.round));
+    const final = matches.find(m => m.round === maxRound && m.winner_id);
+    if (final) champion = { name: final.winner_name, id: final.winner_id };
+  }
+  if (!champion) return null;
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(251,191,36,0.18) 0%, rgba(245,158,11,0.08) 100%)',
+      border: '2px solid rgba(251,191,36,0.5)',
+      borderRadius: 16, padding: '24px 32px', marginBottom: 28, textAlign: 'center',
+      boxShadow: '0 0 32px rgba(251,191,36,0.15)',
+    }}>
+      <div style={{ fontSize: 42, marginBottom: 8 }}>🏆</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>
+        Tournament Champion
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: '#fde68a' }}>
+        {champion.name || `Player #${champion.id}`}
+      </div>
+      <div style={{ fontSize: 13, color: 'rgba(251,191,36,0.6)', marginTop: 6 }}>
+        {tournament.name}
+      </div>
+    </div>
+  );
+}
+
 function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin }) {
   const [loading, setLoading] = useState(false);
   const isBye = match.p1_id && !match.p2_id;
@@ -142,7 +180,15 @@ function TournamentDetail() {
     (!addSearch || (p.nickname || p.persona_name || '').toLowerCase().includes(addSearch.toLowerCase()))
   );
 
-  const rounds = [...new Set(matches.map(m => m.round))].sort((a, b) => a - b);
+  const isDoubleElim = tournament.format === 'double_elim';
+  const wbMatches = matches.filter(m => !m.bracket || m.bracket === 'W');
+  const lbMatches = matches.filter(m => m.bracket === 'L');
+  const gfMatches = matches.filter(m => m.bracket === 'GF');
+  const wbRounds = [...new Set(wbMatches.map(m => m.round))].sort((a, b) => a - b);
+  const lbRounds = [...new Set(lbMatches.map(m => m.round))].sort((a, b) => a - b);
+  const maxWBRound = wbRounds.length > 0 ? Math.max(...wbRounds) : 0;
+  const maxLBRound = lbRounds.length > 0 ? Math.max(...lbRounds) : 0;
+  const rounds = [...new Set(wbMatches.map(m => m.round))].sort((a, b) => a - b);
   const maxRound = rounds.length > 0 ? Math.max(...rounds) : 0;
 
   const handleAddParticipant = async (accountId) => {
@@ -278,6 +324,9 @@ function TournamentDetail() {
 
         <div>
           <h2 className="section-title">Bracket</h2>
+          {tournament.status === 'completed' && matches.length > 0 && (
+            <ChampionBanner matches={matches} tournament={tournament} />
+          )}
           {matches.length === 0 ? (
             <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>
               {isAdmin && participants.length >= 2
@@ -285,6 +334,73 @@ function TournamentDetail() {
                 : participants.length < 2
                 ? 'Add at least 2 participants to generate a bracket.'
                 : 'No bracket generated yet.'}
+            </div>
+          ) : isDoubleElim ? (
+            <div>
+              {wbMatches.length > 0 && (
+                <div style={{ marginBottom: 32 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>
+                    Winners Bracket
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', minWidth: `${wbRounds.length * 260}px` }}>
+                      {wbRounds.map(round => (
+                        <div key={round} style={{ flex: '0 0 220px' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, textAlign: 'center' }}>
+                            {RoundName(round, maxWBRound)}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {wbMatches.filter(m => m.round === round).map(match => (
+                              <BracketMatch key={match.id} match={match} superuserKey={superuserKey}
+                                onWinnerSet={(updatedMatches) => setData(prev => ({ ...prev, matches: updatedMatches }))}
+                                isAdmin={isAdmin} />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {lbMatches.length > 0 && (
+                <div style={{ marginBottom: 32 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>
+                    Losers Bracket
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', minWidth: `${lbRounds.length * 260}px` }}>
+                      {lbRounds.map(round => (
+                        <div key={round} style={{ flex: '0 0 220px' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, textAlign: 'center' }}>
+                            {LBRoundName(round, maxLBRound)}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {lbMatches.filter(m => m.round === round).map(match => (
+                              <BracketMatch key={match.id} match={match} superuserKey={superuserKey}
+                                onWinnerSet={(updatedMatches) => setData(prev => ({ ...prev, matches: updatedMatches }))}
+                                isAdmin={isAdmin} />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {gfMatches.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>
+                    Grand Final
+                  </div>
+                  <div style={{ maxWidth: 260 }}>
+                    {gfMatches.map(match => (
+                      <BracketMatch key={match.id} match={match} superuserKey={superuserKey}
+                        onWinnerSet={(updatedMatches) => setData(prev => ({ ...prev, matches: updatedMatches }))}
+                        isAdmin={isAdmin} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>

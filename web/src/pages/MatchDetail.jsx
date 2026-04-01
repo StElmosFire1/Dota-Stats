@@ -1755,6 +1755,114 @@ function KillHeatmapPanel({ timeline, allPlayers }) {
   );
 }
 
+// ── WardMapPanel ──────────────────────────────────────────────────────────────
+const WARD_MAP_X_MIN = 64, WARD_MAP_X_MAX = 192, WARD_MAP_Y_MIN = 64, WARD_MAP_Y_MAX = 192;
+function wardToCanvasCoords(wx, wy, W, H) {
+  return {
+    px: ((wx - WARD_MAP_X_MIN) / (WARD_MAP_X_MAX - WARD_MAP_X_MIN)) * W,
+    py: (1 - (wy - WARD_MAP_Y_MIN) / (WARD_MAP_Y_MAX - WARD_MAP_Y_MIN)) * H,
+  };
+}
+function drawWardDiamond(ctx, px, py, r) {
+  ctx.beginPath();
+  ctx.moveTo(px, py - r);
+  ctx.lineTo(px + r, py);
+  ctx.lineTo(px, py + r);
+  ctx.lineTo(px - r, py);
+  ctx.closePath();
+}
+function WardMapPanel({ players }) {
+  const canvasRef = useRef(null);
+  const mapImg = useRef(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [wardFilter, setWardFilter] = useState('both');
+
+  const hasWards = players.some(p => Array.isArray(p.ward_placements) && p.ward_placements.length > 0);
+
+  useEffect(() => {
+    if (!hasWards) return;
+    const img = new Image();
+    img.onload = () => setMapLoaded(true);
+    img.onerror = () => setMapLoaded(false);
+    img.src = '/minimap.jpg';
+    mapImg.current = img;
+  }, [hasWards]);
+
+  const radiantColor = '#4ade80';
+  const direColor = '#f87171';
+
+  useEffect(() => {
+    if (!hasWards) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    if (mapLoaded && mapImg.current?.naturalWidth > 0) {
+      ctx.drawImage(mapImg.current, 0, 0, W, H);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      ctx.fillStyle = '#0a1610';
+      ctx.fillRect(0, 0, W, H);
+    }
+    const showObs = wardFilter === 'both' || wardFilter === 'obs';
+    const showSen = wardFilter === 'both' || wardFilter === 'sen';
+    for (const player of players) {
+      const wards = Array.isArray(player.ward_placements) ? player.ward_placements : [];
+      const color = player.team === 'radiant' ? radiantColor : direColor;
+      for (const ward of wards) {
+        if (!ward.x || !ward.y) continue;
+        if (ward.type === 'obs' && !showObs) continue;
+        if (ward.type === 'sen' && !showSen) continue;
+        const { px, py } = wardToCanvasCoords(ward.x, ward.y, W, H);
+        ctx.fillStyle = color + 'cc';
+        ctx.strokeStyle = '#000000aa';
+        ctx.lineWidth = 1;
+        if (ward.type === 'obs') {
+          ctx.beginPath();
+          ctx.arc(px, py, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          drawWardDiamond(ctx, px, py, 6);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+    }
+  }, [players, mapLoaded, wardFilter, hasWards]);
+
+  if (!hasWards) return null;
+
+  return (
+    <div className="expanded-stats-section">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+        <h3 style={{ margin: 0 }}>Ward Map <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— ward placements this match</span></h3>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[['both', 'Both'], ['obs', 'Observer'], ['sen', 'Sentry']].map(([v, l]) => (
+            <button key={v} onClick={() => setWardFilter(v)} style={{
+              background: wardFilter === v ? 'var(--accent-blue)' : 'var(--bg-secondary)',
+              color: wardFilter === v ? '#fff' : 'var(--text-muted)',
+              border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            }}>{l}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-muted)' }}>
+          <span><span style={{ color: radiantColor }}>●</span> Radiant Obs &nbsp;<span style={{ color: radiantColor }}>◆</span> Radiant Sen</span>
+          <span><span style={{ color: direColor }}>●</span> Dire Obs &nbsp;<span style={{ color: direColor }}>◆</span> Dire Sen</span>
+        </div>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={500} height={500}
+        style={{ width: '100%', maxWidth: 500, borderRadius: 8, border: '1px solid #334155', display: 'block' }}
+      />
+    </div>
+  );
+}
+
 // ── SupportReportPanel ────────────────────────────────────────────────────────
 function SupportReportPanel({ players, timeline }) {
   // Only show if at least one player has meaningful support activity
@@ -2598,6 +2706,7 @@ export default function MatchDetail() {
       <KillHeatmapPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <TeamfightPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <SupportReportPanel players={allPlayers} timeline={match.game_timeline} />
+      <WardMapPanel players={allPlayers} />
       <DeathTimingPanel timeline={match.game_timeline} allPlayers={allPlayers} duration={match.duration} />
       <ComebackMetricPanel timeline={match.game_timeline} allPlayers={allPlayers} />
 
