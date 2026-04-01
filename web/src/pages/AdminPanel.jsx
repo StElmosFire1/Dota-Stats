@@ -422,7 +422,7 @@ export default function AdminPanel() {
       .then(r => r.json())
       .then(data => setHeroes(data.sort((a, b) => a.localized_name.localeCompare(b.localized_name))))
       .catch(() => {});
-  }, [isSuperuser]);
+  }, [isSuperuser, loadOverview]);
 
   const updateRadiant = (idx, changes) => {
     setRadiantPlayers(prev => prev.map((p, i) => i === idx ? { ...p, ...changes } : p));

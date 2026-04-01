@@ -148,7 +148,7 @@ function SteamButton() {
   }
   return (
     <button
-      className="btn btn-small"
+      className="btn btn-small steam-login-btn"
       onClick={signIn}
       title="Sign in with Steam to verify your identity for buy-ins"
       style={{ marginLeft: 4, background: '#1b2838', borderColor: '#567997', color: '#8ba7bf', fontSize: 11 }}
@@ -294,12 +294,8 @@ function Nav() {
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
           <DropdownItem to="/social">Player Network</DropdownItem>
-        </DropdownMenu>
-        <DropdownMenu label="More">
-          <DropdownItem to="/tournaments">🥊 Tournaments</DropdownItem>
-          <DropdownItem to="/hall-of-fame">🏆 Hall of Fame</DropdownItem>
-          <DropdownItem to="/benchmarks">📊 Player Benchmarks</DropdownItem>
-          <DropdownItem to="/multikills">💀 Multi-Kill Records</DropdownItem>
+          <DropdownItem to="/tournaments">Tournaments</DropdownItem>
+          <DropdownItem to="/benchmarks">Player Benchmarks</DropdownItem>
         </DropdownMenu>
       </div>
       <SeasonSelector />

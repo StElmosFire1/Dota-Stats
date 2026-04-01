@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { getOverallStats } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
+const POS_SHORT = { 1: 'Pos 1', 2: 'Pos 2', 3: 'Pos 3', 4: 'Pos 4', 5: 'Pos 5' };
+
 export default function OverallStats() {
   const { seasonId } = useSeason();
   const [stats, setStats] = useState([]);
@@ -66,6 +68,7 @@ export default function OverallStats() {
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">Win%{si('win_rate')}</th>
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')} title="Kill Involvement — percentage of team kills you participated in (kills + assists)">KI%{si('avg_kill_involvement')}</th>
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('captain_win_rate')} title="Captain win rate — win percentage when this player was captain">Capt%{si('captain_win_rate')}</th>
+              <th className="col-stat" title="Best position by win rate (minimum 2 games at that position)">Best Pos</th>
             </tr>
           </thead>
           <tbody>
@@ -92,6 +95,7 @@ export default function OverallStats() {
                   >
                     {captRate === '-' ? '-' : `${captRate}% (${row.captain_games}g)`}
                   </td>
+                  <td className="col-stat">{row.best_position ? POS_SHORT[row.best_position] : '—'}</td>
                 </tr>
               );
             })}

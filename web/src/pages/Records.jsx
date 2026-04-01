@@ -297,13 +297,9 @@ export default function Records() {
 
         return (
           <div>
-            <h2 style={{ color: '#4ade80', marginBottom: '0.5rem', fontSize: '1.1rem' }}>🏅 Positive Records</h2>
-            <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.85rem' }}>Aggregate season totals — replay-derived stats show — where no data exists yet.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
               {posCards.map(c => <RecCard key={c.key} rec={positive[c.key]} card={c} color="#4ade80" />)}
             </div>
-            <h2 style={{ color: '#f87171', marginBottom: '0.5rem', fontSize: '1.1rem' }}>💀 Negative Records</h2>
-            <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.85rem' }}>The hall of shame — diebacks, ward inefficiency, and other dubious honours.</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
               {negCards.map(c => <RecCard key={c.key} rec={negative[c.key]} card={c} color="#f87171" />)}
             </div>

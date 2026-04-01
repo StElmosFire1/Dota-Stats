@@ -3,11 +3,7 @@ import { Link } from 'react-router-dom';
 import { getHallOfFame } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import HeroIcon from '../components/HeroIcon';
-
-function formatHero(name) {
-  if (!name) return '—';
-  return name.replace('npc_dota_hero_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
+import { formatHeroName as formatHero } from '../utils/heroes';
 
 function RecordCard({ title, emoji, record }) {
   if (!record) return null;

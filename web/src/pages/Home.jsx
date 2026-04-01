@@ -3,12 +3,7 @@ import { Link } from 'react-router-dom';
 import { getHomeStats, getLatestRecap, getSeasons, getPredictions } from '../api';
 import { fmtDate } from '../utils/dates';
 import { useSeason } from '../context/SeasonContext';
-
-function formatHeroName(raw) {
-  if (!raw) return '—';
-  const clean = raw.replace(/^npc_dota_hero_/, '').replace(/_/g, ' ');
-  return clean.replace(/\b\w/g, c => c.toUpperCase());
-}
+import { formatHeroName } from '../utils/heroes';
 
 function StatCard({ label, value, sub, icon }) {
   return (

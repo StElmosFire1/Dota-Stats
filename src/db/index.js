@@ -2051,6 +2051,28 @@ async function getOverallStats(seasonId = null) {
     row.avg_kill_involvement = kis.length > 0 ? Math.round(kis.reduce((a, b) => a + b, 0) / kis.length) : 0;
   }
 
+  const params4 = [];
+  const sc4 = seasonId ? ` AND m.season_id = $${params4.push(parseInt(seasonId))}` : '';
+  const posData = await p.query(`
+    SELECT ps.account_id, ps.position,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) as win_rate
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id != 0 AND ps.position BETWEEN 1 AND 5${sc4}
+    GROUP BY ps.account_id, ps.position
+    HAVING COUNT(*) >= 2
+    ORDER BY ps.account_id, win_rate DESC
+  `, params4);
+  const bestPosByAcct = {};
+  for (const row of posData.rows) {
+    const acct = row.account_id.toString();
+    if (!bestPosByAcct[acct]) bestPosByAcct[acct] = parseInt(row.position);
+  }
+  for (const row of result.rows) {
+    const acct = row.account_id?.toString();
+    row.best_position = acct ? (bestPosByAcct[acct] || null) : null;
+  }
+
   return result.rows;
 }
 
@@ -5244,7 +5266,7 @@ async function getHallOfFameCareerStats(seasonId = null) {
 async function getPlayerBenchmarkAverages(seasonId = null) {
   const p = getPool();
   const params = [];
-  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : '';
   const result = await p.query(`
     SELECT
       ps.account_id,
@@ -5265,7 +5287,7 @@ async function getPlayerBenchmarkAverages(seasonId = null) {
     LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text
     WHERE ps.account_id::text != '0'${sc}
     GROUP BY ps.account_id, COALESCE(n.nickname, MAX(ps.persona_name))
-    HAVING COUNT(DISTINCT ps.match_id) >= 3
+    HAVING COUNT(DISTINCT ps.match_id) >= 1
     ORDER BY games DESC
   `, params);
   return result.rows;

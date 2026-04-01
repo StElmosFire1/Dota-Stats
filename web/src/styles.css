@@ -22,10 +22,11 @@
 
 /* Light theme */
 body.light-theme {
-  --bg-primary: #f0f4f8;
-  --bg-secondary: #e2e8f0;
-  --bg-card: #ffffff;
-  --bg-hover: #edf2f7;
+  --bg-primary: #eef1f6;
+  --bg-secondary: #e0e5ee;
+  --bg-card: #f5f7fa;
+  --bg-tertiary: #e8ecf2;
+  --bg-hover: #dde3ec;
   --text-primary: #1a202c;
   --text-secondary: #4a5568;
   --text-muted: #718096;
@@ -36,10 +37,22 @@ body.light-theme {
   --accent: #3182ce;
   --accent-hover: #2b6cb0;
   --gold: #b7791f;
-  --border: #cbd5e0;
+  --border: #c0c9d8;
   --accent-green: #38a169;
   --accent-red: #c53030;
   --shadow-card: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+body.light-theme .season-selector {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+body.light-theme .steam-login-btn {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
 }
 
 * {
