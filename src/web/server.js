@@ -2135,6 +2135,124 @@ NOTES
     }
   });
 
+  router.get('/tournaments', async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const data = await db.getTournaments(seasonId);
+      res.json({ tournaments: data });
+    } catch (err) {
+      console.error('[API] tournaments error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch tournaments' });
+    }
+  });
+
+  router.get('/tournaments/:id', async (req, res) => {
+    try {
+      const [tournament, participants, matches] = await Promise.all([
+        db.getTournamentById(req.params.id),
+        db.getTournamentParticipants(req.params.id),
+        db.getTournamentMatches(req.params.id),
+      ]);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      res.json({ tournament, participants, matches });
+    } catch (err) {
+      console.error('[API] tournament detail error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch tournament' });
+    }
+  });
+
+  router.post('/tournaments', authMiddleware, async (req, res) => {
+    try {
+      const { name, description, seasonId, format } = req.body;
+      if (!name) return res.status(400).json({ error: 'Name required' });
+      const tournament = await db.createTournament({ name, description, seasonId, format, createdBy: req.session?.username });
+      res.json({ tournament });
+    } catch (err) {
+      console.error('[API] create tournament error:', err.message);
+      res.status(500).json({ error: 'Failed to create tournament' });
+    }
+  });
+
+  router.patch('/tournaments/:id/status', authMiddleware, async (req, res) => {
+    try {
+      const { status } = req.body;
+      const tournament = await db.updateTournamentStatus(req.params.id, status);
+      res.json({ tournament });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to update tournament status' });
+    }
+  });
+
+  router.delete('/tournaments/:id', authMiddleware, async (req, res) => {
+    try {
+      await db.deleteTournament(req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to delete tournament' });
+    }
+  });
+
+  router.get('/tournaments/:id/participants', async (req, res) => {
+    try {
+      const data = await db.getTournamentParticipants(req.params.id);
+      res.json({ participants: data });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch participants' });
+    }
+  });
+
+  router.post('/tournaments/:id/participants', authMiddleware, async (req, res) => {
+    try {
+      const { accountId, seed } = req.body;
+      if (!accountId) return res.status(400).json({ error: 'accountId required' });
+      const p = await db.addTournamentParticipant(req.params.id, accountId, seed || null);
+      res.json({ participant: p });
+    } catch (err) {
+      console.error('[API] add participant error:', err.message);
+      res.status(500).json({ error: 'Failed to add participant' });
+    }
+  });
+
+  router.delete('/tournaments/:id/participants/:accountId', authMiddleware, async (req, res) => {
+    try {
+      await db.removeTournamentParticipant(req.params.id, req.params.accountId);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to remove participant' });
+    }
+  });
+
+  router.post('/tournaments/:id/generate', authMiddleware, async (req, res) => {
+    try {
+      const matches = await db.generateTournamentBracket(req.params.id);
+      res.json({ matches });
+    } catch (err) {
+      console.error('[API] generate bracket error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to generate bracket' });
+    }
+  });
+
+  router.post('/tournament-matches/:matchId/winner', authMiddleware, async (req, res) => {
+    try {
+      const { winnerId } = req.body;
+      if (!winnerId) return res.status(400).json({ error: 'winnerId required' });
+      const matches = await db.setTournamentMatchWinner(req.params.matchId, winnerId);
+      res.json({ matches });
+    } catch (err) {
+      console.error('[API] set winner error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to set winner' });
+    }
+  });
+
+  router.delete('/tournament-matches/:matchId/winner', authMiddleware, async (req, res) => {
+    try {
+      const matches = await db.clearTournamentMatchWinner(req.params.matchId);
+      res.json({ matches });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to clear winner' });
+    }
+  });
+
   router.get('/admin/duplicate-matches', authMiddleware, async (req, res) => {
     try {
       const duplicates = await db.findDuplicateMatches();

@@ -32,6 +32,7 @@ import Schedule from './pages/Schedule';
 import Social from './pages/Social';
 import HallOfFame from './pages/HallOfFame';
 import PlayerBenchmarks from './pages/PlayerBenchmarks';
+import Tournaments from './pages/Tournaments';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
@@ -294,6 +295,7 @@ function Nav() {
           <DropdownItem to="/social">Player Network</DropdownItem>
         </DropdownMenu>
         <DropdownMenu label="More">
+          <DropdownItem to="/tournaments">🥊 Tournaments</DropdownItem>
           <DropdownItem to="/hall-of-fame">🏆 Hall of Fame</DropdownItem>
           <DropdownItem to="/benchmarks">📊 Player Benchmarks</DropdownItem>
           <DropdownItem to="/multikills">💀 Multi-Kill Records</DropdownItem>
@@ -353,6 +355,8 @@ export default function App() {
                 <Route path="/schedule" element={<Schedule />} />
                 <Route path="/social" element={<Social />} />
                 <Route path="/player-network" element={<Social />} />
+                <Route path="/tournaments" element={<Tournaments />} />
+                <Route path="/tournaments/:id" element={<Tournaments />} />
                 <Route path="/hall-of-fame" element={<HallOfFame />} />
                 <Route path="/benchmarks" element={<PlayerBenchmarks />} />
               </Routes>

@@ -591,6 +591,43 @@ async function init() {
     await p.query(`ALTER TABLE player_preferences ADD COLUMN IF NOT EXISTS report_card_optin BOOLEAN NOT NULL DEFAULT FALSE`);
     await p.query(`ALTER TABLE player_preferences ADD COLUMN IF NOT EXISTS ratings_optout BOOLEAN NOT NULL DEFAULT FALSE`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tournaments (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        season_id INTEGER REFERENCES seasons(id),
+        format TEXT NOT NULL DEFAULT 'single_elim',
+        status TEXT NOT NULL DEFAULT 'upcoming',
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tournament_participants (
+        id SERIAL PRIMARY KEY,
+        tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        seed INTEGER,
+        eliminated BOOLEAN NOT NULL DEFAULT FALSE,
+        UNIQUE(tournament_id, account_id)
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tournament_matches (
+        id SERIAL PRIMARY KEY,
+        tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+        round INTEGER NOT NULL,
+        slot INTEGER NOT NULL,
+        p1_id BIGINT,
+        p2_id BIGINT,
+        winner_id BIGINT,
+        inhouse_match_id TEXT,
+        scheduled_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -3042,7 +3079,7 @@ async function getPlayerAchievements(accountId) {
     if (cur > maxStreak) maxStreak = cur;
   }
 
-  const [mkRes, fbRes, wardRes, singleGameRes, posRes] = await Promise.all([
+  const [mkRes, fbRes, wardRes, singleGameRes, posRes, totalsRes, kdaRes, healRes, towerRes, winRateRes] = await Promise.all([
     p.query(
       `SELECT SUM(rampages) AS rampages, SUM(ultra_kills) AS ultra_kills, SUM(triple_kills) AS triple_kills,
               SUM(double_kills) AS double_kills, MAX(kills) AS max_kills
@@ -3063,7 +3100,8 @@ async function getPlayerAchievements(accountId) {
       [pid]
     ),
     p.query(
-      `SELECT MAX(hero_damage) AS max_damage, MAX(gpm) AS max_gpm
+      `SELECT MAX(hero_damage) AS max_damage, MAX(gpm) AS max_gpm, MAX(hero_healing) AS max_healing,
+              MAX(tower_damage) AS max_tower_damage, MAX(last_hits) AS max_last_hits
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = $1 AND m.is_legacy = false`,
       [pid]
@@ -3073,6 +3111,38 @@ async function getPlayerAchievements(accountId) {
        JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = $1 AND ps.position > 0 AND m.is_legacy = false
        GROUP BY position`,
+      [pid]
+    ),
+    p.query(
+      `SELECT SUM(kills) AS total_kills, SUM(assists) AS total_assists, SUM(last_hits) AS total_lh
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT AVG(CASE WHEN deaths > 0 THEN (kills + assists)::float / deaths ELSE (kills + assists)::float END) AS avg_kda
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT SUM(hero_healing) AS total_healing, MAX(hero_healing) AS max_game_healing
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT SUM(tower_damage) AS total_tower_damage
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+      [pid]
+    ),
+    p.query(
+      `SELECT
+         COUNT(*) AS g,
+         SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS w
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1 AND m.is_legacy = false`,
       [pid]
     ),
   ]);
@@ -3087,37 +3157,91 @@ async function getPlayerAchievements(accountId) {
   const wardsKilled = parseInt(wardRes.rows[0]?.wards_killed) || 0;
   const maxDamage = parseInt(singleGameRes.rows[0]?.max_damage) || 0;
   const maxGpm = parseInt(singleGameRes.rows[0]?.max_gpm) || 0;
+  const maxHealing = parseInt(singleGameRes.rows[0]?.max_healing) || 0;
+  const maxTowerDamage = parseInt(singleGameRes.rows[0]?.max_tower_damage) || 0;
+  const maxLastHits = parseInt(singleGameRes.rows[0]?.max_last_hits) || 0;
   const posCounts = {};
   for (const r of posRes.rows) posCounts[r.position] = parseInt(r.cnt) || 0;
   const carryGames = posCounts[1] || 0;
   const supportGames = (posCounts[4] || 0) + (posCounts[5] || 0);
+  const totalKills = parseInt(totalsRes.rows[0]?.total_kills) || 0;
+  const totalAssists = parseInt(totalsRes.rows[0]?.total_assists) || 0;
+  const totalLh = parseInt(totalsRes.rows[0]?.total_lh) || 0;
+  const avgKda = parseFloat(kdaRes.rows[0]?.avg_kda) || 0;
+  const totalHealing = parseInt(healRes.rows[0]?.total_healing) || 0;
+  const totalTowerDamage = parseInt(towerRes.rows[0]?.total_tower_damage) || 0;
+  const totalG = parseInt(winRateRes.rows[0]?.g) || 0;
+  const totalW = parseInt(winRateRes.rows[0]?.w) || 0;
+  const winRate = totalG >= 20 ? totalW / totalG : 0;
 
   const ACHIEVEMENTS = [
-    { key: 'veteran_25',      label: 'Veteran',            desc: '25 games played',                    icon: '🎖️',  earned: games >= 25 },
-    { key: 'veteran_50',      label: 'Battle-Hardened',    desc: '50 games played',                    icon: '⚔️',  earned: games >= 50 },
-    { key: 'veteran_100',     label: 'Centurion',          desc: '100 games played',                   icon: '🏆',  earned: games >= 100 },
-    { key: 'veteran_200',     label: 'Elder',              desc: '200 games played',                   icon: '🌟',  earned: games >= 200 },
-    { key: 'streak_5',        label: 'On Fire',            desc: '5-game win streak',                  icon: '🔥',  earned: maxStreak >= 5 },
-    { key: 'streak_10',       label: 'Unstoppable',        desc: '10-game win streak',                 icon: '💥',  earned: maxStreak >= 10 },
-    { key: 'deathless',       label: 'Untouchable',        desc: 'Won a game with 0 deaths',           icon: '🛡️',  earned: deathlessGames > 0 },
-    { key: 'deathless_5',     label: 'Ghost',              desc: '5+ deathless game wins',             icon: '👻',  earned: deathlessGames >= 5 },
-    { key: 'captain_5',       label: 'Born Leader',        desc: 'Captained 5+ matches',               icon: '👑',  earned: captainGames >= 5 },
-    { key: 'all_positions',   label: 'Versatile',          desc: 'Played all 5 positions',             icon: '🎭',  earned: positionsPlayed >= 5 },
-    { key: 'carry_king',      label: 'Carry King',         desc: '20+ games as Safe Lane (Pos 1)',     icon: '⚔️',  earned: carryGames >= 20 },
-    { key: 'support_master',  label: 'Support Master',     desc: '20+ games as Support (Pos 4/5)',     icon: '🩺',  earned: supportGames >= 20 },
-    { key: 'hero_diversity',  label: 'Jack of All Trades', desc: '15+ different heroes',               icon: '🃏',  earned: uniqueHeroes >= 15 },
-    { key: 'hero_diversity_25', label: 'Hero Collector',  desc: '25+ different heroes',               icon: '📚',  earned: uniqueHeroes >= 25 },
-    { key: 'specialist',      label: 'Specialist',         desc: '10+ games on one hero',              icon: '🎯',  earned: maxOnOneHero >= 10 },
-    { key: 'rampage',         label: 'RAMPAGE',            desc: 'Achieved at least one rampage',      icon: '☠️',  earned: rampages > 0 },
-    { key: 'ultra_kill',      label: 'Ultra Kill',         desc: 'Got an Ultra Kill',                  icon: '⚡',  earned: ultraKills > 0 },
-    { key: 'multikill_10',    label: 'Kill Artist',        desc: '10+ multi-kills (combined)',         icon: '🔪',  earned: (doubleKills + tripleKills + ultraKills + rampages) >= 10 },
-    { key: 'first_blood',     label: 'First Blood',        desc: 'Claimed first blood',                icon: '💉',  earned: firstBloods > 0 },
-    { key: 'bloodthirsty',    label: 'Bloodthirsty',       desc: '10+ first bloods overall',           icon: '🩸',  earned: firstBloods >= 10 },
-    { key: 'massacre',        label: 'Massacre',           desc: '20+ kills in a single game',         icon: '💀',  earned: maxKills >= 20 },
-    { key: 'big_damage',      label: 'Demolisher',         desc: '30,000+ hero damage in one game',    icon: '💣',  earned: maxDamage >= 30000 },
-    { key: 'efficient',       label: 'Gold Factory',       desc: '600+ GPM in a single game',          icon: '💰',  earned: maxGpm >= 600 },
-    { key: 'ward_lord',       label: 'Ward Lord',          desc: '200+ wards placed',                  icon: '👁️',  earned: wardsPlaced >= 200 },
-    { key: 'ward_breaker',    label: 'Ward Breaker',       desc: '50+ enemy wards killed',             icon: '🔍',  earned: wardsKilled >= 50 },
+    // Milestones
+    { key: 'veteran_10',      label: 'Rookie',             desc: '10 games played',                    icon: '🎮',  earned: games >= 10,  group: 'Milestones' },
+    { key: 'veteran_25',      label: 'Veteran',            desc: '25 games played',                    icon: '🎖️',  earned: games >= 25,  group: 'Milestones' },
+    { key: 'veteran_50',      label: 'Battle-Hardened',    desc: '50 games played',                    icon: '⚔️',  earned: games >= 50,  group: 'Milestones' },
+    { key: 'veteran_100',     label: 'Centurion',          desc: '100 games played',                   icon: '🏆',  earned: games >= 100, group: 'Milestones' },
+    { key: 'veteran_200',     label: 'Elder',              desc: '200 games played',                   icon: '🌟',  earned: games >= 200, group: 'Milestones' },
+    // Win rate
+    { key: 'wr_55',           label: 'Above Average',      desc: '55%+ win rate (20+ games)',          icon: '📈',  earned: winRate >= 0.55, group: 'Win Rate' },
+    { key: 'wr_60',           label: 'Dominant',           desc: '60%+ win rate (20+ games)',          icon: '🔝',  earned: winRate >= 0.60, group: 'Win Rate' },
+    { key: 'wr_65',           label: 'Unstoppable Force',  desc: '65%+ win rate (20+ games)',          icon: '👑',  earned: winRate >= 0.65, group: 'Win Rate' },
+    // Streaks
+    { key: 'streak_3',        label: 'Hot',                desc: '3-game win streak',                  icon: '🌶️',  earned: maxStreak >= 3,  group: 'Streaks' },
+    { key: 'streak_5',        label: 'On Fire',            desc: '5-game win streak',                  icon: '🔥',  earned: maxStreak >= 5,  group: 'Streaks' },
+    { key: 'streak_10',       label: 'Unstoppable',        desc: '10-game win streak',                 icon: '💥',  earned: maxStreak >= 10, group: 'Streaks' },
+    // Survivability
+    { key: 'deathless',       label: 'Untouchable',        desc: 'Won a game with 0 deaths',           icon: '🛡️',  earned: deathlessGames > 0,   group: 'Survivability' },
+    { key: 'deathless_5',     label: 'Ghost',              desc: '5+ deathless game wins',             icon: '👻',  earned: deathlessGames >= 5,  group: 'Survivability' },
+    { key: 'deathless_10',    label: 'Phantom',            desc: '10+ deathless game wins',            icon: '💀',  earned: deathlessGames >= 10, group: 'Survivability' },
+    // Leadership / roles
+    { key: 'captain_5',       label: 'Born Leader',        desc: 'Captained 5+ matches',               icon: '👑',  earned: captainGames >= 5,   group: 'Roles' },
+    { key: 'captain_15',      label: 'Commander',          desc: 'Captained 15+ matches',              icon: '⚜️',  earned: captainGames >= 15,  group: 'Roles' },
+    { key: 'all_positions',   label: 'Versatile',          desc: 'Played all 5 positions',             icon: '🎭',  earned: positionsPlayed >= 5,  group: 'Roles' },
+    { key: 'carry_king',      label: 'Carry King',         desc: '20+ games as Safe Lane (Pos 1)',     icon: '🗡️',  earned: carryGames >= 20,     group: 'Roles' },
+    { key: 'support_master',  label: 'Support Master',     desc: '20+ games as Support (Pos 4/5)',     icon: '🩺',  earned: supportGames >= 20,   group: 'Roles' },
+    // Hero variety
+    { key: 'hero_5',          label: 'Experimenter',       desc: '5+ different heroes',                icon: '🎲',  earned: uniqueHeroes >= 5,   group: 'Hero Pool' },
+    { key: 'hero_diversity',  label: 'Jack of All Trades', desc: '15+ different heroes',               icon: '🃏',  earned: uniqueHeroes >= 15,  group: 'Hero Pool' },
+    { key: 'hero_diversity_25', label: 'Hero Collector',   desc: '25+ different heroes',               icon: '📚',  earned: uniqueHeroes >= 25,  group: 'Hero Pool' },
+    { key: 'specialist',      label: 'Specialist',         desc: '10+ games on one hero',              icon: '🎯',  earned: maxOnOneHero >= 10,  group: 'Hero Pool' },
+    { key: 'specialist_20',   label: 'One-Trick',          desc: '20+ games on one hero',              icon: '🔒',  earned: maxOnOneHero >= 20,  group: 'Hero Pool' },
+    // Multi-kills
+    { key: 'rampage',         label: 'RAMPAGE',            desc: 'Achieved at least one rampage',      icon: '☠️',  earned: rampages > 0,  group: 'Multi-kills' },
+    { key: 'rampage_3',       label: 'Slaughterer',        desc: '3+ rampages',                        icon: '🩸',  earned: rampages >= 3,  group: 'Multi-kills' },
+    { key: 'ultra_kill',      label: 'Ultra Kill',         desc: 'Got an Ultra Kill',                  icon: '⚡',  earned: ultraKills > 0,  group: 'Multi-kills' },
+    { key: 'multikill_10',    label: 'Kill Artist',        desc: '10+ multi-kills (combined)',         icon: '🔪',  earned: (doubleKills + tripleKills + ultraKills + rampages) >= 10, group: 'Multi-kills' },
+    { key: 'massacre',        label: 'Massacre',           desc: '20+ kills in a single game',         icon: '💣',  earned: maxKills >= 20,  group: 'Multi-kills' },
+    // First blood
+    { key: 'first_blood',     label: 'First Blood',        desc: 'Claimed first blood',                icon: '💉',  earned: firstBloods > 0,     group: 'First Blood' },
+    { key: 'bloodthirsty',    label: 'Bloodthirsty',       desc: '10+ first bloods overall',           icon: '🩸',  earned: firstBloods >= 10,   group: 'First Blood' },
+    { key: 'serial_killer',   label: 'Serial Killer',      desc: '25+ first bloods overall',           icon: '🎯',  earned: firstBloods >= 25,   group: 'First Blood' },
+    // Kills/assists totals
+    { key: 'kills_100',       label: 'Centurion Killer',   desc: '100 total kills',                    icon: '⚔️',  earned: totalKills >= 100,   group: 'Totals' },
+    { key: 'kills_500',       label: 'Warlord',            desc: '500 total kills',                    icon: '⚔️',  earned: totalKills >= 500,   group: 'Totals' },
+    { key: 'assists_250',     label: 'Team Player',        desc: '250 total assists',                  icon: '🤝',  earned: totalAssists >= 250, group: 'Totals' },
+    { key: 'lh_5000',         label: 'Farmer',             desc: '5,000 total last hits',              icon: '🌾',  earned: totalLh >= 5000,     group: 'Totals' },
+    { key: 'lh_20000',        label: 'Harvest King',       desc: '20,000 total last hits',             icon: '🌾',  earned: totalLh >= 20000,    group: 'Totals' },
+    // Economy
+    { key: 'efficient',       label: 'Gold Factory',       desc: '600+ GPM in a single game',          icon: '💰',  earned: maxGpm >= 600,       group: 'Economy' },
+    { key: 'gpm_700',         label: 'Mint',               desc: '700+ GPM in a single game',          icon: '💸',  earned: maxGpm >= 700,       group: 'Economy' },
+    { key: 'lh_record',       label: 'CS Monster',         desc: '300+ last hits in a single game',    icon: '🧲',  earned: maxLastHits >= 300,  group: 'Economy' },
+    // Damage
+    { key: 'big_damage',      label: 'Demolisher',         desc: '30,000+ hero damage in one game',    icon: '💥',  earned: maxDamage >= 30000,   group: 'Damage' },
+    { key: 'big_damage_50k',  label: 'Nuke',               desc: '50,000+ hero damage in one game',    icon: '☢️',  earned: maxDamage >= 50000,   group: 'Damage' },
+    { key: 'tower_destroyer', label: 'Tower Buster',       desc: '5,000+ tower damage in one game',    icon: '🏯',  earned: maxTowerDamage >= 5000,  group: 'Damage' },
+    { key: 'tower_5_total',   label: 'Siege Master',       desc: '50,000+ total tower damage',         icon: '🏰',  earned: totalTowerDamage >= 50000, group: 'Damage' },
+    // Healing
+    { key: 'healer',          label: 'Field Medic',        desc: '5,000+ healing in one game',         icon: '💚',  earned: maxHealing >= 5000,      group: 'Healing' },
+    { key: 'great_healer',    label: 'Lifesaver',          desc: '15,000+ healing in one game',        icon: '❤️',  earned: maxHealing >= 15000,     group: 'Healing' },
+    { key: 'total_healer',    label: 'Angel',              desc: '100,000+ total healing',             icon: '🕊️',  earned: totalHealing >= 100000,  group: 'Healing' },
+    // Support / vision
+    { key: 'ward_lord',       label: 'Ward Lord',          desc: '200+ wards placed',                  icon: '👁️',  earned: wardsPlaced >= 200,   group: 'Vision' },
+    { key: 'ward_500',        label: 'All-Seeing Eye',     desc: '500+ wards placed',                  icon: '🔭',  earned: wardsPlaced >= 500,   group: 'Vision' },
+    { key: 'ward_breaker',    label: 'Ward Breaker',       desc: '50+ enemy wards killed',             icon: '🔍',  earned: wardsKilled >= 50,    group: 'Vision' },
+    { key: 'ward_breaker_150',label: 'Dewarder',           desc: '150+ enemy wards killed',            icon: '🚫',  earned: wardsKilled >= 150,   group: 'Vision' },
+    // KDA
+    { key: 'kda_3',           label: 'Efficient',          desc: '3.0+ average KDA (all games)',       icon: '📊',  earned: avgKda >= 3.0 && games >= 10, group: 'KDA' },
+    { key: 'kda_5',           label: 'Flawless',           desc: '5.0+ average KDA (all games)',       icon: '✨',  earned: avgKda >= 5.0 && games >= 10, group: 'KDA' },
   ];
   return ACHIEVEMENTS;
 }
@@ -4772,6 +4896,18 @@ module.exports = {
   getPlayerWinRateHistory,
   getHallOfFameCareerStats,
   getPlayerBenchmarkAverages,
+  getTournaments,
+  getTournamentById,
+  createTournament,
+  updateTournamentStatus,
+  deleteTournament,
+  getTournamentParticipants,
+  addTournamentParticipant,
+  removeTournamentParticipant,
+  generateTournamentBracket,
+  getTournamentMatches,
+  setTournamentMatchWinner,
+  clearTournamentMatchWinner,
 };
 
 async function getPudgeStats(seasonId = null) {
@@ -5118,4 +5254,193 @@ async function getPlayerBenchmarkAverages(seasonId = null) {
     ORDER BY games DESC
   `, params);
   return result.rows;
+}
+
+async function getTournaments(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const where = seasonId ? `WHERE t.season_id = $${params.push(parseInt(seasonId))}` : '';
+  const result = await p.query(`
+    SELECT t.*, s.name AS season_name,
+      (SELECT COUNT(*) FROM tournament_participants tp WHERE tp.tournament_id = t.id) AS participant_count
+    FROM tournaments t
+    LEFT JOIN seasons s ON s.id = t.season_id
+    ${where}
+    ORDER BY t.created_at DESC
+  `, params);
+  return result.rows;
+}
+
+async function getTournamentById(id) {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT t.*, s.name AS season_name
+    FROM tournaments t
+    LEFT JOIN seasons s ON s.id = t.season_id
+    WHERE t.id = $1
+  `, [parseInt(id)]);
+  return result.rows[0] || null;
+}
+
+async function createTournament({ name, description, seasonId, format, createdBy }) {
+  const p = getPool();
+  const result = await p.query(
+    `INSERT INTO tournaments (name, description, season_id, format, status, created_by)
+     VALUES ($1, $2, $3, $4, 'upcoming', $5) RETURNING *`,
+    [name, description || null, seasonId ? parseInt(seasonId) : null, format || 'single_elim', createdBy || null]
+  );
+  return result.rows[0];
+}
+
+async function updateTournamentStatus(id, status) {
+  const p = getPool();
+  const result = await p.query(
+    `UPDATE tournaments SET status = $2 WHERE id = $1 RETURNING *`,
+    [parseInt(id), status]
+  );
+  return result.rows[0];
+}
+
+async function deleteTournament(id) {
+  const p = getPool();
+  await p.query(`DELETE FROM tournaments WHERE id = $1`, [parseInt(id)]);
+}
+
+async function getTournamentParticipants(tournamentId) {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT tp.*, COALESCE(n.nickname, pl.persona_name, tp.account_id::text) AS display_name, pl.mu, pl.sigma,
+      ROUND((pl.mu - 3 * pl.sigma) * 100 + 2600) AS mmr
+    FROM tournament_participants tp
+    LEFT JOIN players pl ON pl.account_id = tp.account_id
+    LEFT JOIN nicknames n ON n.account_id = tp.account_id
+    WHERE tp.tournament_id = $1
+    ORDER BY tp.seed ASC NULLS LAST, mmr DESC NULLS LAST
+  `, [parseInt(tournamentId)]);
+  return result.rows;
+}
+
+async function addTournamentParticipant(tournamentId, accountId, seed) {
+  const p = getPool();
+  const result = await p.query(
+    `INSERT INTO tournament_participants (tournament_id, account_id, seed)
+     VALUES ($1, $2, $3) ON CONFLICT (tournament_id, account_id) DO UPDATE SET seed = EXCLUDED.seed RETURNING *`,
+    [parseInt(tournamentId), BigInt(accountId), seed || null]
+  );
+  return result.rows[0];
+}
+
+async function removeTournamentParticipant(tournamentId, accountId) {
+  const p = getPool();
+  await p.query(
+    `DELETE FROM tournament_participants WHERE tournament_id = $1 AND account_id = $2`,
+    [parseInt(tournamentId), BigInt(accountId)]
+  );
+}
+
+async function generateTournamentBracket(tournamentId) {
+  const p = getPool();
+  await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1`, [parseInt(tournamentId)]);
+  const participants = await getTournamentParticipants(tournamentId);
+  const n = participants.length;
+  if (n < 2) throw new Error('Need at least 2 participants');
+  const size = Math.pow(2, Math.ceil(Math.log2(n)));
+  const seeded = [...participants].sort((a, b) => (parseInt(b.mmr) || 2600) - (parseInt(a.mmr) || 2600));
+  const slots = new Array(size).fill(null);
+  const positions = [];
+  for (let i = 0; i < size; i++) positions.push(i);
+  const snaked = [];
+  for (let i = 0; i < size; i++) {
+    if (i % 2 === 0) snaked.push(positions[i]);
+    else snaked.unshift(positions[i]);
+  }
+  seeded.forEach((p, i) => { slots[snaked[i]] = p; });
+  const pairs = [];
+  for (let i = 0; i < size; i += 2) {
+    pairs.push([slots[i], slots[i + 1]]);
+  }
+  const inserts = pairs.map((pair, slot) =>
+    p.query(
+      `INSERT INTO tournament_matches (tournament_id, round, slot, p1_id, p2_id)
+       VALUES ($1, 1, $2, $3, $4)`,
+      [parseInt(tournamentId), slot + 1, pair[0]?.account_id || null, pair[1]?.account_id || null]
+    )
+  );
+  await Promise.all(inserts);
+  await p.query(`UPDATE tournaments SET status = 'active' WHERE id = $1`, [parseInt(tournamentId)]);
+  return getTournamentMatches(tournamentId);
+}
+
+async function getTournamentMatches(tournamentId) {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT tm.*,
+      COALESCE(n1.nickname, pl1.persona_name, tm.p1_id::text) AS p1_name,
+      COALESCE(n2.nickname, pl2.persona_name, tm.p2_id::text) AS p2_name,
+      COALESCE(nw.nickname, plw.persona_name, tm.winner_id::text) AS winner_name
+    FROM tournament_matches tm
+    LEFT JOIN players pl1 ON pl1.account_id = tm.p1_id
+    LEFT JOIN nicknames n1 ON n1.account_id = tm.p1_id
+    LEFT JOIN players pl2 ON pl2.account_id = tm.p2_id
+    LEFT JOIN nicknames n2 ON n2.account_id = tm.p2_id
+    LEFT JOIN players plw ON plw.account_id = tm.winner_id
+    LEFT JOIN nicknames nw ON nw.account_id = tm.winner_id
+    WHERE tm.tournament_id = $1
+    ORDER BY tm.round ASC, tm.slot ASC
+  `, [parseInt(tournamentId)]);
+  return result.rows;
+}
+
+async function setTournamentMatchWinner(matchId, winnerId) {
+  const p = getPool();
+  const matchRes = await p.query(`SELECT * FROM tournament_matches WHERE id = $1`, [parseInt(matchId)]);
+  const match = matchRes.rows[0];
+  if (!match) throw new Error('Match not found');
+  await p.query(`UPDATE tournament_matches SET winner_id = $2 WHERE id = $1`, [parseInt(matchId), BigInt(winnerId)]);
+  const loserId = BigInt(winnerId) === BigInt(match.p1_id) ? match.p2_id : match.p1_id;
+  if (loserId) {
+    await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`,
+      [match.tournament_id, loserId]);
+  }
+  const allMatches = await p.query(`SELECT * FROM tournament_matches WHERE tournament_id = $1 AND round = $2`, [match.tournament_id, match.round]);
+  const allDone = allMatches.rows.every(m => m.winner_id != null || (m.p1_id == null && m.p2_id == null) || (m.p1_id != null && m.p2_id == null));
+  if (allDone) {
+    const winners = allMatches.rows
+      .filter(m => m.winner_id != null)
+      .map(m => m.winner_id);
+    const byes = allMatches.rows
+      .filter(m => m.p1_id != null && m.p2_id == null)
+      .map(m => m.p1_id);
+    const nextPlayers = [...winners, ...byes];
+    if (nextPlayers.length === 1) {
+      await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [match.tournament_id]);
+    } else {
+      const nextRound = match.round + 1;
+      const existing = await p.query(`SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = $1 AND round = $2`, [match.tournament_id, nextRound]);
+      if (parseInt(existing.rows[0].count) === 0) {
+        for (let i = 0; i < nextPlayers.length; i += 2) {
+          await p.query(
+            `INSERT INTO tournament_matches (tournament_id, round, slot, p1_id, p2_id) VALUES ($1, $2, $3, $4, $5)`,
+            [match.tournament_id, nextRound, Math.floor(i / 2) + 1, nextPlayers[i] || null, nextPlayers[i + 1] || null]
+          );
+        }
+      }
+    }
+  }
+  return getTournamentMatches(match.tournament_id);
+}
+
+async function clearTournamentMatchWinner(matchId) {
+  const p = getPool();
+  const matchRes = await p.query(`SELECT * FROM tournament_matches WHERE id = $1`, [parseInt(matchId)]);
+  const match = matchRes.rows[0];
+  if (!match || !match.winner_id) return;
+  const loserId = match.winner_id === match.p1_id ? match.p2_id : match.p1_id;
+  await p.query(`UPDATE tournament_matches SET winner_id = NULL WHERE id = $1`, [parseInt(matchId)]);
+  if (loserId) {
+    await p.query(`UPDATE tournament_participants SET eliminated = FALSE WHERE tournament_id = $1 AND account_id = $2`,
+      [match.tournament_id, loserId]);
+  }
+  await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1 AND round > $2`, [match.tournament_id, match.round]);
+  return getTournamentMatches(match.tournament_id);
 }

@@ -697,3 +697,78 @@ export async function getPlayerBenchmarks(seasonId = null) {
   const url = `/benchmarks${seasonId ? `?season=${seasonId}` : ''}`;
   return fetchJson(url);
 }
+
+export async function getTournaments(seasonId = null) {
+  const url = `/tournaments${seasonId ? `?season=${seasonId}` : ''}`;
+  return fetchJson(url);
+}
+
+export async function getTournamentById(id) {
+  return fetchJson(`/tournaments/${id}`);
+}
+
+export async function createTournament(data, superuserKey) {
+  const res = await fetch(BASE + '/tournaments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}
+
+export async function addTournamentParticipant(tournamentId, accountId, superuserKey) {
+  const res = await fetch(BASE + `/tournaments/${tournamentId}/participants`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ accountId }),
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}
+
+export async function removeTournamentParticipant(tournamentId, accountId, superuserKey) {
+  const res = await fetch(BASE + `/tournaments/${tournamentId}/participants/${accountId}`, {
+    method: 'DELETE',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}
+
+export async function generateTournamentBracket(tournamentId, superuserKey) {
+  const res = await fetch(BASE + `/tournaments/${tournamentId}/generate`, {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}
+
+export async function setTournamentMatchWinner(matchId, winnerId, superuserKey) {
+  const res = await fetch(BASE + `/tournament-matches/${matchId}/winner`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ winnerId }),
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}
+
+export async function clearTournamentMatchWinner(matchId, superuserKey) {
+  const res = await fetch(BASE + `/tournament-matches/${matchId}/winner`, {
+    method: 'DELETE',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}
+
+export async function deleteTournament(id, superuserKey) {
+  const res = await fetch(BASE + `/tournaments/${id}`, {
+    method: 'DELETE',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}

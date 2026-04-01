@@ -81,35 +81,76 @@ function RatingChart({ history }) {
 }
 
 function AchievementBadges({ achievements }) {
+  const [showAll, setShowAll] = React.useState(false);
   if (!achievements || achievements.length === 0) return null;
   const earned = achievements.filter(a => a.earned);
-  if (earned.length === 0 && achievements.every(a => !a.earned)) return null;
+  if (earned.length === 0) return null;
+
+  const groups = {};
+  for (const a of achievements) {
+    const g = a.group || 'Other';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(a);
+  }
+
+  const displayGroups = Object.entries(groups).filter(([, items]) =>
+    items.some(a => a.earned)
+  );
 
   return (
-    <section>
-      <h2 className="section-title">Achievements</h2>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-        {achievements.map(a => (
-          <div
-            key={a.key}
-            title={a.desc}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              padding: '12px 14px', borderRadius: 10, minWidth: 80, textAlign: 'center',
-              background: a.earned ? 'var(--bg-card)' : 'rgba(0,0,0,0.15)',
-              border: `1px solid ${a.earned ? 'var(--accent-blue)' : 'var(--border)'}`,
-              opacity: a.earned ? 1 : 0.38,
-              boxShadow: a.earned ? '0 0 8px rgba(59,130,246,0.2)' : 'none',
-              transition: 'all 0.2s',
-            }}
-          >
-            <div style={{ fontSize: 26, marginBottom: 5 }}>{a.icon}</div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: a.earned ? 'var(--text-primary)' : 'var(--text-muted)', lineHeight: 1.3 }}>
-              {a.label}
+    <section style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <h2 className="section-title" style={{ marginBottom: 0 }}>
+          🏅 Achievements
+        </h2>
+        <span style={{ fontSize: 12, background: 'var(--accent-blue)', color: '#fff', borderRadius: 12, padding: '2px 10px', fontWeight: 700 }}>
+          {earned.length}/{achievements.length}
+        </span>
+        <button
+          onClick={() => setShowAll(s => !s)}
+          style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}
+        >
+          {showAll ? 'Hide locked' : 'Show all'}
+        </button>
+      </div>
+      {displayGroups.map(([groupName, items]) => {
+        const visible = showAll ? items : items.filter(a => a.earned);
+        if (visible.length === 0) return null;
+        return (
+          <div key={groupName} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+              {groupName}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {visible.map(a => (
+                <div
+                  key={a.key}
+                  title={a.desc}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    padding: '10px 12px', borderRadius: 10, minWidth: 76, maxWidth: 90, textAlign: 'center',
+                    background: a.earned ? 'var(--bg-card)' : 'var(--bg-secondary)',
+                    border: `1px solid ${a.earned ? 'var(--accent-blue)' : 'var(--border)'}`,
+                    opacity: a.earned ? 1 : 0.35,
+                    boxShadow: a.earned ? '0 0 8px rgba(59,130,246,0.18)' : 'none',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ fontSize: 24, marginBottom: 4 }}>{a.icon}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: a.earned ? 'var(--text-primary)' : 'var(--text-muted)', lineHeight: 1.3 }}>
+                    {a.label}
+                  </div>
+                  {!a.earned && (
+                    <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.2 }}>
+                      {a.desc}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
     </section>
   );
 }
