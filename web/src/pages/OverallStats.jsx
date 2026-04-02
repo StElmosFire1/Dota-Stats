@@ -68,7 +68,7 @@ export default function OverallStats() {
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">Win%{si('win_rate')}</th>
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')} title="Kill Involvement — percentage of team kills you participated in (kills + assists)">KI%{si('avg_kill_involvement')}</th>
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('captain_win_rate')} title="Captain win rate — win percentage when this player was captain">Capt%{si('captain_win_rate')}</th>
-              <th className="col-stat" title="Best position by win rate (minimum 2 games at that position)">Best Pos</th>
+              <th className="col-stat" title="Best position by composite score: win rate + KDA + kill involvement">Best Pos</th>
             </tr>
           </thead>
           <tbody>

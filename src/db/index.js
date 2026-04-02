@@ -5331,7 +5331,7 @@ async function getPlayerBenchmarkAverages(seasonId = null) {
     JOIN matches m ON m.match_id::text = ps.match_id::text
     LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text
     WHERE ps.account_id::text != '0'${sc}
-    GROUP BY ps.account_id, COALESCE(n.nickname, MAX(ps.persona_name))
+    GROUP BY ps.account_id, n.nickname
     HAVING COUNT(DISTINCT ps.match_id) >= 1
     ORDER BY games DESC
   `, params);
