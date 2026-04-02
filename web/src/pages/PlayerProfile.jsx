@@ -243,7 +243,7 @@ export default function PlayerProfile() {
       </div>
 
       {rating && (
-        <div className="stats-grid">
+        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, 140px)', justifyContent: 'start' }}>
           <div className="stat-card">
             <div className="stat-value mmr">{seasonMmr != null ? seasonMmr : rating.mmr}</div>
             <div className="stat-label">MMR</div>
@@ -317,7 +317,10 @@ export default function PlayerProfile() {
                   ? ((parseInt(averages.total_hook_hits) / parseInt(averages.total_hook_attempts)) * 100).toFixed(1) + '%'
                   : '—'}
               </div>
-              <div className="stat-label">🪝 Hook Accuracy ({averages.total_hook_hits}/{averages.total_hook_attempts})</div>
+              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, marginBottom: 1 }}>
+                {averages.total_hook_hits}/{averages.total_hook_attempts} hooked
+              </div>
+              <div className="stat-label">🪝 Hook Accuracy</div>
             </div>
           )}
           {averages && parseFloat(averages.avg_assists) > 0 && (
