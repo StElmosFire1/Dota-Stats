@@ -6,8 +6,8 @@
 set -e  # stop on any error
 
 echo "==> Pulling latest code..."
-git stash
-git pull
+git fetch origin
+git reset --hard origin/main
 
 echo "==> Installing frontend dependencies..."
 cd web
