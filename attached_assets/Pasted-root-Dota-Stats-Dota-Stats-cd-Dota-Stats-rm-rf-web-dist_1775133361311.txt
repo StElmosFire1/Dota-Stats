@@ -1,0 +1,75 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+rm -rf web/dist/
+git pull --rebase
+git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main
+Successfully rebased and updated refs/heads/main.
+Enumerating objects: 5, done.
+Counting objects: 100% (5/5), done.
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 304 bytes | 304.00 KiB/s, done.
+Total 3 (delta 2), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (2/2), completed with 2 local objects.
+To https://github.com/StElmosFire1/Dota-Stats.git
+   306bd5a..ea9ad69  main -> main
+root@Dota-Stats:~/Dota-Stats# bash deploy.sh
+==> Pulling latest code...
+No local changes to save
+Already up to date.
+==> Installing frontend dependencies...
+==> Building frontend...
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 780 modules transformed.
+dist/index.html                             0.47 kB │ gzip:   0.31 kB
+dist/assets/index-D_0FCYia.css             18.91 kB │ gzip:   4.53 kB
+dist/assets/heroes-B4IkSDsk.js              1.55 kB │ gzip:   0.88 kB
+dist/assets/BuyinSuccess-CZcaaHM0.js        1.85 kB │ gzip:   0.86 kB
+dist/assets/Schedule-D05tOZ_U.js            3.22 kB │ gzip:   1.27 kB
+dist/assets/PlayerBenchmarks-Cgnhbgg8.js    3.63 kB │ gzip:   1.62 kB
+dist/assets/Synergy-CDl-m60L.js             3.87 kB │ gzip:   1.59 kB
+dist/assets/OverallStats-C_MaqtmT.js        4.39 kB │ gzip:   1.47 kB
+dist/assets/MultiKills-dfFfqAaf.js          4.74 kB │ gzip:   1.70 kB
+dist/assets/HallOfFame-DV1LuKbi.js          4.97 kB │ gzip:   2.01 kB
+dist/assets/PatchNotes-UpAgsAFq.js          6.43 kB │ gzip:   2.37 kB
+dist/assets/Players-Bhwj3fpn.js             6.84 kB │ gzip:   2.33 kB
+dist/assets/heroNames-CN8zoRK5.js           6.91 kB │ gzip:   3.30 kB
+dist/assets/MatchList-DnFUQbSS.js           7.14 kB │ gzip:   2.62 kB
+dist/assets/Social-n22mRsp-.js              7.71 kB │ gzip:   2.42 kB
+dist/assets/Home-CaY7cW6J.js                7.78 kB │ gzip:   2.63 kB
+dist/assets/Leaderboard-BItwLi3h.js         8.94 kB │ gzip:   2.94 kB
+dist/assets/WardMap-ClZgAEmi.js            10.07 kB │ gzip:   3.38 kB
+dist/assets/PudgeStats-B5_5XP1H.js         10.90 kB │ gzip:   3.38 kB
+dist/assets/PositionStats-BsWogd_L.js      10.94 kB │ gzip:   2.74 kB
+dist/assets/Upload-Ck7_X2cR.js             11.14 kB │ gzip:   3.90 kB
+dist/assets/PlayerTools-DDIBNM52.js        11.60 kB │ gzip:   3.33 kB
+dist/assets/Predictions-CIzJE7Vm.js        12.62 kB │ gzip:   3.96 kB
+dist/assets/StatsEditor-B56EgfOC.js        13.30 kB │ gzip:   4.05 kB
+dist/assets/Records-j0_wvypJ.js            15.07 kB │ gzip:   4.45 kB
+dist/assets/Tournaments-BD9RR4pv.js        17.95 kB │ gzip:   4.68 kB
+dist/assets/Draft-DKHYb7Lm.js              19.80 kB │ gzip:   4.99 kB
+dist/assets/AdminPanel-QKl0q2x_.js         22.95 kB │ gzip:   6.44 kB
+dist/assets/Heroes-DcSNmZz0.js             23.24 kB │ gzip:   7.02 kB
+dist/assets/Seasons-CtTNEd71.js            24.29 kB │ gzip:   6.12 kB
+dist/assets/PlayerProfile-DM9zXX8l.js      28.15 kB │ gzip:   6.58 kB
+dist/assets/MatchDetail-DMgw0RCP.js        98.63 kB │ gzip:  26.83 kB
+dist/assets/index-CA8kh1sQ.js             205.45 kB │ gzip:  64.73 kB
+dist/assets/LineChart-DVfG3dax.js         350.83 kB │ gzip: 104.50 kB
+✓ built in 10.22s
+==> Restarting bot...
+[PM2] Applying action restartProcessId on app [2](ids: [ '2' ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 531185   │ 0s     │ 207  │ online    │ 0%       │ 14.4mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴──���─────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+
+✓ Deploy complete.
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 531185   │ 0s     │ 207  │ online    │ 0%       │ 50.7mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴──���─────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
