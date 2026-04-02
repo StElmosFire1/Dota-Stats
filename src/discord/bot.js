@@ -40,6 +40,7 @@ class DiscordBot {
     this.prefix = config.discord.prefix;
     this.lobbyChannelId = null;
     this.pendingRatingSessions = new Map();
+    this._announcedMatchIds = new Set(); // dedup guard — prevents double-posting the same match
     this._setupHandlers();
   }
 
@@ -280,6 +281,7 @@ class DiscordBot {
           case 'ratings': await this._cmdRatings(msg, args); break;
           case 'streak': await this._cmdStreak(msg, args); break;
           case 'tournament': await this._cmdTournament(msg, args); break;
+          case 'testdm': await this._cmdTestDm(msg, args); break;
           default: break;
         }
       } catch (err) {
@@ -1134,6 +1136,20 @@ class DiscordBot {
   }
 
   async _sendMatchSummary(matchStats, lobbyName, channel) {
+    // Dedup guard — the lobby GC path and the OpenDota poller can both fire for the
+    // same match; only the first call posts to Discord.
+    const matchIdStr = matchStats.matchId?.toString();
+    if (matchIdStr) {
+      if (this._announcedMatchIds.has(matchIdStr)) {
+        console.log(`[Bot] Match ${matchIdStr} already announced — skipping duplicate post.`);
+        return;
+      }
+      this._announcedMatchIds.add(matchIdStr);
+      if (this._announcedMatchIds.size > 200) {
+        this._announcedMatchIds.delete(this._announcedMatchIds.values().next().value);
+      }
+    }
+
     const statsService = getStatsService();
     const radiant = matchStats.players.filter((p) => p.team === 'radiant');
     const dire = matchStats.players.filter((p) => p.team === 'dire');
@@ -2295,8 +2311,10 @@ class DiscordBot {
         const num = parseInt(content);
         if (!isNaN(num) && num >= 1 && num <= session.teammates.length) {
           const mvpPlayer = session.teammates[num - 1];
-          await db.saveMatchRating(session.matchId, session.raterAccountId, mvpPlayer.account_id, null, true);
-          await msg.reply(`✅ MVP vote recorded for **${mvpPlayer.display_name}**!`);
+          if (!session.isTest) {
+            await db.saveMatchRating(session.matchId, session.raterAccountId, mvpPlayer.account_id, null, true);
+          }
+          await msg.reply(`✅ MVP vote recorded for **${mvpPlayer.display_name}**!${session.isTest ? ' *(test — not saved)*' : ''}`);
         } else {
           await msg.reply(`Please reply with a number between 1 and ${session.teammates.length}, or \`skip\`.`);
           return;
@@ -2325,10 +2343,12 @@ class DiscordBot {
           await msg.reply(`Please send exactly ${session.teammates.length} numbers (1–10), space-separated. Or reply \`skip\`.`);
           return;
         }
-        for (let i = 0; i < session.teammates.length; i++) {
-          await db.saveMatchRating(session.matchId, session.raterAccountId, session.teammates[i].account_id, scores[i], false);
+        if (!session.isTest) {
+          for (let i = 0; i < session.teammates.length; i++) {
+            await db.saveMatchRating(session.matchId, session.raterAccountId, session.teammates[i].account_id, scores[i], false);
+          }
         }
-        await msg.reply('✅ Attitude ratings saved! Thanks for the feedback.');
+        await msg.reply(`✅ Attitude ratings saved! Thanks for the feedback.${session.isTest ? ' *(test — not saved)*' : ''}`);
       } else {
         await msg.reply('Ratings skipped. See you next game!');
       }
@@ -2490,6 +2510,60 @@ class DiscordBot {
 
     embed.setFooter({ text: 'View full brackets at the web dashboard → /tournaments' });
     await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdTestDm(msg, args) {
+    // Admin-only test: send a post-match rating DM to a target Discord user.
+    // Usage: !testdm [discordId]   (defaults to the sender)
+    const targetId = args[0] || msg.author.id;
+
+    let user;
+    try {
+      user = await this.client.users.fetch(targetId);
+    } catch (e) {
+      return msg.reply(`Could not fetch user with Discord ID \`${targetId}\`: ${e.message}`);
+    }
+
+    // Build a mock rating session using fake teammates
+    const mockTeammates = [
+      { account_id: '1', display_name: 'Teammate Alpha', team: 'radiant' },
+      { account_id: '2', display_name: 'Teammate Beta', team: 'radiant' },
+      { account_id: '3', display_name: 'Teammate Gamma', team: 'radiant' },
+      { account_id: '4', display_name: 'Teammate Delta', team: 'radiant' },
+    ];
+
+    const session = {
+      matchId: 'TEST-0000',
+      raterAccountId: '0',
+      teammates: mockTeammates,
+      step: 'mvp',
+      isTest: true,
+    };
+    this.pendingRatingSessions.set(user.id, session);
+
+    // Expire the test session after 10 minutes
+    setTimeout(() => {
+      if (this.pendingRatingSessions.get(user.id)?.matchId === 'TEST-0000') {
+        this.pendingRatingSessions.delete(user.id);
+      }
+    }, 10 * 60 * 1000);
+
+    const teammateList = mockTeammates.map((p, i) => `**${i + 1}.** ${p.display_name} (🟢)`).join('\n');
+    const embed = new EmbedBuilder()
+      .setTitle('⭐ TEST DM — Rate Your Teammates')
+      .setColor(0xfbbf24)
+      .setDescription(
+        `This is a **test DM** to verify the post-match rating system is working.\n\n` +
+        `**Step 1 of 2 — MVP Vote**\nWho was the MVP? Reply with just the number:\n\n${teammateList}\n\n` +
+        `_(Reply \`skip\` to skip)_`
+      );
+
+    try {
+      await user.send({ embeds: [embed] });
+      await msg.reply(`✅ Test DM sent to **${user.username}** (\`${user.id}\`). They should see the MVP vote prompt.`);
+    } catch (e) {
+      await msg.reply(`❌ Could not DM **${user.username}**: ${e.message}\nThey may have DMs disabled or the bot isn't shared in a mutual server.`);
+    }
   }
 
   async shutdown() {
