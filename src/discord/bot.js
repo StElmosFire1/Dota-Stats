@@ -2254,8 +2254,13 @@ class DiscordBot {
   async _initiateRatingSession(matchStats) {
     if (!matchStats || !matchStats.matchId || !matchStats.players) return;
     const players = await db.getDiscordIdsForMatch(matchStats.matchId.toString());
+    console.log(`[Ratings] Match ${matchStats.matchId}: found ${players.length} players, ${players.filter(p => p.discord_id && p.discord_id.trim() !== '').length} with Discord IDs linked`);
+    players.forEach(p => console.log(`[Ratings]   ${p.display_name} (account:${p.account_id}) discord_id="${p.discord_id || ''}"`));
     const withDiscord = players.filter(p => p.discord_id && p.discord_id.trim() !== '');
-    if (withDiscord.length === 0) return;
+    if (withDiscord.length === 0) {
+      console.log(`[Ratings] No players have Discord IDs linked — skipping DMs. Use the dashboard to link Discord IDs to player accounts.`);
+      return;
+    }
 
     for (const rater of withDiscord) {
       try {
