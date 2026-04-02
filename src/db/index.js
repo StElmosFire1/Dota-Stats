@@ -5350,7 +5350,7 @@ async function getPlayerBenchmarkAverages(seasonId = null) {
   const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : '';
   const result = await p.query(`
     SELECT
-      ps.account_id,
+      CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END AS account_id,
       COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
       COUNT(DISTINCT ps.match_id) AS games,
       ROUND(AVG(ps.kills), 2) AS avg_kills,
@@ -5366,8 +5366,8 @@ async function getPlayerBenchmarkAverages(seasonId = null) {
     FROM player_stats ps
     JOIN matches m ON m.match_id::text = ps.match_id::text
     LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text
-    WHERE ps.account_id::text != '0'${sc}
-    GROUP BY ps.account_id, n.nickname
+    WHERE (ps.account_id != 0 OR (ps.persona_name IS NOT NULL AND ps.persona_name != ''))${sc}
+    GROUP BY CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END, n.nickname
     HAVING COUNT(DISTINCT ps.match_id) >= 1
     ORDER BY games DESC
   `, params);

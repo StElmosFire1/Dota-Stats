@@ -298,7 +298,7 @@ export default function PlayerProfile() {
               <div className="stat-value" style={{ color: streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
                 {streak > 0 ? `W${streak}` : `L${Math.abs(streak)}`}
               </div>
-              <div className="stat-label">Current Streak</div>
+              <div className="stat-label">Streak</div>
             </div>
           )}
           {averages && parseInt(averages.total_firstbloods) > 0 && (
@@ -317,10 +317,10 @@ export default function PlayerProfile() {
                   ? ((parseInt(averages.total_hook_hits) / parseInt(averages.total_hook_attempts)) * 100).toFixed(1) + '%'
                   : '—'}
               </div>
-              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, marginBottom: 1 }}>
-                {averages.total_hook_hits}/{averages.total_hook_attempts} hooked
+              <div className="stat-label">🪝 Hook</div>
+              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                {averages.total_hook_hits}/{averages.total_hook_attempts} attempts
               </div>
-              <div className="stat-label">🪝 Hook Accuracy</div>
             </div>
           )}
           {averages && parseFloat(averages.avg_assists) > 0 && (
@@ -332,7 +332,7 @@ export default function PlayerProfile() {
           {averages && parseInt(averages.avg_xpm) > 0 && (
             <div className="stat-card">
               <div className="stat-value" style={{ color: '#a78bfa' }}>{parseInt(averages.avg_xpm)}</div>
-              <div className="stat-label">⚡ Avg XPM</div>
+              <div className="stat-label">⚡ XPM</div>
             </div>
           )}
           {averages && parseInt(averages.avg_hero_damage) > 0 && (
@@ -342,7 +342,7 @@ export default function PlayerProfile() {
                   ? (parseInt(averages.avg_hero_damage) / 1000).toFixed(1) + 'k'
                   : parseInt(averages.avg_hero_damage)}
               </div>
-              <div className="stat-label">🗡️ Avg Damage</div>
+              <div className="stat-label">🗡️ Damage</div>
             </div>
           )}
           {communityRatings && parseInt(communityRatings.mvp_wins) > 0 && (
@@ -356,7 +356,10 @@ export default function PlayerProfile() {
               <div className="stat-value" style={{ color: parseFloat(communityRatings.avg_attitude) >= 7 ? '#4ade80' : parseFloat(communityRatings.avg_attitude) >= 5 ? '#fbbf24' : '#f87171' }}>
                 {parseFloat(communityRatings.avg_attitude).toFixed(1)}<span style={{ fontSize: '0.6em', color: '#64748b' }}>/10</span>
               </div>
-              <div className="stat-label">🤝 Attitude ({communityRatings.attitude_ratings})</div>
+              <div className="stat-label">🤝 Attitude</div>
+              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                {communityRatings.attitude_ratings} rating{communityRatings.attitude_ratings !== '1' ? 's' : ''}
+              </div>
             </div>
           )}
         </div>
