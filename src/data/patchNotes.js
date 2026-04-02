@@ -237,4 +237,18 @@ module.exports = [
     content: '📋 PATCH NOTE AUTO-ANNOUNCEMENTS\nBot updates are now automatically posted to Discord whenever a new version is detected on startup.\n\nHow it works:\n• Each bot version is tracked in the database with an announced flag.\n• On startup, any unannounced versions are posted as formatted Discord embeds to the announcements channel.\n• Once posted, the version is marked so it never fires again — no duplicate announcements across restarts.\n\nGoing forward, patch notes are updated by the developer as part of every feature release — no more missing changelog entries.',
     author: 'System',
   },
+  {
+    version: '4.2',
+    title: 'Tournament Brackets — Single & Double Elimination',
+    published_at: '2026-04-02',
+    content: '🥊 TOURNAMENT BRACKETS SYSTEM\nFull tournament management is now live at /tournaments.\n\n• Create tournaments linked to any season with single or double elimination format.\n• Participants are seeded by MMR automatically — highest MMR gets the #1 seed.\n• Admins enter match winners directly from the bracket view; the bracket advances in real time.\n• Double elimination: losers are routed to the correct Winners Bracket / Losers Bracket / Grand Final match automatically using proper bracket logic.\n• Grand Final winner is detected automatically and a champion banner is displayed at the top of the bracket page.\n\n🏆 CHAMPION BANNER\nWhen a tournament concludes, a gold glowing champion banner appears showing the winner\'s name — no manual flagging required.',
+    author: 'System',
+  },
+  {
+    version: '4.3',
+    title: 'Ward Map, Win Rate Window, Hall of Fame & Stats Improvements',
+    published_at: '2026-04-02',
+    content: '🗺️ WARD MAP ON MATCH DETAIL\nEvery parsed match now shows a Ward Map panel — a minimap overlay with team-coloured ward placement icons.\n• Green = Radiant, Red = Dire.\n• Observer wards shown as circles, sentry wards as diamonds.\n• Filter buttons let you toggle between Both / Observer / Sentry.\n\n📈 ROLLING WIN RATE WINDOW TOGGLE\nThe win rate chart on player profiles now has 5 / 10 / 20 / All toggle buttons. Switch the rolling window instantly without any additional load.\n\n🏛️ HALL OF FAME PAGE\nNew dedicated page at /hall-of-fame showing all-time and season single-game records (most kills, highest GPM, most hero damage, etc.) as card-style displays with links to the match and player.\n\n📊 BEST POSITION — OVERALL STATS\nThe Overall Stats page (/stats) now includes a Best Position column for every player, calculated using the same composite score as the Players page (win rate × 4 + KDA component + kill involvement component).\n\n🧭 NAV CLEANUP\nTournaments and Player Benchmarks moved into the Tools dropdown. The separate More menu has been removed. Multi-Kill Records removed from the nav (already inside Records & Comebacks as its own tab).\n\n🌤️ LIGHT MODE IMPROVEMENTS\nLight mode colours are now softer and easier on the eyes. The season selector and Steam Login button now properly adapt to light mode instead of staying dark.',
+    author: 'System',
+  },
 ];
