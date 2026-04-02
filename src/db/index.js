@@ -1612,15 +1612,22 @@ async function getPlayerRatingsReceived(accountId) {
 
 async function getDiscordIdsForMatch(matchId) {
   const p = getPool();
-  // Check both nicknames (set via web dashboard) and ratings (set via !register)
-  // so players linked through either path receive post-match DMs.
+  // Check nicknames, ratings, AND the players table (populated by !register).
+  // !register stores discord_id in the players table keyed by account_id_32,
+  // but updateRating() always writes '' for discord_id so ratings.discord_id is empty.
   const result = await p.query(
     `SELECT ps.account_id, ps.persona_name, ps.team, ps.hero_name,
             COALESCE(n.nickname, ps.persona_name) as display_name,
-            COALESCE(NULLIF(n.discord_id, ''), NULLIF(r.discord_id, ''), '') as discord_id
+            COALESCE(
+              NULLIF(n.discord_id, ''),
+              NULLIF(r.discord_id, ''),
+              NULLIF(pl.discord_id, ''),
+              ''
+            ) as discord_id
      FROM player_stats ps
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
      LEFT JOIN ratings r ON r.player_id::text = ps.account_id::text AND ps.account_id != 0
+     LEFT JOIN players pl ON pl.account_id_32::text = ps.account_id::text AND ps.account_id != 0
      WHERE ps.match_id = $1 AND ps.account_id != 0`,
     [matchId]
   );
