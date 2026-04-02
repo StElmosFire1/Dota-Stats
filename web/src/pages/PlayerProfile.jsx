@@ -82,7 +82,7 @@ function RatingChart({ history }) {
 
 function AchievementBadges({ achievements }) {
   const [showLocked, setShowLocked] = React.useState(false);
-  const [collapsed, setCollapsed] = React.useState(true);
+  const [collapsed, setCollapsed] = React.useState(false);
   if (!achievements || achievements.length === 0) return null;
   const earned = achievements.filter(a => a.earned);
   if (earned.length === 0) return null;
@@ -129,8 +129,8 @@ function AchievementBadges({ achievements }) {
                 cursor: 'default',
               }}
             >
-              <span style={{ fontSize: 16 }}>{a.icon}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: a.earned ? 'var(--text-primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 18 }}>{a.icon}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: a.earned ? 'var(--text-primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                 {a.label}
               </span>
             </div>
@@ -270,6 +270,24 @@ export default function PlayerProfile() {
             <div className="stat-card">
               <div className="stat-value">{totalKDA}</div>
               <div className="stat-label">KDA</div>
+            </div>
+          )}
+          {averages && parseFloat(averages.avg_kills) > 0 && (
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#4ade80' }}>{parseFloat(averages.avg_kills).toFixed(1)}</div>
+              <div className="stat-label">Avg Kills</div>
+            </div>
+          )}
+          {averages && parseFloat(averages.avg_deaths) > 0 && (
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#f87171' }}>{parseFloat(averages.avg_deaths).toFixed(1)}</div>
+              <div className="stat-label">Avg Deaths</div>
+            </div>
+          )}
+          {averages && parseInt(averages.avg_gpm) > 0 && (
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#fbbf24' }}>{parseInt(averages.avg_gpm)}</div>
+              <div className="stat-label">💰 Avg GPM</div>
             </div>
           )}
           {streak !== null && streak !== 0 && (
