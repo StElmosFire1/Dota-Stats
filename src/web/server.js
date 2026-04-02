@@ -2336,6 +2336,18 @@ NOTES
     }
   });
 
+  router.post('/admin/test-dm', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { discordId } = req.body;
+      if (!discordId) return res.status(400).json({ error: 'discordId is required' });
+      const result = await getDiscordBot().sendTestDm(discordId);
+      res.json({ ok: true, username: result.username, id: result.id });
+    } catch (err) {
+      console.error('[TestDM]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Patch notes
   router.get('/patch-notes', async (req, res) => {
     try {

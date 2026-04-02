@@ -2512,19 +2512,14 @@ class DiscordBot {
     await msg.reply({ embeds: [embed] });
   }
 
-  async _cmdTestDm(msg, args) {
-    // Admin-only test: send a post-match rating DM to a target Discord user.
-    // Usage: !testdm [discordId]   (defaults to the sender)
-    const targetId = args[0] || msg.author.id;
+  // Public method called from the web server superuser API
+  async sendTestDm(targetDiscordId) {
+    return this._runTestDm(targetDiscordId);
+  }
 
-    let user;
-    try {
-      user = await this.client.users.fetch(targetId);
-    } catch (e) {
-      return msg.reply(`Could not fetch user with Discord ID \`${targetId}\`: ${e.message}`);
-    }
+  async _runTestDm(targetId) {
+    const user = await this.client.users.fetch(targetId);
 
-    // Build a mock rating session using fake teammates
     const mockTeammates = [
       { account_id: '1', display_name: 'Teammate Alpha', team: 'radiant' },
       { account_id: '2', display_name: 'Teammate Beta', team: 'radiant' },
@@ -2541,7 +2536,6 @@ class DiscordBot {
     };
     this.pendingRatingSessions.set(user.id, session);
 
-    // Expire the test session after 10 minutes
     setTimeout(() => {
       if (this.pendingRatingSessions.get(user.id)?.matchId === 'TEST-0000') {
         this.pendingRatingSessions.delete(user.id);
@@ -2558,11 +2552,17 @@ class DiscordBot {
         `_(Reply \`skip\` to skip)_`
       );
 
+    await user.send({ embeds: [embed] });
+    return { username: user.username, id: user.id };
+  }
+
+  async _cmdTestDm(msg, args) {
+    const targetId = args[0] || msg.author.id;
     try {
-      await user.send({ embeds: [embed] });
-      await msg.reply(`✅ Test DM sent to **${user.username}** (\`${user.id}\`). They should see the MVP vote prompt.`);
+      const { username, id } = await this._runTestDm(targetId);
+      await msg.reply(`✅ Test DM sent to **${username}** (\`${id}\`). They should see the MVP vote prompt.`);
     } catch (e) {
-      await msg.reply(`❌ Could not DM **${user.username}**: ${e.message}\nThey may have DMs disabled or the bot isn't shared in a mutual server.`);
+      await msg.reply(`❌ Could not send test DM to \`${targetId}\`: ${e.message}`);
     }
   }
 

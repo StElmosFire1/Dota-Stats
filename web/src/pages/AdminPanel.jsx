@@ -292,6 +292,83 @@ function ReplayManager({ superuserKey }) {
   );
 }
 
+function TestDmPanel({ superuserKey }) {
+  const [discordId, setDiscordId] = useState('');
+  const [status, setStatus] = useState(null); // null | { ok, message }
+  const [loading, setLoading] = useState(false);
+
+  const sendTestDm = async () => {
+    const id = discordId.trim();
+    if (!id) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const res = await fetch('/api/admin/test-dm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+        body: JSON.stringify({ discordId: id }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setStatus({ ok: true, message: `✅ Test DM sent to ${data.username} (${data.id})` });
+      } else {
+        setStatus({ ok: false, message: `❌ ${data.error}` });
+      }
+    } catch (e) {
+      setStatus({ ok: false, message: `❌ Request failed: ${e.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <h2 style={{ margin: 0 }}>Test Post-Match DM</h2>
+      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Sends a mock MVP + attitude rating DM to verify the post-match DM system is working for a player.
+        Replies are handled but not saved to the database.
+      </p>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="Discord User ID (e.g. 135991380760592384)"
+          value={discordId}
+          onChange={e => setDiscordId(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && sendTestDm()}
+          style={{
+            padding: '8px 12px', borderRadius: 6, fontSize: 14, width: 320,
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+            color: 'var(--text-primary)',
+          }}
+        />
+        <button
+          onClick={sendTestDm}
+          disabled={loading || !discordId.trim()}
+          style={{
+            padding: '8px 18px', borderRadius: 6, fontWeight: 600, fontSize: 14,
+            background: loading ? 'var(--bg-secondary)' : '#6366f1',
+            color: '#fff', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {loading ? 'Sending…' : '📨 Send Test DM'}
+        </button>
+      </div>
+      {status && (
+        <div style={{
+          marginTop: 12, padding: '8px 14px', borderRadius: 6, fontSize: 13,
+          background: status.ok ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+          border: `1px solid ${status.ok ? '#4ade80' : '#f87171'}`,
+          color: status.ok ? '#4ade80' : '#f87171',
+        }}>
+          {status.message}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ErrorLogViewer({ superuserKey }) {
   const [logs, setLogs] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -707,6 +784,9 @@ export default function AdminPanel() {
 
       {/* Stored Replays */}
       <ReplayManager superuserKey={superuserKey} />
+
+      {/* Test Post-Match DM */}
+      <TestDmPanel superuserKey={superuserKey} />
 
       {/* Server Error Log */}
       <ErrorLogViewer superuserKey={superuserKey} />
