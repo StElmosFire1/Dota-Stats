@@ -81,76 +81,62 @@ function RatingChart({ history }) {
 }
 
 function AchievementBadges({ achievements }) {
-  const [showAll, setShowAll] = React.useState(false);
+  const [showLocked, setShowLocked] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(true);
   if (!achievements || achievements.length === 0) return null;
   const earned = achievements.filter(a => a.earned);
   if (earned.length === 0) return null;
 
-  const groups = {};
-  for (const a of achievements) {
-    const g = a.group || 'Other';
-    if (!groups[g]) groups[g] = [];
-    groups[g].push(a);
-  }
-
-  const displayGroups = Object.entries(groups).filter(([, items]) =>
-    items.some(a => a.earned)
-  );
+  const visible = showLocked ? achievements : earned;
 
   return (
     <section style={{ marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 className="section-title" style={{ marginBottom: 0 }}>
-          🏅 Achievements
-        </h2>
-        <span style={{ fontSize: 12, background: 'var(--accent-blue)', color: '#fff', borderRadius: 12, padding: '2px 10px', fontWeight: 700 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: collapsed ? 0 : 12 }}>
+        <h2 className="section-title" style={{ marginBottom: 0 }}>🏅 Achievements</h2>
+        <span style={{ fontSize: 11, background: 'var(--accent-blue)', color: '#fff', borderRadius: 10, padding: '1px 8px', fontWeight: 700 }}>
           {earned.length}/{achievements.length}
         </span>
-        <button
-          onClick={() => setShowAll(s => !s)}
-          style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}
-        >
-          {showAll ? 'Hide locked' : 'Show all'}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {!collapsed && (
+            <button
+              onClick={() => setShowLocked(s => !s)}
+              style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 11 }}
+            >
+              {showLocked ? 'Hide locked' : 'Show locked'}
+            </button>
+          )}
+          <button
+            onClick={() => setCollapsed(s => !s)}
+            style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 11 }}
+          >
+            {collapsed ? 'Show ▾' : 'Hide ▴'}
+          </button>
+        </div>
       </div>
-      {displayGroups.map(([groupName, items]) => {
-        const visible = showAll ? items : items.filter(a => a.earned);
-        if (visible.length === 0) return null;
-        return (
-          <div key={groupName} style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-              {groupName}
+      {!collapsed && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {visible.map(a => (
+            <div
+              key={a.key}
+              title={a.desc}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '5px 10px', borderRadius: 20,
+                background: a.earned ? 'var(--bg-card)' : 'var(--bg-secondary)',
+                border: `1px solid ${a.earned ? 'var(--accent-blue)' : 'var(--border)'}`,
+                opacity: a.earned ? 1 : 0.4,
+                boxShadow: a.earned ? '0 0 6px rgba(59,130,246,0.15)' : 'none',
+                cursor: 'default',
+              }}
+            >
+              <span style={{ fontSize: 16 }}>{a.icon}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: a.earned ? 'var(--text-primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                {a.label}
+              </span>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {visible.map(a => (
-                <div
-                  key={a.key}
-                  title={a.desc}
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center',
-                    padding: '10px 12px', borderRadius: 10, minWidth: 76, maxWidth: 90, textAlign: 'center',
-                    background: a.earned ? 'var(--bg-card)' : 'var(--bg-secondary)',
-                    border: `1px solid ${a.earned ? 'var(--accent-blue)' : 'var(--border)'}`,
-                    opacity: a.earned ? 1 : 0.35,
-                    boxShadow: a.earned ? '0 0 8px rgba(59,130,246,0.18)' : 'none',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <div style={{ fontSize: 24, marginBottom: 4 }}>{a.icon}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: a.earned ? 'var(--text-primary)' : 'var(--text-muted)', lineHeight: 1.3 }}>
-                    {a.label}
-                  </div>
-                  {!a.earned && (
-                    <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.2 }}>
-                      {a.desc}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -319,6 +305,20 @@ export default function PlayerProfile() {
               <div className="stat-label">🪝 Pudge Hook Accuracy</div>
             </div>
           )}
+          {communityRatings && parseInt(communityRatings.mvp_wins) > 0 && (
+            <div className="stat-card" style={{ borderColor: '#fbbf24' }}>
+              <div className="stat-value" style={{ color: '#fbbf24' }}>{communityRatings.mvp_wins} ⭐</div>
+              <div className="stat-label">MVP Wins</div>
+            </div>
+          )}
+          {communityRatings && communityRatings.avg_attitude && (
+            <div className="stat-card" style={{ borderColor: parseFloat(communityRatings.avg_attitude) >= 7 ? '#4ade80' : parseFloat(communityRatings.avg_attitude) >= 5 ? '#fbbf24' : '#f87171' }}>
+              <div className="stat-value" style={{ color: parseFloat(communityRatings.avg_attitude) >= 7 ? '#4ade80' : parseFloat(communityRatings.avg_attitude) >= 5 ? '#fbbf24' : '#f87171' }}>
+                {parseFloat(communityRatings.avg_attitude).toFixed(1)}<span style={{ fontSize: '0.6em', color: '#64748b' }}>/10</span>
+              </div>
+              <div className="stat-label">🤝 Attitude ({communityRatings.attitude_ratings})</div>
+            </div>
+          )}
         </div>
       )}
 
@@ -359,41 +359,6 @@ export default function PlayerProfile() {
       )}
 
       <AchievementBadges achievements={achievements} />
-
-      {communityRatings && (parseInt(communityRatings.mvp_wins) > 0 || parseInt(communityRatings.attitude_ratings) > 0) && (
-        <section style={{ marginBottom: 24 }}>
-          <h2 className="section-title">⭐ Community Ratings</h2>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-            Voted by teammates after matches — ratings are anonymous.
-          </p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {parseInt(communityRatings.mvp_wins) > 0 && (
-              <div style={{
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
-                padding: '14px 20px', minWidth: 120, textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: '#fbbf24' }}>
-                  {communityRatings.mvp_wins} ⭐
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>MVP Wins</div>
-              </div>
-            )}
-            {communityRatings.avg_attitude && (
-              <div style={{
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
-                padding: '14px 20px', minWidth: 120, textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: parseFloat(communityRatings.avg_attitude) >= 7 ? '#4ade80' : parseFloat(communityRatings.avg_attitude) >= 5 ? '#fbbf24' : '#f87171' }}>
-                  {communityRatings.avg_attitude}/10
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Attitude Score ({communityRatings.attitude_ratings} ratings)
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       {predictionStats && parseInt(predictionStats.total) > 0 && (
         <section style={{ marginBottom: 24 }}>
