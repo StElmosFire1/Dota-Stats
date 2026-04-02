@@ -2525,6 +2525,15 @@ class DiscordBot {
     return this._runTestDm(targetDiscordId);
   }
 
+  // Manually trigger post-match DMs for an already-recorded match
+  async triggerMatchDMs(matchId) {
+    const players = await db.getDiscordIdsForMatch(matchId.toString());
+    if (!players.length) throw new Error(`No player stats found for match ${matchId}`);
+    const fakeStats = { matchId, players: players.map(p => ({ accountId: p.account_id, team: p.team })) };
+    await this._initiateRatingSession(fakeStats);
+    return { matchId, players: players.length, withDiscord: players.filter(p => p.discord_id && p.discord_id.trim()).length };
+  }
+
   async _runTestDm(targetId) {
     const user = await this.client.users.fetch(targetId);
 

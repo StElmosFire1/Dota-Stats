@@ -2348,6 +2348,16 @@ NOTES
     }
   });
 
+  router.post('/admin/matches/:matchId/trigger-dms', requireSuperuser, async (req, res) => {
+    try {
+      const result = await getDiscordBot().triggerMatchDMs(req.params.matchId);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[TriggerDMs]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Patch notes
   router.get('/patch-notes', async (req, res) => {
     try {
