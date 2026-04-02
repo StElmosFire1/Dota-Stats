@@ -722,6 +722,18 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/best-and-fairest', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id ? parseInt(req.query.season_id) : null;
+      const minRatings = parseInt(req.query.min_ratings) || 3;
+      const rows = await db.getBestAndFairest(seasonId, minRatings);
+      res.json({ rows, season_id: seasonId });
+    } catch (err) {
+      console.error('[API] Error fetching best and fairest:', err.message);
+      res.status(500).json({ error: 'Failed to fetch best and fairest' });
+    }
+  });
+
   router.get('/predictions/open', async (req, res) => {
     try {
       const data = await db.getOpenPrediction();

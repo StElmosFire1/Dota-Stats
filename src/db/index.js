@@ -1598,16 +1598,50 @@ async function getMatchRatings(matchId) {
 async function getPlayerRatingsReceived(accountId) {
   const p = getPool();
   const result = await p.query(
-    `SELECT
-       COUNT(*) FILTER (WHERE is_mvp_vote = TRUE) as mvp_votes,
-       COUNT(*) as total_ratings,
-       ROUND(AVG(attitude_score) FILTER (WHERE attitude_score IS NOT NULL), 1) as avg_attitude,
-       COUNT(*) FILTER (WHERE attitude_score IS NOT NULL) as attitude_ratings
+    `WITH vote_counts AS (
+       SELECT match_id, rated_account_id, COUNT(*) AS votes
+       FROM match_ratings WHERE is_mvp_vote = TRUE
+       GROUP BY match_id, rated_account_id
+     ),
+     match_winners AS (
+       SELECT match_id, rated_account_id,
+              RANK() OVER (PARTITION BY match_id ORDER BY votes DESC) AS rnk
+       FROM vote_counts
+     )
+     SELECT
+       (SELECT COUNT(*) FROM match_winners WHERE rated_account_id = $1 AND rnk = 1) AS mvp_wins,
+       ROUND(AVG(attitude_score) FILTER (WHERE attitude_score IS NOT NULL), 1) AS avg_attitude,
+       COUNT(*) FILTER (WHERE attitude_score IS NOT NULL) AS attitude_ratings
      FROM match_ratings
      WHERE rated_account_id = $1`,
     [accountId]
   );
   return result.rows[0];
+}
+
+async function getBestAndFairest(seasonId = null, minRatings = 3) {
+  const p = getPool();
+  const params = [minRatings];
+  const seasonFilter = seasonId
+    ? `AND mr.match_id IN (SELECT ps.match_id FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id WHERE m.season_id = $${params.push(seasonId) && params.length})`
+    : '';
+  const result = await p.query(
+    `SELECT
+       mr.rated_account_id AS account_id,
+       COALESCE(n.nickname, MAX(r.display_name)) AS display_name,
+       ROUND(AVG(mr.attitude_score), 2) AS avg_attitude,
+       COUNT(*) AS total_ratings
+     FROM match_ratings mr
+     LEFT JOIN nicknames n ON n.account_id::text = mr.rated_account_id::text
+     LEFT JOIN ratings r ON r.player_id::text = mr.rated_account_id::text
+     WHERE mr.attitude_score IS NOT NULL ${seasonFilter}
+     GROUP BY mr.rated_account_id, n.nickname
+     HAVING COUNT(*) >= $1
+     ORDER BY avg_attitude DESC, total_ratings DESC
+     LIMIT 10`,
+    params
+  );
+  return result.rows;
 }
 
 async function getDiscordIdsForMatch(matchId) {
@@ -4932,6 +4966,7 @@ module.exports = {
   deletePatchNote,
   getMultiKillStats,
   getMostImproved,
+  getBestAndFairest,
   getHeroMetaByPosition,
   getMatchPredictions,
   upsertMatchPrediction,

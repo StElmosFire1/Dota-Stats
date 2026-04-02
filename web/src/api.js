@@ -473,6 +473,11 @@ export async function getMostImproved(days = 30, seasonId = null) {
   return fetchJson(`/most-improved?days=${days}${sp}`);
 }
 
+export async function getBestAndFairest(seasonId = null, minRatings = 3) {
+  const sp = seasonId ? `&season_id=${seasonId}` : '';
+  return fetchJson(`/best-and-fairest?min_ratings=${minRatings}${sp}`);
+}
+
 export async function getPudgeGames(seasonId = null) {
   return fetchJson(`/pudge-stats/games?x=1${seasonParam(seasonId)}`);
 }

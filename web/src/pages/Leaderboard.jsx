@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getLeaderboard, getMostImproved, getPlayerForm } from '../api';
+import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
 const MMR_TIERS = [
@@ -139,6 +139,85 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
   );
 }
 
+function BestAndFairestWidget({ data, loading, seasonLabel }) {
+  const title = seasonLabel ? `Best & Fairest — ${seasonLabel}` : 'Best & Fairest — All Time';
+
+  if (loading) return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+      padding: '16px 20px', marginBottom: 24,
+    }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading best & fairest…</div>
+    </div>
+  );
+
+  if (!data || data.length === 0) return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+      padding: '16px 20px', marginBottom: 24,
+    }}>
+      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>🤝 {title}</div>
+      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+        Not enough attitude ratings yet — needs at least 3 ratings per player.
+      </div>
+    </div>
+  );
+
+  function attitudeColor(score) {
+    const n = parseFloat(score);
+    if (n >= 8) return '#4ade80';
+    if (n >= 6) return '#fbbf24';
+    return '#f87171';
+  }
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(96,165,250,0.08) 0%, var(--bg-card) 100%)',
+      border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12,
+      padding: '16px 20px', marginBottom: 24,
+    }}>
+      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span>🤝</span>
+        <span>{title}</span>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+        Average attitude rating received from teammates (min. 3 ratings)
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {data.slice(0, 5).map((p, i) => (
+          <div key={p.account_id} style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+            padding: '10px 14px', minWidth: 140, flex: '1 1 140px',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+                background: 'var(--bg-hover)', borderRadius: 4, padding: '1px 5px',
+              }}>#{i + 1}</span>
+              <Link to={`/player/${p.account_id}`} style={{
+                fontWeight: 600, fontSize: 13, color: 'var(--text-primary)',
+                textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {p.display_name || `Player ${p.account_id}`}
+              </Link>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Attitude</span>
+              <span style={{ fontWeight: 800, fontSize: 16, color: attitudeColor(p.avg_attitude) }}>
+                {parseFloat(p.avg_attitude).toFixed(1)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>/10</span>
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {p.total_ratings} rating{p.total_ratings !== '1' ? 's' : ''}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FormDots({ results }) {
   if (!results || results.length === 0) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>;
   return (
@@ -164,6 +243,8 @@ export default function Leaderboard() {
   const [loading, setLoading] = useState(true);
   const [improved, setImproved] = useState([]);
   const [improvedLoading, setImprovedLoading] = useState(true);
+  const [bestFairest, setBestFairest] = useState([]);
+  const [bestFairestLoading, setBestFairestLoading] = useState(true);
   const [playerForm, setPlayerForm] = useState({});
 
   useEffect(() => {
@@ -188,6 +269,14 @@ export default function Leaderboard() {
       .finally(() => setImprovedLoading(false));
   }, [seasonId]);
 
+  useEffect(() => {
+    setBestFairestLoading(true);
+    getBestAndFairest(seasonId || null)
+      .then(d => setBestFairest(d.rows || []))
+      .catch(() => setBestFairest([]))
+      .finally(() => setBestFairestLoading(false));
+  }, [seasonId]);
+
   if (loading) return <div className="loading">Loading leaderboard...</div>;
 
   return (
@@ -199,6 +288,13 @@ export default function Leaderboard() {
         const season = seasons.find(s => s.id === seasonId);
         const seasonLabel = season ? (season.name || `Season ${season.id}`) : null;
         return <MostImprovedWidget data={improved} loading={improvedLoading} seasonLabel={seasonLabel} />;
+      })()}
+
+      {/* Best & Fairest Widget */}
+      {(() => {
+        const season = seasons.find(s => s.id === seasonId);
+        const seasonLabel = season ? (season.name || `Season ${season.id}`) : null;
+        return <BestAndFairestWidget data={bestFairest} loading={bestFairestLoading} seasonLabel={seasonLabel} />;
       })()}
 
       {/* Tier legend — worst to best left to right */}
