@@ -5347,7 +5347,9 @@ async function getHallOfFameCareerStats(seasonId = null) {
 async function getPlayerBenchmarkAverages(seasonId = null) {
   const p = getPool();
   const params = [];
-  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : '';
+  const seasonClause = seasonId
+    ? ` AND ps.match_id IN (SELECT match_id FROM matches WHERE season_id = $${params.push(parseInt(seasonId))})`
+    : '';
   const result = await p.query(`
     SELECT
       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END AS account_id,
@@ -5364,9 +5366,8 @@ async function getPlayerBenchmarkAverages(seasonId = null) {
       ROUND(AVG(ps.last_hits)) AS avg_last_hits,
       ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE (ps.kills + ps.assists)::float END), 2) AS avg_kda
     FROM player_stats ps
-    JOIN matches m ON m.match_id::text = ps.match_id::text
     LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text
-    WHERE (ps.account_id != 0 OR (ps.persona_name IS NOT NULL AND ps.persona_name != ''))${sc}
+    WHERE (ps.account_id != 0 OR (ps.persona_name IS NOT NULL AND ps.persona_name != ''))${seasonClause}
     GROUP BY CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END, n.nickname
     HAVING COUNT(DISTINCT ps.match_id) >= 1
     ORDER BY games DESC

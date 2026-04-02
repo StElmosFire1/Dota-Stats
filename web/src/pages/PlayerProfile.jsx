@@ -318,9 +318,6 @@ export default function PlayerProfile() {
                   : '—'}
               </div>
               <div className="stat-label">🪝 Hook</div>
-              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-                {averages.total_hook_hits}/{averages.total_hook_attempts} attempts
-              </div>
             </div>
           )}
           {averages && parseFloat(averages.avg_assists) > 0 && (
@@ -357,9 +354,6 @@ export default function PlayerProfile() {
                 {parseFloat(communityRatings.avg_attitude).toFixed(1)}<span style={{ fontSize: '0.6em', color: '#64748b' }}>/10</span>
               </div>
               <div className="stat-label">🤝 Attitude</div>
-              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-                {communityRatings.attitude_ratings} rating{communityRatings.attitude_ratings !== '1' ? 's' : ''}
-              </div>
             </div>
           )}
         </div>
