@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
+import { formatHeroName } from '../utils/heroes';
 import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -1776,8 +1777,37 @@ function WardMapPanel({ players }) {
   const mapImg = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [wardFilter, setWardFilter] = useState('both');
+  // null = all players; otherwise a Set of hero_name strings that are shown
+  const [playerFilter, setPlayerFilter] = useState(null);
 
   const hasWards = players.some(p => Array.isArray(p.ward_placements) && p.ward_placements.length > 0);
+  const radiantColor = '#4ade80';
+  const direColor = '#f87171';
+
+  const isPlayerSelected = (heroName) => playerFilter === null || playerFilter.has(heroName);
+
+  const togglePlayer = (heroName) => {
+    setPlayerFilter(prev => {
+      if (prev === null) {
+        // deselect this one, keep all others
+        const next = new Set(players.map(p => p.hero_name));
+        next.delete(heroName);
+        return next.size === 0 ? null : next;
+      }
+      const next = new Set(prev);
+      if (next.has(heroName)) {
+        next.delete(heroName);
+      } else {
+        next.add(heroName);
+      }
+      // if all selected again, go back to null
+      return next.size >= players.length ? null : next.size === 0 ? null : next;
+    });
+  };
+
+  const filteredPlayers = playerFilter === null
+    ? players
+    : players.filter(p => playerFilter.has(p.hero_name));
 
   useEffect(() => {
     if (!hasWards) return;
@@ -1787,9 +1817,6 @@ function WardMapPanel({ players }) {
     img.src = '/minimap.jpg';
     mapImg.current = img;
   }, [hasWards]);
-
-  const radiantColor = '#4ade80';
-  const direColor = '#f87171';
 
   useEffect(() => {
     if (!hasWards) return;
@@ -1809,7 +1836,7 @@ function WardMapPanel({ players }) {
     }
     const showObs = wardFilter === 'both' || wardFilter === 'obs';
     const showSen = wardFilter === 'both' || wardFilter === 'sen';
-    for (const player of players) {
+    for (const player of filteredPlayers) {
       const wards = Array.isArray(player.ward_placements) ? player.ward_placements : [];
       const color = player.team === 'radiant' ? radiantColor : direColor;
       for (const ward of wards) {
@@ -1832,13 +1859,16 @@ function WardMapPanel({ players }) {
         }
       }
     }
-  }, [players, mapLoaded, wardFilter, hasWards]);
+  }, [filteredPlayers, mapLoaded, wardFilter, hasWards]);
 
   if (!hasWards) return null;
 
+  const radiantPlayers = players.filter(p => p.team === 'radiant');
+  const direPlayers = players.filter(p => p.team === 'dire');
+
   return (
     <div className="expanded-stats-section">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 10 }}>
         <h3 style={{ margin: 0 }}>Ward Map <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— ward placements this match</span></h3>
         <div style={{ display: 'flex', gap: 6 }}>
           {[['both', 'Both'], ['obs', 'Observer'], ['sen', 'Sentry']].map(([v, l]) => (
@@ -1849,11 +1879,54 @@ function WardMapPanel({ players }) {
             }}>{l}</button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-          <span><span style={{ color: radiantColor }}>●</span> Radiant Obs &nbsp;<span style={{ color: radiantColor }}>◆</span> Radiant Sen</span>
-          <span><span style={{ color: direColor }}>●</span> Dire Obs &nbsp;<span style={{ color: direColor }}>◆</span> Dire Sen</span>
-        </div>
       </div>
+
+      {/* Player chips */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginRight: 4 }}>PLAYERS:</span>
+        <button
+          onClick={() => setPlayerFilter(null)}
+          style={{
+            background: playerFilter === null ? 'var(--accent-blue)' : 'var(--bg-secondary)',
+            color: playerFilter === null ? '#fff' : 'var(--text-muted)',
+            border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+          }}
+        >All</button>
+        {/* Radiant players */}
+        {radiantPlayers.map(p => {
+          const sel = isPlayerSelected(p.hero_name);
+          const displayName = p.nickname || p.persona_name || formatHeroName(p.hero_name);
+          return (
+            <button key={p.hero_name} onClick={() => togglePlayer(p.hero_name)} style={{
+              background: sel ? 'rgba(74,222,128,0.18)' : 'var(--bg-secondary)',
+              color: sel ? radiantColor : 'var(--text-muted)',
+              border: `1px solid ${sel ? radiantColor : 'var(--border)'}`,
+              borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              opacity: sel ? 1 : 0.5,
+            }}>{displayName}</button>
+          );
+        })}
+        {/* Dire players */}
+        {direPlayers.map(p => {
+          const sel = isPlayerSelected(p.hero_name);
+          const displayName = p.nickname || p.persona_name || formatHeroName(p.hero_name);
+          return (
+            <button key={p.hero_name} onClick={() => togglePlayer(p.hero_name)} style={{
+              background: sel ? 'rgba(248,113,113,0.18)' : 'var(--bg-secondary)',
+              color: sel ? direColor : 'var(--text-muted)',
+              border: `1px solid ${sel ? direColor : 'var(--border)'}`,
+              borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              opacity: sel ? 1 : 0.5,
+            }}>{displayName}</button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+        <span><span style={{ color: radiantColor }}>●</span> Radiant Obs &nbsp;<span style={{ color: radiantColor }}>◆</span> Radiant Sen</span>
+        <span><span style={{ color: direColor }}>●</span> Dire Obs &nbsp;<span style={{ color: direColor }}>◆</span> Dire Sen</span>
+      </div>
+
       <canvas
         ref={canvasRef}
         width={500} height={500}

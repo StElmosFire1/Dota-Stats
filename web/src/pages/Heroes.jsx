@@ -292,7 +292,7 @@ function HeroTierTab({ playedHeroes, totalMatches }) {
                 borderRadius: 8, padding: '8px 12px', minWidth: 140,
                 display: 'flex', flexDirection: 'column', gap: 4,
               }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{h.hero_name}</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{formatHeroName(h.hero_name)}</span>
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                   {(h.wr * 100).toFixed(1)}% ({h.wins}W–{h.games - h.wins}L)
                 </span>
@@ -392,7 +392,7 @@ function HeroMatchupsTab() {
                 const colour = wr >= 0.55 ? 'var(--accent-green, #4caf50)' : wr <= 0.45 ? 'var(--accent-red, #f44336)' : 'var(--text-muted)';
                 return (
                   <tr key={r.opp_hero_id}>
-                    <td className="col-player">{r.opp_hero_name}</td>
+                    <td className="col-player">{formatHeroName(r.opp_hero_name)}</td>
                     <td className="col-stat">{games}</td>
                     <td className="col-stat wins">{wins}</td>
                     <td className="col-stat" style={{ color: colour, fontWeight: 600 }}>{(wr * 100).toFixed(1)}%</td>

@@ -95,7 +95,16 @@ export default function OverallStats() {
                   >
                     {captRate === '-' ? '-' : `${captRate}% (${row.captain_games}g)`}
                   </td>
-                  <td className="col-stat">{row.best_position ? POS_SHORT[row.best_position] : '—'}</td>
+                  <td className="col-stat">
+                    {row.best_position ? (
+                      <>
+                        {POS_SHORT[row.best_position]}
+                        {row.best_position_score != null && (
+                          <span style={{ color: '#4ade80', fontSize: '0.8em', marginLeft: 4 }}>({row.best_position_score})</span>
+                        )}
+                      </>
+                    ) : '—'}
+                  </td>
                 </tr>
               );
             })}
