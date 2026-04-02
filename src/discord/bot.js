@@ -180,13 +180,16 @@ class DiscordBot {
     const channel = await this._getAnnounceChannel();
     if (!channel) {
       console.log('[Discord] Web upload: no announce channel configured, skipping Discord notification.');
-      return;
+    } else {
+      try {
+        await this._sendMatchSummary(matchStats, 'Replay Upload', channel);
+      } catch (err) {
+        console.error('[Discord] Web upload notify error:', err.message);
+      }
     }
-    try {
-      await this._sendMatchSummary(matchStats, 'Replay Upload', channel);
-    } catch (err) {
-      console.error('[Discord] Web upload notify error:', err.message);
-    }
+    // Trigger post-match DMs regardless of whether a channel is configured
+    setTimeout(() => this._initiateRatingSession(matchStats).catch(e => console.error('[Ratings] DM error:', e.message)), 3000);
+    setTimeout(() => this._sendReportCardDMs(matchStats).catch(e => console.error('[ReportCard] DM error:', e.message)), 5000);
   }
 
   _setupHandlers() {
