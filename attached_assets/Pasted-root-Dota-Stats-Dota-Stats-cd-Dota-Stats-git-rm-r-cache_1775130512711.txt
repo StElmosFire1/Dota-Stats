@@ -1,0 +1,112 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+git rm -r --cached web/dist/
+git add .gitignore
+git commit -m "Stop tracking built dist files"
+git push
+rm 'web/dist/assets/AdminPanel-QKl0q2x_.js'
+rm 'web/dist/assets/BuyinSuccess-CZcaaHM0.js'
+rm 'web/dist/assets/Draft-DKHYb7Lm.js'
+rm 'web/dist/assets/HallOfFame-DV1LuKbi.js'
+rm 'web/dist/assets/Heroes-DcSNmZz0.js'
+rm 'web/dist/assets/Home-CaY7cW6J.js'
+rm 'web/dist/assets/Leaderboard-BItwLi3h.js'
+rm 'web/dist/assets/LineChart-DVfG3dax.js'
+rm 'web/dist/assets/MatchDetail-DMgw0RCP.js'
+rm 'web/dist/assets/MatchList-DnFUQbSS.js'
+rm 'web/dist/assets/MultiKills-dfFfqAaf.js'
+rm 'web/dist/assets/OverallStats-C_MaqtmT.js'
+rm 'web/dist/assets/PatchNotes-UpAgsAFq.js'
+rm 'web/dist/assets/PlayerBenchmarks-Cgnhbgg8.js'
+rm 'web/dist/assets/PlayerProfile-DM9zXX8l.js'
+rm 'web/dist/assets/PlayerTools-DDIBNM52.js'
+rm 'web/dist/assets/Players-Bhwj3fpn.js'
+rm 'web/dist/assets/PositionStats-BsWogd_L.js'
+rm 'web/dist/assets/Predictions-CIzJE7Vm.js'
+rm 'web/dist/assets/PudgeStats-B5_5XP1H.js'
+rm 'web/dist/assets/Records-j0_wvypJ.js'
+rm 'web/dist/assets/Schedule-D05tOZ_U.js'
+rm 'web/dist/assets/Seasons-CtTNEd71.js'
+rm 'web/dist/assets/Social-n22mRsp-.js'
+rm 'web/dist/assets/StatsEditor-B56EgfOC.js'
+rm 'web/dist/assets/Synergy-CDl-m60L.js'
+rm 'web/dist/assets/Tournaments-BD9RR4pv.js'
+rm 'web/dist/assets/Upload-Ck7_X2cR.js'
+rm 'web/dist/assets/WardMap-ClZgAEmi.js'
+rm 'web/dist/assets/heroNames-CN8zoRK5.js'
+rm 'web/dist/assets/heroes-B4IkSDsk.js'
+rm 'web/dist/assets/index-CA8kh1sQ.js'
+rm 'web/dist/assets/index-D_0FCYia.css'
+rm 'web/dist/dota_minimap.png'
+rm 'web/dist/dota_minimap.svg'
+rm 'web/dist/index.html'
+rm 'web/dist/minimap.jpg'
+rm 'web/dist/minimap.png'
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: unable to auto-detect email address (got 'root@Dota-Stats.(none)')
+Username for 'https://github.com': git config --global user.email "stelmosfire1@gmail.com"
+git config --global user.name "StElmosFire1"Password for 'https://git%20config%20--global%20user.email%20%22stelmosfire1%40gmail.com%22@github.com': 
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/StElmosFire1/Dota-Stats.git/'
+root@Dota-Stats:~/Dota-Stats# git config --global user.email "stelmosfire1@gmail.com"
+git config --global user.name "StElmosFire1"
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+git add .gitignore
+git commit -m "Stop tracking built dist files"
+[main 0c1246b] Stop tracking built dist files
+ 38 files changed, 1665 deletions(-)
+ delete mode 100644 web/dist/assets/AdminPanel-QKl0q2x_.js
+ delete mode 100644 web/dist/assets/BuyinSuccess-CZcaaHM0.js
+ delete mode 100644 web/dist/assets/Draft-DKHYb7Lm.js
+ delete mode 100644 web/dist/assets/HallOfFame-DV1LuKbi.js
+ delete mode 100644 web/dist/assets/Heroes-DcSNmZz0.js
+ delete mode 100644 web/dist/assets/Home-CaY7cW6J.js
+ delete mode 100644 web/dist/assets/Leaderboard-BItwLi3h.js
+ delete mode 100644 web/dist/assets/LineChart-DVfG3dax.js
+ delete mode 100644 web/dist/assets/MatchDetail-DMgw0RCP.js
+ delete mode 100644 web/dist/assets/MatchList-DnFUQbSS.js
+ delete mode 100644 web/dist/assets/MultiKills-dfFfqAaf.js
+ delete mode 100644 web/dist/assets/OverallStats-C_MaqtmT.js
+ delete mode 100644 web/dist/assets/PatchNotes-UpAgsAFq.js
+ delete mode 100644 web/dist/assets/PlayerBenchmarks-Cgnhbgg8.js
+ delete mode 100644 web/dist/assets/PlayerProfile-DM9zXX8l.js
+ delete mode 100644 web/dist/assets/PlayerTools-DDIBNM52.js
+ delete mode 100644 web/dist/assets/Players-Bhwj3fpn.js
+ delete mode 100644 web/dist/assets/PositionStats-BsWogd_L.js
+ delete mode 100644 web/dist/assets/Predictions-CIzJE7Vm.js
+ delete mode 100644 web/dist/assets/PudgeStats-B5_5XP1H.js
+ delete mode 100644 web/dist/assets/Records-j0_wvypJ.js
+ delete mode 100644 web/dist/assets/Schedule-D05tOZ_U.js
+ delete mode 100644 web/dist/assets/Seasons-CtTNEd71.js
+ delete mode 100644 web/dist/assets/Social-n22mRsp-.js
+ delete mode 100644 web/dist/assets/StatsEditor-B56EgfOC.js
+ delete mode 100644 web/dist/assets/Synergy-CDl-m60L.js
+ delete mode 100644 web/dist/assets/Tournaments-BD9RR4pv.js
+ delete mode 100644 web/dist/assets/Upload-Ck7_X2cR.js
+ delete mode 100644 web/dist/assets/WardMap-ClZgAEmi.js
+ delete mode 100644 web/dist/assets/heroNames-CN8zoRK5.js
+ delete mode 100644 web/dist/assets/heroes-B4IkSDsk.js
+ delete mode 100644 web/dist/assets/index-CA8kh1sQ.js
+ delete mode 100644 web/dist/assets/index-D_0FCYia.css
+ delete mode 100644 web/dist/dota_minimap.png
+ delete mode 100644 web/dist/dota_minimap.svg
+ delete mode 100644 web/dist/index.html
+ delete mode 100644 web/dist/minimap.jpg
+ delete mode 100644 web/dist/minimap.png
+root@Dota-Stats:~/Dota-Stats# git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/StElmosFire1/Dota-Stats.git/'
+root@Dota-Stats:~/Dota-Stats# echo $GITHUB_PERSONAL_ACCESS_TOKEN
+
+root@Dota-Stats:~/Dota-Stats# export GITHUB_PERSONAL_ACCESS_TOKEN=your_token_here
+root@Dota-Stats:~/Dota-Stats# 
