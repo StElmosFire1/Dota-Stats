@@ -316,11 +316,30 @@ export default function PlayerProfile() {
                 {parseInt(averages.total_hook_attempts) > 0
                   ? ((parseInt(averages.total_hook_hits) / parseInt(averages.total_hook_attempts)) * 100).toFixed(1) + '%'
                   : '—'}
-                <span style={{ fontSize: '0.7em', color: '#64748b', marginLeft: 4 }}>
-                  ({averages.total_hook_hits}/{averages.total_hook_attempts})
-                </span>
               </div>
-              <div className="stat-label">🪝 Pudge Hook Accuracy</div>
+              <div className="stat-label">🪝 Hook Accuracy ({averages.total_hook_hits}/{averages.total_hook_attempts})</div>
+            </div>
+          )}
+          {averages && parseFloat(averages.avg_assists) > 0 && (
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#60a5fa' }}>{parseFloat(averages.avg_assists).toFixed(1)}</div>
+              <div className="stat-label">Avg Assists</div>
+            </div>
+          )}
+          {averages && parseInt(averages.avg_xpm) > 0 && (
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#a78bfa' }}>{parseInt(averages.avg_xpm)}</div>
+              <div className="stat-label">⚡ Avg XPM</div>
+            </div>
+          )}
+          {averages && parseInt(averages.avg_hero_damage) > 0 && (
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#fb923c' }}>
+                {parseInt(averages.avg_hero_damage) >= 1000
+                  ? (parseInt(averages.avg_hero_damage) / 1000).toFixed(1) + 'k'
+                  : parseInt(averages.avg_hero_damage)}
+              </div>
+              <div className="stat-label">🗡️ Avg Damage</div>
             </div>
           )}
           {communityRatings && parseInt(communityRatings.mvp_wins) > 0 && (
