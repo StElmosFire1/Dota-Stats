@@ -1,0 +1,59 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+git pull --rebase
+git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main
+remote: Enumerating objects: 21, done.
+remote: Counting objects: 100% (21/21), done.
+remote: Compressing objects: 100% (6/6), done.
+remote: Total 13 (delta 8), reused 10 (delta 5), pack-reused 0 (from 0)
+Unpacking objects: 100% (13/13), 4.91 KiB | 251.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   60ffeaa..306bd5a  main       -> origin/main
+error: The following untracked working tree files would be overwritten by checkout:
+        web/dist/assets/AdminPanel-QKl0q2x_.js
+        web/dist/assets/BuyinSuccess-CZcaaHM0.js
+        web/dist/assets/Draft-DKHYb7Lm.js
+        web/dist/assets/HallOfFame-DV1LuKbi.js
+        web/dist/assets/Heroes-DcSNmZz0.js
+        web/dist/assets/Home-CaY7cW6J.js
+        web/dist/assets/Leaderboard-BItwLi3h.js
+        web/dist/assets/LineChart-DVfG3dax.js
+        web/dist/assets/MatchDetail-DMgw0RCP.js
+        web/dist/assets/MatchList-DnFUQbSS.js
+        web/dist/assets/MultiKills-dfFfqAaf.js
+        web/dist/assets/OverallStats-C_MaqtmT.js
+        web/dist/assets/PatchNotes-UpAgsAFq.js
+        web/dist/assets/PlayerBenchmarks-Cgnhbgg8.js
+        web/dist/assets/PlayerProfile-DM9zXX8l.js
+        web/dist/assets/PlayerTools-DDIBNM52.js
+        web/dist/assets/Players-Bhwj3fpn.js
+        web/dist/assets/PositionStats-BsWogd_L.js
+        web/dist/assets/Predictions-CIzJE7Vm.js
+        web/dist/assets/PudgeStats-B5_5XP1H.js
+        web/dist/assets/Records-j0_wvypJ.js
+        web/dist/assets/Schedule-D05tOZ_U.js
+        web/dist/assets/Seasons-CtTNEd71.js
+        web/dist/assets/Social-n22mRsp-.js
+        web/dist/assets/StatsEditor-B56EgfOC.js
+        web/dist/assets/Synergy-CDl-m60L.js
+        web/dist/assets/Tournaments-BD9RR4pv.js
+        web/dist/assets/Upload-Ck7_X2cR.js
+        web/dist/assets/WardMap-ClZgAEmi.js
+        web/dist/assets/heroNames-CN8zoRK5.js
+        web/dist/assets/heroes-B4IkSDsk.js
+        web/dist/assets/index-CA8kh1sQ.js
+        web/dist/assets/index-D_0FCYia.css
+        web/dist/dota_minimap.png
+        web/dist/dota_minimap.svg
+        web/dist/index.html
+        web/dist/minimap.jpg
+        web/dist/minimap.png
+Please move or remove them before you switch branches.
+Aborting
+error: could not detach HEAD
+To https://github.com/StElmosFire1/Dota-Stats.git
+ ! [rejected]        main -> main (non-fast-forward)
+error: failed to push some refs to 'https://github.com/StElmosFire1/Dota-Stats.git'
+hint: Updates were rejected because the tip of your current branch is behind
+hint: its remote counterpart. If you want to integrate the remote changes,
+hint: use 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.
