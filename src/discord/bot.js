@@ -2270,8 +2270,8 @@ class DiscordBot {
         const optedOut = await db.getPlayerRatingsOptOut(rater.discord_id).catch(() => false);
         if (optedOut) continue;
 
-        const teammates = players.filter(p => p.account_id !== rater.account_id);
-        if (teammates.length === 0) continue;
+        const allOthers = players.filter(p => p.account_id !== rater.account_id);
+        if (allOthers.length === 0) continue;
 
         const user = await this.client.users.fetch(rater.discord_id).catch(() => null);
         if (!user) continue;
@@ -2279,18 +2279,20 @@ class DiscordBot {
         const session = {
           matchId: matchStats.matchId.toString(),
           raterAccountId: rater.account_id,
-          teammates,
+          raterTeam: rater.team,
+          teammates: allOthers,
           step: 'mvp',
         };
         this.pendingRatingSessions.set(rater.discord_id, session);
 
-        const teammateList = teammates.map((p, i) => `**${i + 1}.** ${p.display_name} (${p.team === 'radiant' ? '🟢' : '🔴'})`).join('\n');
+        const heroLabel = (p) => p.hero_name ? ` (${this._heroDisplayName(p.hero_name)})` : '';
+        const mvpList = allOthers.map((p, i) => `**${i + 1}.** ${p.display_name}${heroLabel(p)} ${p.team === 'radiant' ? '🟢' : '🔴'}`).join('\n');
         const embed = new EmbedBuilder()
           .setTitle(`⭐ Match #${matchStats.matchId} — Rate Your Teammates`)
           .setColor(0xfbbf24)
           .setDescription(
             `The inhouse just finished! Take 30 seconds to rate your teammates.\n\n` +
-            `**Step 1 of 2 — MVP Vote**\nWho was the MVP? Reply with just the number:\n\n${teammateList}\n\n` +
+            `**Step 1 of 2 — MVP Vote**\nWho was the MVP of the match? Reply with just the number:\n\n${mvpList}\n\n` +
             `_(Reply \`skip\` to skip this step)_`
           );
 
@@ -2329,31 +2331,36 @@ class DiscordBot {
         }
       }
 
+      // Attitude step: only rate own team
+      const ownTeam = session.teammates.filter(p => p.team === session.raterTeam);
       session.step = 'attitude';
+      session.attitudePlayers = ownTeam;
       this.pendingRatingSessions.set(msg.author.id, session);
 
-      const teammateList = session.teammates.map((p, i) => `**${i + 1}.** ${p.display_name}`).join('\n');
+      const heroLabel = (p) => p.hero_name ? ` (${this._heroDisplayName(p.hero_name)})` : '';
+      const attitudeList = ownTeam.map((p, i) => `**${i + 1}.** ${p.display_name}${heroLabel(p)}`).join('\n');
       const embed = new EmbedBuilder()
         .setTitle(`👍 Step 2 of 2 — Attitude Ratings`)
         .setColor(0x4ade80)
         .setDescription(
-          `Rate each teammate's attitude / enjoyment to play with (1–10).\n` +
-          `Reply with ${session.teammates.length} space-separated numbers in this order:\n\n` +
-          `${teammateList}\n\n` +
+          `Rate each of your **teammates'** attitude / enjoyment to play with (1–10).\n` +
+          `Reply with ${ownTeam.length} space-separated numbers in this order:\n\n` +
+          `${attitudeList}\n\n` +
           `**Example:** \`8 9 7 6 8\`\n_(Reply \`skip\` to skip)_`
         );
       await msg.author.send({ embeds: [embed] });
 
     } else if (session.step === 'attitude') {
+      const attitudePlayers = session.attitudePlayers || session.teammates.filter(p => p.team === session.raterTeam);
       if (content !== 'skip') {
         const scores = msg.content.trim().split(/\s+/).map(Number);
-        if (scores.length !== session.teammates.length || scores.some(s => isNaN(s) || s < 1 || s > 10)) {
-          await msg.reply(`Please send exactly ${session.teammates.length} numbers (1–10), space-separated. Or reply \`skip\`.`);
+        if (scores.length !== attitudePlayers.length || scores.some(s => isNaN(s) || s < 1 || s > 10)) {
+          await msg.reply(`Please send exactly ${attitudePlayers.length} numbers (1–10), space-separated. Or reply \`skip\`.`);
           return;
         }
         if (!session.isTest) {
-          for (let i = 0; i < session.teammates.length; i++) {
-            await db.saveMatchRating(session.matchId, session.raterAccountId, session.teammates[i].account_id, scores[i], false);
+          for (let i = 0; i < attitudePlayers.length; i++) {
+            await db.saveMatchRating(session.matchId, session.raterAccountId, attitudePlayers[i].account_id, scores[i], false);
           }
         }
         await msg.reply(`✅ Attitude ratings saved! Thanks for the feedback.${session.isTest ? ' *(test — not saved)*' : ''}`);
