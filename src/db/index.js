@@ -223,6 +223,16 @@ async function init() {
     `);
 
     await p.query(`
+      CREATE TABLE IF NOT EXISTS match_dm_log (
+        id SERIAL PRIMARY KEY,
+        match_id VARCHAR NOT NULL,
+        account_id BIGINT NOT NULL,
+        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (match_id, account_id)
+      );
+    `);
+
+    await p.query(`
       CREATE TABLE IF NOT EXISTS player_items (
         id SERIAL PRIMARY KEY,
         match_id VARCHAR NOT NULL,
@@ -1591,6 +1601,23 @@ async function getMatchRaterIds(matchId) {
     [matchId]
   );
   return new Set(result.rows.map(r => String(r.rater_account_id)));
+}
+
+async function logMatchDMSent(matchId, accountId) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO match_dm_log (match_id, account_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [matchId, accountId]
+  );
+}
+
+async function getMatchDMLog(matchId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT account_id FROM match_dm_log WHERE match_id = $1`,
+    [matchId]
+  );
+  return new Set(result.rows.map(r => String(r.account_id)));
 }
 
 async function getMatchRatings(matchId) {
@@ -4905,6 +4932,8 @@ module.exports = {
   cancelGame,
   saveMatchRating,
   getMatchRaterIds,
+  logMatchDMSent,
+  getMatchDMLog,
   getMatchRatings,
   getPlayerRatingsReceived,
   getDiscordIdsForMatch,

@@ -2306,6 +2306,7 @@ class DiscordBot {
           .setFooter({ text: 'Ratings are anonymous • You have 30 minutes to respond • Type !ratings off to stop receiving these' });
 
         await user.send({ embeds: [embed] });
+        await db.logMatchDMSent(matchStats.matchId.toString(), rater.account_id).catch(() => {});
 
         setTimeout(() => {
           if (this.pendingRatingSessions.has(rater.discord_id)) {
@@ -2549,14 +2550,13 @@ class DiscordBot {
     let sendToAccountIds = null;
     let skipped = 0;
     if (missingOnly) {
-      const alreadyRated = await db.getMatchRaterIds(matchId.toString());
-      const targets = players.filter(p => !alreadyRated.has(String(p.account_id)));
+      const alreadySent = await db.getMatchDMLog(matchId.toString());
+      const targets = players.filter(p => !alreadySent.has(String(p.account_id)));
       skipped = players.length - targets.length;
       sendToAccountIds = targets.map(p => p.account_id);
     }
 
-    const fakeStats = { matchId, players };
-    await this._initiateRatingSession(fakeStats, sendToAccountIds);
+    await this._initiateRatingSession({ matchId, players }, sendToAccountIds);
 
     const eligible = sendToAccountIds
       ? players.filter(p => sendToAccountIds.includes(p.account_id) && p.discord_id && p.discord_id.trim())
