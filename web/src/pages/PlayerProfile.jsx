@@ -284,12 +284,6 @@ export default function PlayerProfile() {
               <div className="stat-label">Avg Deaths</div>
             </div>
           )}
-          {averages && parseInt(averages.avg_gpm) > 0 && (
-            <div className="stat-card">
-              <div className="stat-value" style={{ color: '#fbbf24' }}>{parseInt(averages.avg_gpm)}</div>
-              <div className="stat-label">💰 Avg GPM</div>
-            </div>
-          )}
           {streak !== null && streak !== 0 && (
             <div className="stat-card" style={{
               borderColor: streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)',
@@ -320,42 +314,42 @@ export default function PlayerProfile() {
               <div className="stat-label">🪝 Hook</div>
             </div>
           )}
-          {averages && parseFloat(averages.avg_assists) > 0 && (
+          {averages && (
             <div className="stat-card">
-              <div className="stat-value" style={{ color: '#60a5fa' }}>{parseFloat(averages.avg_assists).toFixed(1)}</div>
+              <div className="stat-value" style={{ color: '#60a5fa' }}>{parseFloat(averages.avg_assists || 0).toFixed(1)}</div>
               <div className="stat-label">Avg Assists</div>
             </div>
           )}
-          {averages && parseInt(averages.avg_xpm) > 0 && (
-            <div className="stat-card">
-              <div className="stat-value" style={{ color: '#a78bfa' }}>{parseInt(averages.avg_xpm)}</div>
-              <div className="stat-label">⚡ XPM</div>
-            </div>
-          )}
-          {averages && parseInt(averages.avg_hero_damage) > 0 && (
+          {averages && (
             <div className="stat-card">
               <div className="stat-value" style={{ color: '#fb923c' }}>
-                {parseInt(averages.avg_hero_damage) >= 1000
+                {parseInt(averages.avg_hero_damage || 0) >= 1000
                   ? (parseInt(averages.avg_hero_damage) / 1000).toFixed(1) + 'k'
-                  : parseInt(averages.avg_hero_damage)}
+                  : parseInt(averages.avg_hero_damage || 0)}
               </div>
               <div className="stat-label">🗡️ Damage</div>
             </div>
           )}
-          {communityRatings && parseInt(communityRatings.mvp_wins) > 0 && (
-            <div className="stat-card" style={{ borderColor: '#fbbf24' }}>
-              <div className="stat-value" style={{ color: '#fbbf24' }}>{communityRatings.mvp_wins} ⭐</div>
+          {averages && (
+            <div className="stat-card" style={{ borderColor: communityRatings && parseInt(communityRatings.mvp_wins) > 0 ? '#fbbf24' : undefined }}>
+              <div className="stat-value" style={{ color: '#fbbf24' }}>
+                {communityRatings ? communityRatings.mvp_wins : 0} ⭐
+              </div>
               <div className="stat-label">MVP Wins</div>
             </div>
           )}
-          {communityRatings && communityRatings.avg_attitude && (
-            <div className="stat-card" style={{ borderColor: parseFloat(communityRatings.avg_attitude) >= 7 ? '#4ade80' : parseFloat(communityRatings.avg_attitude) >= 5 ? '#fbbf24' : '#f87171' }}>
-              <div className="stat-value" style={{ color: parseFloat(communityRatings.avg_attitude) >= 7 ? '#4ade80' : parseFloat(communityRatings.avg_attitude) >= 5 ? '#fbbf24' : '#f87171' }}>
-                {parseFloat(communityRatings.avg_attitude).toFixed(1)}<span style={{ fontSize: '0.6em', color: '#64748b' }}>/10</span>
+          {averages && (() => {
+            const att = communityRatings?.avg_attitude ? parseFloat(communityRatings.avg_attitude) : null;
+            const color = att !== null ? (att >= 7 ? '#4ade80' : att >= 5 ? '#fbbf24' : '#f87171') : 'var(--text-muted)';
+            return (
+              <div className="stat-card" style={{ borderColor: att !== null ? color : undefined }}>
+                <div className="stat-value" style={{ color }}>
+                  {att !== null ? att.toFixed(1) : '—'}<span style={{ fontSize: '0.6em', color: '#64748b' }}>/10</span>
+                </div>
+                <div className="stat-label">🤝 Attitude</div>
               </div>
-              <div className="stat-label">🤝 Attitude</div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
