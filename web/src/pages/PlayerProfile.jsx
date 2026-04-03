@@ -243,7 +243,7 @@ export default function PlayerProfile() {
       </div>
 
       {rating && (
-        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, 140px)', justifyContent: 'start' }}>
+        <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-value mmr">{seasonMmr != null ? seasonMmr : rating.mmr}</div>
             <div className="stat-label">MMR</div>
