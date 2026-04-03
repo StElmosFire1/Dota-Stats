@@ -2571,14 +2571,18 @@ class DiscordBot {
     }, 10 * 60 * 1000);
 
     const teammateList = mockTeammates.map((p, i) => `**${i + 1}.** ${p.display_name} (🟢)`).join('\n');
+    const matchUrl = `http://170.64.182.110:5000/match/TEST-0000`;
     const embed = new EmbedBuilder()
       .setTitle('⭐ TEST DM — Rate Your Teammates')
+      .setURL(matchUrl)
       .setColor(0xfbbf24)
       .setDescription(
-        `This is a **test DM** to verify the post-match rating system is working.\n\n` +
-        `**Step 1 of 2 — MVP Vote**\nWho was the MVP? Reply with just the number:\n\n${teammateList}\n\n` +
-        `_(Reply \`skip\` to skip)_`
-      );
+        `This is a **test DM** to verify the post-match rating system is working.\n` +
+        `[View match page](${matchUrl})\n\n` +
+        `**Step 1 of 2 — MVP Vote**\nWho was the MVP of the match? Reply with just the number:\n\n${teammateList}\n\n` +
+        `_(Reply \`skip\` to skip this step)_`
+      )
+      .setFooter({ text: 'Ratings are anonymous • You have 30 minutes to respond • Type !ratings off to stop receiving these' });
 
     await user.send({ embeds: [embed] });
     return { username: user.username, id: user.id };
