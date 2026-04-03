@@ -5278,7 +5278,7 @@ async function getPlayerAlly(accountId, seasonId = null) {
   const result = await p.query(`
     SELECT
       ally.account_id,
-      COALESCE(n.nickname, MAX(ally.persona_name)) AS display_name,
+      COALESCE(MAX(n.nickname), MAX(ally.persona_name)) AS display_name,
       COUNT(DISTINCT ps.match_id) AS games_together,
       SUM(CASE
         WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win)
@@ -5353,22 +5353,22 @@ async function getPlayerBenchmarkAverages(seasonId = null) {
   const result = await p.query(`
     SELECT
       CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END AS account_id,
-      COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
+      COALESCE(MAX(n.nickname), MAX(ps.persona_name)) AS display_name,
       COUNT(DISTINCT ps.match_id) AS games,
-      ROUND(AVG(ps.kills), 2) AS avg_kills,
-      ROUND(AVG(ps.deaths), 2) AS avg_deaths,
-      ROUND(AVG(ps.assists), 2) AS avg_assists,
-      ROUND(AVG(ps.gpm)) AS avg_gpm,
-      ROUND(AVG(ps.xpm)) AS avg_xpm,
-      ROUND(AVG(ps.hero_damage)) AS avg_hero_damage,
-      ROUND(AVG(ps.tower_damage)) AS avg_tower_damage,
-      ROUND(AVG(ps.hero_healing)) AS avg_healing,
-      ROUND(AVG(ps.last_hits)) AS avg_last_hits,
-      ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE (ps.kills + ps.assists)::float END), 2) AS avg_kda
+      ROUND(AVG(ps.kills)::numeric, 2) AS avg_kills,
+      ROUND(AVG(ps.deaths)::numeric, 2) AS avg_deaths,
+      ROUND(AVG(ps.assists)::numeric, 2) AS avg_assists,
+      ROUND(AVG(ps.gpm)::numeric) AS avg_gpm,
+      ROUND(AVG(ps.xpm)::numeric) AS avg_xpm,
+      ROUND(AVG(ps.hero_damage)::numeric) AS avg_hero_damage,
+      ROUND(AVG(ps.tower_damage)::numeric) AS avg_tower_damage,
+      ROUND(AVG(ps.hero_healing)::numeric) AS avg_healing,
+      ROUND(AVG(ps.last_hits)::numeric) AS avg_last_hits,
+      ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::numeric / ps.deaths ELSE (ps.kills + ps.assists)::numeric END), 2) AS avg_kda
     FROM player_stats ps
     LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text
     WHERE (ps.account_id != 0 OR (ps.persona_name IS NOT NULL AND ps.persona_name != ''))${seasonClause}
-    GROUP BY CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END, n.nickname
+    GROUP BY CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END
     HAVING COUNT(DISTINCT ps.match_id) >= 1
     ORDER BY games DESC
   `, params);
