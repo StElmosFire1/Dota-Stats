@@ -2287,14 +2287,18 @@ class DiscordBot {
 
         const heroLabel = (p) => p.hero_name ? ` (${this._heroDisplayName(p.hero_name)})` : '';
         const mvpList = allOthers.map((p, i) => `**${i + 1}.** ${p.display_name}${heroLabel(p)} ${p.team === 'radiant' ? '🟢' : '🔴'}`).join('\n');
+        const matchUrl = `http://170.64.182.110:5000/match/${matchStats.matchId}`;
         const embed = new EmbedBuilder()
           .setTitle(`⭐ Match #${matchStats.matchId} — Rate Your Teammates`)
+          .setURL(matchUrl)
           .setColor(0xfbbf24)
           .setDescription(
-            `The inhouse just finished! Take 30 seconds to rate your teammates.\n\n` +
+            `The inhouse just finished! Take 30 seconds to rate your teammates.\n` +
+            `[View match page](${matchUrl})\n\n` +
             `**Step 1 of 2 — MVP Vote**\nWho was the MVP of the match? Reply with just the number:\n\n${mvpList}\n\n` +
             `_(Reply \`skip\` to skip this step)_`
-          );
+          )
+          .setFooter({ text: 'Ratings are anonymous • You have 30 minutes to respond • Type !ratings off to stop receiving these' });
 
         await user.send({ embeds: [embed] });
 
