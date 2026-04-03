@@ -726,11 +726,8 @@ class ReplayParser {
 
     const SUPPORT_ITEM_COSTS = {
       item_ward_observer: 65, item_ward_sentry: 50, item_ward_dispenser: 115,
-      item_smoke_of_deceit: 50, item_dust: 80, item_clarity: 50,
-      item_flask: 110, item_tango: 90, item_enchanted_mango: 65,
-      item_faerie_fire: 50, item_blood_grenade: 80,
-      item_infused_raindrop: 75, item_tome_of_knowledge: 75,
-      item_gem: 875, item_vampiric_talisman: 450,
+      item_smoke_of_deceit: 50, item_dust: 80,
+      item_gem: 875,
     };
 
     // Map of component_item → [assembled_items_that_use_it].

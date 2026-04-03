@@ -1067,10 +1067,15 @@ class DiscordBot {
 
   _heroDisplayName(heroName, heroId) {
     if (!heroName) return heroId ? `Hero ${heroId}` : 'Unknown';
-    return heroName
-      .replace('npc_dota_hero_', '')
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, c => c.toUpperCase());
+    const HERO_NAME_OVERRIDES = {
+      nevermore: 'Shadow Fiend', zuus: 'Zeus', rattletrap: 'Clockwerk',
+      furion: "Nature's Prophet", magnataur: 'Magnus', shredder: 'Timbersaw',
+      obsidian_destroyer: 'Outworld Destroyer', doom_bringer: 'Doom',
+      treant: 'Treant Protector', abyssal_underlord: 'Underlord', wisp: 'Io',
+    };
+    const slug = heroName.replace('npc_dota_hero_', '');
+    if (HERO_NAME_OVERRIDES[slug]) return HERO_NAME_OVERRIDES[slug];
+    return slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
 
   _buildAwardsFromFun(fun) {
