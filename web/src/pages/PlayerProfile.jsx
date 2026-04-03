@@ -243,7 +243,8 @@ export default function PlayerProfile() {
       </div>
 
       {rating && (
-        <div className="stats-grid">
+        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+          {/* Row 1 */}
           <div className="stat-card">
             <div className="stat-value mmr">{seasonMmr != null ? seasonMmr : rating.mmr}</div>
             <div className="stat-label">MMR</div>
@@ -261,77 +262,71 @@ export default function PlayerProfile() {
               {(() => {
                 const w = averages ? parseInt(averages.wins) || 0 : rating.wins;
                 const g = averages ? parseInt(averages.total_matches) || 0 : rating.games_played;
-                return g > 0 ? ((w / g) * 100).toFixed(1) + '%' : '--';
+                return g > 0 ? ((w / g) * 100).toFixed(1) + '%' : '—';
               })()}
             </div>
             <div className="stat-label">Win Rate</div>
           </div>
-          {totalKDA && (
-            <div className="stat-card">
-              <div className="stat-value">{totalKDA}</div>
-              <div className="stat-label">KDA</div>
+          <div className="stat-card">
+            <div className="stat-value">{totalKDA || '—'}</div>
+            <div className="stat-label">KDA</div>
+          </div>
+          <div className="stat-card" style={{
+            borderColor: streak ? (streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)') : undefined,
+            boxShadow: streak ? (streak > 0 ? '0 0 8px rgba(74,222,128,0.2)' : '0 0 8px rgba(248,113,113,0.2)') : undefined,
+          }}>
+            <div className="stat-value" style={{ color: streak ? (streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)') : undefined }}>
+              {streak ? (streak > 0 ? `W${streak}` : `L${Math.abs(streak)}`) : '—'}
             </div>
-          )}
+            <div className="stat-label">Streak</div>
+          </div>
 
-          {streak !== null && streak !== 0 && (
-            <div className="stat-card" style={{
-              borderColor: streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)',
-              boxShadow: streak > 0 ? '0 0 8px rgba(74,222,128,0.2)' : '0 0 8px rgba(248,113,113,0.2)',
-            }}>
-              <div className="stat-value" style={{ color: streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                {streak > 0 ? `W${streak}` : `L${Math.abs(streak)}`}
-              </div>
-              <div className="stat-label">Streak</div>
+          {/* Row 2 */}
+          <div className="stat-card" style={{ borderColor: averages && parseInt(averages.total_firstbloods) > 0 ? '#f87171' : undefined }}>
+            <div className="stat-value" style={{ color: averages && parseInt(averages.total_firstbloods) > 0 ? '#f87171' : undefined }}>
+              {averages && parseInt(averages.total_firstbloods) > 0
+                ? <>{averages.total_firstbloods}<span style={{ fontSize: '0.7em', color: '#64748b', marginLeft: 4 }}>({averages.fb_rate}%)</span></>
+                : '—'}
             </div>
-          )}
-          {averages && parseInt(averages.total_firstbloods) > 0 && (
-            <div className="stat-card" style={{ borderColor: '#f87171' }}>
-              <div className="stat-value" style={{ color: '#f87171' }}>
-                {averages.total_firstbloods}
-                <span style={{ fontSize: '0.7em', color: '#64748b', marginLeft: 4 }}>({averages.fb_rate}%)</span>
-              </div>
-              <div className="stat-label">🩸 First Blood</div>
+            <div className="stat-label">🩸 First Blood</div>
+          </div>
+          <div className="stat-card" style={{ borderColor: averages && parseInt(averages.pudge_games_with_hooks) > 0 ? '#a78bfa' : undefined }}>
+            <div className="stat-value" style={{ color: averages && parseInt(averages.pudge_games_with_hooks) > 0 ? '#a78bfa' : undefined }}>
+              {averages && parseInt(averages.pudge_games_with_hooks) > 0
+                ? (parseInt(averages.total_hook_attempts) > 0
+                    ? ((parseInt(averages.total_hook_hits) / parseInt(averages.total_hook_attempts)) * 100).toFixed(1) + '%'
+                    : '—')
+                : '—'}
             </div>
-          )}
-          {averages && parseInt(averages.pudge_games_with_hooks) > 0 && (
-            <div className="stat-card" style={{ borderColor: '#a78bfa' }}>
-              <div className="stat-value" style={{ color: '#a78bfa' }}>
-                {parseInt(averages.total_hook_attempts) > 0
-                  ? ((parseInt(averages.total_hook_hits) / parseInt(averages.total_hook_attempts)) * 100).toFixed(1) + '%'
-                  : '—'}
-              </div>
-              <div className="stat-label">🪝 Hook</div>
+            <div className="stat-label">🪝 Hook</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value" style={{ color: '#60a5fa' }}>
+              {averages ? parseFloat(averages.avg_assists || 0).toFixed(1) : '—'}
             </div>
-          )}
-          {averages && (
-            <div className="stat-card">
-              <div className="stat-value" style={{ color: '#60a5fa' }}>{parseFloat(averages.avg_assists || 0).toFixed(1)}</div>
-              <div className="stat-label">Avg Assists</div>
+            <div className="stat-label">Avg Assists</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value" style={{ color: '#fb923c' }}>
+              {averages
+                ? (parseInt(averages.avg_hero_damage || 0) >= 1000
+                    ? (parseInt(averages.avg_hero_damage) / 1000).toFixed(1) + 'k'
+                    : parseInt(averages.avg_hero_damage || 0))
+                : '—'}
             </div>
-          )}
-          {averages && (
-            <div className="stat-card">
-              <div className="stat-value" style={{ color: '#fb923c' }}>
-                {parseInt(averages.avg_hero_damage || 0) >= 1000
-                  ? (parseInt(averages.avg_hero_damage) / 1000).toFixed(1) + 'k'
-                  : parseInt(averages.avg_hero_damage || 0)}
-              </div>
-              <div className="stat-label">🗡️ Damage</div>
+            <div className="stat-label">🗡️ Damage</div>
+          </div>
+          <div className="stat-card" style={{ borderColor: communityRatings && parseInt(communityRatings.mvp_wins) > 0 ? '#fbbf24' : undefined }}>
+            <div className="stat-value" style={{ color: '#fbbf24' }}>
+              {communityRatings ? communityRatings.mvp_wins : 0} ⭐
             </div>
-          )}
-          {averages && (
-            <div className="stat-card" style={{ borderColor: communityRatings && parseInt(communityRatings.mvp_wins) > 0 ? '#fbbf24' : undefined }}>
-              <div className="stat-value" style={{ color: '#fbbf24' }}>
-                {communityRatings ? communityRatings.mvp_wins : 0} ⭐
-              </div>
-              <div className="stat-label">MVP Wins</div>
-            </div>
-          )}
-          {averages && (() => {
+            <div className="stat-label">MVP Wins</div>
+          </div>
+          {(() => {
             const att = communityRatings?.avg_attitude ? parseFloat(communityRatings.avg_attitude) : null;
-            const color = att !== null ? (att >= 7 ? '#4ade80' : att >= 5 ? '#fbbf24' : '#f87171') : 'var(--text-muted)';
+            const color = att !== null ? (att >= 7 ? '#4ade80' : att >= 5 ? '#fbbf24' : '#f87171') : undefined;
             return (
-              <div className="stat-card" style={{ borderColor: att !== null ? color : undefined }}>
+              <div className="stat-card" style={{ borderColor: color }}>
                 <div className="stat-value" style={{ color }}>
                   {att !== null ? att.toFixed(1) : '—'}<span style={{ fontSize: '0.6em', color: '#64748b' }}>/10</span>
                 </div>
