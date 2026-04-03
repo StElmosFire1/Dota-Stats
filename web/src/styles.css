@@ -722,6 +722,11 @@ th.col-stat {
   border-radius: 10px;
   padding: 1.25rem;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
 }
 
 .stat-card.sm {

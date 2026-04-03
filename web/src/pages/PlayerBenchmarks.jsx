@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getPlayerBenchmarks } from '../api';
+import { useSeason } from '../context/SeasonContext';
 
 const METRICS = [
   { key: 'avg_kda', label: 'KDA', fmt: v => parseFloat(v).toFixed(2), higher: true },
@@ -29,6 +30,7 @@ function BarCell({ value, min, max, higher }) {
 }
 
 export default function PlayerBenchmarks() {
+  const { seasonId } = useSeason();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState('avg_kda');
@@ -37,11 +39,11 @@ export default function PlayerBenchmarks() {
 
   useEffect(() => {
     setLoading(true);
-    getPlayerBenchmarks(null)
+    getPlayerBenchmarks(seasonId || null)
       .then(d => setData(d?.benchmarks || []))
       .catch(() => setData([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [seasonId]);
 
   const handleSort = key => {
     if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
