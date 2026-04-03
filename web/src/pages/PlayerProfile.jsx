@@ -301,10 +301,10 @@ export default function PlayerProfile() {
             <div className="stat-label">🪝 Hook</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value" style={{ color: '#60a5fa' }}>
-              {averages ? parseFloat(averages.avg_assists || 0).toFixed(1) : '—'}
+            <div className="stat-value" style={{ color: '#fbbf24' }}>
+              {averages ? parseInt(averages.avg_gpm || 0) : '—'}
             </div>
-            <div className="stat-label">Avg Assists</div>
+            <div className="stat-label">💰 Avg GPM</div>
           </div>
           <div className="stat-card">
             <div className="stat-value" style={{ color: '#fb923c' }}>
