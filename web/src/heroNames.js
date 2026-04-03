@@ -117,11 +117,29 @@ const ITEM_ID_TO_SLUG = {
   1021:'bloodthorn',
 };
 
+// Items where the Java parser's entity-class → snake_case name differs from the CDN slug.
+// e.g. CDOTA_Item_EulsScepterOfDivinity → "euls_scepter_of_divinity", but CDN uses "cyclone".
+const ENTITY_SLUG_TO_CDN_SLUG = {
+  'euls_scepter_of_divinity': 'cyclone',
+  'sheep_stick':               'sheepstick',
+  'orchid_malevolence':        'orchid',
+  'skull_basher':              'basher',
+  'linken_sphere':             'sphere',
+  'crystalys':                 'lesser_crit',
+  'heart_of_tarrasque':        'heart',
+  'assault_cuirass':           'assault',
+};
+
 export function getItemImageUrl(itemName, itemId) {
   let slug = null;
   if (itemName) {
-    slug = itemName.replace('item_', '');
+    slug = itemName.replace(/^item_/, '');
   }
+  // Normalize entity-class-derived slugs to CDN slugs
+  if (slug && ENTITY_SLUG_TO_CDN_SLUG[slug]) {
+    slug = ENTITY_SLUG_TO_CDN_SLUG[slug];
+  }
+  // Fallback: use numeric ID → CDN slug map if slug is still empty or purely numeric
   if ((!slug || /^\d+$/.test(slug)) && itemId && ITEM_ID_TO_SLUG[itemId]) {
     slug = ITEM_ID_TO_SLUG[itemId];
   }

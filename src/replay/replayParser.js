@@ -117,6 +117,30 @@ const ITEM_ID_TO_NAME = {
   1021:'bloodthorn',1022:'lotus_orb',1023:'solar_crest',
 };
 
+// Items where the Java parser's entity-class → snake_case name differs from the CDN slug.
+// The Java parser reads entity class names (e.g. CDOTA_Item_EulsScepterOfDivinity → euls_scepter_of_divinity)
+// but the CDN (and Dota 2 combat log) uses a shorter internal name (e.g. cyclone).
+const ENTITY_SLUG_TO_CDN_SLUG = {
+  'euls_scepter_of_divinity': 'cyclone',
+  'sheep_stick':               'sheepstick',
+  'orchid_malevolence':        'orchid',
+  'skull_basher':              'basher',
+  'linken_sphere':             'sphere',
+  'crystalys':                 'lesser_crit',
+  'heart_of_tarrasque':        'heart',
+  'assault_cuirass':           'assault',
+};
+
+// Normalise an item name from the entity-class snake_case format to the canonical CDN slug.
+// Input: 'item_euls_scepter_of_divinity' or 'euls_scepter_of_divinity'
+// Output: 'item_cyclone' (always prefixed with 'item_')
+function normaliseItemName(raw) {
+  if (!raw) return raw;
+  const withoutPrefix = raw.startsWith('item_') ? raw.slice(5) : raw;
+  const cdn = ENTITY_SLUG_TO_CDN_SLUG[withoutPrefix] || withoutPrefix;
+  return 'item_' + cdn;
+}
+
 
 class ReplayParser {
   constructor() {
@@ -881,15 +905,17 @@ class ReplayParser {
         }
       }
 
-      // ── Final items (blob mode only) ──────────────────────────────────────
+      // ── Final items (streaming + blob) ────────────────────────────────────
       // Emitted once at game end by the parser: type "final_items", slot, key (item name with "item_" prefix),
-      // itemslot (inventory slot 0-8), charges, secondary_charges
+      // itemslot (inventory slot 0-8), charges, secondary_charges.
+      // The key comes from the entity class name (e.g. "item_euls_scepter_of_divinity") which must be
+      // normalised to the canonical CDN slug ("item_cyclone") via normaliseItemName().
       if (e.type === 'final_items' && e.key && e.slot != null) {
         const slot = e.slot;
         if (slot >= 0 && slot < 10) {
           if (!parsedFinalItems[slot]) parsedFinalItems[slot] = [];
           parsedFinalItems[slot].push({
-            itemName: e.key.startsWith('item_') ? e.key : 'item_' + e.key,
+            itemName: normaliseItemName(e.key),
             slot: e.itemslot != null ? e.itemslot : parsedFinalItems[slot].length,
             charges: e.charges || null,
             secondaryCharges: e.secondary_charges || null,
@@ -1349,7 +1375,7 @@ class ReplayParser {
             if (item && item.slot != null) {
               const rawId = item.id ?? item.itemid ?? item.item_id ?? null;
               if (rawId === 0 || rawId === null) continue;
-              const itemName = typeof rawId === 'string' ? rawId.replace(/^item_/, '') :
+              const itemName = typeof rawId === 'string' ? normaliseItemName(rawId).replace(/^item_/, '') :
                                typeof rawId === 'number' ? (ITEM_ID_TO_NAME[rawId] || `id_${rawId}`) : '';
               if (itemName) {
                 snapshot[item.slot] = { itemId: typeof rawId === 'number' ? rawId : 0, itemName, time: currentTime, charges: item.num_charges || 0, enhancementLevel: item.enhancement_level || 0 };
@@ -1369,7 +1395,7 @@ class ReplayParser {
           for (let si = 0; si <= 5; si++) {
             const rawId = e[`item_${si}`];
             if (!rawId || rawId === 0) continue;
-            const itemName = typeof rawId === 'string' ? rawId.replace(/^item_/, '') :
+            const itemName = typeof rawId === 'string' ? normaliseItemName(rawId).replace(/^item_/, '') :
                              typeof rawId === 'number' ? (ITEM_ID_TO_NAME[rawId] || `id_${rawId}`) : '';
             if (itemName) {
               snapshot[si] = { itemId: typeof rawId === 'number' ? rawId : 0, itemName, time: currentTime, charges: 0 };
@@ -1405,7 +1431,7 @@ class ReplayParser {
               const rawId = item.id ?? item.itemid ?? item.item_id ?? null;
               // Numeric 0 means empty slot
               if (rawId === 0 || rawId === null) continue;
-              const itemName = typeof rawId === 'string' ? rawId.replace(/^item_/, '') :
+              const itemName = typeof rawId === 'string' ? normaliseItemName(rawId).replace(/^item_/, '') :
                                typeof rawId === 'number' ? (ITEM_ID_TO_NAME[rawId] || `id_${rawId}`) : '';
               if (itemName) {
                 snapshot[item.slot] = {
