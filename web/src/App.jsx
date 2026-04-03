@@ -1,6 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import UploadIndicator from './components/UploadIndicator';
 import AiChat from './components/AiChat';
 import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
@@ -318,7 +317,6 @@ export default function App() {
             <Nav />
             <AdminLoginModal />
             <SuperuserLoginModal />
-            <UploadIndicator />
             <main className="container">
               <Suspense fallback={<div className="loading">Loading…</div>}>
               <Routes>
