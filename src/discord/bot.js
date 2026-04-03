@@ -2293,9 +2293,9 @@ class DiscordBot {
           .setURL(matchUrl)
           .setColor(0xfbbf24)
           .setDescription(
-            `The inhouse just finished! Take 30 seconds to rate your teammates.\n` +
+            `The inhouse just finished!\n` +
             `[View match page](${matchUrl})\n\n` +
-            `**Step 1 of 2 — MVP Vote**\nWho was the MVP of the match? Reply with just the number:\n\n${mvpList}\n\n` +
+            `**Step 1 of 2 — MVP Vote**\nWho was the MVP of the match? Vote for any player (both teams). Reply with just the number:\n\n${mvpList}\n\n` +
             `_(Reply \`skip\` to skip this step)_`
           )
           .setFooter({ text: 'Ratings are anonymous • You have 30 minutes to respond • Type !ratings off to stop receiving these' });
@@ -2553,11 +2553,17 @@ class DiscordBot {
       { account_id: '2', display_name: 'Teammate Beta', team: 'radiant' },
       { account_id: '3', display_name: 'Teammate Gamma', team: 'radiant' },
       { account_id: '4', display_name: 'Teammate Delta', team: 'radiant' },
+      { account_id: '5', display_name: 'Opponent One', team: 'dire' },
+      { account_id: '6', display_name: 'Opponent Two', team: 'dire' },
+      { account_id: '7', display_name: 'Opponent Three', team: 'dire' },
+      { account_id: '8', display_name: 'Opponent Four', team: 'dire' },
+      { account_id: '9', display_name: 'Opponent Five', team: 'dire' },
     ];
 
     const session = {
       matchId: 'TEST-0000',
       raterAccountId: '0',
+      raterTeam: 'radiant',
       teammates: mockTeammates,
       step: 'mvp',
       isTest: true,
@@ -2579,7 +2585,7 @@ class DiscordBot {
       .setDescription(
         `This is a **test DM** to verify the post-match rating system is working.\n` +
         `[View match page](${matchUrl})\n\n` +
-        `**Step 1 of 2 — MVP Vote**\nWho was the MVP of the match? Reply with just the number:\n\n${teammateList}\n\n` +
+        `**Step 1 of 2 — MVP Vote**\nWho was the MVP of the match? Vote for any player (both teams). Reply with just the number:\n\n${teammateList}\n\n` +
         `_(Reply \`skip\` to skip this step)_`
       )
       .setFooter({ text: 'Ratings are anonymous • You have 30 minutes to respond • Type !ratings off to stop receiving these' });
