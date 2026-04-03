@@ -1584,6 +1584,15 @@ async function saveMatchRating(matchId, raterAccountId, ratedAccountId, attitude
   );
 }
 
+async function getMatchRaterIds(matchId) {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT DISTINCT rater_account_id FROM match_ratings WHERE match_id = $1`,
+    [matchId]
+  );
+  return new Set(result.rows.map(r => String(r.rater_account_id)));
+}
+
 async function getMatchRatings(matchId) {
   const p = getPool();
   const result = await p.query(
@@ -4895,6 +4904,7 @@ module.exports = {
   getUpcomingGames,
   cancelGame,
   saveMatchRating,
+  getMatchRaterIds,
   getMatchRatings,
   getPlayerRatingsReceived,
   getDiscordIdsForMatch,

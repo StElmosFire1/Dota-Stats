@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { useSeason } from '../context/SeasonContext';
@@ -2400,6 +2400,8 @@ export default function MatchDetail() {
   const [savingMeta, setSavingMeta] = useState(false);
   const [clearingHash, setClearingHash] = useState(false);
   const [correctingWinner, setCorrectingWinner] = useState(false);
+  const [sendingDMs, setSendingDMs] = useState(false);
+  const [dmMsg, setDmMsg] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -2488,6 +2490,24 @@ export default function MatchDetail() {
       alert('Failed: ' + err.message);
     } finally {
       setCorrectingWinner(false);
+    }
+  };
+
+  const handleSendMissingDMs = async () => {
+    setSendingDMs(true);
+    setDmMsg('');
+    try {
+      const key = sessionStorage.getItem('superuserKey') || '';
+      const result = await triggerMissingDMs(matchId, key);
+      if (result.sent === 0) {
+        setDmMsg('All players have already rated this match.');
+      } else {
+        setDmMsg(`✅ Sent to ${result.sent} player${result.sent !== 1 ? 's' : ''}${result.skipped > 0 ? ` (${result.skipped} already rated, skipped)` : ''}.`);
+      }
+    } catch (err) {
+      setDmMsg('❌ ' + err.message);
+    } finally {
+      setSendingDMs(false);
     }
   };
 
@@ -2585,6 +2605,17 @@ export default function MatchDetail() {
             >
               {correctingWinner ? 'Saving...' : `⚖️ Flip Winner (now: ${match.radiant_win ? 'Radiant' : 'Dire'})`}
             </button>
+            <button
+              onClick={handleSendMissingDMs}
+              disabled={sendingDMs}
+              title="Send rating DMs only to players who haven't rated this match yet"
+              style={{
+                background: 'transparent', color: '#a78bfa', border: '1px solid #4c1d95',
+                padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+              }}
+            >
+              {sendingDMs ? 'Sending…' : '📨 Send Missing DMs'}
+            </button>
             {!showDelete ? (
               <button
                 onClick={() => setShowDelete(true)}
@@ -2629,6 +2660,11 @@ export default function MatchDetail() {
               </div>
             )}
           </div>
+          {dmMsg && (
+            <div style={{ fontSize: '0.8rem', color: dmMsg.startsWith('✅') ? '#4ade80' : dmMsg.startsWith('❌') ? '#f87171' : '#94a3b8', marginTop: '0.5rem' }}>
+              {dmMsg}
+            </div>
+          )}
 
           {showMeta && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.75rem', background: '#1a1a2e', borderRadius: '6px', border: '1px solid #334155' }}>

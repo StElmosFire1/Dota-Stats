@@ -2381,7 +2381,8 @@ NOTES
 
   router.post('/admin/matches/:matchId/trigger-dms', requireSuperuser, async (req, res) => {
     try {
-      const result = await getDiscordBot().triggerMatchDMs(req.params.matchId);
+      const missingOnly = req.body?.missingOnly !== false;
+      const result = await getDiscordBot().triggerMatchDMs(req.params.matchId, missingOnly);
       res.json({ ok: true, ...result });
     } catch (err) {
       console.error('[TriggerDMs]', err.message);

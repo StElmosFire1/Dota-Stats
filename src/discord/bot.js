@@ -2254,14 +2254,19 @@ class DiscordBot {
     await message.edit({ embeds: [embed] });
   }
 
-  async _initiateRatingSession(matchStats) {
+  async _initiateRatingSession(matchStats, sendToAccountIds = null) {
     if (!matchStats || !matchStats.matchId || !matchStats.players) return;
     const players = await db.getDiscordIdsForMatch(matchStats.matchId.toString());
     console.log(`[Ratings] Match ${matchStats.matchId}: found ${players.length} players, ${players.filter(p => p.discord_id && p.discord_id.trim() !== '').length} with Discord IDs linked`);
     players.forEach(p => console.log(`[Ratings]   ${p.display_name} (account:${p.account_id}) discord_id="${p.discord_id || ''}"`));
-    const withDiscord = players.filter(p => p.discord_id && p.discord_id.trim() !== '');
+    let withDiscord = players.filter(p => p.discord_id && p.discord_id.trim() !== '');
+    if (sendToAccountIds) {
+      const allowSet = new Set(sendToAccountIds.map(String));
+      withDiscord = withDiscord.filter(p => allowSet.has(String(p.account_id)));
+      console.log(`[Ratings] Filtered to ${withDiscord.length} players who haven't rated yet`);
+    }
     if (withDiscord.length === 0) {
-      console.log(`[Ratings] No players have Discord IDs linked — skipping DMs. Use the dashboard to link Discord IDs to player accounts.`);
+      console.log(`[Ratings] No eligible players to DM — skipping.`);
       return;
     }
 
@@ -2536,13 +2541,27 @@ class DiscordBot {
     return this._runTestDm(targetDiscordId);
   }
 
-  // Manually trigger post-match DMs for an already-recorded match
-  async triggerMatchDMs(matchId) {
+  // Manually trigger post-match DMs — only for players who haven't rated yet
+  async triggerMatchDMs(matchId, missingOnly = false) {
     const players = await db.getDiscordIdsForMatch(matchId.toString());
     if (!players.length) throw new Error(`No player stats found for match ${matchId}`);
-    const fakeStats = { matchId, players: players.map(p => ({ accountId: p.account_id, team: p.team })) };
-    await this._initiateRatingSession(fakeStats);
-    return { matchId, players: players.length, withDiscord: players.filter(p => p.discord_id && p.discord_id.trim()).length };
+
+    let sendToAccountIds = null;
+    let skipped = 0;
+    if (missingOnly) {
+      const alreadyRated = await db.getMatchRaterIds(matchId.toString());
+      const targets = players.filter(p => !alreadyRated.has(String(p.account_id)));
+      skipped = players.length - targets.length;
+      sendToAccountIds = targets.map(p => p.account_id);
+    }
+
+    const fakeStats = { matchId, players };
+    await this._initiateRatingSession(fakeStats, sendToAccountIds);
+
+    const eligible = sendToAccountIds
+      ? players.filter(p => sendToAccountIds.includes(p.account_id) && p.discord_id && p.discord_id.trim())
+      : players.filter(p => p.discord_id && p.discord_id.trim());
+    return { matchId, sent: eligible.length, skipped };
   }
 
   async _runTestDm(targetId) {

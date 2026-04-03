@@ -1,5 +1,16 @@
 const BASE = '/api';
 
+export async function triggerMissingDMs(matchId, superuserKey) {
+  const res = await fetch(`${BASE}/admin/matches/${matchId}/trigger-dms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ missingOnly: true }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
 export async function getPatchNotes() {
   return fetchJson('/patch-notes');
 }
