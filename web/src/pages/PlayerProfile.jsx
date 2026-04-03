@@ -307,7 +307,7 @@ export default function PlayerProfile() {
                 {averages.total_firstbloods}
                 <span style={{ fontSize: '0.7em', color: '#64748b', marginLeft: 4 }}>({averages.fb_rate}%)</span>
               </div>
-              <div className="stat-label">🩸 First Bloods</div>
+              <div className="stat-label">🩸 First Blood</div>
             </div>
           )}
           {averages && parseInt(averages.pudge_games_with_hooks) > 0 && (

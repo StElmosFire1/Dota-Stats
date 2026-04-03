@@ -2140,10 +2140,29 @@ NOTES
     try {
       const seasonId = req.query.season || null;
       const data = await db.getPlayerBenchmarkAverages(seasonId);
+      console.log(`[benchmarks] returned ${data.length} rows (season=${seasonId})`);
       res.json({ benchmarks: data });
     } catch (err) {
-      console.error('[API] benchmarks error:', err.message);
-      res.status(500).json({ error: 'Failed to fetch benchmark data' });
+      console.error('[API] benchmarks error:', err.message, err.stack);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/benchmarks/debug', async (req, res) => {
+    try {
+      const p = db.getPool();
+      const [total, sample, zeroIds] = await Promise.all([
+        p.query('SELECT COUNT(*) AS cnt FROM player_stats'),
+        p.query('SELECT account_id, persona_name, match_id FROM player_stats LIMIT 5'),
+        p.query('SELECT COUNT(*) AS cnt FROM player_stats WHERE account_id = 0'),
+      ]);
+      res.json({
+        total_rows: total.rows[0].cnt,
+        zero_account_id_rows: zeroIds.rows[0].cnt,
+        sample: sample.rows,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   });
 

@@ -744,6 +744,9 @@ th.col-stat {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-top: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .upload-form {
