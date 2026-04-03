@@ -272,18 +272,7 @@ export default function PlayerProfile() {
               <div className="stat-label">KDA</div>
             </div>
           )}
-          {averages && parseFloat(averages.avg_kills) > 0 && (
-            <div className="stat-card">
-              <div className="stat-value" style={{ color: '#4ade80' }}>{parseFloat(averages.avg_kills).toFixed(1)}</div>
-              <div className="stat-label">Avg Kills</div>
-            </div>
-          )}
-          {averages && parseFloat(averages.avg_deaths) > 0 && (
-            <div className="stat-card">
-              <div className="stat-value" style={{ color: '#f87171' }}>{parseFloat(averages.avg_deaths).toFixed(1)}</div>
-              <div className="stat-label">Avg Deaths</div>
-            </div>
-          )}
+
           {streak !== null && streak !== 0 && (
             <div className="stat-card" style={{
               borderColor: streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)',
