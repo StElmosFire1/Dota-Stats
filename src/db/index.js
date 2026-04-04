@@ -1338,45 +1338,45 @@ async function computeSeasonTrueSkill(seasonId = null) {
 }
 
 // ── Impact Score helpers ────────────────────────────────────────────────────
-// Adapted from the community Google Sheet formulas (columns N & O).
-// Inputs: career/season totals for a player.
-function _computeImpactRaw(games, wins, kills, deaths, assists) {
+// Position-neutral formula — Google Sheet =LET() adaptation by Grok.
+// Inputs: per-game averages + kill involvement fraction (0–1).
+// avgKills/avgDeaths/avgAssists are per-game averages.
+// killInvolvement is a 0–1 fraction: avg((kills+assists)/team_kills) per game.
+function _computeImpactRaw(games, wins, avgKills, avgDeaths, avgAssists, killInvolvement) {
   if (!games || games <= 0) return null;
   const losses  = games - wins;
-  const winRate = wins / games;
-  // Avoid divide-by-zero: if 0 deaths give a generous KDA
-  const kda     = deaths > 0 ? (kills + assists) / deaths : (kills + assists) > 0 ? (kills + assists) * 2 : 1;
+  const winrate = wins / games;
+
+  // Adjusted efficiency: assists boosted (supports get credit), deaths softened.
+  // ^0.85 applied to the whole expression, matching the spreadsheet =LET formula.
+  const inner      = avgDeaths === 0 ? 8 : (avgKills + avgAssists * 1.35) / (avgDeaths + 3);
+  const efficiency = Math.pow(inner, 0.85);
+
+  // Main base score
+  const base = (winrate * 520)
+    + (killInvolvement * 340)
+    + (efficiency * 28)
+    + (games * 5.5)
+    - (losses * 4.2)
+    - (Math.pow(1 - winrate, 1.12) * 265)
+    - (wins === 0 ? 310 : 0);
+
+  // Volume multiplier — LOG is base-10 (matches Google Sheets LOG)
+  const volMult = Math.min(Math.log10(games + 3.5), 1.15);
+
+  // Role-neutral bonuses
+  const bonuses =
+    (winrate === 1 && games >= 3                     ? 165 : 0) +
+    (winrate >= 0.75 && winrate < 1 && games >= 3   ? 105 : 0) +
+    (winrate >= 0.60 && winrate < 0.75 && games >= 3 ?  65 : 0) +
+    (efficiency > 3.8                                ?  28 : 0) +
+    (efficiency > 6.0                                ?  14 : 0);
 
   if (games < 3) {
-    const base = (
-      winRate * 240 +
-      (deaths === 0 ? 0 : Math.pow(kda, 1.12) * 80) -
-      losses * 3.5 +
-      games * 4
-    ) * 0.9;
-    return Math.min(base, 500)
-      + (wins === 0 ? -300 : 0)
-      - Math.pow(1 - winRate, 1.05) * 250;
+    return Math.min(base * 0.85, 520) + bonuses;
+  } else {
+    return base * volMult + bonuses;
   }
-
-  const base = (
-    winRate * 420 +
-    (deaths === 0 ? 0 : Math.pow(kda, 1.05) * winRate * 90) -
-    losses * 4 +
-    games * 4 -
-    Math.pow(1 - winRate, 1.05) * 250 +
-    (wins === 0 ? -300 : 0)
-  ) * Math.min(Math.log10(games + 2), 1.1);
-
-  const bonus =
-    (winRate === 1                          ? 150 : 0) +
-    (winRate >= 0.75 && winRate < 1         ? 100 : 0) +
-    (winRate >= 0.60 && winRate < 0.75      ?  60 : 0) +
-    (kda > 2.5                              ?  30 : 0) +
-    (kda > 4.5                              ?  15 : 0) +
-    (games > 12                             ? -30 : 0);
-
-  return base + bonus;
 }
 
 // Rank a player's raw score among all players and return a 1–10 tier.
@@ -1424,7 +1424,9 @@ async function getComputedLeaderboard(seasonId = null) {
   }
   const getCanonical = (id) => accountToCanonical[id.toString()] || id.toString();
 
-  // Fetch season-scoped kill/death/assist aggregates from player_stats
+  // Fetch season-scoped per-game averages + kill involvement from player_stats.
+  // Kill involvement = avg per-game fraction of team kills a player participated in.
+  // Uses a window function to compute team kills per match/team.
   const statsParams = [];
   let statsWhere;
   if (seasonId === 'legacy') {
@@ -1436,26 +1438,51 @@ async function getComputedLeaderboard(seasonId = null) {
     statsWhere = 'AND m.is_legacy = false';
   }
   const statsRows = await p.query(
-    `SELECT ps.account_id::text AS account_id,
-            SUM(ps.kills)::int   AS total_kills,
-            SUM(ps.deaths)::int  AS total_deaths,
-            SUM(ps.assists)::int AS total_assists,
-            COUNT(*)::int        AS game_count
-     FROM player_stats ps
-     JOIN matches m ON m.match_id = ps.match_id
-     WHERE ps.account_id != 0 ${statsWhere}
-     GROUP BY ps.account_id`,
+    `WITH per_game AS (
+       SELECT
+         ps.account_id,
+         ps.kills,
+         ps.deaths,
+         ps.assists,
+         SUM(ps.kills) OVER (PARTITION BY ps.match_id, ps.team) AS team_kills
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id != 0 ${statsWhere}
+     )
+     SELECT
+       account_id::text                                               AS account_id,
+       COUNT(*)                                                       AS game_count,
+       AVG(kills)                                                     AS avg_kills,
+       AVG(deaths)                                                    AS avg_deaths,
+       AVG(assists)                                                   AS avg_assists,
+       AVG(CASE WHEN team_kills > 0
+                THEN (kills + assists)::float / team_kills
+                ELSE 0 END)                                          AS avg_ki
+     FROM per_game
+     GROUP BY account_id`,
     statsParams
   );
 
-  // Merge stats by canonical player_id
+  // Merge stats by canonical player_id (weighted average for merged accounts)
   const statsAgg = {};
   for (const row of statsRows.rows) {
-    const cid = getCanonical(row.account_id);
-    if (!statsAgg[cid]) statsAgg[cid] = { kills: 0, deaths: 0, assists: 0 };
-    statsAgg[cid].kills   += parseInt(row.total_kills)   || 0;
-    statsAgg[cid].deaths  += parseInt(row.total_deaths)  || 0;
-    statsAgg[cid].assists += parseInt(row.total_assists) || 0;
+    const cid   = getCanonical(row.account_id);
+    const gc    = parseFloat(row.game_count) || 0;
+    if (!statsAgg[cid]) statsAgg[cid] = { sumKills: 0, sumDeaths: 0, sumAssists: 0, sumKi: 0, games: 0 };
+    statsAgg[cid].sumKills   += parseFloat(row.avg_kills)   * gc;
+    statsAgg[cid].sumDeaths  += parseFloat(row.avg_deaths)  * gc;
+    statsAgg[cid].sumAssists += parseFloat(row.avg_assists) * gc;
+    statsAgg[cid].sumKi      += parseFloat(row.avg_ki)      * gc;
+    statsAgg[cid].games      += gc;
+  }
+  // Resolve weighted averages
+  for (const cid of Object.keys(statsAgg)) {
+    const s = statsAgg[cid];
+    const g = s.games || 1;
+    s.avgKills   = s.sumKills   / g;
+    s.avgDeaths  = s.sumDeaths  / g;
+    s.avgAssists = s.sumAssists / g;
+    s.avgKi      = s.sumKi      / g;
   }
 
   // Build sorted leaderboard array
@@ -1471,13 +1498,13 @@ async function getComputedLeaderboard(seasonId = null) {
     games_played: r.wins + r.losses,
   }));
 
-  // Compute raw impact scores
+  // Compute raw impact scores using per-game averages + kill involvement
   for (const player of leaderboard) {
     const s = statsAgg[player.player_id];
     if (!s || !player.games_played) { player.impact_raw = null; continue; }
     player.impact_raw = _computeImpactRaw(
       player.games_played, player.wins,
-      s.kills, s.deaths, s.assists
+      s.avgKills, s.avgDeaths, s.avgAssists, s.avgKi
     );
   }
 

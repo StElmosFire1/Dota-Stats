@@ -1,0 +1,43 @@
+=LET(
+    games, B2,
+    wins, C2,
+    losses, D2,
+    kills, E2,
+    deaths, F2,
+    assists, G2,
+    winrate, wins/games,
+    kill_involve, L2,
+    
+    /* Adjusted efficiency: assists weighted higher (supports get credit), deaths softened */
+    efficiency, IF(deaths=0, 8, (kills + assists*1.35)/(deaths + 3))^0.85,
+    
+    /* Main base score */
+    base, 
+        (winrate * 520) + 
+        (kill_involve * 340) + 
+        (efficiency * 28) + 
+        (games * 5.5) - 
+        (losses * 4.2) - 
+        ((1 - winrate)^1.12 * 265) - 
+        IF(wins=0, 310, 0),
+    
+    /* Volume multiplier (same philosophy as yours - diminishing returns) */
+    vol_mult, MIN(LOG(games + 3.5), 1.15),
+    
+    /* Role-neutral bonuses (same style as current) */
+    bonuses, 
+        IF(AND(winrate=1, games>=3), 165, 0) +
+        IF(AND(winrate>=0.75, winrate<1, games>=3), 105, 0) +
+        IF(AND(winrate>=0.6, winrate<0.75, games>=3), 65, 0) +
+        IF(efficiency > 3.8, 28, 0) +
+        IF(efficiency > 6, 14, 0),
+    
+    /* Low-game safeguard (same as current) */
+    IF(games < 3,
+        MIN(base * 0.85, 520) + bonuses,
+        base * vol_mult + bonuses
+    )
+)
+
+
+AspectCurrent Formula (yours)New Formula (position-neutral)Why the change helps supports/equalizes rolesWin RateStrong (420 + scaling)Stronger (520 base)Still the #1 driver — all roles impact wins equallyKill Involvement %Not usedVery strong (340 multiplier)This is the game-changer. Rewards assist-heavy supports as much as kill-heavy carriesKDA / EfficiencyVery heavy ((K+A)/D ^1.05 * winrate * 90)Milder (weighted assists, softened deaths, ^0.85, lower multiplier)Prevents cores from dominating just because they farm betterDeathsIndirectly hurts via KDA ratioSoft penalty (+3 in denominator)Supports don't get crushed for dying in fights/wardsAssistsCounted same as killsBoosted 35% weightingExplicitly credits support playstyleVolume & BonusesSimilarAlmost identical (log scaling + WR bonuses)Keeps the good parts of your systemLow-game protectionYesYes (even stricter cap)Same fairness for new players
