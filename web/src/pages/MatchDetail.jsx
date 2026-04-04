@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
+import ImpactBadge from '../components/ImpactBadge';
 import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -816,7 +817,7 @@ function PositionSelect({ player, matchId, onUpdate }) {
   );
 }
 
-function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes }) {
+function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {} }) {
   const hasDetailedStats = players.some(p => p.gpm > 0 || p.hero_damage > 0);
   const hasItems = players.some(p => p.items && p.items.length > 0);
   const hasLane = players.some(p => laneOutcomes && laneOutcomes[p.slot]);
@@ -839,6 +840,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
               <th className="col-stat" title="Kills">K</th>
               <th className="col-stat" title="Deaths">D</th>
               <th className="col-stat" title="Assists">A</th>
+              <th className="col-stat" title="Per-match performance rank 1–10 (kill involvement + K/D/A efficiency across all 10 players)">Perf</th>
               {hasDetailedStats && (
                 <>
                   <th className="col-stat" title="Last Hits">LH</th>
@@ -887,6 +889,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                   <td className="col-stat kills">{p.kills}</td>
                   <td className="col-stat deaths">{p.deaths}</td>
                   <td className="col-stat assists">{p.assists}</td>
+                  <td className="col-stat"><ImpactBadge score={perfRanks[p.slot] ?? null} /></td>
                   {hasDetailedStats && (
                     <>
                       <td className="col-stat">{formatNumber(p.last_hits)}</td>
@@ -2520,6 +2523,22 @@ export default function MatchDetail() {
   const radiant = (match.players || []).filter(p => p.team === 'radiant');
   const dire = (match.players || []).filter(p => p.team === 'dire');
   const allPlayers = [...radiant, ...dire];
+
+  // Per-match impact rank: score each player across all 10, rank 10 (best) → 1 (worst)
+  const perfRanks = (() => {
+    const radK = radiant.reduce((s, p) => s + (p.kills || 0), 0);
+    const dirK = dire.reduce((s, p) => s + (p.kills || 0), 0);
+    const scored = allPlayers.map(p => {
+      const teamK = p.team === 'radiant' ? radK : dirK;
+      const ki = teamK > 0 ? ((p.kills || 0) + (p.assists || 0)) / teamK : 0;
+      const eff = ((p.kills || 0) + (p.assists || 0) * 1.35) / Math.pow((p.deaths || 0) + 3, 0.85);
+      return { slot: p.slot, raw: ki * 0.5 + eff * 0.5 };
+    });
+    scored.sort((a, b) => b.raw - a.raw);
+    const ranks = {};
+    scored.forEach((p, idx) => { ranks[p.slot] = 10 - idx; });
+    return ranks;
+  })();
   const laneOutcomes = computeLaneOutcomes(allPlayers);
 
   return (
@@ -2797,8 +2816,8 @@ export default function MatchDetail() {
 
       <DraftDisplay draft={match.draft} />
 
-      <TeamTable players={radiant} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} />
-      <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} />
+      <TeamTable players={radiant} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} />
+      <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} />
 
       <ExpandedStats players={allPlayers} />
       <PudgeHookStats players={allPlayers} matchId={matchId} />

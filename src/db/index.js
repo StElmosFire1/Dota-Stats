@@ -1519,6 +1519,19 @@ async function getComputedLeaderboard(seasonId = null) {
   return leaderboard;
 }
 
+// Lightweight wrapper — reuses getComputedLeaderboard to extract impact scores.
+// Returns { [player_id]: { score: 1-10, raw: number } }
+async function getImpactScores(seasonId = null) {
+  const leaderboard = await getComputedLeaderboard(seasonId);
+  const map = {};
+  for (const p of leaderboard) {
+    if (p.impact_score != null) {
+      map[p.player_id] = { score: p.impact_score, raw: Math.round(p.impact_raw || 0) };
+    }
+  }
+  return map;
+}
+
 async function updateRating(playerId, discordId, displayName, mu, sigma, mmr, won, matchId = null) {
   displayName = decodeByteString(displayName);
   const p = getPool();
@@ -5074,6 +5087,7 @@ module.exports = {
   setMatchWinner,
   getLeaderboard,
   getComputedLeaderboard,
+  getImpactScores,
   computeSeasonTrueSkill,
   updateRating,
   getPlayerRating,

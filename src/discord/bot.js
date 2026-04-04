@@ -1248,6 +1248,22 @@ class DiscordBot {
       highlights.push(`\u{1F4A5} **Top Damage:** ${hName(damage)} \u2014 ${Math.round((damage.heroDamage || 0) / 1000)}k`);
     }
 
+    // Most Impactful — per-match kill involvement × efficiency rank
+    const radiantKillsImp = radiant.reduce((s, p) => s + (p.kills || 0), 0);
+    const direKillsImp    = dire.reduce((s, p) => s + (p.kills || 0), 0);
+    const impactRanked = [...allPlayers]
+      .map(p => {
+        const teamK = p.team === 'radiant' ? radiantKillsImp : direKillsImp;
+        const ki  = teamK > 0 ? ((p.kills || 0) + (p.assists || 0)) / teamK : 0;
+        const eff = ((p.kills || 0) + (p.assists || 0) * 1.35) / Math.pow((p.deaths || 0) + 3, 0.85);
+        return { p, score: ki * 0.5 + eff * 0.5 };
+      })
+      .sort((a, b) => b.score - a.score);
+    const topImpact = impactRanked[0]?.p;
+    if (topImpact && topImpact !== mvp) {
+      highlights.push(`\u{1F3AF} **Top Impact:** ${hName(topImpact)} (${this._heroDisplayName(topImpact.heroName, topImpact.heroId)})`);
+    }
+
     const topRampage = allPlayers.find(p => (p.rampages || 0) > 0);
     if (topRampage) {
       highlights.push(`\u{1F3C6} **RAMPAGE!** ${hName(topRampage)} (${this._heroDisplayName(topRampage.heroName, topRampage.heroId)})`);

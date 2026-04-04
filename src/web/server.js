@@ -2122,13 +2122,29 @@ NOTES
     }
   });
 
+  router.get('/impact-scores', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const scores = await db.getImpactScores(seasonId);
+      res.json({ scores });
+    } catch (err) {
+      console.error('[API] impact-scores error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch impact scores' });
+    }
+  });
+
   router.get('/hall-of-fame', async (req, res) => {
     try {
       const seasonId = req.query.season || null;
-      const [records, career] = await Promise.all([
+      const [records, career, impactMap] = await Promise.all([
         db.getPersonalRecords(seasonId),
         db.getHallOfFameCareerStats(seasonId),
+        db.getImpactScores(seasonId),
       ]);
+      for (const p of career) {
+        const pid = p.account_id?.toString();
+        if (pid && impactMap[pid] != null) p.impact_score = impactMap[pid].score;
+      }
       res.json({ records, career });
     } catch (err) {
       console.error('[API] hall-of-fame error:', err.message);

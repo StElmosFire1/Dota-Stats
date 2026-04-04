@@ -4,6 +4,7 @@ import { getHallOfFame } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import HeroIcon from '../components/HeroIcon';
 import { formatHeroName as formatHero } from '../utils/heroes';
+import ImpactBadge from '../components/ImpactBadge';
 
 function RecordCard({ title, emoji, record }) {
   if (!record) return null;
@@ -111,6 +112,7 @@ export default function HallOfFame() {
                   <th>Avg KDA</th>
                   <th>Avg GPM</th>
                   <th>Total Kills</th>
+                  <th title="Overall Impact Score 1–10 (win rate, kill involvement, K/D/A, games played)">Impact</th>
                 </tr>
               </thead>
               <tbody>
@@ -135,6 +137,7 @@ export default function HallOfFame() {
                       <td className="col-stat">{parseFloat(p.avg_kda).toFixed(2)}</td>
                       <td className="col-stat">{p.avg_gpm}</td>
                       <td className="col-stat">{parseInt(p.total_kills).toLocaleString()}</td>
+                      <td className="col-stat"><ImpactBadge score={p.impact_score ?? null} /></td>
                     </tr>
                   );
                 })}

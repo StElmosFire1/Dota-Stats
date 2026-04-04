@@ -25,6 +25,7 @@ A web dashboard (React + Vite frontend, Express backend) provides extensive feat
 - **Friend Lobby Auto-Detection:** Automatically detects and joins lobbies via Steam friends' rich presence.
 - **Auto-Detect System (OpenDota Fallback):** Can poll OpenDota for recent practice lobby matches with public data.
 - **TrueSkill MMR:** Implements TrueSkill for dynamic player rating calculations.
+- **Impact Score System:** Position-neutral 1–10 performance rating using kill involvement, win rate, K/D/A efficiency and games played. Appears on Leaderboard (column), Player Profile (stat card replacing GPM), Hall of Fame career tab (column), Match Detail scoreboard (per-match Perf rank), and Discord post-match highlights (Top Impact player).
 - **Discord Commands:** Provides commands for player registration, lobby management, stats, and manual match recording.
 - **Data Storage:** PostgreSQL is the primary database for all structured game data.
 - **Nickname System:** Manages custom player nicknames.

@@ -104,6 +104,10 @@ export async function getLeaderboard(limit = 50, seasonId = null) {
   return fetchJson(`/leaderboard?limit=${limit}${seasonParam(seasonId)}`);
 }
 
+export async function getImpactScores(seasonId = null) {
+  return fetchJson(`/impact-scores${seasonId ? `?season_id=${seasonId}` : ''}`);
+}
+
 export async function getPlayer(accountId, seasonId = null) {
   return fetchJson(`/players/${accountId}${seasonId ? `?season_id=${seasonId}` : ''}`);
 }

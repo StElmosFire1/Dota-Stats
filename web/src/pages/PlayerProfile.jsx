@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores } from '../api';
+import ImpactBadge from '../components/ImpactBadge';
 import { useSeason } from '../context/SeasonContext';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -158,6 +159,7 @@ export default function PlayerProfile() {
   const [durationStats, setDurationStats] = useState([]);
   const [communityRatings, setCommunityRatings] = useState(null);
   const [positionAverages, setPositionAverages] = useState([]);
+  const [impactScore, setImpactScore] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -192,6 +194,14 @@ export default function PlayerProfile() {
       setCommunityRatings(ratingData?.ratings || null);
       setPositionAverages(avgData?.averages || []);
     }).finally(() => setLoading(false));
+  }, [accountId, seasonId]);
+
+  useEffect(() => {
+    getImpactScores(seasonId).then(res => {
+      const map = res?.scores || {};
+      const key = accountId?.toString();
+      if (key && map[key] != null) setImpactScore(map[key].score);
+    }).catch(() => {});
   }, [accountId, seasonId]);
 
   if (loading) return <div className="loading">Loading player...</div>;
@@ -300,11 +310,11 @@ export default function PlayerProfile() {
             </div>
             <div className="stat-label">🪝 Hook</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-value" style={{ color: '#fbbf24' }}>
-              {averages ? parseInt(averages.avg_gpm || 0) : '—'}
+          <div className="stat-card" style={{ borderColor: impactScore != null ? (impactScore >= 7 ? 'rgba(56,220,80,0.4)' : impactScore >= 4 ? 'rgba(240,170,10,0.35)' : 'rgba(235,50,50,0.35)') : undefined }}>
+            <div className="stat-value" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <ImpactBadge score={impactScore} size="lg" />
             </div>
-            <div className="stat-label">💰 Avg GPM</div>
+            <div className="stat-label">🎯 Impact Score</div>
           </div>
           <div className="stat-card">
             <div className="stat-value" style={{ color: '#fb923c' }}>
