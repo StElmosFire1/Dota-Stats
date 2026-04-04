@@ -1,0 +1,48 @@
+# New position-neutral Impact Score (per player)
+def calculate_impact_score(games, wins, losses, avg_kills, avg_deaths, avg_assists, kill_involvement_pct, avg_gpm=None, avg_xpm=None):
+    if games == 0:
+        return 0
+    
+    winrate = wins / games
+    k_involve = kill_involvement_pct
+    
+    # Softened efficiency (assists boosted, deaths cushioned for supports)
+    efficiency = 9 if avg_deaths == 0 else (avg_kills + avg_assists * 1.35) / (avg_deaths + 3.5) ** 0.82
+    
+    # Base score
+    base = (winrate * 520) + \
+           (k_involve * 355) + \
+           (efficiency * 26) + \
+           (games * 5.8) - \
+           (losses * 4.5) - \
+           ((1 - winrate) ** 1.15 * 280) - \
+           (320 if wins == 0 else 0)
+    
+    # Add extra metrics if available (GPM/XPM for economy impact)
+    if avg_gpm and avg_xpm:
+        base += (avg_gpm / 600 * 45) + (avg_xpm / 650 * 35)   # light neutral boost for economy
+    
+    # Volume multiplier (diminishing returns)
+    vol_mult = min((games + 4) ** 0.18, 1.16)   # log-style but simpler in code
+    
+    # Bonuses
+    bonuses = 0
+    if winrate == 1 and games >= 3:
+        bonuses += 170
+    elif winrate >= 0.75 and games >= 3:
+        bonuses += 110
+    elif winrate >= 0.60 and games >= 3:
+        bonuses += 70
+    if efficiency > 4:
+        bonuses += 32
+    if efficiency > 6.5:
+        bonuses += 16
+    
+    # Final score
+    if games < 3:
+        return min(base * 0.82, 530) + bonuses
+    else:
+        return base * vol_mult + bonuses
+
+
+AspectCurrent Formula (yours)New Formula (position-neutral)Why the change helps supports/equalizes rolesWin RateStrong (420 + scaling)Stronger (520 base)Still the #1 driver — all roles impact wins equallyKill Involvement %Not usedVery strong (340 multiplier)This is the game-changer. Rewards assist-heavy supports as much as kill-heavy carriesKDA / EfficiencyVery heavy ((K+A)/D ^1.05 * winrate * 90)Milder (weighted assists, softened deaths, ^0.85, lower multiplier)Prevents cores from dominating just because they farm betterDeathsIndirectly hurts via KDA ratioSoft penalty (+3 in denominator)Supports don't get crushed for dying in fights/wardsAssistsCounted same as killsBoosted 35% weightingExplicitly credits support playstyleVolume & BonusesSimilarAlmost identical (log scaling + WR bonuses)Keeps the good parts of your systemLow-game protectionYesYes (even stricter cap)Same fairness for new players
