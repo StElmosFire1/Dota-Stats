@@ -1337,15 +1337,126 @@ async function computeSeasonTrueSkill(seasonId = null) {
   return { ratings, accountToCanonical };
 }
 
+// ── Impact Score helpers ────────────────────────────────────────────────────
+// Adapted from the community Google Sheet formulas (columns N & O).
+// Inputs: career/season totals for a player.
+function _computeImpactRaw(games, wins, kills, deaths, assists) {
+  if (!games || games <= 0) return null;
+  const losses  = games - wins;
+  const winRate = wins / games;
+  // Avoid divide-by-zero: if 0 deaths give a generous KDA
+  const kda     = deaths > 0 ? (kills + assists) / deaths : (kills + assists) > 0 ? (kills + assists) * 2 : 1;
+
+  if (games < 3) {
+    const base = (
+      winRate * 240 +
+      (deaths === 0 ? 0 : Math.pow(kda, 1.12) * 80) -
+      losses * 3.5 +
+      games * 4
+    ) * 0.9;
+    return Math.min(base, 500)
+      + (wins === 0 ? -300 : 0)
+      - Math.pow(1 - winRate, 1.05) * 250;
+  }
+
+  const base = (
+    winRate * 420 +
+    (deaths === 0 ? 0 : Math.pow(kda, 1.05) * winRate * 90) -
+    losses * 4 +
+    games * 4 -
+    Math.pow(1 - winRate, 1.05) * 250 +
+    (wins === 0 ? -300 : 0)
+  ) * Math.min(Math.log10(games + 2), 1.1);
+
+  const bonus =
+    (winRate === 1                          ? 150 : 0) +
+    (winRate >= 0.75 && winRate < 1         ? 100 : 0) +
+    (winRate >= 0.60 && winRate < 0.75      ?  60 : 0) +
+    (kda > 2.5                              ?  30 : 0) +
+    (kda > 4.5                              ?  15 : 0) +
+    (games > 12                             ? -30 : 0);
+
+  return base + bonus;
+}
+
+// Rank a player's raw score among all players and return a 1–10 tier.
+// Percentile breakpoints mirror the Google Sheet column N formula.
+function _computeImpactTier(rawScore, allRawScores) {
+  const total = allRawScores.length;
+  if (total === 0) return null;
+  // Rank = number of players with a strictly higher raw score + 1 (1 = best)
+  const rank = allRawScores.filter(s => s > rawScore).length + 1;
+  const pct  = rank / total;
+  if (pct <= 0.075) return 10;
+  if (pct <= 0.15)  return 9;
+  if (pct <= 0.30)  return 8;
+  if (pct <= 0.45)  return 7;
+  if (pct <= 0.60)  return 6;
+  if (pct <= 0.70)  return 5;
+  if (pct <= 0.80)  return 4;
+  if (pct <= 0.90)  return 3;
+  if (pct <= 0.97)  return 2;
+  return 1;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 async function getComputedLeaderboard(seasonId = null) {
   const p = getPool();
 
   const { ratings } = await computeSeasonTrueSkill(seasonId);
 
-  // Fetch nicknames
+  // Fetch nicknames and build canonical-account mapping (same logic as computeSeasonTrueSkill)
   const nicknamesRes = await p.query('SELECT account_id, nickname FROM nicknames');
   const nicknames = {};
-  for (const n of nicknamesRes.rows) nicknames[n.account_id.toString()] = n.nickname;
+  const nicknameToIds = {};
+  for (const n of nicknamesRes.rows) {
+    nicknames[n.account_id.toString()] = n.nickname;
+    const nick = n.nickname.toLowerCase();
+    if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
+    nicknameToIds[nick].push(n.account_id.toString());
+  }
+  const accountToCanonical = {};
+  for (const ids of Object.values(nicknameToIds)) {
+    if (ids.length < 2) continue;
+    ids.sort();
+    const canonical = ids[0];
+    for (const id of ids) accountToCanonical[id] = canonical;
+  }
+  const getCanonical = (id) => accountToCanonical[id.toString()] || id.toString();
+
+  // Fetch season-scoped kill/death/assist aggregates from player_stats
+  const statsParams = [];
+  let statsWhere;
+  if (seasonId === 'legacy') {
+    statsWhere = 'AND m.is_legacy = true';
+  } else if (seasonId !== null && seasonId !== undefined) {
+    statsParams.push(parseInt(seasonId));
+    statsWhere = `AND m.season_id = $${statsParams.length}`;
+  } else {
+    statsWhere = 'AND m.is_legacy = false';
+  }
+  const statsRows = await p.query(
+    `SELECT ps.account_id::text AS account_id,
+            SUM(ps.kills)::int   AS total_kills,
+            SUM(ps.deaths)::int  AS total_deaths,
+            SUM(ps.assists)::int AS total_assists,
+            COUNT(*)::int        AS game_count
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.account_id != 0 ${statsWhere}
+     GROUP BY ps.account_id`,
+    statsParams
+  );
+
+  // Merge stats by canonical player_id
+  const statsAgg = {};
+  for (const row of statsRows.rows) {
+    const cid = getCanonical(row.account_id);
+    if (!statsAgg[cid]) statsAgg[cid] = { kills: 0, deaths: 0, assists: 0 };
+    statsAgg[cid].kills   += parseInt(row.total_kills)   || 0;
+    statsAgg[cid].deaths  += parseInt(row.total_deaths)  || 0;
+    statsAgg[cid].assists += parseInt(row.total_assists) || 0;
+  }
 
   // Build sorted leaderboard array
   const leaderboard = Object.entries(ratings).map(([player_id, r]) => ({
@@ -1359,6 +1470,23 @@ async function getComputedLeaderboard(seasonId = null) {
     losses: r.losses,
     games_played: r.wins + r.losses,
   }));
+
+  // Compute raw impact scores
+  for (const player of leaderboard) {
+    const s = statsAgg[player.player_id];
+    if (!s || !player.games_played) { player.impact_raw = null; continue; }
+    player.impact_raw = _computeImpactRaw(
+      player.games_played, player.wins,
+      s.kills, s.deaths, s.assists
+    );
+  }
+
+  // Rank into 1–10 tiers (only among players who have a raw score)
+  const withRaw = leaderboard.filter(p => p.impact_raw != null);
+  const rawScores = withRaw.map(p => p.impact_raw);
+  for (const player of withRaw) {
+    player.impact_score = _computeImpactTier(player.impact_raw, rawScores);
+  }
 
   leaderboard.sort((a, b) => b.mmr - a.mmr);
   return leaderboard;

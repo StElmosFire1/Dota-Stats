@@ -62,6 +62,46 @@ function StreakBadge({ streak }) {
   );
 }
 
+// Colour ramp: 10 = bright green, 5/6 = amber/yellow, 1 = red
+const IMPACT_COLOURS = {
+  10: { bg: 'rgba(56,220,80,0.18)',  border: 'rgba(56,220,80,0.55)',  text: '#38dc50' },
+  9:  { bg: 'rgba(100,220,60,0.16)', border: 'rgba(100,220,60,0.5)',  text: '#72dc3c' },
+  8:  { bg: 'rgba(160,215,40,0.15)', border: 'rgba(160,215,40,0.45)', text: '#a8d028' },
+  7:  { bg: 'rgba(200,210,20,0.14)', border: 'rgba(200,210,20,0.45)', text: '#c8d214' },
+  6:  { bg: 'rgba(230,200,10,0.14)', border: 'rgba(230,200,10,0.4)',  text: '#e6c80a' },
+  5:  { bg: 'rgba(240,170,10,0.14)', border: 'rgba(240,170,10,0.4)',  text: '#f0aa0a' },
+  4:  { bg: 'rgba(245,130,20,0.15)', border: 'rgba(245,130,20,0.45)', text: '#f58214' },
+  3:  { bg: 'rgba(245,90,30,0.15)',  border: 'rgba(245,90,30,0.45)',  text: '#f55a1e' },
+  2:  { bg: 'rgba(235,50,50,0.15)',  border: 'rgba(235,50,50,0.45)',  text: '#eb3232' },
+  1:  { bg: 'rgba(200,20,20,0.15)',  border: 'rgba(200,20,20,0.45)',  text: '#c81414' },
+};
+
+function ImpactBadge({ score }) {
+  if (score == null) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>;
+  const c = IMPACT_COLOURS[score] || IMPACT_COLOURS[5];
+  return (
+    <span
+      title={`Impact Score ${score}/10 — ranked from K/D/A, win rate and games played`}
+      style={{
+        display: 'inline-block',
+        background: c.bg,
+        border: `1px solid ${c.border}`,
+        color: c.text,
+        borderRadius: 6,
+        padding: '1px 8px',
+        fontSize: 13,
+        fontWeight: 800,
+        minWidth: 24,
+        textAlign: 'center',
+        cursor: 'default',
+        letterSpacing: '0.02em',
+      }}
+    >
+      {score}
+    </span>
+  );
+}
+
 function MostImprovedWidget({ data, loading, seasonLabel }) {
   const title = seasonLabel ? `Most Improved — ${seasonLabel}` : 'Most Improved — last 30 days';
   if (loading) return (
@@ -322,8 +362,11 @@ export default function Leaderboard() {
         <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4, whiteSpace: 'nowrap' }}>→ best</span>
       </div>
 
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, marginTop: -8 }}>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, marginTop: -8 }}>
         Ranked by TrueSkill MMR — beating stronger opponents earns more rating than raw win rate.
+      </p>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+        <strong style={{ color: 'var(--text-secondary)' }}>Impact Score</strong> (1–10): a community ranking based on K/D/A, win rate, and games played — hover the column header for details.
       </p>
 
       {data.leaderboard.length === 0 ? (
@@ -343,6 +386,7 @@ export default function Leaderboard() {
                 <th className="col-stat" title="Losses">L</th>
                 <th className="col-stat" title="Total games played">Games</th>
                 <th className="col-stat" title="Win percentage">Win %</th>
+                <th className="col-stat" title="Impact Score 1–10: ranked by K/D/A, win rate and games played">Impact</th>
                 <th className="col-stat" title="Current win or loss streak">Streak</th>
                 <th className="col-stat" title="Last 10 games — green=win, red=loss, left=most recent">Form</th>
               </tr>
@@ -366,6 +410,7 @@ export default function Leaderboard() {
                     <td className="col-stat losses">{p.losses}</td>
                     <td className="col-stat">{p.games_played}</td>
                     <td className="col-stat">{winRate}%</td>
+                    <td className="col-stat"><ImpactBadge score={p.impact_score} /></td>
                     <td className="col-stat">
                       {p.streak
                         ? <StreakBadge streak={p.streak} />
