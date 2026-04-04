@@ -75,8 +75,10 @@ function computeLaneOutcomes(players) {
     for (const p of direGroup) outcomes[p.slot] = getLaneResult(-adv);
   };
 
-  applyLane(groups.safe_radiant, groups.off_dire);
-  applyLane(groups.off_radiant, groups.safe_dire);
+  // Bottom lane:  Radiant safe (Pos 1+5) vs Dire safe (Pos 3+4 who are on Dire's off = Radiant's safe)
+  applyLane(groups.safe_radiant, groups.safe_dire);
+  // Top lane:    Radiant off (Pos 3+4) vs Dire off (Pos 1+5 who are on Dire's safe = Radiant's off)
+  applyLane(groups.off_radiant, groups.off_dire);
   applyLane(groups.mid_radiant, groups.mid_dire);
 
   return outcomes;
