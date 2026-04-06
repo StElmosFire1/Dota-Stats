@@ -26,6 +26,7 @@ A web dashboard (React + Vite frontend, Express backend) provides extensive feat
 - **Auto-Detect System (OpenDota Fallback):** Can poll OpenDota for recent practice lobby matches with public data.
 - **TrueSkill MMR:** Implements TrueSkill for dynamic player rating calculations.
 - **Impact Score System:** Position-neutral 1–10 performance rating using kill involvement, win rate, K/D/A efficiency and games played. Appears on Leaderboard (column), Player Profile (stat card replacing GPM), Hall of Fame career tab (column), Match Detail scoreboard (per-match Perf rank), and Discord post-match highlights (Top Impact player).
+- **TrueSkill 2 (Experimental):** Hidden admin-only simulation that reruns all match history under a TS2 variant — μ updates scaled by per-match K/D/A performance (modifier 0.65×–1.35×, z-scored within each match), σ unchanged. Accessible via Admin Panel "Run TS2 Simulation" button. Read-only — nothing is stored. Used to evaluate TS2 before Season 10 launch.
 - **Discord Commands:** Provides commands for player registration, lobby management, stats, and manual match recording.
 - **Data Storage:** PostgreSQL is the primary database for all structured game data.
 - **Nickname System:** Manages custom player nicknames.

@@ -1337,6 +1337,209 @@ async function computeSeasonTrueSkill(seasonId = null) {
   return { ratings, accountToCanonical };
 }
 
+// ── TrueSkill 2 (experimental) ──────────────────────────────────────────────
+// Runs both TS1 and TS2 from scratch in one pass and returns a comparison
+// leaderboard. TS2 differs from TS1 in that the μ update for each player is
+// scaled by a per-match performance modifier derived from their K/D/A relative
+// to the other nine players in that match. σ reduction is identical to TS1.
+//
+// Modifier range: 0.65× (very poor game) → 1.35× (standout game).
+// If a match has no K/D/A data (lobby-only) the modifier defaults to 1.0.
+async function computeTS2Leaderboard(seasonId = null) {
+  const p = getPool();
+  const { getStatsService } = require('../stats/statsService');
+  const statsService = getStatsService();
+
+  // ── Canonical ID map (nickname merging, same as computeSeasonTrueSkill) ──
+  const nickRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknameToIds = {};
+  for (const row of nickRes.rows) {
+    const aid = row.account_id.toString();
+    const nick = row.nickname.toLowerCase();
+    if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
+    nicknameToIds[nick].push(aid);
+  }
+  const accountToCanonical = {};
+  for (const ids of Object.values(nicknameToIds)) {
+    if (ids.length < 2) continue;
+    ids.sort();
+    const canonical = ids[0];
+    for (const id of ids) accountToCanonical[id] = canonical;
+  }
+  const getCanonical = (id) => accountToCanonical[id] || id;
+
+  // ── Season / legacy filter ────────────────────────────────────────────────
+  const params = [];
+  let matchWhere;
+  if (seasonId === 'legacy') {
+    matchWhere = 'WHERE m.is_legacy = true';
+  } else if (seasonId !== null && seasonId !== undefined) {
+    params.push(parseInt(seasonId));
+    matchWhere = `WHERE m.season_id = $${params.length}`;
+  } else {
+    matchWhere = 'WHERE m.is_legacy = false';
+  }
+
+  // Pull matches + per-player K/D/A for the performance signal
+  const rows = await p.query(
+    `SELECT m.match_id, m.date, m.radiant_win,
+            ps.account_id, ps.persona_name, ps.team,
+            ps.kills, ps.deaths, ps.assists
+     FROM matches m
+     JOIN player_stats ps ON ps.match_id = m.match_id
+     ${matchWhere}
+     ORDER BY m.date ASC, m.match_id ASC`,
+    params
+  );
+
+  // Group rows into match map
+  const matchMap = new Map();
+  for (const row of rows.rows) {
+    if (!matchMap.has(row.match_id)) {
+      matchMap.set(row.match_id, { radiantWin: row.radiant_win, radiant: [], dire: [] });
+    }
+    const rawId = row.account_id > 0 ? row.account_id.toString() : null;
+    if (!rawId) continue;
+    const id = getCanonical(rawId);
+    const entry = {
+      id,
+      persona_name: row.persona_name,
+      kills: parseInt(row.kills) || 0,
+      deaths: parseInt(row.deaths) || 0,
+      assists: parseInt(row.assists) || 0,
+    };
+    if (row.team === 'radiant') matchMap.get(row.match_id).radiant.push(entry);
+    else matchMap.get(row.match_id).dire.push(entry);
+  }
+
+  // ── Performance modifier: z-score within match, mapped to [0.65, 1.35] ───
+  function buildModifiers(all10) {
+    const hasStats = all10.some(p => p.kills + p.assists + p.deaths > 0);
+    if (!hasStats || all10.length < 2) {
+      const m = {}; all10.forEach(p => { m[p.id] = 1.0; }); return m;
+    }
+    const radiantKills = all10.filter(p => p._team === 'radiant').reduce((s, p) => s + p.kills, 0);
+    const direKills    = all10.filter(p => p._team === 'dire').reduce((s, p) => s + p.kills, 0);
+    const scores = all10.map(p => {
+      const teamK = p._team === 'radiant' ? radiantKills : direKills;
+      const ki  = teamK > 0 ? (p.kills + p.assists) / teamK : 0;
+      const eff = (p.kills + p.assists * 1.35) / Math.pow(p.deaths + 3, 0.85);
+      return { id: p.id, raw: ki * 0.5 + eff * 0.5 };
+    });
+    const vals = scores.map(s => s.raw);
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const std  = Math.sqrt(vals.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / vals.length) || 1;
+    const mods = {};
+    for (const s of scores) {
+      const z = Math.max(-2, Math.min(2, (s.raw - mean) / std));
+      mods[s.id] = 1.0 + z * 0.175; // z=±2 → modifier ≈ [0.65, 1.35]
+    }
+    return mods;
+  }
+
+  const DEFAULT_MU = 25, DEFAULT_SIGMA = 8.333;
+  const MMR_OFFSET = 2600;
+  // Two separate rating stores — both start from the same blank slate
+  const ts1 = {}; // pure TrueSkill 1
+  const ts2 = {}; // TrueSkill 2 (performance-scaled μ)
+
+  const dedup = (team) => {
+    const seen = new Set();
+    return team.filter(pl => seen.has(pl.id) ? false : seen.add(pl.id));
+  };
+
+  for (const [, match] of matchMap) {
+    if (match.radiant.length === 0 || match.dire.length === 0) continue;
+
+    const radiant = dedup(match.radiant);
+    const dire    = dedup(match.dire);
+    const all10   = [
+      ...radiant.map(p => ({ ...p, _team: 'radiant' })),
+      ...dire.map(p => ({ ...p, _team: 'dire' })),
+    ];
+    const modifiers = buildModifiers(all10);
+
+    // Build TS input from current TS2 state (so TS2 diverges naturally over time)
+    const rInput = radiant.map(pl => ({
+      id: pl.id,
+      mu:    ts2[pl.id]?.mu    ?? DEFAULT_MU,
+      sigma: ts2[pl.id]?.sigma ?? DEFAULT_SIGMA,
+    }));
+    const dInput = dire.map(pl => ({
+      id: pl.id,
+      mu:    ts2[pl.id]?.mu    ?? DEFAULT_MU,
+      sigma: ts2[pl.id]?.sigma ?? DEFAULT_SIGMA,
+    }));
+
+    // TS1 input from ts1 store
+    const rInput1 = radiant.map(pl => ({
+      id: pl.id,
+      mu:    ts1[pl.id]?.mu    ?? DEFAULT_MU,
+      sigma: ts1[pl.id]?.sigma ?? DEFAULT_SIGMA,
+    }));
+    const dInput1 = dire.map(pl => ({
+      id: pl.id,
+      mu:    ts1[pl.id]?.mu    ?? DEFAULT_MU,
+      sigma: ts1[pl.id]?.sigma ?? DEFAULT_SIGMA,
+    }));
+
+    const ts1New = statsService.calculateNewRatings(rInput1, dInput1, match.radiantWin);
+    const ts2Raw = statsService.calculateNewRatings(rInput,  dInput,  match.radiantWin);
+
+    for (let i = 0; i < ts1New.length; i++) {
+      const r1 = ts1New[i];
+      const r2 = ts2Raw[i];
+      const id = r1.id;
+      const isRad = radiant.some(pl => pl.id === id);
+      const won   = isRad ? match.radiantWin : !match.radiantWin;
+      const dn    = all10.find(p => p.id === id)?.persona_name || id;
+
+      // TS1 — plain update
+      if (!ts1[id]) ts1[id] = { mu: DEFAULT_MU, sigma: DEFAULT_SIGMA, wins: 0, losses: 0, display_name: dn };
+      ts1[id].mu    = r1.mu;
+      ts1[id].sigma = r1.sigma;
+      ts1[id].mmr   = r1.mmr;
+      if (won) ts1[id].wins++; else ts1[id].losses++;
+      if (dn) ts1[id].display_name = dn;
+
+      // TS2 — scale the μ delta by performance modifier, keep σ from TS1
+      const oldMu  = ts2[id]?.mu ?? DEFAULT_MU;
+      const deltaMu = r2.mu - oldMu;
+      const mod     = modifiers[id] ?? 1.0;
+      const newMu   = oldMu + deltaMu * mod;
+      const newSigma = r2.sigma; // same info gain as TS1
+      const newMmr   = Math.round((newMu - 3 * newSigma) * 100) + MMR_OFFSET;
+
+      if (!ts2[id]) ts2[id] = { mu: DEFAULT_MU, sigma: DEFAULT_SIGMA, wins: 0, losses: 0, display_name: dn };
+      ts2[id].mu    = newMu;
+      ts2[id].sigma = newSigma;
+      ts2[id].mmr   = newMmr;
+      if (won) ts2[id].wins++; else ts2[id].losses++;
+      if (dn) ts2[id].display_name = dn;
+    }
+  }
+
+  // Build comparison leaderboard sorted by TS2 MMR
+  const leaderboard = Object.keys(ts2).map(id => {
+    const t2 = ts2[id];
+    const t1 = ts1[id];
+    return {
+      player_id:    id,
+      display_name: t2.display_name,
+      ts2_mmr:      t2.mmr,
+      ts2_mu:       parseFloat(t2.mu.toFixed(3)),
+      ts2_sigma:    parseFloat(t2.sigma.toFixed(3)),
+      ts1_mmr:      t1?.mmr ?? 2600,
+      delta:        t2.mmr - (t1?.mmr ?? 2600),
+      wins:         t2.wins,
+      losses:       t2.losses,
+      games:        t2.wins + t2.losses,
+    };
+  });
+  leaderboard.sort((a, b) => b.ts2_mmr - a.ts2_mmr);
+  return leaderboard;
+}
+
 // ── Impact Score helpers ────────────────────────────────────────────────────
 // Position-neutral formula — Google Sheet =LET() adaptation by Grok.
 // Inputs: per-game averages + kill involvement fraction (0–1).
@@ -5088,6 +5291,7 @@ module.exports = {
   getLeaderboard,
   getComputedLeaderboard,
   getImpactScores,
+  computeTS2Leaderboard,
   computeSeasonTrueSkill,
   updateRating,
   getPlayerRating,

@@ -2320,6 +2320,17 @@ NOTES
     }
   });
 
+  router.get('/admin/ts2-leaderboard', requireSuperuser, async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.computeTS2Leaderboard(seasonId);
+      res.json({ leaderboard: data });
+    } catch (err) {
+      console.error('[API] ts2-leaderboard error:', err.message);
+      res.status(500).json({ error: 'Failed to compute TS2 leaderboard' });
+    }
+  });
+
   router.get('/admin/duplicate-matches', authMiddleware, async (req, res) => {
     try {
       const duplicates = await db.findDuplicateMatches();

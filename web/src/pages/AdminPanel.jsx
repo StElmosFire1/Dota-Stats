@@ -463,6 +463,9 @@ export default function AdminPanel() {
   const [dupLoading, setDupLoading] = useState(false);
   const [recalcLoading, setRecalcLoading] = useState(false);
   const [recalcMsg, setRecalcMsg] = useState('');
+  const [ts2Data, setTs2Data] = useState(null);
+  const [ts2Loading, setTs2Loading] = useState(false);
+  const [ts2Error, setTs2Error] = useState('');
 
   const [matchDate, setMatchDate] = useState(() => {
     const now = new Date();
@@ -790,6 +793,101 @@ export default function AdminPanel() {
 
       {/* Server Error Log */}
       <ErrorLogViewer superuserKey={superuserKey} />
+
+      {/* TrueSkill 2 — Hidden Preview */}
+      <section>
+        <h2 style={{ marginBottom: 6 }}>
+          🧪 TrueSkill 2 — Experimental Leaderboard
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+          Simulates TrueSkill 2 from scratch across all matches. Identical to TrueSkill 1 except
+          each player's μ update is scaled by their per-match K/D/A performance relative to the
+          other 9 players (modifier&nbsp;≈&nbsp;0.65×&nbsp;–&nbsp;1.35×). σ reduction is unchanged.
+          Not stored anywhere — fully read-only.
+        </p>
+        <button
+          className="btn"
+          disabled={ts2Loading}
+          onClick={async () => {
+            setTs2Loading(true);
+            setTs2Error('');
+            setTs2Data(null);
+            try {
+              const sid = selectedSeason?.id ?? null;
+              const url = `/api/admin/ts2-leaderboard${sid ? `?season_id=${sid}` : ''}`;
+              const res = await fetch(url, { headers: authHeader });
+              const json = await res.json();
+              if (!res.ok) throw new Error(json.error || 'Failed');
+              setTs2Data(json.leaderboard || []);
+            } catch (e) {
+              setTs2Error(e.message);
+            } finally {
+              setTs2Loading(false);
+            }
+          }}
+          style={{ marginBottom: 16 }}
+        >
+          {ts2Loading ? 'Computing…' : ts2Data ? '🔄 Recompute' : '▶ Run TS2 Simulation'}
+        </button>
+        {ts2Error && <p style={{ color: 'var(--dire-color)', marginBottom: 12 }}>{ts2Error}</p>}
+        {ts2Data && (
+          <div style={{ overflowX: 'auto' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
+              {ts2Data.length} players — sorted by TS2 MMR.{' '}
+              <strong style={{ color: 'var(--radiant-color)' }}>Green delta</strong> = TS2 benefits this player.{' '}
+              <strong style={{ color: 'var(--dire-color)' }}>Red delta</strong> = TS2 hurts them.
+            </p>
+            <table className="scoreboard" style={{ width: '100%', fontSize: 13 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'center', width: 36 }}>#</th>
+                  <th style={{ textAlign: 'left' }}>Player</th>
+                  <th title="TrueSkill 2 MMR (experimental)">TS2 MMR</th>
+                  <th title="Current TrueSkill 1 MMR (live)">TS1 MMR</th>
+                  <th title="TS2 minus TS1 — how much this player gains or loses">Δ MMR</th>
+                  <th title="TrueSkill 2 mu (mean skill)">μ</th>
+                  <th title="TrueSkill 2 sigma (uncertainty)">σ</th>
+                  <th>W</th>
+                  <th>L</th>
+                  <th>Games</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ts2Data.map((p, i) => {
+                  const deltaColor = p.delta > 0
+                    ? 'var(--radiant-color)'
+                    : p.delta < 0 ? 'var(--dire-color)' : 'var(--text-muted)';
+                  const medal = ['🥇', '🥈', '🥉'][i] || `${i + 1}`;
+                  return (
+                    <tr key={p.player_id}>
+                      <td style={{ textAlign: 'center', fontWeight: 700 }}>{medal}</td>
+                      <td style={{ fontWeight: 600 }}>{p.display_name}</td>
+                      <td className="col-stat" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                        {p.ts2_mmr.toLocaleString()}
+                      </td>
+                      <td className="col-stat" style={{ color: 'var(--text-secondary)' }}>
+                        {p.ts1_mmr.toLocaleString()}
+                      </td>
+                      <td className="col-stat" style={{ fontWeight: 700, color: deltaColor }}>
+                        {p.delta > 0 ? '+' : ''}{p.delta}
+                      </td>
+                      <td className="col-stat" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                        {p.ts2_mu.toFixed(2)}
+                      </td>
+                      <td className="col-stat" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                        {p.ts2_sigma.toFixed(2)}
+                      </td>
+                      <td className="col-stat" style={{ color: 'var(--radiant-color)' }}>{p.wins}</td>
+                      <td className="col-stat" style={{ color: 'var(--dire-color)' }}>{p.losses}</td>
+                      <td className="col-stat">{p.games}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* Quick Links */}
       <section>
