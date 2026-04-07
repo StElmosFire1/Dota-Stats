@@ -671,6 +671,32 @@ export async function cancelScheduledGame(id, superuserKey) {
   return data;
 }
 
+export async function getScheduleRsvps(gameId) {
+  return fetchJson(`/schedule/${gameId}/rsvps`);
+}
+
+export async function rsvpScheduledGame(gameId, status) {
+  const res = await fetch(BASE + `/schedule/${gameId}/rsvp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+    credentials: 'include',
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update RSVP');
+  return data;
+}
+
+export async function removeRsvp(gameId) {
+  const res = await fetch(BASE + `/schedule/${gameId}/rsvp`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to remove RSVP');
+  return data;
+}
+
 export async function getPlayerCommunityRatings(accountId) {
   return fetchJson(`/ratings/player/${accountId}`);
 }

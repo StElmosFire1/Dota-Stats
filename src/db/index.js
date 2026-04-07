@@ -588,6 +588,8 @@ async function init() {
     `);
     await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS rsvp_message_id TEXT`);
     await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS rsvp_channel_id TEXT`);
+    await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS reminder_1h_sent BOOLEAN NOT NULL DEFAULT FALSE`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS player_preferences (
@@ -5302,6 +5304,7 @@ module.exports = {
   getAllNicknames,
   scheduleGame,
   getUpcomingGames,
+  getUpcomingGamesWithRsvps,
   cancelGame,
   saveMatchRating,
   getMatchRaterIds,
@@ -5418,6 +5421,11 @@ module.exports = {
   getScheduleRsvps,
   getScheduledGameByRsvpMessage,
   saveRsvpMessageId,
+  addScheduleRsvpBySteam,
+  removeScheduleRsvpBySteam,
+  getGamesNeedingReminders,
+  markReminder24hSent,
+  markReminder1hSent,
   getPlayerReportCardOptOut,
   setPlayerReportCardOptOut,
   getPlayerRatingsOptOut,
@@ -5651,6 +5659,63 @@ async function getScheduledGameByRsvpMessage(messageId) {
 async function saveRsvpMessageId(gameId, messageId, channelId) {
   const p = getPool();
   await p.query(`UPDATE scheduled_games SET rsvp_message_id = $2, rsvp_channel_id = $3 WHERE id = $1`, [gameId, messageId, channelId]);
+}
+
+async function addScheduleRsvpBySteam(gameId, accountId, displayName, status) {
+  const p = getPool();
+  const webId = `web:${accountId}`;
+  await p.query(`
+    INSERT INTO schedule_rsvps (game_id, discord_id, username, status)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (game_id, discord_id) DO UPDATE SET status = $4, username = $3, updated_at = NOW()
+  `, [gameId, webId, displayName || 'Unknown', status]);
+}
+
+async function removeScheduleRsvpBySteam(gameId, accountId) {
+  const p = getPool();
+  const webId = `web:${accountId}`;
+  await p.query(`DELETE FROM schedule_rsvps WHERE game_id = $1 AND discord_id = $2`, [gameId, webId]);
+}
+
+async function getUpcomingGamesWithRsvps() {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT g.*,
+      COALESCE(SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END), 0)::int AS rsvp_yes,
+      COALESCE(SUM(CASE WHEN r.status = 'no' THEN 1 ELSE 0 END), 0)::int AS rsvp_no
+    FROM scheduled_games g
+    LEFT JOIN schedule_rsvps r ON r.game_id = g.id
+    WHERE g.is_cancelled = FALSE AND g.scheduled_at >= NOW() - INTERVAL '2 hours'
+    GROUP BY g.id
+    ORDER BY g.scheduled_at ASC
+  `);
+  return result.rows;
+}
+
+async function getGamesNeedingReminders() {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT * FROM scheduled_games
+    WHERE is_cancelled = FALSE
+      AND scheduled_at > NOW()
+      AND (
+        (reminder_24h_sent = FALSE AND scheduled_at BETWEEN NOW() + INTERVAL '23 hours 30 minutes' AND NOW() + INTERVAL '24 hours 30 minutes')
+        OR
+        (reminder_1h_sent = FALSE AND scheduled_at BETWEEN NOW() + INTERVAL '45 minutes' AND NOW() + INTERVAL '75 minutes')
+      )
+    ORDER BY scheduled_at ASC
+  `);
+  return result.rows;
+}
+
+async function markReminder24hSent(id) {
+  const p = getPool();
+  await p.query(`UPDATE scheduled_games SET reminder_24h_sent = TRUE WHERE id = $1`, [id]);
+}
+
+async function markReminder1hSent(id) {
+  const p = getPool();
+  await p.query(`UPDATE scheduled_games SET reminder_1h_sent = TRUE WHERE id = $1`, [id]);
 }
 
 async function getPlayerReportCardOptOut(discordId) {

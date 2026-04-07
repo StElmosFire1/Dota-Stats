@@ -620,7 +620,7 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/schedule', async (req, res) => {
     try {
-      const games = await db.getUpcomingGames();
+      const games = await db.getUpcomingGamesWithRsvps();
       res.json({ games });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch schedule' });
@@ -631,7 +631,8 @@ function createApiRouter(startupStatus = {}) {
     try {
       const { scheduled_at, note } = req.body;
       if (!scheduled_at) return res.status(400).json({ error: 'scheduled_at required' });
-      const game = await db.scheduleGame(scheduled_at, note, req.body.created_by || 'admin');
+      const creator = req.session?.displayName || req.body.created_by || 'admin';
+      const game = await db.scheduleGame(scheduled_at, note, creator);
       res.json({ game });
     } catch (err) {
       res.status(500).json({ error: err.message || 'Failed to schedule game' });
@@ -645,6 +646,46 @@ function createApiRouter(startupStatus = {}) {
       res.json({ game });
     } catch (err) {
       res.status(500).json({ error: 'Failed to cancel game' });
+    }
+  });
+
+  router.get('/schedule/:id/rsvps', async (req, res) => {
+    try {
+      const rsvps = await db.getScheduleRsvps(parseInt(req.params.id));
+      res.json({ rsvps });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch RSVPs' });
+    }
+  });
+
+  router.post('/schedule/:id/rsvp', async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'Steam login required to RSVP' });
+      }
+      const { status } = req.body;
+      if (!['yes', 'no'].includes(status)) return res.status(400).json({ error: 'status must be yes or no' });
+      const gameId = parseInt(req.params.id);
+      const displayName = req.session.displayName || `Player ${req.session.accountId}`;
+      await db.addScheduleRsvpBySteam(gameId, req.session.accountId, displayName, status);
+      const rsvps = await db.getScheduleRsvps(gameId);
+      res.json({ success: true, rsvps });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to update RSVP' });
+    }
+  });
+
+  router.delete('/schedule/:id/rsvp', async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'Steam login required' });
+      }
+      const gameId = parseInt(req.params.id);
+      await db.removeScheduleRsvpBySteam(gameId, req.session.accountId);
+      const rsvps = await db.getScheduleRsvps(gameId);
+      res.json({ success: true, rsvps });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to remove RSVP' });
     }
   });
 

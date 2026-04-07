@@ -457,8 +457,6 @@ export default function AdminPanel() {
   const { selectedSeason } = useSeason();
 
   const [overview, setOverview] = useState(null);
-  const [allPlayers, setAllPlayers] = useState([]);
-  const [heroes, setHeroes] = useState([]);
   const [duplicates, setDuplicates] = useState(null);
   const [dupLoading, setDupLoading] = useState(false);
   const [recalcLoading, setRecalcLoading] = useState(false);
@@ -466,21 +464,6 @@ export default function AdminPanel() {
   const [ts2Data, setTs2Data] = useState(null);
   const [ts2Loading, setTs2Loading] = useState(false);
   const [ts2Error, setTs2Error] = useState('');
-
-  const [matchDate, setMatchDate] = useState(() => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 16);
-  });
-  const [durationMins, setDurationMins] = useState(35);
-  const [durationSecs, setDurationSecs] = useState(0);
-  const [radiantWin, setRadiantWin] = useState(true);
-  const [lobbyName, setLobbyName] = useState('');
-  const [patch, setPatch] = useState('');
-  const [radiantPlayers, setRadiantPlayers] = useState(() => Array.from({ length: 5 }, () => makeEmptyPlayer('radiant')));
-  const [direPlayers, setDirePlayers] = useState(() => Array.from({ length: 5 }, () => makeEmptyPlayer('dire')));
-  const [submitting, setSubmitting] = useState(false);
-  const [submitMsg, setSubmitMsg] = useState('');
 
   const authHeader = { 'x-superuser-key': superuserKey };
 
@@ -494,22 +477,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     loadOverview();
-    fetch('/api/players')
-      .then(r => r.json())
-      .then(d => setAllPlayers(d.players || []))
-      .catch(() => {});
-    fetch('https://api.opendota.com/api/heroes')
-      .then(r => r.json())
-      .then(data => setHeroes(data.sort((a, b) => a.localized_name.localeCompare(b.localized_name))))
-      .catch(() => {});
   }, [isSuperuser, loadOverview]);
-
-  const updateRadiant = (idx, changes) => {
-    setRadiantPlayers(prev => prev.map((p, i) => i === idx ? { ...p, ...changes } : p));
-  };
-  const updateDire = (idx, changes) => {
-    setDirePlayers(prev => prev.map((p, i) => i === idx ? { ...p, ...changes } : p));
-  };
 
   const handleRecalculate = async () => {
     setRecalcLoading(true);
@@ -538,56 +506,6 @@ export default function AdminPanel() {
     }
   };
 
-  const handleSubmitMatch = async () => {
-    setSubmitMsg('');
-    const players = [
-      ...radiantPlayers.map(p => ({ ...p, team: 'radiant' })),
-      ...direPlayers.map(p => ({ ...p, team: 'dire' })),
-    ];
-    const missing = players.filter(p => !p.accountId);
-    if (missing.length > 0) {
-      setSubmitMsg('All 10 player slots must be filled.');
-      return;
-    }
-    const accountIds = players.map(p => p.accountId);
-    if (new Set(accountIds).size !== 10) {
-      setSubmitMsg('Duplicate players detected — each player must appear only once.');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const duration = (parseInt(durationMins) || 0) * 60 + (parseInt(durationSecs) || 0);
-      const r = await fetch('/api/admin/matches/manual', {
-        method: 'POST',
-        headers: { ...authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: new Date(matchDate).toISOString(),
-          duration,
-          radiantWin,
-          players,
-          lobbyName: lobbyName || 'Manual Entry',
-          patch: patch || null,
-          seasonId: selectedSeason && selectedSeason !== 'legacy' ? selectedSeason : null,
-        }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        setSubmitMsg(`Match recorded! ID: ${d.matchId}`);
-        setRadiantPlayers(Array.from({ length: 5 }, () => makeEmptyPlayer('radiant')));
-        setDirePlayers(Array.from({ length: 5 }, () => makeEmptyPlayer('dire')));
-        setLobbyName('');
-        loadOverview();
-        setTimeout(() => { window.location.href = `/match/${d.matchId}`; }, 1500);
-      } else {
-        setSubmitMsg(d.error || 'Failed to record match.');
-      }
-    } catch {
-      setSubmitMsg('Request failed.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   if (!isSuperuser) {
     return (
       <div style={{ maxWidth: 480, margin: '80px auto', textAlign: 'center' }}>
@@ -606,6 +524,23 @@ export default function AdminPanel() {
       </div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 28 }}>Manage matches, ratings, and data.</p>
 
+      {/* Quick Links */}
+      <section style={{ marginBottom: 28 }}>
+        <h2 style={{ marginBottom: 14 }}>Quick Links</h2>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {[
+            { to: '/admin/record-match', label: '📝 Record Match' },
+            { to: '/upload', label: '⬆️ Upload Replay' },
+            { to: '/seasons', label: '🏆 Seasons' },
+            { to: '/players', label: '👥 Players & Nicknames' },
+            { to: '/patch-notes', label: '📋 Patch Notes' },
+            { to: '/matches', label: '📊 Match List' },
+          ].map(({ to, label }) => (
+            <Link key={to} to={to} className="btn" style={{ textDecoration: 'none' }}>{label}</Link>
+          ))}
+        </div>
+      </section>
+
       {/* Overview */}
       <section style={{ marginBottom: 36 }}>
         <h2 style={{ marginBottom: 14 }}>Overview</h2>
@@ -621,113 +556,15 @@ export default function AdminPanel() {
         </div>
       </section>
 
-      {/* Manual Match Entry */}
+      {/* Manual Match Entry — moved to its own page */}
       <section style={{ marginBottom: 36 }}>
-        <h2 style={{ marginBottom: 14 }}>Manual Match Entry</h2>
-        <div className="card" style={{ padding: 24 }}>
-          {/* Match metadata */}
-          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 20 }}>
-            <div className="form-group" style={{ flex: '1 1 200px' }}>
-              <label>Match Date &amp; Time</label>
-              <input type="datetime-local" value={matchDate} onChange={e => setMatchDate(e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>Duration</label>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input type="number" min={0} max={120} value={durationMins} onChange={e => setDurationMins(e.target.value)} style={{ width: 64 }} />
-                <span>m</span>
-                <input type="number" min={0} max={59} value={durationSecs} onChange={e => setDurationSecs(e.target.value)} style={{ width: 56 }} />
-                <span>s</span>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Winner</label>
-              <div style={{ display: 'flex', gap: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <button
-                  onClick={() => setRadiantWin(true)}
-                  style={{ flex: 1, padding: '7px 18px', background: radiantWin ? '#4caf50' : 'transparent', color: radiantWin ? '#fff' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontWeight: radiantWin ? 700 : 400 }}
-                >
-                  ✅ Radiant
-                </button>
-                <button
-                  onClick={() => setRadiantWin(false)}
-                  style={{ flex: 1, padding: '7px 18px', background: !radiantWin ? '#f44336' : 'transparent', color: !radiantWin ? '#fff' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontWeight: !radiantWin ? 700 : 400 }}
-                >
-                  ☠️ Dire
-                </button>
-              </div>
-            </div>
-            <div className="form-group" style={{ flex: '1 1 160px' }}>
-              <label>Lobby Name (optional)</label>
-              <input type="text" value={lobbyName} onChange={e => setLobbyName(e.target.value)} placeholder="e.g. OCE Inhouse #42" />
-            </div>
-            <div className="form-group" style={{ flex: '0 1 100px' }}>
-              <label>Patch</label>
-              <input type="text" value={patch} onChange={e => setPatch(e.target.value)} placeholder="7.38" style={{ width: 90 }} />
-            </div>
-          </div>
-
-          {/* Radiant team */}
-          <div style={{ marginBottom: 20 }}>
-            <h3 style={{ color: '#4caf50', marginBottom: 10 }}>🟢 Radiant Team</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'left' }}>
-                    <th style={{ paddingBottom: 6, width: 24 }}>#</th>
-                    <th style={{ paddingBottom: 6 }}>Player</th>
-                    <th style={{ paddingBottom: 6 }}>Position</th>
-                    <th style={{ paddingBottom: 6 }}>Hero</th>
-                    <th style={{ paddingBottom: 6 }}>K</th>
-                    <th style={{ paddingBottom: 6 }}>D</th>
-                    <th style={{ paddingBottom: 6 }}>A</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {radiantPlayers.map((p, i) => (
-                    <PlayerRow key={i} player={p} idx={i} allPlayers={allPlayers} heroes={heroes} onChange={changes => updateRadiant(i, changes)} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Dire team */}
-          <div style={{ marginBottom: 24 }}>
-            <h3 style={{ color: '#f44336', marginBottom: 10 }}>🔴 Dire Team</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'left' }}>
-                    <th style={{ paddingBottom: 6, width: 24 }}>#</th>
-                    <th style={{ paddingBottom: 6 }}>Player</th>
-                    <th style={{ paddingBottom: 6 }}>Position</th>
-                    <th style={{ paddingBottom: 6 }}>Hero</th>
-                    <th style={{ paddingBottom: 6 }}>K</th>
-                    <th style={{ paddingBottom: 6 }}>D</th>
-                    <th style={{ paddingBottom: 6 }}>A</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {direPlayers.map((p, i) => (
-                    <PlayerRow key={i} player={p} idx={i} allPlayers={allPlayers} heroes={heroes} onChange={changes => updateDire(i, changes)} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <button className="btn btn-primary" onClick={handleSubmitMatch} disabled={submitting}>
-              {submitting ? 'Recording…' : '📝 Record Match'}
-            </button>
-            {submitMsg && (
-              <span style={{ color: submitMsg.startsWith('Match') ? '#4caf50' : '#f44336', fontSize: '0.9rem' }}>
-                {submitMsg}
-              </span>
-            )}
-          </div>
-        </div>
+        <h2 style={{ marginBottom: 10 }}>Record a Match</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+          Manually record a match result when no replay is available.
+        </p>
+        <Link to="/admin/record-match" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+          📝 Open Record Match Form
+        </Link>
       </section>
 
       {/* Maintenance */}
@@ -889,21 +726,6 @@ export default function AdminPanel() {
         )}
       </section>
 
-      {/* Quick Links */}
-      <section>
-        <h2 style={{ marginBottom: 14 }}>Quick Links</h2>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {[
-            { to: '/upload', label: '⬆️ Upload Replay' },
-            { to: '/seasons', label: '🏆 Seasons' },
-            { to: '/players', label: '👥 Players & Nicknames' },
-            { to: '/patch-notes', label: '📋 Patch Notes' },
-            { to: '/matches', label: '📊 Match List' },
-          ].map(({ to, label }) => (
-            <Link key={to} to={to} className="btn" style={{ textDecoration: 'none' }}>{label}</Link>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

@@ -2458,6 +2458,70 @@ class DiscordBot {
     }
   }
 
+  async _sendScheduleReminders() {
+    const games = await db.getGamesNeedingReminders().catch(() => []);
+    if (!games.length) return;
+
+    for (const game of games) {
+      const diff = new Date(game.scheduled_at) - new Date();
+      const is24h = !game.reminder_24h_sent && diff >= 82800000 && diff <= 90000000; // 23h→25h window
+      const is1h = !game.reminder_1h_sent && diff >= 2700000 && diff <= 4500000;    // 45m→75m window
+
+      if (!is24h && !is1h) continue;
+
+      const when = new Date(game.scheduled_at).toLocaleString('en-AU', {
+        timeZone: 'Australia/Sydney', weekday: 'short', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: true,
+      });
+      const label = is24h ? '24 hours' : '1 hour';
+      const rsvps = await db.getScheduleRsvps(game.id).catch(() => []);
+      const inList = rsvps.filter(r => r.status === 'yes').map(r => r.username);
+
+      // Post channel reminder
+      const channelId = game.rsvp_channel_id || config.discord.announceChannelId;
+      if (channelId) {
+        try {
+          let channel = this.client.channels.cache.get(channelId);
+          if (!channel) channel = await this.client.channels.fetch(channelId).catch(() => null);
+          if (channel) {
+            const embed = new EmbedBuilder()
+              .setTitle(`⏰ Inhouse in ${label}!`)
+              .setDescription(
+                `**${when}** AEST\n${game.note ? `📝 ${game.note}\n` : ''}` +
+                `\n✅ **${inList.length} player${inList.length !== 1 ? 's' : ''}** registered: ${inList.join(', ') || '_no one yet_'}` +
+                `\n\nReact ✅/❌ on the original RSVP post, or use the website to update your availability.`
+              )
+              .setColor(is1h ? 0xf44336 : 0x60a5fa);
+            await channel.send({ embeds: [embed] });
+          }
+        } catch (err) {
+          console.error('[Reminders] Failed to post channel reminder:', err.message);
+        }
+      }
+
+      // DM players who are ✅ and have real Discord IDs
+      const discordIn = rsvps.filter(r => r.status === 'yes' && !r.discord_id.startsWith('web:'));
+      for (const rsvp of discordIn) {
+        try {
+          const user = await this.client.users.fetch(rsvp.discord_id).catch(() => null);
+          if (!user) continue;
+          await user.send(
+            `⏰ **Reminder:** Inhouse in **${label}** — ${when} AEST` +
+            (game.note ? `\n📝 ${game.note}` : '') +
+            `\n\n${inList.length} player${inList.length !== 1 ? 's' : ''} registered so far.`
+          ).catch(() => {});
+        } catch {
+          // ignore failed DMs
+        }
+      }
+
+      // Mark sent
+      if (is24h) await db.markReminder24hSent(game.id).catch(() => {});
+      if (is1h) await db.markReminder1hSent(game.id).catch(() => {});
+      console.log(`[Reminders] Sent ${label} reminder for game #${game.id} (${when})`);
+    }
+  }
+
   async start() {
     if (!config.discord.token) throw new Error('DISCORD_TOKEN not configured.');
     await this.client.login(config.discord.token);
@@ -2469,6 +2533,10 @@ class DiscordBot {
         this._postWeeklyRecap();
       }, { timezone: 'UTC' });
       console.log('[Discord] Weekly recap scheduled (Mondays 9am AEST).');
+
+      // Game reminders: check every 10 minutes for upcoming games needing 24h/1h reminders
+      setInterval(() => this._sendScheduleReminders().catch(err => console.error('[Reminders] Error:', err.message)), 10 * 60 * 1000);
+      setTimeout(() => this._sendScheduleReminders().catch(() => {}), 15000);
 
       // Announce any new patch notes after a short delay (let channel cache populate)
       setTimeout(() => this._announceNewPatchNotes().catch(() => {}), 8000);

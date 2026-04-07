@@ -37,6 +37,8 @@ const Social = lazy(() => import('./pages/Social'));
 const HallOfFame = lazy(() => import('./pages/HallOfFame'));
 const PlayerBenchmarks = lazy(() => import('./pages/PlayerBenchmarks'));
 const Tournaments = lazy(() => import('./pages/Tournaments'));
+const RecordMatch = lazy(() => import('./pages/RecordMatch'));
+const PlayerInsights = lazy(() => import('./pages/PlayerInsights'));
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -277,7 +279,7 @@ function Nav() {
       <div className="nav-links">
         <Link to="/" className={isActive('/')}>Home</Link>
         <Link to="/leaderboard" className={isActive('/leaderboard')}>Leaderboard</Link>
-        <Link to="/stats" className={isActive('/stats')}>Stats</Link>
+        <Link to="/stats" className={isActive('/stats')}>Player Stats</Link>
         <Link to="/positions" className={isActive('/positions')}>Positions</Link>
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
@@ -292,9 +294,8 @@ function Nav() {
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
-          <DropdownItem to="/social">Player Network</DropdownItem>
+          <DropdownItem to="/insights">Player Insights</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
-          <DropdownItem to="/benchmarks">Player Benchmarks</DropdownItem>
         </DropdownMenu>
       </div>
       <SeasonSelector />
@@ -349,12 +350,14 @@ export default function App() {
                 <Route path="/admin" element={<AdminPanel />} />
                 <Route path="/pudge-stats" element={<PudgeStats />} />
                 <Route path="/schedule" element={<Schedule />} />
-                <Route path="/social" element={<Social />} />
-                <Route path="/player-network" element={<Social />} />
+                <Route path="/social" element={<PlayerInsights defaultTab="network" />} />
+                <Route path="/player-network" element={<PlayerInsights defaultTab="network" />} />
+                <Route path="/benchmarks" element={<PlayerInsights defaultTab="benchmarks" />} />
+                <Route path="/insights" element={<PlayerInsights />} />
                 <Route path="/tournaments" element={<Tournaments />} />
                 <Route path="/tournaments/:id" element={<Tournaments />} />
                 <Route path="/hall-of-fame" element={<HallOfFame />} />
-                <Route path="/benchmarks" element={<PlayerBenchmarks />} />
+                <Route path="/admin/record-match" element={<RecordMatch />} />
               </Routes>
               </Suspense>
             </main>
