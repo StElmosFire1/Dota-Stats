@@ -54,9 +54,9 @@ export default function OverallStats() {
     <div>
       <h1 className="page-title">Overall Player Stats</h1>
       <p style={{ color: '#888', marginBottom: '1rem' }}>{stats.length} players</p>
-      <div className="scoreboard-wrapper" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+      <div className="scoreboard-wrapper">
         <table className="scoreboard">
-          <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--bg-card)' }}>
+          <thead>
             <tr>
               <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('persona_name')} title="Player name (click to sort)">Player{si('persona_name')}</th>
               <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Total games played">Games{si('games')}</th>

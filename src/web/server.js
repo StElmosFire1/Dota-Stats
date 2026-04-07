@@ -634,6 +634,10 @@ function createApiRouter(startupStatus = {}) {
       const creator = req.session?.displayName || req.body.created_by || 'admin';
       const game = await db.scheduleGame(scheduled_at, note, creator);
       res.json({ game });
+      // Post Discord RSVP announcement (non-blocking)
+      getDiscordBot().postScheduleRsvpEmbed(game).catch(err =>
+        console.error('[Schedule] Failed to post Discord RSVP embed:', err.message)
+      );
     } catch (err) {
       res.status(500).json({ error: err.message || 'Failed to schedule game' });
     }
