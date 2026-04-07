@@ -5426,6 +5426,7 @@ module.exports = {
   getGamesNeedingReminders,
   markReminder24hSent,
   markReminder1hSent,
+  isDiscordRegistered,
   getPlayerReportCardOptOut,
   setPlayerReportCardOptOut,
   getPlayerRatingsOptOut,
@@ -5659,6 +5660,18 @@ async function getScheduledGameByRsvpMessage(messageId) {
 async function saveRsvpMessageId(gameId, messageId, channelId) {
   const p = getPool();
   await p.query(`UPDATE scheduled_games SET rsvp_message_id = $2, rsvp_channel_id = $3 WHERE id = $1`, [gameId, messageId, channelId]);
+}
+
+async function isDiscordRegistered(discordId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT 1 FROM players WHERE discord_id = $1
+     UNION ALL
+     SELECT 1 FROM nicknames WHERE discord_id = $1 AND discord_id != ''
+     LIMIT 1`,
+    [discordId]
+  );
+  return r.rows.length > 0;
 }
 
 async function addScheduleRsvpBySteam(gameId, accountId, displayName, status) {

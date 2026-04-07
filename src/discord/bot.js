@@ -40,6 +40,7 @@ class DiscordBot {
     this.prefix = config.discord.prefix;
     this.lobbyChannelId = null;
     this.pendingRatingSessions = new Map();
+    this.pendingRegistrations = new Map(); // discord_id → { gameId, prompted }
     this._announcedMatchIds = new Set(); // dedup guard — prevents double-posting the same match
     this._setupHandlers();
   }
@@ -208,6 +209,8 @@ class DiscordBot {
         const emoji = reaction.emoji.name;
         if (emoji === '\u2705') {
           await db.addScheduleRsvp(game.id, user.id, user.username, 'yes').catch(() => {});
+          // Check if this person is registered — if not, DM them to sign up
+          this._promptUnregisteredRsvp(user, game).catch(() => {});
         } else if (emoji === '\u274C') {
           await db.addScheduleRsvp(game.id, user.id, user.username, 'no').catch(() => {});
         }
@@ -238,6 +241,10 @@ class DiscordBot {
       if (msg.author.bot) return;
 
       const isDM = !msg.guild;
+      if (isDM && this.pendingRegistrations.has(msg.author.id)) {
+        await this._handleRegistrationReply(msg);
+        return;
+      }
       if (isDM && this.pendingRatingSessions.has(msg.author.id)) {
         await this._handleRatingReply(msg);
         return;
@@ -647,6 +654,91 @@ class DiscordBot {
       );
     } catch (err) {
       await msg.reply(`Registration failed: ${err.message}`);
+    }
+  }
+
+  async _promptUnregisteredRsvp(user, game) {
+    // Don't DM someone we've already prompted this session
+    if (this.pendingRegistrations.has(user.id)) return;
+
+    // Check if already registered in either the players table or nicknames
+    const registered = await db.isDiscordRegistered(user.id).catch(() => false);
+    if (registered) return;
+
+    // Not registered — DM them
+    const when = new Date(game.scheduled_at).toLocaleString('en-AU', {
+      timeZone: 'Australia/Sydney', weekday: 'short', month: 'short',
+      day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+    this.pendingRegistrations.set(user.id, { gameId: game.id, step: 'awaiting_steam_id' });
+
+    const dmUser = await this.client.users.fetch(user.id).catch(() => null);
+    if (!dmUser) return;
+
+    await dmUser.send(
+      `👋 Hey **${user.username}**! You signed up for the inhouse on **${when}** AEST — nice one!\n\n` +
+      `It looks like you haven't linked your Steam account yet. To show up properly on the leaderboard and stats, reply here with your **Steam64 ID** (17 digits).\n\n` +
+      `📌 Find yours at: https://steamid.io\n` +
+      `_(It looks like \`76561198012345678\`)_\n\n` +
+      `Reply with just the number, or type \`skip\` to ignore this.`
+    ).catch(() => {
+      this.pendingRegistrations.delete(user.id);
+    });
+    console.log(`[Registration] Prompted unregistered RSVP user ${user.username} (${user.id}) for game #${game.id}`);
+  }
+
+  async _handleRegistrationReply(msg) {
+    const session = this.pendingRegistrations.get(msg.author.id);
+    if (!session) return;
+
+    const input = msg.content.trim();
+
+    if (input.toLowerCase() === 'skip' || input.toLowerCase() === 'cancel') {
+      this.pendingRegistrations.delete(msg.author.id);
+      await msg.reply(
+        `No worries! You can register any time with \`!register <steam_id>\` in the Discord server. ` +
+        `You're still on the RSVP list — we'll see you at the inhouse! 🎮`
+      );
+      return;
+    }
+
+    // Validate Steam64 ID
+    if (!/^\d{17}$/.test(input)) {
+      await msg.reply(
+        `That doesn't look right — a Steam64 ID is 17 digits (e.g. \`76561198012345678\`).\n` +
+        `Find yours at https://steamid.io, or type \`skip\` to skip registration for now.`
+      );
+      return;
+    }
+
+    if (BigInt(input) < BigInt('76561197960265728')) {
+      await msg.reply(
+        `That Steam ID doesn't look valid. Make sure it's your Steam64 ID from https://steamid.io\n` +
+        `Or type \`skip\` to skip for now.`
+      );
+      return;
+    }
+
+    try {
+      const { accountId32 } = await db.registerPlayer(msg.author.id, msg.author.username, input);
+      this.pendingRegistrations.delete(msg.author.id);
+      await msg.reply(
+        `✅ **You're registered!** Steam ID \`${input}\` linked to your Discord account.\n\n` +
+        `Your stats will now appear on the leaderboard and your profile will be on the website. ` +
+        `See you at the inhouse! 🎮\n\n` +
+        `_(Account ID: \`${accountId32}\`)_`
+      );
+      console.log(`[Registration] Successfully registered ${msg.author.username} (${msg.author.id}) via RSVP DM, Steam64: ${input}`);
+    } catch (err) {
+      if (err.message && err.message.includes('already registered')) {
+        this.pendingRegistrations.delete(msg.author.id);
+        await msg.reply(`Looks like that Steam ID is already registered! You're all set. 🎮`);
+      } else {
+        await msg.reply(
+          `Something went wrong: ${err.message}\n` +
+          `Try again with a different Steam ID, or type \`skip\` to skip for now.`
+        );
+      }
     }
   }
 
