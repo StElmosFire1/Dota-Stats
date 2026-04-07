@@ -292,6 +292,7 @@ class DiscordBot {
           case 'streak': await this._cmdStreak(msg, args); break;
           case 'tournament': await this._cmdTournament(msg, args); break;
           case 'testdm': await this._cmdTestDm(msg, args); break;
+          case 'testrsvpdm': await this._cmdTestRsvpDm(msg, args); break;
           default: break;
         }
       } catch (err) {
@@ -687,6 +688,97 @@ class DiscordBot {
     console.log(`[Registration] Prompted unregistered RSVP user ${user.username} (${user.id}) for game #${game.id}`);
   }
 
+  /**
+   * Parse various Steam ID formats into a Steam64 string.
+   * Returns { steamId64: '765...', format: 'steam64|steam3|steam2|url' }
+   * or throws an Error with a human-readable message.
+   */
+  _parseSteamId(raw) {
+    const MIN = BigInt('76561197960265728');
+    const MAX = BigInt('76561202255233023'); // MIN + 4294967295
+    const input = raw.trim();
+
+    const validate64 = (n, label) => {
+      if (n < MIN || n > MAX) {
+        throw new Error(
+          `❌ That ${label} doesn't correspond to a real Steam account.\n` +
+          `Make sure you're copying your **Steam64 ID** (17 digits starting with \`7656\`) from https://steamid.io — not your username or profile name.`
+        );
+      }
+      return n.toString();
+    };
+
+    // ── Steam profile URL ──────────────────────────────────────────────
+    // https://steamcommunity.com/profiles/76561198012345678
+    const profileUrlMatch = input.match(/steamcommunity\.com\/profiles\/(\d{17})/);
+    if (profileUrlMatch) {
+      return { steamId64: validate64(BigInt(profileUrlMatch[1]), 'profile URL'), format: 'url' };
+    }
+
+    // ── Vanity URL (can't resolve without API key) ─────────────────────
+    // https://steamcommunity.com/id/SomeVanityName
+    if (/steamcommunity\.com\/id\//i.test(input)) {
+      throw new Error(
+        `⚠️ That looks like a **custom Steam URL** (vanity name), not your Steam ID.\n\n` +
+        `To find your real Steam64 ID:\n` +
+        `1. Go to https://steamid.io\n` +
+        `2. Paste your profile URL or username there\n` +
+        `3. Copy the **steamID64** field (17 digits starting with \`7656\`)\n\n` +
+        `Then reply here with just that number.`
+      );
+    }
+
+    // ── Steam3 format: [U:1:ACCOUNTID] ────────────────────────────────
+    const steam3Match = input.match(/^\[U:1:(\d+)\]$/i);
+    if (steam3Match) {
+      const accountId32 = BigInt(steam3Match[1]);
+      return { steamId64: validate64(MIN + accountId32, 'Steam3 ID'), format: 'steam3' };
+    }
+
+    // ── Legacy Steam2 format: STEAM_X:Y:Z ─────────────────────────────
+    const steam2Match = input.match(/^STEAM_[01]:([01]):(\d+)$/i);
+    if (steam2Match) {
+      const y = BigInt(steam2Match[1]);
+      const z = BigInt(steam2Match[2]);
+      return { steamId64: validate64(MIN + z * 2n + y, 'Steam2 ID'), format: 'steam2' };
+    }
+
+    // ── Plain 17-digit Steam64 ─────────────────────────────────────────
+    if (/^\d{17}$/.test(input)) {
+      return { steamId64: validate64(BigInt(input), 'Steam64 ID'), format: 'steam64' };
+    }
+
+    // ── Nothing matched ────────────────────────────────────────────────
+    // Give targeted hints based on what they sent
+    if (/^\d+$/.test(input)) {
+      const len = input.length;
+      if (len < 17) {
+        throw new Error(
+          `❌ That number is only **${len} digits** — a Steam64 ID is always **17 digits**.\n\n` +
+          `You might have sent your account's short ID. To get the full Steam64:\n` +
+          `1. Go to https://steamid.io\n` +
+          `2. Paste your profile URL and copy the **steamID64** value.`
+        );
+      }
+      if (len > 17) {
+        throw new Error(
+          `❌ That number is **${len} digits** — a Steam64 ID is always exactly **17 digits**.\n` +
+          `Double-check you copied the right field from https://steamid.io`
+        );
+      }
+    }
+
+    throw new Error(
+      `❌ I couldn't recognise that as a Steam ID. Here's what I accept:\n\n` +
+      `• **Steam64 ID** → \`76561198012345678\` _(17 digits)_\n` +
+      `• **Steam3 format** → \`[U:1:52079950]\`\n` +
+      `• **Steam2 format** → \`STEAM_0:0:26039975\`\n` +
+      `• **Profile URL** → \`https://steamcommunity.com/profiles/76561198012345678\`\n\n` +
+      `Find yours at https://steamid.io — paste your profile link there and copy the **steamID64** field.\n` +
+      `Or type \`skip\` to skip registration for now.`
+    );
+  }
+
   async _handleRegistrationReply(msg) {
     const session = this.pendingRegistrations.get(msg.author.id);
     if (!session) return;
@@ -702,41 +794,42 @@ class DiscordBot {
       return;
     }
 
-    // Validate Steam64 ID
-    if (!/^\d{17}$/.test(input)) {
-      await msg.reply(
-        `That doesn't look right — a Steam64 ID is 17 digits (e.g. \`76561198012345678\`).\n` +
-        `Find yours at https://steamid.io, or type \`skip\` to skip registration for now.`
-      );
+    // Parse & validate the Steam ID (handles Steam64, Steam3, Steam2, profile URLs)
+    let steamId64;
+    let format;
+    try {
+      ({ steamId64, format } = this._parseSteamId(input));
+    } catch (err) {
+      await msg.reply(err.message + `\n\nOr type \`skip\` to skip for now.`);
       return;
     }
 
-    if (BigInt(input) < BigInt('76561197960265728')) {
-      await msg.reply(
-        `That Steam ID doesn't look valid. Make sure it's your Steam64 ID from https://steamid.io\n` +
-        `Or type \`skip\` to skip for now.`
-      );
-      return;
-    }
+    // Show a conversion note if they used a non-standard format
+    const formatNote = {
+      steam3: `_(Converted from Steam3 format to \`${steamId64}\`)_\n`,
+      steam2: `_(Converted from Steam2 format to \`${steamId64}\`)_\n`,
+      url: `_(Extracted Steam64 ID \`${steamId64}\` from your profile URL)_\n`,
+      steam64: '',
+    }[format] || '';
 
     try {
-      const { accountId32 } = await db.registerPlayer(msg.author.id, msg.author.username, input);
+      const { accountId32 } = await db.registerPlayer(msg.author.id, msg.author.username, steamId64);
       this.pendingRegistrations.delete(msg.author.id);
       await msg.reply(
-        `✅ **You're registered!** Steam ID \`${input}\` linked to your Discord account.\n\n` +
-        `Your stats will now appear on the leaderboard and your profile will be on the website. ` +
-        `See you at the inhouse! 🎮\n\n` +
-        `_(Account ID: \`${accountId32}\`)_`
+        `✅ **You're registered!** Steam ID \`${steamId64}\` linked to your Discord account.\n` +
+        formatNote +
+        `\nYour stats will now appear on the leaderboard and your profile will be on the website. ` +
+        `See you at the inhouse! 🎮`
       );
-      console.log(`[Registration] Successfully registered ${msg.author.username} (${msg.author.id}) via RSVP DM, Steam64: ${input}`);
+      console.log(`[Registration] Registered ${msg.author.username} (${msg.author.id}) via RSVP DM — Steam64: ${steamId64} (format: ${format})`);
     } catch (err) {
       if (err.message && err.message.includes('already registered')) {
         this.pendingRegistrations.delete(msg.author.id);
         await msg.reply(`Looks like that Steam ID is already registered! You're all set. 🎮`);
       } else {
         await msg.reply(
-          `Something went wrong: ${err.message}\n` +
-          `Try again with a different Steam ID, or type \`skip\` to skip for now.`
+          `Something went wrong registering you: ${err.message}\n` +
+          `Try again, or type \`skip\` to skip for now.`
         );
       }
     }
@@ -2825,6 +2918,54 @@ class DiscordBot {
 
     await user.send({ embeds: [embed] });
     return { username: user.username, id: user.id };
+  }
+
+  async _cmdTestRsvpDm(msg, args) {
+    // Allow targeting another user: !testrsvpdm [userId]
+    const targetId = args[0] || msg.author.id;
+
+    let targetUser;
+    try {
+      targetUser = await this.client.users.fetch(targetId);
+    } catch {
+      return msg.reply(`❌ Couldn't find user \`${targetId}\`.`);
+    }
+
+    // Remove them from pendingRegistrations so the DM will fire even if they were prompted before
+    this.pendingRegistrations.delete(targetUser.id);
+
+    // Use the nearest real upcoming game, or create a mock if none exist
+    const upcomingGames = await db.getUpcomingGames().catch(() => []);
+    const fakeGame = upcomingGames[0] || {
+      id: 0,
+      scheduled_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 1 week from now
+      description: 'Test Inhouse',
+    };
+
+    // Force-send the DM regardless of registration status
+    const when = new Date(fakeGame.scheduled_at).toLocaleString('en-AU', {
+      timeZone: 'Australia/Sydney', weekday: 'short', month: 'short',
+      day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+    this.pendingRegistrations.set(targetUser.id, { gameId: fakeGame.id, step: 'awaiting_steam_id' });
+
+    try {
+      await targetUser.send(
+        `👋 Hey **${targetUser.username}**! You signed up for the inhouse on **${when}** AEST — nice one!\n\n` +
+        `It looks like you haven't linked your Steam account yet. To show up properly on the leaderboard and stats, reply here with your **Steam64 ID** (17 digits).\n\n` +
+        `📌 Find yours at: https://steamid.io\n` +
+        `_(It looks like \`76561198012345678\`)_\n\n` +
+        `Reply with just the number, or type \`skip\` to ignore this.\n\n` +
+        `_[This is a test DM — the reply handler is fully live]_`
+      );
+      await msg.reply(
+        `✅ Test RSVP registration DM sent to **${targetUser.username}** (\`${targetUser.id}\`).\n` +
+        `They can now reply with a Steam ID to test the full registration flow, or type \`skip\` to cancel.`
+      );
+    } catch (err) {
+      this.pendingRegistrations.delete(targetUser.id);
+      await msg.reply(`❌ Couldn't DM **${targetUser.username}**: ${err.message}\n_(They may have DMs disabled)_`);
+    }
   }
 
   async _cmdTestDm(msg, args) {
