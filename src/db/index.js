@@ -1924,6 +1924,16 @@ async function setDiscordId(accountId, discordId) {
   return (discordId || '').trim();
 }
 
+async function getNicknameByDiscordId(discordId) {
+  if (!discordId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT nickname FROM nicknames WHERE TRIM(discord_id) = $1 AND discord_id != '' LIMIT 1`,
+    [(discordId || '').toString().trim()]
+  );
+  return r.rows[0]?.nickname || null;
+}
+
 async function getAllNicknames() {
   const p = getPool();
   const result = await p.query('SELECT * FROM nicknames ORDER BY updated_at DESC');
@@ -5303,6 +5313,7 @@ module.exports = {
   getNickname,
   setNickname,
   setDiscordId,
+  getNicknameByDiscordId,
   getAllNicknames,
   scheduleGame,
   getUpcomingGames,

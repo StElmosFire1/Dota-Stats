@@ -207,12 +207,15 @@ class DiscordBot {
         const game = await db.getScheduledGameByRsvpMessage(reaction.message.id).catch(() => null);
         if (!game) return;
         const emoji = reaction.emoji.name;
+        // Prefer nickname from DB over raw Discord display name
+        const nickname = await db.getNicknameByDiscordId(user.id).catch(() => null);
+        const displayName = nickname || user.username;
         if (emoji === '\u2705') {
-          await db.addScheduleRsvp(game.id, user.id, user.username, 'yes').catch(() => {});
+          await db.addScheduleRsvp(game.id, user.id, displayName, 'yes').catch(() => {});
           // Check if this person is registered — if not, DM them to sign up
           this._promptUnregisteredRsvp(user, game).catch(() => {});
         } else if (emoji === '\u274C') {
-          await db.addScheduleRsvp(game.id, user.id, user.username, 'no').catch(() => {});
+          await db.addScheduleRsvp(game.id, user.id, displayName, 'no').catch(() => {});
         }
         await this._updateRsvpEmbed(reaction.message, game.id).catch(() => {});
       } catch (err) {
