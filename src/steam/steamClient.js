@@ -23,7 +23,7 @@ class SteamDotaClient extends EventEmitter {
     this.steamClient.on('loggedOn', () => {
       console.log('[Steam] Logged in successfully.');
       this.isLoggedIn = true;
-      this.steamClient.setPersona(SteamUser.EPersonaState.Online);
+      this.steamClient.setPersona(SteamUser.EPersonaState.Online, 'Dota Bot');
 
       this.gcClient = new Dota2GCClient(this.steamClient);
 

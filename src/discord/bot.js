@@ -194,20 +194,9 @@ class DiscordBot {
   }
 
   _setupHandlers() {
-    this.client.on('ready', async () => {
+    this.client.on('ready', () => {
       console.log(`[Discord] Bot online as ${this.client.user.tag}`);
       this.client.user.setActivity('Dota 2 Inhouse | !help', { type: 3 });
-
-      // Rename bot to "Dota Bot" if not already set
-      const desiredName = 'Dota Bot';
-      if (this.client.user.username !== desiredName) {
-        try {
-          await this.client.user.setUsername(desiredName);
-          console.log(`[Discord] Bot renamed to "${desiredName}"`);
-        } catch (err) {
-          console.warn(`[Discord] Could not rename bot: ${err.message}`);
-        }
-      }
     });
 
     this.client.on('messageReactionAdd', async (reaction, user) => {
