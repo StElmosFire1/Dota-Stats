@@ -75,6 +75,17 @@ async function main() {
       steamConnected = true;
       startupStatus.steam = true;
       console.log('[Startup] Steam connected.\n');
+
+      // Add all known players as Steam friends (non-blocking, runs in background)
+      db.getAllSteamAccountIds().then(ids => {
+        if (ids.length) {
+          console.log(`[Startup] Sending Steam friend requests to ${ids.length} known players...`);
+          steamClient.addAllKnownFriends(ids).catch(err =>
+            console.error('[Startup] addAllKnownFriends error:', err.message)
+          );
+        }
+      }).catch(() => {});
+
       steamClient.on('steamDisconnected', (reason) => {
         startupStatus.steam = false;
         console.warn(`[Steam] Marked offline in health status (reason: ${reason})`);

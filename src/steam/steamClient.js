@@ -209,6 +209,35 @@ class SteamDotaClient extends EventEmitter {
   }
 
   /**
+   * Add all known players as Steam friends. Skips anyone already on the friends list.
+   * Sends requests slowly (1 per second) to avoid rate limits.
+   */
+  async addAllKnownFriends(accountIds) {
+    if (!this.isLoggedIn || !this.steamClient) return;
+    const friends = this.steamClient.myFriends || {};
+    let added = 0;
+    let skipped = 0;
+    for (const accountId32 of accountIds) {
+      try {
+        const steam64 = (BigInt('76561197960265728') + BigInt(accountId32)).toString();
+        const rel = friends[steam64];
+        if (rel === 3 /* EFriendRelationship.Friend */) { skipped++; continue; }
+        await new Promise((resolve) => {
+          this.steamClient.addFriend(steam64, (err) => {
+            if (err) console.warn(`[Steam] addFriend ${steam64} failed: ${err.message}`);
+            else added++;
+            resolve();
+          });
+        });
+        await new Promise(r => setTimeout(r, 1000));
+      } catch (err) {
+        console.error(`[Steam] addAllKnownFriends error for ${accountId32}:`, err.message);
+      }
+    }
+    console.log(`[Steam] addAllKnownFriends: ${added} requests sent, ${skipped} already friends`);
+  }
+
+  /**
    * Send a Steam friend message to a player by their 32-bit account ID.
    * The bot must be Steam friends with them for this to work.
    */

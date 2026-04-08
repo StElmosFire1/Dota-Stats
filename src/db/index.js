@@ -5442,6 +5442,7 @@ module.exports = {
   markReminder1hSent,
   markReminder10mSent,
   getRsvpSteamAccountIds,
+  getAllSteamAccountIds,
   isDiscordRegistered,
   getPlayerReportCardOptOut,
   setPlayerReportCardOptOut,
@@ -5758,6 +5759,14 @@ async function markReminder1hSent(id) {
 async function markReminder10mSent(id) {
   const p = getPool();
   await p.query(`UPDATE scheduled_games SET reminder_10m_sent = TRUE WHERE id = $1`, [id]);
+}
+
+async function getAllSteamAccountIds() {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT DISTINCT account_id_32 FROM players WHERE account_id_32 IS NOT NULL AND account_id_32 > 0`
+  );
+  return result.rows.map(r => BigInt(r.account_id_32));
 }
 
 /**
