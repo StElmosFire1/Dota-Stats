@@ -2694,15 +2694,16 @@ class DiscordBot {
     for (const game of games) {
       const diff = new Date(game.scheduled_at) - new Date();
       const is24h = !game.reminder_24h_sent && diff >= 82800000 && diff <= 90000000; // 23h→25h window
-      const is1h = !game.reminder_1h_sent && diff >= 2700000 && diff <= 4500000;    // 45m→75m window
+      const is1h  = !game.reminder_1h_sent  && diff >= 2700000  && diff <= 4500000;  // 45m→75m window
+      const is10m = !game.reminder_10m_sent && diff >= 300000   && diff <= 900000;   // 5m→15m window
 
-      if (!is24h && !is1h) continue;
+      if (!is24h && !is1h && !is10m) continue;
 
       const when = new Date(game.scheduled_at).toLocaleString('en-AU', {
         timeZone: 'Australia/Sydney', weekday: 'short', month: 'short', day: 'numeric',
         hour: '2-digit', minute: '2-digit', hour12: true,
       });
-      const label = is24h ? '24 hours' : '1 hour';
+      const label = is24h ? '24 hours' : is1h ? '1 hour' : '10 minutes';
       const rsvps = await db.getScheduleRsvps(game.id).catch(() => []);
       const inList = rsvps.filter(r => r.status === 'yes').map(r => r.username);
 
@@ -2728,25 +2729,46 @@ class DiscordBot {
         }
       }
 
-      // DM players who are ✅ and have real Discord IDs
-      const discordIn = rsvps.filter(r => r.status === 'yes' && !r.discord_id.startsWith('web:'));
-      for (const rsvp of discordIn) {
-        try {
-          const user = await this.client.users.fetch(rsvp.discord_id).catch(() => null);
-          if (!user) continue;
-          await user.send(
-            `⏰ **Reminder:** Inhouse in **${label}** — ${when} AEST` +
-            (game.note ? `\n📝 ${game.note}` : '') +
-            `\n\n${inList.length} player${inList.length !== 1 ? 's' : ''} registered so far.`
-          ).catch(() => {});
-        } catch {
-          // ignore failed DMs
+      // DM players who are ✅ and have real Discord IDs (24h and 1h only)
+      if (!is10m) {
+        const discordIn = rsvps.filter(r => r.status === 'yes' && !r.discord_id.startsWith('web:'));
+        for (const rsvp of discordIn) {
+          try {
+            const user = await this.client.users.fetch(rsvp.discord_id).catch(() => null);
+            if (!user) continue;
+            await user.send(
+              `⏰ **Reminder:** Inhouse in **${label}** — ${when} AEST` +
+              (game.note ? `\n📝 ${game.note}` : '') +
+              `\n\n${inList.length} player${inList.length !== 1 ? 's' : ''} registered so far.`
+            ).catch(() => {});
+          } catch {
+            // ignore failed DMs
+          }
+        }
+      }
+
+      // Steam message for 1h and 10m reminders
+      if (is1h || is10m) {
+        const steamMsg = is10m
+          ? `⚔️ Dota inhouse starting in ~10 minutes! Hop on — ${inList.length} player${inList.length !== 1 ? 's' : ''} ready.`
+          : `⚔️ Dota inhouse in 1 hour! — ${when} AEST\n${inList.length} player${inList.length !== 1 ? 's' : ''} signed up so far.`;
+        const steamClient = tryGetSteamClient();
+        if (steamClient && steamClient.isLoggedIn) {
+          const accountIds = await db.getRsvpSteamAccountIds(game.id).catch(() => []);
+          console.log(`[Reminders] Sending Steam messages to ${accountIds.length} players for game #${game.id}`);
+          for (const accountId32 of accountIds) {
+            steamClient.sendSteamMessage(accountId32, steamMsg);
+            await new Promise(r => setTimeout(r, 300)); // small delay between messages
+          }
+        } else {
+          console.warn('[Reminders] Steam client not logged in — skipping Steam messages');
         }
       }
 
       // Mark sent
       if (is24h) await db.markReminder24hSent(game.id).catch(() => {});
       if (is1h) await db.markReminder1hSent(game.id).catch(() => {});
+      if (is10m) await db.markReminder10mSent(game.id).catch(() => {});
       console.log(`[Reminders] Sent ${label} reminder for game #${game.id} (${when})`);
     }
   }

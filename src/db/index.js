@@ -590,6 +590,7 @@ async function init() {
     await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS rsvp_channel_id TEXT`);
     await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN NOT NULL DEFAULT FALSE`);
     await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS reminder_1h_sent BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS reminder_10m_sent BOOLEAN NOT NULL DEFAULT FALSE`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS player_preferences (
@@ -5439,6 +5440,8 @@ module.exports = {
   getGamesNeedingReminders,
   markReminder24hSent,
   markReminder1hSent,
+  markReminder10mSent,
+  getRsvpSteamAccountIds,
   isDiscordRegistered,
   getPlayerReportCardOptOut,
   setPlayerReportCardOptOut,
@@ -5734,6 +5737,8 @@ async function getGamesNeedingReminders() {
         (reminder_24h_sent = FALSE AND scheduled_at BETWEEN NOW() + INTERVAL '23 hours 30 minutes' AND NOW() + INTERVAL '24 hours 30 minutes')
         OR
         (reminder_1h_sent = FALSE AND scheduled_at BETWEEN NOW() + INTERVAL '45 minutes' AND NOW() + INTERVAL '75 minutes')
+        OR
+        (reminder_10m_sent = FALSE AND scheduled_at BETWEEN NOW() + INTERVAL '5 minutes' AND NOW() + INTERVAL '15 minutes')
       )
     ORDER BY scheduled_at ASC
   `);
@@ -5748,6 +5753,36 @@ async function markReminder24hSent(id) {
 async function markReminder1hSent(id) {
   const p = getPool();
   await p.query(`UPDATE scheduled_games SET reminder_1h_sent = TRUE WHERE id = $1`, [id]);
+}
+
+async function markReminder10mSent(id) {
+  const p = getPool();
+  await p.query(`UPDATE scheduled_games SET reminder_10m_sent = TRUE WHERE id = $1`, [id]);
+}
+
+/**
+ * Returns account_id_32 values for all ✅ RSVP'd players for a game.
+ * Resolves web RSVPs (web:<accountId>) directly, Discord RSVPs via the nicknames table.
+ */
+async function getRsvpSteamAccountIds(gameId) {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT
+      r.discord_id,
+      CASE
+        WHEN r.discord_id LIKE 'web:%' THEN CAST(SPLIT_PART(r.discord_id, ':', 2) AS BIGINT)
+        ELSE n.account_id::BIGINT
+      END AS account_id_32
+    FROM schedule_rsvps r
+    LEFT JOIN nicknames n
+      ON TRIM(n.discord_id) = r.discord_id
+      AND r.discord_id NOT LIKE 'web:%'
+      AND n.discord_id != ''
+    WHERE r.game_id = $1 AND r.status = 'yes'
+  `, [gameId]);
+  return result.rows
+    .filter(r => r.account_id_32 != null && String(r.account_id_32) !== '0')
+    .map(r => BigInt(r.account_id_32));
 }
 
 async function getPlayerReportCardOptOut(discordId) {

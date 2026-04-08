@@ -208,6 +208,30 @@ class SteamDotaClient extends EventEmitter {
     });
   }
 
+  /**
+   * Send a Steam friend message to a player by their 32-bit account ID.
+   * The bot must be Steam friends with them for this to work.
+   */
+  sendSteamMessage(accountId32, message) {
+    if (!this.isLoggedIn || !this.steamClient) {
+      console.warn('[Steam] Cannot send message — not logged in');
+      return false;
+    }
+    try {
+      const steam64 = (BigInt('76561197960265728') + BigInt(accountId32)).toString();
+      if (typeof this.steamClient.chat?.sendFriendMessage === 'function') {
+        this.steamClient.chat.sendFriendMessage(steam64, message);
+      } else {
+        this.steamClient.chatMessage(steam64, message);
+      }
+      console.log(`[Steam] Sent message to account ${accountId32} (${steam64})`);
+      return true;
+    } catch (err) {
+      console.error(`[Steam] Failed to send message to ${accountId32}:`, err.message);
+      return false;
+    }
+  }
+
   shutdown() {
     if (this.gcClient) {
       this.gcClient.shutdown();
