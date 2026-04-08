@@ -2664,23 +2664,20 @@ class DiscordBot {
     const when = new Date(game.scheduled_at).toLocaleString('en-AU', {
       timeZone: 'Australia/Sydney', dateStyle: 'full', timeStyle: 'short',
     });
-    const schedEmbed = new EmbedBuilder()
-      .setTitle('📅 Game Scheduled!')
-      .setColor(0x4ade80)
-      .addFields(
-        { name: 'When', value: when, inline: false },
-        { name: 'Note', value: game.note || '—', inline: false },
-        { name: 'ID', value: `#${game.id}`, inline: true },
-        { name: 'Scheduled by', value: game.created_by || 'admin', inline: true },
-      );
-    await channel.send({ embeds: [schedEmbed] });
-
-    const rsvpEmbed = new EmbedBuilder()
-      .setTitle(`🧠 RSVP — Inhouse ${when}`)
+    const combinedEmbed = new EmbedBuilder()
+      .setTitle(`📅 Inhouse Scheduled — ${when} AEST`)
       .setColor(0x3b82f6)
-      .setDescription(`Are you **in** for this game? React below!\n\n✅ **In** | ❌ **Out**\n\n_Check-ins are not binding — just helps gauge numbers!_`)
-      .setFooter({ text: `Game ID #${game.id} · ${game.note || 'Weekly Inhouse'}` });
-    const rsvpMsg = await channel.send({ embeds: [rsvpEmbed] });
+      .setDescription(
+        `${game.note ? `**${game.note}**\n\n` : ''}` +
+        `Are you **in** for this game? React below!\n\n✅ **In** | ❌ **Out**\n\n` +
+        `_Check-ins are not binding — just helps gauge numbers!_`
+      )
+      .addFields(
+        { name: 'Scheduled by', value: game.created_by || 'admin', inline: true },
+        { name: 'Game ID', value: `#${game.id}`, inline: true },
+      )
+      .setFooter({ text: 'Reminder will be posted 1 hour before game time' });
+    const rsvpMsg = await channel.send({ embeds: [combinedEmbed] });
     await rsvpMsg.react('✅').catch(() => {});
     await rsvpMsg.react('❌').catch(() => {});
     await db.saveRsvpMessageId(game.id, rsvpMsg.id, channel.id).catch(() => {});
