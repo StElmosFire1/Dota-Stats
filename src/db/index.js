@@ -3167,10 +3167,12 @@ async function getEnemySynergyHeatmap(seasonId = null) {
       versus[pairKey] = { keyA: orderedA, keyB: orderedB, winsA: 0, winsB: 0, games: 0 };
     }
     versus[pairKey].games += 0.5;
+    // Only ONE of the two row-pair perspectives captures the win (the winner's row),
+    // so we add 1.0 (not 0.5) to keep wins proportional to the 0.5-per-row game count.
     if (isAFirst) {
-      if (row.player_a_won) versus[pairKey].winsA += 0.5;
+      if (row.player_a_won) versus[pairKey].winsA += 1.0;
     } else {
-      if (row.player_a_won) versus[pairKey].winsB += 0.5;
+      if (row.player_a_won) versus[pairKey].winsB += 1.0;
     }
   }
 
