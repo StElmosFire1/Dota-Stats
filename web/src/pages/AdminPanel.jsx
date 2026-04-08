@@ -369,6 +369,85 @@ function TestDmPanel({ superuserKey }) {
   );
 }
 
+function TestRsvpDmPanel({ superuserKey }) {
+  const [discordId, setDiscordId] = useState('');
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const send = async () => {
+    const id = discordId.trim();
+    if (!id) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const res = await fetch('/api/admin/test-rsvp-dm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+        body: JSON.stringify({ discordId: id }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setStatus({ ok: true, message: `✅ RSVP registration DM sent to ${data.username} (${data.id}). Reply with a Steam ID to test the full flow, or "skip".` });
+      } else {
+        setStatus({ ok: false, message: `❌ ${data.error}` });
+      }
+    } catch (e) {
+      setStatus({ ok: false, message: `❌ Request failed: ${e.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <h2 style={{ margin: 0 }}>Test RSVP Registration DM</h2>
+      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Sends the unregistered-player RSVP prompt DM. The reply handler is fully live — you can test
+        replying with a Steam ID (Steam64, Steam3, Steam2, or profile URL) or type <code>skip</code>.
+        Equivalent to <code>!testrsvpdm</code> in Discord.
+      </p>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="Discord User ID (e.g. 135991380760592384)"
+          value={discordId}
+          onChange={e => setDiscordId(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && send()}
+          style={{
+            padding: '8px 12px', borderRadius: 6, fontSize: 14, width: 320,
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+            color: 'var(--text-primary)',
+          }}
+        />
+        <button
+          onClick={send}
+          disabled={loading || !discordId.trim()}
+          style={{
+            padding: '8px 18px', borderRadius: 6, fontWeight: 600, fontSize: 14,
+            background: loading ? 'var(--bg-secondary)' : '#4ade80',
+            color: loading ? 'var(--text-muted)' : '#000', border: 'none',
+            cursor: loading ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {loading ? 'Sending…' : '🎮 Send RSVP Registration DM'}
+        </button>
+      </div>
+      {status && (
+        <div style={{
+          marginTop: 12, padding: '8px 14px', borderRadius: 6, fontSize: 13,
+          background: status.ok ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+          border: `1px solid ${status.ok ? '#4ade80' : '#f87171'}`,
+          color: status.ok ? '#4ade80' : '#f87171',
+        }}>
+          {status.message}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ErrorLogViewer({ superuserKey }) {
   const [logs, setLogs] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -627,6 +706,9 @@ export default function AdminPanel() {
 
       {/* Test Post-Match DM */}
       <TestDmPanel superuserKey={superuserKey} />
+
+      {/* Test RSVP Registration DM */}
+      <TestRsvpDmPanel superuserKey={superuserKey} />
 
       {/* Server Error Log */}
       <ErrorLogViewer superuserKey={superuserKey} />

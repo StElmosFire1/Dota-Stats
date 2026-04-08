@@ -204,26 +204,63 @@ function GameCard({ game, steamUser, isSuperuser, superuserKey, onRefresh }) {
   );
 }
 
+const QUICK_TIMES = [
+  { label: '7:00 PM', val: '19:00' },
+  { label: '7:30 PM', val: '19:30' },
+  { label: '8:00 PM', val: '20:00' },
+  { label: '8:30 PM', val: '20:30' },
+  { label: '9:00 PM', val: '21:00' },
+];
+
+function getNextDayOfWeek(dow, weeksAhead = 0) {
+  const d = new Date();
+  let diff = (dow - d.getDay() + 7) % 7;
+  if (diff === 0) diff = 7;
+  diff += weeksAhead * 7;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().split('T')[0];
+}
+
 function CreateGameForm({ superuserKey, onCreated }) {
-  const [date, setDate] = useState(() => {
-    const now = new Date();
-    now.setDate(now.getDate() + 7);
-    now.setHours(20, 0, 0, 0);
-    const pad = n => String(n).padStart(2, '0');
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  });
+  const [dateVal, setDateVal] = useState(() => getNextDayOfWeek(5));
+  const [timeVal, setTimeVal] = useState('20:00');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const QUICK_DAYS = [
+    { label: 'This Fri',  val: () => getNextDayOfWeek(5) },
+    { label: 'Next Fri',  val: () => getNextDayOfWeek(5, 1) },
+    { label: 'This Sat',  val: () => getNextDayOfWeek(6) },
+    { label: 'Next Sat',  val: () => getNextDayOfWeek(6, 1) },
+    { label: 'This Sun',  val: () => getNextDayOfWeek(0) },
+  ];
+
+  const formattedPreview = (() => {
+    try {
+      return new Date(`${dateVal}T${timeVal}:00+10:00`).toLocaleString('en-AU', {
+        timeZone: 'Australia/Sydney', weekday: 'short', month: 'short',
+        day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+      }) + ' AEST';
+    } catch { return ''; }
+  })();
 
   const handleCreate = async () => {
-    if (!date) { setError('Date and time are required'); return; }
+    if (!dateVal || !timeVal) { setError('Date and time are required'); return; }
     setLoading(true);
     setError('');
+    setSuccessMsg('');
     try {
-      const scheduledAt = new Date(date).toISOString();
-      await createScheduledGame(scheduledAt, note, superuserKey);
+      const scheduledAt = new Date(`${dateVal}T${timeVal}:00+10:00`).toISOString();
+      const result = await createScheduledGame(scheduledAt, note, superuserKey);
       setNote('');
+      if (result?.discordPosted === false) {
+        setSuccessMsg('✅ Game created! ⚠️ Discord post failed — check ANNOUNCE_CHANNEL_ID in server env.');
+      } else {
+        setSuccessMsg('✅ Game created and posted to Discord!');
+      }
+      setTimeout(() => setSuccessMsg(''), 6000);
       onCreated();
     } catch (err) {
       setError(err.message || 'Failed to create game');
@@ -232,39 +269,80 @@ function CreateGameForm({ superuserKey, onCreated }) {
     }
   };
 
+  const btnStyle = (active) => ({
+    padding: '4px 10px', fontSize: 12, borderRadius: 5, cursor: 'pointer',
+    border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+    background: active ? 'var(--accent)' : 'var(--bg-secondary)',
+    color: active ? '#fff' : 'var(--text-secondary)',
+    fontWeight: active ? 700 : 400,
+    transition: 'all 0.15s',
+  });
+
   return (
     <div className="card" style={{ padding: 20, maxWidth: 640, marginBottom: 28 }}>
       <h3 style={{ marginBottom: 14, fontSize: 15 }}>📅 Schedule a Game</h3>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div className="form-group" style={{ flex: '1 1 200px', marginBottom: 0 }}>
-          <label style={{ fontSize: 12, marginBottom: 4, display: 'block', color: 'var(--text-muted)' }}>Date &amp; Time (local)</label>
+
+      {/* Date row */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>Date</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {QUICK_DAYS.map(({ label, val }) => (
+            <button key={label} style={btnStyle(dateVal === val())} onClick={() => setDateVal(val())}>
+              {label}
+            </button>
+          ))}
           <input
-            type="datetime-local"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            style={{ width: '100%' }}
+            type="date"
+            value={dateVal}
+            onChange={e => setDateVal(e.target.value)}
+            style={{ padding: '4px 8px', fontSize: 13, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', marginLeft: 4 }}
           />
         </div>
-        <div className="form-group" style={{ flex: '2 1 220px', marginBottom: 0 }}>
-          <label style={{ fontSize: 12, marginBottom: 4, display: 'block', color: 'var(--text-muted)' }}>Note (optional)</label>
+      </div>
+
+      {/* Time row */}
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>Time (AEST)</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {QUICK_TIMES.map(({ label, val }) => (
+            <button key={label} style={btnStyle(timeVal === val)} onClick={() => setTimeVal(val)}>
+              {label}
+            </button>
+          ))}
           <input
-            type="text"
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            placeholder="e.g. Weekly inhouse, Season 10"
-            style={{ width: '100%' }}
+            type="time"
+            value={timeVal}
+            onChange={e => setTimeVal(e.target.value)}
+            style={{ padding: '4px 8px', fontSize: 13, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', marginLeft: 4 }}
           />
         </div>
+        {formattedPreview && (
+          <div style={{ fontSize: 12, color: 'var(--accent)', marginTop: 6 }}>📍 {formattedPreview}</div>
+        )}
+      </div>
+
+      {/* Note + Create */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          type="text"
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleCreate()}
+          placeholder="Note (optional) — e.g. Weekly inhouse, Season 10"
+          style={{ flex: '1 1 240px', padding: '7px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+        />
         <button
           className="btn btn-primary"
           onClick={handleCreate}
           disabled={loading}
-          style={{ alignSelf: 'flex-end', whiteSpace: 'nowrap' }}
+          style={{ whiteSpace: 'nowrap' }}
         >
           {loading ? 'Creating…' : '+ Create Game'}
         </button>
       </div>
+
       {error && <div style={{ fontSize: 13, color: '#f44336', marginTop: 8 }}>{error}</div>}
+      {successMsg && <div style={{ fontSize: 13, color: '#4ade80', marginTop: 8 }}>{successMsg}</div>}
     </div>
   );
 }

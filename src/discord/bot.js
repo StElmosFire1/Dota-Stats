@@ -2645,10 +2645,14 @@ class DiscordBot {
 
   async postScheduleRsvpEmbed(game) {
     const channelId = config.discord.announceChannelId || this.lobbyChannelId;
-    if (!channelId) return;
+    if (!channelId) {
+      throw new Error('No channel configured — set ANNOUNCE_CHANNEL_ID env var or send a message in Discord first');
+    }
     let channel = this.client.channels.cache.get(channelId);
     if (!channel) channel = await this.client.channels.fetch(channelId).catch(() => null);
-    if (!channel) return;
+    if (!channel) {
+      throw new Error(`Channel ${channelId} not found or bot lacks access`);
+    }
 
     const when = new Date(game.scheduled_at).toLocaleString('en-AU', {
       timeZone: 'Australia/Sydney', dateStyle: 'full', timeStyle: 'short',

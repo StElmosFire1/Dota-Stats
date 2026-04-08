@@ -633,11 +633,15 @@ function createApiRouter(startupStatus = {}) {
       if (!scheduled_at) return res.status(400).json({ error: 'scheduled_at required' });
       const creator = req.session?.displayName || req.body.created_by || 'admin';
       const game = await db.scheduleGame(scheduled_at, note, creator);
-      res.json({ game });
-      // Post Discord RSVP announcement (non-blocking)
-      getDiscordBot().postScheduleRsvpEmbed(game).catch(err =>
-        console.error('[Schedule] Failed to post Discord RSVP embed:', err.message)
-      );
+      // Post Discord RSVP announcement — await so we can report success/failure
+      let discordPosted = false;
+      try {
+        await getDiscordBot().postScheduleRsvpEmbed(game);
+        discordPosted = true;
+      } catch (discordErr) {
+        console.error('[Schedule] Failed to post Discord RSVP embed:', discordErr.message);
+      }
+      res.json({ game, discordPosted });
     } catch (err) {
       res.status(500).json({ error: err.message || 'Failed to schedule game' });
     }
@@ -2447,6 +2451,41 @@ NOTES
       res.json({ ok: true, username: result.username, id: result.id });
     } catch (err) {
       console.error('[TestDM]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/test-rsvp-dm', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { discordId } = req.body;
+      if (!discordId) return res.status(400).json({ error: 'discordId is required' });
+      const bot = getDiscordBot();
+      const user = await bot.client.users.fetch(discordId).catch(() => null);
+      if (!user) return res.status(404).json({ error: `User ${discordId} not found or bot cannot see them` });
+      // Clear any existing pending registration so we force-send
+      bot.pendingRegistrations.delete(user.id);
+      const upcomingGames = await db.getUpcomingGames().catch(() => []);
+      const fakeGame = upcomingGames[0] || {
+        id: 0,
+        scheduled_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        description: 'Test Inhouse',
+      };
+      const when = new Date(fakeGame.scheduled_at).toLocaleString('en-AU', {
+        timeZone: 'Australia/Sydney', weekday: 'short', month: 'short',
+        day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+      });
+      bot.pendingRegistrations.set(user.id, { gameId: fakeGame.id, step: 'awaiting_steam_id' });
+      await user.send(
+        `👋 Hey **${user.username}**! You signed up for the inhouse on **${when}** AEST — nice one!\n\n` +
+        `It looks like you haven't linked your Steam account yet. To show up properly on the leaderboard and stats, reply here with your **Steam64 ID** (17 digits).\n\n` +
+        `📌 Find yours at: https://steamid.io\n` +
+        `_(It looks like \`76561198012345678\`)_\n\n` +
+        `Reply with just the number, or type \`skip\` to ignore this.\n\n` +
+        `_[This is a test DM — the reply handler is fully live]_`
+      );
+      res.json({ ok: true, username: user.username, id: user.id });
+    } catch (err) {
+      console.error('[TestRsvpDM]', err.message);
       res.status(500).json({ error: err.message });
     }
   });
