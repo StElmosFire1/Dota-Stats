@@ -106,7 +106,7 @@ const config = {
   features: {
     sheets: false,
     matchPoller: false,
-    lobby: false,
+    lobby: true,
   },
 };
 

@@ -563,11 +563,17 @@ class DiscordBot {
     const lobbyManager = tryGetLobbyManager();
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
 
-    const steamId = args[0];
+    const rawId = args[0];
+    let steamId64;
     try {
-      const sent = lobbyManager.invitePlayer(steamId);
+      ({ steamId64 } = this._parseSteamId(rawId));
+    } catch (e) {
+      return msg.reply(`Invalid Steam ID \`${rawId}\`: ${e.message}`);
+    }
+    try {
+      const sent = lobbyManager.invitePlayer(steamId64);
       if (sent) {
-        await msg.reply(`Lobby invite sent to Steam ID \`${steamId}\`. They should see the invite in Dota 2.`);
+        await msg.reply(`Lobby invite sent to \`${steamId64}\`. They should see the invite in Dota 2.`);
       } else {
         await msg.reply('Failed to send invite. Make sure the bot is friends with that Steam account.');
       }
