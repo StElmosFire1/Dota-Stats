@@ -251,4 +251,32 @@ module.exports = [
     content: '🗺️ WARD MAP ON MATCH DETAIL\nEvery parsed match now shows a Ward Map panel — a minimap overlay with team-coloured ward placement icons.\n• Green = Radiant, Red = Dire.\n• Observer wards shown as circles, sentry wards as diamonds.\n• Filter buttons let you toggle between Both / Observer / Sentry.\n\n📈 ROLLING WIN RATE WINDOW TOGGLE\nThe win rate chart on player profiles now has 5 / 10 / 20 / All toggle buttons. Switch the rolling window instantly without any additional load.\n\n🏛️ HALL OF FAME PAGE\nNew dedicated page at /hall-of-fame showing all-time and season single-game records (most kills, highest GPM, most hero damage, etc.) as card-style displays with links to the match and player.\n\n📊 BEST POSITION — OVERALL STATS\nThe Overall Stats page (/stats) now includes a Best Position column for every player, calculated using the same composite score as the Players page (win rate × 4 + KDA component + kill involvement component).\n\n🧭 NAV CLEANUP\nTournaments and Player Benchmarks moved into the Tools dropdown. The separate More menu has been removed. Multi-Kill Records removed from the nav (already inside Records & Comebacks as its own tab).\n\n🌤️ LIGHT MODE IMPROVEMENTS\nLight mode colours are now softer and easier on the eyes. The season selector and Steam Login button now properly adapt to light mode instead of staying dark.',
     author: 'System',
   },
+  {
+    version: '4.4',
+    title: 'Steam Bot Identity & Admin Panel Controls',
+    published_at: '2026-04-03',
+    content: '🤖 STEAM BOT IDENTITY\nThe Steam bot now displays as "Dota Bot" in Dota 2 and Steam. On startup it automatically sends friend requests to every registered player so invites and Steam chat reminders work without manual setup.\n\n🛠️ STEAM BOT ADMIN PANEL\nA new Steam Bot Controls section has been added to the admin panel with full lobby management:\n• Status panel — live view of Steam connection, GC readiness, friend count, and active lobby.\n• Create Lobby — create a named practice lobby with optional password directly from the browser.\n• Join Lobby — join an existing lobby by ID.\n• End / Leave Lobby — cleanly leave the current lobby.\n• Invite Player — send a GC lobby invite to any player by Steam ID.\n• Add All Friends — bulk-send friend requests to all registered players.\n• 🚀 Launch Game — start the game once all players are seated (cancels any active countdown and force-launches).',
+    author: 'System',
+  },
+  {
+    version: '4.5',
+    title: 'RSVP Nickname Display & Tiered Steam Reminders',
+    published_at: '2026-04-03',
+    content: '📋 RSVP NICKNAME DISPLAY\nDiscord RSVP reactions now show the player\'s custom nickname (if set) instead of their raw Discord username. Keeps the RSVP list consistent with how names appear everywhere else on the site.\n\n⏰ TIERED GAME REMINDERS\nThe schedule reminder system now has three tiers, each escalating in urgency:\n• 24 hours out — Discord channel message + DM to all RSVPd players.\n• 1 hour out — Discord channel message + DM + Steam chat message to all RSVPd players who have a linked Steam account.\n• 10 minutes out — Discord channel message + Steam chat message (no DM at this tier to avoid spam).\n\nSteam chat messages are sent directly from the bot\'s Steam account to each player\'s Steam inbox — visible even if they\'re not in Discord. The database tracks which reminder tiers have been sent per game to prevent duplicate messages across bot restarts.',
+    author: 'System',
+  },
+  {
+    version: '4.6',
+    title: 'Lobby Auto-Create, Auto-Invite & !start_game Command',
+    published_at: '2026-04-07',
+    content: '🎮 LOBBY AUTO-CREATE AT GAME TIME\nThe bot now monitors the schedule and automatically creates a Dota 2 practice lobby when a scheduled game\'s start time arrives — no admin action required.\n• Lobby is named "OCE Inhouse #N" based on the game number.\n• Password is carried over from the scheduled game if one was set.\n• All RSVPd players with a linked Steam account receive a GC lobby invite automatically.\n• A formatted Discord announcement is posted to the game channel confirming the lobby is live and invites have been sent.\n• The game is marked as lobby-created in the database so the scheduler never double-creates.\n• Bot moves to the broadcast slot after creation so it doesn\'t occupy a player seat.\n\n🟢 10-PLAYER SEATED NOTIFICATION\nWhen the 10th player sits on a Radiant or Dire slot, the bot posts a message to the announcements channel confirming the lobby is full and ready.\n\n🕹️ !start_game COMMAND\nNew admin Discord command to manually launch the active lobby. Works as a force-override — launches regardless of player count and cancels any active countdown.',
+    author: 'System',
+  },
+  {
+    version: '4.7',
+    title: 'Lobby Countdown, In-Lobby Chat & Captains Mode Settings',
+    published_at: '2026-04-08',
+    content: '⏱️ 15-SECOND AUTO-LAUNCH COUNTDOWN\nWhen all 10 players are seated on teams, the bot starts a 15-second countdown visible to everyone in the Dota 2 lobby chat window.\n• Countdown messages appear at 15s, 10s, 5s, 4s, 3s, 2s, 1s, then "Launching game now!"\n• Game launches automatically at 0 — no admin needs to press anything.\n• If a player leaves a team slot during the countdown, it is cancelled with a lobby chat warning and resets when 10 players are seated again.\n• !start_game and the admin panel Launch Game button both cancel any active countdown and force-launch immediately.\n\n💬 IN-LOBBY CHAT MESSAGES\nThe bot joins the Dota 2 practice lobby chat channel after creating a lobby and sends all countdown and status messages directly into it — visible in the in-game lobby chat box for all players.\n\n⚔️ CAPTAINS MODE LOBBY SETTINGS\nPractice lobbies are now created with the correct competitive defaults:\n• Captain\'s Mode with Radiant picking first (standard inhouse convention).\n• No cheats, no bots filling empty slots.\n• All-chat enabled, Dota TV delay on, unlimited pauses.',
+    author: 'System',
+  },
 ];
