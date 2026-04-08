@@ -1550,6 +1550,17 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.post('/admin/steam/lobby/start', requireSuperuser, async (req, res) => {
+    try {
+      const lobby = tryGetLobbyManager();
+      if (!lobby) return res.status(503).json({ error: 'Lobby manager not available' });
+      lobby.launchLobby();
+      res.json({ ok: true, message: 'Game launch requested.' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/admin/steam/friends/add-all', requireSuperuser, async (req, res) => {
     try {
       const steam = tryGetSteamClient();

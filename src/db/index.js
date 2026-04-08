@@ -591,6 +591,7 @@ async function init() {
     await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN NOT NULL DEFAULT FALSE`);
     await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS reminder_1h_sent BOOLEAN NOT NULL DEFAULT FALSE`);
     await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS reminder_10m_sent BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE scheduled_games ADD COLUMN IF NOT EXISTS lobby_created BOOLEAN NOT NULL DEFAULT FALSE`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS player_preferences (
@@ -5443,6 +5444,8 @@ module.exports = {
   markReminder10mSent,
   getRsvpSteamAccountIds,
   getAllSteamAccountIds,
+  getGamesNeedingLobby,
+  markLobbyCreated,
   isDiscordRegistered,
   getPlayerReportCardOptOut,
   setPlayerReportCardOptOut,
@@ -5759,6 +5762,26 @@ async function markReminder1hSent(id) {
 async function markReminder10mSent(id) {
   const p = getPool();
   await p.query(`UPDATE scheduled_games SET reminder_10m_sent = TRUE WHERE id = $1`, [id]);
+}
+
+async function getGamesNeedingLobby() {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT g.*,
+      (SELECT COUNT(*) FROM scheduled_games g2
+        WHERE g2.is_cancelled = FALSE AND g2.scheduled_at <= g.scheduled_at) AS game_number
+    FROM scheduled_games g
+    WHERE g.is_cancelled = FALSE
+      AND g.lobby_created = FALSE
+      AND g.scheduled_at BETWEEN NOW() - INTERVAL '2 minutes' AND NOW() + INTERVAL '5 minutes'
+    ORDER BY g.scheduled_at ASC
+  `);
+  return result.rows;
+}
+
+async function markLobbyCreated(id) {
+  const p = getPool();
+  await p.query(`UPDATE scheduled_games SET lobby_created = TRUE WHERE id = $1`, [id]);
 }
 
 async function getAllSteamAccountIds() {

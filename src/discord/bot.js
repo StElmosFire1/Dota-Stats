@@ -296,6 +296,12 @@ class DiscordBot {
           case 'tournament': await this._cmdTournament(msg, args); break;
           case 'testdm': await this._cmdTestDm(msg, args); break;
           case 'testrsvpdm': await this._cmdTestRsvpDm(msg, args); break;
+          case 'create_lobby': await this._cmdCreateLobby(msg, args); break;
+          case 'join_lobby': await this._cmdJoinLobby(msg, args); break;
+          case 'lobby_status': await this._cmdLobbyStatus(msg); break;
+          case 'invite': await this._cmdInvite(msg, args); break;
+          case 'end': await this._cmdEnd(msg); break;
+          case 'start_game': await this._cmdStartGame(msg); break;
           default: break;
         }
       } catch (err) {
@@ -593,6 +599,23 @@ class DiscordBot {
         'Use `!record <match_id>` to record the match stats from OpenDota.'
       );
       lobbyManager.resetState();
+    } catch (err) {
+      await msg.reply(`Error: ${err.message}`);
+    }
+  }
+
+  async _cmdStartGame(msg) {
+    const lobbyManager = tryGetLobbyManager();
+    if (!lobbyManager) return msg.reply('Lobby manager is not available.');
+    const status = lobbyManager.getStatus();
+    if (!status.lobby) return msg.reply('No active lobby. Create one first with `!create_lobby`.');
+    const seated = status.lobby._gamePlayerCount || 0;
+    if (seated < 10) {
+      return msg.reply(`Only ${seated}/10 players are seated — wait until the lobby is full before launching.`);
+    }
+    try {
+      lobbyManager.launchLobby();
+      await msg.reply(`🚀 **Game launched!** Match is starting in "${status.lobby.name}".`);
     } catch (err) {
       await msg.reply(`Error: ${err.message}`);
     }
@@ -2779,6 +2802,68 @@ class DiscordBot {
     }
   }
 
+  async _autoCreateScheduledLobbies() {
+    const games = await db.getGamesNeedingLobby().catch(() => []);
+    if (!games.length) return;
+
+    for (const game of games) {
+      const lobbyManager = tryGetLobbyManager();
+      if (!lobbyManager) {
+        console.warn('[LobbyAuto] Lobby manager not available — skipping auto-create');
+        continue;
+      }
+      const steamClient = tryGetSteamClient();
+      if (!steamClient || !steamClient.isGCReady) {
+        console.warn('[LobbyAuto] GC not ready — skipping auto-create for game #' + game.id);
+        continue;
+      }
+
+      const gameNum = game.game_number || game.id;
+      const lobbyName = `OCE Inhouse #${gameNum}`;
+      const password = game.password || '';
+
+      console.log(`[LobbyAuto] Auto-creating lobby for game #${game.id}: "${lobbyName}"`);
+      try {
+        await db.markLobbyCreated(game.id); // mark first to prevent double-create on retry
+        await lobbyManager.createLobby(lobbyName, password, 'schedule-auto');
+
+        // Invite all RSVP'd players with Steam IDs
+        const accountIds = await db.getRsvpSteamAccountIds(game.id).catch(() => []);
+        console.log(`[LobbyAuto] Inviting ${accountIds.length} RSVP'd players...`);
+        for (const accountId32 of accountIds) {
+          const steam64 = (BigInt('76561197960265728') + BigInt(accountId32)).toString();
+          await new Promise(r => setTimeout(r, 500));
+          try { lobbyManager.invitePlayer(steam64); } catch {}
+        }
+
+        // Post to Discord
+        const channelId = game.rsvp_channel_id || config.discord.announceChannelId;
+        if (channelId) {
+          const ch = this.client.channels.cache.get(channelId) || await this.client.channels.fetch(channelId).catch(() => null);
+          if (ch) {
+            const when = new Date(game.scheduled_at).toLocaleString('en-AU', {
+              timeZone: 'Australia/Sydney', weekday: 'short', month: 'short', day: 'numeric',
+              hour: '2-digit', minute: '2-digit', hour12: true,
+            });
+            await ch.send(
+              `🎮 **Lobby created: ${lobbyName}**\n` +
+              `📅 ${when} AEST${game.note ? ` — ${game.note}` : ''}\n` +
+              `${password ? `🔑 Password: \`${password}\`` : '🔓 No password'}\n` +
+              `📨 Invites sent to ${accountIds.length} RSVP'd player${accountIds.length !== 1 ? 's' : ''}. ` +
+              `Join via your Steam friends list or Dota 2 lobby browser.\n` +
+              `An admin can start the game with \`!start_game\` once all 10 players are seated.`
+            ).catch(() => {});
+          }
+        }
+        console.log(`[LobbyAuto] Lobby "${lobbyName}" created and invites sent for game #${game.id}`);
+      } catch (err) {
+        console.error(`[LobbyAuto] Failed to auto-create lobby for game #${game.id}:`, err.message);
+        // Unmark so we can retry
+        await db.getPool().query('UPDATE scheduled_games SET lobby_created = FALSE WHERE id = $1', [game.id]).catch(() => {});
+      }
+    }
+  }
+
   async start() {
     if (!config.discord.token) throw new Error('DISCORD_TOKEN not configured.');
     await this.client.login(config.discord.token);
@@ -2794,6 +2879,22 @@ class DiscordBot {
       // Game reminders: check every 10 minutes for upcoming games needing 24h/1h reminders
       setInterval(() => this._sendScheduleReminders().catch(err => console.error('[Reminders] Error:', err.message)), 10 * 60 * 1000);
       setTimeout(() => this._sendScheduleReminders().catch(() => {}), 15000);
+
+      // Auto-create lobby at game time: check every minute
+      setInterval(() => this._autoCreateScheduledLobbies().catch(err => console.error('[LobbyAuto] Error:', err.message)), 60 * 1000);
+
+      // 10-player seated notification
+      const lobbyMgr = tryGetLobbyManager();
+      if (lobbyMgr) {
+        lobbyMgr.on('tenPlayersSeated', async (lobby) => {
+          const channelId = config.discord.announceChannelId;
+          if (!channelId) return;
+          try {
+            const ch = this.client.channels.cache.get(channelId) || await this.client.channels.fetch(channelId).catch(() => null);
+            if (ch) await ch.send(`🟢 **10 players seated in "${lobby.name}"** — lobby is full and ready! An admin can launch with \`!start_game\` or via the admin panel.`);
+          } catch {}
+        });
+      }
 
       // Announce any new patch notes after a short delay (let channel cache populate)
       setTimeout(() => this._announceNewPatchNotes().catch(() => {}), 8000);

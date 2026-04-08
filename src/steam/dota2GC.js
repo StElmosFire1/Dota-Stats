@@ -71,6 +71,14 @@ function getLobbyProtos() {
     new protobuf.Type('CMsgPracticeLobbyJoinResponse')
       .add(new protobuf.Field('result', 1, 'uint32'))
   );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgPracticeLobbyLaunch')
+      .add(new protobuf.Field('dummy', 1, 'uint32'))
+  );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgPracticeLobbyJoinBroadcastChannel')
+      .add(new protobuf.Field('channel_id', 1, 'uint32'))
+  );
   protoRoot.resolveAll();
   return protoRoot;
 }
@@ -86,7 +94,7 @@ function encodeLobbyCreate(options) {
       server_region: options.server_region || SERVER_REGION.AUSTRALIA,
       game_mode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
       allow_spectating: options.allow_spectating !== false,
-      visibility: 0,
+      visibility: 1, // 0=Public, 1=Friends, 2=Unlisted
       allchat: true,
       dota_tv_delay: 2,
       pause_setting: 1,
@@ -507,6 +515,34 @@ class Dota2GCClient extends EventEmitter {
         reject(new Error(`Failed to send lobby join: ${err.message}`));
       }
     });
+  }
+
+  launchLobby() {
+    if (!this.isReady) throw new Error('GC not ready.');
+    try {
+      const root = getLobbyProtos();
+      const Type = root.lookupType('dota.CMsgPracticeLobbyLaunch');
+      const buf = Buffer.from(Type.encode(Type.create({})).finish());
+      this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbyLaunch, buf);
+      console.log('[Dota2 GC] Lobby launch request sent.');
+    } catch (e) {
+      throw new Error(`Failed to launch lobby: ${e.message}`);
+    }
+  }
+
+  joinBroadcastChannel(channelId = 0) {
+    if (!this.isReady) return false;
+    try {
+      const root = getLobbyProtos();
+      const Type = root.lookupType('dota.CMsgPracticeLobbyJoinBroadcastChannel');
+      const buf = Buffer.from(Type.encode(Type.create({ channel_id: channelId })).finish());
+      this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbyJoinBroadcastChannel, buf);
+      console.log(`[Dota2 GC] Joined broadcast channel ${channelId}.`);
+      return true;
+    } catch (e) {
+      console.warn('[Dota2 GC] Failed to join broadcast channel:', e.message);
+      return false;
+    }
   }
 
   inviteToLobby(steamId64) {

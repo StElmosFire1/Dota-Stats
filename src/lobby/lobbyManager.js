@@ -80,7 +80,14 @@ class LobbyManager extends EventEmitter {
       }
 
       if (this.currentLobby && update.players) {
+        const prevGamePlayers = this.currentLobby._gamePlayerCount || 0;
+        const gamePlayers = update.players.filter(p => p.team === 0 || p.team === 1).length;
+        this.currentLobby._gamePlayerCount = gamePlayers;
         this.currentLobby.players = update.players;
+        if (prevGamePlayers < 10 && gamePlayers >= 10) {
+          console.log('[Lobby] 10 game players seated!');
+          this.emit('tenPlayersSeated', this.currentLobby);
+        }
       }
 
       if (update.gameState >= DOTA_GAME_STATE.GAME_IN_PROGRESS && this.state === LobbyState.WAITING) {
@@ -172,12 +179,25 @@ class LobbyManager extends EventEmitter {
         this._setRichPresence(this.lobbyId);
       }
 
+      // Move bot to broadcast channel so it doesn't occupy a player slot
+      setTimeout(() => {
+        try { client.gcClient.joinBroadcastChannel(0); } catch {}
+      }, 2000);
+
       console.log(`[Lobby] Created lobby: ${name} (ID: ${this.lobbyId || 'pending'})`);
       return this.currentLobby;
     } catch (err) {
       this.state = LobbyState.IDLE;
       throw new Error(`Lobby creation failed: ${err.message}`);
     }
+  }
+
+  launchLobby() {
+    const client = getSteamClient();
+    if (!client.gcClient || !client.gcClient.isReady) throw new Error('GC not connected.');
+    if (this.state !== LobbyState.WAITING) throw new Error('No active lobby in waiting state.');
+    client.gcClient.launchLobby();
+    return true;
   }
 
   async endLobby() {

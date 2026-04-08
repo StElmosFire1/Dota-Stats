@@ -663,10 +663,21 @@ function SteamBotPanel({ superuserKey }) {
           </div>
         </div>
 
-        {/* End Lobby + Add Friends */}
+        {/* End Lobby + Launch + Add Friends */}
         <div style={{ background: 'var(--bg-card)', padding: 16, borderRadius: 8 }}>
           <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Other Actions</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                Launch the game once all 10 players are seated. This cannot be undone.
+              </p>
+              <button className="btn" style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+                disabled={!lobbyActive}
+                onClick={() => callApi('/api/admin/steam/lobby/start', {}, setEndMsg, setEndLoading)}>
+                🚀 Launch Game
+              </button>
+            </div>
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
             <div>
               <button className="btn" style={{ background: 'var(--dire-color)', borderColor: 'var(--dire-color)' }}
                 disabled={endLoading}
