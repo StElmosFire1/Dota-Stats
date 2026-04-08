@@ -663,7 +663,14 @@ class DiscordBot {
     if (this.pendingRegistrations.has(user.id)) return;
 
     // Check if already registered in either the players table or nicknames
-    const registered = await db.isDiscordRegistered(user.id).catch(() => false);
+    let registered = false;
+    try {
+      registered = await db.isDiscordRegistered(user.id);
+      console.log(`[RSVP] isDiscordRegistered(${user.id} / ${user.username}): ${registered}`);
+    } catch (err) {
+      console.error(`[RSVP] isDiscordRegistered error for ${user.username}:`, err.message);
+      return; // Fail safe — if DB check fails, don't DM
+    }
     if (registered) return;
 
     // Not registered — DM them

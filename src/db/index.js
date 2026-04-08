@@ -5664,14 +5664,20 @@ async function saveRsvpMessageId(gameId, messageId, channelId) {
 
 async function isDiscordRegistered(discordId) {
   const p = getPool();
-  const r = await p.query(
-    `SELECT 1 FROM players WHERE discord_id = $1
-     UNION ALL
-     SELECT 1 FROM nicknames WHERE discord_id = $1 AND discord_id != ''
-     LIMIT 1`,
-    [discordId]
+  const id = (discordId || '').toString().trim();
+  if (!id) return false;
+  // Check players table first
+  const playersRes = await p.query(
+    `SELECT 1 FROM players WHERE TRIM(discord_id) = $1 AND discord_id != '' LIMIT 1`,
+    [id]
   );
-  return r.rows.length > 0;
+  if (playersRes.rows.length > 0) return true;
+  // Check nicknames table (Discord IDs linked via admin panel)
+  const nicknamesRes = await p.query(
+    `SELECT 1 FROM nicknames WHERE TRIM(discord_id) = $1 AND discord_id != '' AND discord_id IS NOT NULL LIMIT 1`,
+    [id]
+  );
+  return nicknamesRes.rows.length > 0;
 }
 
 async function addScheduleRsvpBySteam(gameId, accountId, displayName, status) {
