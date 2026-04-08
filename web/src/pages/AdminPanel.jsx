@@ -531,6 +531,176 @@ function ErrorLogViewer({ superuserKey }) {
   );
 }
 
+function SteamBotPanel({ superuserKey }) {
+  const auth = { 'x-superuser-key': superuserKey };
+  const [status, setStatus] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  // Lobby create
+  const [lobbyName, setLobbyName] = useState('OCE Inhouse');
+  const [lobbyPass, setLobbyPass] = useState('');
+  const [lobbyMsg, setLobbyMsg] = useState(null);
+  const [lobbyLoading, setLobbyLoading] = useState(false);
+
+  // Join lobby
+  const [joinId, setJoinId] = useState('');
+  const [joinPass, setJoinPass] = useState('');
+  const [joinMsg, setJoinMsg] = useState(null);
+  const [joinLoading, setJoinLoading] = useState(false);
+
+  // Invite
+  const [inviteSteamId, setInviteSteamId] = useState('');
+  const [inviteMsg, setInviteMsg] = useState(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+
+  // Friends
+  const [friendsMsg, setFriendsMsg] = useState(null);
+  const [friendsLoading, setFriendsLoading] = useState(false);
+
+  // End lobby
+  const [endMsg, setEndMsg] = useState(null);
+  const [endLoading, setEndLoading] = useState(false);
+
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try {
+      const r = await fetch('/api/admin/steam/status', { headers: auth });
+      setStatus(await r.json());
+    } catch { setStatus(null); }
+    setStatusLoading(false);
+  }, [superuserKey]);
+
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  const dot = (ok) => (
+    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: ok ? '#4ade80' : '#ef4444', marginRight: 6 }} />
+  );
+
+  const callApi = async (url, body, setMsg, setLoading) => {
+    setLoading(true); setMsg(null);
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...auth },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      setMsg({ ok: r.ok, text: d.error || d.message || (r.ok ? 'Done' : 'Failed') });
+      if (r.ok) setTimeout(loadStatus, 1500);
+    } catch (e) { setMsg({ ok: false, text: e.message }); }
+    setLoading(false);
+  };
+
+  const statusColor = (ok) => ok ? 'var(--radiant-color)' : 'var(--dire-color)';
+  const msgEl = (m) => m && (
+    <p style={{ marginTop: 6, fontSize: 13, color: m.ok ? 'var(--radiant-color)' : 'var(--dire-color)' }}>{m.ok ? '✅' : '❌'} {m.text}</p>
+  );
+
+  const lobbyState = status?.lobby?.lobby;
+  const lobbyActive = !!lobbyState;
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <h2 style={{ margin: 0 }}>🤖 Steam Bot Controls</h2>
+        <button className="btn" style={{ fontSize: 12, padding: '3px 10px' }} onClick={loadStatus} disabled={statusLoading}>
+          {statusLoading ? '...' : '↺ Refresh'}
+        </button>
+      </div>
+
+      {/* Status row */}
+      {status && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 20, background: 'var(--bg-card)', padding: '12px 16px', borderRadius: 8 }}>
+          <span>{dot(status.steamConnected)}<strong>Steam</strong>: <span style={{ color: statusColor(status.steamConnected) }}>{status.steamConnected ? 'Connected' : 'Offline'}</span></span>
+          <span>{dot(status.gcReady)}<strong>GC</strong>: <span style={{ color: statusColor(status.gcReady) }}>{status.gcReady ? 'Ready' : 'Not ready'}</span></span>
+          <span>👥 <strong>Friends:</strong> {status.friendCount ?? '—'}</span>
+          <span>🎮 <strong>Lobby:</strong> {lobbyActive ? <span style={{ color: 'var(--radiant-color)' }}>{lobbyState.name} ({status.lobby?.state})</span> : <span style={{ color: 'var(--text-muted)' }}>None</span>}</span>
+          {lobbyActive && lobbyState.lobbyId && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>ID: {lobbyState.lobbyId}</span>}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+
+        {/* Create Lobby */}
+        <div style={{ background: 'var(--bg-card)', padding: 16, borderRadius: 8 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Create Lobby</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input className="input" placeholder="Lobby name" value={lobbyName} onChange={e => setLobbyName(e.target.value)} />
+            <input className="input" placeholder="Password (optional)" value={lobbyPass} onChange={e => setLobbyPass(e.target.value)} />
+            <button className="btn" disabled={lobbyLoading || !lobbyName.trim()}
+              onClick={() => callApi('/api/admin/steam/lobby/create', { name: lobbyName, password: lobbyPass }, setLobbyMsg, setLobbyLoading)}>
+              {lobbyLoading ? 'Creating…' : '🎮 Create Lobby'}
+            </button>
+            {msgEl(lobbyMsg)}
+          </div>
+        </div>
+
+        {/* Join Lobby */}
+        <div style={{ background: 'var(--bg-card)', padding: 16, borderRadius: 8 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Join Existing Lobby</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input className="input" placeholder="Lobby ID" value={joinId} onChange={e => setJoinId(e.target.value)} />
+            <input className="input" placeholder="Password (if any)" value={joinPass} onChange={e => setJoinPass(e.target.value)} />
+            <button className="btn" disabled={joinLoading || !joinId.trim()}
+              onClick={() => callApi('/api/admin/steam/lobby/join', { lobbyId: joinId, password: joinPass }, setJoinMsg, setJoinLoading)}>
+              {joinLoading ? 'Joining…' : '🔗 Join Lobby'}
+            </button>
+            {msgEl(joinMsg)}
+          </div>
+        </div>
+
+        {/* Invite Player */}
+        <div style={{ background: 'var(--bg-card)', padding: 16, borderRadius: 8 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Invite Player</h3>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Accepts Steam64, Steam3 [U:1:N], or STEAM_0:Y:Z format. Lobby must be active.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input className="input" placeholder="e.g. STEAM_0:1:17972010" value={inviteSteamId} onChange={e => setInviteSteamId(e.target.value)} />
+            <button className="btn" disabled={inviteLoading || !inviteSteamId.trim()}
+              onClick={() => callApi('/api/admin/steam/lobby/invite', { steamId: inviteSteamId }, setInviteMsg, setInviteLoading)}>
+              {inviteLoading ? 'Inviting…' : '📨 Send Invite'}
+            </button>
+            {msgEl(inviteMsg)}
+          </div>
+        </div>
+
+        {/* End Lobby + Add Friends */}
+        <div style={{ background: 'var(--bg-card)', padding: 16, borderRadius: 8 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Other Actions</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <button className="btn" style={{ background: 'var(--dire-color)', borderColor: 'var(--dire-color)' }}
+                disabled={endLoading}
+                onClick={() => callApi('/api/admin/steam/lobby/end', {}, setEndMsg, setEndLoading)}>
+                {endLoading ? 'Leaving…' : '🚪 End / Leave Lobby'}
+              </button>
+              {msgEl(endMsg)}
+            </div>
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
+            <div>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Send friend requests to all registered players so they can receive Steam reminders.</p>
+              <button className="btn" disabled={friendsLoading}
+                onClick={async () => {
+                  setFriendsLoading(true); setFriendsMsg(null);
+                  try {
+                    const r = await fetch('/api/admin/steam/friends/add-all', { method: 'POST', headers: auth });
+                    const d = await r.json();
+                    setFriendsMsg({ ok: r.ok, text: d.message || d.error || (r.ok ? 'Requests sent!' : 'Failed') });
+                    setTimeout(loadStatus, 3000);
+                  } catch (e) { setFriendsMsg({ ok: false, text: e.message }); }
+                  setFriendsLoading(false);
+                }}>
+                {friendsLoading ? 'Sending…' : '👥 Add All Known Friends'}
+              </button>
+              {msgEl(friendsMsg)}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  );
+}
+
 export default function AdminPanel() {
   const { isSuperuser, superuserKey, logout } = useSuperuser();
   const { selectedSeason } = useSeason();
@@ -700,6 +870,9 @@ export default function AdminPanel() {
           </div>
         </div>
       </section>
+
+      {/* Steam Bot Controls */}
+      <SteamBotPanel superuserKey={superuserKey} />
 
       {/* Stored Replays */}
       <ReplayManager superuserKey={superuserKey} />

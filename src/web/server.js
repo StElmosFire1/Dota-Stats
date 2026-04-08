@@ -1456,6 +1456,114 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  // ── Steam Bot Controls ────────────────────────────────────────────────────
+  function tryGetSteamClient() {
+    try { return require('../steam/steamClient').getSteamClient(); } catch { return null; }
+  }
+  function tryGetLobbyManager() {
+    try { return require('../lobby/lobbyManager').getLobbyManager(); } catch { return null; }
+  }
+
+  /** Convert any Steam ID format to Steam64 string */
+  function parseSteamIdToSteam64(raw) {
+    const input = (raw || '').trim();
+    const MIN = 76561197960265728n;
+    // Steam2: STEAM_0:Y:Z or STEAM_1:Y:Z
+    const s2 = input.match(/^STEAM_[01]:(\d+):(\d+)$/i);
+    if (s2) return (MIN + BigInt(s2[2]) * 2n + BigInt(s2[1])).toString();
+    // Steam3: [U:1:N]
+    const s3 = input.match(/^\[U:1:(\d+)\]$/i);
+    if (s3) return (MIN + BigInt(s3[1])).toString();
+    // Steam64
+    if (/^\d{17}$/.test(input)) return input;
+    // Account ID (32-bit)
+    if (/^\d{1,10}$/.test(input)) return (MIN + BigInt(input)).toString();
+    throw new Error(`Unrecognised Steam ID format: ${input}`);
+  }
+
+  router.get('/admin/steam/status', requireSuperuser, (req, res) => {
+    try {
+      const steam = tryGetSteamClient();
+      const lobby = tryGetLobbyManager();
+      const friends = steam?.steamClient?.myFriends || {};
+      const friendCount = Object.values(friends).filter(v => v === 3).length;
+      const lobbyStatus = lobby ? lobby.getStatus() : null;
+      res.json({
+        steamConnected: !!steam?.isLoggedIn,
+        gcReady: !!steam?.isGCReady,
+        friendCount,
+        lobby: lobbyStatus,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/steam/lobby/create', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const lobby = tryGetLobbyManager();
+      if (!lobby) return res.status(503).json({ error: 'Lobby manager not available' });
+      const { name, password } = req.body;
+      if (!name) return res.status(400).json({ error: 'name is required' });
+      const result = await lobby.createLobby(name, password || '', 'web-admin');
+      res.json({ ok: true, lobby: result });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/steam/lobby/join', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const lobby = tryGetLobbyManager();
+      if (!lobby) return res.status(503).json({ error: 'Lobby manager not available' });
+      const { lobbyId, password } = req.body;
+      if (!lobbyId) return res.status(400).json({ error: 'lobbyId is required' });
+      const result = await lobby.joinLobby(lobbyId, password || '', 'web-admin');
+      res.json({ ok: true, lobby: result });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/steam/lobby/end', requireSuperuser, async (req, res) => {
+    try {
+      const lobby = tryGetLobbyManager();
+      if (!lobby) return res.status(503).json({ error: 'Lobby manager not available' });
+      await lobby.endLobby();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/steam/lobby/invite', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const lobby = tryGetLobbyManager();
+      if (!lobby) return res.status(503).json({ error: 'Lobby manager not available' });
+      const { steamId } = req.body;
+      if (!steamId) return res.status(400).json({ error: 'steamId is required' });
+      const steam64 = parseSteamIdToSteam64(steamId);
+      const ok = lobby.invitePlayer(steam64);
+      res.json({ ok: !!ok, steam64 });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/steam/friends/add-all', requireSuperuser, async (req, res) => {
+    try {
+      const steam = tryGetSteamClient();
+      if (!steam?.isLoggedIn) return res.status(503).json({ error: 'Steam not connected' });
+      const accountIds = await db.getAllSteamAccountIds();
+      res.json({ ok: true, count: accountIds.length, message: `Sending friend requests to ${accountIds.length} players in the background...` });
+      // Run non-blocking after response
+      steam.addAllKnownFriends(accountIds).catch(e => console.error('[Admin] addAllKnownFriends:', e.message));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  // ─────────────────────────────────────────────────────────────────────────
+
   router.post('/admin/recalculate-ratings', requireSuperuser, async (req, res) => {
     try {
       console.log('[API] Recalculating all TrueSkill ratings...');
