@@ -3061,4 +3061,30 @@ function setJobTerminal(jobId, data) {
   setTimeout(() => uploadJobs.delete(jobId), 30 * 60 * 1000);
 }
 
-module.exports = { createServer };
+function processReplayInternal(filePath, source) {
+  const jobId = crypto.randomBytes(8).toString('hex');
+  let fileSize = 0;
+  try { fileSize = fs.statSync(filePath).size; } catch (_) {}
+  uploadJobs.set(jobId, {
+    status: 'uploading',
+    fileName: path.basename(filePath),
+    fileSize,
+    totalChunks: 1,
+    chunksReceived: new Set([0]),
+    startedAt: Date.now(),
+    patch: null,
+    filePath,
+  });
+  return new Promise((resolve, reject) => {
+    processReplayJob(jobId, filePath, source).then(() => {
+      const result = uploadJobs.get(jobId);
+      if (result && result.status === 'error') {
+        reject(new Error(result.error || 'Parse failed'));
+      } else {
+        resolve(result);
+      }
+    }).catch(reject);
+  });
+}
+
+module.exports = { createServer, processReplayInternal };

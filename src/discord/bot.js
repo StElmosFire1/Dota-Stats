@@ -91,6 +91,27 @@ class DiscordBot {
 
       this._notifyChannel(`Match ended! Recording match **${matchId || 'unknown'}**...`);
 
+      if (matchId) {
+        const steamClient = tryGetSteamClient();
+        const gcClient = steamClient?.gcClient;
+        if (gcClient) {
+          try {
+            const { autoDownloadAndProcessReplay } = require('../services/replayDownloader');
+            const { processReplayInternal } = require('../web/server');
+            autoDownloadAndProcessReplay(
+              gcClient,
+              matchId,
+              (filePath, source) => processReplayInternal(filePath, source),
+              (msg) => this._notifyChannel(msg)
+            ).catch(err => console.error('[ReplayDL] Unhandled error:', err.message));
+          } catch (err) {
+            console.warn('[ReplayDL] Could not start auto-download:', err.message);
+          }
+        } else {
+          console.warn('[ReplayDL] No GC client available — skipping auto-replay download.');
+        }
+      }
+
       try {
         const sheetsStore = getSheetsStore();
         const statsService = getStatsService();
