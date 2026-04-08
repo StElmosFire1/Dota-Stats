@@ -610,12 +610,11 @@ class DiscordBot {
     const status = lobbyManager.getStatus();
     if (!status.lobby) return msg.reply('No active lobby. Create one first with `!create_lobby`.');
     const seated = status.lobby._gamePlayerCount || 0;
-    if (seated < 10) {
-      return msg.reply(`Only ${seated}/10 players are seated — wait until the lobby is full before launching.`);
-    }
     try {
+      // Cancel any active countdown first, then force-launch
+      if (lobbyManager._countdownTimer) lobbyManager._abortCountdown();
       lobbyManager.launchLobby();
-      await msg.reply(`🚀 **Game launched!** Match is starting in "${status.lobby.name}".`);
+      await msg.reply(`🚀 **Game launched!** (${seated}/10 players seated) — Match is starting in "${status.lobby.name}".`);
     } catch (err) {
       await msg.reply(`Error: ${err.message}`);
     }

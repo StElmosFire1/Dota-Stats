@@ -79,6 +79,23 @@ function getLobbyProtos() {
     new protobuf.Type('CMsgPracticeLobbyJoinBroadcastChannel')
       .add(new protobuf.Field('channel_id', 1, 'uint32'))
   );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgDOTAJoinChatChannel')
+      .add(new protobuf.Field('channel_name', 1, 'string'))
+      .add(new protobuf.Field('channel_type', 2, 'uint32'))
+  );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgDOTAJoinChatChannelResponse')
+      .add(new protobuf.Field('result', 1, 'uint32'))
+      .add(new protobuf.Field('channel_name', 2, 'string'))
+      .add(new protobuf.Field('channel_id', 3, 'uint64'))
+      .add(new protobuf.Field('max_users', 4, 'uint32'))
+  );
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgDOTAChatMessage')
+      .add(new protobuf.Field('channel_id', 1, 'uint64'))
+      .add(new protobuf.Field('text', 2, 'string'))
+  );
   protoRoot.resolveAll();
   return protoRoot;
 }
@@ -93,6 +110,9 @@ function encodeLobbyCreate(options) {
       pass_key: options.pass_key || '',
       server_region: options.server_region || SERVER_REGION.AUSTRALIA,
       game_mode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
+      cm_pick: options.cm_pick !== undefined ? options.cm_pick : 1,  // 1=Radiant/home picks first
+      allow_cheats: false,
+      fill_with_bots: false,
       allow_spectating: options.allow_spectating !== false,
       visibility: 1, // 0=Public, 1=Friends, 2=Unlisted
       allchat: true,
@@ -118,6 +138,7 @@ class Dota2GCClient extends EventEmitter {
     this.isReady = false;
     this.currentLobby = null;
     this._pendingLobbyCreate = false;
+    this.lobbyChatChannelId = null;
 
     this._setupListeners();
   }
@@ -179,6 +200,18 @@ class Dota2GCClient extends EventEmitter {
           this.emit('lobbyResponse', decoded);
         } catch (e) {
           console.log(`[Dota2 GC] Lobby response (raw decode failed): ${e.message}`);
+        }
+      } else if (msgType === EDOTAGCMsg.k_EMsgGCJoinChatChannelResponse) {
+        try {
+          const root = getLobbyProtos();
+          const Type = root.lookupType('dota.CMsgDOTAJoinChatChannelResponse');
+          const decoded = Type.decode(payload);
+          if (decoded.channelId && decoded.channelId !== '0') {
+            this.lobbyChatChannelId = decoded.channelId;
+            console.log(`[Dota2 GC] Lobby chat channel joined: "${decoded.channelName}" (id=${decoded.channelId})`);
+          }
+        } catch (e) {
+          console.warn('[Dota2 GC] JoinChatChannelResponse decode failed:', e.message);
         }
       } else if (msgType === EGCBaseMsg.k_EMsgGCInviteToLobby) {
         console.log('[Dota2 GC] Received lobby invite via GC message (k_EMsgGCInviteToLobby).');
@@ -404,6 +437,9 @@ class Dota2GCClient extends EventEmitter {
         clearTimeout(timer);
         cleanup();
         console.log('[Dota2 GC] Lobby created (confirmed via SO cache).');
+        if (data.lobbyId) {
+          setTimeout(() => this.joinLobbyChatChannel(data.lobbyId), 2000);
+        }
         resolve({ id: data.lobbyId, eresult: 0 });
       };
 
@@ -434,6 +470,7 @@ class Dota2GCClient extends EventEmitter {
       const buffer = encodeLobbyLeave();
       this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbyLeave, buffer);
       this.currentLobby = null;
+      this.lobbyChatChannelId = null;
       console.log('[Dota2 GC] Left practice lobby.');
     } catch (e) {
       console.warn('[Dota2 GC] Error leaving lobby:', e.message);
@@ -527,6 +564,46 @@ class Dota2GCClient extends EventEmitter {
       console.log('[Dota2 GC] Lobby launch request sent.');
     } catch (e) {
       throw new Error(`Failed to launch lobby: ${e.message}`);
+    }
+  }
+
+  joinLobbyChatChannel(lobbyId) {
+    if (!this.isReady) return false;
+    try {
+      const root = getLobbyProtos();
+      const Type = root.lookupType('dota.CMsgDOTAJoinChatChannel');
+      const channelName = `Lobby_${lobbyId}`;
+      const buf = Buffer.from(Type.encode(Type.create({
+        channel_name: channelName,
+        channel_type: 4, // DOTAChatChannelType_Lobby
+      })).finish());
+      this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCJoinChatChannel, buf);
+      console.log(`[Dota2 GC] Sent join lobby chat channel request: ${channelName}`);
+      return true;
+    } catch (e) {
+      console.warn('[Dota2 GC] Failed to join lobby chat channel:', e.message);
+      return false;
+    }
+  }
+
+  sendLobbyChat(text) {
+    if (!this.isReady) return false;
+    if (!this.lobbyChatChannelId) {
+      console.warn('[Dota2 GC] Cannot send lobby chat — no channel ID (not yet joined).');
+      return false;
+    }
+    try {
+      const root = getLobbyProtos();
+      const Type = root.lookupType('dota.CMsgDOTAChatMessage');
+      const buf = Buffer.from(Type.encode(Type.create({
+        channel_id: this.lobbyChatChannelId,
+        text,
+      })).finish());
+      this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCChatMessage, buf);
+      return true;
+    } catch (e) {
+      console.warn('[Dota2 GC] Failed to send lobby chat:', e.message);
+      return false;
     }
   }
 

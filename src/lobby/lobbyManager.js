@@ -37,6 +37,8 @@ class LobbyManager extends EventEmitter {
     this.state = LobbyState.IDLE;
     this.lobbyId = null;
     this._gcListenersSetup = false;
+    this._countdownTimer = null;
+    this._countdownAborted = false;
   }
 
   initListeners() {
@@ -85,8 +87,12 @@ class LobbyManager extends EventEmitter {
         this.currentLobby._gamePlayerCount = gamePlayers;
         this.currentLobby.players = update.players;
         if (prevGamePlayers < 10 && gamePlayers >= 10) {
-          console.log('[Lobby] 10 game players seated!');
+          console.log('[Lobby] 10 game players seated — starting countdown!');
           this.emit('tenPlayersSeated', this.currentLobby);
+          this._startCountdown();
+        } else if (prevGamePlayers >= 10 && gamePlayers < 10 && this._countdownTimer) {
+          console.log('[Lobby] Player left during countdown — aborting.');
+          this._abortCountdown();
         }
       }
 
@@ -200,9 +206,67 @@ class LobbyManager extends EventEmitter {
     return true;
   }
 
+  _chat(text) {
+    try {
+      const client = getSteamClient();
+      if (client.gcClient) client.gcClient.sendLobbyChat(text);
+    } catch {}
+  }
+
+  _startCountdown(seconds = 15) {
+    this._countdownAborted = false;
+    if (this._countdownTimer) {
+      clearInterval(this._countdownTimer);
+      this._countdownTimer = null;
+    }
+
+    this._chat(`⚔️ All 10 players seated! Game starts in ${seconds} seconds... (move to a team slot if you haven't)`);
+    console.log(`[Lobby] Starting ${seconds}s countdown.`);
+
+    let remaining = seconds;
+    const ANNOUNCE_AT = new Set([15, 10, 5, 4, 3, 2, 1]);
+
+    this._countdownTimer = setInterval(() => {
+      if (this._countdownAborted) {
+        clearInterval(this._countdownTimer);
+        this._countdownTimer = null;
+        return;
+      }
+      remaining--;
+
+      if (remaining <= 0) {
+        clearInterval(this._countdownTimer);
+        this._countdownTimer = null;
+        this._chat('🚀 Launching game now!');
+        console.log('[Lobby] Countdown complete — launching lobby.');
+        try { this.launchLobby(); } catch (e) {
+          console.error('[Lobby] Auto-launch after countdown failed:', e.message);
+        }
+      } else if (ANNOUNCE_AT.has(remaining)) {
+        this._chat(`⏱ Game starting in ${remaining} second${remaining !== 1 ? 's' : ''}...`);
+      }
+    }, 1000);
+  }
+
+  _abortCountdown() {
+    this._countdownAborted = true;
+    if (this._countdownTimer) {
+      clearInterval(this._countdownTimer);
+      this._countdownTimer = null;
+    }
+    this._chat('⚠️ Countdown aborted — a player left the lobby. Waiting for 10 players again...');
+    console.log('[Lobby] Countdown aborted — player count dropped below 10.');
+  }
+
   async endLobby() {
     if (this.state === LobbyState.IDLE) {
       throw new Error('No active lobby to end.');
+    }
+
+    if (this._countdownTimer) {
+      clearInterval(this._countdownTimer);
+      this._countdownTimer = null;
+      this._countdownAborted = true;
     }
 
     const lobbyInfo = { ...this.currentLobby };
@@ -364,6 +428,11 @@ class LobbyManager extends EventEmitter {
   }
 
   resetState() {
+    if (this._countdownTimer) {
+      clearInterval(this._countdownTimer);
+      this._countdownTimer = null;
+      this._countdownAborted = true;
+    }
     this._clearRichPresence();
     this.state = LobbyState.IDLE;
     this.currentLobby = null;
