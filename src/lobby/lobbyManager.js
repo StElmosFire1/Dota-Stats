@@ -145,6 +145,25 @@ class LobbyManager extends EventEmitter {
         console.warn(`[Lobby] Failed to auto-accept invite: ${e.message}`);
       }
     });
+
+    client.gcClient.on('partyInviteReceived', async (invite) => {
+      const trusted = config.steam.trustedSteamIds || [];
+      if (!trusted.includes(invite.senderId)) {
+        console.log(`[Lobby] Ignoring party invite from ${invite.senderName} (${invite.senderId}) — not in trusted list.`);
+        return;
+      }
+      if (!invite.partyId || invite.partyId === '0') {
+        console.warn(`[Lobby] Party invite from ${invite.senderName} had no valid party ID — cannot accept.`);
+        return;
+      }
+      console.log(`[Lobby] Trusted party invite from ${invite.senderName} — accepting party ${invite.partyId}...`);
+      try {
+        client.gcClient.acceptPartyInvite(invite.partyId);
+        this.emit('partyJoined', { senderName: invite.senderName, senderId: invite.senderId, partyId: invite.partyId });
+      } catch (e) {
+        console.warn(`[Lobby] Failed to accept party invite: ${e.message}`);
+      }
+    });
   }
 
   async createLobby(name, password, requestedBy) {

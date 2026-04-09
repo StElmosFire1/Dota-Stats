@@ -71,6 +71,13 @@ class DiscordBot {
       this._notifyChannel({ embeds: [embed] });
     });
 
+    lobbyManager.on('partyJoined', (info) => {
+      this._notifyChannel(
+        `🤝 **Joined party** with **${info.senderName}**. ` +
+        `When they create a practice lobby, the bot will auto-join and track the match.`
+      );
+    });
+
     lobbyManager.on('matchEnded', async (lobby) => {
       const matchId = lobby.matchId;
       const lobbyMatchStats = lobby.lobbyMatchStats;

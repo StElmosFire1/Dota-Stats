@@ -103,6 +103,11 @@ const config = {
     accountName: process.env.STEAM_ACCOUNT,
     password: process.env.STEAM_PASSWORD,
     sharedSecret: process.env.STEAM_SHARED_SECRET,
+    // Comma-separated Steam64 IDs allowed to invite the bot to parties/lobbies.
+    // STEAM_0:1:17972010 = 76561197996209749
+    trustedSteamIds: process.env.TRUSTED_STEAM_IDS
+      ? process.env.TRUSTED_STEAM_IDS.split(',').map(s => s.trim()).filter(Boolean)
+      : ['76561197996209749'],
   },
   sheets: {
     sheetId: process.env.SHEET_ID,

@@ -1,11 +1,13 @@
 const { Dota2User } = require('dota2-user');
-const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects } = require('dota2-user/protobufs');
+const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgPartyInviteResponse } = require('dota2-user/protobufs');
+const { CSODOTAPartyInvite } = require('dota2-user/protobufs/generated/dota_gcmessages_common_match_management');
 const protobuf = require('protobufjs');
 const EventEmitter = require('events');
 
 const DOTA2_APPID = 570;
 const LOBBY_TYPE_ID = 2004;
 const LOBBY_INVITE_TYPE_ID = 2006;
+const PARTY_INVITE_TYPE_ID = 2007;
 
 const GAME_MODE = {
   CAPTAINS_MODE: 2,
@@ -223,6 +225,8 @@ class Dota2GCClient extends EventEmitter {
         } catch (e) {
           console.log('[Dota2 GC] Could not decode invite message:', e.message);
         }
+      } else if (msgType === EGCBaseMsg.k_EMsgGCInviteToParty) {
+        console.log('[Dota2 GC] Received party invite via GC message (k_EMsgGCInviteToParty) — CSO will carry the full invite data.');
       } else {
         console.log(`[Dota2 GC] Unhandled GC message: msgType=${msgType} (${payload.length} bytes)`);
       }
@@ -261,6 +265,38 @@ class Dota2GCClient extends EventEmitter {
     const senderId = invite.senderId ? invite.senderId.toString() : 'Unknown';
     console.log(`[Dota2 GC] Lobby invite received from ${senderName} (${senderId}), lobby: ${lobbyId}`);
     this.emit('lobbyInviteReceived', { lobbyId, senderId, senderName });
+  }
+
+  _tryDecodePartyInvite(typeId, objectData) {
+    if (typeId !== PARTY_INVITE_TYPE_ID) return null;
+    try {
+      return CSODOTAPartyInvite.decode(objectData);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _processPartyInvite(invite) {
+    if (!invite) return;
+    const partyId = invite.groupId ? invite.groupId.toString() : null;
+    const senderId = invite.senderId ? invite.senderId.toString() : 'Unknown';
+    const senderName = invite.senderName || 'Unknown';
+    console.log(`[Dota2 GC] Party invite received from ${senderName} (${senderId}), party: ${partyId}`);
+    this.emit('partyInviteReceived', { partyId, senderId, senderName });
+  }
+
+  acceptPartyInvite(partyId) {
+    if (!this.dota2 || !this.dota2.sendToGC) {
+      console.warn('[Dota2 GC] Cannot accept party invite — GC not ready.');
+      return;
+    }
+    try {
+      const buf = CMsgPartyInviteResponse.encode({ partyId: partyId.toString(), accept: true }).finish();
+      this.dota2.sendToGC(EGCBaseMsg.k_EMsgGCPartyInviteResponse, buf);
+      console.log(`[Dota2 GC] Sent party invite acceptance for party ${partyId}`);
+    } catch (e) {
+      console.warn('[Dota2 GC] Failed to send party invite response:', e.message);
+    }
   }
 
   _processLobbyData(lobby) {
@@ -316,6 +352,10 @@ class Dota2GCClient extends EventEmitter {
           if (invite) {
             this._processLobbyInvite(invite);
           }
+          const partyInvite = this._tryDecodePartyInvite(typeId, data);
+          if (partyInvite) {
+            this._processPartyInvite(partyInvite);
+          }
         }
       }
     } catch (e) {
@@ -335,6 +375,10 @@ class Dota2GCClient extends EventEmitter {
       if (invite) {
         this._processLobbyInvite(invite);
       }
+      const partyInvite = this._tryDecodePartyInvite(msg.typeId, msg.objectData);
+      if (partyInvite) {
+        this._processPartyInvite(partyInvite);
+      }
     } catch (e) {
       console.warn('[Dota2 GC] Could not process SO create:', e.message);
     }
@@ -350,6 +394,10 @@ class Dota2GCClient extends EventEmitter {
       const invite = this._tryDecodeLobbyInvite(msg.typeId, msg.objectData);
       if (invite) {
         this._processLobbyInvite(invite);
+      }
+      const partyInvite = this._tryDecodePartyInvite(msg.typeId, msg.objectData);
+      if (partyInvite) {
+        this._processPartyInvite(partyInvite);
       }
     } catch (e) {
       console.warn('[Dota2 GC] Could not process SO update:', e.message);
@@ -368,6 +416,10 @@ class Dota2GCClient extends EventEmitter {
         const invite = this._tryDecodeLobbyInvite(obj.typeId, obj.objectData);
         if (invite) {
           this._processLobbyInvite(invite);
+        }
+        const partyInvite = this._tryDecodePartyInvite(obj.typeId, obj.objectData);
+        if (partyInvite) {
+          this._processPartyInvite(partyInvite);
         }
       }
     } catch (e) {
