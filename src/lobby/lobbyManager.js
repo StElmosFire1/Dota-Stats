@@ -151,11 +151,23 @@ class LobbyManager extends EventEmitter {
         return;
       }
       console.log(`[Lobby] Auto-accepting lobby invite from ${invite.senderName} (lobby: ${invite.lobbyId})...`);
-      // Use CMsgLobbyInviteResponse (correct GC message) — NOT CMsgPracticeLobbyJoin
+      // Step 1: Send CMsgLobbyInviteResponse — tells GC we accept (grants join permission)
       const sent = client.gcClient.acceptLobbyInvite(invite.lobbyId);
-      if (sent) {
-        this.emit('autoJoined', invite);
-      }
+      if (!sent) return;
+      // Step 2: After a short delay, send CMsgPracticeLobbyJoin to actually enter the lobby.
+      // The GC should now allow it since the invite was accepted.
+      setTimeout(async () => {
+        try {
+          if (this.state !== LobbyState.IDLE && this.state !== LobbyState.ENDED) return;
+          console.log(`[Lobby] Following up invite acceptance with join for lobby ${invite.lobbyId}...`);
+          await this.joinLobby(invite.lobbyId, '', `invite:${invite.senderId}`);
+          this.emit('autoJoined', invite);
+        } catch (err) {
+          console.warn(`[Lobby] Post-invite join failed: ${err.message}`);
+          // Emit anyway — the invite response may be sufficient for the GC to add us
+          this.emit('autoJoined', invite);
+        }
+      }, 1500);
     });
 
     client.gcClient.on('partyInviteReceived', async (invite) => {

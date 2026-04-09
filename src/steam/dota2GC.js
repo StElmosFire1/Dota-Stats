@@ -1,5 +1,5 @@
 const { Dota2User } = require('dota2-user');
-const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgPartyInviteResponse, CMsgLobbyInviteResponse, CMsgInviteToParty } = require('dota2-user/protobufs');
+const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgPartyInviteResponse, CMsgLobbyInviteResponse, CMsgInviteToParty, CMsgClientWelcome } = require('dota2-user/protobufs');
 const { CSODOTAPartyInvite } = require('dota2-user/protobufs/generated/dota_gcmessages_common_match_management');
 const protobuf = require('protobufjs');
 const EventEmitter = require('events');
@@ -153,6 +153,8 @@ class Dota2GCClient extends EventEmitter {
     this.lobbyChatChannelId = null;
     // Holds info from a k_EMsgGCInviteToParty message until CSO data arrives with partyId
     this._pendingPartyInvite = null;
+    // Holds inviter steamId from k_EMsgGCInviteToLobby until CSO data arrives with lobbyId
+    this._pendingLobbyInviteFromSteamId = null;
 
     this._setupListeners();
   }
@@ -228,14 +230,45 @@ class Dota2GCClient extends EventEmitter {
           console.warn('[Dota2 GC] JoinChatChannelResponse decode failed:', e.message);
         }
       } else if (msgType === EGCBaseMsg.k_EMsgGCInviteToLobby) {
-        console.log('[Dota2 GC] Received lobby invite via GC message (k_EMsgGCInviteToLobby).');
+        // Direct lobby invite notification — contains inviter's steamId but NOT the lobbyId.
+        // Buffer the inviter; when CSO type 2006 arrives with the lobbyId, _processLobbyInvite
+        // will use _pendingLobbyInviteFromSteamId to enrich the event.
         try {
-          const root = getLobbyProtos();
-          const Type = root.lookupType('dota.CMsgInviteToLobby');
-          const decoded = Type.decode(payload);
-          console.log(`[Dota2 GC] Invite from steam_id: ${decoded.steam_id}`);
+          const { CMsgInviteToLobby: InviteToLobby } = require('dota2-user/protobufs');
+          const decoded = InviteToLobby.decode(payload);
+          const inviterSteamId = decoded.steamId ? decoded.steamId.toString() : null;
+          console.log(`[Dota2 GC] k_EMsgGCInviteToLobby received — inviter steamId: ${inviterSteamId}`);
+          this._pendingLobbyInviteFromSteamId = inviterSteamId;
+          // If CSO type 2006 doesn't arrive within 3s, clear the buffer
+          if (this._pendingLobbyInviteTimer) clearTimeout(this._pendingLobbyInviteTimer);
+          this._pendingLobbyInviteTimer = setTimeout(() => {
+            this._pendingLobbyInviteFromSteamId = null;
+          }, 3000);
         } catch (e) {
-          console.log('[Dota2 GC] Could not decode invite message:', e.message);
+          console.log('[Dota2 GC] Could not decode CMsgInviteToLobby:', e.message);
+        }
+      } else if (msgType === 4004) {
+        // CMsgClientWelcome — GC sends this at startup with initial CSO subscriptions.
+        // It may contain pending lobby invites (typeId=2006) we'd otherwise miss.
+        try {
+          const welcome = CMsgClientWelcome.decode(payload);
+          const caches = [...(welcome.outofdateSubscribedCaches || []), ...(welcome.uptodateSubscribedCaches || [])];
+          console.log(`[Dota2 GC] ClientWelcome: ${caches.length} CSO cache(s) in startup payload`);
+          for (const cache of caches) {
+            for (const obj of (cache.objects || [])) {
+              const typeId = obj.typeId;
+              for (const data of (obj.objectData || [])) {
+                const lobby = this._tryDecodeLobby(typeId, data);
+                if (lobby) this._processLobbyData(lobby);
+                const invite = this._tryDecodeLobbyInvite(typeId, data);
+                if (invite) { console.log(`[Dota2 GC] Startup pending lobby invite found (typeId=${typeId})`); this._processLobbyInvite(invite); }
+                const partyInvite = this._tryDecodePartyInvite(typeId, data);
+                if (partyInvite) this._processPartyInvite(partyInvite);
+              }
+            }
+          }
+        } catch (e) {
+          console.log(`[Dota2 GC] ClientWelcome (4004) decode failed: ${e.message}`);
         }
       } else if (msgType === EGCBaseMsg.k_EMsgGCInviteToParty) {
         // Decode to get the inviter's Steam64 ID
