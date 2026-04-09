@@ -147,15 +147,14 @@ class LobbyManager extends EventEmitter {
 
     client.gcClient.on('lobbyInviteReceived', async (invite) => {
       if (this.state !== LobbyState.IDLE && this.state !== LobbyState.ENDED) {
-        console.log(`[Lobby] Ignoring lobby invite from ${invite.senderName} - already in a lobby.`);
+        console.log(`[Lobby] Ignoring lobby invite from ${invite.senderName} — already in state: ${this.state}.`);
         return;
       }
-      console.log(`[Lobby] Auto-accepting lobby invite from ${invite.senderName}...`);
-      try {
-        await this.joinLobby(invite.lobbyId, '', `steam:${invite.senderId}`);
+      console.log(`[Lobby] Auto-accepting lobby invite from ${invite.senderName} (lobby: ${invite.lobbyId})...`);
+      // Use CMsgLobbyInviteResponse (correct GC message) — NOT CMsgPracticeLobbyJoin
+      const sent = client.gcClient.acceptLobbyInvite(invite.lobbyId);
+      if (sent) {
         this.emit('autoJoined', invite);
-      } catch (e) {
-        console.warn(`[Lobby] Failed to auto-accept invite: ${e.message}`);
       }
     });
 

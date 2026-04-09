@@ -1,5 +1,5 @@
 const { Dota2User } = require('dota2-user');
-const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgPartyInviteResponse, CMsgInviteToParty } = require('dota2-user/protobufs');
+const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgPartyInviteResponse, CMsgLobbyInviteResponse, CMsgInviteToParty } = require('dota2-user/protobufs');
 const { CSODOTAPartyInvite } = require('dota2-user/protobufs/generated/dota_gcmessages_common_match_management');
 const protobuf = require('protobufjs');
 const EventEmitter = require('events');
@@ -293,8 +293,28 @@ class Dota2GCClient extends EventEmitter {
     const senderName = invite.senderName || 'Unknown';
     // senderId in CSODOTALobbyInvite is a 32-bit account ID — convert to Steam64
     const senderId = invite.senderId ? accountId32ToSteam64(invite.senderId) : 'Unknown';
-    console.log(`[Dota2 GC] Lobby invite from ${senderName} (Steam64: ${senderId}), lobbyId: ${lobbyId}`);
-    this.emit('lobbyInviteReceived', { lobbyId, senderId, senderName });
+    const inviteGid = invite.inviteGid ? invite.inviteGid.toString() : null;
+    console.log(`[Dota2 GC] Lobby invite from ${senderName} (Steam64: ${senderId}), lobbyId: ${lobbyId}, inviteGid: ${inviteGid}`);
+    this.emit('lobbyInviteReceived', { lobbyId, senderId, senderName, inviteGid });
+  }
+
+  acceptLobbyInvite(lobbyId) {
+    if (!this.dota2 || !this.dota2.sendRawBuffer) {
+      console.warn('[Dota2 GC] Cannot accept lobby invite — GC not ready.');
+      return false;
+    }
+    try {
+      const buf = CMsgLobbyInviteResponse.encode({
+        lobbyId: lobbyId ? lobbyId.toString() : undefined,
+        accept: true,
+      }).finish();
+      this.dota2.sendRawBuffer(EGCBaseMsg.k_EMsgGCLobbyInviteResponse, buf);
+      console.log(`[Dota2 GC] Sent lobby invite acceptance for lobby ${lobbyId}`);
+      return true;
+    } catch (e) {
+      console.warn('[Dota2 GC] Failed to send lobby invite response:', e.message);
+      return false;
+    }
   }
 
   _tryDecodePartyInvite(typeId, objectData) {
