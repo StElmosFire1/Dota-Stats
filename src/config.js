@@ -4,6 +4,17 @@ const config = {
     prefix: '!',
     announceChannelId: process.env.ANNOUNCE_CHANNEL_ID || null,
     weeklyRecapChannelId: process.env.WEEKLY_RECAP_CHANNEL_ID || process.env.ANNOUNCE_CHANNEL_ID || null,
+    // Multi-channel routing — comma-separated channel IDs, supports multiple servers.
+    // Falls back to ANNOUNCE_CHANNEL_ID for backward compatibility.
+    scheduleChannelIds: process.env.SCHEDULE_CHANNEL_IDS
+      ? process.env.SCHEDULE_CHANNEL_IDS.split(',').map(s => s.trim()).filter(Boolean)
+      : (process.env.ANNOUNCE_CHANNEL_ID ? [process.env.ANNOUNCE_CHANNEL_ID] : []),
+    statsChannelIds: process.env.STATS_CHANNEL_IDS
+      ? process.env.STATS_CHANNEL_IDS.split(',').map(s => s.trim()).filter(Boolean)
+      : (process.env.ANNOUNCE_CHANNEL_ID ? [process.env.ANNOUNCE_CHANNEL_ID] : []),
+    patchChannelIds: process.env.PATCH_CHANNEL_IDS
+      ? process.env.PATCH_CHANNEL_IDS.split(',').map(s => s.trim()).filter(Boolean)
+      : (process.env.ANNOUNCE_CHANNEL_ID ? [process.env.ANNOUNCE_CHANNEL_ID] : []),
     mmrRoles: {
       // Role IDs assigned based on MMR thresholds (set via env vars in Discord server)
       // Tiers ordered highest to lowest — first match wins

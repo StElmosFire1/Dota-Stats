@@ -132,9 +132,11 @@ class DiscordBot {
           const direPlayers = lobbyMatchStats.players.filter((p) => p.team === 'dire');
           await this._processRatings(lobbyMatchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
 
-          const channel = this.lobbyChannelId ? this.client.channels.cache.get(this.lobbyChannelId) : null;
-          if (channel) {
-            await this._sendMatchSummary(lobbyMatchStats, lobby.name, channel);
+          const statsChannels = await this._resolveChannels(
+            config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds : (this.lobbyChannelId ? [this.lobbyChannelId] : [])
+          );
+          for (const ch of statsChannels) {
+            await this._sendMatchSummary(lobbyMatchStats, lobby.name, ch).catch(e => console.error(`[AutoRecord] Summary error (${ch.id}):`, e.message));
           }
           console.log(`[AutoRecord] Match ${matchId} recorded from lobby GC data.`);
         } else if (matchId) {
@@ -154,8 +156,12 @@ class DiscordBot {
               const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
               const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
               await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
-              const channel = this.lobbyChannelId ? this.client.channels.cache.get(this.lobbyChannelId) : null;
-              if (channel) await this._sendMatchSummary(matchStats, lobby.name, channel);
+              const statsChannels = await this._resolveChannels(
+                config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds : (this.lobbyChannelId ? [this.lobbyChannelId] : [])
+              );
+              for (const ch of statsChannels) {
+                await this._sendMatchSummary(matchStats, lobby.name, ch).catch(e => console.error(`[AutoRecord] OD summary error (${ch.id}):`, e.message));
+              }
             } catch (err) {
               console.error('[AutoRecord] OpenDota fallback error:', err.message);
               this._notifyChannel(`OpenDota fallback failed: ${err.message}`);
@@ -169,44 +175,89 @@ class DiscordBot {
     });
   }
 
+  async _resolveChannels(ids) {
+    const channels = [];
+    for (const id of ids) {
+      let ch = this.client.channels.cache.get(id);
+      if (!ch) ch = await this.client.channels.fetch(id).catch(() => null);
+      if (ch) channels.push(ch);
+    }
+    return channels;
+  }
+
+  async _broadcastToStatsChannels(content) {
+    const ids = new Set(config.discord.statsChannelIds);
+    if (this.lobbyChannelId) ids.add(this.lobbyChannelId);
+    const channels = await this._resolveChannels([...ids]);
+    for (const ch of channels) {
+      await ch.send(content).catch(err => console.error(`[Broadcast] Stats channel ${ch.id} error:`, err.message));
+    }
+  }
+
+  async _broadcastToScheduleChannels(content) {
+    const channels = await this._resolveChannels(config.discord.scheduleChannelIds);
+    for (const ch of channels) {
+      await ch.send(content).catch(err => console.error(`[Broadcast] Schedule channel ${ch.id} error:`, err.message));
+    }
+  }
+
+  async _broadcastToPatchChannels(content) {
+    const channels = await this._resolveChannels(config.discord.patchChannelIds);
+    for (const ch of channels) {
+      await ch.send(content).catch(err => console.error(`[Broadcast] Patch channel ${ch.id} error:`, err.message));
+    }
+  }
+
   _notifyChannel(message) {
-    if (this.lobbyChannelId) {
-      const channel = this.client.channels.cache.get(this.lobbyChannelId);
+    const ids = new Set(config.discord.statsChannelIds);
+    if (this.lobbyChannelId) ids.add(this.lobbyChannelId);
+    for (const id of ids) {
+      const channel = this.client.channels.cache.get(id);
       if (channel) channel.send(message).catch(() => {});
     }
   }
 
   async _getAnnounceChannel() {
-    const channelId = config.discord.announceChannelId || this.lobbyChannelId;
-    if (!channelId) return null;
-    let channel = this.client.channels.cache.get(channelId);
-    if (!channel) {
-      channel = await this.client.channels.fetch(channelId).catch(() => null);
-    }
-    return channel || null;
+    const ids = config.discord.statsChannelIds;
+    const fallbackId = config.discord.announceChannelId || this.lobbyChannelId;
+    const lookupIds = ids.length > 0 ? ids : (fallbackId ? [fallbackId] : []);
+    if (!lookupIds.length) return null;
+    const channels = await this._resolveChannels(lookupIds);
+    return channels[0] || null;
   }
 
   async notifyMatchRecorded(matchStats) {
-    const channel = await this._getAnnounceChannel();
-    if (!channel) return;
-
+    const channels = await this._resolveChannels(
+      config.discord.statsChannelIds.length > 0
+        ? config.discord.statsChannelIds
+        : (config.discord.announceChannelId ? [config.discord.announceChannelId] : [])
+    );
+    if (!channels.length) return;
     try {
-      await channel.send(`Auto-detected inhouse match **${matchStats.matchId}**! Recording stats...`);
-      await this._sendMatchSummary(matchStats, '', channel);
+      for (const ch of channels) {
+        await ch.send(`Auto-detected inhouse match **${matchStats.matchId}**! Recording stats...`).catch(() => {});
+        await this._sendMatchSummary(matchStats, '', ch);
+      }
     } catch (err) {
       console.error('[Discord] Notify error:', err.message);
     }
   }
 
   async notifyWebUpload(matchStats) {
-    const channel = await this._getAnnounceChannel();
-    if (!channel) {
-      console.log('[Discord] Web upload: no announce channel configured, skipping Discord notification.');
+    const channels = await this._resolveChannels(
+      config.discord.statsChannelIds.length > 0
+        ? config.discord.statsChannelIds
+        : (config.discord.announceChannelId ? [config.discord.announceChannelId] : [])
+    );
+    if (!channels.length) {
+      console.log('[Discord] Web upload: no stats channels configured, skipping Discord notification.');
     } else {
-      try {
-        await this._sendMatchSummary(matchStats, 'Replay Upload', channel);
-      } catch (err) {
-        console.error('[Discord] Web upload notify error:', err.message);
+      for (const ch of channels) {
+        try {
+          await this._sendMatchSummary(matchStats, 'Replay Upload', ch);
+        } catch (err) {
+          console.error(`[Discord] Web upload notify error (channel ${ch.id}):`, err.message);
+        }
       }
     }
     // Trigger post-match DMs regardless of whether a channel is configured
@@ -1575,8 +1626,10 @@ class DiscordBot {
         if (imgBuf) {
           const attachment = new AttachmentBuilder(imgBuf, { name: `scoreboard_${matchStats.matchId || Date.now()}.png` });
           await channel.send({ files: [attachment] }).catch(() => {});
-          if (config.discord.announceChannelId && channel.id !== config.discord.announceChannelId) {
-            const ac = channel.guild?.channels?.cache?.get(config.discord.announceChannelId);
+          // Cross-post scoreboard image to any stats channels not already receiving it
+          const extraIds = config.discord.statsChannelIds.filter(id => id !== channel.id);
+          for (const id of extraIds) {
+            const ac = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
             if (ac) await ac.send({ files: [new AttachmentBuilder(imgBuf, { name: `scoreboard_${matchStats.matchId || Date.now()}.png` })] }).catch(() => {});
           }
         }
@@ -1585,9 +1638,11 @@ class DiscordBot {
       }
     })();
 
-    if (config.discord.announceChannelId && channel.id !== config.discord.announceChannelId) {
-      const announceChannel = channel.guild?.channels?.cache?.get(config.discord.announceChannelId);
-      if (announceChannel) await announceChannel.send({ embeds: [embed] }).catch(() => {});
+    // Cross-post match embed to any stats channels not already receiving it
+    const crossPostIds = config.discord.statsChannelIds.filter(id => id !== channel.id);
+    for (const id of crossPostIds) {
+      const xch = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
+      if (xch) await xch.send({ embeds: [embed] }).catch(() => {});
     }
 
     // Streak callouts — runs for ALL recording paths
@@ -1946,9 +2001,12 @@ class DiscordBot {
   }
 
   async _postWeeklyRecap() {
-    const channelId = config.discord.weeklyRecapChannelId;
+    const channelId = config.discord.weeklyRecapChannelId
+      || (config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds[0] : null)
+      || config.discord.announceChannelId;
     if (!channelId) return;
-    const channel = this.client.channels.cache.get(channelId);
+    let channel = this.client.channels.cache.get(channelId);
+    if (!channel) channel = await this.client.channels.fetch(channelId).catch(() => null);
     if (!channel) return;
 
     try {
@@ -2659,58 +2717,62 @@ class DiscordBot {
 
     console.log(`[PatchNotes] ${unannounced.length} unannounced note(s): ${unannounced.map(n => `v${n.version}`).join(', ')}`);
 
-    const channelId = config.discord.announceChannelId || this.lobbyChannelId;
-    if (!channelId) {
-      // No channel configured on this instance — skip silently. Do NOT mark as
-      // announced so the production bot (with ANNOUNCE_CHANNEL_ID set) can still post them.
-      console.log('[PatchNotes] No announce channel configured — skipping (notes remain pending for production bot).');
+    const patchChannelIds = config.discord.patchChannelIds.length > 0
+      ? config.discord.patchChannelIds
+      : (config.discord.announceChannelId ? [config.discord.announceChannelId] : []);
+
+    if (!patchChannelIds.length) {
+      // No channel configured — skip silently so production bot can post them.
+      console.log('[PatchNotes] No patch channels configured — skipping (notes remain pending for production bot).');
       return;
     }
 
-    // Try cache first, fall back to a fetch in case the cache isn't populated yet
-    let channel = this.client.channels.cache.get(channelId);
-    if (!channel) {
-      console.log(`[PatchNotes] Channel ${channelId} not in cache, fetching...`);
-      channel = await this.client.channels.fetch(channelId).catch(err => {
-        console.error(`[PatchNotes] Could not fetch channel ${channelId}:`, err.message);
-        return null;
-      });
-    }
-
-    if (!channel) {
-      console.error(`[PatchNotes] Announce channel ${channelId} not found — notes remain pending for next restart.`);
+    const patchChannels = await this._resolveChannels(patchChannelIds);
+    if (!patchChannels.length) {
+      console.error('[PatchNotes] No accessible patch channels found — notes remain pending for next restart.');
       return;
     }
 
-    console.log(`[PatchNotes] Posting to #${channel.name || channelId}...`);
+    console.log(`[PatchNotes] Posting to ${patchChannels.length} channel(s)...`);
 
     for (const note of unannounced) {
-      try {
-        const embed = new EmbedBuilder()
-          .setTitle(`\u{1F4CB} Bot Update \u2014 v${note.version} | ${note.title}`)
-          .setColor(0x60a5fa)
-          .setDescription(note.content.slice(0, 2000))
-          .setFooter({ text: `Released ${new Date(note.published_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}` })
-          .setTimestamp();
+      const embed = new EmbedBuilder()
+        .setTitle(`\u{1F4CB} Bot Update \u2014 v${note.version} | ${note.title}`)
+        .setColor(0x60a5fa)
+        .setDescription(note.content.slice(0, 2000))
+        .setFooter({ text: `Released ${new Date(note.published_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}` })
+        .setTimestamp();
 
-        await channel.send({ embeds: [embed] });
+      let anySucceeded = false;
+      for (const ch of patchChannels) {
+        try {
+          await ch.send({ embeds: [embed] });
+          anySucceeded = true;
+          console.log(`[PatchNotes] Announced v${note.version} in channel ${ch.id}.`);
+        } catch (err) {
+          console.error(`[PatchNotes] Failed to announce v${note.version} in channel ${ch.id}:`, err.message);
+        }
+      }
+      // Only mark as announced if at least one channel received it
+      if (anySucceeded) {
         await db.markPatchNoteAnnounced(note.id);
-        console.log(`[PatchNotes] Announced v${note.version} successfully.`);
-      } catch (err) {
-        console.error(`[PatchNotes] Failed to announce v${note.version}:`, err.message);
+        console.log(`[PatchNotes] v${note.version} marked as announced.`);
       }
     }
   }
 
   async postScheduleRsvpEmbed(game) {
-    const channelId = config.discord.announceChannelId || this.lobbyChannelId;
-    if (!channelId) {
-      throw new Error('No channel configured — set ANNOUNCE_CHANNEL_ID env var or send a message in Discord first');
+    const channelIds = config.discord.scheduleChannelIds.length > 0
+      ? config.discord.scheduleChannelIds
+      : (config.discord.announceChannelId ? [config.discord.announceChannelId] : []);
+
+    if (!channelIds.length) {
+      throw new Error('No schedule channels configured — set SCHEDULE_CHANNEL_IDS or ANNOUNCE_CHANNEL_ID');
     }
-    let channel = this.client.channels.cache.get(channelId);
-    if (!channel) channel = await this.client.channels.fetch(channelId).catch(() => null);
-    if (!channel) {
-      throw new Error(`Channel ${channelId} not found or bot lacks access`);
+
+    const channels = await this._resolveChannels(channelIds);
+    if (!channels.length) {
+      throw new Error('No accessible schedule channels found');
     }
 
     const when = new Date(game.scheduled_at).toLocaleString('en-AU', {
@@ -2729,11 +2791,23 @@ class DiscordBot {
         { name: 'Game ID', value: `#${game.id}`, inline: true },
       )
       .setFooter({ text: 'Reminder will be posted 1 hour before game time' });
-    const rsvpMsg = await channel.send({ embeds: [combinedEmbed] });
-    await rsvpMsg.react('✅').catch(() => {});
-    await rsvpMsg.react('❌').catch(() => {});
-    await db.saveRsvpMessageId(game.id, rsvpMsg.id, channel.id).catch(() => {});
-    console.log(`[Schedule] Posted RSVP embed for game #${game.id} in channel ${channelId}`);
+
+    let primarySaved = false;
+    for (const channel of channels) {
+      try {
+        const rsvpMsg = await channel.send({ embeds: [combinedEmbed] });
+        await rsvpMsg.react('✅').catch(() => {});
+        await rsvpMsg.react('❌').catch(() => {});
+        // Save RSVP message ID for the first (primary) channel only — used for reaction tracking
+        if (!primarySaved) {
+          await db.saveRsvpMessageId(game.id, rsvpMsg.id, channel.id).catch(() => {});
+          primarySaved = true;
+        }
+        console.log(`[Schedule] Posted RSVP embed for game #${game.id} in channel ${channel.id}`);
+      } catch (err) {
+        console.error(`[Schedule] Failed to post RSVP embed in channel ${channel.id}:`, err.message);
+      }
+    }
   }
 
   async _sendScheduleReminders() {
@@ -2756,25 +2830,26 @@ class DiscordBot {
       const rsvps = await db.getScheduleRsvps(game.id).catch(() => []);
       const inList = rsvps.filter(r => r.status === 'yes').map(r => r.username);
 
-      // Post channel reminder
-      const channelId = game.rsvp_channel_id || config.discord.announceChannelId;
-      if (channelId) {
-        try {
-          let channel = this.client.channels.cache.get(channelId);
-          if (!channel) channel = await this.client.channels.fetch(channelId).catch(() => null);
-          if (channel) {
-            const embed = new EmbedBuilder()
-              .setTitle(`⏰ Inhouse in ${label}!`)
-              .setDescription(
-                `**${when}** AEST\n${game.note ? `📝 ${game.note}\n` : ''}` +
-                `\n✅ **${inList.length} player${inList.length !== 1 ? 's' : ''}** registered: ${inList.join(', ') || '_no one yet_'}` +
-                `\n\nReact ✅/❌ on the original RSVP post, or use the website to update your availability.`
-              )
-              .setColor(is1h ? 0xf44336 : 0x60a5fa);
-            await channel.send({ embeds: [embed] });
-          }
-        } catch (err) {
-          console.error('[Reminders] Failed to post channel reminder:', err.message);
+      // Post channel reminder to all schedule channels
+      const scheduleChannelIds = config.discord.scheduleChannelIds.length > 0
+        ? config.discord.scheduleChannelIds
+        : (game.rsvp_channel_id || config.discord.announceChannelId
+          ? [(game.rsvp_channel_id || config.discord.announceChannelId)]
+          : []);
+      if (scheduleChannelIds.length) {
+        const reminderEmbed = new EmbedBuilder()
+          .setTitle(`⏰ Inhouse in ${label}!`)
+          .setDescription(
+            `**${when}** AEST\n${game.note ? `📝 ${game.note}\n` : ''}` +
+            `\n✅ **${inList.length} player${inList.length !== 1 ? 's' : ''}** registered: ${inList.join(', ') || '_no one yet_'}` +
+            `\n\nReact ✅/❌ on the original RSVP post, or use the website to update your availability.`
+          )
+          .setColor(is1h ? 0xf44336 : 0x60a5fa);
+        const reminderChannels = await this._resolveChannels(scheduleChannelIds);
+        for (const ch of reminderChannels) {
+          await ch.send({ embeds: [reminderEmbed] }).catch(err =>
+            console.error(`[Reminders] Failed to post reminder in channel ${ch.id}:`, err.message)
+          );
         }
       }
 
@@ -2856,24 +2931,26 @@ class DiscordBot {
           try { lobbyManager.invitePlayer(steam64); } catch {}
         }
 
-        // Post to Discord
-        const channelId = game.rsvp_channel_id || config.discord.announceChannelId;
-        if (channelId) {
-          const ch = this.client.channels.cache.get(channelId) || await this.client.channels.fetch(channelId).catch(() => null);
-          if (ch) {
-            const when = new Date(game.scheduled_at).toLocaleString('en-AU', {
-              timeZone: 'Australia/Sydney', weekday: 'short', month: 'short', day: 'numeric',
-              hour: '2-digit', minute: '2-digit', hour12: true,
-            });
-            await ch.send(
-              `🎮 **Lobby created: ${lobbyName}**\n` +
-              `📅 ${when} AEST${game.note ? ` — ${game.note}` : ''}\n` +
-              `${password ? `🔑 Password: \`${password}\`` : '🔓 No password'}\n` +
-              `📨 Invites sent to ${accountIds.length} RSVP'd player${accountIds.length !== 1 ? 's' : ''}. ` +
-              `Join via your Steam friends list or Dota 2 lobby browser.\n` +
-              `An admin can start the game with \`!start_game\` once all 10 players are seated.`
-            ).catch(() => {});
-          }
+        // Post to Discord — schedule channel (lobby is live) + stats channel (game event)
+        const lobbyMsg =
+          `🎮 **Lobby created: ${lobbyName}**\n` +
+          `📅 ${new Date(game.scheduled_at).toLocaleString('en-AU', {
+            timeZone: 'Australia/Sydney', weekday: 'short', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true,
+          })} AEST${game.note ? ` — ${game.note}` : ''}\n` +
+          `${password ? `🔑 Password: \`${password}\`` : '🔓 No password'}\n` +
+          `📨 Invites sent to ${accountIds.length} RSVP'd player${accountIds.length !== 1 ? 's' : ''}. ` +
+          `Join via your Steam friends list or Dota 2 lobby browser.\n` +
+          `An admin can start the game with \`!start_game\` once all 10 players are seated.`;
+        const lobbyPostIds = new Set([
+          ...config.discord.scheduleChannelIds,
+          ...config.discord.statsChannelIds,
+          ...(game.rsvp_channel_id ? [game.rsvp_channel_id] : []),
+          ...(config.discord.announceChannelId ? [config.discord.announceChannelId] : []),
+        ]);
+        for (const id of lobbyPostIds) {
+          const ch = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
+          if (ch) await ch.send(lobbyMsg).catch(() => {});
         }
         console.log(`[LobbyAuto] Lobby "${lobbyName}" created and invites sent for game #${game.id}`);
       } catch (err) {
@@ -2907,12 +2984,17 @@ class DiscordBot {
       const lobbyMgr = tryGetLobbyManager();
       if (lobbyMgr) {
         lobbyMgr.on('tenPlayersSeated', async (lobby) => {
-          const channelId = config.discord.announceChannelId;
-          if (!channelId) return;
-          try {
-            const ch = this.client.channels.cache.get(channelId) || await this.client.channels.fetch(channelId).catch(() => null);
-            if (ch) await ch.send(`🟢 **10 players seated in "${lobby.name}"** — lobby is full and ready! An admin can launch with \`!start_game\` or via the admin panel.`);
-          } catch {}
+          const seatedMsg = `🟢 **10 players seated in "${lobby.name}"** — lobby is full and ready! An admin can launch with \`!start_game\` or via the admin panel.`;
+          const seatedIds = new Set([
+            ...config.discord.statsChannelIds,
+            ...(config.discord.announceChannelId ? [config.discord.announceChannelId] : []),
+          ]);
+          for (const id of seatedIds) {
+            try {
+              const ch = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
+              if (ch) await ch.send(seatedMsg);
+            } catch {}
+          }
         });
       }
 
