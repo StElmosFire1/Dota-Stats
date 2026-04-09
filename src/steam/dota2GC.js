@@ -304,12 +304,11 @@ class Dota2GCClient extends EventEmitter {
       return false;
     }
     try {
-      const buf = CMsgLobbyInviteResponse.encode({
-        lobbyId: lobbyId ? lobbyId.toString() : undefined,
-        accept: true,
-      }).finish();
+      // Use fromPartial so ts-proto fills all uint32/fixed64 fields with zero defaults
+      const msg = CMsgLobbyInviteResponse.fromPartial({ accept: true });
+      const buf = CMsgLobbyInviteResponse.encode(msg).finish();
       this.dota2.sendRawBuffer(EGCBaseMsg.k_EMsgGCLobbyInviteResponse, buf);
-      console.log(`[Dota2 GC] Sent lobby invite acceptance for lobby ${lobbyId}`);
+      console.log(`[Dota2 GC] Sent lobby invite acceptance for lobby ${lobbyId} (accept-only message, GC matches pending invite)`);
       return true;
     } catch (e) {
       console.warn('[Dota2 GC] Failed to send lobby invite response:', e.message);
