@@ -161,15 +161,13 @@ class LobbyManager extends EventEmitter {
 
     client.gcClient.on('partyInviteReceived', async (invite) => {
       const trusted = config.steam.trustedSteamIds || [];
+      console.log(`[Lobby] Party invite from ${invite.senderName} (${invite.senderId}), partyId=${invite.partyId}, trusted=${trusted.includes(invite.senderId)}`);
       if (!trusted.includes(invite.senderId)) {
-        console.log(`[Lobby] Ignoring party invite from ${invite.senderName} (${invite.senderId}) — not in trusted list.`);
+        console.log(`[Lobby] Party invite rejected — ${invite.senderId} not in trusted list [${trusted.join(',')}].`);
         return;
       }
-      if (!invite.partyId || invite.partyId === '0') {
-        console.warn(`[Lobby] Party invite from ${invite.senderName} had no valid party ID — cannot accept.`);
-        return;
-      }
-      console.log(`[Lobby] Trusted party invite from ${invite.senderName} — accepting party ${invite.partyId}...`);
+      // partyId may be null when the fallback timer fires before CSO arrives; GC will match the pending invite.
+      console.log(`[Lobby] Trusted party invite from ${invite.senderName} — accepting (partyId=${invite.partyId ?? 'null, GC will match'})...`);
       try {
         client.gcClient.acceptPartyInvite(invite.partyId);
         this.emit('partyJoined', { senderName: invite.senderName, senderId: invite.senderId, partyId: invite.partyId });

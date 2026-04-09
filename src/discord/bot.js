@@ -577,10 +577,13 @@ class DiscordBot {
     const lobbyManager = tryGetLobbyManager();
     const lines = [];
 
+    const { config } = require('../config');
+    const trusted = config.steam?.trustedSteamIds || [];
     lines.push(`**Steam logged in:** ${steamClient?.isLoggedIn ? 'Yes' : 'No'}`);
     lines.push(`**GC ready:** ${steamClient?.isGCReady ? 'Yes' : 'No'}`);
     lines.push(`**GC invite listeners:** ${lobbyManager?._gcListenersSetup ? 'Active' : 'NOT registered'}`);
     lines.push(`**Lobby state:** ${lobbyManager?.state ?? 'unavailable'}`);
+    lines.push(`**Trusted Steam IDs:** ${trusted.length ? trusted.join(', ') : '(none set — all party invites will be rejected)'}`);
 
     if (lobbyManager && !lobbyManager._gcListenersSetup) {
       lines.push('');
