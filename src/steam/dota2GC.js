@@ -328,7 +328,7 @@ class Dota2GCClient extends EventEmitter {
   }
 
   acceptPartyInvite(partyId) {
-    if (!this.dota2 || !this.dota2.sendToGC) {
+    if (!this.dota2 || !this.dota2.sendRawBuffer) {
       console.warn('[Dota2 GC] Cannot accept party invite — GC not ready.');
       return;
     }
@@ -336,7 +336,7 @@ class Dota2GCClient extends EventEmitter {
       const msg = { accept: true };
       if (partyId && partyId !== '0') msg.partyId = partyId.toString();
       const buf = CMsgPartyInviteResponse.encode(msg).finish();
-      this.dota2.sendToGC(EGCBaseMsg.k_EMsgGCPartyInviteResponse, buf);
+      this.dota2.sendRawBuffer(EGCBaseMsg.k_EMsgGCPartyInviteResponse, buf);
       console.log(`[Dota2 GC] Sent party invite acceptance${partyId ? ` for party ${partyId}` : ' (no partyId — GC will match pending invite)'}`);
     } catch (e) {
       console.warn('[Dota2 GC] Failed to send party invite response:', e.message);

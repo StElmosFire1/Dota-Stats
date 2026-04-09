@@ -378,6 +378,7 @@ class DiscordBot {
           case 'create_lobby': await this._cmdCreateLobby(msg, args); break;
           case 'join_lobby': await this._cmdJoinLobby(msg, args); break;
           case 'lobby_status': await this._cmdLobbyStatus(msg); break;
+          case 'gc_debug': await this._cmdGcDebug(msg); break;
           case 'invite': await this._cmdInvite(msg, args); break;
           case 'end': await this._cmdEnd(msg); break;
           case 'start_game': await this._cmdStartGame(msg); break;
@@ -569,6 +570,31 @@ class DiscordBot {
     });
 
     await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdGcDebug(msg) {
+    const steamClient = tryGetSteamClient();
+    const lobbyManager = tryGetLobbyManager();
+    const lines = [];
+
+    lines.push(`**Steam logged in:** ${steamClient?.isLoggedIn ? 'Yes' : 'No'}`);
+    lines.push(`**GC ready:** ${steamClient?.isGCReady ? 'Yes' : 'No'}`);
+    lines.push(`**GC invite listeners:** ${lobbyManager?._gcListenersSetup ? 'Active' : 'NOT registered'}`);
+    lines.push(`**Lobby state:** ${lobbyManager?.state ?? 'unavailable'}`);
+
+    if (lobbyManager && !lobbyManager._gcListenersSetup) {
+      lines.push('');
+      lines.push('Attempting to re-register GC listeners now...');
+      try {
+        lobbyManager._gcListenersSetup = false;
+        lobbyManager._setupGCListeners();
+        lines.push(`Re-register result: ${lobbyManager._gcListenersSetup ? 'Success' : 'GC not ready yet — will retry on next GC connect'}`);
+      } catch (e) {
+        lines.push(`Re-register failed: ${e.message}`);
+      }
+    }
+
+    await msg.reply(lines.join('\n'));
   }
 
   async _cmdJoinLobby(msg, args) {
@@ -1254,6 +1280,15 @@ class DiscordBot {
         {
           name: 'Dota 2 GC',
           value: steamClient && steamClient.isGCReady ? '\u2705 Ready' : '\u274c Not Ready',
+          inline: true,
+        },
+        {
+          name: 'GC Invite Listeners',
+          value: (() => {
+            const lm = tryGetLobbyManager();
+            if (!lm) return '\u274c Lobby manager unavailable';
+            return lm._gcListenersSetup ? '\u2705 Active' : '\u26a0\ufe0f Not registered';
+          })(),
           inline: true,
         },
         {
