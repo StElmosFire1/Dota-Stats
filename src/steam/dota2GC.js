@@ -1,6 +1,6 @@
 const { Dota2User } = require('dota2-user');
-const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgPartyInviteResponse } = require('dota2-user/protobufs');
-const { CSODOTAPartyInvite } = require('dota2-user/protobufs/generated/dota_gcmessages_common_match_management');
+const { EDOTAGCMsg, EGCBaseMsg, ESOMsg, CSODOTALobby, CSODOTALobbyInvite, CMsgSOCacheSubscribed, CMsgSOSingleObject, CMsgSOMultipleObjects, CMsgPartyInviteResponse, CMsgInviteToParty } = require('dota2-user/protobufs');
+const { CSODOTAPartyInvite, CSODOTAParty } = require('dota2-user/protobufs/generated/dota_gcmessages_common_match_management');
 const protobuf = require('protobufjs');
 const EventEmitter = require('events');
 
@@ -141,6 +141,8 @@ class Dota2GCClient extends EventEmitter {
     this.currentLobby = null;
     this._pendingLobbyCreate = false;
     this.lobbyChatChannelId = null;
+    // Holds info from a k_EMsgGCInviteToParty message until CSO data arrives with partyId
+    this._pendingPartyInvite = null;
 
     this._setupListeners();
   }
@@ -226,7 +228,28 @@ class Dota2GCClient extends EventEmitter {
           console.log('[Dota2 GC] Could not decode invite message:', e.message);
         }
       } else if (msgType === EGCBaseMsg.k_EMsgGCInviteToParty) {
-        console.log('[Dota2 GC] Received party invite via GC message (k_EMsgGCInviteToParty) — CSO will carry the full invite data.');
+        // Decode to get the inviter's Steam64 ID
+        try {
+          const inviteMsg = CMsgInviteToParty.decode(payload);
+          const inviterSteamId = inviteMsg.steamId ? inviteMsg.steamId.toString() : null;
+          console.log(`[Dota2 GC] Party invite received via GC message — inviter steamId: ${inviterSteamId}`);
+          // Buffer this; CSO update (type 2007) should arrive with partyId shortly.
+          // If CSO doesn't arrive within 2s, emit with partyId=null so handler can still accept.
+          if (this._pendingPartyInvite && this._pendingPartyInvite._timer) {
+            clearTimeout(this._pendingPartyInvite._timer);
+          }
+          this._pendingPartyInvite = { inviterSteamId, senderName: 'Unknown' };
+          this._pendingPartyInvite._timer = setTimeout(() => {
+            if (this._pendingPartyInvite) {
+              const p = this._pendingPartyInvite;
+              this._pendingPartyInvite = null;
+              console.log('[Dota2 GC] No CSO party data received — emitting partyInviteReceived without partyId.');
+              this.emit('partyInviteReceived', { partyId: null, senderId: p.inviterSteamId, senderName: p.senderName });
+            }
+          }, 2000);
+        } catch (e) {
+          console.warn('[Dota2 GC] Could not decode CMsgInviteToParty:', e.message);
+        }
       } else {
         console.log(`[Dota2 GC] Unhandled GC message: msgType=${msgType} (${payload.length} bytes)`);
       }
@@ -276,12 +299,31 @@ class Dota2GCClient extends EventEmitter {
     }
   }
 
+  // CSODOTAParty (type 2003) can carry recvInvites — another path for party invites
+  _tryDecodePartyWithInvites(typeId, objectData) {
+    if (typeId !== 2003) return null;
+    try {
+      const party = CSODOTAParty.decode(objectData);
+      if (party.recvInvites && party.recvInvites.length > 0) return party;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   _processPartyInvite(invite) {
     if (!invite) return;
     const partyId = invite.groupId ? invite.groupId.toString() : null;
-    const senderId = invite.senderId ? invite.senderId.toString() : 'Unknown';
+    const senderId = invite.senderId ? invite.senderId.toString() : null;
     const senderName = invite.senderName || 'Unknown';
-    console.log(`[Dota2 GC] Party invite received from ${senderName} (${senderId}), party: ${partyId}`);
+    console.log(`[Dota2 GC] Party invite (CSO) from ${senderName} (${senderId}), party: ${partyId}`);
+
+    // Cancel the fallback timer from the direct GC message if we got full CSO data
+    if (this._pendingPartyInvite) {
+      if (this._pendingPartyInvite._timer) clearTimeout(this._pendingPartyInvite._timer);
+      this._pendingPartyInvite = null;
+    }
+
     this.emit('partyInviteReceived', { partyId, senderId, senderName });
   }
 
@@ -291,9 +333,11 @@ class Dota2GCClient extends EventEmitter {
       return;
     }
     try {
-      const buf = CMsgPartyInviteResponse.encode({ partyId: partyId.toString(), accept: true }).finish();
+      const msg = { accept: true };
+      if (partyId && partyId !== '0') msg.partyId = partyId.toString();
+      const buf = CMsgPartyInviteResponse.encode(msg).finish();
       this.dota2.sendToGC(EGCBaseMsg.k_EMsgGCPartyInviteResponse, buf);
-      console.log(`[Dota2 GC] Sent party invite acceptance for party ${partyId}`);
+      console.log(`[Dota2 GC] Sent party invite acceptance${partyId ? ` for party ${partyId}` : ' (no partyId — GC will match pending invite)'}`);
     } catch (e) {
       console.warn('[Dota2 GC] Failed to send party invite response:', e.message);
     }
@@ -343,6 +387,11 @@ class Dota2GCClient extends EventEmitter {
       for (const obj of objects) {
         const typeId = obj.typeId;
         const dataList = obj.objectData || [];
+        console.log(`[Dota2 GC] SO CacheSubscribed object: typeId=${typeId}` +
+          (typeId === LOBBY_TYPE_ID ? ' (Lobby)' :
+            typeId === LOBBY_INVITE_TYPE_ID ? ' (LobbyInvite)' :
+            typeId === PARTY_INVITE_TYPE_ID ? ' (PartyInvite-2007)' :
+            typeId === 2003 ? ' (Party-2003)' : ''));
         for (const data of dataList) {
           const lobby = this._tryDecodeLobby(typeId, data);
           if (lobby) {
@@ -356,6 +405,12 @@ class Dota2GCClient extends EventEmitter {
           if (partyInvite) {
             this._processPartyInvite(partyInvite);
           }
+          const partyWithInvites = this._tryDecodePartyWithInvites(typeId, data);
+          if (partyWithInvites) {
+            for (const recv of partyWithInvites.recvInvites) {
+              this._processPartyInvite(recv);
+            }
+          }
         }
       }
     } catch (e) {
@@ -366,7 +421,12 @@ class Dota2GCClient extends EventEmitter {
   _handleSOCreate(payload) {
     try {
       const msg = CMsgSOSingleObject.decode(payload);
-      console.log(`[Dota2 GC] SO Create: typeId=${msg.typeId}, dataLen=${msg.objectData ? msg.objectData.length : 0}`);
+      // Log all SO types to help diagnose party/lobby invite flows
+      console.log(`[Dota2 GC] SO Create: typeId=${msg.typeId}, dataLen=${msg.objectData ? msg.objectData.length : 0}` +
+        (msg.typeId === LOBBY_TYPE_ID ? ' (Lobby)' :
+          msg.typeId === LOBBY_INVITE_TYPE_ID ? ' (LobbyInvite)' :
+          msg.typeId === PARTY_INVITE_TYPE_ID ? ' (PartyInvite-2007)' :
+          msg.typeId === 2003 ? ' (Party-2003)' : ''));
       const lobby = this._tryDecodeLobby(msg.typeId, msg.objectData);
       if (lobby) {
         this._processLobbyData(lobby);
@@ -378,6 +438,10 @@ class Dota2GCClient extends EventEmitter {
       const partyInvite = this._tryDecodePartyInvite(msg.typeId, msg.objectData);
       if (partyInvite) {
         this._processPartyInvite(partyInvite);
+      }
+      const partyWithInvites = this._tryDecodePartyWithInvites(msg.typeId, msg.objectData);
+      if (partyWithInvites) {
+        for (const recv of partyWithInvites.recvInvites) this._processPartyInvite(recv);
       }
     } catch (e) {
       console.warn('[Dota2 GC] Could not process SO create:', e.message);
@@ -398,6 +462,10 @@ class Dota2GCClient extends EventEmitter {
       const partyInvite = this._tryDecodePartyInvite(msg.typeId, msg.objectData);
       if (partyInvite) {
         this._processPartyInvite(partyInvite);
+      }
+      const partyWithInvites = this._tryDecodePartyWithInvites(msg.typeId, msg.objectData);
+      if (partyWithInvites) {
+        for (const recv of partyWithInvites.recvInvites) this._processPartyInvite(recv);
       }
     } catch (e) {
       console.warn('[Dota2 GC] Could not process SO update:', e.message);
@@ -420,6 +488,10 @@ class Dota2GCClient extends EventEmitter {
         const partyInvite = this._tryDecodePartyInvite(obj.typeId, obj.objectData);
         if (partyInvite) {
           this._processPartyInvite(partyInvite);
+        }
+        const partyWithInvites = this._tryDecodePartyWithInvites(obj.typeId, obj.objectData);
+        if (partyWithInvites) {
+          for (const recv of partyWithInvites.recvInvites) this._processPartyInvite(recv);
         }
       }
     } catch (e) {

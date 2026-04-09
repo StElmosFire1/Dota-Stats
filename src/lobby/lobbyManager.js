@@ -42,7 +42,20 @@ class LobbyManager extends EventEmitter {
   }
 
   initListeners() {
-    this._setupGCListeners();
+    const client = getSteamClient();
+    // If GC isn't ready yet, wait for it then set up
+    if (!client.gcClient) {
+      console.log('[Lobby] GC not ready yet — will set up listeners when GC connects.');
+      client.once('gcReady', () => this._setupGCListeners());
+    } else {
+      this._setupGCListeners();
+    }
+    // Re-register on every future GC reconnect (new gcClient instance each time)
+    client.on('gcReady', () => {
+      console.log('[Lobby] GC reconnected — re-initialising GC listeners.');
+      this._gcListenersSetup = false;
+      this._setupGCListeners();
+    });
   }
 
   _setupGCListeners() {
