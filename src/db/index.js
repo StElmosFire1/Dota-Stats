@@ -1919,6 +1919,18 @@ async function getNickname(accountId) {
   return result.rows[0]?.nickname || null;
 }
 
+async function getMergedAccountIds(accountId) {
+  const p = getPool();
+  const pid = parseInt(accountId);
+  if (!pid) return [pid];
+  const nickRes = await p.query('SELECT nickname FROM nicknames WHERE account_id = $1 LIMIT 1', [pid]);
+  const nick = nickRes.rows[0]?.nickname;
+  if (!nick) return [pid];
+  const sibRes = await p.query('SELECT account_id FROM nicknames WHERE LOWER(nickname) = LOWER($1)', [nick]);
+  const ids = sibRes.rows.map(r => parseInt(r.account_id));
+  return ids.length > 1 ? ids : [pid];
+}
+
 async function setNickname(accountId, nickname) {
   const p = getPool();
   if (!nickname || nickname.trim() === '') {
@@ -2834,13 +2846,20 @@ async function getPlayerHeroes(playerKey) {
   return result.rows;
 }
 
-async function getPlayerPositions(playerKey, seasonId = null) {
+async function getPlayerPositions(playerKey, seasonId = null, mergedIds = null) {
   const p = getPool();
-  const isNumeric = /^\d+$/.test(playerKey);
-  const whereClause = isNumeric && playerKey !== '0'
-    ? 'ps.account_id = $1'
-    : 'ps.persona_name = $1';
-  const param = isNumeric && playerKey !== '0' ? parseInt(playerKey) : playerKey;
+  const isNumeric = /^\d+$/.test(String(playerKey));
+  let whereClause, param;
+  if (mergedIds && mergedIds.length > 1) {
+    whereClause = 'ps.account_id = ANY($1::bigint[])';
+    param = mergedIds;
+  } else if (isNumeric && playerKey !== '0') {
+    whereClause = 'ps.account_id = $1';
+    param = parseInt(playerKey);
+  } else {
+    whereClause = 'ps.persona_name = $1';
+    param = playerKey;
+  }
   const params = [param];
   const sc = _sc(seasonId, params, 'm');
 
@@ -3572,14 +3591,14 @@ async function getPlayerComparison(playerA, playerB, seasonId = null) {
 
 async function getPlayerAchievements(accountId) {
   const p = getPool();
-  const pid = parseInt(accountId);
+  const pid = Array.isArray(accountId) ? accountId : [parseInt(accountId)];
   const [gamesRes, heroesRes, captainRes, positionsRes] = await Promise.all([
     p.query(
       `SELECT COUNT(*) as games,
               SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins,
               SUM(CASE WHEN ps.deaths = 0 THEN 1 ELSE 0 END) as deathless_games
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
@@ -3589,20 +3608,20 @@ async function getPlayerAchievements(accountId) {
        JOIN matches m ON m.match_id = ps.match_id,
        LATERAL (SELECT COUNT(*) as cnt FROM player_stats ps2
                 JOIN matches m2 ON m2.match_id = ps2.match_id
-                WHERE ps2.account_id = $1 AND ps2.hero_id = ps.hero_id AND m2.is_legacy = false) sub
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+                WHERE ps2.account_id = ANY($1::bigint[]) AND ps2.hero_id = ps.hero_id AND m2.is_legacy = false) sub
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT COUNT(*) as captain_games FROM player_stats ps
        JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND ps.is_captain = true AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND ps.is_captain = true AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT COUNT(DISTINCT ps.position) as positions_played FROM player_stats ps
        JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND ps.position > 0 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND ps.position > 0 AND m.is_legacy = false`,
       [pid]
     ),
   ]);
@@ -3616,7 +3635,7 @@ async function getPlayerAchievements(accountId) {
   const maxStreakRes = await p.query(
     `SELECT ps.team, m.radiant_win, m.date FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE ps.account_id = $1 AND m.is_legacy = false ORDER BY m.date ASC`,
+     WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false ORDER BY m.date ASC`,
     [pid]
   );
   let maxStreak = 0, cur = 0;
@@ -3631,57 +3650,57 @@ async function getPlayerAchievements(accountId) {
       `SELECT SUM(rampages) AS rampages, SUM(ultra_kills) AS ultra_kills, SUM(triple_kills) AS triple_kills,
               SUM(double_kills) AS double_kills, MAX(kills) AS max_kills
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT SUM(firstblood_claimed) AS fbs FROM player_stats ps
        JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT SUM(obs_placed + sen_placed) AS wards_placed, SUM(wards_killed) AS wards_killed
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT MAX(hero_damage) AS max_damage, MAX(gpm) AS max_gpm, MAX(hero_healing) AS max_healing,
               MAX(tower_damage) AS max_tower_damage, MAX(last_hits) AS max_last_hits
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT position, COUNT(*) AS cnt FROM player_stats ps
        JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND ps.position > 0 AND m.is_legacy = false
+       WHERE ps.account_id = ANY($1::bigint[]) AND ps.position > 0 AND m.is_legacy = false
        GROUP BY position`,
       [pid]
     ),
     p.query(
       `SELECT SUM(kills) AS total_kills, SUM(assists) AS total_assists, SUM(last_hits) AS total_lh
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT AVG(CASE WHEN deaths > 0 THEN (kills + assists)::float / deaths ELSE (kills + assists)::float END) AS avg_kda
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT SUM(hero_healing) AS total_healing, MAX(hero_healing) AS max_game_healing
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
       `SELECT SUM(tower_damage) AS total_tower_damage
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
@@ -3689,7 +3708,7 @@ async function getPlayerAchievements(accountId) {
          COUNT(*) AS g,
          SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS w
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = $1 AND m.is_legacy = false`,
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
   ]);
@@ -3954,16 +3973,17 @@ async function getPlayerRecentResults(accountId, limit = 10) {
   return res.rows;
 }
 
-async function getPlayerCurrentStreak(accountId) {
+async function getPlayerCurrentStreak(accountIds) {
   const p = getPool();
+  const ids = Array.isArray(accountIds) ? accountIds : [accountIds];
   const res = await p.query(`
     SELECT ps.team, m.radiant_win
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
-    WHERE ps.account_id = $1 AND m.is_legacy = false
+    WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false
     ORDER BY m.match_id DESC
     LIMIT 15
-  `, [accountId]);
+  `, [ids]);
 
   if (!res.rows.length) return 0;
 
@@ -4521,9 +4541,10 @@ async function getOpenPrediction() {
   return { match_id: matchId, predictions: all.rows };
 }
 
-async function getPlayerWardPlacements(accountId, seasonId = null) {
+async function getPlayerWardPlacements(accountIds, seasonId = null) {
   const p = getPool();
-  const params = [accountId];
+  const ids = Array.isArray(accountIds) ? accountIds : [accountIds];
+  const params = [ids];
   let sc = '';
   if (!seasonId) sc = ` AND m.is_legacy = false`;
   else if (seasonId === 'legacy') sc = ` AND m.is_legacy = true`;
@@ -4533,7 +4554,7 @@ async function getPlayerWardPlacements(accountId, seasonId = null) {
     SELECT ps.ward_placements, ps.persona_name, ps.hero_id, ps.hero_name, m.match_id, m.date
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
-    WHERE ps.account_id = $1
+    WHERE ps.account_id = ANY($1::bigint[])
       AND ps.ward_placements IS NOT NULL
       AND ps.ward_placements != '[]'::jsonb
       ${sc}
@@ -4601,9 +4622,10 @@ async function getAllPlayersWardPlacements(seasonId = null) {
   return Object.values(byName);
 }
 
-async function getPlayerHeroCounters(accountId, seasonId = null) {
+async function getPlayerHeroCounters(accountIds, seasonId = null) {
   const p = getPool();
-  const params = [accountId];
+  const ids = Array.isArray(accountIds) ? accountIds : [accountIds];
+  const params = [ids];
   const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
 
   const res = await p.query(`
@@ -4611,7 +4633,7 @@ async function getPlayerHeroCounters(accountId, seasonId = null) {
       SELECT ps.match_id, ps.team, m.radiant_win
       FROM player_stats ps
       JOIN matches m ON m.match_id = ps.match_id
-      WHERE ps.account_id = $1${sc}
+      WHERE ps.account_id = ANY($1::bigint[])${sc}
     ),
     enemy_picks AS (
       SELECT
@@ -4622,7 +4644,7 @@ async function getPlayerHeroCounters(accountId, seasonId = null) {
         (mm.team != ps.team) AS is_enemy,
         CASE WHEN mm.team = 'radiant' THEN mm.radiant_win ELSE NOT mm.radiant_win END AS i_won
       FROM my_matches mm
-      JOIN player_stats ps ON ps.match_id = mm.match_id AND ps.account_id != $1
+      JOIN player_stats ps ON ps.match_id = mm.match_id AND ps.account_id != ALL($1::bigint[])
       LEFT JOIN nicknames n ON n.account_id = ps.account_id
     )
     SELECT
@@ -4790,9 +4812,10 @@ async function getHeroSkillBuilds(heroId, seasonId = null) {
   };
 }
 
-async function getPlayerGameDurationStats(accountId, seasonId = null) {
+async function getPlayerGameDurationStats(accountIds, seasonId = null) {
   const p = getPool();
-  const params = [parseInt(accountId)];
+  const ids = Array.isArray(accountIds) ? accountIds : [parseInt(accountIds)];
+  const params = [ids];
   const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
 
   const rows = await p.query(`
@@ -4810,7 +4833,7 @@ async function getPlayerGameDurationStats(accountId, seasonId = null) {
       ROUND(AVG(ps.hero_damage),0) AS avg_damage
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
-    WHERE ps.account_id = $1 ${sc}
+    WHERE ps.account_id = ANY($1::bigint[]) ${sc}
     GROUP BY bracket
     ORDER BY MIN(m.duration)
   `, params);
@@ -5334,6 +5357,7 @@ module.exports = {
   getPlayerRating,
   getPlayerStats,
   getNickname,
+  getMergedAccountIds,
   setNickname,
   setDiscordId,
   getNicknameByDiscordId,

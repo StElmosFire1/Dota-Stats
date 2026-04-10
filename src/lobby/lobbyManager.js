@@ -164,8 +164,6 @@ class LobbyManager extends EventEmitter {
           this.emit('autoJoined', invite);
         } catch (err) {
           console.warn(`[Lobby] Post-invite join failed: ${err.message}`);
-          // Emit anyway — the invite response may be sufficient for the GC to add us
-          this.emit('autoJoined', invite);
         }
       }, 1500);
     });

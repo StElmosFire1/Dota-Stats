@@ -828,7 +828,8 @@ function createApiRouter(startupStatus = {}) {
   router.get('/players/:accountId/ward-placements', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
-      const placements = await db.getPlayerWardPlacements(parseInt(req.params.accountId), seasonId);
+      const ids = await db.getMergedAccountIds(req.params.accountId);
+      const placements = await db.getPlayerWardPlacements(ids, seasonId);
       res.json({ placements });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch ward placements' });
@@ -848,7 +849,8 @@ function createApiRouter(startupStatus = {}) {
   router.get('/players/:accountId/hero-counters', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
-      const counters = await db.getPlayerHeroCounters(parseInt(req.params.accountId), seasonId);
+      const ids = await db.getMergedAccountIds(req.params.accountId);
+      const counters = await db.getPlayerHeroCounters(ids, seasonId);
       res.json({ counters });
     } catch (err) {
       console.error('[API] Error fetching hero counters:', err.message);
@@ -858,7 +860,8 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/players/:accountId/streak', async (req, res) => {
     try {
-      const streak = await db.getPlayerCurrentStreak(parseInt(req.params.accountId));
+      const ids = await db.getMergedAccountIds(req.params.accountId);
+      const streak = await db.getPlayerCurrentStreak(ids);
       res.json({ streak });
     } catch (err) {
       console.error('[API] Error fetching streak:', err.message);
@@ -1099,7 +1102,8 @@ function createApiRouter(startupStatus = {}) {
   router.get('/players/:accountId/duration-stats', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
-      const stats = await db.getPlayerGameDurationStats(parseInt(req.params.accountId), seasonId);
+      const ids = await db.getMergedAccountIds(req.params.accountId);
+      const stats = await db.getPlayerGameDurationStats(ids, seasonId);
       res.json({ stats });
     } catch (err) {
       console.error('[API] Error fetching duration stats:', err.message);
@@ -1779,7 +1783,8 @@ function createApiRouter(startupStatus = {}) {
   router.get('/players/:accountId/positions', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
-      const positions = await db.getPlayerPositions(req.params.accountId, seasonId);
+      const ids = await db.getMergedAccountIds(req.params.accountId);
+      const positions = await db.getPlayerPositions(req.params.accountId, seasonId, ids);
       res.json({ positions });
     } catch (err) {
       console.error('[API] Error fetching player positions:', err.message);
@@ -2065,7 +2070,8 @@ NOTES
 
   router.get('/players/:accountId/achievements', async (req, res) => {
     try {
-      const achievements = await db.getPlayerAchievements(req.params.accountId);
+      const ids = await db.getMergedAccountIds(req.params.accountId);
+      const achievements = await db.getPlayerAchievements(ids);
       res.json({ achievements });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch achievements' });
