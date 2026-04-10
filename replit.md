@@ -10,8 +10,9 @@ After completing any set of changes and rebuilding, always push to GitHub automa
 `git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main`
 
 The bot runs under PM2. Standard deploy command:
-`cd ~/Dota-Stats && git pull && pm2 restart inhouse-bot --update-env`
-After rebuilding the Java JAR (`cd odota-parser && mvn package -q -DskipTests`), run the PM2 restart to pick it up.
+`cd ~/Dota-Stats && bash deploy.sh`
+This script: pulls latest code (`git reset --hard origin/main`), runs `npm install` in the `web/` dir, builds the frontend (`npm run build`), then restarts PM2 process 2.
+After rebuilding the Java JAR (`cd odota-parser && mvn package -q -DskipTests`), run the deploy script to pick it up.
 
 ## System Architecture
 The bot is built with Node.js, utilizing `discord.js` for Discord integration and a custom Steam client (`steam-user`, `dota2-user`) for Dota 2 Game Coordinator interactions. Data is primarily stored in PostgreSQL.
