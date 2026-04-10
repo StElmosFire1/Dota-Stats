@@ -70,7 +70,7 @@ class LobbyManager extends EventEmitter {
     client.gcClient.on('lobbyUpdate', (update) => {
       // When waiting for the GC to add us to an invited lobby, the state is still IDLE.
       // Detect the CSO 2004 lobby update here — this is how the GC confirms a lobby invite join.
-      if (this.state === LobbyState.IDLE && this._pendingInviteAccept) {
+      if ((this.state === LobbyState.IDLE || this.state === LobbyState.ENDED) && this._pendingInviteAccept) {
         const pending = this._pendingInviteAccept;
         if (!update.lobbyId || update.lobbyId !== pending.lobbyId) return;
         // GC confirmed — we're now in the lobby.
