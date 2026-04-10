@@ -73,7 +73,7 @@ function getLobbyProtos() {
   );
   protoRoot.define('dota').add(
     new protobuf.Type('CMsgPracticeLobbyJoin')
-      .add(new protobuf.Field('lobby_id', 1, 'uint64'))
+      .add(new protobuf.Field('lobby_id', 1, 'fixed64'))
       .add(new protobuf.Field('client_version', 2, 'uint32'))
       .add(new protobuf.Field('pass_key', 3, 'string'))
       .add(new protobuf.Field('custom_game_crc', 4, 'fixed64'))

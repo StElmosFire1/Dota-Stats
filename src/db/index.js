@@ -1780,7 +1780,6 @@ async function getPlayerStats(accountId, seasonId = null) {
   const isNumeric = /^\d+$/.test(accountId);
   const isRealAccount = isNumeric && accountId !== '0';
 
-  const whereClause = isRealAccount ? 'ps.account_id = $1' : 'ps.persona_name = $1';
   const param = isRealAccount ? parseInt(accountId) : decodeURIComponent(accountId);
 
   const ratingResult = await p.query(
@@ -1789,15 +1788,37 @@ async function getPlayerStats(accountId, seasonId = null) {
   );
 
   let nicknameResult = { rows: [] };
+  let mergedAccountIds = null;
   if (isRealAccount) {
     nicknameResult = await p.query(
       'SELECT nickname FROM nicknames WHERE account_id = $1 LIMIT 1',
       [parseInt(accountId)]
     );
+    const nick = nicknameResult.rows[0]?.nickname;
+    if (nick) {
+      const siblingRes = await p.query(
+        'SELECT account_id FROM nicknames WHERE LOWER(nickname) = LOWER($1)',
+        [nick]
+      );
+      const ids = siblingRes.rows.map(r => parseInt(r.account_id));
+      if (ids.length > 1) mergedAccountIds = ids;
+    }
+  }
+
+  let whereClause, scParam;
+  if (mergedAccountIds) {
+    whereClause = 'ps.account_id = ANY($1::bigint[])';
+    scParam = mergedAccountIds;
+  } else if (isRealAccount) {
+    whereClause = 'ps.account_id = $1';
+    scParam = param;
+  } else {
+    whereClause = 'ps.persona_name = $1';
+    scParam = param;
   }
 
   // Build season clause for queries that join matches
-  const scParams = [param];
+  const scParams = [scParam];
   const sc = _sc(seasonId, scParams, 'm');
 
   const recentMatches = await p.query(
@@ -1810,7 +1831,7 @@ async function getPlayerStats(accountId, seasonId = null) {
     scParams
   );
 
-  const avgParams = [param];
+  const avgParams = [scParam];
   const avSc = _sc(seasonId, avgParams, 'm');
   const averages = await p.query(
     `SELECT
@@ -1842,7 +1863,7 @@ async function getPlayerStats(accountId, seasonId = null) {
     avgParams
   );
 
-  const heroParams = [param];
+  const heroParams = [scParam];
   const heroSc = _sc(seasonId, heroParams, 'm');
   const heroes = await p.query(
     `SELECT hero_name, hero_id, COUNT(*) as games,

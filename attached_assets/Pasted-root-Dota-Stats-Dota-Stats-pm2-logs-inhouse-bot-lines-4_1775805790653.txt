@@ -1,0 +1,85 @@
+root@Dota-Stats:~/Dota-Stats# pm2 logs inhouse-bot --lines 40
+[TAILING] Tailing last 40 lines for [inhouse-bot] process (change the value with --lines option)
+/root/.pm2/logs/inhouse-bot-out.log last 40 lines:
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (22 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=7388 (24 bytes)
+2|inhouse- | [Dota2 GC] Connected to Game Coordinator.
+2|inhouse- | [Steam] Dota 2 GC is ready!
+2|inhouse- | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+2|inhouse- | [Startup] Steam connected.
+2|inhouse- | 
+2|inhouse- | [Lobby] GC listeners initialized (auto-accept invites enabled).
+2|inhouse- | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+2|inhouse- | [Startup] Lobby manager + friend monitor enabled.
+2|inhouse- | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+2|inhouse- | [Dota2 GC] Unhandled GC message: msgType=8678 (2 bytes)
+2|inhouse- | 
+2|inhouse- | [Startup] Bot is running! Use !help in Discord.
+2|inhouse- | [Startup] Active features:
+2|inhouse- |   - Discord:        YES
+2|inhouse- |   - Database:       YES
+2|inhouse- |   - Steam:          YES (connected)
+2|inhouse- |   - Replay parser:  YES (full stats)
+2|inhouse- |   - TrueSkill MMR:  YES
+2|inhouse- |   - Google Sheets:  DORMANT
+2|inhouse- |   - Match poller:   DORMANT
+2|inhouse- |   - Lobby/monitor:  YES
+2|inhouse- | [Web] Dashboard running on port 5000
+2|inhouse- | [Startup] All systems ready.
+2|inhouse- | 
+2|inhouse- | [Discord] Bot online as Dota Bot#5597
+2|inhouse- | [Discord] Weekly recap scheduled (Mondays 9am AEST).
+2|inhouse- | [PatchNotes] No new patch notes to announce.
+2|inhouse- | [Dota2 GC] SO CacheSubscribed object: typeId=2011
+2|inhouse- | [Dota2 GC] Lobby invite from MajinDabura (Steam64: 153122395956475477), lobbyId: 29789614127916263, inviteGid: 0
+2|inhouse- | [Lobby] Auto-accepting lobby invite from MajinDabura (lobby: 29789614127916263)...
+2|inhouse- | [Dota2 GC] Sent lobby invite acceptance for lobby 29789614127916263 (11 bytes, lobbyId included)
+2|inhouse- | [Lobby] Following up invite acceptance with join for lobby 29789614127916263...
+2|inhouse- | [Dota2 GC] Join buffer (9 bytes): 08e7c9dcc0f0aff534
+2|inhouse- | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29789614127916263
+2|inhouse- | [Dota2 GC] Lobby join request sent successfully
+2|inhouse- | [Dota2 GC] Lobby join response received (raw): result=2
+
+/root/.pm2/logs/inhouse-bot-error.log last 40 lines:
+2|inhouse- |     _connectionError: false,
+2|inhouse- |     _queryable: false,
+2|inhouse- |     _activeQuery: null,
+2|inhouse- |     enableChannelBinding: false,
+2|inhouse- |     connection: Connection {
+2|inhouse- |       _events: [Object: null prototype],
+2|inhouse- |       _eventsCount: 23,
+2|inhouse- |       _maxListeners: undefined,
+2|inhouse- |       stream: [Socket],
+2|inhouse- |       _keepAlive: false,
+2|inhouse- |       _keepAliveInitialDelayMillis: 0,
+2|inhouse- |       parsedStatements: {},
+2|inhouse- |       ssl: false,
+2|inhouse- |       _ending: false,
+2|inhouse- |       _emitMessage: false,
+2|inhouse- |       _connecting: true,
+2|inhouse- |       [Symbol(shapeMode)]: false,
+2|inhouse- |       [Symbol(kCapture)]: false
+2|inhouse- |     },
+2|inhouse- |     _queryQueue: [],
+2|inhouse- |     binary: false,
+2|inhouse- |     processID: 682342,
+2|inhouse- |     secretKey: -1594031998,
+2|inhouse- |     ssl: false,
+2|inhouse- |     _connectionTimeoutMillis: 0,
+2|inhouse- |     _connectionCallback: null,
+2|inhouse- |     saslSession: null,
+2|inhouse- |     release: [Function (anonymous)],
+2|inhouse- |     readyForQuery: true,
+2|inhouse- |     hasExecuted: true,
+2|inhouse- |     _poolUseCount: 5,
+2|inhouse- |     [Symbol(shapeMode)]: false,
+2|inhouse- |     [Symbol(kCapture)]: false
+2|inhouse- |   }
+2|inhouse- | }
+2|inhouse- | (node:682642) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | (node:684330) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+2|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+2|inhouse- | [Lobby] Post-invite join failed: Failed to join lobby: Lobby join failed with result: 2
