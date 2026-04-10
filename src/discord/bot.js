@@ -2646,8 +2646,14 @@ class DiscordBot {
         const allOthers = players.filter(p => p.account_id !== rater.account_id);
         if (allOthers.length === 0) continue;
 
-        const user = await this.client.users.fetch(rater.discord_id).catch(() => null);
-        if (!user) continue;
+        const user = await this.client.users.fetch(rater.discord_id).catch(e => {
+          console.warn(`[Ratings] Could not fetch Discord user for ${rater.display_name} (id: ${rater.discord_id}): ${e.message}`);
+          return null;
+        });
+        if (!user) {
+          console.warn(`[Ratings] Skipping DM for ${rater.display_name} (discord_id: ${rater.discord_id}) — user not found`);
+          continue;
+        }
 
         const session = {
           matchId: matchStats.matchId.toString(),

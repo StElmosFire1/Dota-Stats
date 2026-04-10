@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores } from '../api';
 import ImpactBadge from '../components/ImpactBadge';
 import { useSeason } from '../context/SeasonContext';
@@ -145,6 +145,7 @@ function AchievementBadges({ achievements }) {
 export default function PlayerProfile() {
   const { accountId } = useParams();
   const { seasonId } = useSeason();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [positions, setPositions] = useState([]);
   const [ratingHistory, setRatingHistory] = useState([]);
@@ -193,6 +194,10 @@ export default function PlayerProfile() {
       setDurationStats(durData?.stats || []);
       setCommunityRatings(ratingData?.ratings || null);
       setPositionAverages(avgData?.averages || []);
+      // Redirect merged secondary accounts to the canonical (primary) profile
+      if (playerData?.canonical_id) {
+        navigate(`/player/${playerData.canonical_id}`, { replace: true });
+      }
     }).finally(() => setLoading(false));
   }, [accountId, seasonId]);
 

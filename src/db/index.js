@@ -1922,6 +1922,22 @@ async function getPlayerStats(accountId, seasonId = null) {
     }
   }
 
+  // Expose canonical_id so the frontend can redirect merged secondary accounts
+  // to the primary account profile (the one with the most rating history entries).
+  let canonicalAccountId = null;
+  if (mergedAccountIds && mergedAccountIds.length > 1) {
+    const canonRes = await p.query(
+      `SELECT player_id, COUNT(*) AS cnt FROM rating_history
+       WHERE player_id = ANY($1::bigint[])
+       GROUP BY player_id ORDER BY cnt DESC, player_id ASC LIMIT 1`,
+      [mergedAccountIds]
+    );
+    const primary = canonRes.rows[0]?.player_id;
+    if (primary && String(primary) !== String(accountId)) {
+      canonicalAccountId = String(primary);
+    }
+  }
+
   return {
     rating: ratingResult.rows[0] || null,
     nickname: nicknameResult.rows[0]?.nickname || null,
@@ -1929,6 +1945,7 @@ async function getPlayerStats(accountId, seasonId = null) {
     averages: averages.rows[0] || null,
     heroes: heroes.rows,
     seasonMmr,
+    canonical_id: canonicalAccountId,
   };
 }
 
@@ -3484,13 +3501,14 @@ async function getPlayerHeroProfiles(seasonId = null) {
 
 async function getPlayerRatingHistory(accountId) {
   const p = getPool();
+  const ids = await getMergedAccountIds(accountId);
   const result = await p.query(
     `SELECT mmr, mu, sigma, match_id, recorded_at
      FROM rating_history
-     WHERE player_id = $1
+     WHERE player_id = ANY($1::bigint[])
      ORDER BY recorded_at ASC
      LIMIT 200`,
-    [parseInt(accountId)]
+    [ids]
   );
   return result.rows;
 }
@@ -5854,9 +5872,9 @@ async function markLobbyCreated(id) {
 async function getAllSteamAccountIds() {
   const p = getPool();
   const result = await p.query(
-    `SELECT DISTINCT account_id_32 FROM players WHERE account_id_32 IS NOT NULL AND account_id_32 > 0`
+    `SELECT DISTINCT account_id FROM nicknames WHERE account_id IS NOT NULL AND account_id > 0`
   );
-  return result.rows.map(r => BigInt(r.account_id_32));
+  return result.rows.map(r => BigInt(r.account_id));
 }
 
 /**
