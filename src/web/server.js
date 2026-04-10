@@ -708,7 +708,8 @@ function createApiRouter(startupStatus = {}) {
 
   router.get('/ratings/player/:accountId', async (req, res) => {
     try {
-      const ratings = await db.getPlayerRatingsReceived(req.params.accountId);
+      const ids = await db.getMergedAccountIds(req.params.accountId);
+      const ratings = await db.getPlayerRatingsReceived(ids);
       res.json({ ratings });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch player ratings' });

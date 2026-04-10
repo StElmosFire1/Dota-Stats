@@ -2983,7 +2983,7 @@ class DiscordBot {
             timeZone: 'Australia/Sydney', weekday: 'short', month: 'short', day: 'numeric',
             hour: '2-digit', minute: '2-digit', hour12: true,
           })} AEST${game.note ? ` — ${game.note}` : ''}\n` +
-          `${password ? `🔑 Password: \`${password}\`` : '🔓 No password'}\n` +
+          `${password ? `🔑 Password: \`${password}\`\n` : ''}` +
           `📨 Invites sent to ${accountIds.length} RSVP'd player${accountIds.length !== 1 ? 's' : ''}. ` +
           `Join via your Steam friends list or Dota 2 lobby browser.\n` +
           `An admin can start the game with \`!start_game\` once all 10 players are seated.`;

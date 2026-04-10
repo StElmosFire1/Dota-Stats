@@ -1727,13 +1727,32 @@ async function getComputedLeaderboard(seasonId = null) {
 }
 
 // Lightweight wrapper — reuses getComputedLeaderboard to extract impact scores.
-// Returns { [player_id]: { score: 1-10, raw: number } }
+// Returns { [player_id]: { score: 1-10, raw: number } } — expanded for all merged account IDs.
 async function getImpactScores(seasonId = null) {
   const leaderboard = await getComputedLeaderboard(seasonId);
   const map = {};
   for (const p of leaderboard) {
     if (p.impact_score != null) {
-      map[p.player_id] = { score: p.impact_score, raw: Math.round(p.impact_raw || 0) };
+      map[String(p.player_id)] = { score: p.impact_score, raw: Math.round(p.impact_raw || 0) };
+    }
+  }
+  // Expand to merged account IDs: if any sibling account has a score, propagate it.
+  const pool = getPool();
+  const nickRows = await pool.query(
+    `SELECT account_id, LOWER(nickname) AS nick FROM nicknames WHERE nickname IS NOT NULL AND TRIM(nickname) <> ''`
+  );
+  const byNick = {};
+  for (const r of nickRows.rows) {
+    if (!byNick[r.nick]) byNick[r.nick] = [];
+    byNick[r.nick].push(String(r.account_id));
+  }
+  for (const ids of Object.values(byNick)) {
+    if (ids.length < 2) continue;
+    const found = ids.find(id => map[id] != null);
+    if (found) {
+      for (const id of ids) {
+        if (map[id] == null) map[id] = map[found];
+      }
     }
   }
   return map;
@@ -2049,12 +2068,15 @@ async function getMatchRatings(matchId) {
   return result.rows;
 }
 
-async function getPlayerRatingsReceived(accountId) {
+async function getPlayerRatingsReceived(accountIds) {
   const p = getPool();
+  const ids = (Array.isArray(accountIds) ? accountIds : [accountIds]).map(Number).filter(Boolean);
+  if (!ids.length) return { mvp_wins: 0, avg_attitude: null, attitude_ratings: 0 };
   const result = await p.query(
     `WITH vote_counts AS (
        SELECT match_id, rated_account_id, COUNT(*) AS votes
        FROM match_ratings WHERE is_mvp_vote = TRUE
+         AND rated_account_id = ANY($1::bigint[])
        GROUP BY match_id, rated_account_id
      ),
      match_winners AS (
@@ -2063,12 +2085,12 @@ async function getPlayerRatingsReceived(accountId) {
        FROM vote_counts
      )
      SELECT
-       (SELECT COUNT(*) FROM match_winners WHERE rated_account_id = $1 AND rnk = 1) AS mvp_wins,
+       (SELECT COUNT(*) FROM match_winners WHERE rated_account_id = ANY($1::bigint[]) AND rnk = 1) AS mvp_wins,
        ROUND(AVG(attitude_score) FILTER (WHERE attitude_score IS NOT NULL), 1) AS avg_attitude,
        COUNT(*) FILTER (WHERE attitude_score IS NOT NULL) AS attitude_ratings
      FROM match_ratings
-     WHERE rated_account_id = $1`,
-    [accountId]
+     WHERE rated_account_id = ANY($1::bigint[])`,
+    [ids]
   );
   return result.rows[0];
 }
