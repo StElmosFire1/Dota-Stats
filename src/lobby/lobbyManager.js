@@ -64,6 +64,12 @@ class LobbyManager extends EventEmitter {
     const client = getSteamClient();
     if (!client.gcClient) return;
 
+    // Remove any stale listeners from a previous GC connection to prevent duplicates.
+    client.gcClient.removeAllListeners('lobbyUpdate');
+    client.gcClient.removeAllListeners('lobbyDestroyed');
+    client.gcClient.removeAllListeners('lobbyInviteReceived');
+    client.gcClient.removeAllListeners('partyInviteReceived');
+
     this._gcListenersSetup = true;
     console.log('[Lobby] GC listeners initialized (auto-accept invites enabled).');
 

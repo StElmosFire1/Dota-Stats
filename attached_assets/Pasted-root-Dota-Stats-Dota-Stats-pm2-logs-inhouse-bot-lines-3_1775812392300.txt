@@ -1,0 +1,68 @@
+root@Dota-Stats:~/Dota-Stats# pm2 logs inhouse-bot --lines 300 | grep -E "Invite|invite|autoJoin|Joined|partyJoin|pending|CSO|SO.*200|Lobby update|LobbyAuto|GC version"
+2|inhouse- | [Lobby] GC listeners initialized (auto-accept invites enabled).
+2|inhouse- | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+2|inhouse- | [Lobby] GC listeners initialized (auto-accept invites enabled).
+2|inhouse- | [Dota2 GC] Lobby invite from MajinDabura (Steam64: 153122395956475477), lobbyId: 29789614127916263, inviteGid: 0
+2|inhouse- | [Lobby] Auto-accepting lobby invite from MajinDabura (lobby: 29789614127916263)...
+2|inhouse- | [Dota2 GC] Sent lobby invite acceptance for lobby 29789614127916263 (11 bytes, lobbyId included)
+2|inhouse- | [Lobby] Following up invite acceptance with join for lobby 29789614127916263...
+2|inhouse- | [Dota2 GC] ClientWelcome: 2 CSO cache(s) in startup payload
+2|inhouse- | [Dota2 GC] Startup pending lobby invite found (typeId=2006)
+2|inhouse- | [Dota2 GC] Lobby invite from MajinDabura (Steam64: 153122395956475477), lobbyId: 29789614127916263, inviteGid: 0
+2|inhouse- | [Lobby] GC listeners initialized (auto-accept invites enabled).
+2|inhouse- | [Dota2 GC] SO CacheSubscribed object: typeId=2006 (LobbyInvite)
+2|inhouse- | [Dota2 GC] Lobby invite from MajinDabura (Steam64: 153122395956475477), lobbyId: 29789614127916263, inviteGid: 0
+2|inhouse- | [Lobby] Auto-accepting lobby invite from MajinDabura (lobby: 29789614127916263)...
+2|inhouse- | [Dota2 GC] Sent lobby invite acceptance for lobby 29789614127916263 (11 bytes, lobbyId included)
+2|inhouse- | [Lobby] Following up invite acceptance with join for lobby 29789614127916263...
+2|inhouse- | [Dota2 GC] ClientWelcome: 2 CSO cache(s) in startup payload
+2|inhouse- | [Dota2 GC] Startup pending lobby invite found (typeId=2006)
+2|inhouse- | [Dota2 GC] Lobby invite from MajinDabura (Steam64: 153122395956475477), lobbyId: 29789614127916263, inviteGid: 0
+2|inhouse- | [Lobby] GC listeners initialized (auto-accept invites enabled).
+2|inhouse- | [LobbyAuto] Auto-creating lobby for game #4: "OCE Inhouse #1"
+2|inhouse- | [Dota2 GC] SO CacheSubscribed object: typeId=2004 (Lobby)
+2|inhouse- | [Dota2 GC] Lobby update: id=29789614168540756, state=0, match=none, outcome=0, members=1, name="OCE Inhouse #1"
+2|inhouse- | [LobbyAuto] Inviting 3 RSVP'd players...
+2|inhouse- | [Dota2 GC] Lobby invite sent to: 76561197996209740
+2|inhouse- | [Dota2 GC] Lobby invite sent to: 76561199601272930
+2|inhouse- | [Dota2 GC] Lobby invite sent to: 76561198090712220
+2|inhouse- | [Dota2 GC] Joined broadcast channel 0.
+2|inhouse- | [Dota2 GC] Lobby update: id=29789614168540756, state=0, match=none, outcome=0, members=1, name="OCE Inhouse #1"
+2|inhouse- | [LobbyAuto] Lobby "OCE Inhouse #1" created and invites sent for game #4
+2|inhouse- | [Dota2 GC] GC version from welcome: 6763
+2|inhouse- | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+2|inhouse- | [Lobby] GC listeners initialized (auto-accept invites enabled).
+2|inhouse- | [Dota2 GC] Lobby invite from MajinDabura (Steam64: 153122395956475477), lobbyId: 29789614127916263, inviteGid: 0
+2|inhouse- | [Lobby] Auto-accepting lobby invite from MajinDabura (lobby: 29789614127916263)...
+2|inhouse- | [Dota2 GC] Sent lobby invite acceptance for lobby 29789614127916263 (14 bytes, clientVersion=6763)
+2|inhouse- | [Lobby] Failed to auto-accept invite: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Lobby] Failed to auto-accept invite: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Lobby] Failed to auto-accept invite: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Lobby] Failed to auto-accept invite: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Lobby] Failed to auto-accept invite: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Lobby] Failed to auto-accept invite: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Dota2 GC] Failed to send lobby invite response: invalid uint32: undefined
+2|inhouse- | [Lobby] Post-invite join failed: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Lobby] Post-invite join failed: Failed to join lobby: Lobby join failed with result: 2
+2|inhouse- | [Lobby] Invite-join timed out waiting for CSO lobby update (lobby 29789614127916263).
+^C
+root@Dota-Stats:~/Dota-Stats# date && PGPASSWORD=inhouse123 psql -h 127.0.0.1 -U inhouse_user inhouse -c "SELECT id, scheduled_at, scheduled_at AT TIME ZONE 'Australia/Sydney' AS aest, lobby_created, is_cancelled, note FROM scheduled_games ORDER BY scheduled_at DESC LIMIT 5;"
+Fri Apr 10 09:09:28 UTC 2026
+ id |      scheduled_at      |        aest         | lobby_created | is_cancelled |         note          
+----+------------------------+---------------------+---------------+--------------+-----------------------
+  1 | 2026-04-17 10:00:00+00 | 2026-04-17 20:00:00 | f             | t            | Weekly Friday Inhouse
+  2 | 2026-04-10 09:30:00+00 | 2026-04-10 19:30:00 | f             | t            | Weekly Friday Inhouse
+  3 | 2026-04-10 09:30:00+00 | 2026-04-10 19:30:00 | f             | t            | Weekly Friday Inhouse
+  4 | 2026-04-10 09:00:00+00 | 2026-04-10 19:00:00 | t             | f            | Weekly Friday Inhouse
+(4 rows)
+
+root@Dota-Stats:~/Dota-Stats# PGPASSWORD=inhouse123 psql -h 127.0.0.1 -U inhouse_user inhouse -c "UPDATE scheduled_games SET lobby_created = FALSE WHERE id = <id>;"
+ERROR:  syntax error at or near "<"
+LINE 1: ...E scheduled_games SET lobby_created = FALSE WHERE id = <id>;
+                                                                  ^
+root@Dota-Stats:~/Dota-Stats# pm2 logs inhouse-bot --lines 0
+^C
+root@Dota-Stats:~/Dota-Stats# grep -i "trusted\|TRUSTED\|trustedSteam" ~/Dota-Stats/src/config.js | head -5
+    trustedSteamIds: process.env.TRUSTED_STEAM_IDS
+      ? process.env.TRUSTED_STEAM_IDS.split(',').map(s => s.trim()).filter(Boolean)
+root@Dota-Stats:~/Dota-Stats# 
