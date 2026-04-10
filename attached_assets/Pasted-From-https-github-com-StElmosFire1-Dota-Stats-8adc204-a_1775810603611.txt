@@ -1,0 +1,65 @@
+From https://github.com/StElmosFire1/Dota-Stats
+   8adc204..abb795f  main       -> origin/main
+HEAD is now at abb795f Merge player profiles with shared nicknames and fix lobby join
+==> Installing frontend dependencies...
+==> Building frontend...
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 782 modules transformed.
+dist/index.html                             0.47 kB │ gzip:   0.31 kB
+dist/assets/index-q7HmBhMZ.css             19.06 kB │ gzip:   4.55 kB
+dist/assets/PlayerInsights-Ca6ipQQe.js      1.21 kB │ gzip:   0.69 kB
+dist/assets/ImpactBadge-B40RtuPy.js         1.36 kB │ gzip:   0.67 kB
+dist/assets/heroes-B4IkSDsk.js              1.55 kB │ gzip:   0.88 kB
+dist/assets/BuyinSuccess-iIZC1AqV.js        1.85 kB │ gzip:   0.86 kB
+dist/assets/PlayerBenchmarks-roaZmlo1.js    3.64 kB │ gzip:   1.62 kB
+dist/assets/Synergy-Bl01g1mY.js             3.87 kB │ gzip:   1.59 kB
+dist/assets/OverallStats-C2KF01ja.js        4.39 kB │ gzip:   1.47 kB
+dist/assets/MultiKills-DCBa6Yza.js          4.74 kB │ gzip:   1.70 kB
+dist/assets/HallOfFame-pz5Mb3qo.js          5.22 kB │ gzip:   2.12 kB
+dist/assets/PatchNotes-Cq_ZVfQG.js          6.43 kB │ gzip:   2.37 kB
+dist/assets/Players-B8QDymkc.js             6.84 kB │ gzip:   2.33 kB
+dist/assets/heroNames-DWJuq7ae.js           7.14 kB │ gzip:   3.40 kB
+dist/assets/MatchList-2YTHnDyt.js           7.14 kB │ gzip:   2.62 kB
+dist/assets/Social-Ctidn1XI.js              7.71 kB │ gzip:   2.42 kB
+dist/assets/RecordMatch-eWfcN38v.js         7.77 kB │ gzip:   2.79 kB
+dist/assets/Home-lCT8MJWe.js                7.78 kB │ gzip:   2.63 kB
+dist/assets/WardMap-RkeUdlQa.js            10.07 kB │ gzip:   3.38 kB
+dist/assets/Schedule-Cg1JkO5L.js           10.81 kB │ gzip:   3.59 kB
+dist/assets/PudgeStats-BNTcCwtH.js         10.90 kB │ gzip:   3.39 kB
+dist/assets/PositionStats-CaSVw-Hb.js      10.94 kB │ gzip:   2.75 kB
+dist/assets/Upload-D-2JZUuE.js             11.14 kB │ gzip:   3.91 kB
+dist/assets/PlayerTools-Co7k7nCP.js        11.60 kB │ gzip:   3.33 kB
+dist/assets/Leaderboard-DvWvpTwc.js        12.43 kB │ gzip:   3.49 kB
+dist/assets/Predictions-VEbBUTYI.js        12.62 kB │ gzip:   3.96 kB
+dist/assets/StatsEditor-Cxo1fWoP.js        13.30 kB │ gzip:   4.05 kB
+dist/assets/Records-Cg7mu5JI.js            15.07 kB │ gzip:   4.45 kB
+dist/assets/Tournaments-Bhxnhh6L.js        17.95 kB │ gzip:   4.68 kB
+dist/assets/Draft-D27iAEql.js              19.80 kB │ gzip:   4.99 kB
+dist/assets/Heroes-DQs4XAtP.js             23.24 kB │ gzip:   7.02 kB
+dist/assets/Seasons-B_QMMUWC.js            24.29 kB │ gzip:   6.13 kB
+dist/assets/PlayerProfile-CowGGxGd.js      28.31 kB │ gzip:   6.63 kB
+dist/assets/AdminPanel-9UttgoSf.js         29.47 kB │ gzip:   8.00 kB
+dist/assets/MatchDetail-Ba0MyGck.js       100.15 kB │ gzip:  27.42 kB
+dist/assets/index-BQzEEH0T.js             204.34 kB │ gzip:  64.22 kB
+dist/assets/LineChart-xgT4UjEK.js         350.83 kB │ gzip: 104.50 kB
+✓ built in 9.99s
+==> Restarting bot...
+[PM2] Applying action restartProcessId on app [2](ids: [ '2' ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot        │ fork     │ 259  │ online    │ 0%       │ 13.3mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+
+✓ Deploy complete.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot        │ fork     │ 259  │ online    │ 0%       │ 54.7mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats# 

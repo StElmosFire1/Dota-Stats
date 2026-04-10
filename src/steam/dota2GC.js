@@ -155,6 +155,7 @@ class Dota2GCClient extends EventEmitter {
     this._pendingPartyInvite = null;
     // Holds inviter steamId from k_EMsgGCInviteToLobby until CSO data arrives with lobbyId
     this._pendingLobbyInviteFromSteamId = null;
+    this.gcVersion = 0;
 
     this._setupListeners();
   }
@@ -252,6 +253,10 @@ class Dota2GCClient extends EventEmitter {
         // It may contain pending lobby invites (typeId=2006) we'd otherwise miss.
         try {
           const welcome = CMsgClientWelcome.decode(payload);
+          if (welcome.version) {
+            this.gcVersion = welcome.version;
+            console.log(`[Dota2 GC] GC version from welcome: ${this.gcVersion}`);
+          }
           const caches = [...(welcome.outofdateSubscribedCaches || []), ...(welcome.uptodateSubscribedCaches || [])];
           console.log(`[Dota2 GC] ClientWelcome: ${caches.length} CSO cache(s) in startup payload`);
           for (const cache of caches) {
@@ -338,10 +343,12 @@ class Dota2GCClient extends EventEmitter {
     }
     try {
       // Include the actual lobbyId — encoder skips it when "0", GC can't match the invite without it
-      const msg = CMsgLobbyInviteResponse.fromPartial({ accept: true, lobbyId: lobbyId ? lobbyId.toString() : '0' });
+      const inviteFields = { accept: true, lobbyId: lobbyId ? lobbyId.toString() : '0' };
+      if (this.gcVersion) inviteFields.clientVersion = this.gcVersion;
+      const msg = CMsgLobbyInviteResponse.fromPartial(inviteFields);
       const buf = CMsgLobbyInviteResponse.encode(msg).finish();
       this.dota2.sendRawBuffer(EGCBaseMsg.k_EMsgGCLobbyInviteResponse, buf);
-      console.log(`[Dota2 GC] Sent lobby invite acceptance for lobby ${lobbyId} (${buf.length} bytes, lobbyId included)`);
+      console.log(`[Dota2 GC] Sent lobby invite acceptance for lobby ${lobbyId} (${buf.length} bytes, clientVersion=${this.gcVersion})`);
       return true;
     } catch (e) {
       console.warn('[Dota2 GC] Failed to send lobby invite response:', e.message);

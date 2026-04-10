@@ -39,6 +39,7 @@ class LobbyManager extends EventEmitter {
     this._gcListenersSetup = false;
     this._countdownTimer = null;
     this._countdownAborted = false;
+    this._pendingInviteAccept = null;
   }
 
   initListeners() {
@@ -67,6 +68,32 @@ class LobbyManager extends EventEmitter {
     console.log('[Lobby] GC listeners initialized (auto-accept invites enabled).');
 
     client.gcClient.on('lobbyUpdate', (update) => {
+      // When waiting for the GC to add us to an invited lobby, the state is still IDLE.
+      // Detect the CSO 2004 lobby update here — this is how the GC confirms a lobby invite join.
+      if (this.state === LobbyState.IDLE && this._pendingInviteAccept) {
+        const pending = this._pendingInviteAccept;
+        if (!update.lobbyId || update.lobbyId !== pending.lobbyId) return;
+        // GC confirmed — we're now in the lobby.
+        clearTimeout(pending.timer);
+        this._pendingInviteAccept = null;
+        this.lobbyId = update.lobbyId;
+        this.currentLobby = {
+          name: update.gameName || `Lobby ${update.lobbyId}`,
+          password: '',
+          requestedBy: `invite:${pending.invite.senderId}`,
+          createdAt: new Date(),
+          lobbyId: update.lobbyId,
+          matchId: update.matchId || null,
+          playerCount: update.playerCount || 0,
+          players: update.players || [],
+          joinedExisting: true,
+        };
+        this.state = LobbyState.WAITING;
+        this._setRichPresence(update.lobbyId);
+        console.log(`[Lobby] GC confirmed invite join for lobby ${update.lobbyId} via CSO update.`);
+        this.emit('autoJoined', pending.invite);
+        return;
+      }
       if (this.state === LobbyState.IDLE) return;
 
       if (update.lobbyId) {
@@ -151,21 +178,18 @@ class LobbyManager extends EventEmitter {
         return;
       }
       console.log(`[Lobby] Auto-accepting lobby invite from ${invite.senderName} (lobby: ${invite.lobbyId})...`);
-      // Step 1: Send CMsgLobbyInviteResponse — tells GC we accept (grants join permission)
+      // Send CMsgLobbyInviteResponse — the GC will add us to the lobby and send a CSO 2004 update.
+      // We do NOT send CMsgPracticeLobbyJoin separately; the invite response is sufficient.
       const sent = client.gcClient.acceptLobbyInvite(invite.lobbyId);
       if (!sent) return;
-      // Step 2: After a short delay, send CMsgPracticeLobbyJoin to actually enter the lobby.
-      // The GC should now allow it since the invite was accepted.
-      setTimeout(async () => {
-        try {
-          if (this.state !== LobbyState.IDLE && this.state !== LobbyState.ENDED) return;
-          console.log(`[Lobby] Following up invite acceptance with join for lobby ${invite.lobbyId}...`);
-          await this.joinLobby(invite.lobbyId, '', `invite:${invite.senderId}`);
-          this.emit('autoJoined', invite);
-        } catch (err) {
-          console.warn(`[Lobby] Post-invite join failed: ${err.message}`);
+      // Wait up to 10 seconds for the GC to send the CSO 2004 lobby update confirming we joined.
+      const inviteTimer = setTimeout(() => {
+        if (this._pendingInviteAccept && this._pendingInviteAccept.lobbyId === invite.lobbyId) {
+          this._pendingInviteAccept = null;
+          console.warn(`[Lobby] Invite-join timed out waiting for CSO lobby update (lobby ${invite.lobbyId}).`);
         }
-      }, 1500);
+      }, 10000);
+      this._pendingInviteAccept = { lobbyId: invite.lobbyId, invite, timer: inviteTimer };
     });
 
     client.gcClient.on('partyInviteReceived', async (invite) => {
