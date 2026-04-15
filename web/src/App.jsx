@@ -1,6 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import AiChat from './components/AiChat';
 import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
 import SuperuserLoginModal from './components/SuperuserLoginModal';
@@ -365,7 +364,6 @@ export default function App() {
         </SuperuserProvider>
       </AdminProvider>
       </SteamAuthProvider>
-      <AiChat />
     </BrowserRouter>
   );
 }

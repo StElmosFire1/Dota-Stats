@@ -2675,8 +2675,8 @@ NOTES
     }
   });
 
-  // AI Chat — Grok-powered, Dota-only assistant
-  // Cache server context for 5 minutes to avoid hammering the DB on every message
+  // AI Chat — disabled (cost control)
+  /* DISABLED: AI Chat removed to prevent API cost abuse.
   let _chatContextCache = null;
   let _chatContextExpiry = 0;
   async function getServerContext() {
@@ -2825,6 +2825,7 @@ NOTES
       res.status(500).json({ error: 'Chat service unavailable.' });
     }
   });
+  */ // END DISABLED AI Chat
 
   router.get('/patch-notes', async (req, res) => {
     try {
