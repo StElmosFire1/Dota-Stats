@@ -13,13 +13,14 @@ const IMPACT_COLOURS = {
   1:  { bg: 'rgba(200,20,20,0.15)',  border: 'rgba(200,20,20,0.45)',  text: '#c81414' },
 };
 
-export default function ImpactBadge({ score, size = 'md' }) {
+export default function ImpactBadge({ score, size = 'md', title: titleProp }) {
   if (score == null) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>;
   const c = IMPACT_COLOURS[score] || IMPACT_COLOURS[5];
   const isLg = size === 'lg';
+  const defaultTitle = `Impact Score ${score}/10 — ranked by kill involvement, win rate, K/D/A and games played`;
   return (
     <span
-      title={`Impact Score ${score}/10 — ranked by kill involvement, win rate, K/D/A and games played`}
+      title={titleProp || defaultTitle}
       style={{
         display: 'inline-block',
         background: c.bg,

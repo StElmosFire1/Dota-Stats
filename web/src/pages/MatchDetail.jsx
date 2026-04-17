@@ -840,7 +840,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
               <th className="col-stat" title="Kills">K</th>
               <th className="col-stat" title="Deaths">D</th>
               <th className="col-stat" title="Assists">A</th>
-              <th className="col-stat" title="Per-match performance rank 1–10 (kill involvement + K/D/A efficiency across all 10 players)">Perf</th>
+              <th className="col-stat" title="Match Performance Score 1–10: how far above or below the match average this player performed (kill involvement, KDA efficiency, win result, GPM). Multiple players can share the same score.">Perf</th>
               {hasDetailedStats && (
                 <>
                   <th className="col-stat" title="Last Hits">LH</th>
@@ -889,7 +889,7 @@ function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, lan
                   <td className="col-stat kills">{p.kills}</td>
                   <td className="col-stat deaths">{p.deaths}</td>
                   <td className="col-stat assists">{p.assists}</td>
-                  <td className="col-stat"><ImpactBadge score={perfRanks[p.slot] ?? null} /></td>
+                  <td className="col-stat"><ImpactBadge score={perfRanks[p.slot] ?? null} title={perfRanks[p.slot] != null ? `Match Performance ${perfRanks[p.slot]}/10 — kill involvement, KDA efficiency, win result${allPlayers.some(x => (x.gpm||0)>0) ? ', GPM' : ''}` : undefined} /></td>
                   {hasDetailedStats && (
                     <>
                       <td className="col-stat">{formatNumber(p.last_hits)}</td>
@@ -2524,19 +2524,32 @@ export default function MatchDetail() {
   const dire = (match.players || []).filter(p => p.team === 'dire');
   const allPlayers = [...radiant, ...dire];
 
-  // Per-match impact rank: score each player across all 10, rank 10 (best) → 1 (worst)
+  // Per-match performance score 1–10 using z-score normalisation within the match.
+  // Players are scored on kill involvement, KDA efficiency, win result, and GPM (when available).
+  // Multiple players can share the same score — it reflects how far above/below the match average they were.
   const perfRanks = (() => {
     const radK = radiant.reduce((s, p) => s + (p.kills || 0), 0);
     const dirK = dire.reduce((s, p) => s + (p.kills || 0), 0);
+    const hasGPM = allPlayers.some(p => (p.gpm || 0) > 0);
+    const maxGPM = hasGPM ? Math.max(...allPlayers.map(p => p.gpm || 0), 1) : 1;
     const scored = allPlayers.map(p => {
       const teamK = p.team === 'radiant' ? radK : dirK;
       const ki = teamK > 0 ? ((p.kills || 0) + (p.assists || 0)) / teamK : 0;
       const eff = ((p.kills || 0) + (p.assists || 0) * 1.35) / Math.pow((p.deaths || 0) + 3, 0.85);
-      return { slot: p.slot, raw: ki * 0.5 + eff * 0.5 };
+      const won = (match.radiant_win && p.team === 'radiant') || (!match.radiant_win && p.team === 'dire');
+      const gpmNorm = hasGPM ? (p.gpm || 0) / maxGPM : 0;
+      const raw = ki * 0.45 + eff * 0.45 + (won ? 0.07 : 0) + (hasGPM ? gpmNorm * 0.03 : 0);
+      return { slot: p.slot, raw };
     });
-    scored.sort((a, b) => b.raw - a.raw);
+    const raws = scored.map(s => s.raw);
+    const mean = raws.reduce((a, b) => a + b, 0) / raws.length;
+    const variance = raws.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / raws.length;
+    const std = Math.sqrt(variance) || 0.001;
     const ranks = {};
-    scored.forEach((p, idx) => { ranks[p.slot] = 10 - idx; });
+    scored.forEach(s => {
+      const z = (s.raw - mean) / std;
+      ranks[s.slot] = Math.max(1, Math.min(10, Math.round(5.5 + z * 2)));
+    });
     return ranks;
   })();
   const laneOutcomes = computeLaneOutcomes(allPlayers);

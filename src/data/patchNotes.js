@@ -321,4 +321,11 @@ module.exports = [
     content: '🔧 DUPLICATE GC LISTENER FIX\nFixed a bug where Game Coordinator event handlers were stacking on every GC reconnect, causing the bot to respond multiple times to lobby events. All GC listeners are now cleaned up before re-registration.\n\n👤 PLAYER PROFILE CANONICAL REDIRECT\nMerged player accounts now redirect correctly — visiting a secondary account\'s profile page automatically redirects to the primary profile. MMR history, Impact Scores, and MVP/Attitude ratings are all aggregated across all merged accounts.\n\n🔗 ADD ALL FRIENDS BUTTON FIXED\nThe "Add All Known Friends" button in the Steam Bot admin panel was querying a non-existent table. Fixed to query the correct table — bulk Steam friend requests now work as intended.\n\n🤖 GROKBOT AI CHAT REMOVED\nThe GrokBot chat widget has been removed from the website to prevent API cost abuse. The !analyze, !roast, and post-match AI commentary features in Discord are unaffected.',
     author: 'System',
   },
+  {
+    version: '5.4',
+    title: 'Match Performance Score Overhaul',
+    published_at: '2026-04-17',
+    content: '📊 MATCH PERFORMANCE SCORE — REWORKED\nThe "Perf" column on match scoreboard pages has been reworked from a pure ordinal ranking to a meaningful z-score based performance rating.\n\nPreviously the column simply ranked all 10 players 1–10 by position — the best player always got 10 and the worst always got 1, regardless of how everyone actually performed.\n\nThe new system:\n• Computes a raw performance score per player using kill involvement, KDA efficiency, win result, and GPM (when replay data is available).\n• Normalises scores relative to the match average using z-score scaling.\n• Maps the result to a 1–10 scale where average performance lands around 5–6.\n• Multiple players can now share the same score — if several players had a great game, they can all score 8 or 9.\n• A truly dominant performance scores 9–10; a poor game scores 1–3 regardless of how others played.\n\nHovering the score shows a tooltip explaining the factors used.',
+    author: 'System',
+  },
 ];
