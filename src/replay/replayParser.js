@@ -1131,15 +1131,24 @@ class ReplayParser {
         if (attackerSlot == null) attackerSlot = npcNameToSlot[attackerName];
         if (attackerSlot != null && attackerSlot >= 0 && attackerSlot < 10) {
           if (e.targethero && !e.targetillusion) {
-            heroDamage[attackerSlot] = (heroDamage[attackerSlot] || 0) + e.value;
-            if (!hdPoints[attackerSlot]) hdPoints[attackerSlot] = [];
-            hdPoints[attackerSlot].push({ t: e.time || 0, cumHd: heroDamage[attackerSlot] });
-            // Damage type breakdown (damage_type bitmask from Java: 1=physical, 2=magical, 4=pure)
-            if (e.damage_type != null) {
-              if (!damageByType[attackerSlot]) damageByType[attackerSlot] = { physical: 0, magical: 0, pure: 0 };
-              if (e.damage_type & 1)  damageByType[attackerSlot].physical += e.value;
-              else if (e.damage_type & 2) damageByType[attackerSlot].magical += e.value;
-              else if (e.damage_type & 4) damageByType[attackerSlot].pure   += e.value;
+            // Only count damage to ENEMY heroes (matches Dota client "Hero Damage" column).
+            // Allied-targeting abilities like Oracle Purifying Flames and Pudge Rot
+            // hit friendly heroes — exclude those from hero damage totals.
+            const victimSlot = npcNameToSlot[victimName];
+            const attackerTeam = attackerSlot < 5 ? 0 : 1;
+            const victimTeam   = victimSlot != null ? (victimSlot < 5 ? 0 : 1) : -1;
+            const isEnemyHero  = victimTeam === -1 || victimTeam !== attackerTeam;
+            if (isEnemyHero) {
+              heroDamage[attackerSlot] = (heroDamage[attackerSlot] || 0) + e.value;
+              if (!hdPoints[attackerSlot]) hdPoints[attackerSlot] = [];
+              hdPoints[attackerSlot].push({ t: e.time || 0, cumHd: heroDamage[attackerSlot] });
+              // Damage type breakdown (damage_type bitmask from Java: 1=physical, 2=magical, 4=pure)
+              if (e.damage_type != null) {
+                if (!damageByType[attackerSlot]) damageByType[attackerSlot] = { physical: 0, magical: 0, pure: 0 };
+                if (e.damage_type & 1)  damageByType[attackerSlot].physical += e.value;
+                else if (e.damage_type & 2) damageByType[attackerSlot].magical += e.value;
+                else if (e.damage_type & 4) damageByType[attackerSlot].pure   += e.value;
+              }
             }
           }
           if (victimName && (victimName.includes('tower') || victimName.includes('fort') || victimName.includes('barracks') || victimName.includes('rax'))) {

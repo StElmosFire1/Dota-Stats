@@ -328,4 +328,11 @@ module.exports = [
     content: '📊 MATCH PERFORMANCE SCORE — REWORKED\nThe "Perf" column on match scoreboard pages has been reworked from a pure ordinal ranking to a meaningful z-score based performance rating.\n\nPreviously the column simply ranked all 10 players 1–10 by position — the best player always got 10 and the worst always got 1, regardless of how everyone actually performed.\n\nThe new system:\n• Computes a raw performance score per player using kill involvement, KDA efficiency, win result, and GPM (when replay data is available).\n• Normalises scores relative to the match average using z-score scaling.\n• Maps the result to a 1–10 scale where average performance lands around 5–6.\n• Multiple players can now share the same score — if several players had a great game, they can all score 8 or 9.\n• A truly dominant performance scores 9–10; a poor game scores 1–3 regardless of how others played.\n\nHovering the score shows a tooltip explaining the factors used.',
     author: 'System',
   },
+  {
+    version: '5.5',
+    title: 'Hero Damage Fix — Enemy Heroes Only',
+    published_at: '2026-04-17',
+    content: '🔧 HERO DAMAGE NOW MATCHES DOTA CLIENT\nThe Hero Damage (HD) column was including damage dealt to allied heroes, causing inflated numbers for heroes with ally-targeting abilities.\n\nAffected heroes:\n• Oracle — Purifying Flames deals damage to allied heroes before healing them. This was being counted as "hero damage" on the website, producing values 4–5× higher than the Dota client shows.\n• Pudge — Rot aura damages nearby allies as well as enemies. Allied Rot damage was being added to the total.\n• Any other hero with an ability that damages allied heroes.\n\nFixed: the replay parser now only counts damage dealt to ENEMY heroes, matching the Dota 2 client\'s "Hero Damage" scoreboard column exactly.\n\nNote: this fix applies to newly parsed replays only. Existing match records will retain their previous values.',
+    author: 'System',
+  },
 ];
