@@ -314,4 +314,11 @@ module.exports = [
     content: '⏱️ 15-SECOND AUTO-LAUNCH COUNTDOWN\nWhen all 10 players are seated on teams, the bot starts a 15-second countdown visible in the Dota 2 lobby chat window.\n• Messages at 15s, 10s, 5s, 4s, 3s, 2s, 1s → "Launching game now!"\n• Game launches automatically at 0.\n• If a player leaves a team slot mid-countdown, it cancels with a warning and resets when 10 are seated again.\n• !start_game and the admin panel Launch Game button both abort any active countdown and force-launch.\n\n💬 IN-LOBBY CHAT\nThe bot joins the Dota 2 practice lobby chat channel after lobby creation and sends all countdown and status messages directly into it — visible in the in-game lobby chat box to all players.\n\n⚔️ CAPTAINS MODE SETTINGS FIXED\nPractice lobbies now use the correct competitive defaults:\n• Captains Mode with Radiant picking first.\n• No cheats, no bots filling empty slots.\n• All-chat on, Dota TV delay enabled, unlimited pauses.',
     author: 'System',
   },
+  {
+    version: '5.3',
+    title: 'Bug Fixes — GC Listeners, Player Merging & GrokBot Removed',
+    published_at: '2026-04-17',
+    content: '🔧 DUPLICATE GC LISTENER FIX\nFixed a bug where Game Coordinator event handlers were stacking on every GC reconnect, causing the bot to respond multiple times to lobby events. All GC listeners are now cleaned up before re-registration.\n\n👤 PLAYER PROFILE CANONICAL REDIRECT\nMerged player accounts now redirect correctly — visiting a secondary account\'s profile page automatically redirects to the primary profile. MMR history, Impact Scores, and MVP/Attitude ratings are all aggregated across all merged accounts.\n\n🔗 ADD ALL FRIENDS BUTTON FIXED\nThe "Add All Known Friends" button in the Steam Bot admin panel was querying a non-existent table. Fixed to query the correct table — bulk Steam friend requests now work as intended.\n\n🤖 GROKBOT AI CHAT REMOVED\nThe GrokBot chat widget has been removed from the website to prevent API cost abuse. The !analyze, !roast, and post-match AI commentary features in Discord are unaffected.',
+    author: 'System',
+  },
 ];

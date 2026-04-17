@@ -6,6 +6,8 @@ This Node.js Discord bot tracks Dota 2 inhouse game statistics for an OCE commun
 ## User Preferences
 I prefer iterative development, with a focus on delivering core features first and then refining them. When making changes, please prioritize robust error handling and graceful degradation. I value clear, concise explanations for any complex technical decisions or implementations.
 
+After completing any set of changes, always add a new entry to `src/data/patchNotes.js` summarising what changed (incrementing the version number from the current latest). This must be done automatically — never wait to be asked.
+
 After completing any set of changes and rebuilding, always push to GitHub automatically using:
 `git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main`
 
