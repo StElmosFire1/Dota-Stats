@@ -1783,9 +1783,11 @@ function createApiRouter(startupStatus = {}) {
       if (check.rows.length === 0) return res.status(404).json({ error: `Backup table ${bakTable} not found.` });
 
       // Build mapping: old account_id (from backup) → new account_id (current player_stats)
-      // Join on match_id + slot to precisely identify each player-slot.
+      // Join on match_id + slot. Count occurrences of each old→new pair across all matches
+      // so we can use majority vote when a collision occurs (two different real players
+      // happened to get the same wrong ID due to float64 rounding).
       const mappingRes = await p.query(`
-        SELECT DISTINCT bak.account_id AS old_id, ps.account_id AS new_id
+        SELECT bak.account_id AS old_id, ps.account_id AS new_id, COUNT(*) AS occurrences
         FROM ${bakTable} bak
         JOIN player_stats ps ON ps.match_id = bak.match_id AND ps.slot = bak.slot
         WHERE bak.account_id IS NOT NULL
@@ -1793,26 +1795,40 @@ function createApiRouter(startupStatus = {}) {
           AND bak.account_id != ps.account_id
           AND bak.account_id > 0
           AND ps.account_id > 0
+        GROUP BY bak.account_id, ps.account_id
+        ORDER BY bak.account_id, occurrences DESC
       `);
 
-      const mapping = mappingRes.rows; // [{ old_id, new_id }]
-      if (mapping.length === 0) {
+      if (mappingRes.rows.length === 0) {
         return res.json({ success: true, updated: 0, message: 'No account ID differences found between backup and current player_stats. Nicknames are already correct, or backup matches current data.' });
       }
 
-      // Verify mapping is 1:1 (each old_id maps to exactly one new_id)
-      const oldToNew = {};
-      const conflicts = [];
-      for (const { old_id, new_id } of mapping) {
+      // Resolve mapping using majority vote: for each old_id, pick the new_id that
+      // appears in the most matches. If two candidates are tied, skip and report.
+      const grouped = {};
+      for (const { old_id, new_id, occurrences } of mappingRes.rows) {
         const key = old_id.toString();
-        if (oldToNew[key] && oldToNew[key] !== new_id.toString()) {
-          conflicts.push({ old_id, new_id, existing: oldToNew[key] });
-        } else {
-          oldToNew[key] = new_id.toString();
-        }
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push({ new_id: new_id.toString(), occurrences: parseInt(occurrences) });
       }
-      if (conflicts.length > 0) {
-        return res.status(409).json({ error: 'Mapping conflict: some old account IDs map to multiple new IDs.', conflicts: conflicts.slice(0, 10) });
+
+      const oldToNew = {};
+      const skippedConflicts = [];
+      for (const [oldId, candidates] of Object.entries(grouped)) {
+        if (candidates.length === 1) {
+          // Unambiguous
+          oldToNew[oldId] = candidates[0].new_id;
+        } else {
+          // Multiple candidates — pick the one with the most matches
+          candidates.sort((a, b) => b.occurrences - a.occurrences);
+          if (candidates[0].occurrences > candidates[1].occurrences) {
+            // Clear winner by majority
+            oldToNew[oldId] = candidates[0].new_id;
+          } else {
+            // Genuine tie — skip and report
+            skippedConflicts.push({ old_id: oldId, candidates });
+          }
+        }
       }
 
       // Apply mapping to nicknames table
@@ -1841,13 +1857,18 @@ function createApiRouter(startupStatus = {}) {
       }
       client.release();
 
+      const skippedMsg = skippedConflicts.length > 0
+        ? ` ${skippedConflicts.length} IDs skipped (genuine tie — set those manually via Rank Management).`
+        : '';
       return res.json({
         success: true,
         updated,
         total_mapped: Object.keys(oldToNew).length,
         not_in_nicknames: notFound.length,
+        skipped_conflicts: skippedConflicts.length,
+        skipped_details: skippedConflicts.slice(0, 5),
         backup_used: backupSlug,
-        message: `Updated ${updated} nickname account IDs. ${notFound.length} mapped IDs had no matching nickname row. Rank data cleared — run rank sync to re-fetch.`
+        message: `Updated ${updated} nickname account IDs.${skippedMsg} Rank data cleared — run rank sync to re-fetch.`
       });
 
     } catch (err) {

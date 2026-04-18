@@ -205,10 +205,24 @@ function DbBackupManager({ superuserKey }) {
               {fixNickResult.error ? (
                 <span style={{ color: '#f87171' }}>Error: {fixNickResult.error}</span>
               ) : (
-                <span style={{ color: '#4ade80' }}>
-                  ✓ {fixNickResult.message}
-                  {fixNickResult.updated > 0 && <strong> Run Rank Sync now to re-fetch ranks with the corrected IDs.</strong>}
-                </span>
+                <div>
+                  <div style={{ color: '#4ade80' }}>✓ {fixNickResult.message}</div>
+                  {fixNickResult.updated > 0 && (
+                    <div style={{ color: '#86efac', marginTop: 4 }}>
+                      <strong>Now go to Dota 2 Rank Management and run Rank Sync.</strong>
+                    </div>
+                  )}
+                  {fixNickResult.skipped_conflicts > 0 && fixNickResult.skipped_details?.length > 0 && (
+                    <div style={{ marginTop: 6, color: '#facc15' }}>
+                      ⚠ Genuinely ambiguous IDs (equal matches for two different players) — set these manually:
+                      {fixNickResult.skipped_details.map((s, i) => (
+                        <div key={i} style={{ fontFamily: 'monospace', fontSize: '0.75rem', marginTop: 2 }}>
+                          old {s.old_id} → candidates: {s.candidates.map(c => `${c.new_id} (${c.occurrences} matches)`).join(' vs ')}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
