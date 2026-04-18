@@ -2260,24 +2260,44 @@ async function getPlayerConnections(accountId, seasonId = null) {
 
 async function getPlayerFormBatch(seasonId = null) {
   const p = getPool();
+
+  const nickRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknameToIds = {};
+  for (const row of nickRes.rows) {
+    const aid = row.account_id.toString();
+    const nick = row.nickname.toLowerCase();
+    if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
+    nicknameToIds[nick].push(aid);
+  }
+  const accountToCanonical = {};
+  for (const ids of Object.values(nicknameToIds)) {
+    if (ids.length < 2) continue;
+    ids.sort();
+    const canonical = ids[0];
+    for (const id of ids) accountToCanonical[id] = canonical;
+  }
+  const getCanonical = (id) => accountToCanonical[id] || id;
+
   const params = [];
   const sc = _sc(seasonId, params, 'm');
   const result = await p.query(
     `SELECT
        CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END as player_id,
-       json_agg(
-         CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 'W' ELSE 'L' END
-         ORDER BY m.match_id DESC
-       ) as results
+       m.match_id,
+       CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 'W' ELSE 'L' END as result
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      WHERE 1=1${sc}
-     GROUP BY CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END`,
+     ORDER BY m.match_id DESC`,
     params
   );
+
   const form = {};
   for (const row of result.rows) {
-    form[row.player_id] = (row.results || []).slice(0, 10);
+    const rawId = row.player_id;
+    const cid = /^\d+$/.test(rawId) ? getCanonical(rawId) : rawId;
+    if (!form[cid]) form[cid] = [];
+    if (form[cid].length < 10) form[cid].push(row.result);
   }
   return form;
 }
@@ -3538,6 +3558,24 @@ async function getPlayerRatingHistory(accountId) {
 
 async function getPlayerStreaks(seasonId = null) {
   const p = getPool();
+
+  const nickRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknameToIds = {};
+  for (const row of nickRes.rows) {
+    const aid = row.account_id.toString();
+    const nick = row.nickname.toLowerCase();
+    if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
+    nicknameToIds[nick].push(aid);
+  }
+  const accountToCanonical = {};
+  for (const ids of Object.values(nicknameToIds)) {
+    if (ids.length < 2) continue;
+    ids.sort();
+    const canonical = ids[0];
+    for (const id of ids) accountToCanonical[id] = canonical;
+  }
+  const getCanonical = (id) => accountToCanonical[id] || id;
+
   let whereClause = 'WHERE ps.account_id > 0';
   const params = [];
   if (seasonId === 'legacy') {
@@ -3549,19 +3587,18 @@ async function getPlayerStreaks(seasonId = null) {
     whereClause += ' AND m.is_legacy = false';
   }
   const result = await p.query(
-    `SELECT ps.account_id, m.date, m.match_id, ps.team, m.radiant_win,
-            ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.match_id DESC) as rn
+    `SELECT ps.account_id::text as account_id, m.match_id, ps.team, m.radiant_win
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      ${whereClause}
-     ORDER BY ps.account_id, m.match_id DESC`,
+     ORDER BY m.match_id DESC`,
     params
   );
   const byPlayer = {};
   for (const row of result.rows) {
-    const id = row.account_id.toString();
-    if (!byPlayer[id]) byPlayer[id] = [];
-    if (parseInt(row.rn) <= 30) byPlayer[id].push(row);
+    const cid = getCanonical(row.account_id);
+    if (!byPlayer[cid]) byPlayer[cid] = [];
+    if (byPlayer[cid].length < 30) byPlayer[cid].push(row);
   }
   const streaks = {};
   for (const [id, matches] of Object.entries(byPlayer)) {
