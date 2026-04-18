@@ -350,6 +350,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.10',
+    title: 'Dota 2 Rank Sync — Critical Bug Fix',
+    published_at: '2026-04-18',
+    content: '🔧 RANK SYNC BUG FIX\nThe Dota 2 rank sync (introduced in v5.6) was silently failing every time the sync button was pressed due to an incorrect internal import. No ranks were ever stored as a result.\n\nFixed: the sync now works correctly. Players with public OpenDota profiles will have their rank updated automatically when sync is triggered from the Admin Panel. Players with private profiles will be fetched via the Steam Game Coordinator instead.',
+    author: 'System',
+  },
+  {
     version: '5.9',
     title: 'Join Page Overhaul & Player Stats Search',
     published_at: '2026-04-18',

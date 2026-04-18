@@ -1,7 +1,7 @@
 const db = require('../db');
-const OpenDotaAPI = require('../api/opendota');
+const { getOpenDota } = require('../api/opendota');
 
-const api = new OpenDotaAPI();
+const api = getOpenDota();
 
 // Dota 2 rank tier decoding
 function decodeRankTier(rankTier) {
