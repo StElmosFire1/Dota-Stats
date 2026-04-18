@@ -467,7 +467,16 @@ class ReplayParser {
     for (const e of events) {
       if (e.type === 'epilogue' && e.key) {
         try {
-          epilogueData = JSON.parse(e.key);
+          // Steam64 IDs are 17-digit integers that exceed JS float64 precision (2^53).
+          // Gson serialises Java long fields as raw JSON numbers, so JSON.parse would
+          // silently round them (e.g. 76561197996209749 → 76561197996209744), making
+          // the extracted Steam32 wrong by several units.  Convert every bare integer
+          // with ≥15 digits to a quoted string BEFORE parsing so BigInt can read it
+          // exactly later.
+          // The replacement skips content already inside JSON strings so we
+          // don't double-quote anything that was already a string value.
+          const safeKey = e.key.replace(/"(?:[^"\\]|\\.)*"|(\d{15,})/g, (m, n) => n !== undefined ? `"${n}"` : m);
+          epilogueData = JSON.parse(safeKey);
           console.log('[Replay] Epilogue top-level keys:', Object.keys(epilogueData));
 
           const dota = this._getNestedField(epilogueData,

@@ -400,9 +400,9 @@ module.exports = [
   },
   {
     version: '5.15',
-    title: 'Replay Inspector: Persona Name Fix',
+    title: 'Replay Inspector Persona Name Fix + Steam64 Precision Fix',
     published_at: '2026-04-18',
-    content: 'Fixed the Replay Inspector showing blank persona names for all players. The inspector endpoint was reading p.personaName (camelCase) but the parser stores the field as p.personaname (all lowercase) — corrected to read both variants.',
+    content: 'Fixed the Replay Inspector showing blank persona names for all players. The inspector endpoint was reading p.personaName (camelCase) but the parser stores the field as p.personaname (all lowercase) — corrected to read both variants.\n\nFixed a silent precision bug in account ID extraction from replays. Steam64 IDs are 17-digit integers that exceed JavaScript\'s safe float64 range (2^53). The Java replay parser serialises them as raw JSON numbers via Gson, so JSON.parse was silently rounding them — e.g. 76561197996209749 → 76561197996209744 — producing a Steam32 that could be off by several units. The epilogue JSON is now pre-processed to convert all 15+ digit bare integers to quoted strings before parsing, so BigInt can read them with exact precision.',
     author: 'System',
   },
 ];
