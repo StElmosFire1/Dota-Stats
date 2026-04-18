@@ -814,6 +814,104 @@ class Dota2GCClient extends EventEmitter {
     });
   }
 
+  // Request a player's Dota 2 profile card from the GC.
+  // Works for Steam friends even if match data is private.
+  // Returns { rankTier, leaderboardRank } or null on failure/timeout.
+  requestProfileCard(accountId32) {
+    return new Promise((resolve) => {
+      if (!this.isReady) { resolve(null); return; }
+
+      const PROFILE_CARD_REQUEST  = 7538;
+      const PROFILE_CARD_RESPONSE = 7539;
+
+      // Encode CMsgClientToGCGetProfileCard manually:
+      // field 1 (account_id), wire type 0 (varint)
+      const encodeVarint = (value) => {
+        const bytes = [];
+        let v = value >>> 0;
+        while (v > 0x7F) { bytes.push((v & 0x7F) | 0x80); v >>>= 7; }
+        bytes.push(v & 0x7F);
+        return Buffer.from(bytes);
+      };
+      const readVarint = (buf, offset) => {
+        let result = 0, shift = 0;
+        while (offset < buf.length) {
+          const byte = buf[offset++];
+          result |= (byte & 0x7F) << shift;
+          if (!(byte & 0x80)) break;
+          shift += 7;
+        }
+        return { value: result >>> 0, offset };
+      };
+      const parseProfileCard = (buf) => {
+        const fields = {};
+        let pos = 0;
+        while (pos < buf.length) {
+          const tag = readVarint(buf, pos);
+          pos = tag.offset;
+          const fieldNum = tag.value >>> 3;
+          const wireType = tag.value & 0x7;
+          if (wireType === 0) {
+            const val = readVarint(buf, pos);
+            pos = val.offset;
+            fields[fieldNum] = val.value;
+          } else if (wireType === 2) {
+            const len = readVarint(buf, pos);
+            pos = len.offset;
+            pos += len.value;
+          } else break;
+        }
+        return {
+          rankTier:        fields[9]  ? fields[9]  : null,
+          leaderboardRank: fields[10] ? fields[10] : null,
+        };
+      };
+
+      const acctId = parseInt(accountId32) >>> 0;
+      const payload = Buffer.concat([Buffer.from([0x08]), encodeVarint(acctId)]);
+
+      let resolved = false;
+      const finish = (val) => {
+        if (resolved) return;
+        resolved = true;
+        this.steamClient.removeListener('receivedFromGC', handler);
+        clearTimeout(timer);
+        resolve(val);
+      };
+
+      const handler = (appid, msgType, payload) => {
+        if (appid !== DOTA2_APPID) return;
+        const rawType = msgType & 0x7FFFFFFF;
+        if (rawType !== PROFILE_CARD_RESPONSE) return;
+        try {
+          // Response is CMsgClientToGCGetProfileCardResponse { profile_card = 1 (bytes) }
+          // But often the GC returns CMsgDOTAProfileCard directly — try both
+          let cardBuf = payload;
+          if (payload[0] === 0x0A) {
+            // wrapped: field 1, wire type 2 — extract inner bytes
+            let pos = 1;
+            const len = readVarint(payload, pos);
+            pos = len.offset;
+            cardBuf = payload.slice(pos, pos + len.value);
+          }
+          finish(parseProfileCard(cardBuf));
+        } catch { finish(null); }
+      };
+
+      const timer = setTimeout(() => finish(null), 8000);
+      this.steamClient.on('receivedFromGC', handler);
+
+      try {
+        // Use the steam client to send raw GC message
+        this.steamClient.sendToGC(DOTA2_APPID, PROFILE_CARD_REQUEST | 0x80000000, {}, payload);
+        console.log(`[GC] Profile card requested for account ${accountId32}`);
+      } catch (e) {
+        console.warn('[GC] Profile card request failed:', e.message);
+        finish(null);
+      }
+    });
+  }
+
   shutdown() {
     this.isReady = false;
     this.leavePracticeLobby();

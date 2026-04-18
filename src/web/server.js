@@ -2875,6 +2875,73 @@ NOTES
     }
   });
 
+  // ─── Dota Rank Endpoints ────────────────────────────────────────────────────
+
+  router.get('/ranks', async (req, res) => {
+    try {
+      const rows = await db.getAllPlayerRanks();
+      res.json(rows);
+    } catch (err) {
+      console.error('[API] GET /ranks error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch ranks' });
+    }
+  });
+
+  // Track whether a sync is in progress so we don't double-trigger
+  let rankSyncInProgress = false;
+
+  router.post('/ranks/sync', requireSuperuser, async (req, res) => {
+    if (rankSyncInProgress) {
+      return res.json({ ok: false, message: 'Sync already running' });
+    }
+    rankSyncInProgress = true;
+    res.json({ ok: true, message: 'Rank sync started in background' });
+
+    try {
+      const { syncAllRanks } = require('../services/rankSyncService');
+      let gcClient = null;
+      try {
+        const { getLobbyManager } = require('../lobby/lobbyManager');
+        const lm = getLobbyManager();
+        if (lm && lm.client && lm.client.gcClient) gcClient = lm.client.gcClient;
+      } catch {}
+      await syncAllRanks(gcClient, (cur, total, acct, src) => {
+        console.log(`[RankSync] ${cur}/${total} account=${acct} source=${src}`);
+      });
+    } catch (err) {
+      console.error('[API] Rank sync error:', err.message);
+    } finally {
+      rankSyncInProgress = false;
+    }
+  });
+
+  router.post('/ranks/manual', requireSuperuser, async (req, res) => {
+    try {
+      const { accountId, rankTier, leaderboardRank } = req.body;
+      if (!accountId) return res.status(400).json({ error: 'accountId required' });
+      const { setManualRank } = require('../services/rankSyncService');
+      await setManualRank(parseInt(accountId), rankTier ? parseInt(rankTier) : null, leaderboardRank ? parseInt(leaderboardRank) : null);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] POST /ranks/manual error:', err.message);
+      res.status(500).json({ error: 'Failed to set rank' });
+    }
+  });
+
+  router.delete('/ranks/:accountId', requireSuperuser, async (req, res) => {
+    try {
+      const { setManualRank } = require('../services/rankSyncService');
+      await setManualRank(parseInt(req.params.accountId), null, null);
+      await db.getPool().query(
+        `UPDATE nicknames SET dota_rank_source = NULL WHERE account_id = $1`,
+        [parseInt(req.params.accountId)]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to clear rank' });
+    }
+  });
+
   return router;
 }
 

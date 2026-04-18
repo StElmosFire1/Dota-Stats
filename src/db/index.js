@@ -643,6 +643,11 @@ async function init() {
     `);
     await p.query(`ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS bracket VARCHAR(10) DEFAULT 'W'`);
 
+    await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_tier INTEGER DEFAULT NULL`);
+    await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_leaderboard_rank INTEGER DEFAULT NULL`);
+    await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_source VARCHAR(16) DEFAULT NULL`);
+    await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_updated_at TIMESTAMPTZ DEFAULT NULL`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -5528,6 +5533,8 @@ module.exports = {
   markReminder1hSent,
   markReminder10mSent,
   getRsvpSteamAccountIds,
+  setPlayerRank,
+  getAllPlayerRanks,
   getAllSteamAccountIds,
   getGamesNeedingLobby,
   markLobbyCreated,
@@ -5867,6 +5874,24 @@ async function getGamesNeedingLobby() {
 async function markLobbyCreated(id) {
   const p = getPool();
   await p.query(`UPDATE scheduled_games SET lobby_created = TRUE WHERE id = $1`, [id]);
+}
+
+async function setPlayerRank(accountId, rankTier, leaderboardRank, source) {
+  const p = getPool();
+  await p.query(
+    `UPDATE nicknames SET dota_rank_tier=$1, dota_leaderboard_rank=$2, dota_rank_source=$3, dota_rank_updated_at=NOW()
+     WHERE account_id=$4`,
+    [rankTier || null, leaderboardRank || null, source, parseInt(accountId)]
+  );
+}
+
+async function getAllPlayerRanks() {
+  const p = getPool();
+  const result = await p.query(
+    `SELECT account_id, nickname, dota_rank_tier, dota_leaderboard_rank, dota_rank_source, dota_rank_updated_at
+     FROM nicknames WHERE account_id IS NOT NULL ORDER BY nickname`
+  );
+  return result.rows;
 }
 
 async function getAllSteamAccountIds() {

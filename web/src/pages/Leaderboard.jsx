@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest } from '../api';
+import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest, getPlayerRanks } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import ImpactBadge from '../components/ImpactBadge';
+import RankBadge from '../components/RankBadge';
 
 const MMR_TIERS = [
   { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100 },
@@ -248,6 +249,17 @@ export default function Leaderboard() {
   const [bestFairest, setBestFairest] = useState([]);
   const [bestFairestLoading, setBestFairestLoading] = useState(true);
   const [playerForm, setPlayerForm] = useState({});
+  const [rankMap, setRankMap] = useState({});
+
+  useEffect(() => {
+    getPlayerRanks()
+      .then(rows => {
+        const m = {};
+        rows.forEach(r => { m[r.account_id] = r; });
+        setRankMap(m);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -344,6 +356,7 @@ export default function Leaderboard() {
                 <th className="col-player" title="Player name">Player</th>
                 <th className="col-stat" title="Tier">Tier</th>
                 <th className="col-stat" title="TrueSkill MMR rating">MMR</th>
+                <th className="col-stat" title="Dota 2 rank medal">Dota Rank</th>
                 <th className="col-stat" title="Wins">W</th>
                 <th className="col-stat" title="Losses">L</th>
                 <th className="col-stat" title="Total games played">Games</th>
@@ -368,6 +381,16 @@ export default function Leaderboard() {
                     </td>
                     <td className="col-stat"><TierBadge mmr={p.mmr} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
+                    <td className="col-stat">
+                      {rankMap[p.player_id]?.dota_rank_tier
+                        ? <RankBadge
+                            rankTier={rankMap[p.player_id].dota_rank_tier}
+                            leaderboardRank={rankMap[p.player_id].dota_leaderboard_rank}
+                            source={rankMap[p.player_id].dota_rank_source}
+                          />
+                        : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                      }
+                    </td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>
                     <td className="col-stat">{p.games_played}</td>

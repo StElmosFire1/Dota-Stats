@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks } from '../api';
 import ImpactBadge from '../components/ImpactBadge';
+import RankBadge from '../components/RankBadge';
 import { useSeason } from '../context/SeasonContext';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -161,7 +162,17 @@ export default function PlayerProfile() {
   const [communityRatings, setCommunityRatings] = useState(null);
   const [positionAverages, setPositionAverages] = useState([]);
   const [impactScore, setImpactScore] = useState(null);
+  const [playerRank, setPlayerRank] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getPlayerRanks()
+      .then(rows => {
+        const match = rows.find(r => String(r.account_id) === String(accountId));
+        setPlayerRank(match || null);
+      })
+      .catch(() => {});
+  }, [accountId]);
 
   useEffect(() => {
     setLoading(true);
@@ -239,6 +250,14 @@ export default function PlayerProfile() {
             </span>
           )}
         </h1>
+        {playerRank?.dota_rank_tier && (
+          <RankBadge
+            rankTier={playerRank.dota_rank_tier}
+            leaderboardRank={playerRank.dota_leaderboard_rank}
+            source={playerRank.dota_rank_source}
+            size="lg"
+          />
+        )}
         <button
           onClick={() => {
             const url = window.location.href;

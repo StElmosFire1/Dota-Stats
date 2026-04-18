@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank } from '../api';
+import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
 
@@ -724,6 +725,19 @@ export default function AdminPanel() {
   const [ts2Data, setTs2Data] = useState(null);
   const [ts2Loading, setTs2Loading] = useState(false);
   const [ts2Error, setTs2Error] = useState('');
+  const [ranks, setRanks] = useState([]);
+  const [rankSyncing, setRankSyncing] = useState(false);
+  const [rankSyncMsg, setRankSyncMsg] = useState('');
+  const [rankEditId, setRankEditId] = useState(null);
+  const [rankEditTier, setRankEditTier] = useState('');
+  const [rankEditLbRank, setRankEditLbRank] = useState('');
+
+  const loadRanks = useCallback(() => {
+    if (!isSuperuser) return;
+    getPlayerRanks().then(setRanks).catch(() => {});
+  }, [isSuperuser]);
+
+  useEffect(() => { loadRanks(); }, [loadRanks]);
 
   const authHeader = { 'x-superuser-key': superuserKey };
 
@@ -990,6 +1004,137 @@ export default function AdminPanel() {
             </table>
           </div>
         )}
+      </section>
+
+      {/* ── Dota Rank Management ─────────────────────────────────────── */}
+      <section className="admin-section" style={{ marginTop: 32 }}>
+        <h2 className="section-title" style={{ marginBottom: 12 }}>🎖️ Dota 2 Rank Management</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+          Sync Dota 2 rank medals from OpenDota (public profiles) and Steam GC (friends). Manual entries are never overwritten by sync.
+          Ranks appear on the Leaderboard and Player Profiles.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <button
+            className="btn btn-primary"
+            disabled={rankSyncing}
+            onClick={async () => {
+              setRankSyncing(true);
+              setRankSyncMsg('');
+              try {
+                const r = await triggerRankSync(superuserKey);
+                setRankSyncMsg(r.message || 'Sync started in background — refresh in ~30s.');
+              } catch (e) {
+                setRankSyncMsg(`Error: ${e.message}`);
+              } finally {
+                setRankSyncing(false);
+                setTimeout(loadRanks, 5000);
+              }
+            }}
+          >
+            {rankSyncing ? '⏳ Syncing…' : '🔄 Sync Ranks from OpenDota/GC'}
+          </button>
+          {rankSyncMsg && (
+            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{rankSyncMsg}</span>
+          )}
+        </div>
+
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard" style={{ fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Player</th>
+                <th style={{ textAlign: 'left' }}>Account ID</th>
+                <th>Dota Rank</th>
+                <th>Source</th>
+                <th>Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranks.map(r => {
+                const isEditing = rankEditId === r.account_id;
+                const decoded  = decodeRankTier(r.dota_rank_tier);
+                return (
+                  <tr key={r.account_id}>
+                    <td style={{ fontWeight: 600 }}>{r.nickname || `#${r.account_id}`}</td>
+                    <td style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{r.account_id}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      {r.dota_rank_tier
+                        ? <RankBadge rankTier={r.dota_rank_tier} leaderboardRank={r.dota_leaderboard_rank} source={r.dota_rank_source} />
+                        : <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      }
+                    </td>
+                    <td style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: 11 }}>
+                      {r.dota_rank_source || '—'}
+                    </td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                      {r.dota_rank_updated_at ? new Date(r.dota_rank_updated_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '—'}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {isEditing ? (
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            placeholder="Tier (e.g. 75)"
+                            value={rankEditTier}
+                            onChange={e => setRankEditTier(e.target.value)}
+                            style={{ width: 90, padding: '2px 6px', fontSize: 12 }}
+                          />
+                          <input
+                            type="number"
+                            placeholder="LB rank"
+                            value={rankEditLbRank}
+                            onChange={e => setRankEditLbRank(e.target.value)}
+                            style={{ width: 70, padding: '2px 6px', fontSize: 12 }}
+                          />
+                          <button
+                            className="btn btn-sm"
+                            onClick={async () => {
+                              try {
+                                await setManualRank(r.account_id, rankEditTier || null, rankEditLbRank || null, superuserKey);
+                                setRankEditId(null);
+                                loadRanks();
+                              } catch (e) { alert(e.message); }
+                            }}
+                          >Save</button>
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: 'var(--bg-hover)' }}
+                            onClick={() => setRankEditId(null)}
+                          >Cancel</button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => {
+                              setRankEditId(r.account_id);
+                              setRankEditTier(r.dota_rank_tier || '');
+                              setRankEditLbRank(r.dota_leaderboard_rank || '');
+                            }}
+                          >✏️ Edit</button>
+                          {r.dota_rank_tier && (
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={async () => {
+                                if (!confirm(`Clear rank for ${r.nickname || r.account_id}?`)) return;
+                                try {
+                                  await clearPlayerRank(r.account_id, superuserKey);
+                                  loadRanks();
+                                } catch (e) { alert(e.message); }
+                              }}
+                            >✕</button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
 
     </div>

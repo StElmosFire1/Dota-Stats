@@ -335,4 +335,11 @@ module.exports = [
     content: '🔧 HERO DAMAGE NOW MATCHES DOTA CLIENT\nThe Hero Damage (HD) column was including damage dealt to allied heroes, causing inflated numbers for heroes with ally-targeting abilities.\n\nAffected heroes:\n• Oracle — Purifying Flames deals damage to allied heroes before healing them. This was being counted as "hero damage" on the website, producing values 4–5× higher than the Dota client shows.\n• Pudge — Rot aura damages nearby allies as well as enemies. Allied Rot damage was being added to the total.\n• Any other hero with an ability that damages allied heroes.\n\nFixed: the replay parser now only counts damage dealt to ENEMY heroes, matching the Dota 2 client\'s "Hero Damage" scoreboard column exactly.\n\nNote: this fix applies to newly parsed replays only. Existing match records will retain their previous values.',
     author: 'System',
   },
+  {
+    version: '5.6',
+    title: 'Dota 2 Rank Medal Tracking',
+    published_at: '2026-04-18',
+    content: '🎖️ DOTA 2 RANK MEDALS\nPlayers can now display their actual Dota 2 ranked medal (Herald through Immortal) on the website.\n\nRanks are fetched automatically using a 3-layer approach:\n1. OpenDota public data — works instantly for players with public match history.\n2. Steam Game Coordinator profile card — works for players who are Steam friends with the bot, even with private profiles.\n3. Manual admin entry — admins can set any player\'s rank directly.\n\nWhere ranks appear:\n• Leaderboard — new "Dota Rank" column with coloured medal badge.\n• Player Profiles — rank medal shown next to the player name at the top of the profile.\n\nAdmin panel:\n• New "Dota 2 Rank Management" section with a one-click sync button.\n• Manually edit or clear any player\'s rank.\n• Sync runs in the background — typically completes in 15–30 seconds for the full player list.\n• Manual entries are never overwritten by auto-sync.',
+    author: 'System',
+  },
 ];

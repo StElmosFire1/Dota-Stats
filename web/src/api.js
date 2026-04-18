@@ -818,3 +818,38 @@ export async function deleteTournament(id, superuserKey) {
   if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
   return res.json();
 }
+
+export async function getPlayerRanks() {
+  return fetchJson('/ranks');
+}
+
+export async function triggerRankSync(superuserKey) {
+  const res = await fetch(BASE + '/ranks/sync', {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to start sync');
+  return data;
+}
+
+export async function setManualRank(accountId, rankTier, leaderboardRank, superuserKey) {
+  const res = await fetch(BASE + '/ranks/manual', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ accountId, rankTier, leaderboardRank }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to set rank');
+  return data;
+}
+
+export async function clearPlayerRank(accountId, superuserKey) {
+  const res = await fetch(BASE + `/ranks/${accountId}`, {
+    method: 'DELETE',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to clear rank');
+  return data;
+}

@@ -47,6 +47,23 @@ class OpenDotaClient {
     }
   }
 
+  async getPlayerProfile(accountId32) {
+    await this._rateLimit();
+    try {
+      const res = await fetch(`${OPENDOTA_API}/players/${accountId32}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || data.error) return null;
+      return {
+        rankTier:        data.rank_tier        || null,
+        leaderboardRank: data.leaderboard_rank || null,
+      };
+    } catch (err) {
+      console.error(`[OpenDota] Player profile error (${accountId32}):`, err.message);
+      return null;
+    }
+  }
+
   async getPlayerRecentMatches(accountId32, limit = 20) {
     await this._rateLimit();
     try {
