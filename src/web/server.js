@@ -1793,6 +1793,53 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  const inspectUpload = multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => { ensureDir(UPLOAD_DIR); cb(null, UPLOAD_DIR); },
+      filename: (req, file, cb) => { cb(null, `inspect-${Date.now()}-${Math.random().toString(36).slice(2)}.dem`); },
+    }),
+    limits: { fileSize: 500 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (file.originalname.endsWith('.dem') || file.mimetype === 'application/octet-stream') cb(null, true);
+      else cb(new Error('Only .dem files are accepted'));
+    },
+  });
+
+  router.post('/replay-inspect', requireSuperuser, inspectUpload.single('replay'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No .dem file provided' });
+    const filePath = req.file.path;
+    try {
+      const parser = getReplayParser();
+      if (!parser?.parserReady) {
+        return res.status(503).json({ error: 'Parser service not running. Start the bot first.' });
+      }
+      const result = await parser.parseReplayFull(filePath);
+      const players = (result.players || []).map(p => ({
+        slot: p.slot,
+        account_id: p.accountId || 0,
+        steam64: p.accountId ? String(BigInt('76561197960265728') + BigInt(p.accountId)) : null,
+        persona_name: p.personaName || '',
+        hero_name: p.heroName || '',
+        hero_id: p.heroId || 0,
+        team: p.team || (p.slot < 5 ? 'radiant' : 'dire'),
+        kills: p.kills || 0,
+        deaths: p.deaths || 0,
+        assists: p.assists || 0,
+      }));
+      res.json({
+        match_id: result.matchId || null,
+        duration: result.duration || null,
+        radiant_win: result.radiantWin ?? null,
+        players,
+      });
+    } catch (err) {
+      console.error('[API] Replay inspect error:', err.message);
+      res.status(500).json({ error: err.message });
+    } finally {
+      try { fs.unlinkSync(filePath); } catch {}
+    }
+  });
+
   router.post('/upload/init', authMiddleware, (req, res) => {
     const parserCheck = getReplayParser();
     if (!parserCheck?.parserReady) {

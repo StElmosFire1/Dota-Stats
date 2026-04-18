@@ -1281,6 +1281,101 @@ export default function AdminPanel() {
         )}
       </section>
 
+      <section style={{ marginBottom: 36 }}>
+        <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🔍 Replay Inspector</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Upload a <code>.dem</code> file to see the raw account IDs extracted by the parser — useful for verifying accounts before committing a replay.
+        </p>
+        <ReplayInspectorPanel superuserKey={superuserKey} />
+      </section>
+
+    </div>
+  );
+}
+
+function ReplayInspectorPanel({ superuserKey }) {
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!file) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('replay', file);
+      const res = await fetch('/api/replay-inspect', {
+        method: 'POST',
+        headers: { 'x-superuser-key': superuserKey },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <input
+          type="file"
+          accept=".dem"
+          onChange={e => setFile(e.target.files[0] || null)}
+          style={{ color: 'var(--text-primary)' }}
+        />
+        <button
+          type="submit"
+          disabled={!file || loading}
+          style={{ padding: '0.4rem 1.2rem', background: '#1e3a5f', color: '#60a5fa', border: '1px solid #3b82f6', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
+        >
+          {loading ? 'Parsing…' : 'Inspect Replay'}
+        </button>
+        {file && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)</span>}
+      </form>
+      {error && <div style={{ color: '#f87171', padding: '0.5rem', background: '#1a0808', borderRadius: 4, marginBottom: '1rem' }}>❌ {error}</div>}
+      {result && (
+        <div>
+          <div style={{ display: 'flex', gap: '2rem', marginBottom: '0.75rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            {result.match_id && <span>Match ID: <strong style={{ color: 'var(--text-primary)' }}>{result.match_id}</strong></span>}
+            {result.duration && <span>Duration: <strong style={{ color: 'var(--text-primary)' }}>{Math.floor(result.duration / 60)}:{String(result.duration % 60).padStart(2, '0')}</strong></span>}
+            {result.radiant_win != null && <span>Winner: <strong style={{ color: result.radiant_win ? '#4ade80' : '#f87171' }}>{result.radiant_win ? 'Radiant' : 'Dire'}</strong></span>}
+            <span>Players: <strong style={{ color: 'var(--text-primary)' }}>{result.players?.length ?? 0}</strong></span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-secondary)' }}>
+                  {['Slot', 'Team', 'Steam32 (account_id)', 'Steam64', 'Persona Name', 'Hero', 'K/D/A'].map(h => (
+                    <th key={h} style={{ padding: '0.4rem 0.6rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(result.players || []).map((p, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.35rem 0.6rem', color: 'var(--text-muted)' }}>{p.slot}</td>
+                    <td style={{ padding: '0.35rem 0.6rem', color: p.team === 'radiant' ? '#4ade80' : '#f87171', fontWeight: 600 }}>{p.team}</td>
+                    <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace', color: '#60a5fa' }}>{p.account_id || <span style={{ color: '#555' }}>unknown</span>}</td>
+                    <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace', color: '#a78bfa', fontSize: '0.78rem' }}>{p.steam64 || '—'}</td>
+                    <td style={{ padding: '0.35rem 0.6rem' }}>{p.persona_name || <span style={{ color: '#555' }}>—</span>}</td>
+                    <td style={{ padding: '0.35rem 0.6rem', color: 'var(--text-muted)' }}>{p.hero_name ? p.hero_name.replace('npc_dota_hero_', '').replace(/_/g, ' ') : '—'}</td>
+                    <td style={{ padding: '0.35rem 0.6rem', color: 'var(--text-muted)' }}>{p.kills}/{p.deaths}/{p.assists}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

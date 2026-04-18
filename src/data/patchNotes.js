@@ -391,4 +391,11 @@ module.exports = [
     content: '🔧 GAME COORDINATOR RANK SYNC FIX\nThe Steam Game Coordinator rank sync was returning no data for all players, even Steam friends, due to incorrect protobuf field numbers in the response parser.\n\nThe CMsgDOTAProfileCard protobuf encodes rank_tier at field 8 (tag 64) and leaderboard_rank at field 9 (tag 72). The parser was reading fields 9 and 10 instead — meaning it was silently reading the wrong values and discarding them.\n\nFixed: the correct field numbers are now used. Players who are Steam friends with the bot will have their rank reliably synced via the Game Coordinator, regardless of their profile privacy settings.',
     author: 'System',
   },
+  {
+    version: '5.14',
+    title: 'Match Page Fix + Replay Inspector Tool',
+    published_at: '2026-04-18',
+    content: '🐛 MATCH PAGE BLANK SCREEN FIX\nFixed a crash that caused all match detail pages to show a completely blank screen. The TeamTable component internally referenced an undefined variable (allPlayers) — correctly receiving it as a prop from the parent now fixes this. Added a React error boundary so any future unexpected errors show a readable message and stack trace instead of a blank page.\n\n🔍 REPLAY INSPECTOR TOOL\nNew Replay Inspector panel in the Admin Panel (superuser only). Upload any .dem file to see the raw account IDs, Steam64 IDs, persona names, and heroes extracted by the parser — without committing anything to the database. Useful for verifying accounts before uploading a replay.',
+    author: 'System',
+  },
 ];

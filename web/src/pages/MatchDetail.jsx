@@ -1,4 +1,26 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
+
+class MatchErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '2rem', color: '#f87171', background: '#1a0808', border: '1px solid #7f1d1d', borderRadius: 8, margin: '1rem 0' }}>
+          <h3 style={{ margin: '0 0 0.5rem' }}>⚠️ Match page error</h3>
+          <p style={{ margin: '0 0 0.5rem', color: '#fca5a5' }}>{this.state.error.message}</p>
+          <pre style={{ fontSize: '0.75rem', color: '#f87171', overflowX: 'auto', background: '#120808', padding: '0.5rem', borderRadius: 4 }}>
+            {this.state.error.stack}
+          </pre>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: '1rem', padding: '0.4rem 1rem', background: '#7f1d1d', color: '#fca5a5', border: '1px solid #ef4444', borderRadius: 4, cursor: 'pointer' }}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
@@ -817,7 +839,8 @@ function PositionSelect({ player, matchId, onUpdate }) {
   );
 }
 
-function TeamTable({ players, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {} }) {
+function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {} }) {
+  const allPlayers = allPlayersProp || players;
   const hasDetailedStats = players.some(p => p.gpm > 0 || p.hero_damage > 0);
   const hasItems = players.some(p => p.items && p.items.length > 0);
   const hasLane = players.some(p => laneOutcomes && laneOutcomes[p.slot]);
@@ -2386,7 +2409,7 @@ function MatchNotes({ matchId, isAdmin, adminKey }) {
   );
 }
 
-export default function MatchDetail() {
+function MatchDetailInner() {
   const { matchId } = useParams();
   const navigate = useNavigate();
   const { seasons } = useSeason();
@@ -2829,8 +2852,8 @@ export default function MatchDetail() {
 
       <DraftDisplay draft={match.draft} />
 
-      <TeamTable players={radiant} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} />
-      <TeamTable players={dire} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} />
+      <TeamTable players={radiant} allPlayers={allPlayers} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} />
+      <TeamTable players={dire} allPlayers={allPlayers} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} />
 
       <ExpandedStats players={allPlayers} />
       <PudgeHookStats players={allPlayers} matchId={matchId} />
@@ -2884,5 +2907,13 @@ export default function MatchDetail() {
       )}
 
     </div>
+  );
+}
+
+export default function MatchDetail() {
+  return (
+    <MatchErrorBoundary>
+      <MatchDetailInner />
+    </MatchErrorBoundary>
   );
 }
