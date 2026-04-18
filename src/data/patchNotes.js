@@ -419,4 +419,11 @@ module.exports = [
     content: 'Fixed form dots and win/loss streak on the leaderboard being wrong for players whose match history spans multiple account IDs under the same nickname.\n\nRoot cause: TrueSkill (and player profile pages) correctly merge all account IDs sharing a nickname into a single canonical player — but the form and streak queries were grouping by raw account_id only, so they only saw a fraction of each player\'s matches.\n\nFix: getPlayerFormBatch and getPlayerStreaks now apply the same nickname-based canonical ID merging that TrueSkill uses. All match results for a given player are aggregated across every account ID that shares their nickname before the form sequence and current streak are computed.\n\nThis means form dots and streak badges on the leaderboard now correctly reflect a player\'s full recent match history.',
     author: 'System',
   },
+  {
+    version: '5.18',
+    title: 'Overhauled Match Performance (Perf) Score',
+    published_at: '2026-04-18',
+    content: 'Redesigned the per-match Performance score shown on match scoreboards from a 2-factor formula to a 6-factor composite that better reflects true game impact across all roles.\n\nNew formula (z-score normalised within each match, mapped to 1–10):\n• Kill Involvement 25% — (kills + assists×0.5) / team kills. Kills now outweigh assists.\n• Hero Damage Share 22% — damage dealt relative to the match average, rewarding high-damage carries.\n• KDA Efficiency 22% — (kills + assists×0.7) / (deaths+2)^0.8. Reduced assist weighting so landing kills is properly valued.\n• Healing Contribution 12% — healing relative to match average, rewarding supports like Io/Omni who heal heavily.\n• Net Worth 12% — wealth relative to the richest player in the match, rewarding farming efficiency.\n• Tower Damage Share 4% — objective contribution.\n• Win Bonus 3% — flat bonus for being on the winning team.\n\nPreviously: kill involvement and KDA (with a 1.35× assist multiplier) each at 45%, GPM at 3%. This over-rewarded supports stacking assists — an Io with 17 assists could outscore a PA with 15 kills despite clearly lesser impact. The new formula prevents this by distributing weight across damage, farm, and healing as well.',
+    author: 'System',
+  },
 ];

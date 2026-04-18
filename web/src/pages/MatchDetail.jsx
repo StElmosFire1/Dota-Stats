@@ -863,7 +863,7 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
               <th className="col-stat" title="Kills">K</th>
               <th className="col-stat" title="Deaths">D</th>
               <th className="col-stat" title="Assists">A</th>
-              <th className="col-stat" title="Match Performance Score 1–10: how far above or below the match average this player performed (kill involvement, KDA efficiency, win result, GPM). Multiple players can share the same score.">Perf</th>
+              <th className="col-stat" title="Match Performance Score 1–10: composite of kill involvement (25%), hero damage share (22%), KDA efficiency (22%), healing contribution (12%), net worth (12%), tower damage (4%), win bonus (3%). Z-score normalised within the match — multiple players can share the same score.">Perf</th>
               {hasDetailedStats && (
                 <>
                   <th className="col-stat" title="Last Hits">LH</th>
@@ -2548,20 +2548,34 @@ function MatchDetailInner() {
   const allPlayers = [...radiant, ...dire];
 
   // Per-match performance score 1–10 using z-score normalisation within the match.
-  // Players are scored on kill involvement, KDA efficiency, win result, and GPM (when available).
-  // Multiple players can share the same score — it reflects how far above/below the match average they were.
+  // Composite of: kill involvement, hero damage share, KDA efficiency,
+  // healing contribution, net worth, tower damage, and win bonus.
+  // Designed to be position-neutral: carries are rewarded for damage/farm,
+  // supports for healing/assists, all penalised for dying.
   const perfRanks = (() => {
     const radK = radiant.reduce((s, p) => s + (p.kills || 0), 0);
     const dirK = dire.reduce((s, p) => s + (p.kills || 0), 0);
-    const hasGPM = allPlayers.some(p => (p.gpm || 0) > 0);
-    const maxGPM = hasGPM ? Math.max(...allPlayers.map(p => p.gpm || 0), 1) : 1;
+    const n = allPlayers.length || 10;
+    const totalHD = allPlayers.reduce((s, p) => s + (p.hero_damage || 0), 0);
+    const totalHH = allPlayers.reduce((s, p) => s + (p.hero_healing || 0), 0);
+    const totalTD = allPlayers.reduce((s, p) => s + (p.tower_damage || 0), 0);
+    const maxNW = Math.max(...allPlayers.map(p => p.net_worth || 0), 1);
     const scored = allPlayers.map(p => {
       const teamK = p.team === 'radiant' ? radK : dirK;
-      const ki = teamK > 0 ? ((p.kills || 0) + (p.assists || 0)) / teamK : 0;
-      const eff = ((p.kills || 0) + (p.assists || 0) * 1.35) / Math.pow((p.deaths || 0) + 3, 0.85);
+      // Kill involvement — kills worth more than assists
+      const ki = teamK > 0 ? ((p.kills || 0) + (p.assists || 0) * 0.5) / teamK : 0;
+      // Hero damage share relative to match average (1.0 = average player)
+      const damShare = totalHD > 0 ? ((p.hero_damage || 0) / totalHD) * n : 0;
+      // KDA efficiency — kills weighted more than assists, deaths penalised
+      const eff = ((p.kills || 0) + (p.assists || 0) * 0.7) / Math.pow((p.deaths || 0) + 2, 0.8);
+      // Healing share relative to match average (rewards supports with high HH)
+      const healShare = totalHH > 0 ? ((p.hero_healing || 0) / totalHH) * n : 0;
+      // Net worth relative to the richest player in the match
+      const nwNorm = (p.net_worth || 0) / maxNW;
+      // Tower damage share relative to match average
+      const tdShare = totalTD > 0 ? ((p.tower_damage || 0) / totalTD) * n : 0;
       const won = (match.radiant_win && p.team === 'radiant') || (!match.radiant_win && p.team === 'dire');
-      const gpmNorm = hasGPM ? (p.gpm || 0) / maxGPM : 0;
-      const raw = ki * 0.45 + eff * 0.45 + (won ? 0.07 : 0) + (hasGPM ? gpmNorm * 0.03 : 0);
+      const raw = ki * 0.25 + damShare * 0.22 + eff * 0.22 + healShare * 0.12 + nwNorm * 0.12 + tdShare * 0.04 + (won ? 0.03 : 0);
       return { slot: p.slot, raw };
     });
     const raws = scored.map(s => s.raw);
