@@ -14,9 +14,15 @@ function decodeRankTier(rankTier) {
 }
 
 // Attempt to sync a single player's rank from OpenDota.
+// Refreshes the player's data first so OpenDota re-crawls their profile,
+// then fetches the updated rank_tier after a short delay.
 // Returns 'opendota' | 'skipped' | null (null = no data found)
 async function syncOneFromOpenDota(accountId) {
   try {
+    // Trigger OpenDota to re-index this player's data (no-op if they're private)
+    await api.refreshPlayer(accountId);
+    await delay(3000); // give OpenDota time to process the refresh
+
     const profile = await api.getPlayerProfile(accountId);
     if (profile && profile.rankTier) {
       await db.setPlayerRank(accountId, profile.rankTier, profile.leaderboardRank || null, 'opendota');

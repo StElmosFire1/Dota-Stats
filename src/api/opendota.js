@@ -47,6 +47,12 @@ class OpenDotaClient {
     }
   }
 
+  async refreshPlayer(accountId32) {
+    try {
+      await fetch(`${OPENDOTA_API}/players/${accountId32}/refresh`, { method: 'POST' });
+    } catch (_) {}
+  }
+
   async getPlayerProfile(accountId32) {
     await this._rateLimit();
     try {

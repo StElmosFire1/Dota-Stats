@@ -350,6 +350,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.12',
+    title: 'Rank Sync Improvements + Manual Rank Edit UI',
+    published_at: '2026-04-18',
+    content: '🔄 RANK SYNC — OPENDOTA REFRESH\nThe rank sync now calls OpenDota\'s refresh endpoint for each player before fetching their rank data. This forces OpenDota to re-crawl the player\'s Dota 2 profile, meaning players with public data who weren\'t being found (like MajinDabura) will now correctly have their rank populated.\n\n✏️ MANUAL RANK EDIT — NEW UI\nThe rank edit form in the Admin Panel (Dota 2 Rank Management) now uses proper dropdowns instead of raw number codes. Select medal (Herald → Immortal) from the first dropdown, then stars (★ through ★★★★★) from the second. For Immortal players, a leaderboard rank field appears instead of stars. The computed tier code is shown for reference.',
+    author: 'System',
+  },
+  {
     version: '5.11',
     title: 'MMR History Chart Label Clarified',
     published_at: '2026-04-18',

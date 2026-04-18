@@ -731,6 +731,9 @@ export default function AdminPanel() {
   const [rankEditId, setRankEditId] = useState(null);
   const [rankEditTier, setRankEditTier] = useState('');
   const [rankEditLbRank, setRankEditLbRank] = useState('');
+  const [rankEditMedal, setRankEditMedal] = useState('');
+  const [rankEditStars, setRankEditStars] = useState('');
+  const MEDAL_NAMES = ['Herald', 'Guardian', 'Crusader', 'Archon', 'Legend', 'Ancient', 'Divine', 'Immortal'];
   const [signups, setSignups] = useState([]);
   const [signupsFilter, setSignupsFilter] = useState('pending');
   const [signupNotes, setSignupNotes] = useState({});
@@ -1085,26 +1088,63 @@ export default function AdminPanel() {
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {isEditing ? (
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <input
-                            type="number"
-                            placeholder="Tier (e.g. 75)"
-                            value={rankEditTier}
-                            onChange={e => setRankEditTier(e.target.value)}
-                            style={{ width: 90, padding: '2px 6px', fontSize: 12 }}
-                          />
-                          <input
-                            type="number"
-                            placeholder="LB rank"
-                            value={rankEditLbRank}
-                            onChange={e => setRankEditLbRank(e.target.value)}
-                            style={{ width: 70, padding: '2px 6px', fontSize: 12 }}
-                          />
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select
+                            value={rankEditMedal}
+                            onChange={e => {
+                              const m = e.target.value;
+                              setRankEditMedal(m);
+                              if (m === '8') {
+                                setRankEditTier(80);
+                                setRankEditStars('');
+                              } else if (m && rankEditStars) {
+                                setRankEditTier(parseInt(m) * 10 + parseInt(rankEditStars));
+                              }
+                            }}
+                            style={{ padding: '2px 6px', fontSize: 12 }}
+                          >
+                            <option value="">Medal…</option>
+                            {MEDAL_NAMES.map((name, i) => (
+                              <option key={i + 1} value={i + 1}>{name}</option>
+                            ))}
+                          </select>
+                          {rankEditMedal && rankEditMedal !== '8' && (
+                            <select
+                              value={rankEditStars}
+                              onChange={e => {
+                                const s = e.target.value;
+                                setRankEditStars(s);
+                                if (rankEditMedal && s) {
+                                  setRankEditTier(parseInt(rankEditMedal) * 10 + parseInt(s));
+                                }
+                              }}
+                              style={{ padding: '2px 6px', fontSize: 12 }}
+                            >
+                              <option value="">Stars…</option>
+                              {[1, 2, 3, 4, 5].map(s => (
+                                <option key={s} value={s}>{'★'.repeat(s)}</option>
+                              ))}
+                            </select>
+                          )}
+                          {rankEditMedal === '8' && (
+                            <input
+                              type="number"
+                              placeholder="LB rank (optional)"
+                              value={rankEditLbRank}
+                              onChange={e => setRankEditLbRank(e.target.value)}
+                              style={{ width: 130, padding: '2px 6px', fontSize: 12 }}
+                            />
+                          )}
+                          {rankEditTier && (
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>tier={rankEditTier}</span>
+                          )}
                           <button
                             className="btn btn-sm"
+                            disabled={!rankEditTier}
                             onClick={async () => {
                               try {
-                                await setManualRank(r.account_id, rankEditTier || null, rankEditLbRank || null, superuserKey);
+                                const lbRank = rankEditMedal === '8' ? (rankEditLbRank || null) : null;
+                                await setManualRank(r.account_id, rankEditTier || null, lbRank, superuserKey);
                                 setRankEditId(null);
                                 loadRanks();
                               } catch (e) { alert(e.message); }
@@ -1122,8 +1162,18 @@ export default function AdminPanel() {
                             className="btn btn-sm"
                             onClick={() => {
                               setRankEditId(r.account_id);
-                              setRankEditTier(r.dota_rank_tier || '');
+                              const existingTier = r.dota_rank_tier || '';
+                              setRankEditTier(existingTier);
                               setRankEditLbRank(r.dota_leaderboard_rank || '');
+                              if (existingTier) {
+                                const medal = Math.floor(existingTier / 10);
+                                const stars = existingTier % 10;
+                                setRankEditMedal(String(medal));
+                                setRankEditStars(medal === 8 ? '' : String(stars));
+                              } else {
+                                setRankEditMedal('');
+                                setRankEditStars('');
+                              }
                             }}
                           >✏️ Edit</button>
                           {r.dota_rank_tier && (
