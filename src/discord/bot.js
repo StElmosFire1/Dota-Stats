@@ -2756,6 +2756,11 @@ class DiscordBot {
   }
 
   async _announceNewPatchNotes() {
+    if (process.env.ANNOUNCE_PATCH_NOTES !== 'true') {
+      console.log('[PatchNotes] Announcements disabled (ANNOUNCE_PATCH_NOTES != true) — skipping Discord post. Set this on the production server to enable.');
+      return;
+    }
+
     const unannounced = await db.getUnannouncedPatchNotes().catch(err => {
       console.error('[PatchNotes] Failed to fetch unannounced notes:', err.message);
       return [];

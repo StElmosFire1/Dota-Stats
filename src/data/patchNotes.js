@@ -349,4 +349,11 @@ module.exports = [
     content: '🐔 COURIER KILLS TRACKED\nCourier kills (recorded by the replay parser) now appear in the Records page as a standalone all-time single-game record.\nTwo new achievements: "Chicken Killer" (20+ career courier kills) and "Courier Slayer" (50+ career courier kills).\n\n📊 RECORDS PAGE IMPROVEMENTS\nRemoved: Highest Hero Level record (not meaningful).\nAdded: Most Denies, Most Courier Kills, and Most Buybacks as new single-game best categories.\n\n🔧 DRAFT TOOL FIX\nFixed a bug where player hero pools failed to load in the Draft Assistant. Selecting a player now correctly shows their most-played heroes.\n\n🔍 PLAYERS PAGE SEARCH\nAdded a live search box to the Players page — filter the full roster by name or nickname instantly.\n\n👥 POSITION BREAKDOWN SORTED\nThe Position Breakdown table on Player Profiles is now sorted by most games played (most common role at the top).\n\n📝 JOIN THE LEAGUE PAGE\nNew public page at /join — interested players can submit their Discord username, Steam profile, preferred positions, and a message. Admins can review, approve, or reject requests directly from the Admin Panel.',
     author: 'System',
   },
+  {
+    version: '5.8',
+    title: 'Patch Note Announcements Gated to Production',
+    published_at: '2026-04-18',
+    content: '🔧 PATCH NOTE ANNOUNCEMENT TIMING FIX\nPatch notes are now only announced to Discord after the update has been deployed to the production server.\n\nPreviously, the bot would post patch note announcements immediately on any restart — including the development environment — before changes had been pushed to production or published on the website.\n\nNow, Discord announcements require the ANNOUNCE_PATCH_NOTES=true environment variable to be set. This variable is only present on the production server, so patch notes will appear in Discord only after a real deployment.',
+    author: 'System',
+  },
 ];
