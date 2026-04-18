@@ -862,8 +862,8 @@ class Dota2GCClient extends EventEmitter {
           } else break;
         }
         return {
-          rankTier:        fields[9]  ? fields[9]  : null,
-          leaderboardRank: fields[10] ? fields[10] : null,
+          rankTier:        fields[8]  ? fields[8]  : null,
+          leaderboardRank: fields[9]  ? fields[9]  : null,
         };
       };
 
