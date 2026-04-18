@@ -398,4 +398,11 @@ module.exports = [
     content: '🐛 MATCH PAGE BLANK SCREEN FIX\nFixed a crash that caused all match detail pages to show a completely blank screen. The TeamTable component internally referenced an undefined variable (allPlayers) — correctly receiving it as a prop from the parent now fixes this. Added a React error boundary so any future unexpected errors show a readable message and stack trace instead of a blank page.\n\n🔍 REPLAY INSPECTOR TOOL\nNew Replay Inspector panel in the Admin Panel (superuser only). Upload any .dem file to see the raw account IDs, Steam64 IDs, persona names, and heroes extracted by the parser — without committing anything to the database. Useful for verifying accounts before uploading a replay.',
     author: 'System',
   },
+  {
+    version: '5.15',
+    title: 'Replay Inspector: Persona Name Fix',
+    published_at: '2026-04-18',
+    content: 'Fixed the Replay Inspector showing blank persona names for all players. The inspector endpoint was reading p.personaName (camelCase) but the parser stores the field as p.personaname (all lowercase) — corrected to read both variants.',
+    author: 'System',
+  },
 ];

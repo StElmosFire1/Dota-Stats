@@ -1818,7 +1818,7 @@ function createApiRouter(startupStatus = {}) {
         slot: p.slot,
         account_id: p.accountId || 0,
         steam64: p.accountId ? String(BigInt('76561197960265728') + BigInt(p.accountId)) : null,
-        persona_name: p.personaName || '',
+        persona_name: p.personaname || p.personaName || '',
         hero_name: p.heroName || '',
         hero_id: p.heroId || 0,
         team: p.team || (p.slot < 5 ? 'radiant' : 'dire'),
