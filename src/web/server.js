@@ -2944,16 +2944,23 @@ NOTES
 
   router.post('/join', express.json(), async (req, res) => {
     try {
-      const { discordUsername, steamUrl, preferredName, preferredPositions, message } = req.body;
+      const { discordUsername, steamUrl, preferredName, preferredPositions, message, mmr } = req.body;
       if (!discordUsername || !discordUsername.trim()) {
-        return res.status(400).json({ error: 'Discord username is required' });
+        return res.status(400).json({ error: 'Discord ID is required' });
+      }
+      if (!steamUrl || !steamUrl.trim()) {
+        return res.status(400).json({ error: 'Steam Profile URL is required' });
+      }
+      if (!mmr || !mmr.trim()) {
+        return res.status(400).json({ error: 'Peak MMR / Rank is required' });
       }
       const row = await db.createSignupRequest({
         discordUsername: discordUsername.trim(),
-        steamUrl: steamUrl ? steamUrl.trim() : null,
+        steamUrl: steamUrl.trim(),
         preferredName: preferredName ? preferredName.trim() : null,
         preferredPositions: Array.isArray(preferredPositions) ? preferredPositions.map(Number) : [],
         message: message ? message.trim() : null,
+        mmr: mmr.trim(),
       });
       res.json({ success: true, id: row.id });
     } catch (err) {

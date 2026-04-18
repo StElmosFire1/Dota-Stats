@@ -11,6 +11,7 @@ export default function OverallStats() {
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState('games');
   const [sortDir, setSortDir] = useState(-1);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -50,10 +51,26 @@ export default function OverallStats() {
 
   if (loading) return <div className="loading">Loading stats...</div>;
 
+  const filtered = search.trim()
+    ? sorted.filter(r => {
+        const q = search.trim().toLowerCase();
+        return (r.nickname || '').toLowerCase().includes(q) || (r.persona_name || '').toLowerCase().includes(q);
+      })
+    : sorted;
+
   return (
     <div>
       <h1 className="page-title">Overall Player Stats</h1>
-      <p style={{ color: '#888', marginBottom: '1rem' }}>{stats.length} players</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem' }}>
+        <p style={{ color: '#888', margin: 0 }}>{stats.length} players</p>
+        <input
+          type="text"
+          placeholder="Search by name…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13, width: 200 }}
+        />
+      </div>
       <div className="scoreboard-wrapper">
         <table className="scoreboard">
           <thead>
@@ -72,7 +89,7 @@ export default function OverallStats() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row, i) => {
+            {filtered.map((row, i) => {
               const winRate = row.games > 0 ? ((row.wins / row.games) * 100).toFixed(0) : '0';
               const captRate = row.captain_games > 0 ? ((row.captain_wins / row.captain_games) * 100).toFixed(0) : '-';
               const displayName = row.nickname || row.persona_name;

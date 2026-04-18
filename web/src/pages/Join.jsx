@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 
 const POS_OPTIONS = [
-  { value: 1, label: 'Pos 1 — Safe Lane (Carry)' },
-  { value: 2, label: 'Pos 2 — Mid Lane' },
-  { value: 3, label: 'Pos 3 — Off Lane' },
-  { value: 4, label: 'Pos 4 — Soft Support' },
-  { value: 5, label: 'Pos 5 — Hard Support' },
+  { value: 1, label: 'Pos 1', sublabel: 'Safe Lane (Carry)' },
+  { value: 2, label: 'Pos 2', sublabel: 'Mid Lane' },
+  { value: 3, label: 'Pos 3', sublabel: 'Off Lane' },
+  { value: 4, label: 'Pos 4', sublabel: 'Soft Support' },
+  { value: 5, label: 'Pos 5', sublabel: 'Hard Support' },
 ];
+
+const ORDINAL = ['1st', '2nd', '3rd', '4th', '5th'];
 
 export default function Join() {
   const [form, setForm] = useState({
     discordUsername: '',
     steamUrl: '',
     preferredName: '',
+    mmr: '',
     preferredPositions: [],
     message: '',
   });
@@ -21,20 +24,19 @@ export default function Join() {
   const [error, setError] = useState(null);
 
   const togglePosition = (pos) => {
-    setForm(f => ({
-      ...f,
-      preferredPositions: f.preferredPositions.includes(pos)
-        ? f.preferredPositions.filter(p => p !== pos)
-        : [...f.preferredPositions, pos],
-    }));
+    setForm(f => {
+      if (f.preferredPositions.includes(pos)) {
+        return { ...f, preferredPositions: f.preferredPositions.filter(p => p !== pos) };
+      }
+      return { ...f, preferredPositions: [...f.preferredPositions, pos] };
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.discordUsername.trim()) {
-      setError('Discord username is required.');
-      return;
-    }
+    if (!form.discordUsername.trim()) { setError('Discord ID is required.'); return; }
+    if (!form.steamUrl.trim()) { setError('Steam Profile URL is required.'); return; }
+    if (!form.mmr.trim()) { setError('Peak MMR / Rank is required.'); return; }
     setSubmitting(true);
     setError(null);
     try {
@@ -87,6 +89,8 @@ export default function Join() {
     marginBottom: 6,
   };
 
+  const required = <span style={{ color: 'var(--accent-red)' }}>*</span>;
+
   return (
     <div style={{ maxWidth: 600, margin: '0 auto' }}>
       <h1 className="page-title">Join the Inhouse League</h1>
@@ -95,33 +99,44 @@ export default function Join() {
       </p>
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
         <div>
-          <label style={labelStyle}>Discord Username <span style={{ color: 'var(--accent-red)' }}>*</span></label>
+          <label style={labelStyle}>Discord ID {required}</label>
           <input
             style={inputStyle}
             type="text"
-            placeholder="e.g. username#1234 or username"
+            placeholder="e.g. 123456789012345678"
             value={form.discordUsername}
             onChange={e => setForm(f => ({ ...f, discordUsername: e.target.value }))}
             required
           />
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-            Your Discord username so we can reach you.
+            Your numeric Discord User ID. To find it: Discord Settings → Advanced → enable Developer Mode, then right-click your username and select <strong style={{ color: 'var(--text-secondary)' }}>Copy User ID</strong>.
           </div>
         </div>
 
         <div>
-          <label style={labelStyle}>Steam Profile URL</label>
+          <label style={labelStyle}>Steam Profile URL {required}</label>
           <input
             style={inputStyle}
             type="text"
-            placeholder="https://steamcommunity.com/id/yourname or /profiles/76561198..."
+            placeholder="https://steamcommunity.com/id/yourname or /profiles/76561198…"
             value={form.steamUrl}
             onChange={e => setForm(f => ({ ...f, steamUrl: e.target.value }))}
+            required
           />
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-            Optional but helps us verify your account.
-          </div>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Peak MMR / Dota 2 Rank {required}</label>
+          <input
+            style={inputStyle}
+            type="text"
+            placeholder="e.g. 4200 MMR, Ancient 3, Immortal…"
+            value={form.mmr}
+            onChange={e => setForm(f => ({ ...f, mmr: e.target.value }))}
+            required
+          />
         </div>
 
         <div>
@@ -136,29 +151,72 @@ export default function Join() {
         </div>
 
         <div>
-          <label style={labelStyle}>Preferred Positions</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-            {POS_OPTIONS.map(opt => (
-              <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
-                <input
-                  type="checkbox"
-                  checked={form.preferredPositions.includes(opt.value)}
-                  onChange={() => togglePosition(opt.value)}
-                  style={{ width: 16, height: 16, accentColor: 'var(--accent)' }}
-                />
-                <span style={{ color: form.preferredPositions.includes(opt.value) ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                  {opt.label}
-                </span>
-              </label>
-            ))}
+          <label style={labelStyle}>Preferred Positions <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(click in order of preference)</span></label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+            {POS_OPTIONS.map(opt => {
+              const rank = form.preferredPositions.indexOf(opt.value);
+              const selected = rank !== -1;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => togglePosition(opt.value)}
+                  style={{
+                    position: 'relative',
+                    padding: '8px 14px',
+                    borderRadius: 8,
+                    border: selected ? '2px solid var(--accent-green)' : '1px solid var(--border)',
+                    background: selected ? 'rgba(74,222,128,0.08)' : 'var(--bg-card)',
+                    color: selected ? 'var(--accent-green)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    textAlign: 'center',
+                    minWidth: 90,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {selected && (
+                    <span style={{
+                      position: 'absolute',
+                      top: -8,
+                      right: -8,
+                      background: 'var(--accent-green)',
+                      color: '#000',
+                      borderRadius: '50%',
+                      width: 20,
+                      height: 20,
+                      fontSize: 10,
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      {ORDINAL[rank]}
+                    </span>
+                  )}
+                  <div>{opt.label}</div>
+                  <div style={{ fontSize: 11, fontWeight: 400, marginTop: 2, opacity: 0.8 }}>{opt.sublabel}</div>
+                </button>
+              );
+            })}
           </div>
+          {form.preferredPositions.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+              Order: {form.preferredPositions.map((p, i) => (
+                <span key={p} style={{ color: 'var(--text-secondary)' }}>
+                  {i > 0 && ' → '}{ORDINAL[i]} Pos {p}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
           <label style={labelStyle}>Anything else?</label>
           <textarea
             style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }}
-            placeholder="Tell us your MMR, experience level, availability, or anything else..."
+            placeholder="Availability, experience, anything you'd like us to know…"
             value={form.message}
             onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
           />
@@ -186,6 +244,10 @@ export default function Join() {
         >
           {submitting ? 'Submitting…' : 'Submit Interest'}
         </button>
+
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+          Fields marked {required} are required.
+        </p>
       </form>
     </div>
   );

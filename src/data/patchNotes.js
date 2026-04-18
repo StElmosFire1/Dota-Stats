@@ -350,6 +350,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.9',
+    title: 'Join Page Overhaul & Player Stats Search',
+    published_at: '2026-04-18',
+    content: '📝 JOIN PAGE IMPROVEMENTS\nThe Join the League form has been updated:\n• Discord field now collects your Discord User ID (the numeric snowflake) with instructions on how to find it.\n• Steam Profile URL is now mandatory.\n• New mandatory Peak MMR / Dota 2 Rank field.\n• Preferred Positions now uses a ranked click-to-select system — click positions in order of preference and each receives a numbered badge (1st, 2nd, etc.) so admins know your priority order.\n\n🔍 PLAYER STATS SEARCH\nAdded a live search box to the Player Stats page — filter all players by name or nickname instantly, matching the search on the Players page.',
+    author: 'System',
+  },
+  {
     version: '5.8',
     title: 'Patch Note Announcements Gated to Production',
     published_at: '2026-04-18',

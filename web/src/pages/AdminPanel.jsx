@@ -1169,7 +1169,10 @@ export default function AdminPanel() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {signups.map(req => {
-              const pos = Array.isArray(req.preferred_positions) ? req.preferred_positions.sort((a,b)=>a-b).map(p => `Pos ${p}`).join(', ') : '';
+              const ORDINAL = ['1st', '2nd', '3rd', '4th', '5th'];
+              const pos = Array.isArray(req.preferred_positions) && req.preferred_positions.length > 0
+                ? req.preferred_positions.map((p, i) => `${ORDINAL[i] || (i+1+'th')} Pos ${p}`).join(' → ')
+                : '';
               const date = req.submitted_at ? new Date(req.submitted_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
               const statusColor = req.status === 'approved' ? 'var(--accent-green)' : req.status === 'rejected' ? 'var(--accent-red)' : '#f59e0b';
               return (
@@ -1180,9 +1183,11 @@ export default function AdminPanel() {
                         {req.discord_username}
                         <span style={{ marginLeft: 10, fontSize: 12, color: statusColor, fontWeight: 600, textTransform: 'capitalize' }}>{req.status}</span>
                       </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Discord ID</div>
                       {req.preferred_name && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Name: {req.preferred_name}</div>}
                       {req.steam_url && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Steam: <a href={req.steam_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{req.steam_url}</a></div>}
-                      {pos && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Preferred: {pos}</div>}
+                      {req.mmr && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Peak MMR / Rank: <strong style={{ color: 'var(--text-primary)' }}>{req.mmr}</strong></div>}
+                      {pos && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Position preference: {pos}</div>}
                       {req.message && <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6, fontStyle: 'italic' }}>"{req.message}"</div>}
                       {req.admin_notes && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Admin notes: {req.admin_notes}</div>}
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Submitted: {date}</div>
