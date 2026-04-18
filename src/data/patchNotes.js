@@ -342,4 +342,11 @@ module.exports = [
     content: '🎖️ DOTA 2 RANK MEDALS\nPlayers can now display their actual Dota 2 ranked medal (Herald through Immortal) on the website.\n\nRanks are fetched automatically using a 3-layer approach:\n1. OpenDota public data — works instantly for players with public match history.\n2. Steam Game Coordinator profile card — works for players who are Steam friends with the bot, even with private profiles.\n3. Manual admin entry — admins can set any player\'s rank directly.\n\nWhere ranks appear:\n• Leaderboard — new "Dota Rank" column with coloured medal badge.\n• Player Profiles — rank medal shown next to the player name at the top of the profile.\n\nAdmin panel:\n• New "Dota 2 Rank Management" section with a one-click sync button.\n• Manually edit or clear any player\'s rank.\n• Sync runs in the background — typically completes in 15–30 seconds for the full player list.\n• Manual entries are never overwritten by auto-sync.',
     author: 'System',
   },
+  {
+    version: '5.7',
+    title: 'Records Overhaul, Courier Kills, Draft Fix & Join Page',
+    published_at: '2026-04-18',
+    content: '🐔 COURIER KILLS TRACKED\nCourier kills (recorded by the replay parser) now appear in the Records page as a standalone all-time single-game record.\nTwo new achievements: "Chicken Killer" (20+ career courier kills) and "Courier Slayer" (50+ career courier kills).\n\n📊 RECORDS PAGE IMPROVEMENTS\nRemoved: Highest Hero Level record (not meaningful).\nAdded: Most Denies, Most Courier Kills, and Most Buybacks as new single-game best categories.\n\n🔧 DRAFT TOOL FIX\nFixed a bug where player hero pools failed to load in the Draft Assistant. Selecting a player now correctly shows their most-played heroes.\n\n🔍 PLAYERS PAGE SEARCH\nAdded a live search box to the Players page — filter the full roster by name or nickname instantly.\n\n👥 POSITION BREAKDOWN SORTED\nThe Position Breakdown table on Player Profiles is now sorted by most games played (most common role at the top).\n\n📝 JOIN THE LEAGUE PAGE\nNew public page at /join — interested players can submit their Discord username, Steam profile, preferred positions, and a message. Admins can review, approve, or reject requests directly from the Admin Panel.',
+    author: 'System',
+  },
 ];

@@ -648,6 +648,23 @@ async function init() {
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_source VARCHAR(16) DEFAULT NULL`);
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_updated_at TIMESTAMPTZ DEFAULT NULL`);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS signup_requests (
+        id SERIAL PRIMARY KEY,
+        discord_username TEXT NOT NULL,
+        steam_url TEXT,
+        preferred_name TEXT,
+        preferred_positions INTEGER[] DEFAULT '{}',
+        message TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        admin_notes TEXT,
+        submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reviewed_at TIMESTAMPTZ,
+        reviewed_by TEXT
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_signup_requests_status ON signup_requests(status)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -3712,7 +3729,8 @@ async function getPlayerAchievements(accountId) {
     ),
     p.query(
       `SELECT MAX(hero_damage) AS max_damage, MAX(gpm) AS max_gpm, MAX(hero_healing) AS max_healing,
-              MAX(tower_damage) AS max_tower_damage, MAX(last_hits) AS max_last_hits
+              MAX(tower_damage) AS max_tower_damage, MAX(last_hits) AS max_last_hits,
+              SUM(courier_kills) AS total_courier_kills
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
@@ -3771,6 +3789,7 @@ async function getPlayerAchievements(accountId) {
   const maxHealing = parseInt(singleGameRes.rows[0]?.max_healing) || 0;
   const maxTowerDamage = parseInt(singleGameRes.rows[0]?.max_tower_damage) || 0;
   const maxLastHits = parseInt(singleGameRes.rows[0]?.max_last_hits) || 0;
+  const totalCourierKills = parseInt(singleGameRes.rows[0]?.total_courier_kills) || 0;
   const posCounts = {};
   for (const r of posRes.rows) posCounts[r.position] = parseInt(r.cnt) || 0;
   const carryGames = posCounts[1] || 0;
@@ -3853,6 +3872,9 @@ async function getPlayerAchievements(accountId) {
     // KDA
     { key: 'kda_3',           label: 'Efficient',          desc: '3.0+ average KDA (all games)',       icon: '📊',  earned: avgKda >= 3.0 && games >= 10, group: 'KDA' },
     { key: 'kda_5',           label: 'Flawless',           desc: '5.0+ average KDA (all games)',       icon: '✨',  earned: avgKda >= 5.0 && games >= 10, group: 'KDA' },
+    // Courier Killer
+    { key: 'chicken_killer',  label: 'Chicken Killer',     desc: '20+ total courier kills',            icon: '🐔',  earned: totalCourierKills >= 20,  group: 'Totals' },
+    { key: 'chicken_slayer',  label: 'Courier Slayer',     desc: '50+ total courier kills',            icon: '🍗',  earned: totalCourierKills >= 50,  group: 'Totals' },
   ];
   return ACHIEVEMENTS;
 }
@@ -4746,7 +4768,7 @@ async function getPersonalRecords(seasonId = null) {
       ps.hero_name,
       ps.kills, ps.deaths, ps.assists, ps.gpm, ps.xpm,
       ps.hero_damage, ps.hero_healing, ps.tower_damage, ps.net_worth,
-      ps.last_hits, ps.level,
+      ps.last_hits, ps.denies, ps.courier_kills, ps.buybacks,
       m.match_id, m.date, m.duration
     FROM player_stats ps
     JOIN matches m ON m.match_id = ps.match_id
@@ -4766,7 +4788,9 @@ async function getPersonalRecords(seasonId = null) {
     { key: 'tower_damage', label: 'Most Tower Damage', asc: false },
     { key: 'net_worth', label: 'Highest Net Worth', asc: false },
     { key: 'last_hits', label: 'Most Last Hits', asc: false },
-    { key: 'level', label: 'Highest Level', asc: false },
+    { key: 'denies', label: 'Most Denies', asc: false },
+    { key: 'courier_kills', label: 'Most Courier Kills', asc: false },
+    { key: 'buybacks', label: 'Most Buybacks', asc: false },
   ];
 
   for (const cat of categories) {
@@ -5382,6 +5406,36 @@ async function deleteMatchNote(noteId) {
   await p.query(`DELETE FROM match_notes WHERE id = $1`, [noteId]);
 }
 
+async function createSignupRequest({ discordUsername, steamUrl, preferredName, preferredPositions, message }) {
+  const p = getPool();
+  const res = await p.query(
+    `INSERT INTO signup_requests (discord_username, steam_url, preferred_name, preferred_positions, message)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [discordUsername, steamUrl || null, preferredName || null, preferredPositions || [], message || null]
+  );
+  return res.rows[0];
+}
+
+async function getSignupRequests(status = null) {
+  const p = getPool();
+  const params = [];
+  const where = status ? `WHERE status = $${params.push(status)}` : '';
+  const res = await p.query(
+    `SELECT * FROM signup_requests ${where} ORDER BY submitted_at DESC`,
+    params
+  );
+  return res.rows;
+}
+
+async function updateSignupRequest(id, { status, adminNotes, reviewedBy }) {
+  const p = getPool();
+  await p.query(
+    `UPDATE signup_requests SET status = $2, admin_notes = $3, reviewed_by = $4, reviewed_at = NOW()
+     WHERE id = $1`,
+    [parseInt(id), status, adminNotes || null, reviewedBy || 'admin']
+  );
+}
+
 module.exports = {
   init,
   getPool,
@@ -5515,6 +5569,9 @@ module.exports = {
   getMatchNotes,
   addMatchNote,
   deleteMatchNote,
+  createSignupRequest,
+  getSignupRequests,
+  updateSignupRequest,
   getUnannouncedPatchNotes,
   markPatchNoteAnnounced,
   getHeroMetaWeek,

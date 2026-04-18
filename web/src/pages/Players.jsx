@@ -20,6 +20,7 @@ export default function Players() {
 
   const [sortField, setSortField] = useState('games_played');
   const [sortDir, setSortDir] = useState(-1);
+  const [search, setSearch] = useState('');
 
   const loadPlayers = () => {
     setLoading(true);
@@ -144,12 +145,38 @@ export default function Players() {
     >Edit</button>
   );
 
+  const filtered = search.trim()
+    ? sorted.filter(p => {
+        const s = search.toLowerCase();
+        const name = (p.nickname || p.display_name || p.persona_name || '').toLowerCase();
+        return name.includes(s);
+      })
+    : sorted;
+
   if (loading) return <div className="loading">Loading players...</div>;
 
   return (
     <div>
       <h1 className="page-title">Players</h1>
-      <p style={{ color: '#888', marginBottom: '1rem' }}>{players.length} players with recorded matches</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <span style={{ color: '#888' }}>{players.length} players with recorded matches</span>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name…"
+          style={{
+            background: 'var(--bg-card)', color: 'var(--text-primary)',
+            border: '1px solid var(--border)', borderRadius: 6,
+            padding: '5px 12px', fontSize: 13, minWidth: 180,
+          }}
+        />
+        {search && (
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            Showing {filtered.length} of {players.length}
+          </span>
+        )}
+      </div>
       {isSuperuser && (
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px' }}>
           💡 To link a Discord ID, set a nickname first, then click Edit in the Discord ID column and paste the player's Discord user ID (right-click their name in Discord → Copy User ID, with Developer Mode on).
@@ -174,7 +201,7 @@ export default function Players() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((p, idx) => {
+            {filtered.map((p, idx) => {
               const key = getPlayerKey(p);
               const games = parseInt(p.games_played) || 0;
               const wins = parseInt(p.wins) || 0;

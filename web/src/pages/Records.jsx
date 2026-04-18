@@ -41,13 +41,15 @@ function fmtNum(v, key) {
 
 const RECORD_ORDER = [
   'kills', 'deaths', 'assists', 'gpm', 'xpm',
-  'hero_damage', 'hero_healing', 'tower_damage', 'net_worth', 'last_hits', 'level',
+  'hero_damage', 'hero_healing', 'tower_damage', 'net_worth', 'last_hits',
+  'denies', 'courier_kills', 'buybacks',
 ];
 
 const RECORD_ICONS = {
   kills: '⚔️', deaths: '💀', assists: '🤝', gpm: '💰', xpm: '⭐',
   hero_damage: '🔥', hero_healing: '💚', tower_damage: '🗼',
-  net_worth: '🏆', last_hits: '🎯', level: '📊',
+  net_worth: '🏆', last_hits: '🎯',
+  denies: '🚫', courier_kills: '🐔', buybacks: '💸',
 };
 
 function MultiKillsTab({ rows, sortKey, setSortKey }) {

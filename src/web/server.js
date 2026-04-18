@@ -2942,6 +2942,47 @@ NOTES
     }
   });
 
+  router.post('/join', express.json(), async (req, res) => {
+    try {
+      const { discordUsername, steamUrl, preferredName, preferredPositions, message } = req.body;
+      if (!discordUsername || !discordUsername.trim()) {
+        return res.status(400).json({ error: 'Discord username is required' });
+      }
+      const row = await db.createSignupRequest({
+        discordUsername: discordUsername.trim(),
+        steamUrl: steamUrl ? steamUrl.trim() : null,
+        preferredName: preferredName ? preferredName.trim() : null,
+        preferredPositions: Array.isArray(preferredPositions) ? preferredPositions.map(Number) : [],
+        message: message ? message.trim() : null,
+      });
+      res.json({ success: true, id: row.id });
+    } catch (err) {
+      console.error('[API] Error creating signup request:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/admin/signups', requireSuperuser, async (req, res) => {
+    try {
+      const status = req.query.status || null;
+      const rows = await db.getSignupRequests(status);
+      res.json({ requests: rows });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.patch('/admin/signups/:id', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { status, adminNotes } = req.body;
+      if (!status) return res.status(400).json({ error: 'status is required' });
+      await db.updateSignupRequest(req.params.id, { status, adminNotes, reviewedBy: 'admin' });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }
 

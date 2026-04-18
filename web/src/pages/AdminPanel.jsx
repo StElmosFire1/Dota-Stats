@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
@@ -731,6 +731,9 @@ export default function AdminPanel() {
   const [rankEditId, setRankEditId] = useState(null);
   const [rankEditTier, setRankEditTier] = useState('');
   const [rankEditLbRank, setRankEditLbRank] = useState('');
+  const [signups, setSignups] = useState([]);
+  const [signupsFilter, setSignupsFilter] = useState('pending');
+  const [signupNotes, setSignupNotes] = useState({});
 
   const loadRanks = useCallback(() => {
     if (!isSuperuser) return;
@@ -738,6 +741,15 @@ export default function AdminPanel() {
   }, [isSuperuser]);
 
   useEffect(() => { loadRanks(); }, [loadRanks]);
+
+  const loadSignups = useCallback(() => {
+    if (!isSuperuser) return;
+    getSignupRequests(superuserKey, signupsFilter || null)
+      .then(d => setSignups(d.requests || []))
+      .catch(() => {});
+  }, [isSuperuser, superuserKey, signupsFilter]);
+
+  useEffect(() => { loadSignups(); }, [loadSignups]);
 
   const authHeader = { 'x-superuser-key': superuserKey };
 
@@ -1135,6 +1147,83 @@ export default function AdminPanel() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section style={{ marginTop: 40 }}>
+        <h2 className="section-title">Sign-Up Requests</h2>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          {['pending', 'approved', 'rejected', ''].map(f => (
+            <button
+              key={f || 'all'}
+              className="btn btn-sm"
+              style={{ background: signupsFilter === f ? 'var(--accent)' : 'var(--bg-card)', color: signupsFilter === f ? '#fff' : 'var(--text-muted)', border: '1px solid var(--border)' }}
+              onClick={() => setSignupsFilter(f)}
+            >
+              {f ? f.charAt(0).toUpperCase() + f.slice(1) : 'All'}
+            </button>
+          ))}
+          <button className="btn btn-sm" onClick={loadSignups} style={{ marginLeft: 8 }}>Refresh</button>
+        </div>
+        {signups.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>No sign-up requests found.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {signups.map(req => {
+              const pos = Array.isArray(req.preferred_positions) ? req.preferred_positions.sort((a,b)=>a-b).map(p => `Pos ${p}`).join(', ') : '';
+              const date = req.submitted_at ? new Date(req.submitted_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+              const statusColor = req.status === 'approved' ? 'var(--accent-green)' : req.status === 'rejected' ? 'var(--accent-red)' : '#f59e0b';
+              return (
+                <div key={req.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        {req.discord_username}
+                        <span style={{ marginLeft: 10, fontSize: 12, color: statusColor, fontWeight: 600, textTransform: 'capitalize' }}>{req.status}</span>
+                      </div>
+                      {req.preferred_name && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Name: {req.preferred_name}</div>}
+                      {req.steam_url && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Steam: <a href={req.steam_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{req.steam_url}</a></div>}
+                      {pos && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Preferred: {pos}</div>}
+                      {req.message && <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6, fontStyle: 'italic' }}>"{req.message}"</div>}
+                      {req.admin_notes && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Admin notes: {req.admin_notes}</div>}
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Submitted: {date}</div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180 }}>
+                      <textarea
+                        placeholder="Admin notes (optional)…"
+                        value={signupNotes[req.id] ?? (req.admin_notes || '')}
+                        onChange={e => setSignupNotes(n => ({ ...n, [req.id]: e.target.value }))}
+                        rows={2}
+                        style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
+                      />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: '#15803d', color: '#fff', flex: 1 }}
+                          onClick={async () => {
+                            try {
+                              await updateSignupRequest(req.id, { status: 'approved', adminNotes: signupNotes[req.id] ?? req.admin_notes }, superuserKey);
+                              loadSignups();
+                            } catch (e) { alert(e.message); }
+                          }}
+                        >Approve</button>
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: '#7f1d1d', color: '#fff', flex: 1 }}
+                          onClick={async () => {
+                            try {
+                              await updateSignupRequest(req.id, { status: 'rejected', adminNotes: signupNotes[req.id] ?? req.admin_notes }, superuserKey);
+                              loadSignups();
+                            } catch (e) { alert(e.message); }
+                          }}
+                        >Reject</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
     </div>

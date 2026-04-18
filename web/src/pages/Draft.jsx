@@ -341,7 +341,9 @@ function AssistantTab({ seasonId }) {
   const [addMode, setAddMode] = useState('ally');
 
   useEffect(() => {
-    getLeaderboard(100).then(d => setAllPlayers(d.leaderboard || [])).catch(() => {});
+    getLeaderboard(100)
+      .then(d => setAllPlayers((d.leaderboard || []).map(p => ({ ...p, account_id: p.player_id }))))
+      .catch(() => {});
   }, []);
 
   const loadHeroPool = useCallback(async (accountId) => {

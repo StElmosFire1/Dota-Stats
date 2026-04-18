@@ -38,6 +38,7 @@ const PlayerBenchmarks = lazy(() => import('./pages/PlayerBenchmarks'));
 const Tournaments = lazy(() => import('./pages/Tournaments'));
 const RecordMatch = lazy(() => import('./pages/RecordMatch'));
 const PlayerInsights = lazy(() => import('./pages/PlayerInsights'));
+const Join = lazy(() => import('./pages/Join'));
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -295,6 +296,7 @@ function Nav() {
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
           <DropdownItem to="/insights">Player Insights</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
+          <DropdownItem to="/join">Join the League</DropdownItem>
         </DropdownMenu>
       </div>
       <SeasonSelector />
@@ -357,6 +359,7 @@ export default function App() {
                 <Route path="/tournaments/:id" element={<Tournaments />} />
                 <Route path="/hall-of-fame" element={<HallOfFame />} />
                 <Route path="/admin/record-match" element={<RecordMatch />} />
+                <Route path="/join" element={<Join />} />
               </Routes>
               </Suspense>
             </main>

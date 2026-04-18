@@ -623,7 +623,7 @@ export default function PlayerProfile() {
                 </tr>
               </thead>
               <tbody>
-                {positions.filter(p => p.position > 0).map((p, i) => {
+                {positions.filter(p => p.position > 0).sort((a, b) => b.games - a.games).map((p, i) => {
                   const wr = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(0) : '0';
                   return (
                     <tr key={i}>

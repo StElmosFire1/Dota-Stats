@@ -853,3 +853,22 @@ export async function clearPlayerRank(accountId, superuserKey) {
   if (!res.ok) throw new Error(data.error || 'Failed to clear rank');
   return data;
 }
+
+export async function getSignupRequests(superuserKey, status = null) {
+  const url = BASE + `/admin/signups` + (status ? `?status=${status}` : '');
+  const res = await fetch(url, { headers: { 'x-superuser-key': superuserKey } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch signups');
+  return data;
+}
+
+export async function updateSignupRequest(id, { status, adminNotes }, superuserKey) {
+  const res = await fetch(BASE + `/admin/signups/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ status, adminNotes }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to update signup');
+  return data;
+}
