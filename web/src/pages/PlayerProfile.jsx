@@ -43,6 +43,7 @@ function RatingChart({ history }) {
         <span style={{ fontSize: 13, color: deltaColor, fontWeight: 600 }}>
           {delta >= 0 ? '+' : ''}{delta} MMR over {history.length} games
         </span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(all time — chart is not season-filtered)</span>
       </div>
       <div className="stat-card" style={{ padding: '1rem 0.5rem' }}>
         <ResponsiveContainer width="100%" height={200}>

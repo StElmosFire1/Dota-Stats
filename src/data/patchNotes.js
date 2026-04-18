@@ -350,6 +350,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.11',
+    title: 'MMR History Chart Label Clarified',
+    published_at: '2026-04-18',
+    content: '🔧 MMR HISTORY LABEL\nThe "X MMR over N games" label on player profiles now clearly notes it is all-time data. The MMR chart has never been season-filtered — it shows the player\'s full career rating trajectory regardless of which season is selected in the menu. The stat cards at the top of the profile are season-filtered; the chart is not.',
+    author: 'System',
+  },
+  {
     version: '5.10',
     title: 'Dota 2 Rank Sync — Critical Bug Fix',
     published_at: '2026-04-18',
