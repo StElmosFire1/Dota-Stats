@@ -1753,6 +1753,109 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  // Fix wrong account IDs in the nicknames table by comparing a backup (pre-reparse)
+  // against the current player_stats (post-reparse) on match_id+slot.
+  router.post('/admin/fix-nickname-account-ids', requireSuperuser, async (req, res) => {
+    const p = db.getPool();
+    try {
+      // Find the most recent pre_reparse backup (or any backup if specified)
+      const backupArg = req.body?.backup || null;
+      let backupSlug = backupArg;
+
+      if (!backupSlug) {
+        const found = await p.query(`
+          SELECT table_name FROM information_schema.tables
+          WHERE table_schema = 'public'
+            AND table_name LIKE 'player_stats_bak_%'
+          ORDER BY table_name DESC LIMIT 1
+        `);
+        if (found.rows.length === 0) return res.status(404).json({ error: 'No backup tables found. Please specify a backup or create one first.' });
+        backupSlug = found.rows[0].table_name.replace('player_stats_bak_', '');
+      }
+
+      const bakTable = `player_stats_bak_${backupSlug}`;
+
+      // Verify backup exists
+      const check = await p.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
+        [bakTable]
+      );
+      if (check.rows.length === 0) return res.status(404).json({ error: `Backup table ${bakTable} not found.` });
+
+      // Build mapping: old account_id (from backup) → new account_id (current player_stats)
+      // Join on match_id + slot to precisely identify each player-slot.
+      const mappingRes = await p.query(`
+        SELECT DISTINCT bak.account_id AS old_id, ps.account_id AS new_id
+        FROM ${bakTable} bak
+        JOIN player_stats ps ON ps.match_id = bak.match_id AND ps.slot = bak.slot
+        WHERE bak.account_id IS NOT NULL
+          AND ps.account_id IS NOT NULL
+          AND bak.account_id != ps.account_id
+          AND bak.account_id > 0
+          AND ps.account_id > 0
+      `);
+
+      const mapping = mappingRes.rows; // [{ old_id, new_id }]
+      if (mapping.length === 0) {
+        return res.json({ success: true, updated: 0, message: 'No account ID differences found between backup and current player_stats. Nicknames are already correct, or backup matches current data.' });
+      }
+
+      // Verify mapping is 1:1 (each old_id maps to exactly one new_id)
+      const oldToNew = {};
+      const conflicts = [];
+      for (const { old_id, new_id } of mapping) {
+        const key = old_id.toString();
+        if (oldToNew[key] && oldToNew[key] !== new_id.toString()) {
+          conflicts.push({ old_id, new_id, existing: oldToNew[key] });
+        } else {
+          oldToNew[key] = new_id.toString();
+        }
+      }
+      if (conflicts.length > 0) {
+        return res.status(409).json({ error: 'Mapping conflict: some old account IDs map to multiple new IDs.', conflicts: conflicts.slice(0, 10) });
+      }
+
+      // Apply mapping to nicknames table
+      let updated = 0;
+      const notFound = [];
+      const client = await p.connect();
+      try {
+        await client.query('BEGIN');
+        for (const [oldId, newId] of Object.entries(oldToNew)) {
+          const r = await client.query(
+            `UPDATE nicknames SET account_id = $1, dota_rank_updated_at = NULL, dota_rank_tier = NULL, dota_rank_source = NULL, dota_leaderboard_rank = NULL
+             WHERE account_id = $2`,
+            [parseInt(newId), parseInt(oldId)]
+          );
+          if (r.rowCount > 0) {
+            updated++;
+          } else {
+            notFound.push(oldId);
+          }
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        client.release();
+        throw err;
+      }
+      client.release();
+
+      return res.json({
+        success: true,
+        updated,
+        total_mapped: Object.keys(oldToNew).length,
+        not_in_nicknames: notFound.length,
+        backup_used: backupSlug,
+        message: `Updated ${updated} nickname account IDs. ${notFound.length} mapped IDs had no matching nickname row. Rank data cleared — run rank sync to re-fetch.`
+      });
+
+    } catch (err) {
+      console.error('[Admin] fix-nickname-account-ids error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // --- End DB Backup helpers ---
 
   router.post('/admin/reparse-all-replays', requireSuperuser, async (req, res) => {

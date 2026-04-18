@@ -76,6 +76,8 @@ function DbBackupManager({ superuserKey }) {
   const [backupMsg, setBackupMsg] = useState('');
   const [restoring, setRestoring] = useState('');
   const [deleting, setDeleting] = useState('');
+  const [fixNickLoading, setFixNickLoading] = useState(false);
+  const [fixNickResult, setFixNickResult] = useState(null);
   const authHeader = { 'x-superuser-key': superuserKey };
 
   function loadBackups() {
@@ -118,6 +120,26 @@ function DbBackupManager({ superuserKey }) {
       .finally(() => setDeleting(''));
   }
 
+  function handleFixNicknames(backup) {
+    if (!window.confirm(
+      `Fix nickname account IDs using backup: ${backup}?\n\n` +
+      `This compares the backup (old wrong IDs) against current player_stats (correct IDs) ` +
+      `to build a precise mapping, then updates every row in the nicknames table.\n\n` +
+      `Any existing rank data on nicknames will be cleared so rank sync re-fetches with the correct IDs.`
+    )) return;
+    setFixNickLoading(true);
+    setFixNickResult(null);
+    fetch('/api/admin/fix-nickname-account-ids', {
+      method: 'POST',
+      headers: { ...authHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup })
+    })
+      .then(r => r.json())
+      .then(d => setFixNickResult(d))
+      .catch(e => setFixNickResult({ error: e.message }))
+      .finally(() => setFixNickLoading(false));
+  }
+
   const fmtBackupDate = slug => {
     const m = slug.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
     if (!m) return slug;
@@ -142,35 +164,55 @@ function DbBackupManager({ superuserKey }) {
       {backups === null && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Click "Load" to see existing backups.</p>}
       {backups !== null && backups.length === 0 && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>No backups found. Backups are created automatically before "Re-parse All" runs.</p>}
       {backups !== null && backups.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Label</th>
-              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Created (AEST)</th>
-              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Backup ID</th>
-              <th style={{ padding: '4px 8px' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {backups.map(b => (
-              <tr key={b} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '5px 8px' }}>{fmtBackupLabel(b)}</td>
-                <td style={{ padding: '5px 8px', color: 'var(--text-muted)' }}>{fmtBackupDate(b)}</td>
-                <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b}</td>
-                <td style={{ padding: '5px 8px', textAlign: 'center', whiteSpace: 'nowrap', display: 'flex', gap: 6, justifyContent: 'center' }}>
-                  <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px', color: '#facc15', borderColor: '#facc15' }}
-                    onClick={() => handleRestore(b)} disabled={restoring === b}>
-                    {restoring === b ? 'Restoring…' : '↩ Restore'}
-                  </button>
-                  <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px', color: '#f87171', borderColor: '#f87171' }}
-                    onClick={() => handleDelete(b)} disabled={deleting === b}>
-                    {deleting === b ? 'Deleting…' : '🗑 Delete'}
-                  </button>
-                </td>
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                <th style={{ textAlign: 'left', padding: '4px 8px' }}>Label</th>
+                <th style={{ textAlign: 'left', padding: '4px 8px' }}>Created (UTC)</th>
+                <th style={{ textAlign: 'left', padding: '4px 8px' }}>Backup ID</th>
+                <th style={{ padding: '4px 8px' }}>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {backups.map(b => (
+                <tr key={b} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '5px 8px' }}>{fmtBackupLabel(b)}</td>
+                  <td style={{ padding: '5px 8px', color: 'var(--text-muted)' }}>{fmtBackupDate(b)}</td>
+                  <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b}</td>
+                  <td style={{ padding: '5px 8px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <button className="btn" style={{ fontSize: '0.72rem', padding: '2px 7px', color: '#fb923c', borderColor: '#fb923c' }}
+                        onClick={() => handleFixNicknames(b)} disabled={fixNickLoading}>
+                        {fixNickLoading ? 'Fixing…' : '🔧 Fix Nickname IDs'}
+                      </button>
+                      <button className="btn" style={{ fontSize: '0.72rem', padding: '2px 7px', color: '#facc15', borderColor: '#facc15' }}
+                        onClick={() => handleRestore(b)} disabled={restoring === b}>
+                        {restoring === b ? 'Restoring…' : '↩ Restore'}
+                      </button>
+                      <button className="btn" style={{ fontSize: '0.72rem', padding: '2px 7px', color: '#f87171', borderColor: '#f87171' }}
+                        onClick={() => handleDelete(b)} disabled={deleting === b}>
+                        {deleting === b ? 'Deleting…' : '🗑 Delete'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {fixNickResult && (
+            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: fixNickResult.error ? '#450a0a' : '#052e16', border: `1px solid ${fixNickResult.error ? '#f87171' : '#4ade80'}`, fontSize: '0.82rem' }}>
+              {fixNickResult.error ? (
+                <span style={{ color: '#f87171' }}>Error: {fixNickResult.error}</span>
+              ) : (
+                <span style={{ color: '#4ade80' }}>
+                  ✓ {fixNickResult.message}
+                  {fixNickResult.updated > 0 && <strong> Run Rank Sync now to re-fetch ranks with the corrected IDs.</strong>}
+                </span>
+              )}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
