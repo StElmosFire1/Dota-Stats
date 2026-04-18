@@ -1660,21 +1660,127 @@ function createApiRouter(startupStatus = {}) {
     reparseRunning = false;
   }
 
+  // --- DB Backup helpers ---
+
+  async function createDbBackup(label) {
+    const p = db.getPool();
+    const now = new Date();
+    const ts = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    const slug = label ? `${label}_${ts}` : ts;
+    const safe = slug.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
+    await p.query(`CREATE TABLE player_stats_bak_${safe} AS SELECT * FROM player_stats`);
+    await p.query(`CREATE TABLE ratings_bak_${safe} AS SELECT * FROM ratings`);
+    await p.query(`CREATE TABLE rating_history_bak_${safe} AS SELECT * FROM rating_history`);
+    return safe;
+  }
+
+  async function listDbBackups() {
+    const p = db.getPool();
+    const res = await p.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name LIKE 'player_stats_bak_%'
+      ORDER BY table_name DESC
+    `);
+    return res.rows.map(r => r.table_name.replace('player_stats_bak_', ''));
+  }
+
+  router.post('/admin/backup-db', requireSuperuser, async (req, res) => {
+    try {
+      const label = (req.body?.label || 'manual').replace(/[^a-z0-9]/gi, '_').toLowerCase().slice(0, 20);
+      const slug = await createDbBackup(label);
+      res.json({ success: true, backup: slug, message: `Backup created: ${slug}` });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/admin/list-backups', requireSuperuser, async (req, res) => {
+    try {
+      const backups = await listDbBackups();
+      res.json({ backups });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/restore-backup', requireSuperuser, async (req, res) => {
+    const { backup } = req.body || {};
+    if (!backup || !/^[a-z0-9_]+$/i.test(backup)) {
+      return res.status(400).json({ error: 'Invalid backup name.' });
+    }
+    const p = db.getPool();
+    const client = await p.connect();
+    try {
+      const check = await client.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = $1
+      `, [`player_stats_bak_${backup}`]);
+      if (check.rows.length === 0) {
+        client.release();
+        return res.status(404).json({ error: 'Backup not found.' });
+      }
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM player_stats`);
+      await client.query(`INSERT INTO player_stats SELECT * FROM player_stats_bak_${backup}`);
+      await client.query(`DELETE FROM ratings`);
+      await client.query(`INSERT INTO ratings SELECT * FROM ratings_bak_${backup}`);
+      await client.query(`DELETE FROM rating_history`);
+      await client.query(`INSERT INTO rating_history SELECT * FROM rating_history_bak_${backup}`);
+      await client.query('COMMIT');
+      client.release();
+      res.json({ success: true, message: `Restored from backup: ${backup}` });
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      client.release();
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/admin/delete-backup/:backup', requireSuperuser, async (req, res) => {
+    const backup = req.params.backup;
+    if (!backup || !/^[a-z0-9_]+$/i.test(backup)) {
+      return res.status(400).json({ error: 'Invalid backup name.' });
+    }
+    try {
+      const p = db.getPool();
+      await p.query(`DROP TABLE IF EXISTS player_stats_bak_${backup}`);
+      await p.query(`DROP TABLE IF EXISTS ratings_bak_${backup}`);
+      await p.query(`DROP TABLE IF EXISTS rating_history_bak_${backup}`);
+      res.json({ success: true, message: `Deleted backup: ${backup}` });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- End DB Backup helpers ---
+
   router.post('/admin/reparse-all-replays', requireSuperuser, async (req, res) => {
     if (reparseRunning) {
       return res.json({ running: true, status: reparseStatus });
     }
+    const skipBackup = req.body?.skipBackup === true;
     const p = db.getPool();
-    const rows = await p.query(`SELECT match_id, replay_file_path FROM matches WHERE replay_file_path IS NOT NULL ORDER BY date DESC`);
+    const rows = await p.query(`SELECT match_id, replay_file_path FROM matches WHERE replay_file_path IS NOT NULL ORDER BY date ASC`);
     const available = rows.rows.filter(r => r.replay_file_path && fs.existsSync(r.replay_file_path));
     if (available.length === 0) {
       return res.json({ success: true, queued: 0, message: 'No stored replay files found on disk.' });
     }
-    reparseStatus = { total: available.length, done: 0, failed: 0, remaining: available.length, errors: [], phase: 'running' };
+    let backupSlug = null;
+    if (!skipBackup) {
+      try {
+        backupSlug = await createDbBackup('pre_reparse');
+        console.log(`[Admin] Pre-reparse backup created: ${backupSlug}`);
+      } catch (err) {
+        console.error('[Admin] Backup failed before reparse:', err.message);
+        return res.status(500).json({ error: `Backup failed: ${err.message}. Reparse aborted. Use skipBackup:true to force without backup.` });
+      }
+    }
+    reparseStatus = { total: available.length, done: 0, failed: 0, remaining: available.length, errors: [], phase: 'running', backup: backupSlug };
     reparseQueue.length = 0;
     for (const r of available) reparseQueue.push({ matchId: r.match_id, filePath: r.replay_file_path });
     drainReparseQueue();
-    res.json({ success: true, queued: available.length, message: `Queued ${available.length} replays for re-parsing.` });
+    res.json({ success: true, queued: available.length, backup: backupSlug, message: `Queued ${available.length} replays for re-parsing.${backupSlug ? ` Backup: ${backupSlug}` : ''}` });
   });
 
   router.get('/admin/reparse-all-status', requireSuperuser, async (req, res) => {

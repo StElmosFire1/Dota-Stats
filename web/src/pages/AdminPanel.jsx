@@ -70,6 +70,112 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
   );
 }
 
+function DbBackupManager({ superuserKey }) {
+  const [backups, setBackups] = useState(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupMsg, setBackupMsg] = useState('');
+  const [restoring, setRestoring] = useState('');
+  const [deleting, setDeleting] = useState('');
+  const authHeader = { 'x-superuser-key': superuserKey };
+
+  function loadBackups() {
+    fetch('/api/admin/list-backups', { headers: authHeader })
+      .then(r => r.json())
+      .then(d => setBackups(d.backups || []))
+      .catch(() => setBackups([]));
+  }
+
+  function handleBackup() {
+    setBackupLoading(true);
+    setBackupMsg('');
+    fetch('/api/admin/backup-db', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({ label: 'manual' }) })
+      .then(r => r.json())
+      .then(d => {
+        setBackupMsg(d.message || d.error || 'Done.');
+        loadBackups();
+      })
+      .catch(e => setBackupMsg('Failed: ' + e.message))
+      .finally(() => setBackupLoading(false));
+  }
+
+  function handleRestore(backup) {
+    if (!window.confirm(`Restore from backup: ${backup}?\n\nThis will OVERWRITE the current player_stats, ratings, and rating_history tables with data from this snapshot. The current state cannot be recovered unless you have another backup.`)) return;
+    setRestoring(backup);
+    fetch('/api/admin/restore-backup', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({ backup }) })
+      .then(r => r.json())
+      .then(d => { alert(d.message || d.error); loadBackups(); })
+      .catch(e => alert('Restore failed: ' + e.message))
+      .finally(() => setRestoring(''));
+  }
+
+  function handleDelete(backup) {
+    if (!window.confirm(`Permanently delete backup: ${backup}?\n\nThis cannot be undone.`)) return;
+    setDeleting(backup);
+    fetch(`/api/admin/delete-backup/${backup}`, { method: 'DELETE', headers: authHeader })
+      .then(r => r.json())
+      .then(d => { loadBackups(); })
+      .catch(e => alert('Delete failed: ' + e.message))
+      .finally(() => setDeleting(''));
+  }
+
+  const fmtBackupDate = slug => {
+    const m = slug.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+    if (!m) return slug;
+    return `${m[4]}:${m[5]} ${m[3]}/${m[2]}/${m[1]}`;
+  };
+  const fmtBackupLabel = slug => slug.replace(/_\d{14}$/, '').replace(/_/g, ' ');
+
+  return (
+    <section style={{ marginBottom: 36, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0, fontSize: '1rem' }}>Database Backups</h3>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Snapshots of player_stats, ratings &amp; rating_history</span>
+        <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px' }} onClick={loadBackups} disabled={backups !== null && backupLoading}>
+          {backups === null ? 'Load' : 'Refresh'}
+        </button>
+        <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px', color: '#4ade80', borderColor: '#4ade80' }}
+          onClick={handleBackup} disabled={backupLoading}>
+          {backupLoading ? 'Backing up…' : '💾 Backup Now'}
+        </button>
+        {backupMsg && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{backupMsg}</span>}
+      </div>
+      {backups === null && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Click "Load" to see existing backups.</p>}
+      {backups !== null && backups.length === 0 && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>No backups found. Backups are created automatically before "Re-parse All" runs.</p>}
+      {backups !== null && backups.length > 0 && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Label</th>
+              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Created (AEST)</th>
+              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Backup ID</th>
+              <th style={{ padding: '4px 8px' }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {backups.map(b => (
+              <tr key={b} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '5px 8px' }}>{fmtBackupLabel(b)}</td>
+                <td style={{ padding: '5px 8px', color: 'var(--text-muted)' }}>{fmtBackupDate(b)}</td>
+                <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b}</td>
+                <td style={{ padding: '5px 8px', textAlign: 'center', whiteSpace: 'nowrap', display: 'flex', gap: 6, justifyContent: 'center' }}>
+                  <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px', color: '#facc15', borderColor: '#facc15' }}
+                    onClick={() => handleRestore(b)} disabled={restoring === b}>
+                    {restoring === b ? 'Restoring…' : '↩ Restore'}
+                  </button>
+                  <button className="btn" style={{ fontSize: '0.75rem', padding: '2px 8px', color: '#f87171', borderColor: '#f87171' }}
+                    onClick={() => handleDelete(b)} disabled={deleting === b}>
+                    {deleting === b ? 'Deleting…' : '🗑 Delete'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
 function ReplayManager({ superuserKey }) {
   const [replays, setReplays] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -131,9 +237,9 @@ function ReplayManager({ superuserKey }) {
   }
 
   function handleReparseAll() {
-    if (!window.confirm(`Re-parse ALL stored replays?\n\nThis runs in the background and may take a long time. It updates stats for every replay on file and recalculates MMR for all players. Season assignments are preserved.`)) return;
+    if (!window.confirm(`Re-parse ALL stored replays?\n\nA snapshot of the current database will be created automatically before starting, so you can roll back if needed.\n\nThis runs in the background and may take a long time. Stats for every replay on file will be updated and MMR recalculated for all players in chronological order. Season assignments are preserved.`)) return;
     setReparseAllLoading(true);
-    fetch('/api/admin/reparse-all-replays', { method: 'POST', headers: authHeader })
+    fetch('/api/admin/reparse-all-replays', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
       .then(r => r.json())
       .then(d => {
         setReparseAllStatus(d);
@@ -203,10 +309,16 @@ function ReplayManager({ superuserKey }) {
             <span style={{ color: '#f87171' }}>Error: {reparseAllStatus.error}</span>
           ) : reparseAllStatus.status ? (
             <span>
-              Re-parse: {reparseAllStatus.status.phase === 'complete' ? '✓ Complete' : '⏳ Running'} —&nbsp;
+              Re-parse: {reparseAllStatus.status.phase === 'complete' ? '✓ Complete — MMR recalculated' : '⏳ Running'} —&nbsp;
               {reparseAllStatus.status.done}/{reparseAllStatus.status.total} done,&nbsp;
               {reparseAllStatus.status.failed} failed,&nbsp;
               {reparseAllStatus.status.remaining} remaining
+              {reparseAllStatus.status.backup && (
+                <div style={{ color: '#4ade80', marginTop: 4 }}>
+                  💾 Backup taken before start: <code style={{ fontSize: '0.75rem' }}>{reparseAllStatus.status.backup}</code>
+                  &nbsp;— use the Database Backups panel above to restore if needed.
+                </div>
+              )}
               {reparseAllStatus.status.errors?.length > 0 && (
                 <div style={{ color: '#f87171', marginTop: 4 }}>
                   {reparseAllStatus.status.errors.slice(0, 5).map((e, i) => <div key={i}>{e}</div>)}
@@ -214,7 +326,14 @@ function ReplayManager({ superuserKey }) {
               )}
             </span>
           ) : (
-            <span>{reparseAllStatus.message}</span>
+            <div>
+              <span>{reparseAllStatus.message}</span>
+              {reparseAllStatus.backup && (
+                <div style={{ color: '#4ade80', marginTop: 4, fontSize: '0.8rem' }}>
+                  💾 Backup: <code style={{ fontSize: '0.75rem' }}>{reparseAllStatus.backup}</code>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -913,6 +1032,9 @@ export default function AdminPanel() {
 
       {/* Steam Bot Controls */}
       <SteamBotPanel superuserKey={superuserKey} />
+
+      {/* Database Backups */}
+      <DbBackupManager superuserKey={superuserKey} />
 
       {/* Stored Replays */}
       <ReplayManager superuserKey={superuserKey} />

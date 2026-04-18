@@ -405,4 +405,11 @@ module.exports = [
     content: 'Fixed the Replay Inspector showing blank persona names for all players. The inspector endpoint was reading p.personaName (camelCase) but the parser stores the field as p.personaname (all lowercase) — corrected to read both variants.\n\nFixed a silent precision bug in account ID extraction from replays. Steam64 IDs are 17-digit integers that exceed JavaScript\'s safe float64 range (2^53). The Java replay parser serialises them as raw JSON numbers via Gson, so JSON.parse was silently rounding them — e.g. 76561197996209749 → 76561197996209744 — producing a Steam32 that could be off by several units. The epilogue JSON is now pre-processed to convert all 15+ digit bare integers to quoted strings before parsing, so BigInt can read them with exact precision.',
     author: 'System',
   },
+  {
+    version: '5.16',
+    title: 'Database Backup & Restore System',
+    published_at: '2026-04-18',
+    content: 'Added a Database Backups panel to the Admin Panel for safe snapshot management of player_stats, ratings, and rating_history tables.\n\nKey features:\n• "Re-parse All" now automatically creates a backup before starting — the backup ID is shown in the status bar so you can restore instantly if anything goes wrong.\n• "Backup Now" button creates a manual snapshot at any time.\n• Backups are listed with their label, timestamp, and a one-click Restore button.\n• Restoring a backup runs inside a transaction — it is atomic and rolls back automatically on any error.\n• Backups can be deleted individually once no longer needed.\n\nMMR recalculation order fixed: the "Re-parse All" queue now processes replays in oldest-first order (previously newest-first), consistent with how recalculateAllRatings rebuilds ratings chronologically.',
+    author: 'System',
+  },
 ];
