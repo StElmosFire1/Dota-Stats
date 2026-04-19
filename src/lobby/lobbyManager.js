@@ -113,7 +113,7 @@ class LobbyManager extends EventEmitter {
       // Detect the CSO 2004 lobby update here — this is how the GC confirms a lobby invite join.
       if ((this.state === LobbyState.IDLE || this.state === LobbyState.ENDED) && this._pendingInviteAccept) {
         const pending = this._pendingInviteAccept;
-        if (!update.lobbyId || update.lobbyId !== pending.lobbyId) return;
+        if (!update.lobbyId || update.lobbyId.toString() !== pending.lobbyId.toString()) return;
         // GC confirmed — we're now in the lobby.
         clearTimeout(pending.timer);
         this._pendingInviteAccept = null;

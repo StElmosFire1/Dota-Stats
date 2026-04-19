@@ -433,4 +433,11 @@ module.exports = [
     content: 'A collection of improvements to the lobby creation, invite, and management flow.\n\n🎮 LOBBY CREATION\n• !create_lobby no longer requires a password — just !create_lobby [name] (name defaults to "OCE Inhouse"). Players join via the bot\'s Steam friends list or a direct invite.\n\n📨 INVITES\n• !invite_me — type this in Discord to get a lobby invite sent directly to your Steam. Requires your Discord ID to be linked on the Players page.\n• !invite @user — admins can now @mention someone instead of pasting their Steam64 ID.\n• !invite <steam64_id> — unchanged, still works as before.\n\n💬 IN-GAME LOBBY CHAT COMMANDS\nType these directly in the Dota 2 lobby chat:\n• !start_game (or !start) — launches the game immediately.\n• !status — bot replies with how many players are seated.\n\n📋 !HELP UPDATED\nThe !help command now has a full Lobby Management section covering all of the above plus !lobby_status, !join_lobby, and !end.\n\n🔧 BACKEND\n• !register now also links your Discord ID to your nickname entry, so !invite_me works immediately after registering.\n• !invite_me lookup now checks both the nicknames and players tables so the command works regardless of how the Discord ID was linked.',
     author: 'System',
   },
+  {
+    version: '5.20',
+    title: 'Bug Fixes: Players Command & Dual-Instance Guard',
+    published_at: '2026-04-19',
+    content: '🔧 BUG FIXES\n• !players now correctly shows all 66 community members from the nicknames table (previously queried the empty players registration table and always returned "No players registered").\n• Fixed duplicate bot responses: when the Replit dev instance detects it cannot acquire the Steam session (LoggedInElsewhere), it now automatically silences all Discord command responses so only the production bot replies.\n• Fixed lobby auto-join: lobby ID type mismatch (bigint vs string) in the invite-accept handler was preventing the bot from recognising when it successfully joined an externally hosted lobby.',
+    author: 'System',
+  },
 ];

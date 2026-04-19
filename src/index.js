@@ -67,6 +67,7 @@ async function main() {
 
   // --- Steam login (kept for connectivity health check) ---
   let steamConnected = false;
+  let steamLoggedInElsewhere = false;
   if (config.steam.accountName && config.steam.password) {
     try {
       const { getSteamClient } = require('./steam/steamClient');
@@ -92,6 +93,10 @@ async function main() {
       });
     } catch (err) {
       console.error('[Startup] Steam login failed:', err.message);
+      if (err.message && err.message.includes('LoggedInElsewhere')) {
+        steamLoggedInElsewhere = true;
+        console.warn('[Startup] Another instance holds the Steam session — Discord commands will be silenced on this instance.');
+      }
     }
   } else {
     console.warn('[Startup] Steam credentials not set — Steam offline.');
@@ -139,6 +144,7 @@ async function main() {
   // --- Discord bot ---
   const bot = getDiscordBot();
   bot.setSteamAvailable(steamConnected && config.features.lobby);
+  if (steamLoggedInElsewhere) bot.setCommandsDisabled(true);
   if (lobbyManager) bot.setupLobbyEvents(lobbyManager);
 
   // --- OpenDota match poller (dormant) ---

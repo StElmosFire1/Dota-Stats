@@ -49,6 +49,11 @@ class DiscordBot {
     steamAvailable = available;
   }
 
+  setCommandsDisabled(disabled) {
+    this._commandsDisabled = disabled;
+    if (disabled) console.log('[Discord] Commands disabled — this instance is not the primary Steam session.');
+  }
+
   setupLobbyEvents(lobbyManager) {
     lobbyManager.on('matchIdCaptured', (matchId) => {
       this._notifyChannel(`Match detected! Match ID: **${matchId}**. Stats will auto-record when the game ends.`);
@@ -321,6 +326,7 @@ class DiscordBot {
 
     this.client.on('messageCreate', async (msg) => {
       if (msg.author.bot) return;
+      if (this._commandsDisabled) return;
 
       const isDM = !msg.guild;
       if (isDM && this.pendingRegistrations.has(msg.author.id)) {
@@ -1049,20 +1055,28 @@ class DiscordBot {
   }
 
   async _cmdPlayers(msg) {
-    const players = await db.getRegisteredPlayers();
+    const nicknames = await db.getAllNicknames();
+    const players = nicknames.filter(n => n.nickname && n.account_id);
     if (players.length === 0) {
-      return msg.reply('No players registered yet. Use `!register <steam_id>` to sign up!');
+      return msg.reply('No players found in the database yet.');
     }
 
-    const list = players.map((p, i) =>
-      `${i + 1}. **${p.discord_name || 'Unknown'}** - Account ID: \`${p.account_id_32}\``
-    ).join('\n');
+    const sorted = [...players].sort((a, b) => (a.nickname || '').localeCompare(b.nickname || ''));
+    // Discord embed description limit is 4096 chars — chunk if needed
+    const lines = sorted.map((p, i) => `${i + 1}. **${p.nickname}**`);
+    const chunks = [];
+    let current = '';
+    for (const line of lines) {
+      if (current.length + line.length + 1 > 3800) { chunks.push(current); current = ''; }
+      current += (current ? '\n' : '') + line;
+    }
+    if (current) chunks.push(current);
 
     const embed = new EmbedBuilder()
-      .setTitle('Registered Players')
+      .setTitle(`OCE Inhouse Players (${players.length})`)
       .setColor(0x00ae86)
-      .setDescription(list)
-      .setFooter({ text: `${players.length} player${players.length !== 1 ? 's' : ''} registered` });
+      .setDescription(chunks[0])
+      .setFooter({ text: 'Full stats and profiles at the web dashboard' });
 
     await msg.reply({ embeds: [embed] });
   }
