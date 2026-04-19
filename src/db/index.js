@@ -135,6 +135,17 @@ async function init() {
     `);
 
     await p.query(`
+      CREATE TABLE IF NOT EXISTS players (
+        id SERIAL PRIMARY KEY,
+        discord_id VARCHAR(100) NOT NULL UNIQUE,
+        discord_name VARCHAR(255) DEFAULT '',
+        steam_id_64 VARCHAR(20) NOT NULL,
+        account_id_32 VARCHAR(20) NOT NULL,
+        registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await p.query(`
       CREATE TABLE IF NOT EXISTS match_deletions (
         id SERIAL PRIMARY KEY,
         match_id VARCHAR NOT NULL,
