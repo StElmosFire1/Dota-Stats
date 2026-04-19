@@ -490,16 +490,11 @@ class DiscordBot {
     if (!steamAvailable) {
       return msg.reply(
         'Steam/Dota 2 is not connected. Lobby creation requires Steam credentials.\n' +
-        'Set `STEAM_ACCOUNT`, `STEAM_PASSWORD`, and `STEAM_SHARED_SECRET` in secrets.'
+        'Set `STEAM_ACCOUNT` and `STEAM_PASSWORD` in secrets.'
       );
     }
 
-    if (args.length < 2) {
-      return msg.reply('Usage: `!create_lobby <name> <password>`');
-    }
-
-    const name = args[0];
-    const password = args.slice(1).join(' ');
+    const name = args.length > 0 ? args.join(' ') : 'OCE Inhouse';
     const lobbyManager = tryGetLobbyManager();
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
 
@@ -507,14 +502,13 @@ class DiscordBot {
     await msg.reply('Creating lobby, please wait...');
 
     try {
-      const lobby = await lobbyManager.createLobby(name, password, msg.author.id);
+      const lobby = await lobbyManager.createLobby(name, '', msg.author.id);
 
       const embed = new EmbedBuilder()
         .setTitle('Lobby Created!')
         .setColor(0x00ff00)
         .addFields(
           { name: 'Name', value: name, inline: true },
-          { name: 'Password', value: `||${password}||`, inline: true },
           { name: 'Region', value: 'Australia/OCE', inline: true },
           { name: 'Mode', value: "Captain's Mode", inline: true }
         );

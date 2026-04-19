@@ -420,6 +420,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.19',
+    title: 'Lobby Creation — No Password Required',
+    published_at: '2026-04-19',
+    content: '!create_lobby no longer requires a password argument.\n\nPreviously: !create_lobby <name> <password> — both arguments were mandatory.\nNow: !create_lobby [name] — name is optional (defaults to "OCE Inhouse"). Lobbies are created with no password so players can join directly via the bot\'s friends list or a lobby invite.\n\nAlso fixed: the "Steam not connected" error message no longer incorrectly asks for STEAM_SHARED_SECRET (not needed when Steam Guard 2FA is disabled on the bot account).\n\nNote: if both the Replit dev environment and the production server are running simultaneously with the same Discord token, both will respond to commands — only run the bot in one place at a time.',
+    author: 'System',
+  },
+  {
     version: '5.18',
     title: 'Overhauled Match Performance (Perf) Score',
     published_at: '2026-04-18',
