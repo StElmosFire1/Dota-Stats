@@ -1151,7 +1151,16 @@ class DiscordBot {
 
   async _cmdPlayers(msg) {
     const nicknames = await db.getAllNicknames();
-    const players = nicknames.filter(n => n.nickname && n.account_id);
+    // Deduplicate by lowercase nickname — multiple account IDs can share the same nickname
+    const seen = new Set();
+    const players = [];
+    for (const n of nicknames) {
+      if (!n.nickname || !n.account_id) continue;
+      const key = n.nickname.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      players.push(n);
+    }
     if (players.length === 0) {
       return msg.reply('No players found in the database yet.');
     }
