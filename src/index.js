@@ -102,15 +102,22 @@ async function main() {
     console.warn('[Startup] Steam credentials not set — Steam offline.');
   }
 
-  // --- Lobby manager + friend monitor (dormant) ---
-  // To re-enable: set config.features.lobby = true
+  // --- Discord bot ---
+  const bot = getDiscordBot();
+  bot.setSteamAvailable(steamConnected && config.features.lobby);
+  if (steamLoggedInElsewhere) bot.setCommandsDisabled(true);
+
+  // --- Lobby manager + friend monitor ---
   let lobbyManager = null;
   if (config.features.lobby && steamConnected) {
     try {
+      console.log('[Startup] Initialising lobby manager...');
       const { getLobbyManager } = require('./lobby/lobbyManager');
       lobbyManager = getLobbyManager();
+      console.log('[Startup] getLobbyManager() succeeded, calling initListeners...');
       lobbyManager.initListeners();
       startupStatus.lobby = true;
+      console.log('[Startup] initListeners() done, starting friend monitor...');
 
       const { getSteamClient } = require('./steam/steamClient');
       const steamClient = getSteamClient();
@@ -136,15 +143,14 @@ async function main() {
       console.log('[Startup] Lobby manager + friend monitor enabled.');
     } catch (err) {
       console.error('[Startup] Lobby init failed:', err.message);
+      console.error('[Startup] Lobby init stack:', err.stack || err);
     }
   } else if (!config.features.lobby) {
     console.log('[Startup] Lobby/friend monitor: disabled (config.features.lobby = false)');
+  } else {
+    console.log('[Startup] Lobby/friend monitor: skipped (Steam not connected)');
   }
 
-  // --- Discord bot ---
-  const bot = getDiscordBot();
-  bot.setSteamAvailable(steamConnected && config.features.lobby);
-  if (steamLoggedInElsewhere) bot.setCommandsDisabled(true);
   if (lobbyManager) bot.setupLobbyEvents(lobbyManager);
 
   // --- OpenDota match poller (dormant) ---

@@ -1,0 +1,86 @@
+root@Dota-Stats:~/Dota-Stats# pm2 logs 2 --nostream --lines 60 | grep -E "Steam|Lobby|Startup|GC"
+2|inhouse- | [Steam] addFriend 76561198157491781 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198132540540 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198147027940 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198085474658 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199271027037 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198039071782 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198156254733 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198035836038 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199110611604 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198911318510 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198033713004 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199601272926 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199152618352 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199413394934 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199870404272 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561197992112465 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198121674746 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198093545090 failed: ServiceUnavailable
+2|inhouse- | [Steam] addFriend 76561198132540542 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198070561952 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199224226400 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198085474660 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561197990275171 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198798004431 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198089221897 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198382307909 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198405107808 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198237529940 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561199747355970 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561197967820146 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198296537550 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198055517730 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198080314138 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198263777516 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198033241844 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198064159299 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198089221900 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561197967854187 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198253614817 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199102762800 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198137683360 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198405107800 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198014939759 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198191762191 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561197989849461 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198283283073 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198984795171 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198085006413 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199874927470 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198153471170 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198110829631 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198232809764 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198166943713 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561199117113889 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561197990518588 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198290102820 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198963126416 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198007156770 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198020190745 failed: RateLimitExceeded
+2|inhouse- | [Steam] addFriend 76561198007156772 failed: RateLimitExceeded
+2|inhouse- |   - Steam:          YES (connected)
+2|inhouse- |   - Lobby/monitor:  DORMANT
+2|inhouse- | [Startup] All systems ready.
+2|inhouse- | [Steam] addAllKnownFriends: 0 requests sent, 2 already friends
+2|inhouse- | [Dota2 GC] Left practice lobby.
+2|inhouse- | [Steam] Shut down.
+2|inhouse- | [Startup] Google Sheets: disabled (config.features.sheets = false)
+2|inhouse- | [Steam] Logging in...
+2|inhouse- | [Steam] Logged in successfully.
+2|inhouse- | [Dota2 GC] SO CacheSubscribed object: typeId=1
+2|inhouse- | [Dota2 GC] SO CacheSubscribed object: typeId=7
+2|inhouse- | [Dota2 GC] Connected to Game Coordinator.
+2|inhouse- | [Steam] Dota 2 GC is ready!
+2|inhouse- | [Dota2 GC] GC version from welcome: 6772
+2|inhouse- | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+2|inhouse- | [Startup] Steam connected.
+2|inhouse- | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+2|inhouse- | [Startup] Sending Steam friend requests to 90 known players...
+2|inhouse- | [Startup] Bot is running! Use !help in Discord.
+2|inhouse- | [Startup] Active features:
+2|inhouse- |   - Steam:          YES (connected)
+2|inhouse- |   - Lobby/monitor:  DORMANT
+2|inhouse- | [Startup] All systems ready.
+2|inhouse- | [Steam] addAllKnownFriends: 0 requests sent, 2 already friends
+2|inhouse- | [Dota2 GC] SO CacheSubscribed object: typeId=2011
