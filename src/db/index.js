@@ -1636,23 +1636,52 @@ async function getComputedLeaderboard(seasonId = null) {
   const { ratings } = await computeSeasonTrueSkill(seasonId);
 
   // Fetch nicknames and build canonical-account mapping (same logic as computeSeasonTrueSkill)
-  const nicknamesRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknamesRes = await p.query(
+    'SELECT account_id, nickname, dota_rank_tier, dota_leaderboard_rank, dota_rank_source FROM nicknames'
+  );
   const nicknames = {};
   const nicknameToIds = {};
+  const rankByAccount = {};
   for (const n of nicknamesRes.rows) {
-    nicknames[n.account_id.toString()] = n.nickname;
+    const aid = n.account_id.toString();
+    nicknames[aid] = n.nickname;
+    rankByAccount[aid] = {
+      dota_rank_tier: n.dota_rank_tier ?? null,
+      dota_leaderboard_rank: n.dota_leaderboard_rank ?? null,
+      dota_rank_source: n.dota_rank_source ?? null,
+    };
     const nick = n.nickname.toLowerCase();
     if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
-    nicknameToIds[nick].push(n.account_id.toString());
+    nicknameToIds[nick].push(aid);
   }
+  // canonical → all account IDs in the group (for rank lookup across merged accounts)
+  const canonicalToAll = {};
   const accountToCanonical = {};
   for (const ids of Object.values(nicknameToIds)) {
-    if (ids.length < 2) continue;
     ids.sort();
     const canonical = ids[0];
+    canonicalToAll[canonical] = ids;
+    if (ids.length < 2) continue;
     for (const id of ids) accountToCanonical[id] = canonical;
   }
+  // For any solo account not in a merge group, register it too
+  for (const aid of Object.keys(rankByAccount)) {
+    if (!canonicalToAll[aid] && !accountToCanonical[aid]) {
+      canonicalToAll[aid] = [aid];
+    }
+  }
   const getCanonical = (id) => accountToCanonical[id.toString()] || id.toString();
+
+  // Pick the best rank data across all merged accounts for a canonical player ID.
+  // "Best" = first non-null dota_rank_tier among the group's accounts.
+  const getRankForCanonical = (canonicalId) => {
+    const ids = canonicalToAll[canonicalId] || [canonicalId];
+    for (const id of ids) {
+      const r = rankByAccount[id];
+      if (r && r.dota_rank_tier != null) return r;
+    }
+    return { dota_rank_tier: null, dota_leaderboard_rank: null, dota_rank_source: null };
+  };
 
   // Fetch season-scoped per-game averages + kill involvement from player_stats.
   // Kill involvement = avg per-game fraction of team kills a player participated in.
@@ -1716,17 +1745,23 @@ async function getComputedLeaderboard(seasonId = null) {
   }
 
   // Build sorted leaderboard array
-  const leaderboard = Object.entries(ratings).map(([player_id, r]) => ({
-    player_id,
-    display_name: decodeByteString(r.display_name || player_id),
-    nickname: nicknames[player_id] || null,
-    mu: r.mu,
-    sigma: r.sigma,
-    mmr: r.mmr ?? Math.round((r.mu - 3 * r.sigma) * 100) + 2600,
-    wins: r.wins,
-    losses: r.losses,
-    games_played: r.wins + r.losses,
-  }));
+  const leaderboard = Object.entries(ratings).map(([player_id, r]) => {
+    const rank = getRankForCanonical(player_id);
+    return {
+      player_id,
+      display_name: decodeByteString(r.display_name || player_id),
+      nickname: nicknames[player_id] || null,
+      mu: r.mu,
+      sigma: r.sigma,
+      mmr: r.mmr ?? Math.round((r.mu - 3 * r.sigma) * 100) + 2600,
+      wins: r.wins,
+      losses: r.losses,
+      games_played: r.wins + r.losses,
+      dota_rank_tier: rank.dota_rank_tier,
+      dota_leaderboard_rank: rank.dota_leaderboard_rank,
+      dota_rank_source: rank.dota_rank_source,
+    };
+  });
 
   // Compute raw impact scores using per-game averages + kill involvement
   for (const player of leaderboard) {

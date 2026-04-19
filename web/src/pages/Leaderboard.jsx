@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest, getPlayerRanks } from '../api';
+import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
@@ -275,18 +275,6 @@ export default function Leaderboard() {
   const [bestFairest, setBestFairest] = useState([]);
   const [bestFairestLoading, setBestFairestLoading] = useState(true);
   const [playerForm, setPlayerForm] = useState({});
-  const [rankMap, setRankMap] = useState({});
-
-  useEffect(() => {
-    getPlayerRanks()
-      .then(rows => {
-        const m = {};
-        rows.forEach(r => { m[r.account_id] = r; });
-        setRankMap(m);
-      })
-      .catch(() => {});
-  }, []);
-
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -408,8 +396,8 @@ export default function Leaderboard() {
                     <td className="col-stat"><TierBadge mmr={p.mmr} /></td>
                     <td className="col-stat">
                       <DotaRankText
-                        rankTier={rankMap[p.player_id]?.dota_rank_tier}
-                        leaderboardRank={rankMap[p.player_id]?.dota_leaderboard_rank}
+                        rankTier={p.dota_rank_tier}
+                        leaderboardRank={p.dota_leaderboard_rank}
                       />
                     </td>
                     <td className="col-stat mmr">{p.mmr}</td>
