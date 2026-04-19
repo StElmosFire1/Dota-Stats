@@ -440,4 +440,11 @@ module.exports = [
     content: 'Two new ways to get a lobby invite without knowing your Steam ID.\n\n• !invite_me — looks up your linked Steam account from your Discord ID and sends you a Dota 2 lobby invite instantly. Shows a clear message if no lobby is active or if your Discord isn\'t linked to a Steam account yet.\n\n• !invite @DiscordUser — admins can now @mention a Discord user instead of pasting a Steam64 ID. The bot looks up the player\'s Steam account from the database automatically.\n\n• !invite <steam_id> — unchanged, still works as before.\n\nAll invite paths require the player to have added the bot\'s Steam account as a friend in order for the invite to go through.',
     author: 'System',
   },
+  {
+    version: '5.21',
+    title: 'Discord ID Linking — Admin Panel & Auto-Link on Register',
+    published_at: '2026-04-19',
+    content: 'Fixed the missing link between Discord users and their Steam accounts, which was preventing !invite_me, post-match DMs, and MVP votes from working for existing players.\n\nChanges:\n\n• Admin Panel — new "Link Discord IDs to Players" table shows all players with their current Discord IDs and an Edit button to set or update them without any Discord commands. This lets you bulk-link existing players immediately.\n\n• !register auto-links — when a player runs !register <steam64_id>, their Discord ID is now written to the nicknames table in addition to the players table, so !invite_me and DMs work right away after registering.\n\n• !invite_me fallback — if a player\'s discord_id is not yet in the nicknames table, the lookup now also checks the players table (populated by !register), so both code paths resolve correctly.',
+    author: 'System',
+  },
 ];

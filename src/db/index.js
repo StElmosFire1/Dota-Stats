@@ -2031,11 +2031,23 @@ async function getNicknameByDiscordId(discordId) {
 async function getSteamByDiscordId(discordId) {
   if (!discordId) return null;
   const p = getPool();
+  const id = (discordId || '').toString().trim();
+  // Check nicknames table first (preferred — includes nickname)
   const r = await p.query(
-    `SELECT account_id, nickname FROM nicknames WHERE TRIM(discord_id) = $1 AND discord_id != '' AND account_id IS NOT NULL LIMIT 1`,
-    [(discordId || '').toString().trim()]
+    `SELECT account_id, nickname FROM nicknames
+     WHERE TRIM(discord_id) = $1 AND discord_id != '' AND account_id IS NOT NULL LIMIT 1`,
+    [id]
   );
-  return r.rows[0] || null;
+  if (r.rows[0]) return r.rows[0];
+  // Fallback: check players table (populated by !register)
+  const r2 = await p.query(
+    `SELECT p.account_id_32::bigint AS account_id, n.nickname
+     FROM players p
+     LEFT JOIN nicknames n ON n.account_id::text = p.account_id_32
+     WHERE TRIM(p.discord_id) = $1 AND p.account_id_32 IS NOT NULL LIMIT 1`,
+    [id]
+  );
+  return r2.rows[0] || null;
 }
 
 async function getAllNicknames() {
@@ -3025,6 +3037,12 @@ async function registerPlayer(discordId, discordName, steamId64) {
      ON CONFLICT (discord_id) DO UPDATE SET
        discord_name = $2, steam_id_64 = $3, account_id_32 = $4`,
     [discordId, discordName, steamId64, accountId32]
+  );
+  // Also link Discord ID in nicknames table so !invite_me and DM features work
+  await p.query(
+    `UPDATE nicknames SET discord_id = $1, updated_at = NOW()
+     WHERE account_id::text = $2 AND (discord_id IS NULL OR TRIM(discord_id) = '')`,
+    [discordId, accountId32]
   );
   return { accountId32 };
 }
