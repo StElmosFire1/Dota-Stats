@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest, getPlayerRanks } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import ImpactBadge from '../components/ImpactBadge';
-import RankBadge from '../components/RankBadge';
+import { decodeRankTier } from '../components/RankBadge';
 
 const MMR_TIERS = [
   { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100 },
@@ -40,6 +40,31 @@ function TierBadge({ mmr }) {
       }}
     >
       {t.emoji} {t.name}
+    </span>
+  );
+}
+
+function DotaRankText({ rankTier, leaderboardRank }) {
+  const decoded = decodeRankTier(rankTier);
+  if (!decoded) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>;
+  const isImm = decoded.tier === 8;
+  const label = isImm
+    ? (leaderboardRank ? `Immortal #${leaderboardRank}` : 'Immortal')
+    : decoded.stars
+      ? `${decoded.name} ${decoded.stars}`
+      : decoded.name;
+  return (
+    <span
+      title={label}
+      style={{
+        display: 'inline-flex', alignItems: 'center',
+        background: 'var(--bg-hover)', border: '1px solid var(--border)',
+        borderRadius: 8, padding: '2px 8px', fontSize: 11, fontWeight: 500,
+        color: 'var(--text-muted)', whiteSpace: 'nowrap', cursor: 'default',
+        letterSpacing: 0.2,
+      }}
+    >
+      {label}
     </span>
   );
 }
@@ -382,14 +407,10 @@ export default function Leaderboard() {
                     <td className="col-stat"><TierBadge mmr={p.mmr} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat">
-                      {rankMap[p.player_id]?.dota_rank_tier
-                        ? <RankBadge
-                            rankTier={rankMap[p.player_id].dota_rank_tier}
-                            leaderboardRank={rankMap[p.player_id].dota_leaderboard_rank}
-                            source={rankMap[p.player_id].dota_rank_source}
-                          />
-                        : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
-                      }
+                      <DotaRankText
+                        rankTier={rankMap[p.player_id]?.dota_rank_tier}
+                        leaderboardRank={rankMap[p.player_id]?.dota_leaderboard_rank}
+                      />
                     </td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>
