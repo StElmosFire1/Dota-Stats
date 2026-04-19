@@ -24,7 +24,10 @@ function tryGetLobbyManager() {
   try {
     const { getLobbyManager } = require('../lobby/lobbyManager');
     return getLobbyManager();
-  } catch { return null; }
+  } catch (err) {
+    console.error('[LobbyManager] Failed to load lobby manager:', err.message);
+    return null;
+  }
 }
 
 class DiscordBot {
@@ -57,6 +60,7 @@ class DiscordBot {
   }
 
   setupLobbyEvents(lobbyManager) {
+    this._lobbyManager = lobbyManager;
     lobbyManager.on('matchIdCaptured', (matchId) => {
       this._notifyChannel(`Match detected! Match ID: **${matchId}**. Stats will auto-record when the game ends.`);
     });
@@ -525,7 +529,7 @@ class DiscordBot {
     }
 
     const name = args.length > 0 ? args.join(' ') : 'OCE Inhouse';
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager) return msg.reply('Lobby manager is not available — the bot may need a restart.');
 
     const steamClient = tryGetSteamClient();
@@ -571,7 +575,7 @@ class DiscordBot {
   }
 
   async _cmdLobbyStatus(msg) {
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager) return msg.reply('Lobby manager is not available. Steam may not be connected.');
 
     const status = lobbyManager.getStatus();
@@ -604,7 +608,7 @@ class DiscordBot {
 
   async _cmdGcDebug(msg) {
     const steamClient = tryGetSteamClient();
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     const lines = [];
 
     const { config } = require('../config');
@@ -658,7 +662,7 @@ class DiscordBot {
     }
 
     const password = args.length > 1 ? args.slice(1).join(' ') : '';
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
 
     this.lobbyChannelId = msg.channel.id;
@@ -703,7 +707,7 @@ class DiscordBot {
       );
     }
 
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
 
     // Support @mention — look up their Steam ID from the database
@@ -752,7 +756,7 @@ class DiscordBot {
     if (!steamAvailable) {
       return msg.reply('Steam is not connected. Cannot send invites.');
     }
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
 
     const status = lobbyManager.getStatus();
@@ -785,7 +789,7 @@ class DiscordBot {
   }
 
   async _cmdEnd(msg) {
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
 
     try {
@@ -801,7 +805,7 @@ class DiscordBot {
   }
 
   async _cmdStartGame(msg) {
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
     const status = lobbyManager.getStatus();
     if (!status.lobby) return msg.reply('No active lobby. Create one first with `!create_lobby`.');
@@ -817,7 +821,7 @@ class DiscordBot {
   }
 
   async _cmdCaptains(msg) {
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager || !lobbyManager.currentLobby) {
       return msg.reply('No active lobby. Captains can only be picked when a lobby is running.');
     }
@@ -845,7 +849,7 @@ class DiscordBot {
   }
 
   async _cmdHrCaptains(msg) {
-    const lobbyManager = tryGetLobbyManager();
+    const lobbyManager = this._lobbyManager;
     if (!lobbyManager || !lobbyManager.currentLobby) {
       return msg.reply('No active lobby. High-rank captains can only be picked when a lobby is running.');
     }
@@ -1478,7 +1482,7 @@ class DiscordBot {
         {
           name: 'GC Invite Listeners',
           value: (() => {
-            const lm = tryGetLobbyManager();
+            const lm = this._lobbyManager;
             if (!lm) return '\u274c Lobby manager unavailable';
             return lm._gcListenersSetup ? '\u2705 Active' : '\u26a0\ufe0f Not registered';
           })(),
@@ -3148,7 +3152,7 @@ class DiscordBot {
     if (!games.length) return;
 
     for (const game of games) {
-      const lobbyManager = tryGetLobbyManager();
+      const lobbyManager = this._lobbyManager;
       if (!lobbyManager) {
         console.warn('[LobbyAuto] Lobby manager not available — skipping auto-create');
         continue;
@@ -3227,7 +3231,7 @@ class DiscordBot {
       setInterval(() => this._autoCreateScheduledLobbies().catch(err => console.error('[LobbyAuto] Error:', err.message)), 60 * 1000);
 
       // 10-player seated notification
-      const lobbyMgr = tryGetLobbyManager();
+      const lobbyMgr = this._lobbyManager;
       if (lobbyMgr) {
         lobbyMgr.on('tenPlayersSeated', async (lobby) => {
           const seatedMsg = `🟢 **10 players seated in "${lobby.name}"** — lobby is full and ready! An admin can launch with \`!start_game\` or via the admin panel.`;
