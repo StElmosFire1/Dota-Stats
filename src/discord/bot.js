@@ -9,6 +9,8 @@ const db = require('../db');
 const { generateWeeklyRecapBlurb, generatePlayerAnalysis, generatePlayerRoast, generateMatchMvpBlurb, generateMatchNarrative } = require('../services/groqService');
 const { generateScoreboardImage } = require('../services/scoreboardImage');
 
+const OWNER_DISCORD_ID = '135991380760592384';
+
 let steamAvailable = false;
 
 function tryGetSteamClient() {
@@ -360,6 +362,7 @@ class DiscordBot {
           case 'roast': await this._cmdRoast(msg, args); break;
           case 'history': await this._cmdHistory(msg); break;
           case 'register': await this._cmdRegister(msg, args); break;
+          case 'adminregister': await this._cmdAdminRegister(msg, args); break;
           case 'players': await this._cmdPlayers(msg); break;
           case 'recap': await this._cmdRecap(msg); break;
           case 'herostats': await this._cmdHeroStats(msg, args); break;
@@ -411,6 +414,7 @@ class DiscordBot {
           name: '**Player Registration**',
           value: [
             '`!register <steam_id>` - Link your Steam account to this Discord account',
+            '`!adminregister @Player <steam_id>` - Register a player on their behalf (owner only)',
             '`!players` - Show all registered players',
             'Your Steam64 ID can be found at https://steamid.io',
           ].join('\n'),
@@ -926,6 +930,36 @@ class DiscordBot {
         `Registered! Steam ID: \`${steamId}\` (Account ID: \`${accountId32}\`)\n` +
         'Your account is now linked. Upload a `.dem` replay file in this channel to record a match.'
       );
+    } catch (err) {
+      await msg.reply(`Registration failed: ${err.message}`);
+    }
+  }
+
+  async _cmdAdminRegister(msg, args) {
+    if (msg.author.id !== OWNER_DISCORD_ID) {
+      return msg.reply('You don\'t have permission to use this command.');
+    }
+
+    const mention = msg.mentions.users.first();
+    const steamId = args.find(a => /^\d{17}$/.test(a));
+
+    if (!mention || !steamId) {
+      return msg.reply(
+        'Usage: `!adminregister @Player <steam64_id>`\n' +
+        'Example: `!adminregister @SomePlayer 76561198012345678`'
+      );
+    }
+
+    if (BigInt(steamId) < BigInt('76561197960265728')) {
+      return msg.reply('That Steam ID doesn\'t look right. Make sure you\'re using the Steam64 ID (17 digits).');
+    }
+
+    try {
+      const { accountId32 } = await db.registerPlayer(mention.id, mention.username, steamId);
+      await msg.reply(
+        `Registered **${mention.username}** — Steam ID: \`${steamId}\` (Account ID: \`${accountId32}\`)`
+      );
+      console.log(`[AdminRegister] ${msg.author.username} registered ${mention.username} (${mention.id}) with Steam64 ${steamId}`);
     } catch (err) {
       await msg.reply(`Registration failed: ${err.message}`);
     }
