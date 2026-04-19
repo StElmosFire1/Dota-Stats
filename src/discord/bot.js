@@ -526,7 +526,12 @@ class DiscordBot {
 
     const name = args.length > 0 ? args.join(' ') : 'OCE Inhouse';
     const lobbyManager = tryGetLobbyManager();
-    if (!lobbyManager) return msg.reply('Lobby manager is not available.');
+    if (!lobbyManager) return msg.reply('Lobby manager is not available — the bot may need a restart.');
+
+    const steamClient = tryGetSteamClient();
+    if (!steamClient?.isGCReady || !steamClient?.gcClient) {
+      return msg.reply('The Dota 2 Game Coordinator is not connected yet. Wait a moment and try again, or check `!steam_status`.');
+    }
 
     this.lobbyChannelId = msg.channel.id;
     await msg.reply('Creating lobby, please wait...');

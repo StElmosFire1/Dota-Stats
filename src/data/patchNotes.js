@@ -454,4 +454,11 @@ module.exports = [
     content: '🔧 DOTA RANK FIX — MERGED ACCOUNTS\nPlayers with two Steam accounts merged under the same nickname were showing a blank Dota rank on the leaderboard even if one of their accounts had a rank synced. Root cause: the leaderboard uses a canonical (merged) account ID, but the rank was stored against a different account ID in the same group.\n\nFix: rank data is now resolved across all account IDs in a merged group at the leaderboard query level. The highest rank across all merged accounts is shown — so a player who is Immortal on one account and Ancient on another will correctly display Immortal.\n\n🛠️ !ADMINREGISTER COMMAND\nAdmins can now register players on their behalf without the player needing to type anything:\n  !adminregister @Player <steam64_id>\nOnly the bot owner can use this command.\n\n🎨 LEADERBOARD UI\n• Tier badges no longer show emoji — cleaner, consistent pill style matching the Dota Rank column.\n• Column order updated: TIER → DOTA RANK → MMR, grouping both badge columns together and separating the MMR number.',
     author: 'System',
   },
+  {
+    version: '5.23',
+    title: 'Lobby GC Connection Fix & Better Error Messages',
+    published_at: '2026-04-19',
+    content: '🔧 LOBBY GC CONNECTION FIX\nFixed a bug where the 45-second GC startup timeout incorrectly marked the Dota 2 Game Coordinator as "ready" even if it had not actually connected. This caused !create_lobby to proceed past the availability check and fail silently or produce a confusing "Lobby manager is not available" message.\n\nFix: the timeout now resolves Steam login without forcing isGCReady=true. The GC ready flag is only set when the GC actually emits its ready event, so lobby commands correctly block until the GC is up.\n\n💬 IMPROVED ERROR MESSAGES\n• !create_lobby now checks GC state before attempting lobby creation and shows a clear "Dota 2 Game Coordinator is not connected yet — wait a moment and try again, or check !steam_status" message instead of a generic failure.',
+    author: 'System',
+  },
 ];

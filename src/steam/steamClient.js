@@ -181,8 +181,7 @@ class SteamDotaClient extends EventEmitter {
 
       const gcTimeout = setTimeout(() => {
         cleanup();
-        console.warn('[Steam] GC connection timed out, but Steam is logged in. Lobby features may not work immediately.');
-        this.isGCReady = true;
+        console.warn('[Steam] GC connection timed out — Steam is logged in but Dota 2 GC did not connect. Lobby commands will report GC unavailable until it connects.');
         resolve();
       }, 45000);
 
