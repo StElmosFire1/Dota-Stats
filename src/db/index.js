@@ -1673,14 +1673,17 @@ async function getComputedLeaderboard(seasonId = null) {
   const getCanonical = (id) => accountToCanonical[id.toString()] || id.toString();
 
   // Pick the best rank data across all merged accounts for a canonical player ID.
-  // "Best" = first non-null dota_rank_tier among the group's accounts.
+  // "Best" = highest dota_rank_tier among the group's accounts (higher number = higher rank).
   const getRankForCanonical = (canonicalId) => {
     const ids = canonicalToAll[canonicalId] || [canonicalId];
+    let best = null;
     for (const id of ids) {
       const r = rankByAccount[id];
-      if (r && r.dota_rank_tier != null) return r;
+      if (r && r.dota_rank_tier != null) {
+        if (!best || r.dota_rank_tier > best.dota_rank_tier) best = r;
+      }
     }
-    return { dota_rank_tier: null, dota_leaderboard_rank: null, dota_rank_source: null };
+    return best || { dota_rank_tier: null, dota_leaderboard_rank: null, dota_rank_source: null };
   };
 
   // Fetch season-scoped per-game averages + kill involvement from player_stats.

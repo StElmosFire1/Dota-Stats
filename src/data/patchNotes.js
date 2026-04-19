@@ -447,4 +447,11 @@ module.exports = [
     content: '🎲 NEW LOBBY COMMANDS\nWork in both Dota 2 lobby chat and Discord:\n• !captains — picks 2 random captains from the players currently in the lobby.\n• !roll — rolls a number between 1 and 100. In-game: shows all players ranked by their roll. In Discord: rolls for the person who typed it.\n• !hrcaptains — picks the 2 highest-ranked players in the lobby (by TrueSkill MMR) to be captains.\n\n🔧 LOBBY INVITE FIX\nFixed the bot not joining when invited to a lobby from Dota 2. Previously the bot sent an invite acceptance but never explicitly joined. Now it sends both the acceptance and a CMsgPracticeLobbyJoin, which is what the GC actually requires.',
     author: 'System',
   },
+  {
+    version: '5.22',
+    title: 'Leaderboard Rank Fix, Admin Register & UI Polish',
+    published_at: '2026-04-19',
+    content: '🔧 DOTA RANK FIX — MERGED ACCOUNTS\nPlayers with two Steam accounts merged under the same nickname were showing a blank Dota rank on the leaderboard even if one of their accounts had a rank synced. Root cause: the leaderboard uses a canonical (merged) account ID, but the rank was stored against a different account ID in the same group.\n\nFix: rank data is now resolved across all account IDs in a merged group at the leaderboard query level. The highest rank across all merged accounts is shown — so a player who is Immortal on one account and Ancient on another will correctly display Immortal.\n\n🛠️ !ADMINREGISTER COMMAND\nAdmins can now register players on their behalf without the player needing to type anything:\n  !adminregister @Player <steam64_id>\nOnly the bot owner can use this command.\n\n🎨 LEADERBOARD UI\n• Tier badges no longer show emoji — cleaner, consistent pill style matching the Dota Rank column.\n• Column order updated: TIER → DOTA RANK → MMR, grouping both badge columns together and separating the MMR number.',
+    author: 'System',
+  },
 ];
