@@ -478,6 +478,19 @@ class DiscordBot {
           ].join('\n'),
         },
         {
+          name: '🎮 Lobby Management',
+          value: [
+            '`!create_lobby [name]` - Create a Dota 2 CM lobby (name optional, default "OCE Inhouse")',
+            '`!lobby_status` - Show current lobby info and how to join',
+            '`!invite <steam64_id>` - Send a lobby invite to a player by Steam64 ID',
+            '`!invite @user` - Send a lobby invite to a Discord-linked player by @mention',
+            '`!invite_me` - Invite yourself (your Discord must be linked on the Players page)',
+            '`!join_lobby` - Force the bot to join an existing lobby it was invited to',
+            '`!start_game` - Launch the game immediately from the lobby',
+            '`!end` - Close/abandon the current lobby',
+          ].join('\n'),
+        },
+        {
           name: '**Info**',
           value: '`!help` - Show this message',
         }
@@ -560,7 +573,8 @@ class DiscordBot {
       value:
         '1. Add the bot on Steam as a friend\n' +
         '2. Right-click bot > **Join Game**\n' +
-        '3. Or use `!invite <steam_id>` for a direct invite',
+        '3. Type `!invite_me` for a direct invite (Discord must be linked)\n' +
+        '4. Or use `!invite <steam64_id>` or `!invite @user`',
       inline: false
     });
 

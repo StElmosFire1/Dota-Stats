@@ -441,6 +441,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.22',
+    title: '!help — Lobby Management Commands Added',
+    published_at: '2026-04-19',
+    content: 'The !help command now includes a full Lobby Management section with all lobby commands that were previously undocumented.\n\nNew section covers:\n• !create_lobby [name] — Create a lobby\n• !lobby_status — Show current lobby and join instructions\n• !invite <steam64_id> — Invite by Steam ID\n• !invite @user — Invite by Discord mention\n• !invite_me — Invite yourself (requires Discord linked on Players page)\n• !join_lobby — Force bot to join a lobby it was invited to\n• !start_game — Launch the game immediately\n• !end — Close/abandon the current lobby\n\nAlso updated !lobby_status join instructions to include !invite_me as a join option.',
+    author: 'System',
+  },
+  {
     version: '5.21',
     title: '!register Auto-Links Discord ID & !invite_me Fallback Lookup',
     published_at: '2026-04-19',
