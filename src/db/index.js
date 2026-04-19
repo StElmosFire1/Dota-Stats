@@ -2254,7 +2254,22 @@ async function getDiscordIdsForMatch(matchId) {
   const result = await p.query(
     `SELECT ps.account_id, ps.persona_name, ps.team, ps.hero_name,
             COALESCE(n.nickname, ps.persona_name) as display_name,
-            COALESCE(NULLIF(n.discord_id, ''), NULLIF(r.discord_id, ''), '') as discord_id
+            COALESCE(
+              NULLIF(TRIM(n.discord_id), ''),
+              NULLIF(TRIM(r.discord_id), ''),
+              -- Fall back to any account sharing the same nickname (merged accounts)
+              (SELECT NULLIF(TRIM(n2.discord_id), '')
+               FROM nicknames n2
+               WHERE n2.nickname = n.nickname
+                 AND TRIM(COALESCE(n2.discord_id, '')) != ''
+               LIMIT 1),
+              -- Fall back to players table by account_id
+              (SELECT NULLIF(TRIM(pl.discord_id), '')
+               FROM players pl
+               WHERE pl.account_id_32::bigint = ps.account_id
+               LIMIT 1),
+              ''
+            ) as discord_id
      FROM player_stats ps
      LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
      LEFT JOIN ratings r ON r.player_id::text = ps.account_id::text AND ps.account_id != 0

@@ -461,4 +461,11 @@ module.exports = [
     content: '🔧 LOBBY GC CONNECTION FIX\nFixed a bug where the 45-second GC startup timeout incorrectly marked the Dota 2 Game Coordinator as "ready" even if it had not actually connected. This caused !create_lobby to proceed past the availability check and fail silently or produce a confusing "Lobby manager is not available" message.\n\nFix: the timeout now resolves Steam login without forcing isGCReady=true. The GC ready flag is only set when the GC actually emits its ready event, so lobby commands correctly block until the GC is up.\n\n💬 IMPROVED ERROR MESSAGES\n• !create_lobby now checks GC state before attempting lobby creation and shows a clear "Dota 2 Game Coordinator is not connected yet — wait a moment and try again, or check !steam_status" message instead of a generic failure.',
     author: 'System',
   },
+  {
+    version: '5.24',
+    title: 'Post-Match DM Fix for Merged Accounts',
+    published_at: '2026-04-19',
+    content: '🔧 POST-MATCH DM FIX — MERGED ACCOUNTS\nFixed a bug where players with multiple Steam accounts (merged under one nickname) were not receiving post-match rating DMs even though their Discord ID was visibly linked on the Players page.\n\nRoot cause: the DM system looks up Discord IDs by joining on the exact account_id used in the match. If the Discord ID was registered against a different account in the same merged group, it would not be found — the Players page masked this by grouping all accounts together and showing the MAX discord_id across the group.\n\nFix: the Discord ID lookup now has two extra fallback layers:\n1. Checks any other nicknames row sharing the same display name (catches merged accounts).\n2. Checks the players registration table directly by account_id.\n\nThis means players like tomato and Sun who play on a secondary Steam account will now receive DMs correctly.',
+    author: 'System',
+  },
 ];
