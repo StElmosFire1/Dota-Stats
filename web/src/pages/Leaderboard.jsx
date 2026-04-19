@@ -370,7 +370,7 @@ export default function Leaderboard() {
                 <th className="col-rank" title="Rank">#</th>
                 <th className="col-player" title="Player name">Player</th>
                 <th className="col-stat" title="Dota 2 rank medal">Dota Rank</th>
-                <th className="col-stat" title="Tier">Tier</th>
+                <th className="col-stat" title="Inhouse Rank">IH Rank</th>
                 <th className="col-stat" title="TrueSkill MMR rating">MMR</th>
                 <th className="col-stat" title="Wins">W</th>
                 <th className="col-stat" title="Losses">L</th>
