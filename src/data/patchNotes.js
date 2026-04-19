@@ -440,4 +440,11 @@ module.exports = [
     content: '🔧 BUG FIXES\n• !players now correctly shows all 66 community members from the nicknames table (previously queried the empty players registration table and always returned "No players registered").\n• Fixed duplicate bot responses: when the Replit dev instance detects it cannot acquire the Steam session (LoggedInElsewhere), it now automatically silences all Discord command responses so only the production bot replies.\n• Fixed lobby auto-join: lobby ID type mismatch (bigint vs string) in the invite-accept handler was preventing the bot from recognising when it successfully joined an externally hosted lobby.',
     author: 'System',
   },
+  {
+    version: '5.21',
+    title: 'Lobby Commands: Captains, Roll & Invite Fix',
+    published_at: '2026-04-19',
+    content: '🎲 NEW LOBBY COMMANDS\nWork in both Dota 2 lobby chat and Discord:\n• !captains — picks 2 random captains from the players currently in the lobby.\n• !roll — rolls a number between 1 and 100. In-game: shows all players ranked by their roll. In Discord: rolls for the person who typed it.\n• !hrcaptains — picks the 2 highest-ranked players in the lobby (by TrueSkill MMR) to be captains.\n\n🔧 LOBBY INVITE FIX\nFixed the bot not joining when invited to a lobby from Dota 2. Previously the bot sent an invite acceptance but never explicitly joined. Now it sends both the acceptance and a CMsgPracticeLobbyJoin, which is what the GC actually requires.',
+    author: 'System',
+  },
 ];

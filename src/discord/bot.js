@@ -389,6 +389,9 @@ class DiscordBot {
           case 'invite_me': await this._cmdInviteMe(msg); break;
           case 'end': await this._cmdEnd(msg); break;
           case 'start_game': await this._cmdStartGame(msg); break;
+          case 'captains': await this._cmdCaptains(msg); break;
+          case 'roll': await this._cmdRoll(msg); break;
+          case 'hrcaptains': await this._cmdHrCaptains(msg); break;
           default: break;
         }
       } catch (err) {
@@ -494,6 +497,9 @@ class DiscordBot {
             '`!join_lobby` - Force the bot to join an existing lobby it was invited to',
             '`!start_game` - Launch the game immediately from the lobby',
             '`!end` - Close/abandon the current lobby',
+            '`!captains` - Pick 2 random captains from lobby players',
+            '`!hrcaptains` - Pick the 2 highest-MMR players in lobby as captains',
+            '`!roll` - Roll a number 1–100 for yourself',
           ].join('\n'),
         },
         {
@@ -799,6 +805,61 @@ class DiscordBot {
     } catch (err) {
       await msg.reply(`Error: ${err.message}`);
     }
+  }
+
+  async _cmdCaptains(msg) {
+    const lobbyManager = tryGetLobbyManager();
+    if (!lobbyManager || !lobbyManager.currentLobby) {
+      return msg.reply('No active lobby. Captains can only be picked when a lobby is running.');
+    }
+    const players = await lobbyManager._getLobbyPlayerNames();
+    if (players.length < 2) {
+      return msg.reply('Not enough players in the lobby to pick captains (need at least 2).');
+    }
+    const shuffled = [...players].sort(() => Math.random() - 0.5);
+    const [cap1, cap2] = shuffled;
+    const embed = new EmbedBuilder()
+      .setTitle('🎲 Random Captains')
+      .setColor(0x00ae86)
+      .addFields(
+        { name: '🟢 Captain 1', value: cap1.name, inline: true },
+        { name: '🔴 Captain 2', value: cap2.name, inline: true },
+      )
+      .setFooter({ text: `Picked from ${players.length} players in the lobby` });
+    await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdRoll(msg) {
+    const roll = Math.floor(Math.random() * 100) + 1;
+    const name = msg.member?.displayName || msg.author.username;
+    await msg.reply(`🎲 **${name}** rolled **${roll}** (1–100)`);
+  }
+
+  async _cmdHrCaptains(msg) {
+    const lobbyManager = tryGetLobbyManager();
+    if (!lobbyManager || !lobbyManager.currentLobby) {
+      return msg.reply('No active lobby. High-rank captains can only be picked when a lobby is running.');
+    }
+    const players = await lobbyManager._getLobbyPlayerNames();
+    if (players.length < 2) {
+      return msg.reply('Not enough players in the lobby to pick captains.');
+    }
+    const leaderboard = await db.getLeaderboard(200);
+    const lobbyIds = new Set(players.map(p => p.accountId).filter(Boolean));
+    const inLobby = leaderboard.filter(entry => lobbyIds.has(entry.player_id));
+    if (inLobby.length < 2) {
+      return msg.reply('Not enough ranked players found in the current lobby. Try `!captains` for random selection.');
+    }
+    const [cap1, cap2] = inLobby;
+    const embed = new EmbedBuilder()
+      .setTitle('👑 High-Rank Captains')
+      .setColor(0xf1c40f)
+      .addFields(
+        { name: '🟢 Captain 1', value: `${cap1.nickname || cap1.display_name}\n${Math.round(cap1.mmr)} MMR`, inline: true },
+        { name: '🔴 Captain 2', value: `${cap2.nickname || cap2.display_name}\n${Math.round(cap2.mmr)} MMR`, inline: true },
+      )
+      .setFooter({ text: 'Ranked by TrueSkill MMR from current lobby' });
+    await msg.reply({ embeds: [embed] });
   }
 
   async _cmdRecord(msg, args) {

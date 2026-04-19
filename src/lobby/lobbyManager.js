@@ -2,6 +2,7 @@ const { getSteamClient } = require('../steam/steamClient');
 const { config } = require('../config');
 const { SERVER_REGION, GAME_MODE } = require('../steam/dota2GC');
 const EventEmitter = require('events');
+const db = require('../db');
 
 const LobbyState = {
   IDLE: 'IDLE',
@@ -59,6 +60,30 @@ class LobbyManager extends EventEmitter {
     });
   }
 
+  async _getLobbyPlayerNames() {
+    const players = this.currentLobby?.players || [];
+    const result = [];
+    for (const p of players) {
+      if (!p.steamId || p.steamId === '0') continue;
+      try {
+        const accountId32 = (BigInt(p.steamId) - STEAM64_OFFSET).toString();
+        let name;
+        try {
+          name = await db.getNickname(accountId32);
+        } catch (_) {}
+        result.push({
+          name: name || `Player-${accountId32.slice(-5)}`,
+          accountId: accountId32,
+          steamId: p.steamId,
+          team: p.team,
+        });
+      } catch (e) {
+        result.push({ name: 'Unknown', accountId: null, steamId: p.steamId, team: p.team });
+      }
+    }
+    return result;
+  }
+
   _setupGCListeners() {
     if (this._gcListenersSetup) return;
     const client = getSteamClient();
@@ -103,6 +128,59 @@ class LobbyManager extends EventEmitter {
           }
           break;
         }
+        case 'captains': {
+          const players = await this._getLobbyPlayerNames();
+          if (players.length < 2) {
+            this._chat('⚠️ Need at least 2 players in lobby to pick captains.');
+            break;
+          }
+          const shuffled = [...players].sort(() => Math.random() - 0.5);
+          const [cap1, cap2] = shuffled;
+          this._chat(`🎲 Captains: 🟢 ${cap1.name}  vs  🔴 ${cap2.name}`);
+          break;
+        }
+        case 'roll': {
+          const players = await this._getLobbyPlayerNames();
+          if (players.length === 0) {
+            this._chat('⚠️ No players found in lobby.');
+            break;
+          }
+          const rolls = players
+            .map(p => ({ name: p.name, roll: Math.floor(Math.random() * 100) + 1 }))
+            .sort((a, b) => b.roll - a.roll);
+          // Split into chunks of 5 to stay within lobby chat character limits
+          const lines = rolls.map((r, i) => `${i + 1}. ${r.name}: ${r.roll}`);
+          const chunkSize = 5;
+          for (let i = 0; i < lines.length; i += chunkSize) {
+            const header = i === 0 ? '🎲 Roll results (1-100):\n' : '';
+            this._chat(header + lines.slice(i, i + chunkSize).join('\n'));
+          }
+          break;
+        }
+        case 'hrcaptains': {
+          const players = await this._getLobbyPlayerNames();
+          if (players.length < 2) {
+            this._chat('⚠️ Need at least 2 players in lobby to pick captains.');
+            break;
+          }
+          try {
+            const leaderboard = await db.getLeaderboard(200);
+            const lobbyIds = new Set(players.map(p => p.accountId).filter(Boolean));
+            const inLobby = leaderboard.filter(entry => lobbyIds.has(entry.player_id));
+            if (inLobby.length < 2) {
+              this._chat('⚠️ Not enough ranked players in lobby for high-rank captains. Try !captains instead.');
+              break;
+            }
+            const [cap1, cap2] = inLobby;
+            const mmr1 = Math.round(cap1.mmr || 0);
+            const mmr2 = Math.round(cap2.mmr || 0);
+            this._chat(`👑 High-rank captains: 🟢 ${cap1.nickname || cap1.display_name} (${mmr1} MMR)  vs  🔴 ${cap2.nickname || cap2.display_name} (${mmr2} MMR)`);
+          } catch (err) {
+            console.error('[Lobby] !hrcaptains error:', err.message);
+            this._chat('⚠️ Failed to fetch leaderboard for high-rank captains.');
+          }
+          break;
+        }
         default:
           break;
       }
@@ -113,7 +191,7 @@ class LobbyManager extends EventEmitter {
       // Detect the CSO 2004 lobby update here — this is how the GC confirms a lobby invite join.
       if ((this.state === LobbyState.IDLE || this.state === LobbyState.ENDED) && this._pendingInviteAccept) {
         const pending = this._pendingInviteAccept;
-        if (!update.lobbyId || update.lobbyId.toString() !== pending.lobbyId.toString()) return;
+        if (!update.lobbyId || !pending.lobbyId || update.lobbyId.toString() !== pending.lobbyId.toString()) return;
         // GC confirmed — we're now in the lobby.
         clearTimeout(pending.timer);
         this._pendingInviteAccept = null;
@@ -218,19 +296,22 @@ class LobbyManager extends EventEmitter {
         console.log(`[Lobby] Ignoring lobby invite from ${invite.senderName} — already in state: ${this.state}.`);
         return;
       }
-      console.log(`[Lobby] Auto-accepting lobby invite from ${invite.senderName} (lobby: ${invite.lobbyId})...`);
-      // Send CMsgLobbyInviteResponse — the GC will add us to the lobby and send a CSO 2004 update.
-      // We do NOT send CMsgPracticeLobbyJoin separately; the invite response is sufficient.
-      const sent = client.gcClient.acceptLobbyInvite(invite.lobbyId);
-      if (!sent) return;
-      // Wait up to 10 seconds for the GC to send the CSO 2004 lobby update confirming we joined.
-      const inviteTimer = setTimeout(() => {
-        if (this._pendingInviteAccept && this._pendingInviteAccept.lobbyId === invite.lobbyId) {
-          this._pendingInviteAccept = null;
-          console.warn(`[Lobby] Invite-join timed out waiting for CSO lobby update (lobby ${invite.lobbyId}).`);
-        }
-      }, 10000);
-      this._pendingInviteAccept = { lobbyId: invite.lobbyId, invite, timer: inviteTimer };
+      if (!invite.lobbyId) {
+        console.warn(`[Lobby] Received lobby invite from ${invite.senderName} but lobbyId is missing — cannot join.`);
+        return;
+      }
+      console.log(`[Lobby] Received lobby invite from ${invite.senderName} (lobbyId: ${invite.lobbyId}). Accepting + joining...`);
+      // Step 1: Send CMsgLobbyInviteResponse to dismiss the invite in the GC.
+      client.gcClient.acceptLobbyInvite(invite.lobbyId);
+      // Step 2: Explicitly join via CMsgPracticeLobbyJoin — this is the reliable path.
+      // acceptLobbyInvite alone is not sufficient; the GC requires an explicit join message.
+      try {
+        await this.joinLobby(invite.lobbyId, '', `invite:${invite.senderId}`);
+        console.log(`[Lobby] Successfully joined invited lobby ${invite.lobbyId} from ${invite.senderName}.`);
+        this.emit('autoJoined', invite);
+      } catch (err) {
+        console.warn(`[Lobby] Failed to join invited lobby ${invite.lobbyId}: ${err.message}`);
+      }
     });
 
     client.gcClient.on('partyInviteReceived', async (invite) => {
