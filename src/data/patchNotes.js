@@ -442,9 +442,9 @@ module.exports = [
   },
   {
     version: '5.21',
-    title: 'Discord ID Linking — Admin Panel & Auto-Link on Register',
+    title: '!register Auto-Links Discord ID & !invite_me Fallback Lookup',
     published_at: '2026-04-19',
-    content: 'Fixed the missing link between Discord users and their Steam accounts, which was preventing !invite_me, post-match DMs, and MVP votes from working for existing players.\n\nChanges:\n\n• Admin Panel — new "Link Discord IDs to Players" table shows all players with their current Discord IDs and an Edit button to set or update them without any Discord commands. This lets you bulk-link existing players immediately.\n\n• !register auto-links — when a player runs !register <steam64_id>, their Discord ID is now written to the nicknames table in addition to the players table, so !invite_me and DMs work right away after registering.\n\n• !invite_me fallback — if a player\'s discord_id is not yet in the nicknames table, the lookup now also checks the players table (populated by !register), so both code paths resolve correctly.',
+    content: 'Two backend fixes to make !invite_me and post-match DMs work reliably once a player\'s Discord ID is linked (via the Players page on the website).\n\n• !register auto-links — when a player runs !register <steam64_id> in Discord, their Discord ID is now also written to the nicknames table (not just the players table), so !invite_me works immediately after registering without needing an admin to link them manually.\n\n• !invite_me two-stage lookup — getSteamByDiscordId now checks the nicknames table first, then falls back to the players table if not found. This means the command works correctly regardless of which table the Discord ID was written to.',
     author: 'System',
   },
 ];

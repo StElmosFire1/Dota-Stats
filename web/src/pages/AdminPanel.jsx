@@ -888,129 +888,6 @@ function SteamBotPanel({ superuserKey }) {
   );
 }
 
-function DiscordLinkingPanel({ superuserKey }) {
-  const [nicknames, setNicknames] = useState([]);
-  const [editId, setEditId] = useState(null);
-  const [editValue, setEditValue] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  useEffect(() => {
-    fetch('/api/nicknames')
-      .then(r => r.json())
-      .then(d => setNicknames(d.nicknames || []))
-      .catch(() => {});
-  }, []);
-
-  const startEdit = (n) => {
-    setEditId(n.account_id);
-    setEditValue(n.discord_id || '');
-    setMsg(null);
-  };
-
-  const saveDiscordId = async (accountId) => {
-    setSaving(true);
-    setMsg(null);
-    try {
-      const res = await fetch(`/api/players/${accountId}/discord`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
-        body: JSON.stringify({ discord_id: editValue.trim() || null }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      setNicknames(prev => prev.map(n =>
-        n.account_id === accountId ? { ...n, discord_id: editValue.trim() || null } : n
-      ));
-      setMsg({ ok: true, text: `✅ Discord ID saved for ${nicknames.find(n => n.account_id === accountId)?.nickname || accountId}` });
-    } catch (e) {
-      setMsg({ ok: false, text: `❌ ${e.message}` });
-    } finally {
-      setSaving(false);
-      setEditId(null);
-    }
-  };
-
-  return (
-    <section style={{ marginBottom: 36 }}>
-      <h2 style={{ marginBottom: 6 }}>🔗 Link Discord IDs to Players</h2>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-        Link a Discord user ID to each player so <code>!invite_me</code>, post-match DMs, and MVP voting work correctly.
-        Players can also self-register via <code>!register &lt;steam64_id&gt;</code> in Discord.
-      </p>
-      {msg && (
-        <div style={{
-          marginBottom: 10, padding: '7px 14px', borderRadius: 6, fontSize: 13,
-          background: msg.ok ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
-          border: `1px solid ${msg.ok ? '#4ade80' : '#f87171'}`,
-          color: msg.ok ? '#4ade80' : '#f87171',
-        }}>{msg.text}</div>
-      )}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Player</th>
-              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Account ID</th>
-              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Discord ID</th>
-              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {nicknames.map(n => (
-              <tr key={n.account_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '6px 10px', fontWeight: 600 }}>{n.nickname || `#${n.account_id}`}</td>
-                <td style={{ padding: '6px 10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{n.account_id}</td>
-                <td style={{ padding: '6px 10px' }}>
-                  {editId === n.account_id ? (
-                    <input
-                      type="text"
-                      value={editValue}
-                      onChange={e => setEditValue(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') saveDiscordId(n.account_id); if (e.key === 'Escape') setEditId(null); }}
-                      placeholder="Discord User ID (e.g. 135991380760592384)"
-                      autoFocus
-                      style={{
-                        padding: '4px 8px', borderRadius: 5, fontSize: 13, width: 220,
-                        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                        color: 'var(--text-primary)',
-                      }}
-                    />
-                  ) : (
-                    <span style={{ color: n.discord_id ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {n.discord_id || '—'}
-                    </span>
-                  )}
-                </td>
-                <td style={{ padding: '6px 10px' }}>
-                  {editId === n.account_id ? (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        onClick={() => saveDiscordId(n.account_id)}
-                        disabled={saving}
-                        style={{ padding: '3px 10px', borderRadius: 5, fontSize: 12, background: '#6366f1', color: '#fff', border: 'none', cursor: 'pointer' }}
-                      >{saving ? '…' : 'Save'}</button>
-                      <button
-                        onClick={() => setEditId(null)}
-                        style={{ padding: '3px 10px', borderRadius: 5, fontSize: 12, background: 'var(--bg-secondary)', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'pointer' }}
-                      >Cancel</button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => startEdit(n)}
-                      style={{ padding: '3px 10px', borderRadius: 5, fontSize: 12, background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', cursor: 'pointer' }}
-                    >✏️ Edit</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 export default function AdminPanel() {
   const { isSuperuser, superuserKey, logout } = useSuperuser();
   const { selectedSeason } = useSeason();
@@ -1223,9 +1100,6 @@ export default function AdminPanel() {
 
       {/* Test RSVP Registration DM */}
       <TestRsvpDmPanel superuserKey={superuserKey} />
-
-      {/* Discord ID Linking */}
-      <DiscordLinkingPanel superuserKey={superuserKey} />
 
       {/* Server Error Log */}
       <ErrorLogViewer superuserKey={superuserKey} />
