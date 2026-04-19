@@ -441,6 +441,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.23',
+    title: 'Lobby Chat Commands — !start_game & !status in Dota',
+    published_at: '2026-04-19',
+    content: 'Players can now type commands directly in the Dota 2 lobby chat and the bot will respond.\n\nSupported lobby chat commands:\n• !start_game (or !start) — immediately launches the game. The bot confirms with the launcher\'s name and player count.\n• !status — bot replies in lobby chat with how many players are seated and the current lobby state.\n\nTechnical: Added incoming CMsgDOTAChatReceive proto decoder and lobbyChatMessage event emitter to the GC client. LobbyManager now listens for this event and dispatches commands. Both commands are safe — !start_game will only fire if the lobby is in WAITING state.',
+    author: 'System',
+  },
+  {
     version: '5.22',
     title: '!help — Lobby Management Commands Added',
     published_at: '2026-04-19',

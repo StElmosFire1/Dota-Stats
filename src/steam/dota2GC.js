@@ -108,6 +108,15 @@ function getLobbyProtos() {
       .add(new protobuf.Field('channel_id', 1, 'uint64'))
       .add(new protobuf.Field('text', 2, 'string'))
   );
+  // Incoming chat message from GC — standard Dota2 proto field layout
+  protoRoot.define('dota').add(
+    new protobuf.Type('CMsgDOTAChatReceive')
+      .add(new protobuf.Field('account_id', 1, 'uint32'))
+      .add(new protobuf.Field('persona_name', 2, 'string'))
+      .add(new protobuf.Field('text', 3, 'string'))
+      .add(new protobuf.Field('channel_id', 4, 'uint64'))
+      .add(new protobuf.Field('timestamp', 7, 'uint32'))
+  );
   protoRoot.resolveAll();
   return protoRoot;
 }
@@ -229,6 +238,22 @@ class Dota2GCClient extends EventEmitter {
           }
         } catch (e) {
           console.warn('[Dota2 GC] JoinChatChannelResponse decode failed:', e.message);
+        }
+      } else if (msgType === EDOTAGCMsg.k_EMsgGCChatMessage) {
+        // Incoming lobby chat message from another player
+        try {
+          const root = getLobbyProtos();
+          const Type = root.lookupType('dota.CMsgDOTAChatReceive');
+          const decoded = Type.decode(payload);
+          const text = (decoded.text || '').trim();
+          const sender = decoded.personaName || decoded.persona_name || 'Unknown';
+          const accountId = decoded.accountId || decoded.account_id || 0;
+          if (text) {
+            console.log(`[Dota2 GC] Lobby chat from ${sender} (${accountId}): ${text}`);
+            this.emit('lobbyChatMessage', { text, sender, accountId });
+          }
+        } catch (e) {
+          console.warn('[Dota2 GC] Incoming chat decode failed:', e.message);
         }
       } else if (msgType === EGCBaseMsg.k_EMsgGCInviteToLobby) {
         // Direct lobby invite notification — contains inviter's steamId but NOT the lobbyId.

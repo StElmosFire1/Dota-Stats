@@ -69,9 +69,44 @@ class LobbyManager extends EventEmitter {
     client.gcClient.removeAllListeners('lobbyDestroyed');
     client.gcClient.removeAllListeners('lobbyInviteReceived');
     client.gcClient.removeAllListeners('partyInviteReceived');
+    client.gcClient.removeAllListeners('lobbyChatMessage');
 
     this._gcListenersSetup = true;
     console.log('[Lobby] GC listeners initialized (auto-accept invites enabled).');
+
+    // Listen for commands typed in the Dota 2 lobby chat
+    client.gcClient.on('lobbyChatMessage', ({ text, sender, accountId }) => {
+      if (!text.startsWith('!')) return;
+      const [cmd, ...cmdArgs] = text.slice(1).trim().toLowerCase().split(/\s+/);
+      console.log(`[Lobby] Chat command from ${sender}: !${cmd}`);
+      switch (cmd) {
+        case 'start_game':
+        case 'start': {
+          if (this.state !== LobbyState.WAITING && this.state !== LobbyState.IN_PROGRESS) {
+            this._chat(`⚠️ No active lobby to launch.`);
+            break;
+          }
+          const seated = this.currentLobby?._gamePlayerCount || 0;
+          if (this._countdownTimer) this._abortCountdown();
+          this.launchLobby();
+          this._chat(`🚀 Game launched by ${sender}! (${seated}/10 players seated)`);
+          this.emit('lobbyChatCommandStartGame', { sender, accountId });
+          break;
+        }
+        case 'status': {
+          if (!this.currentLobby) {
+            this._chat('No active lobby.');
+          } else {
+            const seated = this.currentLobby._gamePlayerCount || 0;
+            const countdown = this._countdownTimer ? ' — countdown active' : '';
+            this._chat(`📊 ${seated}/10 players seated | State: ${this.state}${countdown}`);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    });
 
     client.gcClient.on('lobbyUpdate', (update) => {
       // When waiting for the GC to add us to an invited lobby, the state is still IDLE.
