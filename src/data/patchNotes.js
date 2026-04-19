@@ -420,6 +420,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.18',
+    title: 'Overhauled Match Performance (Perf) Score',
+    published_at: '2026-04-18',
+    content: 'Completely redesigned the per-match Performance score shown on match scoreboards. Now uses per-metric independent z-score normalisation for a genuinely balanced, position-neutral rating.\n\nNew formula — each factor is z-scored independently within the match, then combined:\n• Kill Involvement 25% — (kills + assists×0.5) / team kills.\n• Hero Damage 20% — raw damage output, naturally rewards carries and mids.\n• Survival 18% — 1/(deaths+1), lower deaths = higher score at every position.\n• Net Worth 15% — farming and resource efficiency.\n• Healing 12% — primary contribution path for dedicated supports.\n• Tower Damage 7% — rewards objective and split-push play.\n• Win Bonus 3% — symmetric binary z-score.\n\nKey improvement: by z-scoring each metric independently, a support\'s healing outlier carries exactly the same weight as a carry\'s damage outlier relative to their own distributions. A hero with 0 healing is not penalised — they score at the match average on that component, which is where most players sit. Every role has meaningful contribution paths without any component unfairly dominating.',
+    author: 'System',
+  },
+  {
     version: '5.19',
     title: 'Lobby Creation — No Password Required',
     published_at: '2026-04-19',
@@ -427,10 +434,10 @@ module.exports = [
     author: 'System',
   },
   {
-    version: '5.18',
-    title: 'Overhauled Match Performance (Perf) Score',
-    published_at: '2026-04-18',
-    content: 'Completely redesigned the per-match Performance score shown on match scoreboards. Now uses per-metric independent z-score normalisation for a genuinely balanced, position-neutral rating.\n\nNew formula — each factor is z-scored independently within the match, then combined:\n• Kill Involvement 25% — (kills + assists×0.5) / team kills.\n• Hero Damage 20% — raw damage output, naturally rewards carries and mids.\n• Survival 18% — 1/(deaths+1), lower deaths = higher score at every position.\n• Net Worth 15% — farming and resource efficiency.\n• Healing 12% — primary contribution path for dedicated supports.\n• Tower Damage 7% — rewards objective and split-push play.\n• Win Bonus 3% — symmetric binary z-score.\n\nKey improvement: by z-scoring each metric independently, a support\'s healing outlier carries exactly the same weight as a carry\'s damage outlier relative to their own distributions. A hero with 0 healing is not penalised — they score at the match average on that component, which is where most players sit. Every role has meaningful contribution paths without any component unfairly dominating.',
+    version: '5.20',
+    title: '!invite_me Command & @mention Invites',
+    published_at: '2026-04-19',
+    content: 'Two new ways to get a lobby invite without knowing your Steam ID.\n\n• !invite_me — looks up your linked Steam account from your Discord ID and sends you a Dota 2 lobby invite instantly. Shows a clear message if no lobby is active or if your Discord isn\'t linked to a Steam account yet.\n\n• !invite @DiscordUser — admins can now @mention a Discord user instead of pasting a Steam64 ID. The bot looks up the player\'s Steam account from the database automatically.\n\n• !invite <steam_id> — unchanged, still works as before.\n\nAll invite paths require the player to have added the bot\'s Steam account as a friend in order for the invite to go through.',
     author: 'System',
   },
 ];

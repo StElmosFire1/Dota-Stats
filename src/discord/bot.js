@@ -380,6 +380,7 @@ class DiscordBot {
           case 'lobby_status': await this._cmdLobbyStatus(msg); break;
           case 'gc_debug': await this._cmdGcDebug(msg); break;
           case 'invite': await this._cmdInvite(msg, args); break;
+          case 'invite_me': await this._cmdInviteMe(msg); break;
           case 'end': await this._cmdEnd(msg); break;
           case 'start_game': await this._cmdStartGame(msg); break;
           default: break;
@@ -662,14 +663,36 @@ class DiscordBot {
     }
     if (args.length < 1) {
       return msg.reply(
-        'Usage: `!invite <steam_id>`\n' +
-        'Provide a Steam ID (e.g. `76561198012345678`).\n' +
-        'Find yours at <https://steamid.io/>'
+        'Usage: `!invite <steam_id>` or `!invite @discorduser`\n' +
+        'You can also use `!invite_me` to invite yourself directly.'
       );
     }
 
     const lobbyManager = tryGetLobbyManager();
     if (!lobbyManager) return msg.reply('Lobby manager is not available.');
+
+    // Support @mention — look up their Steam ID from the database
+    const mentionMatch = args[0].match(/^<@!?(\d+)>$/);
+    if (mentionMatch) {
+      const targetDiscordId = mentionMatch[1];
+      const row = await db.getSteamByDiscordId(targetDiscordId);
+      if (!row) {
+        return msg.reply(`No Steam account linked for that player. They need to register via \`!register\` first.`);
+      }
+      const steam64 = (BigInt('76561197960265728') + BigInt(row.account_id)).toString();
+      try {
+        const sent = lobbyManager.invitePlayer(steam64);
+        const name = row.nickname || `<@${targetDiscordId}>`;
+        if (sent) {
+          await msg.reply(`Lobby invite sent to **${name}**. They should see it in Dota 2.`);
+        } else {
+          await msg.reply(`Failed to send invite to **${name}**. Make sure the bot has them as a friend on Steam.`);
+        }
+      } catch (err) {
+        await msg.reply(`Error: ${err.message}`);
+      }
+      return;
+    }
 
     const rawId = args[0];
     let steamId64;
@@ -687,6 +710,42 @@ class DiscordBot {
       }
     } catch (err) {
       await msg.reply(`Error: ${err.message}`);
+    }
+  }
+
+  async _cmdInviteMe(msg) {
+    if (!steamAvailable) {
+      return msg.reply('Steam is not connected. Cannot send invites.');
+    }
+    const lobbyManager = tryGetLobbyManager();
+    if (!lobbyManager) return msg.reply('Lobby manager is not available.');
+
+    const status = lobbyManager.getStatus();
+    if (!status.lobby) {
+      return msg.reply('No active lobby right now. Ask an admin to create one with `!create_lobby`.');
+    }
+
+    const row = await db.getSteamByDiscordId(msg.author.id);
+    if (!row) {
+      return msg.reply(
+        'Your Discord account isn\'t linked to a Steam ID yet.\n' +
+        'Register with `!register <steam_id>` first.'
+      );
+    }
+
+    const steam64 = (BigInt('76561197960265728') + BigInt(row.account_id)).toString();
+    try {
+      const sent = lobbyManager.invitePlayer(steam64);
+      if (sent) {
+        await msg.reply(`Lobby invite sent! Check your Dota 2 client — you should see an invite pop up.`);
+      } else {
+        await msg.reply(
+          'Could not send the invite. Make sure you\'ve added the bot\'s Steam account as a friend — ' +
+          'then the invite will come through.'
+        );
+      }
+    } catch (err) {
+      await msg.reply(`Error sending invite: ${err.message}`);
     }
   }
 
