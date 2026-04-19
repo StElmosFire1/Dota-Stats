@@ -46,6 +46,11 @@ function TierBadge({ mmr }) {
   );
 }
 
+const RANK_COLORS = {
+  1: '#b0b0b0', 2: '#6fad40', 3: '#6fad40', 4: '#5ea3c8',
+  5: '#4fa8a8', 6: '#c5a028', 7: '#a970ff', 8: '#e97d2e',
+};
+
 function DotaRankText({ rankTier, leaderboardRank }) {
   const decoded = decodeRankTier(rankTier);
   if (!decoded) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>;
@@ -55,18 +60,33 @@ function DotaRankText({ rankTier, leaderboardRank }) {
     : decoded.stars
       ? `${decoded.name} ${decoded.stars}`
       : decoded.name;
+  const color = RANK_COLORS[decoded.tier] || '#aaa';
+  const iconUrl = `https://www.opendota.com/assets/images/dota2/rank_icons/rank_icon_${decoded.tier}.png`;
+  const starUrl = !isImm && decoded.stars > 0
+    ? `https://www.opendota.com/assets/images/dota2/rank_icons/rank_star_${decoded.stars}.png`
+    : null;
   return (
     <span
       title={label}
-      style={{
-        display: 'inline-flex', alignItems: 'center',
-        background: 'var(--bg-hover)', border: '1px solid var(--border)',
-        borderRadius: 8, padding: '2px 8px', fontSize: 11, fontWeight: 500,
-        color: 'var(--text-muted)', whiteSpace: 'nowrap', cursor: 'default',
-        letterSpacing: 0.2,
-      }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', cursor: 'default' }}
     >
-      {label}
+      <span style={{ position: 'relative', width: 22, height: 22, flexShrink: 0 }}>
+        <img
+          src={iconUrl}
+          alt={decoded.name}
+          style={{ width: 22, height: 22, display: 'block' }}
+          onError={e => { e.target.style.display = 'none'; }}
+        />
+        {starUrl && (
+          <img
+            src={starUrl}
+            alt={`${decoded.stars} stars`}
+            style={{ position: 'absolute', inset: 0, width: 22, height: 22 }}
+            onError={e => { e.target.style.display = 'none'; }}
+          />
+        )}
+      </span>
+      <span style={{ fontSize: 11, fontWeight: 600, color, letterSpacing: 0.2 }}>{label}</span>
     </span>
   );
 }
