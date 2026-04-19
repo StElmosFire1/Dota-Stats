@@ -6,17 +6,17 @@ import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 
 const MMR_TIERS = [
-  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100 },
-  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 3800 },
-  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 3500 },
-  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 3200 },
-  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 2900 },
-  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 2600 },
-  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 2300 },
-  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 2000 },
-  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 1700 },
-  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 1400 },
-  { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0    },
+  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100, color: '#FFD700',   bg: 'rgba(255,215,0,0.12)',   border: 'rgba(255,215,0,0.45)'    },
+  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 3800, color: '#CE93D8',   bg: 'rgba(156,39,176,0.15)',  border: 'rgba(156,39,176,0.45)'   },
+  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 3500, color: '#90CAF9',   bg: 'rgba(33,150,243,0.12)',  border: 'rgba(33,150,243,0.4)'    },
+  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 3200, color: '#80DEEA',   bg: 'rgba(0,188,212,0.12)',   border: 'rgba(0,188,212,0.4)'     },
+  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 2900, color: '#A5D6A7',   bg: 'rgba(76,175,80,0.12)',   border: 'rgba(76,175,80,0.4)'     },
+  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 2600, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 2300, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 2000, color: '#FFCC80',   bg: 'rgba(255,152,0,0.12)',   border: 'rgba(255,152,0,0.4)'     },
+  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 1700, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
+  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 1400, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
+  { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
 ];
 
 function getTier(mmr) {
@@ -33,14 +33,15 @@ function TierBadge({ mmr }) {
     <span
       title={t.description}
       style={{
-        display: 'inline-flex', alignItems: 'center',
-        background: 'var(--bg-hover)', border: '1px solid var(--border)',
-        borderRadius: 8, padding: '2px 8px', fontSize: 11, fontWeight: 500,
-        color: 'var(--text-muted)', whiteSpace: 'nowrap', cursor: 'default',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        gap: 4, width: 118, flexShrink: 0,
+        background: t.bg, border: `1px solid ${t.border}`,
+        borderRadius: 8, padding: '3px 0', fontSize: 11, fontWeight: 600,
+        color: t.color, whiteSpace: 'nowrap', cursor: 'default',
         letterSpacing: 0.2,
       }}
     >
-      {t.name}
+      {t.emoji} {t.name}
     </span>
   );
 }
@@ -368,8 +369,8 @@ export default function Leaderboard() {
               <tr>
                 <th className="col-rank" title="Rank">#</th>
                 <th className="col-player" title="Player name">Player</th>
-                <th className="col-stat" title="Tier">Tier</th>
                 <th className="col-stat" title="Dota 2 rank medal">Dota Rank</th>
+                <th className="col-stat" title="Tier">Tier</th>
                 <th className="col-stat" title="TrueSkill MMR rating">MMR</th>
                 <th className="col-stat" title="Wins">W</th>
                 <th className="col-stat" title="Losses">L</th>
@@ -393,13 +394,13 @@ export default function Leaderboard() {
                         {p.nickname || p.display_name || p.player_id}
                       </Link>
                     </td>
-                    <td className="col-stat"><TierBadge mmr={p.mmr} /></td>
                     <td className="col-stat">
                       <DotaRankText
                         rankTier={p.dota_rank_tier}
                         leaderboardRank={p.dota_leaderboard_rank}
                       />
                     </td>
+                    <td className="col-stat"><TierBadge mmr={p.mmr} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>
