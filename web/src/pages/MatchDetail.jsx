@@ -863,7 +863,7 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
               <th className="col-stat" title="Kills">K</th>
               <th className="col-stat" title="Deaths">D</th>
               <th className="col-stat" title="Assists">A</th>
-              <th className="col-stat" title="Match Performance Score 1–10: composite of kill involvement (25%), hero damage share (22%), KDA efficiency (22%), healing contribution (12%), net worth (12%), tower damage (4%), win bonus (3%). Z-score normalised within the match — multiple players can share the same score.">Perf</th>
+              <th className="col-stat" title="Match Performance Score 1–10: each factor is z-score normalised independently within the match, then combined — kill involvement (25%), hero damage (20%), survival/deaths (18%), net worth (15%), healing (12%), tower damage (7%), win bonus (3%). Every role has meaningful contribution paths.">Perf</th>
               {hasDetailedStats && (
                 <>
                   <th className="col-stat" title="Last Hits">LH</th>
@@ -2547,45 +2547,49 @@ function MatchDetailInner() {
   const dire = (match.players || []).filter(p => p.team === 'dire');
   const allPlayers = [...radiant, ...dire];
 
-  // Per-match performance score 1–10 using z-score normalisation within the match.
-  // Composite of: kill involvement, hero damage share, KDA efficiency,
-  // healing contribution, net worth, tower damage, and win bonus.
-  // Designed to be position-neutral: carries are rewarded for damage/farm,
-  // supports for healing/assists, all penalised for dying.
+  // Per-match performance score 1–10.
+  // Each metric is z-score normalised independently within the match so that
+  // every factor contributes equally relative to its own variance — a support's
+  // healing outlier carries the same weight as a carry's damage outlier.
+  // Weighted z-scores are then combined and mapped to 1–10.
   const perfRanks = (() => {
+    const zscore = vals => {
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length) || 0.001;
+      return vals.map(v => (v - mean) / std);
+    };
     const radK = radiant.reduce((s, p) => s + (p.kills || 0), 0);
     const dirK = dire.reduce((s, p) => s + (p.kills || 0), 0);
-    const n = allPlayers.length || 10;
-    const totalHD = allPlayers.reduce((s, p) => s + (p.hero_damage || 0), 0);
-    const totalHH = allPlayers.reduce((s, p) => s + (p.hero_healing || 0), 0);
-    const totalTD = allPlayers.reduce((s, p) => s + (p.tower_damage || 0), 0);
-    const maxNW = Math.max(...allPlayers.map(p => p.net_worth || 0), 1);
-    const scored = allPlayers.map(p => {
-      const teamK = p.team === 'radiant' ? radK : dirK;
-      // Kill involvement — kills worth more than assists
-      const ki = teamK > 0 ? ((p.kills || 0) + (p.assists || 0) * 0.5) / teamK : 0;
-      // Hero damage share relative to match average (1.0 = average player)
-      const damShare = totalHD > 0 ? ((p.hero_damage || 0) / totalHD) * n : 0;
-      // KDA efficiency — kills weighted more than assists, deaths penalised
-      const eff = ((p.kills || 0) + (p.assists || 0) * 0.7) / Math.pow((p.deaths || 0) + 2, 0.8);
-      // Healing share relative to match average (rewards supports with high HH)
-      const healShare = totalHH > 0 ? ((p.hero_healing || 0) / totalHH) * n : 0;
-      // Net worth relative to the richest player in the match
-      const nwNorm = (p.net_worth || 0) / maxNW;
-      // Tower damage share relative to match average
-      const tdShare = totalTD > 0 ? ((p.tower_damage || 0) / totalTD) * n : 0;
-      const won = (match.radiant_win && p.team === 'radiant') || (!match.radiant_win && p.team === 'dire');
-      const raw = ki * 0.25 + damShare * 0.22 + eff * 0.22 + healShare * 0.12 + nwNorm * 0.12 + tdShare * 0.04 + (won ? 0.03 : 0);
-      return { slot: p.slot, raw };
-    });
-    const raws = scored.map(s => s.raw);
-    const mean = raws.reduce((a, b) => a + b, 0) / raws.length;
-    const variance = raws.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / raws.length;
-    const std = Math.sqrt(variance) || 0.001;
+    // Kill involvement: kills count more than assists
+    const kiZ   = zscore(allPlayers.map(p => {
+      const tk = p.team === 'radiant' ? radK : dirK;
+      return tk > 0 ? ((p.kills || 0) + (p.assists || 0) * 0.5) / tk : 0;
+    }));
+    // Raw hero damage — naturally rewards high-damage carries and mids
+    const damZ  = zscore(allPlayers.map(p => p.hero_damage || 0));
+    // Survival — lower deaths = higher score, universal across all roles
+    const survZ = zscore(allPlayers.map(p => 1 / ((p.deaths || 0) + 1)));
+    // Net worth — farm and resource efficiency
+    const nwZ   = zscore(allPlayers.map(p => p.net_worth || 0));
+    // Healing — primary contribution path for dedicated supports
+    const healZ = zscore(allPlayers.map(p => p.hero_healing || 0));
+    // Tower damage — rewards pushers and objective-focused play
+    const tdZ   = zscore(allPlayers.map(p => p.tower_damage || 0));
+    // Win bonus — binary, z-scored so both sides are symmetric
+    const wonZ  = zscore(allPlayers.map(p =>
+      ((match.radiant_win && p.team === 'radiant') || (!match.radiant_win && p.team === 'dire')) ? 1 : 0
+    ));
     const ranks = {};
-    scored.forEach(s => {
-      const z = (s.raw - mean) / std;
-      ranks[s.slot] = Math.max(1, Math.min(10, Math.round(5.5 + z * 2)));
+    allPlayers.forEach((p, i) => {
+      const combined =
+        kiZ[i]   * 0.25 +
+        damZ[i]  * 0.20 +
+        survZ[i] * 0.18 +
+        nwZ[i]   * 0.15 +
+        healZ[i] * 0.12 +
+        tdZ[i]   * 0.07 +
+        wonZ[i]  * 0.03;
+      ranks[p.slot] = Math.max(1, Math.min(10, Math.round(5.5 + combined * 2)));
     });
     return ranks;
   })();
