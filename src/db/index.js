@@ -659,6 +659,24 @@ async function init() {
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_source VARCHAR(16) DEFAULT NULL`);
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_updated_at TIMESTAMPTZ DEFAULT NULL`);
 
+    // Backfill: link discord_id into nicknames for players registered via !register
+    // who already have a players table entry but no nicknames row or empty discord_id.
+    await p.query(`
+      INSERT INTO nicknames (account_id, discord_id, nickname, updated_at)
+      SELECT
+        p.account_id_32::bigint,
+        p.discord_id,
+        p.discord_name,
+        NOW()
+      FROM players p
+      WHERE p.account_id_32 IS NOT NULL AND p.account_id_32 != ''
+        AND p.discord_id IS NOT NULL AND TRIM(p.discord_id) != ''
+      ON CONFLICT (account_id) DO UPDATE SET
+        discord_id = CASE WHEN TRIM(nicknames.discord_id) = '' OR nicknames.discord_id IS NULL
+                          THEN EXCLUDED.discord_id ELSE nicknames.discord_id END,
+        updated_at = NOW()
+    `);
+
     await p.query(`
       CREATE TABLE IF NOT EXISTS signup_requests (
         id SERIAL PRIMARY KEY,
@@ -3087,11 +3105,16 @@ async function registerPlayer(discordId, discordName, steamId64) {
        discord_name = $2, steam_id_64 = $3, account_id_32 = $4`,
     [discordId, discordName, steamId64, accountId32]
   );
-  // Also link Discord ID in nicknames table so !invite_me and DM features work
+  // Ensure a nicknames row exists for this account so the Discord ID is linked
+  // even before an admin manually sets a display name via the web panel.
   await p.query(
-    `UPDATE nicknames SET discord_id = $1, updated_at = NOW()
-     WHERE account_id::text = $2 AND (discord_id IS NULL OR TRIM(discord_id) = '')`,
-    [discordId, accountId32]
+    `INSERT INTO nicknames (account_id, discord_id, nickname, updated_at)
+     VALUES ($2::bigint, $1, $3, NOW())
+     ON CONFLICT (account_id) DO UPDATE SET
+       discord_id = CASE WHEN TRIM(nicknames.discord_id) = '' OR nicknames.discord_id IS NULL
+                         THEN $1 ELSE nicknames.discord_id END,
+       updated_at = NOW()`,
+    [discordId, accountId32, discordName]
   );
   return { accountId32 };
 }
