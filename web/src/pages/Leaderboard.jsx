@@ -33,13 +33,14 @@ function TierBadge({ mmr }) {
     <span
       title={t.description}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
+        display: 'inline-flex', alignItems: 'center',
         background: 'var(--bg-hover)', border: '1px solid var(--border)',
-        borderRadius: 8, padding: '2px 8px', fontSize: 11, fontWeight: 600,
-        color: 'var(--text-secondary)', whiteSpace: 'nowrap', cursor: 'default',
+        borderRadius: 8, padding: '2px 8px', fontSize: 11, fontWeight: 500,
+        color: 'var(--text-muted)', whiteSpace: 'nowrap', cursor: 'default',
+        letterSpacing: 0.2,
       }}
     >
-      {t.emoji} {t.name}
+      {t.name}
     </span>
   );
 }
@@ -380,8 +381,8 @@ export default function Leaderboard() {
                 <th className="col-rank" title="Rank">#</th>
                 <th className="col-player" title="Player name">Player</th>
                 <th className="col-stat" title="Tier">Tier</th>
-                <th className="col-stat" title="TrueSkill MMR rating">MMR</th>
                 <th className="col-stat" title="Dota 2 rank medal">Dota Rank</th>
+                <th className="col-stat" title="TrueSkill MMR rating">MMR</th>
                 <th className="col-stat" title="Wins">W</th>
                 <th className="col-stat" title="Losses">L</th>
                 <th className="col-stat" title="Total games played">Games</th>
@@ -405,13 +406,13 @@ export default function Leaderboard() {
                       </Link>
                     </td>
                     <td className="col-stat"><TierBadge mmr={p.mmr} /></td>
-                    <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat">
                       <DotaRankText
                         rankTier={rankMap[p.player_id]?.dota_rank_tier}
                         leaderboardRank={rankMap[p.player_id]?.dota_leaderboard_rank}
                       />
                     </td>
+                    <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>
                     <td className="col-stat">{p.games_played}</td>
