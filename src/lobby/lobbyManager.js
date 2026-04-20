@@ -100,7 +100,7 @@ class LobbyManager extends EventEmitter {
     console.log('[Lobby] GC listeners initialized (auto-accept invites enabled).');
 
     // Listen for commands typed in the Dota 2 lobby chat
-    client.gcClient.on('lobbyChatMessage', ({ text, sender, accountId }) => {
+    client.gcClient.on('lobbyChatMessage', async ({ text, sender, accountId }) => {
       if (!text.startsWith('!')) return;
       const [cmd, ...cmdArgs] = text.slice(1).trim().toLowerCase().split(/\s+/);
       console.log(`[Lobby] Chat command from ${sender}: !${cmd}`);

@@ -468,4 +468,11 @@ module.exports = [
     content: '🔧 POST-MATCH DM FIX — MERGED ACCOUNTS\nFixed a bug where players with multiple Steam accounts (merged under one nickname) were not receiving post-match rating DMs even though their Discord ID was visibly linked on the Players page.\n\nRoot cause: the DM system looks up Discord IDs by joining on the exact account_id used in the match. If the Discord ID was registered against a different account in the same merged group, it would not be found — the Players page masked this by grouping all accounts together and showing the MAX discord_id across the group.\n\nFix: the Discord ID lookup now has two extra fallback layers:\n1. Checks any other nicknames row sharing the same display name (catches merged accounts).\n2. Checks the players registration table directly by account_id.\n\nThis means players like tomato and Sun who play on a secondary Steam account will now receive DMs correctly.',
     author: 'System',
   },
+  {
+    version: '5.25',
+    title: 'Lobby Command Fix',
+    published_at: '2026-04-20',
+    content: '🔧 LOBBY COMMANDS FIXED\nFixed a syntax error in the lobby manager that prevented it from loading entirely — the lobbyChatMessage event handler was missing its async keyword, causing a SyntaxError at module load time. This broke all lobby commands (!create_lobby, !start_lobby, etc.) even when Steam and the GC were fully connected.\n\nAlso added startup resilience: lobby commands now fall back to the module singleton if the startup initialisation was skipped, and the startup sequence logs each step individually so failures are immediately visible.',
+    author: 'System',
+  },
 ];
