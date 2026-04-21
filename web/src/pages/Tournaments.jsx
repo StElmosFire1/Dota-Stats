@@ -6,6 +6,7 @@ import {
   clearTournamentMatchWinner, deleteTournament, getAllPlayers,
 } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import { useSuperuser } from '../context/SuperuserContext';
 
 const STATUS_LABELS = { upcoming: '⏳ Upcoming', active: '🏆 Active', completed: '✅ Completed' };
 const STATUS_COLORS = { upcoming: 'var(--text-muted)', active: 'var(--accent-gold, #f59e0b)', completed: 'var(--radiant-color)' };
@@ -154,11 +155,10 @@ function TournamentDetail() {
   const [data, setData] = useState(null);
   const [allPlayers, setAllPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [superuserKey, setSuperuserKey] = useState(() => localStorage.getItem('superuserKey') || '');
+  const { isSuperuser, superuserKey } = useSuperuser();
+  const isAdmin = isSuperuser;
   const [addSearch, setAddSearch] = useState('');
   const [addLoading, setAddLoading] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
-  const isAdmin = !!superuserKey;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -242,34 +242,16 @@ function TournamentDetail() {
           </div>
           {tournament.description && <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: 14 }}>{tournament.description}</p>}
         </div>
-        <button
-          onClick={() => setShowAdmin(s => !s)}
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}
-        >⚙️ Admin</button>
       </div>
 
-      {showAdmin && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Admin key</label>
-            <input
-              type="password"
-              value={superuserKey}
-              onChange={e => { setSuperuserKey(e.target.value); localStorage.setItem('superuserKey', e.target.value); }}
-              placeholder="Enter superuser key…"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 6, padding: '6px 12px', fontSize: 13, width: 240 }}
-            />
-          </div>
-          {isAdmin && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button onClick={handleGenerate} style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                ⚡ Generate Bracket
-              </button>
-              <button onClick={handleDelete} style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
-                🗑️ Delete Tournament
-              </button>
-            </div>
-          )}
+      {isAdmin && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={handleGenerate} style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+            ⚡ Generate Bracket
+          </button>
+          <button onClick={handleDelete} style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
+            🗑️ Delete Tournament
+          </button>
         </div>
       )}
 
@@ -439,7 +421,7 @@ function TournamentList() {
   const { seasonId } = useSeason();
   const [tournaments, setTournaments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [superuserKey, setSuperuserKey] = useState(() => localStorage.getItem('superuserKey') || '');
+  const { isSuperuser, superuserKey } = useSuperuser();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', format: 'single_elim' });
   const [creating, setCreating] = useState(false);
@@ -470,10 +452,12 @@ function TournamentList() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>🏆 Tournaments</h1>
-        <button
-          onClick={() => setShowCreate(s => !s)}
-          style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', cursor: 'pointer', fontSize: 14, fontWeight: 600 }}
-        >+ New Tournament</button>
+        {isSuperuser && (
+          <button
+            onClick={() => setShowCreate(s => !s)}
+            style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', cursor: 'pointer', fontSize: 14, fontWeight: 600 }}
+          >+ New Tournament</button>
+        )}
       </div>
 
       {showCreate && (
@@ -492,12 +476,6 @@ function TournamentList() {
                 <option value="single_elim">Single Elimination</option>
                 <option value="double_elim">Double Elimination</option>
               </select>
-            </div>
-            <div>
-              <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Admin Key</label>
-              <input type="password" value={superuserKey} onChange={e => { setSuperuserKey(e.target.value); localStorage.setItem('superuserKey', e.target.value); }}
-                placeholder="Superuser key…"
-                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 6, padding: '7px 12px', fontSize: 14, width: '100%' }} />
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
