@@ -36,6 +36,7 @@ const Social = lazy(() => import('./pages/Social'));
 const HallOfFame = lazy(() => import('./pages/HallOfFame'));
 const PlayerBenchmarks = lazy(() => import('./pages/PlayerBenchmarks'));
 const Tournaments = lazy(() => import('./pages/Tournaments'));
+const WeekendTournament = lazy(() => import('./pages/WeekendTournament'));
 const RecordMatch = lazy(() => import('./pages/RecordMatch'));
 const PlayerInsights = lazy(() => import('./pages/PlayerInsights'));
 const Join = lazy(() => import('./pages/Join'));
@@ -296,6 +297,7 @@ function Nav() {
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
           <DropdownItem to="/insights">Player Insights</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
+          <DropdownItem to="/weekend-tournament">Weekend Tournaments</DropdownItem>
           <DropdownItem to="/join">Join the League</DropdownItem>
         </DropdownMenu>
       </div>
@@ -357,6 +359,8 @@ export default function App() {
                 <Route path="/insights" element={<PlayerInsights />} />
                 <Route path="/tournaments" element={<Tournaments />} />
                 <Route path="/tournaments/:id" element={<Tournaments />} />
+                <Route path="/weekend-tournament" element={<WeekendTournament />} />
+                <Route path="/weekend-tournament/:id" element={<WeekendTournament />} />
                 <Route path="/hall-of-fame" element={<HallOfFame />} />
                 <Route path="/admin/record-match" element={<RecordMatch />} />
                 <Route path="/join" element={<Join />} />

@@ -602,6 +602,18 @@ export default function PlayerProfile() {
               <div className="stat-value">{averages.avg_denies}</div>
               <div className="stat-label">Denies</div>
             </div>
+            <div className="stat-card sm">
+              <div className="stat-value">{parseFloat(averages.avg_obs_placed || 0).toFixed(1)}</div>
+              <div className="stat-label">Obs Wards</div>
+            </div>
+            <div className="stat-card sm">
+              <div className="stat-value">{parseFloat(averages.avg_sen_placed || 0).toFixed(1)}</div>
+              <div className="stat-label">Sentry Wards</div>
+            </div>
+            <div className="stat-card sm">
+              <div className="stat-value">{parseFloat(averages.avg_camps_stacked || 0).toFixed(1)}</div>
+              <div className="stat-label">Camps Stacked</div>
+            </div>
           </div>
         </section>
       )}

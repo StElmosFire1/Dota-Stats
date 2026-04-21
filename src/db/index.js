@@ -696,6 +696,23 @@ async function init() {
     await p.query(`ALTER TABLE signup_requests ADD COLUMN IF NOT EXISTS mmr TEXT`);
     await p.query(`ALTER TABLE signup_requests ADD COLUMN IF NOT EXISTS referral TEXT`);
 
+    // Weekend / special event tournaments
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS weekend_tournaments (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        start_date TIMESTAMPTZ NOT NULL,
+        end_date TIMESTAMPTZ NOT NULL,
+        games_to_count INTEGER DEFAULT 3,
+        prize_pool NUMERIC DEFAULT 0,
+        buy_in NUMERIC DEFAULT 0,
+        status TEXT DEFAULT 'upcoming',
+        discord_announced BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -1959,6 +1976,9 @@ async function getPlayerStats(accountId, seasonId = null) {
        ROUND(AVG(last_hits), 0) as avg_last_hits,
        ROUND(AVG(denies), 0) as avg_denies,
        ROUND(AVG(net_worth), 0) as avg_net_worth,
+       ROUND(AVG(obs_placed), 2) as avg_obs_placed,
+       ROUND(AVG(sen_placed), 2) as avg_sen_placed,
+       ROUND(AVG(camps_stacked), 2) as avg_camps_stacked,
        SUM(kills) as total_kills,
        SUM(deaths) as total_deaths,
        SUM(assists) as total_assists,
@@ -5771,6 +5791,11 @@ module.exports = {
   getTournamentMatches,
   setTournamentMatchWinner,
   clearTournamentMatchWinner,
+  createWeekendTournament,
+  getWeekendTournaments,
+  getWeekendTournamentById,
+  updateWeekendTournament,
+  getWeekendTournamentScores,
 };
 
 async function getPudgeStats(seasonId = null) {
@@ -6613,4 +6638,113 @@ async function clearTournamentMatchWinner(matchId) {
     await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round > $2`, [match.tournament_id, match.round]);
   }
   return getTournamentMatches(match.tournament_id);
+}
+
+// ─── Weekend / Special Event Tournaments ───────────────────────────────────
+
+async function createWeekendTournament({ name, description, startDate, endDate, gamesToCount = 3, prizePool = 0, buyIn = 0 }) {
+  const p = getPool();
+  const res = await p.query(
+    `INSERT INTO weekend_tournaments (name, description, start_date, end_date, games_to_count, prize_pool, buy_in)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [name, description || null, startDate, endDate, gamesToCount, prizePool, buyIn]
+  );
+  return res.rows[0];
+}
+
+async function getWeekendTournaments() {
+  const p = getPool();
+  const res = await p.query(`SELECT * FROM weekend_tournaments ORDER BY start_date DESC`);
+  return res.rows;
+}
+
+async function getWeekendTournamentById(id) {
+  const p = getPool();
+  const res = await p.query(`SELECT * FROM weekend_tournaments WHERE id = $1`, [id]);
+  return res.rows[0] || null;
+}
+
+async function updateWeekendTournament(id, fields) {
+  const p = getPool();
+  const allowed = ['name', 'description', 'start_date', 'end_date', 'games_to_count', 'prize_pool', 'buy_in', 'status', 'discord_announced'];
+  const sets = [];
+  const vals = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (allowed.includes(k)) { vals.push(v); sets.push(`${k} = $${vals.length}`); }
+  }
+  if (!sets.length) return getWeekendTournamentById(id);
+  vals.push(id);
+  const res = await p.query(
+    `UPDATE weekend_tournaments SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`,
+    vals
+  );
+  return res.rows[0];
+}
+
+async function getWeekendTournamentScores(startDate, endDate, gamesToCount = 3) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT
+       ps.account_id,
+       COALESCE(MAX(n.nickname), MAX(ps.persona_name)) AS display_name,
+       m.match_id,
+       m.date,
+       ps.kills, ps.deaths, ps.assists, ps.last_hits,
+       ps.gpm, ps.xpm, ps.hero_damage, ps.tower_damage, ps.hero_healing,
+       ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked,
+       CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
+                 OR (ps.team = 'dire' AND m.radiant_win = false) THEN true ELSE false END AS won,
+       ROUND(
+         ps.kills * 4 +
+         ps.assists * 2.5 +
+         ps.deaths * -3 +
+         ps.last_hits * 0.04 +
+         ps.gpm * 0.25 +
+         ps.xpm * 0.22 +
+         ps.hero_damage / 2000.0 +
+         ps.tower_damage / 1000.0 +
+         ps.hero_healing / 1500.0 +
+         ps.camps_stacked * 7 +
+         ps.obs_placed * 6 +
+         ps.sen_placed * 8 +
+         ps.wards_killed * 10 +
+         CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
+                   OR (ps.team = 'dire' AND m.radiant_win = false) THEN 25 ELSE 0 END
+       , 1) AS game_score
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id
+     WHERE ps.account_id > 0
+       AND m.date >= $1 AND m.date <= $2
+     GROUP BY ps.account_id, m.match_id, m.date, m.radiant_win,
+       ps.team, ps.kills, ps.deaths, ps.assists, ps.last_hits,
+       ps.gpm, ps.xpm, ps.hero_damage, ps.tower_damage, ps.hero_healing,
+       ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked
+     ORDER BY ps.account_id, game_score DESC`,
+    [startDate, endDate]
+  );
+
+  const byPlayer = {};
+  for (const row of res.rows) {
+    const aid = row.account_id.toString();
+    if (!byPlayer[aid]) {
+      byPlayer[aid] = { account_id: aid, display_name: row.display_name, games: [] };
+    }
+    byPlayer[aid].games.push(row);
+  }
+
+  const leaderboard = Object.values(byPlayer).map(player => {
+    const topGames = player.games.slice(0, gamesToCount);
+    const total = topGames.reduce((sum, g) => sum + parseFloat(g.game_score), 0);
+    return {
+      account_id: player.account_id,
+      display_name: player.display_name,
+      total_score: Math.round(total * 10) / 10,
+      games_played: player.games.length,
+      games_counted: topGames.length,
+      top_games: topGames,
+    };
+  }).sort((a, b) => b.total_score - a.total_score);
+
+  return leaderboard;
 }

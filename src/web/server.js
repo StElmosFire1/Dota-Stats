@@ -2773,6 +2773,89 @@ NOTES
     }
   });
 
+  // ─── Weekend / Special Event Tournaments ───────────────────────────────
+  router.get('/weekend-tournaments', async (req, res) => {
+    try {
+      const tournaments = await db.getWeekendTournaments();
+      res.json({ tournaments });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/weekend-tournaments/:id', async (req, res) => {
+    try {
+      const tournament = await db.getWeekendTournamentById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Not found' });
+      const leaderboard = await db.getWeekendTournamentScores(
+        tournament.start_date, tournament.end_date, tournament.games_to_count
+      );
+      res.json({ tournament, leaderboard });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/weekend-tournaments', authMiddleware, async (req, res) => {
+    try {
+      const { name, description, startDate, endDate, gamesToCount, prizePool, buyIn } = req.body;
+      if (!name || !startDate || !endDate) return res.status(400).json({ error: 'name, startDate, endDate required' });
+      const tournament = await db.createWeekendTournament({ name, description, startDate, endDate, gamesToCount, prizePool, buyIn });
+      res.json({ tournament });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.patch('/weekend-tournaments/:id', authMiddleware, async (req, res) => {
+    try {
+      const fields = {};
+      const map = { name: 'name', description: 'description', startDate: 'start_date', endDate: 'end_date', gamesToCount: 'games_to_count', prizePool: 'prize_pool', buyIn: 'buy_in', status: 'status' };
+      for (const [k, col] of Object.entries(map)) {
+        if (req.body[k] !== undefined) fields[col] = req.body[k];
+      }
+      const tournament = await db.updateWeekendTournament(req.params.id, fields);
+      res.json({ tournament });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/weekend-tournaments/:id/announce', authMiddleware, async (req, res) => {
+    try {
+      const tournament = await db.getWeekendTournamentById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Not found' });
+      const bot = getDiscordBot();
+      const { config } = require('../config');
+      const channelId = config.discord.announceChannelId;
+      if (!channelId) return res.status(400).json({ error: 'No announce channel configured (ANNOUNCE_CHANNEL_ID)' });
+      const channel = await bot.client.channels.fetch(channelId).catch(() => null);
+      if (!channel) return res.status(400).json({ error: 'Could not find announce channel' });
+
+      const { EmbedBuilder } = require('discord.js');
+      const start = new Date(tournament.start_date).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
+      const end = new Date(tournament.end_date).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
+      const embed = new EmbedBuilder()
+        .setTitle(`🏆 ${tournament.name}`)
+        .setColor(0xf59e0b)
+        .setDescription(tournament.description || 'A special weekend points tournament — play as many games as you want, your top scores count!')
+        .addFields(
+          { name: '📅 Dates', value: `${start} → ${end}`, inline: true },
+          { name: '🎮 Games Counted', value: `Top ${tournament.games_to_count} games per player`, inline: true },
+          { name: '💰 Prize Pool', value: tournament.prize_pool > 0 ? `$${tournament.prize_pool}` : 'TBD', inline: true },
+          { name: '📊 Scoring', value: 'Kills +4 · Assists +2.5 · Deaths -3 · GPM ×0.25 · XPM ×0.22\nObs Wards +6 · Sentry +8 · Dewarded +10 · Camps Stacked +7\nHero Dmg /2000 · Tower Dmg /1000 · Healing /1500 · **Win +25**', inline: false },
+          { name: '📈 How it works', value: `Play any inhouse games during the weekend. All your games count — only your highest ${tournament.games_to_count} scores are added to your total. No sign-up needed.`, inline: false }
+        )
+        .setFooter({ text: 'Check the leaderboard at dota.stats.corvidaeinc.com/weekend-tournament' });
+      await channel.send({ embeds: [embed] });
+      await db.updateWeekendTournament(req.params.id, { discord_announced: true });
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[WeekendTournament] Announce error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/admin/ts2-leaderboard', requireSuperuser, async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

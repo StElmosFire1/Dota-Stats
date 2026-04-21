@@ -862,6 +862,46 @@ export async function getSignupRequests(superuserKey, status = null) {
   return data;
 }
 
+export async function getWeekendTournaments() {
+  return fetchJson('/weekend-tournaments');
+}
+
+export async function getWeekendTournament(id) {
+  return fetchJson(`/weekend-tournaments/${id}`);
+}
+
+export async function createWeekendTournament(data, superuserKey) {
+  const res = await fetch(BASE + '/weekend-tournaments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify(data),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed');
+  return d;
+}
+
+export async function updateWeekendTournament(id, data, superuserKey) {
+  const res = await fetch(BASE + `/weekend-tournaments/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify(data),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed');
+  return d;
+}
+
+export async function announceWeekendTournament(id, superuserKey) {
+  const res = await fetch(BASE + `/weekend-tournaments/${id}/announce`, {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed');
+  return d;
+}
+
 export async function updateSignupRequest(id, { status, adminNotes }, superuserKey) {
   const res = await fetch(BASE + `/admin/signups/${id}`, {
     method: 'PATCH',

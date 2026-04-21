@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getHomeStats, getLatestRecap, getSeasons, getPredictions } from '../api';
+import { getHomeStats, getLatestRecap, getSeasons, getPredictions, getWeekendTournaments } from '../api';
 import { fmtDate } from '../utils/dates';
 import { useSeason } from '../context/SeasonContext';
 import { formatHeroName } from '../utils/heroes';
@@ -61,6 +61,7 @@ export default function Home() {
   const [recap, setRecap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [predInfo, setPredInfo] = useState(null);
+  const [activeTournament, setActiveTournament] = useState(null);
 
   useEffect(() => {
     getSeasons().then(s => {
@@ -71,6 +72,17 @@ export default function Home() {
           .then(d => setPredInfo({ season: active, count: (d.predictions || []).length }))
           .catch(() => {});
       }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getWeekendTournaments().then(d => {
+      const now = new Date();
+      const active = (d.tournaments || []).find(t =>
+        (t.status === 'active' || t.status === 'upcoming') &&
+        new Date(t.end_date) >= now
+      );
+      setActiveTournament(active || null);
     }).catch(() => {});
   }, []);
 
@@ -120,6 +132,43 @@ export default function Home() {
           </Link>
         </div>
       </div>
+
+      {/* Weekend Tournament Banner */}
+      {activeTournament && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(251,191,36,0.08) 100%)',
+          border: '1px solid rgba(245,158,11,0.4)',
+          borderRadius: 14, padding: '18px 24px', marginBottom: 24,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14,
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <span style={{ fontSize: 20 }}>🏆</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: '#f59e0b' }}>{activeTournament.name}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                background: activeTournament.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+                color: activeTournament.status === 'active' ? '#22c55e' : '#f59e0b',
+                textTransform: 'uppercase', letterSpacing: 1,
+              }}>
+                {activeTournament.status === 'active' ? 'Live Now' : 'Coming Soon'}
+              </span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              {activeTournament.description || `Top ${activeTournament.games_to_count} game scores across the weekend. Play any games — best scores count.`}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+              📅 {new Date(activeTournament.start_date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+              {' → '}
+              {new Date(activeTournament.end_date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+              {activeTournament.prize_pool > 0 && <> · 💰 ${activeTournament.prize_pool} prize pool</>}
+            </div>
+          </div>
+          <Link to={`/weekend-tournament/${activeTournament.id}`}
+            className="btn btn-primary" style={{ fontSize: 13, flexShrink: 0, background: '#f59e0b', borderColor: '#f59e0b', color: '#000' }}>
+            View Leaderboard →
+          </Link>
+        </div>
+      )}
 
       {/* Server stats */}
       {loading ? (

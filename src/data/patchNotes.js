@@ -482,4 +482,11 @@ module.exports = [
     content: '📋 JOIN THE LEAGUE IMPROVEMENTS\n\n• New "How did you hear about us?" referral question added to the application form (required field, stored and displayed in Admin Panel).\n\n• Auto-registration on approval — when an admin approves an application, the player is automatically registered using their Steam profile URL. Supports both numeric /profiles/ URLs and custom vanity URLs (resolved via Steam\'s community XML endpoint, same method as steamid.io).\n\n• Discord DMs on approve/reject — applicants now receive a DM when their application is reviewed. Approval DMs include a server invite link (if configured) and confirm their registration status. Rejection DMs include any notes left by the admin.\n\n• Quick Links button — a new "📋 Applications" button appears in the Admin Panel Quick Links section with a red badge showing the number of pending applications.',
     author: 'System',
   },
+  {
+    version: '5.27',
+    title: 'Weekend Points Tournaments + Profile Averages',
+    published_at: '2026-04-21',
+    content: '🏆 WEEKEND POINTS TOURNAMENTS\nA brand-new tournament format designed for flexible play across multiple days — no fixed schedule needed.\n\n• Each player earns a per-game score based on a custom formula covering Kills (+4), Assists (+2.5), Deaths (-3), Last Hits (×0.04), GPM (×0.25), XPM (×0.22), Hero/Tower Damage, Healing, Observer Wards (+6), Sentry Wards (+8), Dewarding (+10), Camps Stacked (+7), and a Win Bonus (+25).\n\n• Play as many or as few games as you like during the tournament window — only your top N individual game scores (default: 3) count towards your total.\n\n• Live leaderboard at /weekend-tournament shows standings with expandable per-game score breakdowns so you can see exactly where every point came from.\n\n• Admins can create/edit tournaments and post a formatted Discord announcement embed directly from the tournament page.\n\n• Homepage banner automatically appears when a tournament is active or upcoming.\n\n👤 PLAYER PROFILE AVERAGES\nThree new stats added to every player\'s Averages section:\n• Average Observer Wards per game\n• Average Sentry Wards per game\n• Average Neutral Camps Stacked per game',
+    author: 'System',
+  },
 ];
