@@ -475,4 +475,11 @@ module.exports = [
     content: '🔧 LOBBY COMMANDS FIXED\nFixed a syntax error in the lobby manager that prevented it from loading entirely — the lobbyChatMessage event handler was missing its async keyword, causing a SyntaxError at module load time. This broke all lobby commands (!create_lobby, !start_lobby, etc.) even when Steam and the GC were fully connected.\n\nAlso added startup resilience: lobby commands now fall back to the module singleton if the startup initialisation was skipped, and the startup sequence logs each step individually so failures are immediately visible.',
     author: 'System',
   },
+  {
+    version: '5.26',
+    title: 'Join the League — Application Improvements',
+    published_at: '2026-04-21',
+    content: '📋 JOIN THE LEAGUE IMPROVEMENTS\n\n• New "How did you hear about us?" referral question added to the application form (required field, stored and displayed in Admin Panel).\n\n• Auto-registration on approval — when an admin approves an application, the player is automatically registered using their Steam profile URL. Supports both numeric /profiles/ URLs and custom vanity URLs (resolved via Steam\'s community XML endpoint, same method as steamid.io).\n\n• Discord DMs on approve/reject — applicants now receive a DM when their application is reviewed. Approval DMs include a server invite link (if configured) and confirm their registration status. Rejection DMs include any notes left by the admin.\n\n• Quick Links button — a new "📋 Applications" button appears in the Admin Panel Quick Links section with a red badge showing the number of pending applications.',
+    author: 'System',
+  },
 ];

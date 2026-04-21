@@ -913,6 +913,7 @@ export default function AdminPanel() {
   const [signupsFilter, setSignupsFilter] = useState('pending');
   const [signupNotes, setSignupNotes] = useState({});
   const [signupFeedback, setSignupFeedback] = useState({});
+  const [pendingSignupCount, setPendingSignupCount] = useState(null);
 
   const loadRanks = useCallback(() => {
     if (!isSuperuser) return;
@@ -929,6 +930,11 @@ export default function AdminPanel() {
   }, [isSuperuser, superuserKey, signupsFilter]);
 
   useEffect(() => { loadSignups(); }, [loadSignups]);
+
+  // Keep a stable pending count for the Quick Links badge
+  useEffect(() => {
+    if (signupsFilter === 'pending') setPendingSignupCount(signups.length);
+  }, [signups, signupsFilter]);
 
   const authHeader = { 'x-superuser-key': superuserKey };
 
@@ -1003,6 +1009,26 @@ export default function AdminPanel() {
           ].map(({ to, label }) => (
             <Link key={to} to={to} className="btn" style={{ textDecoration: 'none' }}>{label}</Link>
           ))}
+          <button
+            className="btn"
+            onClick={() => {
+              const el = document.getElementById('signup-requests');
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            style={{ position: 'relative' }}
+          >
+            📋 Applications
+            {pendingSignupCount > 0 && (
+              <span style={{
+                position: 'absolute', top: -6, right: -6,
+                background: '#e74c3c', color: '#fff',
+                borderRadius: '50%', width: 18, height: 18,
+                fontSize: '0.7rem', fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                lineHeight: 1,
+              }}>{pendingSignupCount}</span>
+            )}
+          </button>
         </div>
       </section>
 
@@ -1378,7 +1404,7 @@ export default function AdminPanel() {
         </div>
       </section>
 
-      <section style={{ marginTop: 40 }}>
+      <section id="signup-requests" style={{ marginTop: 40 }}>
         <h2 className="section-title">Sign-Up Requests</h2>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           {['pending', 'approved', 'rejected', ''].map(f => (
