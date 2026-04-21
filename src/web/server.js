@@ -2800,7 +2800,8 @@ NOTES
     try {
       const { name, description, startDate, endDate, gamesToCount, prizePool, buyIn } = req.body;
       if (!name || !startDate || !endDate) return res.status(400).json({ error: 'name, startDate, endDate required' });
-      const tournament = await db.createWeekendTournament({ name, description, startDate, endDate, gamesToCount, prizePool, buyIn });
+      const safeNum = v => (v === '' || v === null || v === undefined) ? null : Number(v);
+      const tournament = await db.createWeekendTournament({ name, description, startDate, endDate, gamesToCount: safeNum(gamesToCount) || 3, prizePool: safeNum(prizePool), buyIn: safeNum(buyIn) });
       res.json({ tournament });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -2810,9 +2811,11 @@ NOTES
   router.patch('/weekend-tournaments/:id', requireSuperuser, async (req, res) => {
     try {
       const fields = {};
+      const safeNum = v => (v === '' || v === null || v === undefined) ? null : Number(v);
+      const numericCols = new Set(['games_to_count', 'prize_pool', 'buy_in']);
       const map = { name: 'name', description: 'description', startDate: 'start_date', endDate: 'end_date', gamesToCount: 'games_to_count', prizePool: 'prize_pool', buyIn: 'buy_in', status: 'status' };
       for (const [k, col] of Object.entries(map)) {
-        if (req.body[k] !== undefined) fields[col] = req.body[k];
+        if (req.body[k] !== undefined) fields[col] = numericCols.has(col) ? safeNum(req.body[k]) : req.body[k];
       }
       const tournament = await db.updateWeekendTournament(req.params.id, fields);
       res.json({ tournament });
