@@ -2796,7 +2796,7 @@ NOTES
     }
   });
 
-  router.post('/weekend-tournaments', authMiddleware, async (req, res) => {
+  router.post('/weekend-tournaments', requireSuperuser, async (req, res) => {
     try {
       const { name, description, startDate, endDate, gamesToCount, prizePool, buyIn } = req.body;
       if (!name || !startDate || !endDate) return res.status(400).json({ error: 'name, startDate, endDate required' });
@@ -2807,7 +2807,7 @@ NOTES
     }
   });
 
-  router.patch('/weekend-tournaments/:id', authMiddleware, async (req, res) => {
+  router.patch('/weekend-tournaments/:id', requireSuperuser, async (req, res) => {
     try {
       const fields = {};
       const map = { name: 'name', description: 'description', startDate: 'start_date', endDate: 'end_date', gamesToCount: 'games_to_count', prizePool: 'prize_pool', buyIn: 'buy_in', status: 'status' };
@@ -2821,7 +2821,7 @@ NOTES
     }
   });
 
-  router.post('/weekend-tournaments/:id/announce', authMiddleware, async (req, res) => {
+  router.post('/weekend-tournaments/:id/announce', requireSuperuser, async (req, res) => {
     try {
       const tournament = await db.getWeekendTournamentById(req.params.id);
       if (!tournament) return res.status(404).json({ error: 'Not found' });
