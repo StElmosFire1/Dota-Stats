@@ -3275,17 +3275,17 @@ NOTES
 
         // --- Auto-register on approval ---
         if (status === 'approved' && discordId) {
-          const steamIdMatch = (signup.steam_url || '').match(/\/profiles\/(\d{17})/);
-          if (steamIdMatch) {
-            try {
-              await db.registerPlayer(discordId, displayName, steamIdMatch[1]);
+          try {
+            const steamId64 = await resolveSteamId64FromUrl(signup.steam_url || '');
+            if (steamId64) {
+              await db.registerPlayer(discordId, displayName, steamId64);
               sideEffects.registered = true;
-            } catch (regErr) {
-              sideEffects.registerError = regErr.message;
-              console.error('[Signups] Auto-register failed:', regErr.message);
+            } else {
+              sideEffects.registerError = 'Could not resolve a Steam64 ID from the provided URL — register manually.';
             }
-          } else {
-            sideEffects.registerError = 'Steam URL did not contain a numeric /profiles/ ID — register manually.';
+          } catch (regErr) {
+            sideEffects.registerError = regErr.message;
+            console.error('[Signups] Auto-register failed:', regErr.message);
           }
         }
 
@@ -3327,6 +3327,44 @@ NOTES
   });
 
   return router;
+}
+
+/**
+ * Resolve a Steam profile URL to a Steam64 ID.
+ * Handles /profiles/STEAM64 directly, and resolves /id/vanity URLs
+ * via the Steam community XML endpoint (no API key required).
+ */
+async function resolveSteamId64FromUrl(url) {
+  if (!url) return null;
+  const fetch = require('node-fetch');
+
+  // Direct /profiles/ URL — extract the 17-digit ID
+  const profilesMatch = url.match(/\/profiles\/(\d{17})/);
+  if (profilesMatch) return profilesMatch[1];
+
+  // Normalize to a usable base URL
+  let normalized = url.trim();
+  if (!normalized.startsWith('http')) normalized = 'https://' + normalized;
+  // Strip trailing slash
+  normalized = normalized.replace(/\/$/, '');
+
+  // Try the Steam community XML profile endpoint
+  try {
+    const xmlUrl = normalized + '?xml=1';
+    const resp = await fetch(xmlUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      timeout: 8000,
+    });
+    if (resp.ok) {
+      const text = await resp.text();
+      const idMatch = text.match(/<steamID64>(\d{17})<\/steamID64>/);
+      if (idMatch) return idMatch[1];
+    }
+  } catch (e) {
+    console.warn('[SteamResolve] XML fetch failed:', e.message);
+  }
+
+  return null;
 }
 
 const parseQueue = [];
