@@ -694,6 +694,7 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_signup_requests_status ON signup_requests(status)`);
     await p.query(`ALTER TABLE signup_requests ADD COLUMN IF NOT EXISTS mmr TEXT`);
+    await p.query(`ALTER TABLE signup_requests ADD COLUMN IF NOT EXISTS referral TEXT`);
 
     console.log('[DB] Schema migrations applied.');
     return true;
@@ -5559,12 +5560,12 @@ async function deleteMatchNote(noteId) {
   await p.query(`DELETE FROM match_notes WHERE id = $1`, [noteId]);
 }
 
-async function createSignupRequest({ discordUsername, steamUrl, preferredName, preferredPositions, message, mmr }) {
+async function createSignupRequest({ discordUsername, steamUrl, preferredName, preferredPositions, message, mmr, referral }) {
   const p = getPool();
   const res = await p.query(
-    `INSERT INTO signup_requests (discord_username, steam_url, preferred_name, preferred_positions, message, mmr)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [discordUsername, steamUrl || null, preferredName || null, preferredPositions || [], message || null, mmr || null]
+    `INSERT INTO signup_requests (discord_username, steam_url, preferred_name, preferred_positions, message, mmr, referral)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [discordUsername, steamUrl || null, preferredName || null, preferredPositions || [], message || null, mmr || null, referral || null]
   );
   return res.rows[0];
 }

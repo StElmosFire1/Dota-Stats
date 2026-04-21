@@ -15,6 +15,7 @@ const config = {
     patchChannelIds: process.env.PATCH_CHANNEL_IDS
       ? process.env.PATCH_CHANNEL_IDS.split(',').map(s => s.trim()).filter(Boolean)
       : (process.env.ANNOUNCE_CHANNEL_ID ? [process.env.ANNOUNCE_CHANNEL_ID] : []),
+    serverInvite: process.env.DISCORD_INVITE || null,
     mmrRoles: {
       // Role IDs assigned based on MMR thresholds (set via env vars in Discord server)
       // Tiers ordered highest to lowest — first match wins

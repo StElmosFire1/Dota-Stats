@@ -17,6 +17,7 @@ export default function Join() {
     preferredName: '',
     mmr: '',
     preferredPositions: [],
+    referral: '',
     message: '',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -37,6 +38,7 @@ export default function Join() {
     if (!form.discordUsername.trim()) { setError('Discord ID is required.'); return; }
     if (!form.steamUrl.trim()) { setError('Steam Profile URL is required.'); return; }
     if (!form.mmr.trim()) { setError('Peak MMR / Rank is required.'); return; }
+    if (!form.referral.trim()) { setError('Please tell us how you heard about us.'); return; }
     setSubmitting(true);
     setError(null);
     try {
@@ -210,6 +212,18 @@ export default function Join() {
               ))}
             </div>
           )}
+        </div>
+
+        <div>
+          <label style={labelStyle}>How did you hear about us / who do you know from the group? {required}</label>
+          <input
+            style={inputStyle}
+            type="text"
+            placeholder="e.g. I know Corvidae, saw it on Reddit, friend referred me…"
+            value={form.referral}
+            onChange={e => setForm(f => ({ ...f, referral: e.target.value }))}
+            required
+          />
         </div>
 
         <div>

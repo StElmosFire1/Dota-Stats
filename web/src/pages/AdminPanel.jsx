@@ -912,6 +912,7 @@ export default function AdminPanel() {
   const [signups, setSignups] = useState([]);
   const [signupsFilter, setSignupsFilter] = useState('pending');
   const [signupNotes, setSignupNotes] = useState({});
+  const [signupFeedback, setSignupFeedback] = useState({});
 
   const loadRanks = useCallback(() => {
     if (!isSuperuser) return;
@@ -1416,9 +1417,19 @@ export default function AdminPanel() {
                       {req.steam_url && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Steam: <a href={req.steam_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{req.steam_url}</a></div>}
                       {req.mmr && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Peak MMR / Rank: <strong style={{ color: 'var(--text-primary)' }}>{req.mmr}</strong></div>}
                       {pos && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Position preference: {pos}</div>}
+                      {req.referral && <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Referral: <span style={{ color: 'var(--text-secondary)' }}>{req.referral}</span></div>}
                       {req.message && <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6, fontStyle: 'italic' }}>"{req.message}"</div>}
                       {req.admin_notes && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Admin notes: {req.admin_notes}</div>}
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Submitted: {date}</div>
+                      {signupFeedback[req.id] && (
+                        <div style={{ marginTop: 6, fontSize: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ color: signupFeedback[req.id].dmSent ? 'var(--accent-green)' : '#f59e0b' }}>
+                            {signupFeedback[req.id].dmSent ? '✉️ DM sent' : '⚠️ DM not sent (user may have DMs off)'}
+                          </span>
+                          {signupFeedback[req.id].registered && <span style={{ color: 'var(--accent-green)' }}>✅ Auto-registered</span>}
+                          {signupFeedback[req.id].registerError && <span style={{ color: '#f59e0b' }}>⚠️ {signupFeedback[req.id].registerError}</span>}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180 }}>
                       <textarea
@@ -1434,7 +1445,8 @@ export default function AdminPanel() {
                           style={{ background: '#15803d', color: '#fff', flex: 1 }}
                           onClick={async () => {
                             try {
-                              await updateSignupRequest(req.id, { status: 'approved', adminNotes: signupNotes[req.id] ?? req.admin_notes }, superuserKey);
+                              const result = await updateSignupRequest(req.id, { status: 'approved', adminNotes: signupNotes[req.id] ?? req.admin_notes }, superuserKey);
+                              setSignupFeedback(f => ({ ...f, [req.id]: result }));
                               loadSignups();
                             } catch (e) { alert(e.message); }
                           }}
@@ -1444,7 +1456,8 @@ export default function AdminPanel() {
                           style={{ background: '#7f1d1d', color: '#fff', flex: 1 }}
                           onClick={async () => {
                             try {
-                              await updateSignupRequest(req.id, { status: 'rejected', adminNotes: signupNotes[req.id] ?? req.admin_notes }, superuserKey);
+                              const result = await updateSignupRequest(req.id, { status: 'rejected', adminNotes: signupNotes[req.id] ?? req.admin_notes }, superuserKey);
+                              setSignupFeedback(f => ({ ...f, [req.id]: result }));
                               loadSignups();
                             } catch (e) { alert(e.message); }
                           }}

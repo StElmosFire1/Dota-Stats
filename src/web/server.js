@@ -3221,7 +3221,7 @@ NOTES
 
   router.post('/join', express.json(), async (req, res) => {
     try {
-      const { discordUsername, steamUrl, preferredName, preferredPositions, message, mmr } = req.body;
+      const { discordUsername, steamUrl, preferredName, preferredPositions, message, mmr, referral } = req.body;
       if (!discordUsername || !discordUsername.trim()) {
         return res.status(400).json({ error: 'Discord ID is required' });
       }
@@ -3238,6 +3238,7 @@ NOTES
         preferredPositions: Array.isArray(preferredPositions) ? preferredPositions.map(Number) : [],
         message: message ? message.trim() : null,
         mmr: mmr.trim(),
+        referral: referral ? referral.trim() : null,
       });
       res.json({ success: true, id: row.id });
     } catch (err) {
@@ -3261,7 +3262,65 @@ NOTES
       const { status, adminNotes } = req.body;
       if (!status) return res.status(400).json({ error: 'status is required' });
       await db.updateSignupRequest(req.params.id, { status, adminNotes, reviewedBy: 'admin' });
-      res.json({ success: true });
+
+      // Fetch full request for DM + auto-registration
+      const requests = await db.getSignupRequests(null);
+      const signup = requests.find(r => r.id === parseInt(req.params.id));
+      const sideEffects = { dmSent: false, registered: false, registerError: null };
+
+      if (signup) {
+        const discordId = signup.discord_username?.trim();
+        const displayName = signup.preferred_name || discordId;
+        const { config } = require('../config');
+
+        // --- Auto-register on approval ---
+        if (status === 'approved' && discordId) {
+          const steamIdMatch = (signup.steam_url || '').match(/\/profiles\/(\d{17})/);
+          if (steamIdMatch) {
+            try {
+              await db.registerPlayer(discordId, displayName, steamIdMatch[1]);
+              sideEffects.registered = true;
+            } catch (regErr) {
+              sideEffects.registerError = regErr.message;
+              console.error('[Signups] Auto-register failed:', regErr.message);
+            }
+          } else {
+            sideEffects.registerError = 'Steam URL did not contain a numeric /profiles/ ID — register manually.';
+          }
+        }
+
+        // --- Discord DM ---
+        if (discordId && /^\d+$/.test(discordId)) {
+          try {
+            const bot = getDiscordBot();
+            const user = await bot.client.users.fetch(discordId).catch(() => null);
+            if (user) {
+              let dmText;
+              if (status === 'approved') {
+                const inviteClause = config.discord.serverInvite
+                  ? `\n\n🔗 **Join the server here:** ${config.discord.serverInvite}`
+                  : '';
+                const regClause = sideEffects.registered
+                  ? '\n\n✅ Your account has been automatically registered — you\'ll appear on the leaderboard after your first game.'
+                  : sideEffects.registerError
+                    ? `\n\n⚠️ Please ask an admin to register your Steam account manually (${sideEffects.registerError}).`
+                    : '';
+                dmText = `🎉 **Welcome to the OCE Inhouse League, ${displayName}!**\n\nYour application has been **approved**.${inviteClause}${regClause}` +
+                  (adminNotes ? `\n\n📝 Note from admin: *${adminNotes}*` : '');
+              } else {
+                dmText = `Hi **${displayName}**, thanks for your interest in the OCE Inhouse League.\n\nUnfortunately your application was **not approved** at this time.` +
+                  (adminNotes ? `\n\n📝 Note from admin: *${adminNotes}*` : '');
+              }
+              await user.send(dmText);
+              sideEffects.dmSent = true;
+            }
+          } catch (dmErr) {
+            console.error('[Signups] DM failed:', dmErr.message);
+          }
+        }
+      }
+
+      res.json({ success: true, ...sideEffects });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
