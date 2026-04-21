@@ -4,13 +4,14 @@ import {
   getTournaments, getTournamentById, createTournament, addTournamentParticipant,
   removeTournamentParticipant, generateTournamentBracket, setTournamentMatchWinner,
   clearTournamentMatchWinner, deleteTournament, getAllPlayers,
+  getWeekendTournaments, createWeekendTournament,
 } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
 
 const STATUS_LABELS = { upcoming: '⏳ Upcoming', active: '🏆 Active', completed: '✅ Completed' };
 const STATUS_COLORS = { upcoming: 'var(--text-muted)', active: 'var(--accent-gold, #f59e0b)', completed: 'var(--radiant-color)' };
-const FORMAT_LABELS = { single_elim: 'Single Elimination', double_elim: 'Double Elimination' };
+const FORMAT_LABELS = { single_elim: 'Single Elimination', double_elim: 'Double Elimination', weekend_points: 'Points Tournament' };
 
 function RoundName(round, totalRounds) {
   const remaining = totalRounds - round + 1;
@@ -417,36 +418,57 @@ function TournamentDetail() {
   );
 }
 
+const inputStyle = { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 6, padding: '7px 12px', fontSize: 14, width: '100%' };
+
 function TournamentList() {
+  const navigate = useNavigate();
   const { seasonId } = useSeason();
   const [tournaments, setTournaments] = useState([]);
   const [loading, setLoading] = useState(true);
   const { isSuperuser, superuserKey } = useSuperuser();
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', format: 'single_elim' });
+  const [form, setForm] = useState({
+    name: '', description: '', format: 'single_elim',
+    startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '',
+  });
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
+  const loadAll = useCallback(() => {
     setLoading(true);
-    getTournaments(seasonId)
-      .then(d => setTournaments(d.tournaments || []))
+    Promise.all([
+      getTournaments(seasonId).then(d => (d.tournaments || []).map(t => ({ ...t, _type: 'bracket' }))),
+      getWeekendTournaments().then(d => (d.tournaments || []).map(t => ({ ...t, _type: 'weekend', format: 'weekend_points' }))),
+    ])
+      .then(([brackets, weekends]) => {
+        const all = [...brackets, ...weekends].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        setTournaments(all);
+      })
       .catch(() => setTournaments([]))
       .finally(() => setLoading(false));
   }, [seasonId]);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
     setCreating(true);
     try {
-      await createTournament({ ...form, seasonId }, superuserKey);
-      const updated = await getTournaments(seasonId);
-      setTournaments(updated.tournaments || []);
-      setForm({ name: '', description: '', format: 'single_elim' });
-      setShowCreate(false);
+      if (form.format === 'weekend_points') {
+        const result = await createWeekendTournament(form, superuserKey);
+        setShowCreate(false);
+        navigate(`/weekend-tournament/${result.tournament.id}`);
+      } else {
+        await createTournament({ ...form, seasonId }, superuserKey);
+        loadAll();
+        setForm({ name: '', description: '', format: 'single_elim', startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '' });
+        setShowCreate(false);
+      }
     } catch (e) { alert(e.message); }
     setCreating(false);
   };
+
+  const isPoints = form.format === 'weekend_points';
 
   return (
     <div>
@@ -466,22 +488,45 @@ function TournamentList() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Name *</label>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required
-                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 6, padding: '7px 12px', fontSize: 14, width: '100%' }} />
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required style={inputStyle} />
             </div>
             <div>
-              <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Format</label>
-              <select value={form.format} onChange={e => setForm(f => ({ ...f, format: e.target.value }))}
-                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 6, padding: '7px 12px', fontSize: 14, width: '100%' }}>
+              <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Type</label>
+              <select value={form.format} onChange={e => setForm(f => ({ ...f, format: e.target.value }))} style={inputStyle}>
                 <option value="single_elim">Single Elimination</option>
                 <option value="double_elim">Double Elimination</option>
+                <option value="weekend_points">Points Tournament</option>
               </select>
             </div>
+            {isPoints && (
+              <>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Start Date *</label>
+                  <input type="datetime-local" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} required style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>End Date *</label>
+                  <input type="datetime-local" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} required style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Games to Count</label>
+                  <input type="number" min="1" max="20" value={form.gamesToCount} onChange={e => setForm(f => ({ ...f, gamesToCount: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Prize Pool ($)</label>
+                  <input type="number" min="0" value={form.prizePool} onChange={e => setForm(f => ({ ...f, prizePool: e.target.value }))} placeholder="0" style={inputStyle} />
+                </div>
+              </>
+            )}
           </div>
+          {isPoints && (
+            <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+              Players earn points from every game played during the window. Only their top <strong>{form.gamesToCount}</strong> game scores count toward the final total.
+            </div>
+          )}
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Description (optional)</label>
-            <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 6, padding: '7px 12px', fontSize: 14, width: '100%' }} />
+            <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={inputStyle} />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" disabled={creating}
@@ -504,28 +549,46 @@ function TournamentList() {
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-        {tournaments.map(t => (
-          <Link key={t.id} to={`/tournaments/${t.id}`} style={{ textDecoration: 'none' }}>
-            <div style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-              padding: 20, transition: 'border-color 0.15s, transform 0.1s',
-              ':hover': { borderColor: 'var(--accent-blue)' },
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{t.name}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: STATUS_COLORS[t.status] || 'var(--text-muted)' }}>
-                  {STATUS_LABELS[t.status] || t.status}
-                </span>
+        {tournaments.map(t => {
+          const isWeekend = t._type === 'weekend';
+          const href = isWeekend ? `/weekend-tournament/${t.id}` : `/tournaments/${t.id}`;
+          return (
+            <Link key={`${t._type}-${t.id}`} to={href} style={{ textDecoration: 'none' }}>
+              <div style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+                padding: 20, height: '100%', boxSizing: 'border-box',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>{t.name}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_COLORS[t.status] || 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {STATUS_LABELS[t.status] || t.status}
+                  </span>
+                </div>
+                {t.description && <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8, margin: '0 0 8px' }}>{t.description}</p>}
+                <div style={{ display: 'flex', gap: 10, fontSize: 12, color: 'var(--text-muted)', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{
+                    background: isWeekend ? 'rgba(245,158,11,0.12)' : 'rgba(59,130,246,0.12)',
+                    color: isWeekend ? '#f59e0b' : 'var(--accent-blue)',
+                    borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 700,
+                  }}>
+                    {FORMAT_LABELS[t.format] || t.format}
+                  </span>
+                  {isWeekend ? (
+                    <>
+                      {t.start_date && <span>📅 {new Date(t.start_date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} → {new Date(t.end_date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>}
+                      {t.prize_pool > 0 && <span>💰 ${t.prize_pool}</span>}
+                    </>
+                  ) : (
+                    <>
+                      {t.participant_count !== undefined && <span>👥 {t.participant_count} players</span>}
+                      {t.season_name && <span>📅 {t.season_name}</span>}
+                    </>
+                  )}
+                </div>
               </div>
-              {t.description && <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8 }}>{t.description}</p>}
-              <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-muted)' }}>
-                <span>{FORMAT_LABELS[t.format] || t.format}</span>
-                <span>👥 {t.participant_count} players</span>
-                {t.season_name && <span>📅 {t.season_name}</span>}
-              </div>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
