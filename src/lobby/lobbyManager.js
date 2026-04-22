@@ -44,6 +44,10 @@ class LobbyManager extends EventEmitter {
     // Connection phase tracking — detects when "Players Connecting" screen fails.
     this._lastGameState = 0;
     this._enteredLoadingPhase = false;
+    // Leave-after-launch: bot leaves lobby right after sending the launch command so
+    // its host account doesn't interfere with the game server connection phase.
+    this._leaveAfterLaunch = false;
+    this._leaveTimer = null;
   }
 
   initListeners() {
@@ -116,7 +120,7 @@ class LobbyManager extends EventEmitter {
           }
           const seated = this.currentLobby?._gamePlayerCount || 0;
           if (this._countdownTimer) this._abortCountdown();
-          this.launchLobby().catch((e) => console.error('[Lobby] Manual launch failed:', e.message));
+          try { this.launchLobby(); } catch (e) { console.error('[Lobby] Manual launch failed:', e.message); }
           this._chat(`🚀 Game launched by ${sender}! (${seated}/10 players seated)`);
           this.emit('lobbyChatCommandStartGame', { sender, accountId });
           break;
@@ -237,6 +241,13 @@ class LobbyManager extends EventEmitter {
         this.currentLobby.matchId = update.matchId;
         console.log(`[Lobby] Match ID captured: ${update.matchId}`);
         this.emit('matchIdCaptured', update.matchId);
+        // If we're in leave-after-launch mode, this matchId is exactly what we were
+        // waiting for — leave the lobby immediately now we have it.
+        if (this._leaveAfterLaunch) {
+          console.log('[Lobby] matchId captured — leaving lobby now so bot does not interfere with game connection.');
+          this._doLeaveAfterLaunch();
+          return;
+        }
       }
 
       if (this.currentLobby && update.playerCount !== undefined) {
@@ -441,35 +452,57 @@ class LobbyManager extends EventEmitter {
     }
   }
 
-  async launchLobby() {
+  launchLobby() {
     const client = getSteamClient();
     if (!client.gcClient || !client.gcClient.isReady) throw new Error('GC not connected.');
     if (this.state !== LobbyState.WAITING) throw new Error('No active lobby in waiting state.');
 
-    // Pre-launch safety: verify the bot is NOT in a game slot (team 0=Radiant, 1=Dire, 4=Broadcaster).
-    // These slots require a Dota 2 game client to connect during the "Players Connecting" phase.
-    // The bot has no game binary, so being in any of them causes the connection timer to expire.
-    const selfSteam64 = client.steamClient.steamID ? client.steamClient.steamID.getSteamID64() : null;
-    if (selfSteam64 && this.currentLobby && Array.isArray(this.currentLobby.players)) {
-      const GAME_SLOTS = new Set([0, 1, 4]); // Radiant, Dire, Broadcaster — all require client connection
-      const botMember = this.currentLobby.players.find((p) => p.steamId === selfSteam64);
-      if (botMember) {
-        console.log(`[Lobby] Pre-launch bot slot check: team=${botMember.team} slot=${botMember.slot}`);
-        if (GAME_SLOTS.has(botMember.team)) {
-          console.warn(`[Lobby] ⚠️ Bot is in game slot (team=${botMember.team}) at launch time! Moving to Spectator now...`);
-          client.gcClient.setPlayerTeamSlot(selfSteam64, 5, 0);
-          // Wait 1.5s for the GC to process the move before launching.
-          await new Promise((r) => setTimeout(r, 1500));
-        } else {
-          console.log(`[Lobby] Bot is in safe slot (team=${botMember.team}) — OK to launch.`);
-        }
-      } else {
-        console.warn('[Lobby] Bot not found in lobby member list — proceeding with launch anyway.');
+    client.gcClient.launchLobby();
+    console.log('[Lobby] Launch command sent. Bot will leave lobby once matchId is captured (or after 25s timeout).');
+
+    // The bot is the lobby creator/host. Even in a spectator slot, Valve's game server
+    // requires the host account to connect. Since the bot has no Dota 2 binary it
+    // can never connect, causing the "Players Connecting" timer to expire and the
+    // game to be cancelled.  Leaving the lobby immediately after launch transfers
+    // host ownership to a real player and lets the game proceed normally.
+    this._leaveAfterLaunch = true;
+    this._leaveTimer = setTimeout(() => {
+      if (this._leaveAfterLaunch) {
+        console.log('[Lobby] 25s timeout — leaving lobby without matchId (game server may not have assigned one yet).');
+        this._doLeaveAfterLaunch();
       }
+    }, 25000);
+
+    return true;
+  }
+
+  // Called when the bot should leave the lobby post-launch.
+  // Preserves matchId + lobbyName for auto-recording, then exits cleanly.
+  _doLeaveAfterLaunch() {
+    if (this._leaveTimer) { clearTimeout(this._leaveTimer); this._leaveTimer = null; }
+    this._leaveAfterLaunch = false;
+
+    const client = getSteamClient();
+    const matchId = this.currentLobby ? this.currentLobby.matchId : null;
+    const lobbyName = this.currentLobby ? this.currentLobby.name : 'Unknown';
+    const players = this.currentLobby ? [...(this.currentLobby.players || [])] : [];
+
+    try {
+      if (client && client.gcClient) client.gcClient.leavePracticeLobby();
+    } catch (e) {
+      console.warn('[Lobby] leavePracticeLobby error:', e.message);
     }
 
-    client.gcClient.launchLobby();
-    return true;
+    this._clearRichPresence();
+    if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
+    this.state = LobbyState.IDLE;
+    this.currentLobby = null;
+    this.lobbyId = null;
+    this._lastGameState = 0;
+    this._enteredLoadingPhase = false;
+
+    console.log(`[Lobby] Bot left lobby after launch. matchId=${matchId || 'none'}, lobbyName="${lobbyName}"`);
+    this.emit('launchedAndLeft', { matchId, lobbyName, players });
   }
 
   // Assign balanced teams in the lobby via GC.
@@ -555,9 +588,7 @@ class LobbyManager extends EventEmitter {
         this._countdownTimer = null;
         this._chat('🚀 Launching game now!');
         console.log('[Lobby] Countdown complete — launching lobby.');
-        this.launchLobby().catch((e) => {
-          console.error('[Lobby] Auto-launch after countdown failed:', e.message);
-        });
+        try { this.launchLobby(); } catch (e) { console.error('[Lobby] Auto-launch after countdown failed:', e.message); }
       } else if (ANNOUNCE_AT.has(remaining)) {
         this._chat(`⏱ Game starting in ${remaining} second${remaining !== 1 ? 's' : ''}...`);
       }
@@ -770,6 +801,11 @@ class LobbyManager extends EventEmitter {
       clearTimeout(this._connectionFailTimer);
       this._connectionFailTimer = null;
     }
+    if (this._leaveTimer) {
+      clearTimeout(this._leaveTimer);
+      this._leaveTimer = null;
+    }
+    this._leaveAfterLaunch = false;
     this._clearRichPresence();
     this.state = LobbyState.IDLE;
     this.currentLobby = null;

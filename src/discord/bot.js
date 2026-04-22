@@ -87,6 +87,18 @@ class DiscordBot {
       );
     });
 
+    lobbyManager.on('launchedAndLeft', ({ matchId, lobbyName }) => {
+      const idNote = matchId ? `Match ID: **${matchId}**` : 'Match ID not yet assigned by the game server';
+      this._notifyChannel(
+        `🚀 **Game launched!** Bot has stepped back from the lobby so it doesn't block the game connection.\n` +
+        `${idNote}\n` +
+        `Stats will auto-record via OpenDota when the game ends. If auto-record doesn't trigger within 2 hours, use \`!record ${matchId || '<match_id>'}\`.`
+      );
+      if (matchId) {
+        this._pollAndRecordMatch(matchId, lobbyName);
+      }
+    });
+
     lobbyManager.on('connectionFailed', (lobby) => {
       const msg =
         `⚠️ **Game connection failed** — a player didn't load in time and the server dropped everyone back to the lobby.\n` +
@@ -894,8 +906,8 @@ class DiscordBot {
     try {
       // Cancel any active countdown first, then force-launch
       if (lobbyManager._countdownTimer) lobbyManager._abortCountdown();
-      await lobbyManager.launchLobby();
-      await msg.reply(`🚀 **Game launched!** (${seated}/10 players seated) — Match is starting in "${status.lobby.name}".`);
+      lobbyManager.launchLobby();
+      await msg.reply(`🚀 **Game launched!** (${seated}/10 players seated) — Bot stepping back from lobby. Stats will auto-record when the game ends.`);
     } catch (err) {
       await msg.reply(`Error: ${err.message}`);
     }
@@ -1273,6 +1285,53 @@ class DiscordBot {
       .setFooter({ text: 'Full stats and profiles at the web dashboard' });
 
     await msg.reply({ embeds: [embed] });
+  }
+
+  // Polls OpenDota every 5 minutes until the match appears, then auto-records.
+  // Called after the bot leaves the lobby post-launch (no GC monitoring available).
+  _pollAndRecordMatch(matchId, lobbyName, attemptsLeft = 36) {
+    if (attemptsLeft <= 0) {
+      this._notifyChannel(`⏰ Auto-record gave up after 3 hours for match **${matchId}**. Use \`!record ${matchId}\` manually.`);
+      return;
+    }
+    setTimeout(async () => {
+      try {
+        const sheetsStore = getSheetsStore();
+        const statsService = getStatsService();
+        if (sheetsStore.initialized) {
+          const already = await sheetsStore.isMatchRecorded(matchId);
+          if (already) {
+            console.log(`[AutoRecord] Match ${matchId} already recorded — stopping poll.`);
+            return;
+          }
+        }
+        const opendota = getOpenDota();
+        const matchStats = await opendota.getMatch(matchId);
+        if (!matchStats) {
+          console.log(`[AutoRecord] Match ${matchId} not on OpenDota yet (attempt ${37 - attemptsLeft}/36) — retrying in 5 min.`);
+          this._pollAndRecordMatch(matchId, lobbyName, attemptsLeft - 1);
+          return;
+        }
+        this._notifyChannel(`📊 Match **${matchId}** found on OpenDota — recording now...`);
+        await this._recordMatchData(matchStats, lobbyName, 'auto-opendota');
+        await this._markRecorded(matchId, 'auto-opendota');
+        const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
+        const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
+        await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
+        const statsChannels = await this._resolveChannels(
+          config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds : (this.lobbyChannelId ? [this.lobbyChannelId] : [])
+        );
+        for (const ch of statsChannels) {
+          await this._sendMatchSummary(matchStats, lobbyName, ch).catch((e) =>
+            console.error(`[AutoRecord] Poll summary error (${ch.id}):`, e.message)
+          );
+        }
+        console.log(`[AutoRecord] Match ${matchId} recorded from OpenDota poll.`);
+      } catch (err) {
+        console.error('[AutoRecord] Poll error:', err.message);
+        this._pollAndRecordMatch(matchId, lobbyName, attemptsLeft - 1);
+      }
+    }, 5 * 60 * 1000);
   }
 
   async _recordMatchData(matchStats, lobbyName, recordedBy) {
