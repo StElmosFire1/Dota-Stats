@@ -1287,8 +1287,9 @@ class DiscordBot {
     await msg.reply({ embeds: [embed] });
   }
 
-  // Polls OpenDota every 5 minutes until the match appears, then auto-records.
-  // Called after the bot leaves the lobby post-launch (no GC monitoring available).
+  // Polls Valve's GC directly every 5 minutes until the match is finished, then records.
+  // Works for practice lobbies (which don't appear on OpenDota).
+  // The GC k_EMsgGCMatchDetailsRequest returns result=1 + match_outcome != 0 when done.
   _pollAndRecordMatch(matchId, lobbyName, attemptsLeft = 36) {
     if (attemptsLeft <= 0) {
       this._notifyChannel(`⏰ Auto-record gave up after 3 hours for match **${matchId}**. Use \`!record ${matchId}\` manually.`);
@@ -1296,25 +1297,78 @@ class DiscordBot {
     }
     setTimeout(async () => {
       try {
-        const sheetsStore = getSheetsStore();
-        const statsService = getStatsService();
-        if (sheetsStore.initialized) {
-          const already = await sheetsStore.isMatchRecorded(matchId);
-          if (already) {
-            console.log(`[AutoRecord] Match ${matchId} already recorded — stopping poll.`);
-            return;
-          }
-        }
-        const opendota = getOpenDota();
-        const matchStats = await opendota.getMatch(matchId);
-        if (!matchStats) {
-          console.log(`[AutoRecord] Match ${matchId} not on OpenDota yet (attempt ${37 - attemptsLeft}/36) — retrying in 5 min.`);
+        const steamClient = tryGetSteamClient();
+        const gcClient = steamClient?.gcClient;
+        if (!gcClient || !gcClient.isReady) {
+          console.log(`[AutoRecord] GC not ready — retrying match ${matchId} in 5 min.`);
           this._pollAndRecordMatch(matchId, lobbyName, attemptsLeft - 1);
           return;
         }
-        this._notifyChannel(`📊 Match **${matchId}** found on OpenDota — recording now...`);
-        await this._recordMatchData(matchStats, lobbyName, 'auto-opendota');
-        await this._markRecorded(matchId, 'auto-opendota');
+
+        // Request match details directly from Valve's GC. Works for any match including
+        // practice lobbies. Returns null/error while the game is still in progress.
+        const details = await gcClient.requestMatchDetails(matchId).catch(() => null);
+        const match = details?.match;
+        const outcome = match?.match_outcome ?? match?.matchOutcome ?? 0;
+
+        if (!details || details.result !== 1 || !match || outcome === 0) {
+          console.log(`[AutoRecord] Match ${matchId} not finished yet (attempt ${37 - attemptsLeft}/36, result=${details?.result}, outcome=${outcome}) — retrying in 5 min.`);
+          this._pollAndRecordMatch(matchId, lobbyName, attemptsLeft - 1);
+          return;
+        }
+
+        // Game has ended. Build a matchStats object from the GC response.
+        const STEAM64_OFFSET = BigInt('76561197960265728');
+        const radiantWin = outcome === 2; // 2 = Radiant victory, 3 = Dire victory
+        const gcPlayers = match.players || [];
+        const players = gcPlayers
+          .filter((p) => p.team === 0 || p.team === 1)
+          .map((p) => {
+            const accountId = (p.account_id || p.accountId || 0).toString();
+            const steam64 = accountId !== '0'
+              ? (BigInt(accountId) + STEAM64_OFFSET).toString()
+              : '0';
+            return {
+              accountId,
+              steamId64: steam64,
+              heroId: p.hero_id || p.heroId || 0,
+              team: p.team === 0 ? 'radiant' : 'dire',
+              slot: p.player_slot ?? p.slot ?? 0,
+              kills: p.kills || 0,
+              deaths: p.deaths || 0,
+              assists: p.assists || 0,
+              gpm: p.gold_per_min || p.goldPerMin || 0,
+              xpm: p.xp_per_min || p.xpPerMin || 0,
+              heroDamage: p.hero_damage || p.heroDamage || 0,
+              towerDamage: p.tower_damage || p.towerDamage || 0,
+              heroHealing: p.hero_healing || p.heroHealing || 0,
+              lastHits: p.last_hits || p.lastHits || 0,
+              denies: p.denies || 0,
+            };
+          });
+
+        const matchStats = {
+          matchId: matchId.toString(),
+          radiantWin,
+          duration: match.duration || 0,
+          lobbyType: match.lobby_type ?? match.lobbyType ?? 1,
+          gameMode: match.game_mode ?? match.gameMode ?? 0,
+          startTime: match.start_time ?? match.startTime ?? Math.floor(Date.now() / 1000),
+          players,
+          source: 'gc-poll',
+        };
+
+        this._notifyChannel(`📊 Match **${matchId}** ended — recording stats...`);
+        const sheetsStore = getSheetsStore();
+        const statsService = getStatsService();
+
+        if (sheetsStore.initialized) {
+          const already = await sheetsStore.isMatchRecorded(matchId);
+          if (already) { console.log(`[AutoRecord] Match ${matchId} already recorded.`); return; }
+        }
+
+        await this._recordMatchData(matchStats, lobbyName, 'gc-poll');
+        await this._markRecorded(matchId, 'gc-poll');
         const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
         const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
         await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
@@ -1326,9 +1380,23 @@ class DiscordBot {
             console.error(`[AutoRecord] Poll summary error (${ch.id}):`, e.message)
           );
         }
-        console.log(`[AutoRecord] Match ${matchId} recorded from OpenDota poll.`);
+
+        // Also trigger replay download for detailed stats (damage, wards, etc.)
+        try {
+          const { autoDownloadAndProcessReplay } = require('../services/replayDownloader');
+          const { processReplayInternal } = require('../web/server');
+          autoDownloadAndProcessReplay(
+            gcClient, matchId,
+            (filePath, source) => processReplayInternal(filePath, source),
+            (msg) => this._notifyChannel(msg)
+          ).catch((e) => console.error('[ReplayDL] Poll replay error:', e.message));
+        } catch (e) {
+          console.warn('[ReplayDL] Could not start replay download after poll:', e.message);
+        }
+
+        console.log(`[AutoRecord] Match ${matchId} recorded from GC poll.`);
       } catch (err) {
-        console.error('[AutoRecord] Poll error:', err.message);
+        console.error('[AutoRecord] GC poll error:', err.message);
         this._pollAndRecordMatch(matchId, lobbyName, attemptsLeft - 1);
       }
     }, 5 * 60 * 1000);
