@@ -68,7 +68,7 @@ async function main() {
   // --- Steam login (kept for connectivity health check) ---
   let steamConnected = false;
   let steamLoggedInElsewhere = false;
-  if (config.steam.accountName && config.steam.password) {
+  if (config.steam.accountName && config.steam.password && process.env.DISABLE_STEAM !== 'true') {
     try {
       const { getSteamClient } = require('./steam/steamClient');
       const steamClient = getSteamClient();

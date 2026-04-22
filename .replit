@@ -47,6 +47,9 @@ SHEET_ID = "1EjFnAnEkDkbgh4gSCmP2xwTZiAlUDsCCHLsrLShhAcE"
 ANNOUNCE_CHANNEL_ID = "1380084621676646453"
 WEEKLY_RECAP_CHANNEL_ID = "1380084621676646453"
 
+[userenv.development]
+DISABLE_STEAM = "true"
+
 [[ports]]
 localPort = 3000
 externalPort = 3000
