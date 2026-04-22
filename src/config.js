@@ -115,7 +115,7 @@ const config = {
     credsPath: './creds.json',
   },
   dota: {
-    serverRegion: 5,
+    serverRegion: 7, // 7 = Australia, 5 = SEA
     gameMode: 22,
   },
 
