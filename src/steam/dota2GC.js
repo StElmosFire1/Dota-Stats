@@ -752,6 +752,7 @@ class Dota2GCClient extends EventEmitter {
   }
 
   // DOTA_GC_TEAM values: 0=Radiant, 1=Dire, 4=Broadcaster, 5=Spectator, 6=PlayerPool
+  // Move another player (admin only) — includes steam_id so the GC knows who to move.
   setPlayerTeamSlot(steamId64, team, slot) {
     if (!this.isReady) throw new Error('GC not ready.');
     try {
@@ -764,6 +765,25 @@ class Dota2GCClient extends EventEmitter {
       return true;
     } catch (e) {
       console.warn('[Dota2 GC] setPlayerTeamSlot failed:', e.message);
+      return false;
+    }
+  }
+
+  // Move the bot itself to a non-game slot — no steam_id so the GC applies it to the sender.
+  // Use team=5 (Spectator) or team=6 (PlayerPool/Unassigned). Call after creating a lobby.
+  setSelfTeamSlot(team, slot = 0) {
+    if (!this.isReady) throw new Error('GC not ready.');
+    try {
+      const root = getLobbyProtos();
+      const Type = root.lookupType('dota.CMsgPracticeLobbySetTeamSlot');
+      // Deliberately omit steam_id — GC applies this to the sender (the bot itself).
+      const msg = Type.create({ team, slot });
+      const buf = Buffer.from(Type.encode(msg).finish());
+      this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbySetTeamSlot, buf);
+      console.log(`[Dota2 GC] SetSelfTeamSlot sent — team=${team} slot=${slot}`);
+      return true;
+    } catch (e) {
+      console.warn('[Dota2 GC] setSelfTeamSlot failed:', e.message);
       return false;
     }
   }

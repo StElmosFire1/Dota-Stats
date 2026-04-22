@@ -370,10 +370,20 @@ class LobbyManager extends EventEmitter {
         this._setRichPresence(this.lobbyId);
       }
 
-      // Move bot to broadcast channel so it doesn't occupy a player slot
+      // Move bot to Spectator (team=5) so it doesn't occupy a game player slot.
+      // The bot has no Dota 2 game client — if left in Radiant/Dire it will cause
+      // the match to fail at the Players Connecting screen when it never loads in.
+      // Send twice (2s and 4s) as a safeguard against a dropped GC message.
       setTimeout(() => {
-        try { client.gcClient.joinBroadcastChannel(0); } catch {}
+        try { client.gcClient.setSelfTeamSlot(5, 0); } catch (e) {
+          console.warn('[Lobby] setSelfTeamSlot(spectator) attempt 1 failed:', e.message);
+        }
       }, 2000);
+      setTimeout(() => {
+        try { client.gcClient.setSelfTeamSlot(5, 0); } catch (e) {
+          console.warn('[Lobby] setSelfTeamSlot(spectator) attempt 2 failed:', e.message);
+        }
+      }, 4000);
 
       console.log(`[Lobby] Created lobby: ${name} (ID: ${this.lobbyId || 'pending'})`);
       return this.currentLobby;
@@ -552,6 +562,18 @@ class LobbyManager extends EventEmitter {
         joinedExisting: true,
       };
       this.state = LobbyState.WAITING;
+
+      // Move bot to Spectator so it doesn't take a player slot (same logic as createLobby).
+      setTimeout(() => {
+        try { client.gcClient.setSelfTeamSlot(5, 0); } catch (e) {
+          console.warn('[Lobby] joinLobby setSelfTeamSlot attempt 1 failed:', e.message);
+        }
+      }, 2000);
+      setTimeout(() => {
+        try { client.gcClient.setSelfTeamSlot(5, 0); } catch (e) {
+          console.warn('[Lobby] joinLobby setSelfTeamSlot attempt 2 failed:', e.message);
+        }
+      }, 4000);
 
       console.log(`[Lobby] Joined existing lobby: ${this.lobbyId}`);
       return this.currentLobby;
