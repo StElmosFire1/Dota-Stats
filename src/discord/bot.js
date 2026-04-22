@@ -894,7 +894,7 @@ class DiscordBot {
     try {
       // Cancel any active countdown first, then force-launch
       if (lobbyManager._countdownTimer) lobbyManager._abortCountdown();
-      lobbyManager.launchLobby();
+      await lobbyManager.launchLobby();
       await msg.reply(`🚀 **Game launched!** (${seated}/10 players seated) — Match is starting in "${status.lobby.name}".`);
     } catch (err) {
       await msg.reply(`Error: ${err.message}`);

@@ -116,7 +116,7 @@ class LobbyManager extends EventEmitter {
           }
           const seated = this.currentLobby?._gamePlayerCount || 0;
           if (this._countdownTimer) this._abortCountdown();
-          this.launchLobby();
+          this.launchLobby().catch((e) => console.error('[Lobby] Manual launch failed:', e.message));
           this._chat(`🚀 Game launched by ${sender}! (${seated}/10 players seated)`);
           this.emit('lobbyChatCommandStartGame', { sender, accountId });
           break;
@@ -248,6 +248,20 @@ class LobbyManager extends EventEmitter {
         const gamePlayers = update.players.filter(p => p.team === 0 || p.team === 1).length;
         this.currentLobby._gamePlayerCount = gamePlayers;
         this.currentLobby.players = update.players;
+
+        // Log the bot's own slot so we can verify it's not in a game slot.
+        const client = getSteamClient();
+        const botSteam64 = client && client.steamClient && client.steamClient.steamID
+          ? client.steamClient.steamID.getSteamID64()
+          : null;
+        if (botSteam64) {
+          const TEAM_NAMES = { 0: 'Radiant', 1: 'Dire', 4: 'Broadcaster', 5: 'Spectator', 6: 'Unassigned' };
+          const botEntry = update.players.find((p) => p.steamId === botSteam64);
+          if (botEntry) {
+            console.log(`[Lobby] Bot slot status: team=${botEntry.team}(${TEAM_NAMES[botEntry.team] ?? '?'}) slot=${botEntry.slot}`);
+          }
+        }
+
         if (prevGamePlayers < 10 && gamePlayers >= 10) {
           console.log('[Lobby] 10 game players seated — starting countdown!');
           this.emit('tenPlayersSeated', this.currentLobby);
@@ -399,19 +413,25 @@ class LobbyManager extends EventEmitter {
       }
 
       // Move bot to Spectator (team=5) so it doesn't occupy a game player slot.
-      // The bot has no Dota 2 game client — if left in Radiant/Dire it will cause
-      // the match to fail at the Players Connecting screen when it never loads in.
-      // Send twice (2s and 4s) as a safeguard against a dropped GC message.
-      setTimeout(() => {
-        try { client.gcClient.setSelfTeamSlot(5, 0); } catch (e) {
-          console.warn('[Lobby] setSelfTeamSlot(spectator) attempt 1 failed:', e.message);
-        }
-      }, 2000);
-      setTimeout(() => {
-        try { client.gcClient.setSelfTeamSlot(5, 0); } catch (e) {
-          console.warn('[Lobby] setSelfTeamSlot(spectator) attempt 2 failed:', e.message);
-        }
-      }, 4000);
+      // The bot has no Dota 2 game client — Broadcaster (4) or Radiant/Dire slots
+      // require a game client connection; spectator (5) does not.
+      // Use the explicit admin-move path (includes our own steam_id) so the GC
+      // cannot silently ignore the message. Sent at 2s, 4s, and 8s as belt-and-braces.
+      const selfSteam64 = client.steamClient.steamID ? client.steamClient.steamID.getSteamID64() : null;
+      if (!selfSteam64) {
+        console.warn('[Lobby] Cannot get bot Steam64 ID — spectator move skipped.');
+      } else {
+        [2000, 4000, 8000].forEach((delay) => {
+          setTimeout(() => {
+            try {
+              client.gcClient.setPlayerTeamSlot(selfSteam64, 5, 0);
+              console.log(`[Lobby] Bot spectator move sent (delay=${delay}ms, steam64=${selfSteam64})`);
+            } catch (e) {
+              console.warn(`[Lobby] Bot spectator move failed (delay=${delay}ms):`, e.message);
+            }
+          }, delay);
+        });
+      }
 
       console.log(`[Lobby] Created lobby: ${name} (ID: ${this.lobbyId || 'pending'})`);
       return this.currentLobby;
@@ -421,10 +441,33 @@ class LobbyManager extends EventEmitter {
     }
   }
 
-  launchLobby() {
+  async launchLobby() {
     const client = getSteamClient();
     if (!client.gcClient || !client.gcClient.isReady) throw new Error('GC not connected.');
     if (this.state !== LobbyState.WAITING) throw new Error('No active lobby in waiting state.');
+
+    // Pre-launch safety: verify the bot is NOT in a game slot (team 0=Radiant, 1=Dire, 4=Broadcaster).
+    // These slots require a Dota 2 game client to connect during the "Players Connecting" phase.
+    // The bot has no game binary, so being in any of them causes the connection timer to expire.
+    const selfSteam64 = client.steamClient.steamID ? client.steamClient.steamID.getSteamID64() : null;
+    if (selfSteam64 && this.currentLobby && Array.isArray(this.currentLobby.players)) {
+      const GAME_SLOTS = new Set([0, 1, 4]); // Radiant, Dire, Broadcaster — all require client connection
+      const botMember = this.currentLobby.players.find((p) => p.steamId === selfSteam64);
+      if (botMember) {
+        console.log(`[Lobby] Pre-launch bot slot check: team=${botMember.team} slot=${botMember.slot}`);
+        if (GAME_SLOTS.has(botMember.team)) {
+          console.warn(`[Lobby] ⚠️ Bot is in game slot (team=${botMember.team}) at launch time! Moving to Spectator now...`);
+          client.gcClient.setPlayerTeamSlot(selfSteam64, 5, 0);
+          // Wait 1.5s for the GC to process the move before launching.
+          await new Promise((r) => setTimeout(r, 1500));
+        } else {
+          console.log(`[Lobby] Bot is in safe slot (team=${botMember.team}) — OK to launch.`);
+        }
+      } else {
+        console.warn('[Lobby] Bot not found in lobby member list — proceeding with launch anyway.');
+      }
+    }
+
     client.gcClient.launchLobby();
     return true;
   }
@@ -512,9 +555,9 @@ class LobbyManager extends EventEmitter {
         this._countdownTimer = null;
         this._chat('🚀 Launching game now!');
         console.log('[Lobby] Countdown complete — launching lobby.');
-        try { this.launchLobby(); } catch (e) {
+        this.launchLobby().catch((e) => {
           console.error('[Lobby] Auto-launch after countdown failed:', e.message);
-        }
+        });
       } else if (ANNOUNCE_AT.has(remaining)) {
         this._chat(`⏱ Game starting in ${remaining} second${remaining !== 1 ? 's' : ''}...`);
       }
@@ -592,16 +635,21 @@ class LobbyManager extends EventEmitter {
       this.state = LobbyState.WAITING;
 
       // Move bot to Spectator so it doesn't take a player slot (same logic as createLobby).
-      setTimeout(() => {
-        try { client.gcClient.setSelfTeamSlot(5, 0); } catch (e) {
-          console.warn('[Lobby] joinLobby setSelfTeamSlot attempt 1 failed:', e.message);
-        }
-      }, 2000);
-      setTimeout(() => {
-        try { client.gcClient.setSelfTeamSlot(5, 0); } catch (e) {
-          console.warn('[Lobby] joinLobby setSelfTeamSlot attempt 2 failed:', e.message);
-        }
-      }, 4000);
+      const selfSteam64Join = client.steamClient.steamID ? client.steamClient.steamID.getSteamID64() : null;
+      if (!selfSteam64Join) {
+        console.warn('[Lobby] Cannot get bot Steam64 ID — spectator move on join skipped.');
+      } else {
+        [2000, 4000, 8000].forEach((delay) => {
+          setTimeout(() => {
+            try {
+              client.gcClient.setPlayerTeamSlot(selfSteam64Join, 5, 0);
+              console.log(`[Lobby] Bot spectator move (join) sent (delay=${delay}ms, steam64=${selfSteam64Join})`);
+            } catch (e) {
+              console.warn(`[Lobby] Bot spectator move (join) failed (delay=${delay}ms):`, e.message);
+            }
+          }, delay);
+        });
+      }
 
       console.log(`[Lobby] Joined existing lobby: ${this.lobbyId}`);
       return this.currentLobby;
