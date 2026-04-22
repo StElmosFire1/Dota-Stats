@@ -14,7 +14,7 @@ const LobbyState = {
 
 const DOTA_GAME_STATE = {
   INIT: 0,
-  WAIT: 1,
+  WAIT_FOR_PLAYERS: 1, // "Players Connecting" screen — game server allocated but clients loading
   HERO_SELECTION: 2,
   STRATEGY_TIME: 3,
   PRE_GAME: 4,
@@ -41,6 +41,9 @@ class LobbyManager extends EventEmitter {
     this._countdownTimer = null;
     this._countdownAborted = false;
     this._pendingInviteAccept = null;
+    // Connection phase tracking — detects when "Players Connecting" screen fails.
+    this._lastGameState = 0;
+    this._enteredLoadingPhase = false;
   }
 
   initListeners() {
@@ -255,8 +258,33 @@ class LobbyManager extends EventEmitter {
         }
       }
 
+      // Track game state transitions for connection failure detection.
+      if (update.gameState !== undefined) {
+        const prev = this._lastGameState;
+        const curr = update.gameState;
+
+        // Once we see the "Players Connecting" screen state, flag it.
+        if (curr === DOTA_GAME_STATE.WAIT_FOR_PLAYERS) {
+          this._enteredLoadingPhase = true;
+          console.log('[Lobby] Entered Players Connecting phase.');
+        }
+
+        // If we were in the loading phase and game state drops back to INIT (0),
+        // the connection timed out and everyone returned to lobby.
+        if (this._enteredLoadingPhase && curr === DOTA_GAME_STATE.INIT && this.state === LobbyState.WAITING) {
+          console.log('[Lobby] Connection phase failed — gameState dropped from loading back to INIT.');
+          this._enteredLoadingPhase = false;
+          // Reset player count tracking so the countdown re-arms when all 10 are seated again.
+          if (this.currentLobby) this.currentLobby._gamePlayerCount = 0;
+          this.emit('connectionFailed', this.currentLobby);
+        }
+
+        this._lastGameState = curr;
+      }
+
       if (update.gameState >= DOTA_GAME_STATE.GAME_IN_PROGRESS && this.state === LobbyState.WAITING) {
         this.state = LobbyState.IN_PROGRESS;
+        this._enteredLoadingPhase = false;
         console.log('[Lobby] Match is now in progress.');
         this.emit('matchStarted', this.currentLobby);
       }
@@ -690,10 +718,16 @@ class LobbyManager extends EventEmitter {
       this._countdownTimer = null;
       this._countdownAborted = true;
     }
+    if (this._connectionFailTimer) {
+      clearTimeout(this._connectionFailTimer);
+      this._connectionFailTimer = null;
+    }
     this._clearRichPresence();
     this.state = LobbyState.IDLE;
     this.currentLobby = null;
     this.lobbyId = null;
+    this._lastGameState = 0;
+    this._enteredLoadingPhase = false;
   }
 }
 

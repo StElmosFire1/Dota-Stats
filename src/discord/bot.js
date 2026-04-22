@@ -87,6 +87,19 @@ class DiscordBot {
       );
     });
 
+    lobbyManager.on('connectionFailed', (lobby) => {
+      const msg =
+        `⚠️ **Game connection failed** — a player didn't load in time and the server dropped everyone back to the lobby.\n` +
+        `The countdown will restart automatically once all 10 players are seated again. ` +
+        `If you see a loading spinner next to a player in the lobby, ask them to relaunch Dota 2.`;
+      this._notifyChannel(msg);
+      // Also post in lobby chat so players inside the lobby see it.
+      try {
+        const { getLobbyManager } = require('../lobby/lobbyManager');
+        getLobbyManager()._chat('⚠️ Connection failed — recheck your seats. Countdown will restart when all 10 are ready.');
+      } catch {}
+    });
+
     lobbyManager.on('autoJoined', (invite) => {
       const embed = new EmbedBuilder()
         .setTitle('Auto-Joined Lobby')

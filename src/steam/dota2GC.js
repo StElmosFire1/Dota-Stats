@@ -449,7 +449,8 @@ class Dota2GCClient extends EventEmitter {
 
     this.currentLobby = lobby;
 
-    console.log(`[Dota2 GC] Lobby update: id=${lobbyId}, state=${gameState}, match=${matchId || 'none'}, outcome=${matchOutcome}, members=${members.length}, name="${gameName}"`);
+    const GAME_STATE_NAMES = { 0: 'INIT', 1: 'WAIT_FOR_PLAYERS', 2: 'HERO_SELECTION', 3: 'STRATEGY_TIME', 4: 'PRE_GAME', 5: 'IN_PROGRESS', 6: 'POST_GAME', 7: 'DISCONNECT' };
+    console.log(`[Dota2 GC] Lobby update: id=${lobbyId}, state=${gameState}(${GAME_STATE_NAMES[gameState] ?? '?'}), match=${matchId || 'none'}, outcome=${matchOutcome}, members=${members.length}, name="${gameName}"`);
 
     this.emit('lobbyUpdate', {
       lobbyId,
