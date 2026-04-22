@@ -16,6 +16,9 @@ const config = {
       ? process.env.PATCH_CHANNEL_IDS.split(',').map(s => s.trim()).filter(Boolean)
       : (process.env.ANNOUNCE_CHANNEL_ID ? [process.env.ANNOUNCE_CHANNEL_ID] : []),
     serverInvite: process.env.DISCORD_INVITE || null,
+    // Voice channels to move players into when a game starts.
+    direVoiceChannelId: process.env.DIRE_VOICE_CHANNEL_ID || '1380084433239015527',
+    radiantVoiceChannelId: process.env.RADIANT_VOICE_CHANNEL_ID || '1380084465665183754',
     mmrRoles: {
       // Role IDs assigned based on MMR thresholds (set via env vars in Discord server)
       // Tiers ordered highest to lowest — first match wins

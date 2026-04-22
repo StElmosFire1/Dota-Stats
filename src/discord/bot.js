@@ -39,6 +39,7 @@ class DiscordBot {
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildVoiceStates,
       ],
       partials: [Partials.Message, Partials.Channel, Partials.Reaction],
     });
@@ -47,6 +48,9 @@ class DiscordBot {
     this.pendingRatingSessions = new Map();
     this.pendingRegistrations = new Map(); // discord_id → { gameId, prompted }
     this._announcedMatchIds = new Set(); // dedup guard — prevents double-posting the same match
+    // Stores last !balance result for !assign to apply.
+    // { radiant: [{name, mmr, steam64, discordId}], dire: [{...}] }
+    this._lastBalance = null;
     this._setupHandlers();
   }
 
@@ -75,8 +79,12 @@ class DiscordBot {
       this._notifyChannel(`Match detected! Match ID: **${matchId}**. Stats will auto-record when the game ends.`);
     });
 
-    lobbyManager.on('matchStarted', (lobby) => {
+    lobbyManager.on('matchStarted', async (lobby) => {
       this._notifyChannel(`Game is now **in progress** for lobby "${lobby.name}".`);
+      // Move players into their team voice channels.
+      await this._movePlayersToVoiceChannels(lobby).catch(e =>
+        console.warn('[Discord] Voice channel move on matchStarted failed:', e.message)
+      );
     });
 
     lobbyManager.on('autoJoined', (invite) => {
@@ -211,6 +219,54 @@ class DiscordBot {
       if (ch) channels.push(ch);
     }
     return channels;
+  }
+
+  // Called on matchStarted — moves each lobby player to their team's voice channel.
+  async _movePlayersToVoiceChannels(lobby) {
+    const direChId = config.discord.direVoiceChannelId;
+    const radChId = config.discord.radiantVoiceChannelId;
+    if (!direChId || !radChId) return;
+
+    const STEAM64_OFFSET = 76561197960265728n;
+    const players = lobby.players || [];
+    if (!players.length) return;
+
+    // Gather all guilds the bot is in.
+    const guilds = [...this.client.guilds.cache.values()];
+    let moved = 0, skipped = 0;
+
+    for (const p of players) {
+      const team = p.team; // 0=Radiant, 1=Dire
+      if (team !== 0 && team !== 1) continue;
+      if (!p.steamId || p.steamId === '0') { skipped++; continue; }
+
+      let discordId = null;
+      try {
+        const accountId32 = (BigInt(p.steamId) - STEAM64_OFFSET).toString();
+        discordId = await db.getDiscordIdByAccountId(accountId32).catch(() => null);
+      } catch { skipped++; continue; }
+
+      if (!discordId) { skipped++; continue; }
+
+      const targetChannelId = team === 0 ? radChId : direChId;
+
+      for (const guild of guilds) {
+        try {
+          const member = await guild.members.fetch(discordId).catch(() => null);
+          if (!member?.voice?.channel) continue;
+          await member.voice.setChannel(targetChannelId);
+          moved++;
+          break; // found in this guild, no need to check others
+        } catch (e) {
+          console.warn(`[Discord] Voice move failed for ${discordId}:`, e.message);
+        }
+      }
+    }
+
+    console.log(`[Discord] Voice channel move: ${moved} moved, ${skipped} skipped.`);
+    if (moved > 0) {
+      this._notifyChannel(`🎙️ Moved **${moved}** player(s) to their team voice channels.`);
+    }
   }
 
   async _broadcastToStatsChannels(content) {
@@ -385,6 +441,7 @@ class DiscordBot {
           case 'predict': await this._cmdPredict(msg, args); break;
           case 'predictions': await this._cmdPredictions(msg, args); break;
           case 'balance': await this._cmdBalance(msg, args); break;
+          case 'assign': await this._cmdAssign(msg); break;
           case 'rematch': await this._cmdRematch(msg); break;
           case 'schedule': await this._cmdSchedule(msg, args); break;
           case 'upcoming': await this._cmdUpcoming(msg); break;
@@ -459,6 +516,7 @@ class DiscordBot {
           name: '⚖️ Team Balancer',
           value: [
             '`!balance @p1 @p2 @p3 ... @p10` - Suggest the most balanced 5v5 split based on MMR',
+            '`!assign` - Apply the last !balance result: move players into lobby slots + voice channels',
             '`!rematch` - Re-balance last game\'s players for an instant rematch',
             'Works with @mentions (if Discord ID linked) or player nicknames',
           ].join('\n'),
@@ -2686,19 +2744,24 @@ class DiscordBot {
 
     const allAccounts = [];
 
+    const STEAM64_OFFSET = 76561197960265728n;
+    const toSteam64 = (accountId32) => {
+      try { return (BigInt(accountId32) + STEAM64_OFFSET).toString(); } catch { return null; }
+    };
+
     for (const user of mentions) {
       const nick = await db.getAllNicknames().then(ns => ns.find(n => n.discord_id === user.id));
-      if (!nick) { allAccounts.push({ name: user.username, mmr: 2600 }); continue; }
+      if (!nick) { allAccounts.push({ name: user.username, mmr: 2600, discordId: user.id, steam64: null }); continue; }
       const rating = await db.getPlayerRating(nick.account_id.toString());
-      allAccounts.push({ name: nick.nickname, mmr: rating ? rating.mmr : 2600 });
+      allAccounts.push({ name: nick.nickname, mmr: rating ? rating.mmr : 2600, discordId: user.id, steam64: toSteam64(nick.account_id) });
     }
 
     for (const name of names) {
       const nicks = await db.getAllNicknames();
       const nick = nicks.find(n => (n.nickname || '').toLowerCase() === name.toLowerCase());
-      if (!nick) { allAccounts.push({ name, mmr: 2600 }); continue; }
+      if (!nick) { allAccounts.push({ name, mmr: 2600, discordId: null, steam64: null }); continue; }
       const rating = await db.getPlayerRating(nick.account_id.toString());
-      allAccounts.push({ name: nick.nickname, mmr: rating ? rating.mmr : 2600 });
+      allAccounts.push({ name: nick.nickname, mmr: rating ? rating.mmr : 2600, discordId: nick.discord_id || null, steam64: toSteam64(nick.account_id) });
     }
 
     if (allAccounts.length < 2) {
@@ -2738,17 +2801,74 @@ class DiscordBot {
     const avgA = Math.round(bestTeamA.reduce((s, p) => s + p.mmr, 0) / bestTeamA.length);
     const avgB = Math.round(bestTeamB.reduce((s, p) => s + p.mmr, 0) / bestTeamB.length);
 
+    // Save result so !assign can apply it later.
+    this._lastBalance = { radiant: bestTeamA, dire: bestTeamB };
+
     const embed = new EmbedBuilder()
       .setTitle('⚖️ Balanced Teams')
       .setColor(0x6366f1)
       .setDescription(`MMR difference: **${bestDiff}** | ${n} players balanced`)
       .addFields(
-        { name: `🟢 Team A — avg ${avgA} MMR`, value: fmtTeam(bestTeamA) || 'None', inline: true },
-        { name: `🔴 Team B — avg ${avgB} MMR`, value: fmtTeam(bestTeamB) || 'None', inline: true },
+        { name: `🟢 Radiant — avg ${avgA} MMR`, value: fmtTeam(bestTeamA) || 'None', inline: true },
+        { name: `🔴 Dire — avg ${avgB} MMR`, value: fmtTeam(bestTeamB) || 'None', inline: true },
       )
-      .setFooter({ text: 'Coin flip to decide sides!' });
+      .setFooter({ text: 'Run !assign to move players into lobby slots and voice channels.' });
 
     await msg.channel.send({ embeds: [embed] });
+  }
+
+  async _cmdAssign(msg) {
+    if (!this._lastBalance) {
+      return msg.reply('No balance result found — run `!balance @p1 @p2 ...` first.');
+    }
+    const { radiant, dire } = this._lastBalance;
+    const { getLobbyManager } = require('../lobby/lobbyManager');
+    const lobbyManager = getLobbyManager();
+
+    const radiantSteam64 = radiant.map(p => p.steam64).filter(Boolean);
+    const direSteam64 = dire.map(p => p.steam64).filter(Boolean);
+
+    // Attempt GC slot assignment (works if bot is lobby admin).
+    let gcMsg = '';
+    try {
+      if (lobbyManager.state === 'WAITING') {
+        const result = await lobbyManager.assignTeams(radiantSteam64, direSteam64);
+        gcMsg = result.ok
+          ? `\n✅ Lobby slots assigned via GC (${result.moved.length} players moved).`
+          : `\n⚠️ GC slot assignment partial — ${result.errors.length} error(s). Players may need to join manually.`;
+      } else {
+        gcMsg = '\n⚠️ No active lobby — slot assignment skipped. Voice channels will still be moved.';
+      }
+    } catch (e) {
+      gcMsg = `\n⚠️ GC slot assignment failed: ${e.message}`;
+    }
+
+    // Move Discord members to their voice channels.
+    const direChId = config.discord.direVoiceChannelId;
+    const radChId = config.discord.radiantVoiceChannelId;
+    let voiceMoved = 0, voiceSkipped = 0;
+
+    const moveGroup = async (players, channelId, teamName) => {
+      for (const p of players) {
+        if (!p.discordId) { voiceSkipped++; continue; }
+        try {
+          const guild = msg.guild;
+          const member = guild ? await guild.members.fetch(p.discordId).catch(() => null) : null;
+          if (!member?.voice?.channel) { voiceSkipped++; continue; }
+          await member.voice.setChannel(channelId);
+          voiceMoved++;
+        } catch { voiceSkipped++; }
+      }
+    };
+
+    await moveGroup(radiant, radChId, 'Radiant');
+    await moveGroup(dire, direChId, 'Dire');
+
+    const voiceMsg = voiceMoved > 0
+      ? `\n🎙️ Moved ${voiceMoved} player(s) to voice channels.${voiceSkipped > 0 ? ` (${voiceSkipped} skipped — not in voice)` : ''}`
+      : `\n🎙️ No players moved to voice (none in a voice channel).`;
+
+    await msg.channel.send(`⚔️ Teams assigned!${gcMsg}${voiceMsg}`);
   }
 
   async _cmdSchedule(msg, args) {

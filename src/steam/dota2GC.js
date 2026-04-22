@@ -117,6 +117,19 @@ function getLobbyProtos() {
       .add(new protobuf.Field('channel_id', 4, 'uint64'))
       .add(new protobuf.Field('timestamp', 7, 'uint32'))
   );
+  protoRoot.define('dota').add(
+    // Used by host to set a player's team slot.
+    // Fields: team (DOTA_GC_TEAM), slot (0-4), steam_id (fixed64) for admin-forced move.
+    new protobuf.Type('CMsgPracticeLobbySetTeamSlot')
+      .add(new protobuf.Field('team', 1, 'uint32'))
+      .add(new protobuf.Field('slot', 2, 'uint32'))
+      .add(new protobuf.Field('steam_id', 3, 'fixed64'))
+  );
+  protoRoot.define('dota').add(
+    // Moves a player from their current team back to the unassigned player pool.
+    new protobuf.Type('CMsgPracticeLobbyKickFromTeam')
+      .add(new protobuf.Field('account_id', 1, 'uint32'))
+  );
   protoRoot.resolveAll();
   return protoRoot;
 }
@@ -735,6 +748,38 @@ class Dota2GCClient extends EventEmitter {
       console.log('[Dota2 GC] Lobby launch request sent.');
     } catch (e) {
       throw new Error(`Failed to launch lobby: ${e.message}`);
+    }
+  }
+
+  // DOTA_GC_TEAM values: 0=Radiant, 1=Dire, 4=Broadcaster, 5=Spectator, 6=PlayerPool
+  setPlayerTeamSlot(steamId64, team, slot) {
+    if (!this.isReady) throw new Error('GC not ready.');
+    try {
+      const root = getLobbyProtos();
+      const Type = root.lookupType('dota.CMsgPracticeLobbySetTeamSlot');
+      const msg = Type.create({ team, slot, steam_id: steamId64.toString() });
+      const buf = Buffer.from(Type.encode(msg).finish());
+      this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbySetTeamSlot, buf);
+      console.log(`[Dota2 GC] SetTeamSlot sent — steam_id=${steamId64} team=${team} slot=${slot}`);
+      return true;
+    } catch (e) {
+      console.warn('[Dota2 GC] setPlayerTeamSlot failed:', e.message);
+      return false;
+    }
+  }
+
+  kickPlayerFromTeam(accountId32) {
+    if (!this.isReady) throw new Error('GC not ready.');
+    try {
+      const root = getLobbyProtos();
+      const Type = root.lookupType('dota.CMsgPracticeLobbyKickFromTeam');
+      const buf = Buffer.from(Type.encode(Type.create({ account_id: parseInt(accountId32, 10) })).finish());
+      this.dota2.sendRawBuffer(EDOTAGCMsg.k_EMsgGCPracticeLobbyKickFromTeam, buf);
+      console.log(`[Dota2 GC] KickFromTeam sent — account_id=${accountId32}`);
+      return true;
+    } catch (e) {
+      console.warn('[Dota2 GC] kickPlayerFromTeam failed:', e.message);
+      return false;
     }
   }
 

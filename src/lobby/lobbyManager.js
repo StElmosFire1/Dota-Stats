@@ -391,6 +391,56 @@ class LobbyManager extends EventEmitter {
     return true;
   }
 
+  // Assign balanced teams in the lobby via GC.
+  // radiantSteamIds / direSteamIds are arrays of steam64 strings (up to 5 each).
+  // Returns { ok, moved, errors }.
+  async assignTeams(radiantSteamIds, direSteamIds) {
+    const client = getSteamClient();
+    if (!client.gcClient || !client.gcClient.isReady) throw new Error('GC not connected.');
+    if (this.state !== LobbyState.WAITING) throw new Error('No active lobby — cannot assign teams.');
+
+    const RADIANT = 0;
+    const DIRE = 1;
+    const PLAYER_POOL = 6;
+    const STEAM64_OFFSET = 76561197960265728n;
+
+    // First kick everyone who currently has a slot back to the pool so slots are free.
+    const allPlayers = this.currentLobby?.players || [];
+    for (const p of allPlayers) {
+      if ((p.team === RADIANT || p.team === DIRE) && p.steamId && p.steamId !== '0') {
+        try {
+          const accountId32 = (BigInt(p.steamId) - STEAM64_OFFSET).toString();
+          client.gcClient.kickPlayerFromTeam(accountId32);
+          await new Promise(r => setTimeout(r, 150)); // small delay between GC messages
+        } catch (_) {}
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+
+    const moved = [];
+    const errors = [];
+
+    const assign = async (ids, team, teamName) => {
+      for (let slot = 0; slot < ids.length; slot++) {
+        const steamId64 = ids[slot];
+        if (!steamId64) continue;
+        try {
+          client.gcClient.setPlayerTeamSlot(steamId64, team, slot);
+          moved.push({ steamId64, team: teamName, slot });
+          await new Promise(r => setTimeout(r, 200));
+        } catch (e) {
+          errors.push({ steamId64, error: e.message });
+        }
+      }
+    };
+
+    await assign(radiantSteamIds, RADIANT, 'Radiant');
+    await assign(direSteamIds, DIRE, 'Dire');
+
+    return { ok: errors.length === 0, moved, errors };
+  }
+
   _chat(text) {
     try {
       const client = getSteamClient();

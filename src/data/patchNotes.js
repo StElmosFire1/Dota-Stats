@@ -489,4 +489,11 @@ module.exports = [
     content: '🏆 WEEKEND POINTS TOURNAMENTS\nA brand-new tournament format designed for flexible play across multiple days — no fixed schedule needed.\n\n• Each player earns a per-game score based on a custom formula covering Kills (+4), Assists (+2.5), Deaths (-3), Last Hits (×0.04), GPM (×0.25), XPM (×0.22), Hero/Tower Damage, Healing, Observer Wards (+6), Sentry Wards (+8), Dewarding (+10), Camps Stacked (+7), and a Win Bonus (+25).\n\n• Play as many or as few games as you like during the tournament window — only your top N individual game scores (default: 3) count towards your total.\n\n• Live leaderboard at /weekend-tournament shows standings with expandable per-game score breakdowns so you can see exactly where every point came from.\n\n• Admins can create/edit tournaments and post a formatted Discord announcement embed directly from the tournament page.\n\n• Homepage banner automatically appears when a tournament is active or upcoming.\n\n👤 PLAYER PROFILE AVERAGES\nThree new stats added to every player\'s Averages section:\n• Average Observer Wards per game\n• Average Sentry Wards per game\n• Average Neutral Camps Stacked per game',
     author: 'System',
   },
+  {
+    version: '5.28',
+    title: 'Team Assignment + Voice Channel Movement',
+    published_at: '2026-04-22',
+    content: '⚔️ TEAM ASSIGNMENT\n!balance now labels teams as Radiant and Dire and saves the result. Run !assign immediately after to apply it:\n\n• Bot attempts to move all players into their correct Radiant/Dire lobby slots via the Game Coordinator.\n• If GC slot movement is not accepted, players are notified via lobby chat which slot to join.\n• Players are simultaneously moved into the correct Discord voice channels (Radiant / Dire) as long as they are already in any voice channel.\n• The matchStarted event also auto-moves players to their voice channels when the game launches, using their team assignment from the lobby.\n\n🌏 LOBBY SERVER REGION\nDefault lobby server changed from Singapore (SEA) to Australia.\n\n🎙️ DISCORD VOICE INTENTS\nBot now has GuildVoiceStates intent enabled, required to see and move members between voice channels.',
+    author: 'System',
+  },
 ];

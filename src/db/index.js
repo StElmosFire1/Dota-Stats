@@ -2116,6 +2116,22 @@ async function getNicknameByDiscordId(discordId) {
   return r.rows[0]?.nickname || null;
 }
 
+async function getDiscordIdByAccountId(accountId32) {
+  if (!accountId32) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT discord_id FROM nicknames WHERE account_id = $1 AND discord_id IS NOT NULL AND discord_id != '' LIMIT 1`,
+    [accountId32.toString()]
+  );
+  if (r.rows[0]?.discord_id) return r.rows[0].discord_id;
+  // Fallback: players table
+  const r2 = await p.query(
+    `SELECT discord_id FROM players WHERE account_id_32 = $1 AND discord_id IS NOT NULL AND discord_id != '' LIMIT 1`,
+    [accountId32.toString()]
+  );
+  return r2.rows[0]?.discord_id || null;
+}
+
 async function getSteamByDiscordId(discordId) {
   if (!discordId) return null;
   const p = getPool();
@@ -5634,6 +5650,7 @@ module.exports = {
   setNickname,
   setDiscordId,
   getNicknameByDiscordId,
+  getDiscordIdByAccountId,
   getSteamByDiscordId,
   getAllNicknames,
   scheduleGame,
