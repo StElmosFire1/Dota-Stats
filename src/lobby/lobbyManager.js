@@ -482,33 +482,24 @@ class LobbyManager extends EventEmitter {
       this._lastGameState = 0;
       this._enteredLoadingPhase = false;
 
-      // Immediately attempt to rejoin the same lobby as spectator.
-      // Now that the bot is a non-host member, setSelfTeamSlot(4=Spectator) is accepted by
-      // the GC. This keeps the bot present to capture the matchId when the new host
-      // launches the game, so the replay pipeline fires automatically with no manual step.
+      // Start the spectator watch loop.
+      // We intentionally wait until the game is IN PROGRESS before rejoining.
+      // Joining a running practice lobby (allow_spectating=true) places the bot in the
+      // spectator slot — no player slot, no connection required.  The GC sends the full
+      // lobby CSO on join (including the matchId), so the existing POST_GAME handler
+      // fires auto-record exactly as normal.
+      //
+      // Polling logic:
+      //  - Try every 30 s (first 10 attempts = 5 min), then every 60 s thereafter.
+      //  - On each attempt: join, wait 2 s for the CSO, check gameState.
+      //    • gameState >= GAME_IN_PROGRESS (5) → game is live, stay as spectator.
+      //    • gameState < GAME_IN_PROGRESS      → lobby still in pre-game, leave and retry.
+      //  - Give up after 2 hours (stops if bot is placed in a new lobby first).
       if (savedLobbyId) {
-        setTimeout(async () => {
-          try {
-            await client.gcClient.joinPracticeLobby(savedLobbyId, savedPasswd);
-            console.log('[Lobby] Rejoined lobby as non-host. Moving to spectator slot in 2s.');
-            // Restore enough state so _handleLobbyUpdate can track the match.
-            this.state = LobbyState.WAITING;
-            this.lobbyId = savedLobbyId;
-            this.currentLobby = { name: savedName, password: savedPasswd, matchId: null, players: savedPlayers };
-            setTimeout(() => {
-              try {
-                client.gcClient.setSelfTeamSlot(4, 0); // 4 = Spectator
-                console.log('[Lobby] Requested spectator slot after rejoin.');
-              } catch (e2) { console.warn('[Lobby] Spectator move after rejoin failed:', e2.message); }
-            }, 2000);
-          } catch (rejoinErr) {
-            console.warn(`[Lobby] Rejoin failed — use !gc_record after the game: ${rejoinErr.message}`);
-          }
-        }, 3000); // 3s gap gives the GC time to process the leave before the rejoin
+        setTimeout(() => this._spectatorWatch(savedLobbyId, savedPasswd, savedName, savedPlayers), 5000);
       }
 
       // Signal bot.js: ask the new host to launch manually.
-      // Auto-record will still fire if the rejoin above succeeds (bot in spectator sees matchId).
       this.emit('mustManualLaunch', { lobbyName: savedName, players: savedPlayers, willRejoin: !!savedLobbyId });
       return;
     }
@@ -559,6 +550,79 @@ class LobbyManager extends EventEmitter {
 
     console.log(`[Lobby] Bot left lobby after launch. matchId=${matchId || 'none'}, lobbyName="${lobbyName}"`);
     this.emit('launchedAndLeft', { matchId, lobbyName, players });
+  }
+
+  // Polls the lobby until the game is IN PROGRESS, then joins as spectator.
+  // Joining a running practice lobby (allow_spectating=true) lands the bot in the spectator
+  // slot — no player-connection requirement.  The GC sends the full lobby CSO (including
+  // matchId) on join so the existing POST_GAME handler fires auto-record as normal.
+  //
+  // Each poll attempt:
+  //   1. Join the lobby.
+  //   2. Wait 3 s for the GC to deliver the lobby CSO update.
+  //   3. Check this._lastGameState:
+  //      - >= GAME_IN_PROGRESS (5) → game live, stay as spectator.
+  //      - < GAME_IN_PROGRESS      → pre-game, leave immediately and retry.
+  //   4. If join fails (lobby gone / full) → retry after interval.
+  // Gives up after ~2 hours or if the bot has been placed in a new lobby.
+  _spectatorWatch(lobbyId, password, lobbyName, savedPlayers, attempt = 0) {
+    const MAX_ATTEMPTS = 120; // 120 × ~60 s average ≈ 2 hours
+    if (attempt >= MAX_ATTEMPTS) {
+      console.warn('[SpectatorWatch] Gave up after 2 hours. Use !gc_record <matchId> if needed.');
+      return;
+    }
+
+    // Stop if bot is already active in a different lobby.
+    if (this.state !== LobbyState.IDLE) {
+      console.log(`[SpectatorWatch] Bot state is ${this.state} — stopping watch.`);
+      return;
+    }
+
+    const client = getSteamClient();
+    if (!client?.gcClient?.isReady) {
+      const delay = attempt < 10 ? 30000 : 60000;
+      setTimeout(() => this._spectatorWatch(lobbyId, password, lobbyName, savedPlayers, attempt + 1), delay);
+      return;
+    }
+
+    // Temporarily restore state so _handleLobbyUpdate processes the incoming CSO.
+    this.state = LobbyState.WAITING;
+    this.lobbyId = lobbyId;
+    this.currentLobby = { name: lobbyName, password, matchId: null, players: savedPlayers };
+    this._lastGameState = 0;
+
+    console.log(`[SpectatorWatch] Attempt ${attempt + 1}/${MAX_ATTEMPTS} — joining lobby ${lobbyId}...`);
+
+    client.gcClient.joinPracticeLobby(lobbyId, password)
+      .then(() => {
+        // Give the GC 3 s to push the lobby CSO so _handleLobbyUpdate can update _lastGameState.
+        setTimeout(() => {
+          const gs = this._lastGameState || 0;
+          if (gs >= DOTA_GAME_STATE.GAME_IN_PROGRESS) {
+            // ✅ Game is live — stay as spectator.  Normal handlers take over from here.
+            console.log(`[SpectatorWatch] Game is in progress (gameState=${gs}). Spectating — auto-record will fire on POST_GAME.`);
+            this.emit('spectatorJoined', { lobbyName, lobbyId });
+          } else {
+            // Game hasn't launched yet — leave and try again.
+            console.log(`[SpectatorWatch] Game not started (gameState=${gs}) — leaving and retrying.`);
+            try { client.gcClient.leavePracticeLobby(); } catch (_) {}
+            this.state = LobbyState.IDLE;
+            this.currentLobby = null;
+            this.lobbyId = null;
+            this._lastGameState = 0;
+            const delay = attempt < 10 ? 30000 : 60000;
+            setTimeout(() => this._spectatorWatch(lobbyId, password, lobbyName, savedPlayers, attempt + 1), delay);
+          }
+        }, 3000);
+      })
+      .catch((err) => {
+        console.warn(`[SpectatorWatch] Join failed: ${err.message}`);
+        this.state = LobbyState.IDLE;
+        this.currentLobby = null;
+        this.lobbyId = null;
+        const delay = attempt < 10 ? 30000 : 60000;
+        setTimeout(() => this._spectatorWatch(lobbyId, password, lobbyName, savedPlayers, attempt + 1), delay);
+      });
   }
 
   // Assign balanced teams in the lobby via GC.

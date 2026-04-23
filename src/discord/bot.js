@@ -114,12 +114,15 @@ class DiscordBot {
         `(Valve prevents the lobby creator from moving to spectator — an occupied-but-absent slot kills the game).\n\n` +
         `**What to do:**\n` +
         `1. One of you is now the lobby host — check the top-right of the lobby screen.\n` +
-        `2. **Wait ~10 seconds** — the bot is rejoining the lobby as a spectator so it can auto-record the replay.\n` +
-        `3. The new host clicks ▶ **Start Game** in the Dota 2 lobby UI.\n\n` +
-        `${rejoinNote}\n` +
+        `2. The new host clicks ▶ **Start Game** whenever everyone is ready.\n\n` +
+        `The bot will automatically join the game as a spectator once it starts and record full stats when it ends.\n` +
         `_(If auto-record doesn't post within 10 min of the game ending, type \`!gc_record <matchId>\` as a fallback.)_\n\n` +
         `_(${humanCount} human player(s) — bots will fill remaining slots)_`
       );
+    });
+
+    lobbyManager.on('spectatorJoined', ({ lobbyName }) => {
+      this._notifyChannel(`👁️ Bot has joined **${lobbyName}** as a spectator and is watching the game. Stats will auto-record when it ends.`);
     });
 
     lobbyManager.on('connectionFailed', (lobby) => {
