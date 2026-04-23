@@ -145,8 +145,8 @@ function encodeLobbyCreate(options) {
       server_region: options.server_region || SERVER_REGION.AUSTRALIA,
       game_mode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
       cm_pick: options.cm_pick !== undefined ? options.cm_pick : 1,  // 1=Radiant/home picks first
-      allow_cheats: false,
-      fill_with_bots: false,
+      allow_cheats: options.allow_cheats || false,
+      fill_with_bots: options.fill_with_bots || false,
       allow_spectating: options.allow_spectating !== false,
       visibility: 1, // 0=Public, 1=Friends, 2=Unlisted
       allchat: true,
