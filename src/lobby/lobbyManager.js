@@ -48,6 +48,9 @@ class LobbyManager extends EventEmitter {
     // its host account doesn't interfere with the game server connection phase.
     this._leaveAfterLaunch = false;
     this._leaveTimer = null;
+    // Spectator watch loop tracking — lets the invite handler abort a running watch.
+    this._spectatorWatchActive = false;
+    this._spectatorWatchCancelled = false;
   }
 
   initListeners() {
@@ -350,6 +353,21 @@ class LobbyManager extends EventEmitter {
     });
 
     client.gcClient.on('lobbyInviteReceived', async (invite) => {
+      // If the spectator watch loop is active (bot left its own lobby to re-join mid-game),
+      // cancel it gracefully so this invite can be processed.
+      if (this._spectatorWatchActive) {
+        console.log(`[Lobby] Lobby invite from ${invite.senderName} received while spectator watch is running — cancelling watch to accept invite.`);
+        this._spectatorWatchCancelled = true;
+        // Reset state so the join below succeeds (watch always sets state back to IDLE between
+        // poll attempts, but if it's currently mid-poll we need to force it here).
+        try { client.gcClient.leavePracticeLobby(); } catch (_) {}
+        this.state = LobbyState.IDLE;
+        this.currentLobby = null;
+        this.lobbyId = null;
+        this._lastGameState = 0;
+        this._spectatorWatchActive = false;
+      }
+
       if (this.state !== LobbyState.IDLE && this.state !== LobbyState.ENDED) {
         console.log(`[Lobby] Ignoring lobby invite from ${invite.senderName} — already in state: ${this.state}.`);
         return;
@@ -567,14 +585,30 @@ class LobbyManager extends EventEmitter {
   // Gives up after ~2 hours or if the bot has been placed in a new lobby.
   _spectatorWatch(lobbyId, password, lobbyName, savedPlayers, attempt = 0) {
     const MAX_ATTEMPTS = 120; // 120 × ~60 s average ≈ 2 hours
+
+    // Mark the watch as active on the very first call (not on retries — it was already set).
+    if (attempt === 0) {
+      this._spectatorWatchActive = true;
+      this._spectatorWatchCancelled = false;
+    }
+
+    // Bail out if the invite handler (or anything else) cancelled us.
+    if (this._spectatorWatchCancelled) {
+      console.log('[SpectatorWatch] Cancelled — stopping.');
+      this._spectatorWatchActive = false;
+      return;
+    }
+
     if (attempt >= MAX_ATTEMPTS) {
       console.warn('[SpectatorWatch] Gave up after 2 hours. Use !gc_record <matchId> if needed.');
+      this._spectatorWatchActive = false;
       return;
     }
 
     // Stop if bot is already active in a different lobby.
     if (this.state !== LobbyState.IDLE) {
       console.log(`[SpectatorWatch] Bot state is ${this.state} — stopping watch.`);
+      this._spectatorWatchActive = false;
       return;
     }
 
@@ -591,17 +625,30 @@ class LobbyManager extends EventEmitter {
     this.currentLobby = { name: lobbyName, password, matchId: null, players: savedPlayers };
     this._lastGameState = 0;
 
-    console.log(`[SpectatorWatch] Attempt ${attempt + 1}/${MAX_ATTEMPTS} — joining lobby ${lobbyId}...`);
+    console.log(`[SpectatorWatch] Attempt ${attempt + 1}/${MAX_ATTEMPTS} — joining lobby ${lobbyId} (${savedPlayers.length} known players)...`);
 
     client.gcClient.joinPracticeLobby(lobbyId, password)
       .then(() => {
         // Give the GC 3 s to push the lobby CSO so _handleLobbyUpdate can update _lastGameState.
         setTimeout(() => {
+          // Check cancellation again — an invite may have arrived during the 3-second window.
+          if (this._spectatorWatchCancelled) {
+            console.log('[SpectatorWatch] Cancelled during poll window — leaving lobby.');
+            try { client.gcClient.leavePracticeLobby(); } catch (_) {}
+            this.state = LobbyState.IDLE;
+            this.currentLobby = null;
+            this.lobbyId = null;
+            this._lastGameState = 0;
+            this._spectatorWatchActive = false;
+            return;
+          }
+
           const gs = this._lastGameState || 0;
           if (gs >= DOTA_GAME_STATE.GAME_IN_PROGRESS) {
             // ✅ Game is live — stay as spectator.  Normal handlers take over from here.
-            console.log(`[SpectatorWatch] Game is in progress (gameState=${gs}). Spectating — auto-record will fire on POST_GAME.`);
-            this.emit('spectatorJoined', { lobbyName, lobbyId });
+            console.log(`[SpectatorWatch] Game is in progress (gameState=${gs}). Spectating ${savedPlayers.length} players — auto-record will fire on POST_GAME.`);
+            this._spectatorWatchActive = false;
+            this.emit('spectatorJoined', { lobbyName, lobbyId, playerCount: savedPlayers.length });
           } else {
             // Game hasn't launched yet — leave and try again.
             console.log(`[SpectatorWatch] Game not started (gameState=${gs}) — leaving and retrying.`);
@@ -847,15 +894,14 @@ class LobbyManager extends EventEmitter {
     const gc = client?.gcClient;
     if (!gc) return;
 
+    // Team 4 = Spectator. For non-host members (invite joins, spectator watch rejoin)
+    // setSelfTeamSlot(4) is permitted by the GC. For the lobby creator the GC silently
+    // ignores it — that case is handled by the leave-before-launch path instead.
+    // NOTE: Do NOT also send team=5 (PlayerPool) — that would immediately undo the move.
     const tryMove = (label) => {
       try {
-        // Team 4 = Spectator, Team 5 = PlayerPool/Unassigned
         gc.setSelfTeamSlot(4, 0);
         console.log(`[Lobby] Bot self-move to Spectator (team=4) sent [${label}]`);
-        // Immediately also try team=5 as a belt-and-braces fallback (one of them will stick)
-        setTimeout(() => {
-          try { gc.setSelfTeamSlot(5, 0); console.log(`[Lobby] Bot self-move to PlayerPool (team=5) sent [${label}+100ms]`); } catch (_) {}
-        }, 100);
       } catch (e) {
         console.warn(`[Lobby] Bot spectator move failed [${label}]:`, e.message);
       }

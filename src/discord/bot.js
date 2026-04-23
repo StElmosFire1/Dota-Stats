@@ -121,8 +121,9 @@ class DiscordBot {
       );
     });
 
-    lobbyManager.on('spectatorJoined', ({ lobbyName }) => {
-      this._notifyChannel(`👁️ Bot has joined **${lobbyName}** as a spectator and is watching the game. Stats will auto-record when it ends.`);
+    lobbyManager.on('spectatorJoined', ({ lobbyName, playerCount }) => {
+      const playerNote = playerCount ? ` (${playerCount} players)` : '';
+      this._notifyChannel(`👁️ Bot has joined **${lobbyName}** as a spectator and is watching the game${playerNote}. Stats will auto-record when it ends.`);
     });
 
     lobbyManager.on('connectionFailed', (lobby) => {
