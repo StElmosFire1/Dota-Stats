@@ -490,7 +490,7 @@ class LobbyManager extends EventEmitter {
         setTimeout(async () => {
           try {
             await client.gcClient.joinPracticeLobby(savedLobbyId, savedPasswd);
-            console.log('[Lobby] Rejoined lobby as non-host. Will move to spectator slot in 3s.');
+            console.log('[Lobby] Rejoined lobby as non-host. Moving to spectator slot in 2s.');
             // Restore enough state so _handleLobbyUpdate can track the match.
             this.state = LobbyState.WAITING;
             this.lobbyId = savedLobbyId;
@@ -500,11 +500,11 @@ class LobbyManager extends EventEmitter {
                 client.gcClient.setSelfTeamSlot(4, 0); // 4 = Spectator
                 console.log('[Lobby] Requested spectator slot after rejoin.');
               } catch (e2) { console.warn('[Lobby] Spectator move after rejoin failed:', e2.message); }
-            }, 3000);
+            }, 2000);
           } catch (rejoinErr) {
             console.warn(`[Lobby] Rejoin failed — use !gc_record after the game: ${rejoinErr.message}`);
           }
-        }, 2000);
+        }, 3000); // 3s gap gives the GC time to process the leave before the rejoin
       }
 
       // Signal bot.js: ask the new host to launch manually.
