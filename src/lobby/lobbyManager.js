@@ -260,7 +260,7 @@ class LobbyManager extends EventEmitter {
         this.currentLobby._gamePlayerCount = gamePlayers;
         this.currentLobby.players = update.players;
 
-        // Log the bot's own slot so we can verify it's not in a game slot.
+        // Check bot's own slot. If still in a game slot (Radiant/Dire), retry the move.
         const client = getSteamClient();
         const botSteam64 = client && client.steamClient && client.steamClient.steamID
           ? client.steamClient.steamID.getSteamID64()
@@ -270,6 +270,11 @@ class LobbyManager extends EventEmitter {
           const botEntry = update.players.find((p) => p.steamId === botSteam64);
           if (botEntry) {
             console.log(`[Lobby] Bot slot status: team=${botEntry.team}(${TEAM_NAMES[botEntry.team] ?? '?'}) slot=${botEntry.slot}`);
+            // If the bot is still in a Radiant or Dire game slot, push it out again.
+            if ((botEntry.team === 0 || botEntry.team === 1) && !this._leaveAfterLaunch) {
+              console.log('[Lobby] Bot detected in game slot — re-sending spectator move.');
+              this._moveBotToSpectator();
+            }
           }
         }
 
@@ -425,26 +430,13 @@ class LobbyManager extends EventEmitter {
         this._setRichPresence(this.lobbyId);
       }
 
-      // Move bot to Spectator (team=5) so it doesn't occupy a game player slot.
-      // The bot has no Dota 2 game client — Broadcaster (4) or Radiant/Dire slots
-      // require a game client connection; spectator (5) does not.
-      // Use the explicit admin-move path (includes our own steam_id) so the GC
-      // cannot silently ignore the message. Sent at 2s, 4s, and 8s as belt-and-braces.
-      const selfSteam64 = client.steamClient.steamID ? client.steamClient.steamID.getSteamID64() : null;
-      if (!selfSteam64) {
-        console.warn('[Lobby] Cannot get bot Steam64 ID — spectator move skipped.');
-      } else {
-        [2000, 4000, 8000].forEach((delay) => {
-          setTimeout(() => {
-            try {
-              client.gcClient.setPlayerTeamSlot(selfSteam64, 5, 0);
-              console.log(`[Lobby] Bot spectator move sent (delay=${delay}ms, steam64=${selfSteam64})`);
-            } catch (e) {
-              console.warn(`[Lobby] Bot spectator move failed (delay=${delay}ms):`, e.message);
-            }
-          }, delay);
-        });
-      }
+      // Move bot out of game slots so it doesn't occupy a Radiant/Dire position.
+      // The bot has no Dota 2 binary and cannot connect as a player.
+      // DOTA_GC_TEAM: 4=Spectator, 5=PlayerPool(Unassigned), 0=Radiant, 1=Dire.
+      // Use setSelfTeamSlot (no steam_id) — the GC applies it to the message sender.
+      // The admin-move path (setPlayerTeamSlot with own steam_id) is ignored by the GC for self.
+      // Retry at 1 s, 3 s, 7 s and also reactively on each lobby update (see _handleLobbyUpdate).
+      this._moveBotToSpectator();
 
       console.log(`[Lobby] Created lobby: ${name} (ID: ${this.lobbyId || 'pending'})`);
       return this.currentLobby;
@@ -667,22 +659,8 @@ class LobbyManager extends EventEmitter {
       };
       this.state = LobbyState.WAITING;
 
-      // Move bot to Spectator so it doesn't take a player slot (same logic as createLobby).
-      const selfSteam64Join = client.steamClient.steamID ? client.steamClient.steamID.getSteamID64() : null;
-      if (!selfSteam64Join) {
-        console.warn('[Lobby] Cannot get bot Steam64 ID — spectator move on join skipped.');
-      } else {
-        [2000, 4000, 8000].forEach((delay) => {
-          setTimeout(() => {
-            try {
-              client.gcClient.setPlayerTeamSlot(selfSteam64Join, 5, 0);
-              console.log(`[Lobby] Bot spectator move (join) sent (delay=${delay}ms, steam64=${selfSteam64Join})`);
-            } catch (e) {
-              console.warn(`[Lobby] Bot spectator move (join) failed (delay=${delay}ms):`, e.message);
-            }
-          }, delay);
-        });
-      }
+      // Move bot out of game slots — same logic as createLobby.
+      this._moveBotToSpectator();
 
       console.log(`[Lobby] Joined existing lobby: ${this.lobbyId}`);
       return this.currentLobby;
@@ -731,6 +709,36 @@ class LobbyManager extends EventEmitter {
     } catch (e) {
       console.warn('[Lobby] Failed to clear rich presence:', e.message);
     }
+  }
+
+  // Push the bot out of Radiant/Dire slots into the non-game pool.
+  // DOTA_GC_TEAM: 4=Spectator, 5=PlayerPool(Unassigned).
+  // Uses setSelfTeamSlot (no steam_id) — the GC applies the move to the message sender.
+  // The admin-move variant (setPlayerTeamSlot with own steam_id) is silently dropped by the GC.
+  // Tries spectator first, pool as backup, retried at 1 s / 3 s / 7 s.
+  _moveBotToSpectator() {
+    const client = getSteamClient();
+    const gc = client?.gcClient;
+    if (!gc) return;
+
+    const tryMove = (label) => {
+      try {
+        // Team 4 = Spectator, Team 5 = PlayerPool/Unassigned
+        gc.setSelfTeamSlot(4, 0);
+        console.log(`[Lobby] Bot self-move to Spectator (team=4) sent [${label}]`);
+        // Immediately also try team=5 as a belt-and-braces fallback (one of them will stick)
+        setTimeout(() => {
+          try { gc.setSelfTeamSlot(5, 0); console.log(`[Lobby] Bot self-move to PlayerPool (team=5) sent [${label}+100ms]`); } catch (_) {}
+        }, 100);
+      } catch (e) {
+        console.warn(`[Lobby] Bot spectator move failed [${label}]:`, e.message);
+      }
+    };
+
+    tryMove('immediate');
+    setTimeout(() => tryMove('1s'), 1000);
+    setTimeout(() => tryMove('3s'), 3000);
+    setTimeout(() => tryMove('7s'), 7000);
   }
 
   _buildLobbyMatchStats(matchId, update, radiantWin) {
