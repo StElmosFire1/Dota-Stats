@@ -1289,7 +1289,13 @@ class DiscordBot {
 
   // Polls Valve's GC directly every 5 minutes until the match is finished, then records.
   // Works for practice lobbies (which don't appear on OpenDota).
-  // The GC k_EMsgGCMatchDetailsRequest returns result=1 + match_outcome != 0 when done.
+  //
+  // Recording priority:
+  //   1. Replay download + parse (full stats, TrueSkill, Discord summary, replay archive)
+  //   2. Basic GC stats fallback (win/loss + basic K/D/A only, used if replay fails)
+  //
+  // We do NOT record basic GC stats before the replay parse because player_stats has no
+  // unique constraint, so a pre-record + replay-parse would produce duplicate rows.
   _pollAndRecordMatch(matchId, lobbyName, attemptsLeft = 36) {
     if (attemptsLeft <= 0) {
       this._notifyChannel(`⏰ Auto-record gave up after 3 hours for match **${matchId}**. Use \`!record ${matchId}\` manually.`);
@@ -1317,9 +1323,35 @@ class DiscordBot {
           return;
         }
 
-        // Game has ended. Build a matchStats object from the GC response.
+        // ── Match has ended ──────────────────────────────────────────────────────────
+        // Primary path: replay download → Java parse → full DB record + TrueSkill +
+        //               Discord summary + replay archive. `notifyWebUpload` handles all
+        //               Discord messaging so we don't need separate _sendMatchSummary.
+        this._notifyChannel(`📊 Match **${matchId}** ended — fetching replay for full stats...`);
+        console.log(`[AutoRecord] Match ${matchId} finished (outcome=${outcome}). Starting replay pipeline.`);
+
+        let replaySucceeded = false;
+        try {
+          const { autoDownloadAndProcessReplay } = require('../services/replayDownloader');
+          const { processReplayInternal } = require('../web/server');
+          await autoDownloadAndProcessReplay(
+            gcClient, matchId,
+            (filePath, source) => processReplayInternal(filePath, source),
+            (msg) => this._notifyChannel(msg)
+          );
+          replaySucceeded = true;
+          console.log(`[AutoRecord] Match ${matchId} fully recorded via replay parse.`);
+        } catch (replayErr) {
+          console.error(`[AutoRecord] Replay pipeline failed for ${matchId}: ${replayErr.message}`);
+          this._notifyChannel(`⚠️ Replay parse failed for match **${matchId}** — recording basic stats from GC data as fallback.`);
+        }
+
+        if (replaySucceeded) return;
+
+        // ── Fallback: record basic win/loss + K/D/A from GC response ─────────────────
+        // Safe to do here because the replay parse didn't write anything to the DB.
         const STEAM64_OFFSET = BigInt('76561197960265728');
-        const radiantWin = outcome === 2; // 2 = Radiant victory, 3 = Dire victory
+        const radiantWin = outcome === 2;
         const gcPlayers = match.players || [];
         const players = gcPlayers
           .filter((p) => p.team === 0 || p.team === 1)
@@ -1355,20 +1387,13 @@ class DiscordBot {
           gameMode: match.game_mode ?? match.gameMode ?? 0,
           startTime: match.start_time ?? match.startTime ?? Math.floor(Date.now() / 1000),
           players,
-          source: 'gc-poll',
+          source: 'gc-poll-fallback',
         };
 
-        this._notifyChannel(`📊 Match **${matchId}** ended — recording stats...`);
         const sheetsStore = getSheetsStore();
         const statsService = getStatsService();
-
-        if (sheetsStore.initialized) {
-          const already = await sheetsStore.isMatchRecorded(matchId);
-          if (already) { console.log(`[AutoRecord] Match ${matchId} already recorded.`); return; }
-        }
-
-        await this._recordMatchData(matchStats, lobbyName, 'gc-poll');
-        await this._markRecorded(matchId, 'gc-poll');
+        await this._recordMatchData(matchStats, lobbyName, 'gc-poll-fallback');
+        await this._markRecorded(matchId, 'gc-poll-fallback');
         const radiantPlayers = matchStats.players.filter((p) => p.team === 'radiant');
         const direPlayers = matchStats.players.filter((p) => p.team === 'dire');
         await this._processRatings(matchStats, radiantPlayers, direPlayers, sheetsStore, statsService);
@@ -1377,24 +1402,10 @@ class DiscordBot {
         );
         for (const ch of statsChannels) {
           await this._sendMatchSummary(matchStats, lobbyName, ch).catch((e) =>
-            console.error(`[AutoRecord] Poll summary error (${ch.id}):`, e.message)
+            console.error(`[AutoRecord] Fallback summary error (${ch.id}):`, e.message)
           );
         }
-
-        // Also trigger replay download for detailed stats (damage, wards, etc.)
-        try {
-          const { autoDownloadAndProcessReplay } = require('../services/replayDownloader');
-          const { processReplayInternal } = require('../web/server');
-          autoDownloadAndProcessReplay(
-            gcClient, matchId,
-            (filePath, source) => processReplayInternal(filePath, source),
-            (msg) => this._notifyChannel(msg)
-          ).catch((e) => console.error('[ReplayDL] Poll replay error:', e.message));
-        } catch (e) {
-          console.warn('[ReplayDL] Could not start replay download after poll:', e.message);
-        }
-
-        console.log(`[AutoRecord] Match ${matchId} recorded from GC poll.`);
+        console.log(`[AutoRecord] Match ${matchId} recorded from GC fallback (no replay).`);
       } catch (err) {
         console.error('[AutoRecord] GC poll error:', err.message);
         this._pollAndRecordMatch(matchId, lobbyName, attemptsLeft - 1);
