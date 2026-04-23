@@ -468,7 +468,9 @@ class LobbyManager extends EventEmitter {
 
     if (botInGameSlot) {
       console.log(`[Lobby] Bot is in game slot (team=${botEntry.team} slot=${botEntry.slot}) at launch — leaving before launch so the slot can be properly assigned.`);
-      const savedName = this.currentLobby?.name || 'Unknown';
+      const savedName    = this.currentLobby?.name || 'Unknown';
+      const savedPasswd  = this.currentLobby?.password || '';
+      const savedLobbyId = this.lobbyId;
       const savedPlayers = [...players];
 
       try { client.gcClient.leavePracticeLobby(); } catch (e) { console.warn('[Lobby] Leave error:', e.message); }
@@ -480,8 +482,34 @@ class LobbyManager extends EventEmitter {
       this._lastGameState = 0;
       this._enteredLoadingPhase = false;
 
-      // Signal bot.js: ask the new host to launch manually and note the matchId afterward
-      this.emit('mustManualLaunch', { lobbyName: savedName, players: savedPlayers });
+      // Immediately attempt to rejoin the same lobby as spectator.
+      // Now that the bot is a non-host member, setSelfTeamSlot(4=Spectator) is accepted by
+      // the GC. This keeps the bot present to capture the matchId when the new host
+      // launches the game, so the replay pipeline fires automatically with no manual step.
+      if (savedLobbyId) {
+        setTimeout(async () => {
+          try {
+            await client.gcClient.joinPracticeLobby(savedLobbyId, savedPasswd);
+            console.log('[Lobby] Rejoined lobby as non-host. Will move to spectator slot in 3s.');
+            // Restore enough state so _handleLobbyUpdate can track the match.
+            this.state = LobbyState.WAITING;
+            this.lobbyId = savedLobbyId;
+            this.currentLobby = { name: savedName, password: savedPasswd, matchId: null, players: savedPlayers };
+            setTimeout(() => {
+              try {
+                client.gcClient.setSelfTeamSlot(4, 0); // 4 = Spectator
+                console.log('[Lobby] Requested spectator slot after rejoin.');
+              } catch (e2) { console.warn('[Lobby] Spectator move after rejoin failed:', e2.message); }
+            }, 3000);
+          } catch (rejoinErr) {
+            console.warn(`[Lobby] Rejoin failed — use !gc_record after the game: ${rejoinErr.message}`);
+          }
+        }, 2000);
+      }
+
+      // Signal bot.js: ask the new host to launch manually.
+      // Auto-record will still fire if the rejoin above succeeds (bot in spectator sees matchId).
+      this.emit('mustManualLaunch', { lobbyName: savedName, players: savedPlayers, willRejoin: !!savedLobbyId });
       return;
     }
 

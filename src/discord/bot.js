@@ -103,18 +103,21 @@ class DiscordBot {
     // Valve will not allow the lobby creator to leave a game slot, so the bot leaves the
     // lobby entirely before the game is launched. The new lobby host (whoever Valve picks
     // from the remaining players) must click Start Game in their Dota 2 client.
-    lobbyManager.on('mustManualLaunch', ({ lobbyName, players }) => {
+    lobbyManager.on('mustManualLaunch', ({ lobbyName, players, willRejoin }) => {
       const humanCount = players.filter(p => p.team === 0 || p.team === 1).length - 1; // minus bot
+      const rejoinNote = willRejoin
+        ? `The bot is rejoining the lobby as a spectator — stats should auto-record when the game ends as normal.`
+        : `The bot could not rejoin — after the game type \`!gc_record <matchId>\` to record stats.`;
       this._notifyChannel(
         `⚠️ **Action required — please launch the game manually.**\n\n` +
-        `The bot has left **${lobbyName}** so its Radiant slot is empty at launch time ` +
-        `(Valve prevents the lobby creator from moving to spectator, and an unconnected game slot cancels the match).\n\n` +
+        `The bot stepped out of **${lobbyName}** so its Radiant slot is empty at launch time ` +
+        `(Valve prevents the lobby creator from moving to spectator — an occupied-but-absent slot kills the game).\n\n` +
         `**What to do:**\n` +
         `1. One of you is now the lobby host — check the top-right of the lobby screen.\n` +
-        `2. The new host clicks ▶ **Start Game** in the Dota 2 lobby UI.\n` +
-        `3. After the game ends, note the **Match ID** shown on the post-game screen.\n` +
-        `4. Type \`!gc_record <matchId>\` here and the bot will fetch full stats automatically.\n\n` +
-        `_(${humanCount} human player(s) + bots will fill the remaining slots)_`
+        `2. The new host clicks ▶ **Start Game** in the Dota 2 lobby UI.\n\n` +
+        `${rejoinNote}\n` +
+        `_(If auto-record doesn't post within 10 min of the game ending, type \`!gc_record <matchId>\` as a fallback.)_\n\n` +
+        `_(${humanCount} human player(s) — bots will fill remaining slots)_`
       );
     });
 
