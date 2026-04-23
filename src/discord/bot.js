@@ -949,7 +949,6 @@ class DiscordBot {
   // never captured the matchId automatically. The player types the matchId from the
   // post-game scoreboard and the bot records stats via GC + replay pipeline.
   async _cmdGcRecord(msg, args) {
-    if (!this._isAdmin(msg)) return msg.reply('Only admins can use this command.');
     const matchId = args[0]?.replace(/\D/g, '');
     if (!matchId) return msg.reply('Usage: `!gc_record <matchId>`');
 
