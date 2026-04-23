@@ -451,6 +451,40 @@ class LobbyManager extends EventEmitter {
     if (!client.gcClient || !client.gcClient.isReady) throw new Error('GC not connected.');
     if (this.state !== LobbyState.WAITING) throw new Error('No active lobby in waiting state.');
 
+    // Check if the bot is occupying a Radiant or Dire game slot.
+    // Valve enforces that the lobby CREATOR must remain in a game slot — the GC silently
+    // rejects any self-move to Spectator/Pool for the host. If the bot launches while in a
+    // game slot the game server expects the bot account to connect; since it has no Dota 2
+    // binary the "Players Connecting" timer expires and the game is cancelled.
+    //
+    // Fix: leave the lobby BEFORE sending the launch command so the slot is empty at launch
+    // time. With fill_with_bots the empty slot becomes a bot; in normal inhouses the 10
+    // human players fill all 10 slots themselves.  Host ownership transfers to whoever is
+    // still in the lobby.  A Discord message will instruct the new host to click Start Game.
+    const selfSteam64 = client.steamClient.steamID?.getSteamID64?.();
+    const players = this.currentLobby?.players || [];
+    const botEntry = selfSteam64 ? players.find(p => p.steamId === selfSteam64) : null;
+    const botInGameSlot = botEntry && (botEntry.team === 0 || botEntry.team === 1);
+
+    if (botInGameSlot) {
+      console.log(`[Lobby] Bot is in game slot (team=${botEntry.team} slot=${botEntry.slot}) at launch — leaving before launch so the slot can be properly assigned.`);
+      const savedName = this.currentLobby?.name || 'Unknown';
+      const savedPlayers = [...players];
+
+      try { client.gcClient.leavePracticeLobby(); } catch (e) { console.warn('[Lobby] Leave error:', e.message); }
+      this._clearRichPresence();
+      if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
+      this.state = LobbyState.IDLE;
+      this.currentLobby = null;
+      this.lobbyId = null;
+      this._lastGameState = 0;
+      this._enteredLoadingPhase = false;
+
+      // Signal bot.js: ask the new host to launch manually and note the matchId afterward
+      this.emit('mustManualLaunch', { lobbyName: savedName, players: savedPlayers });
+      return;
+    }
+
     client.gcClient.launchLobby();
     console.log('[Lobby] Launch command sent. Bot will leave lobby once matchId is captured (or after 25s timeout).');
 

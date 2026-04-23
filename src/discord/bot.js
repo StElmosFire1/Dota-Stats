@@ -99,6 +99,25 @@ class DiscordBot {
       }
     });
 
+    // Fired when launchLobby() detects the bot is still in a game slot at launch time.
+    // Valve will not allow the lobby creator to leave a game slot, so the bot leaves the
+    // lobby entirely before the game is launched. The new lobby host (whoever Valve picks
+    // from the remaining players) must click Start Game in their Dota 2 client.
+    lobbyManager.on('mustManualLaunch', ({ lobbyName, players }) => {
+      const humanCount = players.filter(p => p.team === 0 || p.team === 1).length - 1; // minus bot
+      this._notifyChannel(
+        `⚠️ **Action required — please launch the game manually.**\n\n` +
+        `The bot has left **${lobbyName}** so its Radiant slot is empty at launch time ` +
+        `(Valve prevents the lobby creator from moving to spectator, and an unconnected game slot cancels the match).\n\n` +
+        `**What to do:**\n` +
+        `1. One of you is now the lobby host — check the top-right of the lobby screen.\n` +
+        `2. The new host clicks ▶ **Start Game** in the Dota 2 lobby UI.\n` +
+        `3. After the game ends, note the **Match ID** shown on the post-game screen.\n` +
+        `4. Type \`!gc_record <matchId>\` here and the bot will fetch full stats automatically.\n\n` +
+        `_(${humanCount} human player(s) + bots will fill the remaining slots)_`
+      );
+    });
+
     lobbyManager.on('connectionFailed', (lobby) => {
       const msg =
         `⚠️ **Game connection failed** — a player didn't load in time and the server dropped everyone back to the lobby.\n` +
@@ -489,6 +508,7 @@ class DiscordBot {
           case 'invite_me': await this._cmdInviteMe(msg); break;
           case 'end': await this._cmdEnd(msg); break;
           case 'start_game': await this._cmdStartGame(msg); break;
+          case 'gc_record': await this._cmdGcRecord(msg, args); break;
           case 'captains': await this._cmdCaptains(msg); break;
           case 'roll': await this._cmdRoll(msg); break;
           case 'hrcaptains': await this._cmdHrCaptains(msg); break;
@@ -905,12 +925,71 @@ class DiscordBot {
     if (!status.lobby) return msg.reply('No active lobby. Create one first with `!create_lobby`.');
     const seated = status.lobby._gamePlayerCount || 0;
     try {
-      // Cancel any active countdown first, then force-launch
+      // Cancel any active countdown first, then attempt launch.
+      // launchLobby() returns true if it sent the launch command, or undefined if it had
+      // to leave the lobby first (mustManualLaunch path). In the latter case the channel
+      // notification is handled by the mustManualLaunch event handler above.
       if (lobbyManager._countdownTimer) lobbyManager._abortCountdown();
-      lobbyManager.launchLobby();
-      await msg.reply(`🚀 **Game launched!** (${seated}/10 players seated) — Bot stepping back from lobby. Stats will auto-record when the game ends.`);
+      const launched = lobbyManager.launchLobby();
+      if (launched) {
+        await msg.reply(`🚀 **Game launched!** (${seated}/10 players seated) — Bot stepping back from lobby. Stats will auto-record when the game ends.`);
+      } else {
+        await msg.reply(`⚠️ Bot was in a game slot and had to leave the lobby first. Check the channel for instructions on how to launch the game manually.`);
+      }
     } catch (err) {
       await msg.reply(`Error: ${err.message}`);
+    }
+  }
+
+  // !gc_record <matchId>
+  // Used when the bot left the lobby before launch (mustManualLaunch path) and therefore
+  // never captured the matchId automatically. The player types the matchId from the
+  // post-game scoreboard and the bot records stats via GC + replay pipeline.
+  async _cmdGcRecord(msg, args) {
+    if (!this._isAdmin(msg)) return msg.reply('Only admins can use this command.');
+    const matchId = args[0]?.replace(/\D/g, '');
+    if (!matchId) return msg.reply('Usage: `!gc_record <matchId>`');
+
+    const steamClient = tryGetSteamClient();
+    const gcClient = steamClient?.gcClient;
+    if (!gcClient || !gcClient.isReady) {
+      return msg.reply('❌ GC is not connected — cannot fetch match details right now. Try again in a moment.');
+    }
+
+    await msg.reply(`🔍 Fetching match **${matchId}** from the GC...`);
+
+    // Attempt immediately (game is already over), then fall back to normal polling.
+    try {
+      const details = await gcClient.requestMatchDetails(matchId).catch(() => null);
+      const match = details?.match;
+      const outcome = match?.match_outcome ?? match?.matchOutcome ?? 0;
+
+      if (!details || details.result !== 1 || !match || outcome === 0) {
+        // Game might not be fully registered yet — kick off background polling.
+        this._notifyChannel(`⏳ Match **${matchId}** isn't finalised on the GC yet — will keep checking every 5 min (up to 3 hours).`);
+        this._pollAndRecordMatch(matchId, 'Manual GC Record');
+        return;
+      }
+
+      // Match is done — run the replay pipeline immediately.
+      this._notifyChannel(`📊 Match **${matchId}** confirmed ended — fetching replay for full stats...`);
+      try {
+        const { autoDownloadAndProcessReplay } = require('../services/replayDownloader');
+        const { processReplayInternal } = require('../web/server');
+        await autoDownloadAndProcessReplay(
+          gcClient, matchId,
+          (filePath, source) => processReplayInternal(filePath, source),
+          (m) => this._notifyChannel(m)
+        );
+        console.log(`[GcRecord] Match ${matchId} recorded via replay.`);
+      } catch (replayErr) {
+        console.error(`[GcRecord] Replay failed for ${matchId}: ${replayErr.message}`);
+        this._notifyChannel(`⚠️ Replay parse failed — falling back to basic GC stats for match **${matchId}**.`);
+        this._pollAndRecordMatch(matchId, 'Manual GC Record', 1);
+      }
+    } catch (err) {
+      console.error(`[GcRecord] Error:`, err.message);
+      await msg.reply(`❌ Error fetching match: ${err.message}`);
     }
   }
 
