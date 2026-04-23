@@ -478,6 +478,7 @@ class DiscordBot {
           case 'ratings': await this._cmdRatings(msg, args); break;
           case 'streak': await this._cmdStreak(msg, args); break;
           case 'tournament': await this._cmdTournament(msg, args); break;
+          case 'testgame': await this._cmdTestGame(msg, args); break;
           case 'testdm': await this._cmdTestDm(msg, args); break;
           case 'testrsvpdm': await this._cmdTestRsvpDm(msg, args); break;
           case 'create_lobby': await this._cmdCreateLobby(msg, args); break;
@@ -3738,6 +3739,68 @@ class DiscordBot {
     } catch (err) {
       this.pendingRegistrations.delete(targetUser.id);
       await msg.reply(`❌ Couldn't DM **${targetUser.username}**: ${err.message}\n_(They may have DMs disabled)_`);
+    }
+  }
+
+  async _cmdTestGame(msg, args) {
+    // Creates a test lobby (All Pick, bots fill empty slots, cheats on) so the full
+    // post-game pipeline — leave-after-launch, GC poll, replay download, parse, DB write,
+    // TrueSkill, Discord summary — can be verified without 10 real players.
+    //
+    // Usage: !testgame [lobby name]
+    // Steps after running:
+    //   1. Join via Steam friends list or !invite
+    //   2. Other empty slots auto-fill with bots when you launch
+    //   3. In-game: open console, type  sv_cheats 1  then  dota_kill_buildings_now
+    //      (or just play for a few minutes naturally and let bots lose)
+    //   4. After the game ends the bot should auto-record and post a summary here
+
+    if (!steamAvailable) {
+      return msg.reply('Steam/Dota 2 is not connected. Cannot create test lobby.');
+    }
+    const lobbyManager = this._resolveLobbyManager();
+    if (!lobbyManager) return msg.reply('Lobby manager is not available.');
+    const steamClient = tryGetSteamClient();
+    if (!steamClient?.isGCReady || !steamClient?.gcClient) {
+      return msg.reply('Game Coordinator is not ready. Try `!steam_status`.');
+    }
+
+    const lobbyName = args.length > 0 ? args.join(' ') : 'TestGame';
+    const password = 'test';
+    this.lobbyChannelId = msg.channel.id;
+
+    await msg.reply(`🧪 Creating test lobby **${lobbyName}** (All Pick, bots fill empty slots, cheats on)...`);
+
+    try {
+      const { GAME_MODE } = require('../steam/dota2GC');
+      await lobbyManager.createLobby(lobbyName, password, msg.author.id, {
+        fillWithBots: true,
+        allowCheats: true,
+        gameMode: GAME_MODE.ALL_PICK,
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle('🧪 Test Lobby Ready')
+        .setColor(0xf39c12)
+        .setDescription(
+          '**How to test:**\n' +
+          '1. Join via Steam friends list → right-click bot → **Join Game**\n' +
+          `2. Password: \`${password}\`\n` +
+          '3. Use `!start_game` to launch — remaining slots auto-fill with bots\n' +
+          '4. In-game console: `sv_cheats 1` → `dota_kill_buildings_now` to end quickly\n' +
+          '   (or play naturally — bots will eventually lose/win)\n\n' +
+          '**What will be tested:**\n' +
+          '• Bot leaves lobby immediately after launch ✓\n' +
+          '• GC poll detects match end (every 5 min) ✓\n' +
+          '• Replay downloaded from Valve CDN ✓\n' +
+          '• Java parser runs → full stats recorded ✓\n' +
+          '• TrueSkill updated, match summary posted here ✓'
+        )
+        .setFooter({ text: 'Use !end to clean up if anything goes wrong' });
+
+      await msg.channel.send({ embeds: [embed] });
+    } catch (err) {
+      await msg.reply(`❌ Failed to create test lobby: ${err.message}`);
     }
   }
 

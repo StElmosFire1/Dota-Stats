@@ -385,7 +385,7 @@ class LobbyManager extends EventEmitter {
     });
   }
 
-  async createLobby(name, password, requestedBy) {
+  async createLobby(name, password, requestedBy, opts = {}) {
     const client = getSteamClient();
     if (!client.isGCReady || !client.gcClient) {
       throw new Error('Steam/Dota 2 GC is not connected. Check !steam_status.');
@@ -402,8 +402,10 @@ class LobbyManager extends EventEmitter {
         game_name: name,
         pass_key: password,
         server_region: config.dota.serverRegion || SERVER_REGION.AUSTRALIA,
-        game_mode: config.dota.gameMode || GAME_MODE.CAPTAINS_MODE,
+        game_mode: opts.gameMode ?? config.dota.gameMode ?? GAME_MODE.CAPTAINS_MODE,
         allow_spectating: true,
+        fill_with_bots: opts.fillWithBots || false,
+        allow_cheats: opts.allowCheats || false,
       });
 
       this.lobbyId = response.id ? response.id.toString() : null;
