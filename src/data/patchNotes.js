@@ -528,7 +528,7 @@ module.exports = [
     version: '5.34',
     title: 'Tournament Ward Scoring Reduced by 30%',
     published_at: '2026-04-24',
-    content: 'Vision scoring values reduced by 30% across the board for weekend tournaments:\n\n• Observer Ward placed: 6 → 4.2 pts\n• Sentry Ward placed: 8 → 5.6 pts\n• Ward Destroyed (deward): 10 → 7 pts\n\nAll other scoring weights (kills, deaths, GPM/XPM, tower damage, stacks, win bonus) are unchanged.',
+    content: 'Vision scoring values reduced for weekend tournaments:\n\n• Observer Ward placed: 6 → 4 pts\n• Sentry Ward placed: 8 → 6 pts\n• Ward Destroyed (deward): 10 → 7 pts\n\nAll other scoring weights (kills, deaths, GPM/XPM, tower damage, stacks, win bonus) are unchanged.',
     author: 'System',
   },
   {
