@@ -44,9 +44,9 @@ const SCORE_RULES = [
   },
   { cat: 'Support & Utility',
     rows: [
-      { stat: 'Observer Ward placed', pts: '+6',  note: 'Vision wins games — each obs ward placed counts' },
-      { stat: 'Sentry Ward placed',   pts: '+8',  note: 'Dewarding and anti-vision are rewarded heavily' },
-      { stat: 'Ward Destroyed',       pts: '+10', note: 'Highest per-action reward — actually deward enemy wards' },
+      { stat: 'Observer Ward placed', pts: '+4.2', note: 'Vision wins games — each obs ward placed counts' },
+      { stat: 'Sentry Ward placed',   pts: '+5.6', note: 'Dewarding and anti-vision are rewarded' },
+      { stat: 'Ward Destroyed',       pts: '+7',   note: 'Deward enemy wards for a solid bonus' },
       { stat: 'Neutral Camp Stacked', pts: '+7',  note: 'Each neutral stack set up for your team' },
     ],
   },
@@ -72,9 +72,9 @@ function ScoreBreakdownGrid({ game }) {
     { label: 'Tower Dmg', value: (game.tower_damage || 0).toLocaleString(), pts: Math.round((game.tower_damage || 0) / 1000 * 10) / 10 },
     { label: 'Healing', value: (game.hero_healing || 0).toLocaleString(), pts: Math.round((game.hero_healing || 0) / 1500 * 10) / 10 },
     { label: 'Camps', value: game.camps_stacked || 0, pts: (game.camps_stacked || 0) * 7 },
-    { label: 'Obs Wards', value: game.obs_placed || 0, pts: (game.obs_placed || 0) * 6 },
-    { label: 'Sentries', value: game.sen_placed || 0, pts: (game.sen_placed || 0) * 8 },
-    { label: 'Dewarded', value: game.wards_killed || 0, pts: (game.wards_killed || 0) * 10 },
+    { label: 'Obs Wards', value: game.obs_placed || 0, pts: Math.round((game.obs_placed || 0) * 4.2 * 10) / 10 },
+    { label: 'Sentries', value: game.sen_placed || 0, pts: Math.round((game.sen_placed || 0) * 5.6 * 10) / 10 },
+    { label: 'Dewarded', value: game.wards_killed || 0, pts: (game.wards_killed || 0) * 7 },
     { label: 'Win', value: won ? 'Yes' : '—', pts: won ? 25 : 0 },
   ].filter(r => r.pts !== 0);
 
