@@ -5784,6 +5784,7 @@ module.exports = {
   getRsvpSteamAccountIds,
   setPlayerRank,
   getAllPlayerRanks,
+  getUnregisteredPlayers,
   getAllSteamAccountIds,
   getGamesNeedingLobby,
   markLobbyCreated,
@@ -6139,13 +6140,99 @@ async function setPlayerRank(accountId, rankTier, leaderboardRank, source) {
   );
 }
 
+// Returns players who have match history but no nickname (= unregistered).
+// Also flags potential duplicates: accounts sharing the same persona_name.
+// Results ordered by game count so the most active unregistered players surface first.
+async function getUnregisteredPlayers() {
+  const p = getPool();
+  const result = await p.query(`
+    SELECT
+      ps.account_id,
+      MAX(ps.persona_name) as persona_name,
+      COUNT(DISTINCT ps.match_id) as games,
+      MAX(m.date) as last_played
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+    WHERE ps.account_id != 0
+      AND n.account_id IS NULL
+    GROUP BY ps.account_id
+    HAVING COUNT(DISTINCT ps.match_id) >= 2
+    ORDER BY games DESC
+    LIMIT 30
+  `);
+
+  const rows = result.rows.map(r => ({
+    account_id: r.account_id,
+    persona_name: r.persona_name,
+    games: parseInt(r.games),
+    last_played: r.last_played,
+  }));
+
+  // Flag potential duplicates: same persona_name appears in more than one row above,
+  // OR same persona_name exists on a REGISTERED account too.
+  const allNames = rows.map(r => r.persona_name.toLowerCase().trim());
+  const nameCounts = {};
+  for (const n of allNames) nameCounts[n] = (nameCounts[n] || 0) + 1;
+
+  // Also check if any persona_name in our list matches a registered player's persona_name
+  const names = rows.map(r => `'${r.persona_name.replace(/'/g, "''")}'`).join(',');
+  const regCheck = names.length > 0 ? await p.query(`
+    SELECT DISTINCT MAX(ps2.persona_name) as persona_name
+    FROM player_stats ps2
+    JOIN nicknames n2 ON n2.account_id = ps2.account_id AND ps2.account_id != 0
+    WHERE LOWER(ps2.persona_name) = ANY(ARRAY[${rows.map((_, i) => `$${i + 1}`).join(',')}])
+    GROUP BY LOWER(ps2.persona_name)
+  `, rows.map(r => r.persona_name.toLowerCase())) : { rows: [] };
+  const registeredNames = new Set(regCheck.rows.map(r => r.persona_name.toLowerCase().trim()));
+
+  return rows.map(r => ({
+    ...r,
+    possible_duplicate: nameCounts[r.persona_name.toLowerCase().trim()] > 1 || registeredNames.has(r.persona_name.toLowerCase().trim()),
+  }));
+}
+
 async function getAllPlayerRanks() {
   const p = getPool();
   const result = await p.query(
     `SELECT account_id, nickname, dota_rank_tier, dota_leaderboard_rank, dota_rank_source, dota_rank_updated_at
      FROM nicknames WHERE account_id IS NOT NULL ORDER BY nickname`
   );
-  return result.rows;
+  const rows = result.rows;
+
+  // Group by lower-cased nickname and resolve the BEST rank across all accounts that share
+  // the same nickname. This mirrors the leaderboard's merged-account logic, so viewing any
+  // of a player's secondary accounts still shows the correct Dota rank badge on the profile.
+  const byNick = {};
+  for (const row of rows) {
+    const nick = row.nickname ? row.nickname.toLowerCase() : null;
+    if (!nick) continue;
+    if (!byNick[nick]) byNick[nick] = [];
+    byNick[nick].push(row);
+  }
+
+  const expanded = [];
+  for (const group of Object.values(byNick)) {
+    const best = group.reduce((b, r) => {
+      if (r.dota_rank_tier == null) return b;
+      if (b == null || r.dota_rank_tier > b.dota_rank_tier) return r;
+      return b;
+    }, null);
+    for (const row of group) {
+      expanded.push({
+        ...row,
+        dota_rank_tier: best?.dota_rank_tier ?? null,
+        dota_leaderboard_rank: best?.dota_leaderboard_rank ?? null,
+        dota_rank_source: best?.dota_rank_source ?? null,
+      });
+    }
+  }
+  // Include accounts that have no nickname — these can't be merged, kept as-is.
+  for (const row of rows) {
+    if (!row.nickname) expanded.push(row);
+  }
+
+  return expanded;
 }
 
 async function getAllSteamAccountIds() {

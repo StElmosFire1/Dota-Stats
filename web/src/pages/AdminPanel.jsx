@@ -915,12 +915,29 @@ export default function AdminPanel() {
   const [signupFeedback, setSignupFeedback] = useState({});
   const [pendingSignupCount, setPendingSignupCount] = useState(null);
 
+  const [unregistered, setUnregistered] = useState(null);
+  const [unregLoading, setUnregLoading] = useState(false);
+
   const loadRanks = useCallback(() => {
     if (!isSuperuser) return;
     getPlayerRanks().then(setRanks).catch(() => {});
   }, [isSuperuser]);
 
   useEffect(() => { loadRanks(); }, [loadRanks]);
+
+  const loadUnregistered = useCallback(async () => {
+    if (!isSuperuser) return;
+    setUnregLoading(true);
+    try {
+      const r = await fetch('/api/admin/unregistered-players', { headers: { 'x-superuser-key': superuserKey } });
+      const d = await r.json();
+      setUnregistered(Array.isArray(d) ? d : []);
+    } catch {
+      setUnregistered([]);
+    } finally {
+      setUnregLoading(false);
+    }
+  }, [isSuperuser, superuserKey]);
 
   const loadSignups = useCallback(() => {
     if (!isSuperuser) return;
@@ -1402,6 +1419,61 @@ export default function AdminPanel() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      {/* ── Unregistered Players ──────────────────────────────────────── */}
+      <section className="admin-section" style={{ marginTop: 32 }}>
+        <h2 className="section-title" style={{ marginBottom: 12 }}>👤 Unregistered Players</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+          Players with match history but no registered nickname. Highlighted rows share a persona name with another account — possible duplicates or alternate accounts.
+          Register via <code>!adminregister &lt;account_id&gt; &lt;nickname&gt;</code> in Discord.
+        </p>
+        <button
+          className="btn btn-sm"
+          disabled={unregLoading}
+          onClick={loadUnregistered}
+          style={{ marginBottom: 14 }}
+        >
+          {unregLoading ? '⏳ Loading…' : '🔍 Check Unregistered Players'}
+        </button>
+        {unregistered !== null && (
+          unregistered.length === 0
+            ? <p style={{ color: 'var(--accent-green)', fontSize: 13 }}>✓ All active players are registered.</p>
+            : (
+              <div className="scoreboard-wrapper">
+                <table className="scoreboard" style={{ fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Account ID</th>
+                      <th style={{ textAlign: 'left' }}>Steam Name</th>
+                      <th>Games</th>
+                      <th>Last Played</th>
+                      <th>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unregistered.map(p => (
+                      <tr key={p.account_id} style={p.possible_duplicate ? { background: 'rgba(245,158,11,0.08)' } : {}}>
+                        <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                          <a href={`/player/${p.account_id}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>{p.account_id}</a>
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{p.persona_name}</td>
+                        <td style={{ textAlign: 'center' }}>{p.games}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          {p.last_played ? new Date(p.last_played).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' }) : '—'}
+                        </td>
+                        <td style={{ textAlign: 'center', fontSize: 11 }}>
+                          {p.possible_duplicate && (
+                            <span style={{ color: '#f59e0b', fontWeight: 600 }}>⚠ possible duplicate</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+        )}
       </section>
 
       <section id="signup-requests" style={{ marginTop: 40 }}>

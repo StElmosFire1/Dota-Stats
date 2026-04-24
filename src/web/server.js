@@ -2879,6 +2879,16 @@ NOTES
     }
   });
 
+  router.get('/admin/unregistered-players', requireSuperuser, async (req, res) => {
+    try {
+      const players = await db.getUnregisteredPlayers();
+      res.json(players);
+    } catch (err) {
+      console.error('[API] /admin/unregistered-players error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch unregistered players' });
+    }
+  });
+
   // Temporary test endpoint — trigger Discord notification for the latest match
   router.post('/admin/test-discord-notify', requireSuperuser, async (req, res) => {
     try {
