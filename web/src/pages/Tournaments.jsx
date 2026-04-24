@@ -13,6 +13,13 @@ const STATUS_LABELS = { upcoming: '⏳ Upcoming', active: '🏆 Active', complet
 const STATUS_COLORS = { upcoming: 'var(--text-muted)', active: 'var(--accent-gold, #f59e0b)', completed: 'var(--radiant-color)' };
 const FORMAT_LABELS = { single_elim: 'Single Elimination', double_elim: 'Double Elimination', weekend_points: 'Points Tournament' };
 
+// datetime-local inputs reflect local browser time but carry no timezone.
+// Convert to UTC ISO for storage so the date is timezone-correct.
+function toUtcIso(localStr) {
+  if (!localStr) return null;
+  return new Date(localStr).toISOString();
+}
+
 function RoundName(round, totalRounds) {
   const remaining = totalRounds - round + 1;
   if (remaining === 1) return 'Grand Final';
@@ -454,12 +461,17 @@ function TournamentList() {
     if (!form.name.trim()) return;
     setCreating(true);
     try {
+      const formWithUtcDates = {
+        ...form,
+        startDate: toUtcIso(form.startDate),
+        endDate: toUtcIso(form.endDate),
+      };
       if (form.format === 'weekend_points') {
-        const result = await createWeekendTournament(form, superuserKey);
+        const result = await createWeekendTournament(formWithUtcDates, superuserKey);
         setShowCreate(false);
         navigate(`/weekend-tournament/${result.tournament.id}`);
       } else {
-        await createTournament({ ...form, seasonId }, superuserKey);
+        await createTournament({ ...formWithUtcDates, seasonId }, superuserKey);
         loadAll();
         setForm({ name: '', description: '', format: 'single_elim', startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '' });
         setShowCreate(false);

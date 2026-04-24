@@ -6,6 +6,20 @@ import { useSuperuser } from '../context/SuperuserContext';
 const STATUS_COLORS = { upcoming: '#f59e0b', active: '#22c55e', completed: '#94a3b8' };
 const STATUS_LABELS = { upcoming: '⏳ Upcoming', active: '🟢 Live', completed: '✅ Completed' };
 
+// datetime-local inputs have no timezone — they reflect the local browser clock.
+// toLocalInput converts a UTC ISO string from the DB into local time for the input value.
+// toUtcIso converts a datetime-local string (local time) into a UTC ISO string for storage.
+function toLocalInput(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+function toUtcIso(localStr) {
+  if (!localStr) return null;
+  return new Date(localStr).toISOString();
+}
+
 const SCORE_RULES = [
   { cat: 'Combat',
     rows: [
@@ -203,8 +217,8 @@ export default function WeekendTournament() {
       setEditForm({
         name: t.name,
         description: t.description || '',
-        startDate: t.start_date?.slice(0, 16) || '',
-        endDate: t.end_date?.slice(0, 16) || '',
+        startDate: toLocalInput(t.start_date),
+        endDate: toLocalInput(t.end_date),
         gamesToCount: t.games_to_count,
         prizePool: t.prize_pool || '',
         buyIn: t.buy_in || '',
@@ -228,7 +242,12 @@ export default function WeekendTournament() {
     e.preventDefault();
     setSaving(true);
     try {
-      await updateWeekendTournament(id, editForm, superuserKey);
+      const payload = {
+        ...editForm,
+        startDate: toUtcIso(editForm.startDate),
+        endDate: toUtcIso(editForm.endDate),
+      };
+      await updateWeekendTournament(id, payload, superuserKey);
       setEditMode(false);
       load();
     } catch (e) { alert(e.message); }
