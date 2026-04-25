@@ -525,8 +525,15 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.35',
+    title: 'Tournament Win Efficiency Bonus',
+    published_at: '2026-04-25',
+    content: 'Added a win efficiency bonus to weekend tournament scoring. Winners now receive +1 point for every minute the game finishes under 35 minutes — rewarding dominant short wins that were previously under-rewarded compared to long attrition games.\n\nExamples:\n• 20 min win: +25 base + 15 efficiency = +40 total\n• 25 min win: +25 + 10 = +35 total\n• 30 min win: +25 + 5 = +30 total\n• 35+ min win: +25 + 0 = +25 total\n• Any loss: +0 regardless of game length\n\nAll other scoring weights unchanged. The efficiency bonus shows as its own line in each game\'s score breakdown.',
+    author: 'System',
+  },
+  {
     version: '5.34',
-    title: 'Tournament Ward Scoring Reduced by 30%',
+    title: 'Tournament Ward Scoring Reduced',
     published_at: '2026-04-24',
     content: 'Vision scoring values reduced for weekend tournaments:\n\n• Observer Ward placed: 6 → 4 pts\n• Sentry Ward placed: 8 → 6 pts\n• Ward Destroyed (deward): 10 → 7 pts\n\nAll other scoring weights (kills, deaths, GPM/XPM, tower damage, stacks, win bonus) are unchanged.',
     author: 'System',

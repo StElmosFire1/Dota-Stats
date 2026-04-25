@@ -6796,6 +6796,7 @@ async function getWeekendTournamentScores(startDate, endDate, gamesToCount = 3) 
        ps.kills, ps.deaths, ps.assists, ps.last_hits,
        ps.gpm, ps.xpm, ps.hero_damage, ps.tower_damage, ps.hero_healing,
        ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked,
+       m.duration,
        CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
                  OR (ps.team = 'dire' AND m.radiant_win = false) THEN true ELSE false END AS won,
        ROUND(
@@ -6813,14 +6814,16 @@ async function getWeekendTournamentScores(startDate, endDate, gamesToCount = 3) 
          ps.sen_placed * 6 +
          ps.wards_killed * 7 +
          CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
-                   OR (ps.team = 'dire' AND m.radiant_win = false) THEN 25 ELSE 0 END
+                   OR (ps.team = 'dire' AND m.radiant_win = false)
+              THEN 25 + GREATEST(0, (2100 - m.duration) / 60.0)
+              ELSE 0 END
        , 1) AS game_score
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id
      WHERE ps.account_id > 0
        AND m.date >= $1 AND m.date <= $2
-     GROUP BY ps.account_id, m.match_id, m.date, m.radiant_win,
+     GROUP BY ps.account_id, m.match_id, m.date, m.radiant_win, m.duration,
        ps.team, ps.kills, ps.deaths, ps.assists, ps.last_hits,
        ps.gpm, ps.xpm, ps.hero_damage, ps.tower_damage, ps.hero_healing,
        ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked

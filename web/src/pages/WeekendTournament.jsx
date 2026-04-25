@@ -52,7 +52,8 @@ const SCORE_RULES = [
   },
   { cat: 'Result',
     rows: [
-      { stat: 'Win', pts: '+25', note: 'Flat bonus for winning the game — winning still matters most' },
+      { stat: 'Win', pts: '+25', note: 'Flat bonus for winning — winning always matters' },
+      { stat: 'Win Efficiency', pts: '+1 per min under 35', note: 'Winners only — dominant short wins are rewarded. 20 min win = +15, 25 min = +10, 30 min = +5, 35+ min = +0' },
     ],
   },
 ];
@@ -76,6 +77,8 @@ function ScoreBreakdownGrid({ game }) {
     { label: 'Sentries', value: game.sen_placed || 0, pts: (game.sen_placed || 0) * 6 },
     { label: 'Dewarded', value: game.wards_killed || 0, pts: (game.wards_killed || 0) * 7 },
     { label: 'Win', value: won ? 'Yes' : '—', pts: won ? 25 : 0 },
+    { label: 'Efficiency', value: won && game.duration ? `${Math.round(game.duration / 60)}m` : '—',
+      pts: (() => { if (!won || !game.duration) return 0; const bonus = Math.max(0, (2100 - game.duration) / 60); return Math.round(bonus * 10) / 10; })() },
   ].filter(r => r.pts !== 0);
 
   return (
