@@ -718,6 +718,7 @@ class ReplayParser {
     const damageByType = {};  // slot → { physical, magical, pure } — from damage_type bitmask (1=phys, 2=magic, 4=pure)
     const hdPoints = {};   // slot → [{t, cumHd}] — cumulative hero damage snapshots for timeline back-fill
     const wardKills = {};
+    const wardKillSeen = new Set(); // dedup: obs_left + obs_left_log can both fire for the same kill
     const obsPurchased = {};
     const senPurchased = {};
     const tpScrollsUsed = {};
@@ -863,27 +864,38 @@ class ReplayParser {
       // Streaming mode: "obs_left" / "sen_left"   Blob mode: "obs_left_log" / "sen_left_log"
       // attackername holds the killer hero NPC name (absent when ward expires naturally).
       // Java emits slot=owner and x/y for all ward events via m_hOwnerEntity.
+      // IMPORTANT: both streaming and log events can fire for the same physical ward death,
+      // so we dedup by (killerSlot, wardType, second) to avoid double-counting dewarded wards.
       if (e.type === 'obs_left' || e.type === 'sen_left' ||
           e.type === 'obs_left_log' || e.type === 'sen_left_log') {
         // Track who did the deward
         if (e.attackername) {
           const killerSlot = npcNameToSlot[e.attackername];
           if (killerSlot != null && killerSlot >= 0 && killerSlot < 10) {
-            wardKills[killerSlot] = (wardKills[killerSlot] || 0) + 1;
+            const wardType = (e.type === 'obs_left' || e.type === 'obs_left_log') ? 'obs' : 'sen';
+            const dedupKey = `${killerSlot}_${wardType}_${Math.round(e.time || 0)}`;
+            if (!wardKillSeen.has(dedupKey)) {
+              wardKillSeen.add(dedupKey);
+              wardKills[killerSlot] = (wardKills[killerSlot] || 0) + 1;
+            }
           }
         }
-        // Track owner slot for ward uptime computation
+        // Track owner slot for ward uptime computation (also deduped by type+owner+second)
         let ownerSlot = e.slot;
         if (ownerSlot != null && ownerSlot >= 128 && ownerSlot <= 132) ownerSlot = ownerSlot - 128 + 5;
         const isObsLeft = (e.type === 'obs_left' || e.type === 'obs_left_log');
-        wardDeaths.push({
-          type: isObsLeft ? 'obs' : 'sen',
-          ownerSlot: (ownerSlot != null && ownerSlot >= 0 && ownerSlot < 10) ? ownerSlot : null,
-          t: e.time || 0,
-          x: e.x != null ? e.x : null,
-          y: e.y != null ? e.y : null,
-          killed: !!e.attackername,  // false = natural expiry (6 min)
-        });
+        const deathDedupKey = `${isObsLeft ? 'obs' : 'sen'}_${ownerSlot}_${Math.round(e.time || 0)}`;
+        if (!wardKillSeen.has('death_' + deathDedupKey)) {
+          wardKillSeen.add('death_' + deathDedupKey);
+          wardDeaths.push({
+            type: isObsLeft ? 'obs' : 'sen',
+            ownerSlot: (ownerSlot != null && ownerSlot >= 0 && ownerSlot < 10) ? ownerSlot : null,
+            t: e.time || 0,
+            x: e.x != null ? e.x : null,
+            y: e.y != null ? e.y : null,
+            killed: !!e.attackername,  // false = natural expiry (6 min)
+          });
+        }
       }
 
       // ── Item purchase ─────────────────────────────────────────────────────

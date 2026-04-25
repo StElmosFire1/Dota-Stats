@@ -525,6 +525,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.36',
+    title: 'Deward Double-Count Bug Fix',
+    published_at: '2026-04-25',
+    content: 'Fixed a replay parser bug where dewarded ward counts were being doubled.\n\nThe parser listens to two separate event systems for ward deaths — streaming-mode events (obs_left / sen_left) and combat-log events (obs_left_log / sen_left_log). Both systems were firing for the same physical ward kill, causing every deward to be counted twice. A player with 23 actual dewards would show 46 in their stats.\n\nThe fix deduplicates by (killer, ward type, timestamp) so each real ward kill is counted exactly once regardless of how many event types report it. The same deduplication is applied to the ward lifespan tracking used for the obs/sen avg lifespan stats.\n\nAny matches already in the database with inflated deward counts will need to be re-parsed from their replay files to get corrected values.',
+    author: 'System',
+  },
+  {
     version: '5.35',
     title: 'Tournament Win Efficiency Bonus',
     published_at: '2026-04-25',
