@@ -46,7 +46,7 @@ const SCORE_RULES = [
     rows: [
       { stat: 'Observer Ward placed', pts: '+4', note: 'Vision wins games — each obs ward placed counts' },
       { stat: 'Sentry Ward placed',   pts: '+6', note: 'Dewarding and anti-vision are rewarded' },
-      { stat: 'Ward Destroyed',       pts: '+7',   note: 'Deward enemy wards for a solid bonus' },
+      { stat: 'Ward Destroyed',       pts: '+10',  note: 'Deward enemy wards for a solid bonus' },
       { stat: 'Neutral Camp Stacked', pts: '+7',  note: 'Each neutral stack set up for your team' },
     ],
   },
@@ -75,7 +75,7 @@ function ScoreBreakdownGrid({ game }) {
     { label: 'Camps', value: game.camps_stacked || 0, pts: (game.camps_stacked || 0) * 7 },
     { label: 'Obs Wards', value: game.obs_placed || 0, pts: (game.obs_placed || 0) * 4 },
     { label: 'Sentries', value: game.sen_placed || 0, pts: (game.sen_placed || 0) * 6 },
-    { label: 'Dewarded', value: game.wards_killed || 0, pts: (game.wards_killed || 0) * 7 },
+    { label: 'Dewarded', value: game.wards_killed || 0, pts: (game.wards_killed || 0) * 10 },
     { label: 'Win', value: won ? 'Yes' : '—', pts: won ? 25 : 0 },
     { label: 'Efficiency', value: won && game.duration ? `${Math.round(game.duration / 60)}m` : '—',
       pts: (() => { if (!won || !game.duration) return 0; const bonus = Math.max(0, (2100 - game.duration) / 60); return Math.round(bonus * 10) / 10; })() },

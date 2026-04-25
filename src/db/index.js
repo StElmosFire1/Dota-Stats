@@ -6812,7 +6812,7 @@ async function getWeekendTournamentScores(startDate, endDate, gamesToCount = 3) 
          ps.camps_stacked * 7 +
          ps.obs_placed * 4 +
          ps.sen_placed * 6 +
-         ps.wards_killed * 7 +
+         ps.wards_killed * 10 +
          CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
                    OR (ps.team = 'dire' AND m.radiant_win = false)
               THEN 25 + GREATEST(0, (2100 - m.duration) / 60.0)
