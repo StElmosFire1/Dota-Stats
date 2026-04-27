@@ -120,6 +120,11 @@ const config = {
   dota: {
     serverRegion: 7, // 7 = Australia, 5 = SEA
     gameMode: 22,
+    dedicatedServer: {
+      ip: process.env.DEDICATED_SERVER_IP || '',
+      port: parseInt(process.env.DEDICATED_SERVER_PORT || '27015', 10),
+      steamId: process.env.DEDICATED_SERVER_STEAM_ID || '',
+    },
   },
 
   // Feature flags — set to true to re-enable dormant features

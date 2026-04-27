@@ -105,6 +105,7 @@ class LobbyManager extends EventEmitter {
     client.gcClient.removeAllListeners('lobbyInviteReceived');
     client.gcClient.removeAllListeners('partyInviteReceived');
     client.gcClient.removeAllListeners('lobbyChatMessage');
+    client.gcClient.removeAllListeners('serverAssigned');
 
     this._gcListenersSetup = true;
     console.log('[Lobby] GC listeners initialized (auto-accept invites enabled).');
@@ -352,6 +353,10 @@ class LobbyManager extends EventEmitter {
       }
     });
 
+    client.gcClient.on('serverAssigned', ({ serverRegion, onDedicatedServer }) => {
+      this.emit('serverAssigned', { serverRegion, onDedicatedServer });
+    });
+
     client.gcClient.on('lobbyInviteReceived', async (invite) => {
       // If the spectator watch loop is active (bot left its own lobby to re-join mid-game),
       // cancel it gracefully so this invite can be processed.
@@ -421,7 +426,8 @@ class LobbyManager extends EventEmitter {
     this.state = LobbyState.CREATING;
 
     try {
-      const response = await client.gcClient.createPracticeLobby({
+      const dsIp = config.dota?.dedicatedServer?.ip || '';
+      const lobbyOpts = {
         game_name: name,
         pass_key: password,
         server_region: config.dota.serverRegion || SERVER_REGION.AUSTRALIA,
@@ -429,7 +435,12 @@ class LobbyManager extends EventEmitter {
         allow_spectating: true,
         fill_with_bots: opts.fillWithBots || false,
         allow_cheats: opts.allowCheats || false,
-      });
+      };
+      if (dsIp) {
+        lobbyOpts.dedicated_server_ip = dsIp;
+        console.log(`[Lobby] Using dedicated server IP hint: ${dsIp}`);
+      }
+      const response = await client.gcClient.createPracticeLobby(lobbyOpts);
 
       this.lobbyId = response.id ? response.id.toString() : null;
       this.currentLobby = {

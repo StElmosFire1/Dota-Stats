@@ -159,6 +159,19 @@ class DiscordBot {
       );
     });
 
+    lobbyManager.on('serverAssigned', ({ serverRegion, onDedicatedServer }) => {
+      const ds = config.dota?.dedicatedServer;
+      if (ds?.ip) {
+        const regionNames = { 1: 'US West', 2: 'US East', 3: 'Europe', 5: 'SEA', 7: 'Australia' };
+        const regionName = regionNames[serverRegion] || `Region ${serverRegion}`;
+        if (onDedicatedServer) {
+          this._notifyChannel(`🖥️ Game server assigned: **${regionName}** — running on your dedicated server (${ds.ip}:${ds.port || 27015})`);
+        } else {
+          this._notifyChannel(`🖥️ Game server assigned: **${regionName}** (Valve server). Dedicated server at ${ds.ip} was not selected by the GC.`);
+        }
+      }
+    });
+
     lobbyManager.on('matchEnded', async (lobby) => {
       const matchId = lobby.matchId;
       const lobbyMatchStats = lobby.lobbyMatchStats;
@@ -511,6 +524,7 @@ class DiscordBot {
           case 'create_lobby': await this._cmdCreateLobby(msg, args); break;
           case 'join_lobby': await this._cmdJoinLobby(msg, args); break;
           case 'lobby_status': await this._cmdLobbyStatus(msg); break;
+          case 'ds_status': await this._cmdDsStatus(msg); break;
           case 'gc_debug': await this._cmdGcDebug(msg); break;
           case 'invite': await this._cmdInvite(msg, args); break;
           case 'invite_me': await this._cmdInviteMe(msg); break;
@@ -621,6 +635,7 @@ class DiscordBot {
           value: [
             '`!create_lobby [name]` - Create a Dota 2 CM lobby (name optional, default "OCE Inhouse")',
             '`!lobby_status` - Show current lobby info and how to join',
+            '`!ds_status` - Check dedicated game server health',
             '`!invite <steam64_id>` - Send a lobby invite to a player by Steam64 ID',
             '`!invite @user` - Send a lobby invite to a Discord-linked player by @mention',
             '`!invite_me` - Invite yourself (your Discord must be linked on the Players page)',
@@ -724,6 +739,47 @@ class DiscordBot {
         '4. Or use `!invite <steam64_id>` or `!invite @user`',
       inline: false
     });
+
+    await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdDsStatus(msg) {
+    const ds = config.dota?.dedicatedServer;
+    if (!ds?.ip) {
+      return msg.reply('No dedicated server configured. Set `DEDICATED_SERVER_IP` in environment variables.');
+    }
+    const ip = ds.ip;
+    const port = ds.port || 27015;
+    await msg.reply(`Checking dedicated server at **${ip}:${port}**...`);
+
+    // Source A2S_INFO query — standard server browser protocol used by all Source/Source 2 games
+    const online = await new Promise((resolve) => {
+      const dgram = require('dgram');
+      const socket = dgram.createSocket('udp4');
+      const query = Buffer.from([0xFF, 0xFF, 0xFF, 0xFF, 0x54, ...Buffer.from('Source Engine Query\0')]);
+      let done = false;
+      const finish = (result) => { if (!done) { done = true; socket.close(); resolve(result); } };
+      socket.on('message', () => finish(true));
+      socket.on('error', () => finish(false));
+      socket.send(query, 0, query.length, port, ip, (err) => { if (err) finish(false); });
+      setTimeout(() => finish(false), 5000);
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle('Dedicated Server Status')
+      .setColor(online ? 0x00ae86 : 0xe74c3c)
+      .addFields(
+        { name: 'Address', value: `${ip}:${port}`, inline: true },
+        { name: 'Status', value: online ? '🟢 Online' : '🔴 Offline', inline: true },
+      );
+
+    if (ds.steamId) {
+      embed.addFields({ name: 'Server Steam ID', value: ds.steamId, inline: false });
+    }
+
+    if (!online) {
+      embed.setFooter({ text: 'To start the server: SSH in and run screen -dmS dota2 /opt/dota2/start_server.sh' });
+    }
 
     await msg.reply({ embeds: [embed] });
   }

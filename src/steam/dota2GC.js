@@ -53,6 +53,7 @@ function getLobbyProtos() {
       .add(new protobuf.Field('leagueid', 16, 'uint32'))
       .add(new protobuf.Field('allchat', 23, 'bool'))
       .add(new protobuf.Field('dota_tv_delay', 24, 'uint32'))
+      .add(new protobuf.Field('lan_host_ping_to_server_ip', 25, 'uint32'))
       .add(new protobuf.Field('visibility', 33, 'uint32'))
       .add(new protobuf.Field('pause_setting', 42, 'uint32'))
   );
@@ -134,26 +135,38 @@ function getLobbyProtos() {
   return protoRoot;
 }
 
+function ipToUint32(ip) {
+  if (!ip) return 0;
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(isNaN)) return 0;
+  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+}
+
 function encodeLobbyCreate(options) {
   const root = getLobbyProtos();
   const Type = root.lookupType('dota.CMsgPracticeLobbyCreate');
-  const msg = Type.create({
-    search_key: '',
-    lobby_details: {
-      game_name: options.game_name || 'Inhouse',
-      pass_key: options.pass_key || '',
-      server_region: options.server_region || SERVER_REGION.AUSTRALIA,
-      game_mode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
-      cm_pick: options.cm_pick !== undefined ? options.cm_pick : 1,  // 1=Radiant/home picks first
-      allow_cheats: options.allow_cheats || false,
-      fill_with_bots: options.fill_with_bots || false,
-      allow_spectating: options.allow_spectating !== false,
-      visibility: 1, // 0=Public, 1=Friends, 2=Unlisted
-      allchat: true,
-      dota_tv_delay: 2,
-      pause_setting: 1,
-    },
-  });
+  const lobbyDetails = {
+    game_name: options.game_name || 'Inhouse',
+    pass_key: options.pass_key || '',
+    server_region: options.server_region || SERVER_REGION.AUSTRALIA,
+    game_mode: options.game_mode || GAME_MODE.CAPTAINS_MODE,
+    cm_pick: options.cm_pick !== undefined ? options.cm_pick : 1,
+    allow_cheats: options.allow_cheats || false,
+    fill_with_bots: options.fill_with_bots || false,
+    allow_spectating: options.allow_spectating !== false,
+    visibility: 1,
+    allchat: true,
+    dota_tv_delay: 2,
+    pause_setting: 1,
+  };
+  if (options.dedicated_server_ip) {
+    const ipUint32 = ipToUint32(options.dedicated_server_ip);
+    if (ipUint32) {
+      lobbyDetails.lan_host_ping_to_server_ip = ipUint32;
+      console.log(`[Dota2 GC] Dedicated server IP hint: ${options.dedicated_server_ip} → uint32 ${ipUint32}`);
+    }
+  }
+  const msg = Type.create({ search_key: '', lobby_details: lobbyDetails });
   return Buffer.from(Type.encode(msg).finish());
 }
 
@@ -446,11 +459,27 @@ class Dota2GCClient extends EventEmitter {
     const matchOutcome = lobby.matchOutcome || 0;
     const matchDuration = lobby.matchDuration || 0;
     const members = lobby.allMembers || [];
+    const serverRegion = lobby.serverRegion || 0;
+
+    // Detect when the GC assigns a game server (serverRegion goes from 0 → a real value)
+    const prevRegion = this.currentLobby?.serverRegion || 0;
+    if (serverRegion && serverRegion !== prevRegion) {
+      try {
+        const { config } = require('../config');
+        const ds = config?.dota?.dedicatedServer;
+        const dsRegion = config?.dota?.serverRegion || 7;
+        const onDs = !!(serverRegion === dsRegion && ds?.ip);
+        console.log(`[Dota2 GC] Server assigned by GC: region=${serverRegion}${onDs ? ' — matches dedicated server region' : ''}`);
+        this.emit('serverAssigned', { serverRegion, onDedicatedServer: onDs });
+      } catch (_) {
+        this.emit('serverAssigned', { serverRegion, onDedicatedServer: false });
+      }
+    }
 
     this.currentLobby = lobby;
 
     const GAME_STATE_NAMES = { 0: 'INIT', 1: 'WAIT_FOR_PLAYERS', 2: 'HERO_SELECTION', 3: 'STRATEGY_TIME', 4: 'PRE_GAME', 5: 'IN_PROGRESS', 6: 'POST_GAME', 7: 'DISCONNECT' };
-    console.log(`[Dota2 GC] Lobby update: id=${lobbyId}, state=${gameState}(${GAME_STATE_NAMES[gameState] ?? '?'}), match=${matchId || 'none'}, outcome=${matchOutcome}, members=${members.length}, name="${gameName}"`);
+    console.log(`[Dota2 GC] Lobby update: id=${lobbyId}, state=${gameState}(${GAME_STATE_NAMES[gameState] ?? '?'}), match=${matchId || 'none'}, outcome=${matchOutcome}, members=${members.length}, name="${gameName}", region=${serverRegion}`);
 
     this.emit('lobbyUpdate', {
       lobbyId,
