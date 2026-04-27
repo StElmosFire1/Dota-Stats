@@ -1,0 +1,124 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# steamcmd +force_install_dir /opt/dota2 \
+         +login styg666 \
+         +app_update 1628350 validate \
+         +quit
+Redirecting stderr to '/root/.local/share/Steam/logs/stderr.txt'
+Logging directory: '/root/.local/share/Steam/logs'
+[  0%] Checking for available updates...
+[----] Verifying installation...
+UpdateUI: skip show logo
+Steam Console Client (c) Valve Corporation - version 1773426366
+-- type 'quit' to exit --
+Loading Steam API...OK
+Logging in using cached credentials.
+Logging in user 'styg666' [U:1:35944021] to Steam Public...OK
+Waiting for client config...OK
+Waiting for user info...Waiting for compat in post-logon took: 0.099744sOK
+ Update state (0x5) verifying install, progress: 95.80 (751568779 / 784495627)
+ Update state (0x0) unknown, progress: 0.00 (0 / 0)
+Success! App '1628350' fully installed.
+Unloading Steam API...OK
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# find /opt/dota2 -name "libv8*" 2>/dev/null
+find /opt/dota2 -maxdepth 2 -name "run" -o -name "run.sh" 2>/dev/null
+ls /opt/dota2/
+/opt/dota2/game/bin/linuxsteamrt64/libv8_libplatform.so
+/opt/dota2/game/bin/linuxsteamrt64/libv8_icui18n.so
+/opt/dota2/game/bin/linuxsteamrt64/libv8system.so
+/opt/dota2/game/bin/linuxsteamrt64/libv8_libcpp.so
+/opt/dota2/game/bin/linuxsteamrt64/libv8_icuuc.so
+/opt/dota2/game/bin/linuxsteamrt64/libv8_zlib.so
+/opt/dota2/game/bin/linuxsteamrt64/libv8.so
+/opt/dota2/game/bin/linuxsteamrt64/libv8_libbase.so
+/opt/dota2/run
+EmptySteamDepot  _v2-entry-point  pressure-vessel  sniper_platform_3.0.20260218.209091
+README.md        game             run              steamapps
+VERSIONS.txt     mtree.txt.gz     run-in-sniper    toolmanifest.vdf
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# /opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2 \
+  -dedicated \
+  +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 \
+  +map dota \
+  +sv_lan 0 \
+  +sv_cheats 0 \
+  +dota_force_gamemode 1 \
+  -console
+pressure-vessel-wrap[2386]: W: Using glibc from provider system for some but not all architectures! Arbitrarily using provider locales.
+pressure-vessel-wrap[2386]: W: Using libdrm from provider system for some but not all architectures! Will take /usr/share/libdrm from provider.
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libengine2.so, got 0x5afa49499b20
+
+Console initialized.
+Steam AppId(570), BreakpadId(373300)
+InitSteamLogin_Internal: Initializing breakpad.
+Using breakpad crash handler
+Steam Universe is invalid, possibly asking before Steam was successfully initialized.
+ResetBreakpadAppId: Universe is 0 (k_EUniverseInvalid)
+ResetBreakpadAppId: Setting dedicated server app id: 373310
+Setting breakpad minidump AppID = 373310
+Forcing breakpad minidump interfaces to load
+dlopen failed trying to load:
+/root/.steam/sdk64/steamclient.so
+with error:
+/root/.steam/sdk64/steamclient.so: cannot open shared object file: No such file or directory
+dlopen failed trying to load:
+steamclient.so
+with error:
+steamclient.so: cannot open shared object file: No such file or directory
+Loaded libSDL3.so.0, got 0x5afa494df280
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libtier0.so, got 0x5afa49483740
+Visibility enabled.
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libfilesystem_stdio.so, got 0x5afa494e1a50
+USRLOCAL path not found!
+Loaded /opt/dota2/game/bin/linuxsteamrt64/liblocalize.so, got 0x5afa494f4710
+Loaded /opt/dota2/game/bin/linuxsteamrt64/librendersystemempty.so, got 0x5afa494f4ef0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libresourcesystem.so, got 0x5afa494f5b10
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libschemasystem.so, got 0x5afa494f64b0
+Trying to set dxlevel (111) which is higher than the card can support (110)!
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libmaterialsystem2.so, got 0x5afa494f7550
+---------------
+Path ID:             File Path:
+ADDONS               "/opt/dota2/game/dota_addons/" 
+CONTENT              "/opt/dota2/content/dota/" 
+CONTENT              "/opt/dota2/content/core/" 
+CONTENTADDONS        "/opt/dota2/content/dota_addons/" 
+CONTENTROOT          "/opt/dota2/content/" 
+DEFAULT_WRITE_PATH   "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+DEFAULT_WRITE_PATH   "/opt/dota2/game/dota/" 
+EXECUTABLE_PATH      "/opt/dota2/game/bin/linuxsteamrt64/" 
+GAME                 "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+GAME                 "/opt/dota2/game/core/pak01.vpk" (vpk) /opt/dota2/game/core/pak01.vpk
+GAME                 "/opt/dota2/game/dota/" 
+GAME                 "/opt/dota2/game/core/" 
+GAMEBIN              "/opt/dota2/game/dota/bin/linuxsteamrt64/" 
+GAMEBIN              "/opt/dota2/game/dota/bin/" 
+GAMEBIN              "/opt/dota2/game/core/bin/linuxsteamrt64/" 
+GAMEBIN              "/opt/dota2/game/core/bin/" 
+GAMEROOT             "/opt/dota2/game/" 
+MOD                  "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+MOD                  "/opt/dota2/game/dota/" 
+PLATFORM             "/opt/dota2/game/core/pak01.vpk" (vpk) /opt/dota2/game/core/pak01.vpk
+PLATFORM             "/opt/dota2/game/core/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/dota/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/core/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/dota_core/" 
+SHADER_SOURCE_MOD    "/opt/dota2/src/shaders/dota/" 
+SHADER_SOURCE_ROOT   "/opt/dota2/src/shaders/" 
+command line arguments:
+-dedicated +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 +map dota +sv_lan 0 +sv_cheats 0 +dota_force_gamemode 1 -console
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libmeshsystem.so, got 0x5afa494f8540
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libworldrenderer.so, got 0x5afa494f8cd0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libpulse_system.so, got 0x5afa494f9e60
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libvscript.so, got 0x5afa494fac30
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libnetworksystem.so, got 0x5afa494fb420
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libanimationsystem.so, got 0x5afa495b20a0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libvphysics2.so, got 0x5afa495c98b0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libsoundsystem.so, got 0x5afa495dc580
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libscenesystem.so, got 0x5afa495f4c40
+Network System Initialized
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libserver_valve.so, got (nil)
+Loaded libserver_valve.so, got (nil)
+Loaded /opt/dota2/game/dota/bin/linuxsteamrt64/libserver.so, got (nil)
+ failed to dlopen /opt/dota2/game/dota/bin/linuxsteamrt64/libserver.so error=libv8.so: cannot open shared object file: No such file or directory
+ failed to dlopen "/opt/dota2/game/dota/bin/linuxsteamrt64/libserver.so" error=libv8.so: cannot open shared object file: No such file or directory
+FATAL ERROR: CAppSystemDict:Unable to load module server (Dependency of application), error 2
+ 0 FATAL ERROR: CAppSystemDict:Unable to load module server (Dependency of application), error 2
+
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# 
