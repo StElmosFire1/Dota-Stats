@@ -1,0 +1,409 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# ln -sf /root/.local/share/Steam/steamcmd/linux64/steamclient.so /root/.steam/sdk64/steamclient.so
+ls -la /root/.steam/sdk64/steamclient.so
+lrwxrwxrwx 1 root root 56 Apr 27 11:47 /root/.steam/sdk64/steamclient.so -> /root/.local/share/Steam/steamcmd/linux64/steamclient.so
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# /opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2 \
+  -dedicated \
+  +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 \
+  +map dota \
+  +sv_lan 0 \
+  +sv_cheats 0 \
+  +dota_force_gamemode 1 \
+  -console
+pressure-vessel-wrap[2696]: W: Using glibc from provider system for some but not all architectures! Arbitrarily using provider locales.
+pressure-vessel-wrap[2696]: W: Using libdrm from provider system for some but not all architectures! Will take /usr/share/libdrm from provider.
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libengine2.so, got 0x6266fcfa9b20
+
+Console initialized.
+Steam AppId(570), BreakpadId(373300)
+InitSteamLogin_Internal: Initializing breakpad.
+Using breakpad crash handler
+Steam Universe is invalid, possibly asking before Steam was successfully initialized.
+ResetBreakpadAppId: Universe is 0 (k_EUniverseInvalid)
+ResetBreakpadAppId: Setting dedicated server app id: 373310
+Setting breakpad minidump AppID = 373310
+Forcing breakpad minidump interfaces to load
+Looking up breakpad interfaces from steamclient
+Calling BreakpadMiniDumpSystemInit
+Loaded libSDL3.so.0, got 0x6266fd0bdb30
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libtier0.so, got 0x6266fcf93740
+Visibility enabled.
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libfilesystem_stdio.so, got 0x6266fd0bed60
+USRLOCAL path not found!
+Loaded /opt/dota2/game/bin/linuxsteamrt64/liblocalize.so, got 0x6266fd0d16b0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/librendersystemempty.so, got 0x6266fd0e4000
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libresourcesystem.so, got 0x6266fd0f6950
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libschemasystem.so, got 0x6266fd108e80
+Trying to set dxlevel (111) which is higher than the card can support (110)!
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libmaterialsystem2.so, got 0x6266fd11b7d0
+---------------
+Path ID:             File Path:
+ADDONS               "/opt/dota2/game/dota_addons/" 
+CONTENT              "/opt/dota2/content/dota/" 
+CONTENT              "/opt/dota2/content/core/" 
+CONTENTADDONS        "/opt/dota2/content/dota_addons/" 
+CONTENTROOT          "/opt/dota2/content/" 
+DEFAULT_WRITE_PATH   "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+DEFAULT_WRITE_PATH   "/opt/dota2/game/dota/" 
+EXECUTABLE_PATH      "/opt/dota2/game/bin/linuxsteamrt64/" 
+GAME                 "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+GAME                 "/opt/dota2/game/core/pak01.vpk" (vpk) /opt/dota2/game/core/pak01.vpk
+GAME                 "/opt/dota2/game/dota/" 
+GAME                 "/opt/dota2/game/core/" 
+GAMEBIN              "/opt/dota2/game/dota/bin/linuxsteamrt64/" 
+GAMEBIN              "/opt/dota2/game/dota/bin/" 
+GAMEBIN              "/opt/dota2/game/core/bin/linuxsteamrt64/" 
+GAMEBIN              "/opt/dota2/game/core/bin/" 
+GAMEROOT             "/opt/dota2/game/" 
+MOD                  "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+MOD                  "/opt/dota2/game/dota/" 
+PLATFORM             "/opt/dota2/game/core/pak01.vpk" (vpk) /opt/dota2/game/core/pak01.vpk
+PLATFORM             "/opt/dota2/game/core/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/dota/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/core/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/dota_core/" 
+SHADER_SOURCE_MOD    "/opt/dota2/src/shaders/dota/" 
+SHADER_SOURCE_ROOT   "/opt/dota2/src/shaders/" 
+command line arguments:
+-dedicated +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 +map dota +sv_lan 0 +sv_cheats 0 +dota_force_gamemode 1 -console
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libmeshsystem.so, got 0x6266fd12e540
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libworldrenderer.so, got 0x6266fd140a70
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libpulse_system.so, got 0x6266fd1537e0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libvscript.so, got 0x6266fd166130
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libnetworksystem.so, got 0x6266fd178660
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libanimationsystem.so, got 0x6266fd18cc90
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libvphysics2.so, got 0x6266fd1a4440
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libsoundsystem.so, got 0x6266fd1b6d90
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libscenesystem.so, got 0x6266fd1cf1a0
+Network System Initialized
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libserver_valve.so, got (nil)
+Loaded libserver_valve.so, got (nil)
+Loaded /opt/dota2/game/dota/bin/linuxsteamrt64/libserver.so, got 0x6266fd1e6530
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libengine2.so, got 0x6266fcfa9b20
+Physics Console Communications is not initialized
+Loaded /opt/dota2/game/dota/bin/linuxsteamrt64/libhost.so, got 0x6266fd23a720
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libscenefilecache.so, got 0x6266fd24dcd0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libparticles.so, got 0x6266fd260200
+BUG:  server couldn't look up codegen info for CEntityClass()
+Event System loaded 94 events from file: vpk:/opt/dota2/game/core/pak01.vpk:resource/core.gameevents.
+Event System loaded 275 events from file: vpk:/opt/dota2/game/dota/pak01.vpk:resource/game.gameevents.
+Found
+Hero npc_dota_hero_mirana is using an invalid ability special_bonus_attack_base_damage_35 in its bot skill build!
+Hero npc_dota_hero_riki is using an invalid ability special_bonus_unique_riki_2 in its bot skill build!
+CEntitySystem::BuildEntityNetworking (parallel build of server) took 237.604 msecs for 3222 out of 3317 classes
+[STARTUP] {2.152} server module init ok
+Failed loading resource "scripts/trophies_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/tracked_stats_player_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/tracked_stats_team_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/tracked_stats_match_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/ping_wheel_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/featured_gamemodes_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "soundevents/soundevents_test.vsndevts_c" (ERROR_FILEOPEN: File not found)
+Failed to load mutations file! scripts/battlepass/ti2018/mutations.txt
+CHostStateMgr::QueueNewRequest( Idle (console), 1 )
+Source2Init OK
+HostStateRequest::Start(HSR_IDLE):  loop(console) id(1) addons() desc(Idle (console))
+SwitchToLoop console requested:  id [1] addons []
+Host activate: Idle (console)
+Loading map "dota"
+CHostStateMgr::QueueNewRequest( Loading (dota), 2 )
+HostStateRequest::Start(HSR_GAME):  loop(levelload) id(2) addons() desc(Loading (dota))
+SwitchToLoop levelload requested:  id [2] addons []
+SV:  Level loading started for 'dota'
+CL:  CLoopModeLevelLoad::MaybeSwitchToGameLoop switching to "game" loopmode with addons ()
+SwitchToLoop game requested:  id [2] addons []
+SteamGameServer_Init()
+dlopen failed trying to load:
+steamclient.so
+with error:
+steamclient.so: cannot open shared object file: No such file or directory
+[S_API] SteamAPI_Init(): Loaded '/root/.steam/sdk64/steamclient.so' OK.  (First tried local 'steamclient.so')
+Setting breakpad minidump AppID = 570
+SteamInternal_SetMinidumpSteamID:  Caching Steam ID:  76561197960265728 [API loaded yes]
+SteamInternal_SetMinidumpSteamID:  Setting Steam ID:  76561197960265728
+Looking up breakpad interfaces from steamclient
+Calling BreakpadMiniDumpSystemInit
+SteamInternal_SetMinidumpSteamID:  Caching Steam ID:  76561197960265728 [API loaded yes]
+SteamInternal_SetMinidumpSteamID:  Setting Steam ID:  76561197960265728
+[S_API FAIL] Tried to access Steam interface SteamUtils010 before SteamAPI_Init succeeded.
+Steam Universe valid after having been requested when invalid.  Universe is now 1
+ResetBreakpadAppId: Universe is 1 (k_EUniversePublic)
+ResetBreakpadAppId: Setting dedicated server app id: 373310
+Setting breakpad minidump AppID = 373310
+SteamGameServer_Init() OK, logging on to Steam
+CNetworkSystem::InitGameServer: SteamGameServerNetworking() OK
+Initialized low level socket/threading support.
+Set SteamNetworkingSockets P2P_STUN_ServerList to '' as per SteamNetworkingSocketsSerialized
+CNetworkGameServerBase::SetServerState (ss_dead -> ss_waitingforgamesessionmanifest)
+SV:  maxplayers set to 64
+Created poll group for socket 'server'
+SDR RelayNetworkStatus:  avail=Attempting  config=Attempting  anyrelay=Not Attempted   (Attempt #1 to fetch config (only-if-cached) from https://api.steampowered.com/ISteamApps/GetSDRConfig/v1?appid=570)
+AuthStatus (invalid):  Waiting  (Waiting for Steam login)
+Network socket 'server' opened on port 27015
+Initializing script VM...
+...done
+SV:  Executing server defaults
+SV:  Executing dedicated server config file
+S:Gamerules: entering state 'DOTA_GAMERULES_STATE_INIT'
+SV:  CGameRulesGameSystem::GameInit installed game rules
+LoadResponseSystem scripts/talker/response_rules.vrr - Start
+response rule announcer_Tease has no speaker!
+response rule announcer_dlc_darkest_dungeon_CustomIsDarkestDungeonAnnIsAnnounceIdleLateGameChance_25%(3) has no CONCEPT!
+response rule announcer_dlc_darkest_dungeon_CustomIsDarkestDungeonAnnIsAnnounceIdleLateGameChance_25% has no CONCEPT!
+response rule monkey_king_Chance_5% has no CONCEPT!
+response rule monkey_king_Chance_5%IsMKCrown has no CONCEPT!
+CResponseSystem:  scripts/talker/response_rules.vrr (33497 rules, 2970 criteria, and 33497 responses)
+LoadResponseSystem scripts/talker/response_rules.vrr - Finish
+CPlayerVoiceListener::GameInit()
+[S_API FAIL] Tried to access Steam interface SteamUser023 before SteamAPI_Init succeeded.
+Failed loading resource "materials/sprites/blueglow1.vmat_c" (ERROR_FILEOPEN: File not found)
+Got SDR network config.  Loaded revision 1774928217 OK
+SDR RelayNetworkStatus:  avail=Not Attempted  config=OK  anyrelay=Not Attempted   (No need for SDR client network access)
+SV:  Connection to Steam servers successful.
+SV:  ServerSteamID=[A:1:3946483728:49601] (90285031166742544).
+[STARTUP] {5.881} logged on to Steam
+Logged on to Steam, set GC connection state to NO_SESSION
+Send msg 4007 (k_EMsgGCServerHello), 22 bytes
+Gameserver logged on to Steam, assigned identity steamid:90285031166742544
+AuthStatus (steamid:90285031166742544):  Attempting  (Requesting cert)
+Set SteamNetworkingSockets P2P_STUN_ServerList to '103.10.125.24:3478' as per SteamNetworkingSocketsSerialized
+OnSteamServersConnected()
+[S_API FAIL] Tried to access Steam interface SteamUtils010 before SteamAPI_Init succeeded.
+AuthStatus (steamid:90285031166742544):  OK  (OK)
+Certificate expires in 48h00m at 1777463265 (current time 1777290465), will renew in 46h00m
+SV:  VAC secure mode is activated.
+SV:  Spawn Server: dota
+CNetworkGameServerBase::SetServerState (ss_waitingforgamesessionmanifest -> ss_loading)
+Server is hibernating
+ResetGameConVarsToDefaults
+Recv msg 4005 (k_EMsgGCServerWelcome), 26 bytes
+Received server welcome from GC.
+CMsgClientWelcome subscribed: 0 up-to-date, 0 out-of-date
+GC Connection established for server version 6775
+Server:  Inactive
+Client:  Disconnected
+----- Status -----
+  Queued   :  game
+@ Current  :  levelload
+Unable to load grid nav for world "prefabs/promotional_radiant_fountain"
+Unable to load grid nav for world "prefabs/promotional_dire_fountain"
+CNetworkGameServerBase::SetServerState (ss_loading -> ss_active)
+SV:  IGameSystem::LoopActivateAllSystems {
+HO:  IGameSystem::LoopActivateAllSystems {
+HO:  } IGameSystem::LoopActivateAllSystems done
+SV:  } IGameSystem::LoopActivateAllSystems done
+Created physics for dota
+496:bad_result_position::m_vecOrigin CNetworkOriginCellCoordQuantizedVector m_cellY cell -354 is outside of cell bounds (0->128) @(2560.000000 -107231.250000 0.000000)
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Height map file (maps/prefabs/promotional_radiant_fountain.vhcg) not found, this will make ground height traces more expensive! Recompile the map to generate a height map.
+Height map file (maps/prefabs/promotional_dire_fountain.vhcg) not found, this will make ground height traces more expensive! Recompile the map to generate a height map.
+Bot ward spot ward_spot_radiant_high_point_top not found in map; falling back to hardcoded location.
+Bot ward spot ward_spot_dire_rune_bottom not found in map; falling back to hardcoded location.
+Bot ward spot ward_spot_dire_high_point_top in an invalid location, this may cause bots to get stuck.
+SV:  64 player server started
+CSource2Server::GameServerSteamAPIActivated()
+--- Sent CMsgGameServerInfo to GC
+server_public_ip_addr: 2261231327
+server_private_ip_addr: 2130706689
+server_port: 27015
+server_tv_port: 0
+server_key: ""
+server_hibernation: true
+server_type: GAME
+server_region: 0
+server_loadavg: 0.157226562
+server_tv_broadcast_time: -120
+server_game_time: 0
+relay_slots_max: 0
+relays_connected: 0
+relay_clients_connected: 0
+tv_secret_code: 3367279064790387030
+server_version: 6775
+server_cluster: 0
+assigned_server_tv_port: 27020
+allow_custom_games: BOTH
+build_version: 6775
+
+---
+Host activate: Loading (dota)
+Send msg 4508 (k_EMsgGCGameServerInfo), 82 bytes
