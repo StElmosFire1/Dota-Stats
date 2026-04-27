@@ -1,0 +1,116 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# sudo add-apt-repository multiverse -y
+sudo dpkg --add-architecture i386
+sudo apt update && sudo apt install -y steamcmd
+Adding component(s) 'multiverse' to all repositories.
+Hit:1 https://repos-droplet.digitalocean.com/apt/droplet-agent main InRelease
+Hit:2 http://mirrors.digitalocean.com/ubuntu noble InRelease               
+Hit:3 http://mirrors.digitalocean.com/ubuntu noble-updates InRelease       
+Hit:4 http://mirrors.digitalocean.com/ubuntu noble-backports InRelease
+Hit:5 http://security.ubuntu.com/ubuntu noble-security InRelease
+Reading package lists... Done
+Hit:1 https://repos-droplet.digitalocean.com/apt/droplet-agent main InRelease
+Hit:2 http://mirrors.digitalocean.com/ubuntu noble InRelease               
+Hit:3 http://mirrors.digitalocean.com/ubuntu noble-updates InRelease       
+Hit:4 http://security.ubuntu.com/ubuntu noble-security InRelease
+Hit:5 http://mirrors.digitalocean.com/ubuntu noble-backports InRelease
+Get:6 http://security.ubuntu.com/ubuntu noble-security/main i386 Packages [407 kB]
+Get:7 http://mirrors.digitalocean.com/ubuntu noble/main i386 Packages [1041 kB]
+Get:8 http://mirrors.digitalocean.com/ubuntu noble/universe i386 Packages [8514 kB]
+Get:9 http://mirrors.digitalocean.com/ubuntu noble/restricted i386 Packages [14.7 kB]
+Get:10 http://security.ubuntu.com/ubuntu noble-security/universe i386 Packages [798 kB]
+Get:11 http://mirrors.digitalocean.com/ubuntu noble/multiverse i386 Packages [126 kB]
+Get:12 http://security.ubuntu.com/ubuntu noble-security/restricted i386 Packages [25.4 kB]  
+Get:13 http://security.ubuntu.com/ubuntu noble-security/multiverse i386 Packages [6592 B]
+Get:14 http://mirrors.digitalocean.com/ubuntu noble-updates/main i386 Packages [609 kB]
+Get:15 http://mirrors.digitalocean.com/ubuntu noble-updates/universe i386 Packages [1127 kB]
+Get:16 http://mirrors.digitalocean.com/ubuntu noble-updates/restricted i386 Packages [27.7 kB]
+Get:17 http://mirrors.digitalocean.com/ubuntu noble-updates/multiverse i386 Packages [8448 B]
+Get:18 http://mirrors.digitalocean.com/ubuntu noble-backports/main i386 Packages [33.1 kB]
+Get:19 http://mirrors.digitalocean.com/ubuntu noble-backports/universe i386 Packages [16.7 kB]
+Get:20 http://mirrors.digitalocean.com/ubuntu noble-backports/multiverse i386 Packages [748 B]
+Fetched 12.8 MB in 10s (1247 kB/s) 
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+All packages are up to date.
+N: Skipping acquire of configured file 'main/binary-i386/Packages' as repository 'https://repos-droplet.digitalocean.com/apt/droplet-agent main InRelease' doesn't support architecture 'i386'
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  gcc-14-base:i386 libc6:i386 libgcc-s1:i386 libidn2-0:i386 libstdc++6:i386 libunistring5:i386
+Suggested packages:
+  glibc-doc:i386 locales:i386 libnss-nis:i386 libnss-nisplus:i386 steam:i386
+The following NEW packages will be installed:
+  gcc-14-base:i386 libc6:i386 libgcc-s1:i386 libidn2-0:i386 libstdc++6:i386 libunistring5:i386 steamcmd:i386
+0 upgraded, 7 newly installed, 0 to remove and 0 not upgraded.
+Need to get 6161 kB of archives.
+After this operation, 22.6 MB of additional disk space will be used.
+Get:1 http://mirrors.digitalocean.com/ubuntu noble-updates/main i386 gcc-14-base i386 14.2.0-4ubuntu2~24.04.1 [51.0 kB]
+Get:2 http://mirrors.digitalocean.com/ubuntu noble-updates/main i386 libgcc-s1 i386 14.2.0-4ubuntu2~24.04.1 [95.5 kB]
+Get:3 http://mirrors.digitalocean.com/ubuntu noble-updates/main i386 libc6 i386 2.39-0ubuntu8.7 [3011 kB]
+Get:4 http://mirrors.digitalocean.com/ubuntu noble-updates/main i386 libstdc++6 i386 14.2.0-4ubuntu2~24.04.1 [862 kB]
+Get:5 http://mirrors.digitalocean.com/ubuntu noble/multiverse i386 steamcmd i386 0~20180105-5 [1493 kB]
+Get:6 http://mirrors.digitalocean.com/ubuntu noble-updates/main i386 libunistring5 i386 1.1-2build1.1 [547 kB]
+Get:7 http://mirrors.digitalocean.com/ubuntu noble-updates/main i386 libidn2-0 i386 2.3.7-2build1.1 [102 kB]
+Fetched 6161 kB in 4s (1680 kB/s)        
+Preconfiguring packages ...
+Selecting previously unselected package gcc-14-base:i386.
+(Reading database ... 106969 files and directories currently installed.)
+Preparing to unpack .../0-gcc-14-base_14.2.0-4ubuntu2~24.04.1_i386.deb ...
+Unpacking gcc-14-base:i386 (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package libgcc-s1:i386.
+Preparing to unpack .../1-libgcc-s1_14.2.0-4ubuntu2~24.04.1_i386.deb ...
+Unpacking libgcc-s1:i386 (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package libc6:i386.
+Preparing to unpack .../2-libc6_2.39-0ubuntu8.7_i386.deb ...
+Unpacking libc6:i386 (2.39-0ubuntu8.7) ...
+Selecting previously unselected package libstdc++6:i386.
+Preparing to unpack .../3-libstdc++6_14.2.0-4ubuntu2~24.04.1_i386.deb ...
+Unpacking libstdc++6:i386 (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package steamcmd:i386.
+Preparing to unpack .../4-steamcmd_0~20180105-5_i386.deb ...
+Unpacking steamcmd:i386 (0~20180105-5) ...
+Selecting previously unselected package libunistring5:i386...................................................] 
+Preparing to unpack .../5-libunistring5_1.1-2build1.1_i386.deb ...
+Unpacking libunistring5:i386 (1.1-2build1.1) ...
+Selecting previously unselected package libidn2-0:i386.
+Preparing to unpack .../6-libidn2-0_2.3.7-2build1.1_i386.deb ...
+Unpacking libidn2-0:i386 (2.3.7-2build1.1) ...
+Setting up gcc-14-base:i386 (14.2.0-4ubuntu2~24.04.1) ...
+Setting up libgcc-s1:i386 (14.2.0-4ubuntu2~24.04.1) ...
+Setting up libc6:i386 (2.39-0ubuntu8.7) ...
+Setting up libstdc++6:i386 (14.2.0-4ubuntu2~24.04.1) ...############################################################################################...........................................................] 
+Setting up steamcmd:i386 (0~20180105-5) ...######################################################################################################################..............................................] 
+Setting up libunistring5:i386 (1.1-2build1.1) ...#############################################################################################################################.................................] 
+Setting up libidn2-0:i386 (2.3.7-2build1.1) ...############################################################################################################################################....................] 
+Processing triggers for man-db (2.12.0-4build2) ...#####################################################################################################################################################.......] 
+Processing triggers for libc6-i386 (2.39-0ubuntu8.7) ...
+Processing triggers for libc-bin (2.39-0ubuntu8.7) ...
+Scanning processes...                                                                                                                                                                                              
+Scanning candidates...                                                                                                                                                                                             
+Scanning linux images...                                                                                                                                                                                           
+
+Pending kernel upgrade!
+Running kernel version:
+  6.8.0-71-generic
+Diagnostics:
+  The currently running kernel version is not the expected kernel version 6.8.0-110-generic.
+
+Restarting the system to load the new kernel will not be handled automatically, so you should consider rebooting.
+
+Restarting services...
+
+Service restarts being deferred:
+ /etc/needrestart/restart.d/dbus.service
+ systemctl restart getty@tty1.service
+ systemctl restart serial-getty@ttyS0.service
+ systemctl restart systemd-logind.service
+ systemctl restart unattended-upgrades.service
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# 
