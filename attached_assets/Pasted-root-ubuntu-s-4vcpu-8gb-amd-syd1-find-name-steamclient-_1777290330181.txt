@@ -1,0 +1,135 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# find / -name "steamclient.so" 2>/dev/null | head -5
+/root/.local/share/Steam/steamcmd/linux64/steamclient.so
+/root/.local/share/Steam/steamcmd/linux32/steamclient.so
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# mkdir -p /root/.steam/sdk64
+ln -sf ~/.local/share/Steam/linux64/steamclient.so /root/.steam/sdk64/steamclient.so
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# /opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2 \
+  -dedicated \
+  +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 \
+  +map dota \
+  +sv_lan 0 \
+  +sv_cheats 0 \
+  +dota_force_gamemode 1 \
+  -console
+pressure-vessel-wrap[2623]: W: Using glibc from provider system for some but not all architectures! Arbitrarily using provider locales.
+pressure-vessel-wrap[2623]: W: Using libdrm from provider system for some but not all architectures! Will take /usr/share/libdrm from provider.
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libengine2.so, got 0x611ca7a21b20
+
+Console initialized.
+Steam AppId(570), BreakpadId(373300)
+InitSteamLogin_Internal: Initializing breakpad.
+Using breakpad crash handler
+Steam Universe is invalid, possibly asking before Steam was successfully initialized.
+ResetBreakpadAppId: Universe is 0 (k_EUniverseInvalid)
+ResetBreakpadAppId: Setting dedicated server app id: 373310
+Setting breakpad minidump AppID = 373310
+Forcing breakpad minidump interfaces to load
+dlopen failed trying to load:
+/root/.steam/sdk64/steamclient.so
+with error:
+/root/.steam/sdk64/steamclient.so: cannot open shared object file: No such file or directory
+dlopen failed trying to load:
+steamclient.so
+with error:
+steamclient.so: cannot open shared object file: No such file or directory
+Loaded libSDL3.so.0, got 0x611ca7a67280
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libtier0.so, got 0x611ca7a0b740
+Visibility enabled.
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libfilesystem_stdio.so, got 0x611ca7a69a50
+USRLOCAL path not found!
+Loaded /opt/dota2/game/bin/linuxsteamrt64/liblocalize.so, got 0x611ca7a7c710
+Loaded /opt/dota2/game/bin/linuxsteamrt64/librendersystemempty.so, got 0x611ca7a7cef0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libresourcesystem.so, got 0x611ca7a7db10
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libschemasystem.so, got 0x611ca7a7e4b0
+Trying to set dxlevel (111) which is higher than the card can support (110)!
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libmaterialsystem2.so, got 0x611ca7a7f550
+---------------
+Path ID:             File Path:
+ADDONS               "/opt/dota2/game/dota_addons/" 
+CONTENT              "/opt/dota2/content/dota/" 
+CONTENT              "/opt/dota2/content/core/" 
+CONTENTADDONS        "/opt/dota2/content/dota_addons/" 
+CONTENTROOT          "/opt/dota2/content/" 
+DEFAULT_WRITE_PATH   "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+DEFAULT_WRITE_PATH   "/opt/dota2/game/dota/" 
+EXECUTABLE_PATH      "/opt/dota2/game/bin/linuxsteamrt64/" 
+GAME                 "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+GAME                 "/opt/dota2/game/core/pak01.vpk" (vpk) /opt/dota2/game/core/pak01.vpk
+GAME                 "/opt/dota2/game/dota/" 
+GAME                 "/opt/dota2/game/core/" 
+GAMEBIN              "/opt/dota2/game/dota/bin/linuxsteamrt64/" 
+GAMEBIN              "/opt/dota2/game/dota/bin/" 
+GAMEBIN              "/opt/dota2/game/core/bin/linuxsteamrt64/" 
+GAMEBIN              "/opt/dota2/game/core/bin/" 
+GAMEROOT             "/opt/dota2/game/" 
+MOD                  "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+MOD                  "/opt/dota2/game/dota/" 
+PLATFORM             "/opt/dota2/game/core/pak01.vpk" (vpk) /opt/dota2/game/core/pak01.vpk
+PLATFORM             "/opt/dota2/game/core/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/dota/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/core/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/dota_core/" 
+SHADER_SOURCE_MOD    "/opt/dota2/src/shaders/dota/" 
+SHADER_SOURCE_ROOT   "/opt/dota2/src/shaders/" 
+command line arguments:
+-dedicated +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 +map dota +sv_lan 0 +sv_cheats 0 +dota_force_gamemode 1 -console
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libmeshsystem.so, got 0x611ca7a80540
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libworldrenderer.so, got 0x611ca7a80cd0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libpulse_system.so, got 0x611ca7a81e60
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libvscript.so, got 0x611ca7a82c30
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libnetworksystem.so, got 0x611ca7a83420
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libanimationsystem.so, got 0x611ca7b3a0a0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libvphysics2.so, got 0x611ca7b518b0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libsoundsystem.so, got 0x611ca7b64580
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libscenesystem.so, got 0x611ca7b7cc40
+Network System Initialized
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libserver_valve.so, got (nil)
+Loaded libserver_valve.so, got (nil)
+Loaded /opt/dota2/game/dota/bin/linuxsteamrt64/libserver.so, got 0x611ca7b94ba0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libengine2.so, got 0x611ca7a21b20
+Physics Console Communications is not initialized
+Loaded /opt/dota2/game/dota/bin/linuxsteamrt64/libhost.so, got 0x611ca7bea530
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libscenefilecache.so, got 0x611ca7bfddb0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libparticles.so, got 0x611ca7c10970
+BUG:  server couldn't look up codegen info for CEntityClass()
+Event System loaded 94 events from file: vpk:/opt/dota2/game/core/pak01.vpk:resource/core.gameevents.
+Event System loaded 275 events from file: vpk:/opt/dota2/game/dota/pak01.vpk:resource/game.gameevents.
+Found
+Hero npc_dota_hero_mirana is using an invalid ability special_bonus_attack_base_damage_35 in its bot skill build!
+Hero npc_dota_hero_riki is using an invalid ability special_bonus_unique_riki_2 in its bot skill build!
+CEntitySystem::BuildEntityNetworking (parallel build of server) took 303.395 msecs for 3222 out of 3317 classes
+[STARTUP] {1.122} server module init ok
+Failed loading resource "scripts/trophies_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/tracked_stats_team_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/tracked_stats_player_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/tracked_stats_match_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/ping_wheel_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "scripts/featured_gamemodes_staging.vdata_c" (ERROR_FILEOPEN: File not found)
+Failed loading resource "soundevents/soundevents_test.vsndevts_c" (ERROR_FILEOPEN: File not found)
+Failed to load mutations file! scripts/battlepass/ti2018/mutations.txt
+CHostStateMgr::QueueNewRequest( Idle (console), 1 )
+Source2Init OK
+HostStateRequest::Start(HSR_IDLE):  loop(console) id(1) addons() desc(Idle (console))
+SwitchToLoop console requested:  id [1] addons []
+Host activate: Idle (console)
+Loading map "dota"
+CHostStateMgr::QueueNewRequest( Loading (dota), 2 )
+HostStateRequest::Start(HSR_GAME):  loop(levelload) id(2) addons() desc(Loading (dota))
+SwitchToLoop levelload requested:  id [2] addons []
+SV:  Level loading started for 'dota'
+CL:  CLoopModeLevelLoad::MaybeSwitchToGameLoop switching to "game" loopmode with addons ()
+SwitchToLoop game requested:  id [2] addons []
+SteamGameServer_Init()
+dlopen failed trying to load:
+steamclient.so
+with error:
+steamclient.so: cannot open shared object file: No such file or directory
+dlopen failed trying to load:
+/root/.steam/sdk64/steamclient.so
+with error:
+/root/.steam/sdk64/steamclient.so: cannot open shared object file: No such file or directory
+[S_API] SteamAPI_Init(): Failed to load module '/root/.steam/sdk64/steamclient.so'
+FATAL ERROR: Failed to initialize Steamworks SDK for gameserver.  Failed to load module '/root/.steam/sdk64/steamclient.so'
+ 0 FATAL ERROR: Failed to initialize Steamworks SDK for gameserver.  Failed to load module '/root/.steam/sdk64/steamclient.so'
+
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# 
