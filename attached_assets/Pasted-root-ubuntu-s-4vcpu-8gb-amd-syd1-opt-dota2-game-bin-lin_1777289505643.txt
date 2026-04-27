@@ -1,0 +1,88 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# /opt/dota2/game/bin/linuxsteamrt64/dota2 \
+  -dedicated \
+  +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 \
+  +map dota \
+  +sv_lan 0 \
+  +sv_cheats 0 \
+  +dota_force_gamemode 1 \
+  -console
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libengine2.so, got 0x63fef7159a10
+
+Console initialized.
+Steam AppId(570), BreakpadId(373300)
+InitSteamLogin_Internal: Initializing breakpad.
+Using breakpad crash handler
+Steam Universe is invalid, possibly asking before Steam was successfully initialized.
+ResetBreakpadAppId: Universe is 0 (k_EUniverseInvalid)
+ResetBreakpadAppId: Setting dedicated server app id: 373310
+Setting breakpad minidump AppID = 373310
+Forcing breakpad minidump interfaces to load
+dlopen failed trying to load:
+/root/.steam/sdk64/steamclient.so
+with error:
+/root/.steam/sdk64/steamclient.so: cannot open shared object file: No such file or directory
+dlopen failed trying to load:
+steamclient.so
+with error:
+steamclient.so: cannot open shared object file: No such file or directory
+Loaded libSDL3.so.0, got 0x63fef71a0890
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libtier0.so, got 0x63fef7143600
+Visibility enabled.
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libfilesystem_stdio.so, got 0x63fef71a2170
+USRLOCAL path not found!
+Loaded /opt/dota2/game/bin/linuxsteamrt64/liblocalize.so, got 0x63fef71b4e30
+Loaded /opt/dota2/game/bin/linuxsteamrt64/librendersystemempty.so, got 0x63fef71b5610
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libresourcesystem.so, got 0x63fef71b6230
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libschemasystem.so, got 0x63fef71b6ff0
+Trying to set dxlevel (111) which is higher than the card can support (110)!
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libmaterialsystem2.so, got 0x63fef71b7c90
+---------------
+Path ID:             File Path:
+ADDONS               "/opt/dota2/game/dota_addons/" 
+CONTENT              "/opt/dota2/content/dota/" 
+CONTENT              "/opt/dota2/content/core/" 
+CONTENTADDONS        "/opt/dota2/content/dota_addons/" 
+CONTENTROOT          "/opt/dota2/content/" 
+DEFAULT_WRITE_PATH   "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+DEFAULT_WRITE_PATH   "/opt/dota2/game/dota/" 
+EXECUTABLE_PATH      "/opt/dota2/game/bin/linuxsteamrt64/" 
+GAME                 "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+GAME                 "/opt/dota2/game/core/pak01.vpk" (vpk) /opt/dota2/game/core/pak01.vpk
+GAME                 "/opt/dota2/game/dota/" 
+GAME                 "/opt/dota2/game/core/" 
+GAMEBIN              "/opt/dota2/game/dota/bin/linuxsteamrt64/" 
+GAMEBIN              "/opt/dota2/game/dota/bin/" 
+GAMEBIN              "/opt/dota2/game/core/bin/linuxsteamrt64/" 
+GAMEBIN              "/opt/dota2/game/core/bin/" 
+GAMEROOT             "/opt/dota2/game/" 
+MOD                  "/opt/dota2/game/dota/pak01.vpk" (vpk) /opt/dota2/game/dota/pak01.vpk
+MOD                  "/opt/dota2/game/dota/" 
+PLATFORM             "/opt/dota2/game/core/pak01.vpk" (vpk) /opt/dota2/game/core/pak01.vpk
+PLATFORM             "/opt/dota2/game/core/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/dota/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/core/" 
+SHADER_SOURCE        "/opt/dota2/src/shaders/dota_core/" 
+SHADER_SOURCE_MOD    "/opt/dota2/src/shaders/dota/" 
+SHADER_SOURCE_ROOT   "/opt/dota2/src/shaders/" 
+command line arguments:
+-dedicated +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 +map dota +sv_lan 0 +sv_cheats 0 +dota_force_gamemode 1 -console
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libmeshsystem.so, got 0x63fef71b8c80
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libworldrenderer.so, got 0x63fef71b9830
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libpulse_system.so, got 0x63fef71ba7c0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libvscript.so, got 0x63fef71bb370
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libnetworksystem.so, got 0x63fef71bbb60
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libanimationsystem.so, got 0x63fef7272be0
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libvphysics2.so, got 0x63fef728a390
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libsoundsystem.so, got 0x63fef729d020
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libscenesystem.so, got 0x63fef72b52c0
+Network System Initialized
+Loaded /opt/dota2/game/bin/linuxsteamrt64/libserver_valve.so, got (nil)
+Loaded libserver_valve.so, got (nil)
+Loaded /opt/dota2/game/dota/bin/linuxsteamrt64/libserver.so, got (nil)
+ failed to dlopen /opt/dota2/game/dota/bin/linuxsteamrt64/libserver.so error=libv8.so: cannot open shared object file: No such file or directory
+ failed to dlopen "/opt/dota2/game/dota/bin/linuxsteamrt64/libserver.so" error=libv8.so: cannot open shared object file: No such file or directory
+FATAL ERROR: CAppSystemDict:Unable to load module server (Dependency of application), error 2
+ 0 FATAL ERROR: CAppSystemDict:Unable to load module server (Dependency of application), error 2
+
+Segmentation fault (core dumped)
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# 
