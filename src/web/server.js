@@ -2736,6 +2736,7 @@ NOTES
     try {
       const { winnerId } = req.body;
       if (!winnerId) return res.status(400).json({ error: 'winnerId required' });
+
       const matches = await db.setTournamentMatchWinner(req.params.matchId, winnerId);
       res.json({ matches });
 
@@ -2745,14 +2746,35 @@ NOTES
         if (match && match.tournament_id) {
           const tournament = await db.getTournamentById(match.tournament_id);
           if (tournament && match.winner_name) {
-            const roundMatches = matches.filter(m => m.round === match.round);
+            const roundMatches = matches.filter(m => m.round === match.round && m.bracket === match.bracket);
             const maxRound = Math.max(...matches.map(m => m.round));
-            const roundLabel = match.round === maxRound && roundMatches.length === 1 ? '🏆 Grand Final' : `Round ${match.round}`;
+            const isGF = match.bracket === 'GF';
+            const isFinal = isGF || (match.round === maxRound && roundMatches.length === 1);
+            const roundLabel = isGF ? 'Grand Final' : match.round === maxRound && roundMatches.length === 1 ? 'Grand Final' : `Round ${match.round}`;
             const loserName = String(match.winner_id) === String(match.p1_id) ? match.p2_name : match.p1_name;
-            const notifyMsg = loserName
+
+            // Per-match notification
+            const matchMsg = loserName
               ? `🏆 **${tournament.name}** — ${roundLabel}: **${match.winner_name}** def. ${loserName}`
               : `🏆 **${tournament.name}** — ${roundLabel}: **${match.winner_name}** advances!`;
-            getDiscordBot()._notifyChannel(notifyMsg);
+            getDiscordBot()._notifyChannel(matchMsg);
+
+            // Tournament completion announcement
+            if (tournament.status === 'completed' && isFinal) {
+              const { EmbedBuilder } = require('discord.js');
+              const finalistName = loserName || 'Runner-up';
+              const embed = new EmbedBuilder()
+                .setTitle(`🏆 Tournament Complete — ${tournament.name}`)
+                .setColor(0xFFD700)
+                .setDescription(
+                  `**${match.winner_name}** has won the **${tournament.name}** tournament!\n\n` +
+                  `🥇 **Champion:** ${match.winner_name}\n` +
+                  (loserName ? `🥈 **Runner-up:** ${loserName}\n` : '') +
+                  (tournament.season_name ? `\n📅 Season: ${tournament.season_name}` : '')
+                )
+                .setTimestamp();
+              getDiscordBot()._notifyChannel({ embeds: [embed] });
+            }
           }
         }
       } catch (notifyErr) {
