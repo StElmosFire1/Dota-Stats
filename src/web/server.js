@@ -3444,6 +3444,329 @@ NOTES
     }
   });
 
+  // ============================================================
+  // Inhouse Sessions API (FACEIT-style match accept + draft)
+  // ============================================================
+
+  router.get('/inhouse/active', async (req, res) => {
+    try {
+      const session = await db.getActiveInhouseSession();
+      if (!session) return res.json({ session: null });
+      const players = await db.getInhouseSessionPlayers(session.id);
+      res.json({ session, players });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/inhouse', async (req, res) => {
+    try {
+      const sessions = await db.listInhouseSessions({ status: req.query.status || null, limit: parseInt(req.query.limit || '20', 10) });
+      res.json({ sessions });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/inhouse/:id', async (req, res) => {
+    try {
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      const players = await db.getInhouseSessionPlayers(session.id);
+      res.json({ session, players });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Helper: derive caller account from authenticated Steam session, with admin override.
+  // Admins (valid x-superuser-key) may pass an explicit accountId in the body to act on behalf of any player.
+  function _resolveInhouseActor(req, requireAuth = true) {
+    const adminKey = process.env.SUPERUSER_PASSWORD;
+    const isAdmin = !!(adminKey && req.headers['x-superuser-key'] === adminKey);
+    let accountId = null;
+    if (req.session && req.session.accountId) accountId = req.session.accountId;
+    if (isAdmin && req.body?.accountId) accountId = req.body.accountId;
+    if (requireAuth && !accountId) {
+      return { error: 'Sign in with Steam first.', status: 401 };
+    }
+    return { accountId, isAdmin };
+  }
+
+  router.post('/inhouse', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { captainMode, acceptPhaseSeconds, notes } = req.body || {};
+      const session = await db.createInhouseSession({
+        captainMode: captainMode || 'highest_rank',
+        acceptPhaseSeconds: parseInt(acceptPhaseSeconds || '60', 10),
+        notes: notes || null,
+        createdBy: req.session?.displayName || 'admin',
+      });
+      res.json({ session });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/join', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (!['open','accepting'].includes(session.status)) return res.status(400).json({ error: 'Session not joinable in current phase' });
+      const player = await db.joinInhouseSession(session.id, actor.accountId, req.body?.preferredPositions || null);
+      res.json({ player });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/leave', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (!['open','accepting'].includes(session.status)) return res.status(400).json({ error: 'Cannot leave once drafting/in-progress' });
+      await db.leaveInhouseSession(req.params.id, actor.accountId);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/accept', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (session.status !== 'accepting') return res.status(400).json({ error: 'Not in accept phase' });
+      const player = await db.setInhousePlayerAccepted(req.params.id, actor.accountId);
+      if (!player) return res.status(404).json({ error: 'You are not registered for this session' });
+      res.json({ player });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/decline', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (session.status !== 'accepting') return res.status(400).json({ error: 'Not in accept phase' });
+      const player = await db.setInhousePlayerDeclined(req.params.id, actor.accountId);
+      if (!player) return res.status(404).json({ error: 'You are not registered for this session' });
+      res.json({ player });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/start-accept-phase', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const seconds = parseInt(req.body?.seconds || '60', 10);
+      const cur = await db.getInhouseSession(req.params.id);
+      if (!cur) return res.status(404).json({ error: 'Session not found' });
+      if (cur.status !== 'open') return res.status(400).json({ error: `Cannot start accept phase from status ${cur.status}` });
+      const session = await db.updateInhouseSession(req.params.id, {
+        status: 'accepting',
+        accept_phase_starts_at: new Date(),
+        accept_phase_seconds: seconds,
+      });
+      res.json({ session });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/select-captains', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      // Atomic phase-guarded transition: only proceed if still in 'accepting'
+      const pool = db.getPool();
+      const guardRes = await pool.query(
+        `UPDATE inhouse_sessions SET status = 'drafting' WHERE id = $1 AND status = 'accepting' RETURNING *`,
+        [req.params.id]
+      );
+      if (guardRes.rowCount === 0) {
+        const cur = await db.getInhouseSession(req.params.id);
+        if (!cur) return res.status(404).json({ error: 'Session not found' });
+        return res.status(409).json({ error: `Captains already selected (status=${cur.status})` });
+      }
+      const session = guardRes.rows[0];
+      const players = await db.getInhouseSessionPlayers(session.id);
+      const accepted = players.filter(p => p.status === 'accepted');
+      if (accepted.length < 2) {
+        // Roll back phase guard
+        await db.updateInhouseSession(session.id, { status: 'accepting' });
+        return res.status(400).json({ error: 'Need at least 2 accepted players to choose captains' });
+      }
+
+      const mode = req.body?.mode || session.captain_mode || 'highest_rank';
+      let cap1, cap2;
+
+      if (mode === 'highest_rank') {
+        const sorted = [...accepted].sort((a, b) => Number(b.trueskill_mmr) - Number(a.trueskill_mmr));
+        cap1 = sorted[0];
+        cap2 = sorted[1];
+      } else if (mode === 'random') {
+        const shuffled = [...accepted].sort(() => Math.random() - 0.5);
+        cap1 = shuffled[0];
+        cap2 = shuffled[1];
+      } else if (mode === 'highest_roll') {
+        for (const p of accepted) {
+          const roll = Math.floor(Math.random() * 100) + 1;
+          await db.setInhousePlayerRoll(session.id, p.account_id, roll);
+          p.roll = roll;
+        }
+        const sorted = [...accepted].sort((a, b) => (b.roll || 0) - (a.roll || 0));
+        cap1 = sorted[0];
+        cap2 = sorted[1];
+      } else {
+        await db.updateInhouseSession(session.id, { status: 'accepting' });
+        return res.status(400).json({ error: 'Unknown captain mode' });
+      }
+
+      const updated = await db.updateInhouseSession(session.id, {
+        captain1_account_id: cap1.account_id,
+        captain2_account_id: cap2.account_id,
+        captain_mode: mode,
+      });
+      await db.assignInhouseTeams(session.id, [
+        { accountId: cap1.account_id, team: 1, pickOrder: 0 },
+        { accountId: cap2.account_id, team: 2, pickOrder: 0 },
+      ]);
+      const playersAfter = await db.getInhouseSessionPlayers(session.id);
+      res.json({ session: updated, players: playersAfter });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/draft-pick', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { accountId, team, pickOrder } = req.body || {};
+      if (!accountId || ![1,2].includes(team)) return res.status(400).json({ error: 'accountId and team (1|2) required' });
+      const cur = await db.getInhouseSession(req.params.id);
+      if (!cur) return res.status(404).json({ error: 'Session not found' });
+      if (cur.status !== 'drafting') return res.status(400).json({ error: 'Not in drafting phase' });
+      // Atomic conditional pick: only succeeds if player is still unpicked AND not declined
+      const pool = db.getPool();
+      const guard = await pool.query(
+        `UPDATE inhouse_session_players
+            SET team = $1, pick_order = $2, status = 'drafted'
+          WHERE session_id = $3 AND account_id = $4 AND team = 0 AND status <> 'declined'
+       RETURNING *`,
+        [team, pickOrder ?? null, req.params.id, accountId]
+      );
+      if (guard.rowCount === 0) {
+        return res.status(409).json({ error: 'Player already picked or no longer eligible' });
+      }
+      res.json({ player: guard.rows[0] });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/server', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { generateMatchPassword } = require('../services/steamConnectLink');
+      const cfg = require('../config').config;
+      const cur = await db.getInhouseSession(req.params.id);
+      if (!cur) return res.status(404).json({ error: 'Session not found' });
+      if (cur.status !== 'drafting') return res.status(400).json({ error: `Cannot provision server from status ${cur.status}` });
+
+      // Generate password server-side; reject any user-supplied special chars to avoid RCON injection
+      const reqPwd = (req.body?.password || '').toString();
+      const safePwd = /^[A-Za-z0-9_-]{4,32}$/.test(reqPwd) ? reqPwd : generateMatchPassword(8);
+      const ip = (req.body?.ip || cfg.dota?.dedicatedServer?.ip || '').toString();
+      if (ip && !/^[0-9.]{7,15}$|^[a-zA-Z0-9.-]+$/.test(ip)) return res.status(400).json({ error: 'Invalid server IP' });
+      const port = parseInt(req.body?.port || cfg.dota?.dedicatedServer?.port || 27015, 10);
+
+      // Try to push password via RCON if configured
+      let rconResult = null;
+      try {
+        const { setMatchPassword } = require('../services/rconClient');
+        await setMatchPassword(safePwd);
+        rconResult = { ok: true };
+      } catch (rconErr) {
+        rconResult = { ok: false, error: rconErr.message };
+      }
+
+      const session = await db.updateInhouseSession(req.params.id, {
+        match_password: safePwd,
+        server_ip: ip,
+        server_port: port,
+        status: 'in_progress',
+        started_at: new Date(),
+      });
+      res.json({ session, rcon: rconResult });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/cancel', requireSuperuser, async (req, res) => {
+    try {
+      const session = await db.updateInhouseSession(req.params.id, {
+        status: 'cancelled',
+        completed_at: new Date(),
+      });
+      res.json({ session });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/inhouse/:id/complete', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const matchId = req.body?.matchId || null;
+      const session = await db.updateInhouseSession(req.params.id, {
+        status: 'completed',
+        match_id: matchId,
+        completed_at: new Date(),
+      });
+      res.json({ session });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Dedicated server health: RCON + SSH ping (admin only — leaks infra detail otherwise)
+  router.get('/dedicated-server/status', requireSuperuser, async (req, res) => {
+    try {
+      const { pingServer } = require('../services/rconClient');
+      const { testConnection } = require('../services/serverReplayFetcher');
+      const cfg = require('../config').config;
+      const [rcon, ssh] = await Promise.all([
+        pingServer().catch(e => ({ ok: false, error: e.message })),
+        testConnection().catch(e => ({ ok: false, error: e.message })),
+      ]);
+      res.json({
+        ip: cfg.dota?.dedicatedServer?.ip || null,
+        port: cfg.dota?.dedicatedServer?.port || 27015,
+        rcon,
+        ssh,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Pull latest replay from dedicated server, parse, and (optionally) record
+  router.post('/dedicated-server/fetch-replay', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { fetchLatestReplay } = require('../services/serverReplayFetcher');
+      const result = await fetchLatestReplay();
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   return router;
 }
 

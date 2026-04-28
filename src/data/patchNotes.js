@@ -559,4 +559,11 @@ module.exports = [
     content: 'Integrated a DigitalOcean-hosted Dota 2 dedicated game server (SYD1, Sydney) into the bot and lobby system.\n\n• Lobby creation now passes a dedicated server IP hint to the Game Coordinator via the lan_host_ping_to_server_ip field, so the GC can route practice lobbies to the community server.\n• Discord announces when a game server is assigned — showing whether the GC routed to the dedicated server or a Valve server.\n• New !ds_status command pings the dedicated server via A2S_INFO (Source query protocol) and reports Online/Offline, address, and Steam ID in a Discord embed.',
     author: 'System',
   },
+  {
+    version: '5.38',
+    title: 'FACEIT-Style Inhouse Lobby — Match Accept, Captain Draft, Direct Connect',
+    published_at: '2026-04-28',
+    content: 'Built a complete FACEIT-style inhouse flow on top of the dedicated server, available at /inhouse on the dashboard.\n\n• New Inhouse Lobby page: players sign in, register interest with preferred positions (P1–P5), then go through a timed Accept Phase with a live countdown.\n• Captain selection supports three modes: Highest Rank (TrueSkill MMR), Random, and Highest Roll (1–100 dice per player). Two captains are auto-promoted into Team 1 / Team 2.\n• Captain draft UI: admins click "→ T1" / "→ T2" next to each unpicked player to assign them. Pick order is recorded.\n• Provision Server: generates a per-match lobby password and pushes it to the dedicated server over Source RCON. Players see a one-click "Connect to Server" button (steam://connect/IP:PORT/PASSWORD) plus a fallback console command they can paste into Dota.\n• SSH replay puller: an admin button (and new !ds_replay command) SCPs the latest .dem from the dedicated server, ready to feed into the OpenDota Java parser. The existing GC replay-salt path is retained as an alternate route for matches that have a Valve match ID.\n• New Discord commands: !inhouse status (admin), !inhouse open (admin), !ds_replay (admin).\n• Status banner on the page shows live RCON + SSH health for the dedicated server.\n• Database: two new tables (inhouse_sessions, inhouse_session_players) store the full session lifecycle — open → accepting → drafting → in_progress → completed/cancelled — with team assignments, accept timestamps, and per-match passwords.',
+    author: 'System',
+  },
 ];

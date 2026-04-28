@@ -51,6 +51,7 @@ A web dashboard (React + Vite frontend, Express backend) provides extensive feat
 - **Player Profiles Enhancements:** Includes First Bloods stats and Win Rate by Game Duration.
 - **Skill Builds Tab:** Shows common ability leveling data.
 - **Patch Notes Auto-Announce:** Bot announces new patch notes from `src/data/patchNotes.js` to Discord.
+- **FACEIT-Style Inhouse Lobby (`/inhouse`):** End-to-end inhouse session flow on top of the dedicated server. Players sign in, register with preferred positions (P1–P5), then go through a timed Accept Phase. Three captain selection modes: Highest Rank (TrueSkill), Random, Highest Roll (1–100). Captain draft UI with team assignment + pick order. "Provision Server" generates a per-match password, pushes it via Source RCON, and shows a one-click `steam://connect/IP:PORT/PASSWORD` button for players. SSH/SCP replay puller fetches the latest `.dem` from `/opt/dota2/game/dota/replays` and feeds the existing OpenDota Java parser (the GC replay-salt path is retained as the alternate route). Backed by `inhouse_sessions` + `inhouse_session_players` tables. Discord commands: `!inhouse status`, `!inhouse open [mode]`, `!ds_replay`. Required env vars: `DEDICATED_SERVER_RCON_PASSWORD`, `DEDICATED_SERVER_SSH_PRIVATE_KEY`, `DEDICATED_SERVER_SSH_USER` (optional, defaults to root), `DEDICATED_SERVER_REPLAY_DIR` (optional, defaults to `/opt/dota2/game/dota/replays`).
 
 **System Design Choices:**
 - **Modularity:** Structured components for Discord, Steam, Lobby, API, Stats, Sheets, Replay.

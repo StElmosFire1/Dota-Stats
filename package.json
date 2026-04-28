@@ -36,6 +36,7 @@
     "openai": "^6.32.0",
     "pg": "^8.20.0",
     "protobufjs": "^7.5.4",
+    "ssh2": "^1.17.0",
     "steam-user": "^5.2.1",
     "stripe": "^20.4.1",
     "ts-trueskill": "^4.2.2"

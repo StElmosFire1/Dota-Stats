@@ -525,6 +525,8 @@ class DiscordBot {
           case 'join_lobby': await this._cmdJoinLobby(msg, args); break;
           case 'lobby_status': await this._cmdLobbyStatus(msg); break;
           case 'ds_status': await this._cmdDsStatus(msg); break;
+          case 'ds_replay': await this._cmdDsReplay(msg); break;
+          case 'inhouse': await this._cmdInhouse(msg, args); break;
           case 'gc_debug': await this._cmdGcDebug(msg); break;
           case 'invite': await this._cmdInvite(msg, args); break;
           case 'invite_me': await this._cmdInviteMe(msg); break;
@@ -636,6 +638,8 @@ class DiscordBot {
             '`!create_lobby [name]` - Create a Dota 2 CM lobby (name optional, default "OCE Inhouse")',
             '`!lobby_status` - Show current lobby info and how to join',
             '`!ds_status` - Check dedicated game server health',
+            '`!ds_replay` - Pull the latest .dem replay from the dedicated server (admin)',
+            '`!inhouse` - Open or status the FACEIT-style inhouse session (admin)',
             '`!invite <steam64_id>` - Send a lobby invite to a player by Steam64 ID',
             '`!invite @user` - Send a lobby invite to a Discord-linked player by @mention',
             '`!invite_me` - Invite yourself (your Discord must be linked on the Players page)',
@@ -782,6 +786,64 @@ class DiscordBot {
     }
 
     await msg.reply({ embeds: [embed] });
+  }
+
+  async _cmdDsReplay(msg) {
+    if (!this._isAdmin(msg)) return msg.reply('Admin only.');
+    try {
+      const { fetchLatestReplay } = require('../services/serverReplayFetcher');
+      await msg.reply('Fetching latest replay from the dedicated server over SSH...');
+      const r = await fetchLatestReplay();
+      const sizeMb = (require('fs').statSync(r.localPath).size / 1024 / 1024).toFixed(1);
+      await msg.reply(`✅ Pulled **${r.filename}** (${sizeMb} MB) → \`${r.localPath}\`\n\nNext: feed it into the parser to record the match.`);
+    } catch (err) {
+      await msg.reply(`❌ Replay fetch failed: ${err.message}\n\nCheck DEDICATED_SERVER_SSH_PRIVATE_KEY, DEDICATED_SERVER_SSH_USER, DEDICATED_SERVER_REPLAY_DIR.`);
+    }
+  }
+
+  async _cmdInhouse(msg, args) {
+    const db = require('../db');
+    const sub = (args[0] || 'status').toLowerCase();
+
+    if (sub === 'status') {
+      try {
+        const session = await db.getActiveInhouseSession();
+        if (!session) return msg.reply('No active inhouse session. Start one at the dashboard `/inhouse` page or with `!inhouse open`.');
+        const players = await db.getInhouseSessionPlayers(session.id);
+        const accepted = players.filter(p => p.status === 'accepted').length;
+        const lines = [
+          `**Inhouse Session #${session.id}** — \`${session.status.toUpperCase()}\``,
+          `Captain mode: \`${session.captain_mode}\``,
+          `Players: **${players.length}** registered, **${accepted}** accepted`,
+        ];
+        if (session.match_password && session.server_ip) {
+          lines.push(`Server: \`${session.server_ip}:${session.server_port}\` · password \`${session.match_password}\``);
+          lines.push(`Connect: <steam://connect/${session.server_ip}:${session.server_port}/${encodeURIComponent(session.match_password)}>`);
+        }
+        lines.push(`\nManage at the dashboard: \`/inhouse\``);
+        return msg.reply(lines.join('\n'));
+      } catch (err) {
+        return msg.reply(`Error: ${err.message}`);
+      }
+    }
+
+    if (sub === 'open' || sub === 'create') {
+      if (!this._isAdmin(msg)) return msg.reply('Admin only.');
+      try {
+        const captainMode = (args[1] || 'highest_rank').toLowerCase();
+        if (!['highest_rank','random','highest_roll'].includes(captainMode)) {
+          return msg.reply('Captain mode must be one of: `highest_rank`, `random`, `highest_roll`.');
+        }
+        const existing = await db.getActiveInhouseSession();
+        if (existing) return msg.reply(`There's already an active session (#${existing.id} — \`${existing.status}\`). Cancel it first at \`/inhouse\`.`);
+        const session = await db.createInhouseSession({ captainMode, createdBy: msg.author?.tag || 'discord-admin' });
+        return msg.reply(`✅ Opened inhouse session **#${session.id}** with captain mode \`${captainMode}\`.\nPlayers can now join at \`/inhouse\`.`);
+      } catch (err) {
+        return msg.reply(`Error: ${err.message}`);
+      }
+    }
+
+    return msg.reply('Usage: `!inhouse status` | `!inhouse open [highest_rank|random|highest_roll]`');
   }
 
   async _cmdGcDebug(msg) {

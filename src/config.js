@@ -124,6 +124,14 @@ const config = {
       ip: process.env.DEDICATED_SERVER_IP || '',
       port: parseInt(process.env.DEDICATED_SERVER_PORT || '27015', 10),
       steamId: process.env.DEDICATED_SERVER_STEAM_ID || '',
+      rconPassword: process.env.DEDICATED_SERVER_RCON_PASSWORD || '',
+      ssh: {
+        host: process.env.DEDICATED_SERVER_SSH_HOST || process.env.DEDICATED_SERVER_IP || '',
+        port: parseInt(process.env.DEDICATED_SERVER_SSH_PORT || '22', 10),
+        user: process.env.DEDICATED_SERVER_SSH_USER || 'root',
+        privateKey: process.env.DEDICATED_SERVER_SSH_PRIVATE_KEY || '',
+        replayDir: process.env.DEDICATED_SERVER_REPLAY_DIR || '/opt/dota2/game/dota/replays',
+      },
     },
   },
 

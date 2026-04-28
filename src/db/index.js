@@ -713,6 +713,49 @@ async function init() {
       )
     `);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS inhouse_sessions (
+        id SERIAL PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'open',
+        captain_mode TEXT NOT NULL DEFAULT 'highest_rank',
+        match_password TEXT,
+        server_ip TEXT,
+        server_port INTEGER,
+        match_id BIGINT,
+        captain1_account_id BIGINT,
+        captain2_account_id BIGINT,
+        team1_is_radiant BOOLEAN DEFAULT TRUE,
+        accept_phase_starts_at TIMESTAMPTZ,
+        accept_phase_seconds INTEGER DEFAULT 60,
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        started_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        notes TEXT
+      )
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS inhouse_session_players (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES inhouse_sessions(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'registered',
+        team INTEGER DEFAULT 0,
+        pick_order INTEGER,
+        preferred_positions TEXT,
+        roll INTEGER,
+        registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        accepted_at TIMESTAMPTZ,
+        voice_verified BOOLEAN DEFAULT FALSE,
+        not_in_dota BOOLEAN DEFAULT FALSE,
+        joined_server BOOLEAN DEFAULT FALSE,
+        UNIQUE (session_id, account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_session_players_session ON inhouse_session_players (session_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_sessions_status ON inhouse_sessions (status)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -5626,6 +5669,155 @@ async function updateSignupRequest(id, { status, adminNotes, reviewedBy }) {
   );
 }
 
+// ============================================================
+// Inhouse Sessions (FACEIT-style match accept + draft + DS flow)
+// ============================================================
+
+async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [captainMode, createdBy, notes, acceptPhaseSeconds]
+  );
+  return r.rows[0];
+}
+
+async function getInhouseSession(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM inhouse_sessions WHERE id = $1`, [id]);
+  return r.rows[0] || null;
+}
+
+async function listInhouseSessions({ status = null, limit = 50 } = {}) {
+  const p = getPool();
+  if (status) {
+    const r = await p.query(`SELECT * FROM inhouse_sessions WHERE status = $1 ORDER BY created_at DESC LIMIT $2`, [status, limit]);
+    return r.rows;
+  }
+  const r = await p.query(`SELECT * FROM inhouse_sessions ORDER BY created_at DESC LIMIT $1`, [limit]);
+  return r.rows;
+}
+
+async function getActiveInhouseSession() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM inhouse_sessions WHERE status IN ('open','accepting','drafting','in_progress') ORDER BY created_at DESC LIMIT 1`
+  );
+  return r.rows[0] || null;
+}
+
+async function updateInhouseSession(id, fields) {
+  const p = getPool();
+  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes'];
+  const sets = [];
+  const vals = [];
+  for (const k of Object.keys(fields)) {
+    if (!allowed.includes(k)) continue;
+    vals.push(fields[k]);
+    sets.push(`${k} = $${vals.length}`);
+  }
+  if (!sets.length) return getInhouseSession(id);
+  vals.push(id);
+  const r = await p.query(`UPDATE inhouse_sessions SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+  return r.rows[0] || null;
+}
+
+async function deleteInhouseSession(id) {
+  const p = getPool();
+  await p.query(`DELETE FROM inhouse_sessions WHERE id = $1`, [id]);
+}
+
+async function joinInhouseSession(sessionId, accountId, preferredPositions = null) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO inhouse_session_players (session_id, account_id, preferred_positions)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (session_id, account_id)
+     DO UPDATE SET preferred_positions = COALESCE(EXCLUDED.preferred_positions, inhouse_session_players.preferred_positions)
+     RETURNING *`,
+    [sessionId, accountId, preferredPositions]
+  );
+  return r.rows[0];
+}
+
+async function leaveInhouseSession(sessionId, accountId) {
+  const p = getPool();
+  await p.query(`DELETE FROM inhouse_session_players WHERE session_id = $1 AND account_id = $2`, [sessionId, accountId]);
+}
+
+async function getInhouseSessionPlayers(sessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT isp.*,
+            pn.nickname AS nickname,
+            ps.steam_account_id AS steam_account_id,
+            COALESCE(ps.mu, 25.0) AS mu,
+            COALESCE(ps.sigma, 8.333) AS sigma,
+            (COALESCE(ps.mu, 25.0) - 3*COALESCE(ps.sigma, 8.333)) AS trueskill_mmr,
+            ps.discord_id AS discord_id
+       FROM inhouse_session_players isp
+       LEFT JOIN player_stats ps ON ps.steam_account_id = isp.account_id
+       LEFT JOIN player_nicknames pn ON pn.steam_account_id = isp.account_id
+      WHERE isp.session_id = $1
+      ORDER BY isp.registered_at ASC`,
+    [sessionId]
+  );
+  return r.rows;
+}
+
+async function updateInhouseSessionPlayer(sessionId, accountId, fields) {
+  const p = getPool();
+  const allowed = ['status','team','pick_order','preferred_positions','roll','accepted_at','voice_verified','not_in_dota','joined_server'];
+  const sets = [];
+  const vals = [];
+  for (const k of Object.keys(fields)) {
+    if (!allowed.includes(k)) continue;
+    vals.push(fields[k]);
+    sets.push(`${k} = $${vals.length}`);
+  }
+  if (!sets.length) return null;
+  vals.push(sessionId, accountId);
+  const r = await p.query(
+    `UPDATE inhouse_session_players SET ${sets.join(', ')} WHERE session_id = $${vals.length-1} AND account_id = $${vals.length} RETURNING *`,
+    vals
+  );
+  return r.rows[0] || null;
+}
+
+async function setInhousePlayerAccepted(sessionId, accountId) {
+  return updateInhouseSessionPlayer(sessionId, accountId, { status: 'accepted', accepted_at: new Date() });
+}
+
+async function setInhousePlayerDeclined(sessionId, accountId) {
+  return updateInhouseSessionPlayer(sessionId, accountId, { status: 'declined' });
+}
+
+async function setInhousePlayerRoll(sessionId, accountId, roll) {
+  return updateInhouseSessionPlayer(sessionId, accountId, { roll });
+}
+
+async function assignInhouseTeams(sessionId, assignments) {
+  // assignments = [{accountId, team, pickOrder}]
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    for (const a of assignments) {
+      await client.query(
+        `UPDATE inhouse_session_players SET team = $1, pick_order = $2 WHERE session_id = $3 AND account_id = $4`,
+        [a.team, a.pickOrder ?? null, sessionId, a.accountId]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   init,
   getPool,
@@ -5763,6 +5955,20 @@ module.exports = {
   deleteMatchNote,
   createSignupRequest,
   getSignupRequests,
+  createInhouseSession,
+  getInhouseSession,
+  listInhouseSessions,
+  getActiveInhouseSession,
+  updateInhouseSession,
+  deleteInhouseSession,
+  joinInhouseSession,
+  leaveInhouseSession,
+  getInhouseSessionPlayers,
+  updateInhouseSessionPlayer,
+  setInhousePlayerAccepted,
+  setInhousePlayerDeclined,
+  setInhousePlayerRoll,
+  assignInhouseTeams,
   updateSignupRequest,
   getUnannouncedPatchNotes,
   markPatchNoteAnnounced,
