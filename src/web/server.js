@@ -2796,10 +2796,70 @@ NOTES
   });
 
   // ─── Weekend / Special Event Tournaments ───────────────────────────────
+  // Auto-transition weekend tournament status based on dates.
+  // Returns the updated tournament object (may be same if no change needed).
+  async function _autoTransitionWeekendTournament(tournament) {
+    const now = new Date();
+    const start = new Date(tournament.start_date);
+    const end = new Date(tournament.end_date);
+    const cur = tournament.status;
+
+    let newStatus = cur;
+    if (now >= end && cur !== 'completed') newStatus = 'completed';
+    else if (now >= start && now < end && cur === 'upcoming') newStatus = 'active';
+
+    if (newStatus === cur) return tournament;
+
+    // Persist the new status
+    const updated = await db.updateWeekendTournament(tournament.id, { status: newStatus });
+
+    // Announce winner to Discord when auto-completing
+    if (newStatus === 'completed' && !tournament.discord_announced) {
+      try {
+        const { config } = require('../config');
+        const bot = getDiscordBot();
+        const channelId = config.discord.announceChannelId;
+        if (bot && channelId) {
+          const channel = await bot.client.channels.fetch(channelId).catch(() => null);
+          if (channel) {
+            const leaderboard = await db.getWeekendTournamentScores(
+              tournament.start_date, tournament.end_date, tournament.games_to_count
+            );
+            const { EmbedBuilder } = require('discord.js');
+            const winner = leaderboard[0];
+            const embed = new EmbedBuilder()
+              .setTitle(`🏆 ${tournament.name} — Final Results`)
+              .setColor(0xf59e0b)
+              .setDescription(
+                winner
+                  ? `The weekend tournament has concluded!\n\n🥇 **${winner.display_name}** wins with **${winner.total_score} pts**${tournament.prize_pool > 0 ? ` and takes home **$${tournament.prize_pool}**!` : '!'}`
+                  : 'The weekend tournament has concluded!'
+              );
+            if (leaderboard.length > 1) {
+              const rows = leaderboard.slice(0, 5)
+                .map((p, i) => `${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} **${p.display_name}** — ${p.total_score} pts (${p.game_count} game${p.game_count !== 1 ? 's' : ''})`)
+                .join('\n');
+              embed.addFields({ name: 'Top Players', value: rows, inline: false });
+            }
+            embed.setFooter({ text: 'Full leaderboard at dota.stats.corvidaeinc.com/weekend-tournament/' + tournament.id });
+            await channel.send({ embeds: [embed] });
+            await db.updateWeekendTournament(tournament.id, { discord_announced: true });
+          }
+        }
+      } catch (announceErr) {
+        console.error('[WeekendTournament] Auto-announce winner error:', announceErr.message);
+      }
+    }
+
+    return updated;
+  }
+
   router.get('/weekend-tournaments', async (req, res) => {
     try {
       const tournaments = await db.getWeekendTournaments();
-      res.json({ tournaments });
+      // Auto-transition any tournaments whose status doesn't match their dates
+      const transitioned = await Promise.all(tournaments.map(t => _autoTransitionWeekendTournament(t).catch(() => t)));
+      res.json({ tournaments: transitioned });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -2807,8 +2867,9 @@ NOTES
 
   router.get('/weekend-tournaments/:id', async (req, res) => {
     try {
-      const tournament = await db.getWeekendTournamentById(req.params.id);
+      let tournament = await db.getWeekendTournamentById(req.params.id);
       if (!tournament) return res.status(404).json({ error: 'Not found' });
+      tournament = await _autoTransitionWeekendTournament(tournament).catch(() => tournament);
       const leaderboard = await db.getWeekendTournamentScores(
         tournament.start_date, tournament.end_date, tournament.games_to_count
       );

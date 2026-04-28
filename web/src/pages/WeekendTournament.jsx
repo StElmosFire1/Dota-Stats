@@ -263,7 +263,11 @@ export default function WeekendTournament() {
 
   const { tournament, leaderboard } = data;
   const now = new Date();
-  const isLive = tournament.status === 'active' && new Date(tournament.start_date) <= now && new Date(tournament.end_date) >= now;
+  // Derive effective status from dates in case the DB hasn't auto-updated yet
+  let effectiveStatus = tournament.status;
+  if (tournament.end_date && now >= new Date(tournament.end_date) && tournament.status !== 'completed') effectiveStatus = 'completed';
+  else if (tournament.start_date && tournament.end_date && now >= new Date(tournament.start_date) && now < new Date(tournament.end_date) && tournament.status === 'upcoming') effectiveStatus = 'active';
+  const isLive = effectiveStatus === 'active';
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -276,10 +280,10 @@ export default function WeekendTournament() {
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{tournament.name}</h1>
               <span style={{
                 fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                background: `rgba(${tournament.status === 'active' ? '34,197,94' : tournament.status === 'completed' ? '148,163,184' : '245,158,11'},0.15)`,
-                color: STATUS_COLORS[tournament.status] || 'var(--text-muted)',
+                background: `rgba(${effectiveStatus === 'active' ? '34,197,94' : effectiveStatus === 'completed' ? '148,163,184' : '245,158,11'},0.15)`,
+                color: STATUS_COLORS[effectiveStatus] || 'var(--text-muted)',
               }}>
-                {STATUS_LABELS[tournament.status] || tournament.status}
+                {STATUS_LABELS[effectiveStatus] || effectiveStatus}
                 {isLive && ' 🔴'}
               </span>
               <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>

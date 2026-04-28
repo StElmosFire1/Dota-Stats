@@ -564,6 +564,13 @@ function TournamentList() {
         {tournaments.map(t => {
           const isWeekend = t._type === 'weekend';
           const href = isWeekend ? `/weekend-tournament/${t.id}` : `/tournaments/${t.id}`;
+          // For weekend tournaments, derive effective status from dates if stored status is stale
+          let effectiveStatus = t.status;
+          if (isWeekend && t.end_date) {
+            const now = new Date();
+            if (now >= new Date(t.end_date) && t.status !== 'completed') effectiveStatus = 'completed';
+            else if (t.start_date && now >= new Date(t.start_date) && now < new Date(t.end_date) && t.status === 'upcoming') effectiveStatus = 'active';
+          }
           return (
             <Link key={`${t._type}-${t.id}`} to={href} style={{ textDecoration: 'none' }}>
               <div style={{
@@ -572,8 +579,8 @@ function TournamentList() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>{t.name}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_COLORS[t.status] || 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                    {STATUS_LABELS[t.status] || t.status}
+                  <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_COLORS[effectiveStatus] || 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {STATUS_LABELS[effectiveStatus] || effectiveStatus}
                   </span>
                 </div>
                 {t.description && <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8, margin: '0 0 8px' }}>{t.description}</p>}
