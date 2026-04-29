@@ -1518,8 +1518,38 @@ function _v3PerfScore(s, won) {
   );
 }
 
-async function computeSeasonTrueSkillV3(seasonId = null) {
-  const p = getPool();
+// Convert per-player performance scores (keyed by canonical id) into per-player
+// modifiers for V3 rating updates. Z-scores are clamped to ±2σ and then mapped
+// linearly to [0.80, 1.20] (z=-2 → 0.80, z=0 → 1.00, z=+2 → 1.20). When all
+// scores are equal (std=0), every modifier is 1.0.
+function _v3ScoresToModifiers(scoreByCanon) {
+  const allScores = Object.values(scoreByCanon);
+  const out = {};
+  const n = allScores.length;
+  if (n === 0) return out;
+  const mean = allScores.reduce((a, b) => a + b, 0) / n;
+  const variance = allScores.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const std = Math.sqrt(variance);
+  for (const [cid, sc] of Object.entries(scoreByCanon)) {
+    let z = std > 0 ? (sc - mean) / std : 0;
+    if (z >  2) z =  2;
+    if (z < -2) z = -2;
+    out[cid] = 1.0 + 0.10 * z;
+  }
+  return out;
+}
+
+// Defensive guard: if canonical-account merging produced the same player ID on
+// both Radiant and Dire, the match must be skipped — TrueSkill can't sensibly
+// update one rating from two opposing teams in a single update.
+function _v3HasCrossTeamCollision(radiantIds, direIds) {
+  const r = new Set(radiantIds);
+  for (const id of direIds) if (r.has(id)) return true;
+  return false;
+}
+
+async function computeSeasonTrueSkillV3(seasonId = null, _poolForTest = null) {
+  const p = _poolForTest || getPool();
   const { getStatsService } = require('../stats/statsService');
   const statsService = getStatsService();
 
@@ -1610,7 +1640,7 @@ async function computeSeasonTrueSkillV3(seasonId = null) {
     });
 
     // Compute modifiers per canonical player ID for this match
-    const modByCanon = {};
+    let modByCanon = {};
     if (hasStats) {
       const scoreByCanon = {};
       for (const e of match.allEntries) {
@@ -1620,18 +1650,7 @@ async function computeSeasonTrueSkillV3(seasonId = null) {
         // keep the higher score
         scoreByCanon[e.id] = scoreByCanon[e.id] != null ? Math.max(scoreByCanon[e.id], sc) : sc;
       }
-      const allScores = Object.values(scoreByCanon);
-      const n = allScores.length;
-      const mean = allScores.reduce((a, b) => a + b, 0) / n;
-      const variance = allScores.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
-      const std = Math.sqrt(variance);
-      for (const [cid, sc] of Object.entries(scoreByCanon)) {
-        let z = std > 0 ? (sc - mean) / std : 0;
-        if (z >  2) z =  2;
-        if (z < -2) z = -2;
-        // Map z in [-2, +2] → modifier in [0.80, 1.20]
-        modByCanon[cid] = 1.0 + 0.10 * z;
-      }
+      modByCanon = _v3ScoresToModifiers(scoreByCanon);
     }
 
     const dedup = (team) => {
@@ -1646,6 +1665,13 @@ async function computeSeasonTrueSkillV3(seasonId = null) {
     }));
     const radiant = buildSide(match.radiant);
     const dire    = buildSide(match.dire);
+
+    // Defensive guard: if canonical-account merging collapsed two raw
+    // accounts that played on opposite sides into the same canonical id,
+    // skip this match — TrueSkill can't update one rating from both teams.
+    if (_v3HasCrossTeamCollision(radiant.map(pl => pl.id), dire.map(pl => pl.id))) {
+      continue;
+    }
 
     const newRatings = statsService.calculateNewRatingsV3(radiant, dire, match.radiantWin);
 
@@ -6063,6 +6089,9 @@ module.exports = {
   computeTS2Leaderboard,
   computeSeasonTrueSkill,
   computeSeasonTrueSkillV3,
+  _v3PerfScore,
+  _v3ScoresToModifiers,
+  _v3HasCrossTeamCollision,
   getSetting,
   getAllSettings,
   setSetting,
