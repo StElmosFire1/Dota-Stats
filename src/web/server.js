@@ -2953,11 +2953,18 @@ NOTES
     }
   });
 
+  // Allowlist of settings keys writable via this endpoint — prevents the
+  // generic key/value store from being abused as a free-form admin scratchpad.
+  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill']);
+
   router.post('/admin/settings', requireSuperuser, async (req, res) => {
     try {
       const { key, value } = req.body || {};
       if (!key || typeof key !== 'string') {
         return res.status(400).json({ error: 'key required' });
+      }
+      if (!ALLOWED_SETTING_KEYS.has(key)) {
+        return res.status(400).json({ error: `setting key "${key}" is not writable` });
       }
       const stored = await db.setSetting(key, value);
       res.json({ setting: stored });
