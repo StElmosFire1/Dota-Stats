@@ -462,6 +462,16 @@ function createApiRouter(startupStatus = {}) {
       // Indicate whether a replay file is stored and downloadable for this match.
       const replayRow = await db.getReplayFilePath(req.params.matchId).catch(() => null);
       match.has_replay = !!(replayRow?.replay_file_path && fs.existsSync(replayRow.replay_file_path));
+      // Per-player V3 performance modifier breakdown (so the scoreboard can
+      // explain "why did my MMR change by +24"). Failure to compute this is
+      // non-fatal — the rest of the match payload should still render.
+      try {
+        const v3 = await db.getMatchV3Modifiers(req.params.matchId);
+        match.v3_modifiers = v3;
+      } catch (modErr) {
+        console.error('[API] V3 modifier breakdown failed:', modErr.message);
+        match.v3_modifiers = { modifiers: [], hasStats: false };
+      }
       res.json(match);
     } catch (err) {
       console.error('[API] Error fetching match:', err.message);
@@ -2343,6 +2353,16 @@ NOTES
       res.json({ history });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch rating history' });
+    }
+  });
+
+  router.get('/players/:accountId/v3-modifier-history', async (req, res) => {
+    try {
+      const history = await db.getPlayerV3ModifierHistory(req.params.accountId);
+      res.json({ history });
+    } catch (err) {
+      console.error('[API] v3-modifier-history error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch V3 modifier history' });
     }
   });
 

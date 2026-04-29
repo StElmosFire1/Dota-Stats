@@ -4,7 +4,10 @@ const assert = require('node:assert/strict');
 const { getStatsService } = require('../src/stats/statsService');
 const {
   computeSeasonTrueSkillV3,
+  getMatchV3Modifiers,
+  getPlayerV3ModifierHistory,
   _v3PerfScore,
+  _v3PerfScoreBreakdown,
   _v3ScoresToModifiers,
   _v3HasCrossTeamCollision,
 } = require('../src/db');
@@ -315,4 +318,246 @@ test('calculateNewRatingsV3: MMR formula = round((mu - 3*sigma) * 100) + 2600', 
     const expected = Math.round((r.mu - 3 * r.sigma) * 100) + MMR_OFFSET;
     assert.equal(r.mmr, expected, `mmr formula mismatch for ${r.id}`);
   }
+});
+
+test('_v3PerfScoreBreakdown: component sum equals _v3PerfScore', () => {
+  const cases = [
+    [{ kills: 12, deaths: 2, assists: 18, gpm: 700, xpm: 750,
+       hero_dmg: 35000, tower_dmg: 7000, healing: 12000,
+       obs: 6, sen: 8, dewards: 5, camps: 4 }, true],
+    [{ kills: 0, deaths: 12, assists: 1, gpm: 250, xpm: 300,
+       hero_dmg: 4000, tower_dmg: 100, healing: 0,
+       obs: 0, sen: 0, dewards: 0, camps: 0 }, false],
+    [{ kills: 0, deaths: 0, assists: 0, gpm: 0, xpm: 0,
+       hero_dmg: 0, tower_dmg: 0, healing: 0,
+       obs: 0, sen: 0, dewards: 0, camps: 0 }, true],
+  ];
+  for (const [s, won] of cases) {
+    const total = _v3PerfScore(s, won);
+    const { total: bdTotal, parts } = _v3PerfScoreBreakdown(s, won);
+    assert.ok(Math.abs(total - bdTotal) < 1e-9,
+      `breakdown total ${bdTotal} should match score ${total}`);
+    const sum = Object.values(parts).reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(sum - total) < 1e-9,
+      `sum of parts ${sum} should equal total ${total}`);
+    assert.equal(parts.win, won ? 25 : 0, 'win component must be exactly 0 or 25');
+  }
+});
+
+test('_v3PerfScoreBreakdown: includes every documented component key', () => {
+  const expected = ['kills','assists','deaths','gpm','xpm','hero_damage',
+    'tower_damage','healing','camps','obs','sen','dewards','win'];
+  const { parts } = _v3PerfScoreBreakdown(
+    { kills: 1, deaths: 1, assists: 1, gpm: 1, xpm: 1,
+      hero_dmg: 1, tower_dmg: 1, healing: 1,
+      obs: 1, sen: 1, dewards: 1, camps: 1 }, true);
+  for (const k of expected) {
+    assert.ok(k in parts, `breakdown missing component "${k}"`);
+  }
+  assert.equal(Object.keys(parts).length, expected.length,
+    'breakdown must not contain unexpected components');
+});
+
+// ── Per-match modifier breakdown (for the scoreboard "why did my MMR change") ─
+function _baseMatchRows(matchId, radiantWin) {
+  const blank = {
+    persona_name: null, kills: 0, deaths: 0, assists: 0,
+    gpm: 0, xpm: 0, hero_damage: 0, tower_damage: 0, hero_healing: 0,
+    obs_placed: 0, sen_placed: 0, wards_killed: 0, camps_stacked: 0,
+  };
+  const mk = (accountId, team, persona, overrides = {}) => ({
+    match_id: matchId,
+    date: new Date('2025-01-01T00:00:00Z'),
+    radiant_win: radiantWin,
+    account_id: accountId,
+    persona_name: persona,
+    team,
+    ...blank,
+    ...overrides,
+  });
+  return mk;
+}
+
+test('getMatchV3Modifiers: returns per-player modifier + breakdown matching season math', async () => {
+  const mk = _baseMatchRows('M1', true);
+  const carry  = mk(11, 'radiant', 'carry',  { kills: 14, deaths: 2,  assists: 8,  gpm: 750, xpm: 800, hero_damage: 40000, tower_damage: 8000 });
+  const mid    = mk(12, 'radiant', 'mid',    { kills: 9,  deaths: 4,  assists: 12, gpm: 600, xpm: 700, hero_damage: 28000, tower_damage: 3000 });
+  const off    = mk(13, 'radiant', 'off',    { kills: 6,  deaths: 5,  assists: 14, gpm: 480, xpm: 520, hero_damage: 20000, tower_damage: 2000 });
+  const sup4   = mk(14, 'radiant', 'sup4',   { kills: 3,  deaths: 7,  assists: 18, gpm: 320, xpm: 380, hero_damage: 9000,  hero_healing: 4000, obs_placed: 7,  sen_placed: 5, wards_killed: 4 });
+  const sup5   = mk(15, 'radiant', 'sup5',   { kills: 2,  deaths: 9,  assists: 19, gpm: 280, xpm: 340, hero_damage: 6000,  hero_healing: 9000, obs_placed: 8,  sen_placed: 6, wards_killed: 3 });
+  const dCarry = mk(21, 'dire',    'dcarry', { kills: 8,  deaths: 8,  assists: 5,  gpm: 600, xpm: 650, hero_damage: 30000, tower_damage: 2500 });
+  const dMid   = mk(22, 'dire',    'dmid',   { kills: 7,  deaths: 9,  assists: 6,  gpm: 540, xpm: 600, hero_damage: 25000 });
+  const dOff   = mk(23, 'dire',    'doff',   { kills: 5,  deaths: 10, assists: 7,  gpm: 420, xpm: 460, hero_damage: 18000 });
+  const dSup4  = mk(24, 'dire',    'dsup4',  { kills: 2,  deaths: 11, assists: 9,  gpm: 250, xpm: 320, hero_damage: 7000,  obs_placed: 6, sen_placed: 4 });
+  const dSup5  = mk(25, 'dire',    'dsup5',  { kills: 1,  deaths: 12, assists: 8,  gpm: 220, xpm: 290, hero_damage: 5000,  obs_placed: 7, sen_placed: 5 });
+
+  const rows = [carry, mid, off, sup4, sup5, dCarry, dMid, dOff, dSup4, dSup5];
+
+  const fakePool = {
+    async query(sql) {
+      const text = String(sql);
+      if (text.includes('FROM nicknames')) return { rows: [] };
+      if (text.includes('FROM matches m')) return { rows };
+      throw new Error('unexpected query: ' + text.slice(0, 80));
+    },
+  };
+  const result = await getMatchV3Modifiers('M1', fakePool);
+  {
+    assert.equal(result.hasStats, true, 'should detect non-trivial stats');
+    assert.equal(result.modifiers.length, 10, 'should return one entry per player');
+    // Modifiers must lie in [0.80, 1.20].
+    for (const e of result.modifiers) {
+      assert.ok(e.modifier >= 0.80 - 1e-9 && e.modifier <= 1.20 + 1e-9,
+        `modifier ${e.modifier} for ${e.account_id} out of range`);
+      assert.ok(e.components, 'each player should have a component breakdown');
+      const sumParts = Object.values(e.components).reduce((a, b) => a + b, 0);
+      assert.ok(Math.abs(sumParts - e.score) < 1e-6,
+        `components for ${e.account_id} should sum to score`);
+    }
+    // The carry should outscore dSup5 (worst game).
+    const carryEntry  = result.modifiers.find(e => e.account_id === '11');
+    const worstEntry  = result.modifiers.find(e => e.account_id === '25');
+    assert.ok(carryEntry.modifier > worstEntry.modifier,
+      'high-K/D/A winner should have higher modifier than low-K/D/A loser');
+    // Win bonus must be present on radiant winners only.
+    assert.equal(carryEntry.components.win, 25);
+    assert.equal(worstEntry.components.win, 0);
+  }
+});
+
+test('getMatchV3Modifiers: lobby-only match (no stats) defaults all modifiers to 1.0', async () => {
+  const mk = _baseMatchRows('M2', false);
+  const rows = [];
+  for (let i = 0; i < 5; i++) rows.push(mk(100 + i, 'radiant', `r${i}`));
+  for (let i = 0; i < 5; i++) rows.push(mk(200 + i, 'dire',    `d${i}`));
+
+  const fakePool = {
+    async query(sql) {
+      const text = String(sql);
+      if (text.includes('FROM nicknames')) return { rows: [] };
+      if (text.includes('FROM matches m')) return { rows };
+      throw new Error('unexpected query: ' + text.slice(0, 80));
+    },
+  };
+  const result = await getMatchV3Modifiers('M2', fakePool);
+  assert.equal(result.hasStats, false);
+  assert.equal(result.modifiers.length, 10);
+  for (const e of result.modifiers) {
+    assert.equal(e.modifier, 1.0);
+    assert.equal(e.has_stats, false);
+    assert.equal(e.components, null);
+  }
+});
+
+test('getMatchV3Modifiers: missing match returns empty modifier list', async () => {
+  const fakePool = {
+    async query(sql) {
+      const text = String(sql);
+      if (text.includes('FROM nicknames')) return { rows: [] };
+      if (text.includes('FROM matches m')) return { rows: [] };
+      throw new Error('unexpected query: ' + text.slice(0, 80));
+    },
+  };
+  const result = await getMatchV3Modifiers('does-not-exist', fakePool);
+  assert.deepEqual(result, { modifiers: [], hasStats: false, radiantWin: null });
+});
+
+test('getPlayerV3ModifierHistory: returns chronologically-ordered modifiers for matches the player participated in', async () => {
+  const mk1 = _baseMatchRows('M1', true);
+  // M2: radiant_win=true; target plays on dire → target loses.
+  const mk2 = _baseMatchRows('M2', true);
+  // Override dates so M2 sorts before M1 in raw order but we still expect
+  // chronological ASC ordering in the output.
+  const overrideDate = (rows, iso) => rows.map(r => ({ ...r, date: new Date(iso) }));
+  const target = 11;
+  const m1Rows = overrideDate([
+    mk1(target, 'radiant', 'me',     { kills: 15, deaths: 1, assists: 10, gpm: 800, xpm: 850, hero_damage: 45000 }),
+    mk1(12,     'radiant', 'mate1',  { kills: 5,  deaths: 5, assists: 8,  gpm: 500, xpm: 550, hero_damage: 18000 }),
+    mk1(13,     'radiant', 'mate2',  { kills: 3,  deaths: 6, assists: 10, gpm: 400, xpm: 450, hero_damage: 12000 }),
+    mk1(14,     'radiant', 'mate3',  { kills: 2,  deaths: 7, assists: 12, gpm: 350, xpm: 400, hero_damage: 9000  }),
+    mk1(15,     'radiant', 'mate4',  { kills: 1,  deaths: 8, assists: 14, gpm: 300, xpm: 350, hero_damage: 7000  }),
+    mk1(21,     'dire',    'enemy1', { kills: 6,  deaths: 8, assists: 4,  gpm: 550, xpm: 600, hero_damage: 22000 }),
+    mk1(22,     'dire',    'enemy2', { kills: 4,  deaths: 9, assists: 5,  gpm: 480, xpm: 530, hero_damage: 16000 }),
+    mk1(23,     'dire',    'enemy3', { kills: 3,  deaths: 10,assists: 6,  gpm: 400, xpm: 440, hero_damage: 12000 }),
+    mk1(24,     'dire',    'enemy4', { kills: 2,  deaths: 11,assists: 7,  gpm: 320, xpm: 380, hero_damage: 8000  }),
+    mk1(25,     'dire',    'enemy5', { kills: 1,  deaths: 12,assists: 8,  gpm: 260, xpm: 320, hero_damage: 6000  }),
+  ], '2025-02-01T00:00:00Z');
+  const m2Rows = overrideDate([
+    mk2(target, 'dire',    'me',     { kills: 1,  deaths: 12,assists: 2,  gpm: 230, xpm: 280, hero_damage: 4000  }),
+    mk2(31,     'radiant', 'a',      { kills: 8,  deaths: 4, assists: 10, gpm: 600, xpm: 650, hero_damage: 22000 }),
+    mk2(32,     'radiant', 'b',      { kills: 7,  deaths: 5, assists: 11, gpm: 550, xpm: 600, hero_damage: 20000 }),
+    mk2(33,     'radiant', 'c',      { kills: 6,  deaths: 6, assists: 12, gpm: 500, xpm: 550, hero_damage: 18000 }),
+    mk2(34,     'radiant', 'd',      { kills: 5,  deaths: 7, assists: 13, gpm: 450, xpm: 500, hero_damage: 15000 }),
+    mk2(35,     'radiant', 'e',      { kills: 4,  deaths: 8, assists: 14, gpm: 400, xpm: 450, hero_damage: 12000 }),
+    mk2(41,     'dire',    'f',      { kills: 5,  deaths: 7, assists: 8,  gpm: 480, xpm: 520, hero_damage: 16000 }),
+    mk2(42,     'dire',    'g',      { kills: 4,  deaths: 8, assists: 7,  gpm: 420, xpm: 470, hero_damage: 13000 }),
+    mk2(43,     'dire',    'h',      { kills: 3,  deaths: 9, assists: 6,  gpm: 360, xpm: 420, hero_damage: 10000 }),
+    mk2(44,     'dire',    'i',      { kills: 2,  deaths: 10,assists: 5,  gpm: 300, xpm: 360, hero_damage: 8000  }),
+  ], '2025-01-15T00:00:00Z');
+
+  const fakePool = {
+    async query(sql, params) {
+      const text = String(sql);
+      if (text.includes('FROM nicknames')) return { rows: [] };
+      if (text.includes('SELECT DISTINCT match_id')) {
+        return { rows: [{ match_id: 'M1' }, { match_id: 'M2' }] };
+      }
+      if (text.includes('FROM matches m')) {
+        // Return both matches' rows.
+        return { rows: [...m1Rows, ...m2Rows] };
+      }
+      throw new Error('unexpected query: ' + text.slice(0, 80));
+    },
+  };
+
+  const history = await getPlayerV3ModifierHistory(target, fakePool);
+  assert.equal(history.length, 2, 'should have one entry per played match');
+  // Must be sorted chronologically ascending.
+  assert.ok(new Date(history[0].date) <= new Date(history[1].date),
+    'history must be sorted by date ascending');
+  // M2 (2025-01-15) is earlier — bad game, lost — modifier should be < 1.
+  // M1 (2025-02-01) is later — strong winning game — modifier should be > 1.
+  const earlier = history[0];
+  const later   = history[1];
+  assert.equal(earlier.match_id, 'M2');
+  assert.equal(later.match_id,   'M1');
+  assert.equal(earlier.won, false);
+  assert.equal(later.won,   true);
+  assert.ok(later.modifier > earlier.modifier,
+    `dominant winning game (${later.modifier}) should have a higher modifier than blowout loss (${earlier.modifier})`);
+  for (const h of history) {
+    assert.ok(h.modifier >= 0.80 - 1e-9 && h.modifier <= 1.20 + 1e-9,
+      `modifier ${h.modifier} out of clamp range`);
+  }
+});
+
+test('getPlayerV3ModifierHistory: includes lobby-only matches as a 1.00× modifier', async () => {
+  const mk = _baseMatchRows('LOBBY', true);
+  const target = 99;
+  // All-zero stats → lobby-only / no-stats match. V3 still applies a 1.00×
+  // modifier (no penalty), so profile history should reflect that match.
+  const rows = [
+    mk(target, 'radiant', 'me'),
+    mk(2, 'radiant', 'a'), mk(3, 'radiant', 'b'), mk(4, 'radiant', 'c'), mk(5, 'radiant', 'd'),
+    mk(6, 'dire',    'e'), mk(7, 'dire',    'f'), mk(8, 'dire',    'g'), mk(9, 'dire',    'h'), mk(10, 'dire', 'i'),
+  ];
+  const fakePool = {
+    async query(sql) {
+      const text = String(sql);
+      if (text.includes('FROM nicknames')) return { rows: [] };
+      if (text.includes('SELECT DISTINCT match_id')) return { rows: [{ match_id: 'LOBBY' }] };
+      if (text.includes('FROM matches m')) return { rows };
+      throw new Error('unexpected query: ' + text.slice(0, 80));
+    },
+  };
+  const history = await getPlayerV3ModifierHistory(target, fakePool);
+  assert.equal(history.length, 1, 'lobby-only matches must still appear in modifier history');
+  assert.equal(history[0].match_id, 'LOBBY');
+  assert.equal(history[0].modifier, 1.0,
+    'lobby-only matches must surface as a 1.00× modifier (no penalty)');
+  assert.equal(history[0].score, 0);
+  assert.equal(history[0].won, true,
+    'target on radiant in a radiant_win=true match must be marked as a win');
+  assert.equal(history[0].has_stats, false,
+    'lobby-only entries must be flagged so the UI can annotate them');
 });

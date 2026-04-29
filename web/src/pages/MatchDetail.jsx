@@ -839,7 +839,66 @@ function PositionSelect({ player, matchId, onUpdate }) {
   );
 }
 
-function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {} }) {
+const V3_COMPONENT_LABELS = {
+  kills: 'Kills',
+  assists: 'Assists',
+  deaths: 'Deaths',
+  gpm: 'GPM',
+  xpm: 'XPM',
+  hero_damage: 'Hero damage',
+  tower_damage: 'Tower damage',
+  healing: 'Healing',
+  camps: 'Camps stacked',
+  obs: 'Observers placed',
+  sen: 'Sentries placed',
+  dewards: 'Wards killed',
+  win: 'Win bonus',
+};
+
+function v3ModifierTooltip(entry) {
+  if (!entry) return 'Modifier defaulted to ×1.00 — this match has no detailed stats.';
+  if (!entry.has_stats) return 'Modifier defaulted to ×1.00 — this match has no detailed stats, so V3 applies no per-match scaling to anyone.';
+  const pct = ((entry.modifier - 1) * 100);
+  const sign = pct >= 0 ? '+' : '';
+  const lines = [
+    `Performance modifier ×${entry.modifier.toFixed(2)} (MMR change scaled by ${sign}${pct.toFixed(0)}%)`,
+    `Performance score ${entry.score >= 0 ? '+' : ''}${entry.score.toFixed(1)} vs the rest of the lobby.`,
+    '',
+    'Score components:',
+  ];
+  if (entry.components) {
+    const parts = Object.entries(entry.components)
+      .filter(([, v]) => Math.abs(v) > 0.05)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    for (const [k, v] of parts) {
+      const label = V3_COMPONENT_LABELS[k] || k;
+      lines.push(`  ${label}: ${v >= 0 ? '+' : ''}${v.toFixed(1)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function ModifierBadge({ entry }) {
+  if (!entry || !entry.has_stats) {
+    return (
+      <span title={v3ModifierTooltip(entry)} style={{ color: '#64748b', fontSize: '0.85rem' }}>
+        ×1.00
+      </span>
+    );
+  }
+  const m = entry.modifier;
+  const color = m > 1.05 ? '#4ade80' : m < 0.95 ? '#f87171' : '#cbd5e1';
+  return (
+    <span
+      title={v3ModifierTooltip(entry)}
+      style={{ color, fontWeight: 600, fontSize: '0.85rem', cursor: 'help' }}
+    >
+      ×{m.toFixed(2)}
+    </span>
+  );
+}
+
+function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {}, v3Modifiers = {} }) {
   const allPlayers = allPlayersProp || players;
   const hasDetailedStats = players.some(p => p.gpm > 0 || p.hero_damage > 0);
   const hasItems = players.some(p => p.items && p.items.length > 0);
@@ -864,6 +923,7 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
               <th className="col-stat" title="Deaths">D</th>
               <th className="col-stat" title="Assists">A</th>
               <th className="col-stat" title="Match Performance Score 1–10: each factor is z-score normalised independently within the match, then combined — kill involvement (25%), hero damage (20%), survival/deaths (18%), net worth (15%), healing (12%), tower damage (7%), win bonus (3%). Every role has meaningful contribution paths.">Perf</th>
+              <th className="col-stat" title="TrueSkill V3 performance modifier: scales the player's MMR change by 0.80×–1.20× based on a per-match score that combines K/D/A, GPM/XPM, hero/tower damage, healing, wards, stacks, and a win bonus. Hover each row for the score breakdown.">Mod</th>
               {hasDetailedStats && (
                 <>
                   <th className="col-stat" title="Last Hits">LH</th>
@@ -913,6 +973,7 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
                   <td className="col-stat deaths">{p.deaths}</td>
                   <td className="col-stat assists">{p.assists}</td>
                   <td className="col-stat"><ImpactBadge score={perfRanks[p.slot] ?? null} title={perfRanks[p.slot] != null ? `Match Performance ${perfRanks[p.slot]}/10 — kill involvement, KDA efficiency, win result${allPlayers.some(x => (x.gpm||0)>0) ? ', GPM' : ''}` : undefined} /></td>
+                  <td className="col-stat"><ModifierBadge entry={v3Modifiers[String(p.account_id)]} /></td>
                   {hasDetailedStats && (
                     <>
                       <td className="col-stat">{formatNumber(p.last_hits)}</td>
@@ -2595,6 +2656,17 @@ function MatchDetailInner() {
   })();
   const laneOutcomes = computeLaneOutcomes(allPlayers);
 
+  // Map of raw account_id → V3 modifier breakdown for fast scoreboard lookup.
+  const v3ModifierMap = (() => {
+    const out = {};
+    const list = match.v3_modifiers?.modifiers;
+    if (!Array.isArray(list)) return out;
+    for (const e of list) {
+      if (e?.account_id != null) out[String(e.account_id)] = e;
+    }
+    return out;
+  })();
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
@@ -2870,8 +2942,8 @@ function MatchDetailInner() {
 
       <DraftDisplay draft={match.draft} />
 
-      <TeamTable players={radiant} allPlayers={allPlayers} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} />
-      <TeamTable players={dire} allPlayers={allPlayers} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} />
+      <TeamTable players={radiant} allPlayers={allPlayers} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} />
+      <TeamTable players={dire} allPlayers={allPlayers} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} />
 
       <ExpandedStats players={allPlayers} />
       <PudgeHookStats players={allPlayers} matchId={matchId} />

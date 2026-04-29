@@ -367,6 +367,10 @@ export async function getPlayerRatingHistory(accountId) {
   return fetchJson(`/players/${accountId}/rating-history`);
 }
 
+export async function getPlayerV3ModifierHistory(accountId) {
+  return fetchJson(`/players/${accountId}/v3-modifier-history`);
+}
+
 export async function getPlayerAchievements(accountId) {
   return fetchJson(`/players/${accountId}/achievements`);
 }

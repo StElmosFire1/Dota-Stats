@@ -574,6 +574,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.41',
+    title: 'V3 MMR Breakdown — "Why Did My MMR Change?"',
+    published_at: '2026-04-29',
+    content: 'Players can now see exactly how each match\'s performance affected their TrueSkill V3 update.\n\n• Match scoreboard: a new "Mod" column on each team table shows every player\'s V3 performance modifier for that match (0.80×–1.20×). Hovering the badge opens a tooltip with the full score breakdown — kills, assists, deaths, GPM, XPM, hero damage, tower damage, healing, camps stacked, observer wards, sentry wards, dewards, and the +25 win bonus — using the exact same math the season rating engine uses.\n• Player profile: a new "V3 Per-Match Modifier" line chart shows the modifier across every match the player has played, plotted on a 0.78–1.22 scale so consistency and recent form are easy to read at a glance.\n• Lobby-only matches (no replay parsed) appear in both the scoreboard and the profile chart at exactly ×1.00 — drawn as hollow grey dots — to mirror how V3 actually treats them: no penalty for missing detailed stats.\n• Backed by two new API endpoints (one per match, one per player) and 7 new automated tests covering breakdown maths, lobby fallbacks, and chronological history ordering.',
+    author: 'System',
+  },
+  {
     version: '5.40',
     title: 'TrueSkill V3 — Improved Rating System',
     published_at: '2026-04-29',

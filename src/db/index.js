@@ -1518,6 +1518,29 @@ function _v3PerfScore(s, won) {
   );
 }
 
+// Same as _v3PerfScore, but returns the per-component contributions so the UI
+// can explain *why* a player's modifier landed where it did. The component sum
+// equals what _v3PerfScore returns.
+function _v3PerfScoreBreakdown(s, won) {
+  const parts = {
+    kills:        (s.kills      || 0) * 4,
+    assists:      (s.assists    || 0) * 2.5,
+    deaths:       (s.deaths     || 0) * -3,
+    gpm:          (s.gpm        || 0) * 0.25,
+    xpm:          (s.xpm        || 0) * 0.22,
+    hero_damage:  (s.hero_dmg   || 0) / 2000,
+    tower_damage: (s.tower_dmg  || 0) / 1000,
+    healing:      (s.healing    || 0) / 1500,
+    camps:        (s.camps      || 0) * 7,
+    obs:          (s.obs        || 0) * 4,
+    sen:          (s.sen        || 0) * 6,
+    dewards:      (s.dewards    || 0) * 10,
+    win:          won ? 25 : 0,
+  };
+  const total = Object.values(parts).reduce((a, b) => a + b, 0);
+  return { total, parts };
+}
+
 // Convert per-player performance scores (keyed by canonical id) into per-player
 // modifiers for V3 rating updates. Z-scores are clamped to ±2σ and then mapped
 // linearly to [0.80, 1.20] (z=-2 → 0.80, z=0 → 1.00, z=+2 → 1.20). When all
@@ -1692,6 +1715,230 @@ async function computeSeasonTrueSkillV3(seasonId = null, _poolForTest = null) {
   }
 
   return { ratings, accountToCanonical };
+}
+
+// Build the canonical-account map used by V3 (lowercase-nickname collisions are
+// merged onto the lowest raw account id). Returns a getCanonical(rawId) helper.
+async function _v3BuildCanonicalResolver(p) {
+  const nickRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknameToIds = {};
+  for (const row of nickRes.rows) {
+    const aid = row.account_id.toString();
+    const nick = row.nickname.toLowerCase();
+    if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
+    nicknameToIds[nick].push(aid);
+  }
+  const accountToCanonical = {};
+  for (const ids of Object.values(nicknameToIds)) {
+    if (ids.length < 2) continue;
+    ids.sort();
+    const canonical = ids[0];
+    for (const id of ids) accountToCanonical[id] = canonical;
+  }
+  return {
+    accountToCanonical,
+    getCanonical: (id) => accountToCanonical[String(id)] || String(id),
+  };
+}
+
+function _v3StatsFromRow(row) {
+  return {
+    kills:     Number(row.kills) || 0,
+    deaths:    Number(row.deaths) || 0,
+    assists:   Number(row.assists) || 0,
+    gpm:       Number(row.gpm) || 0,
+    xpm:       Number(row.xpm) || 0,
+    hero_dmg:  Number(row.hero_damage) || 0,
+    tower_dmg: Number(row.tower_damage) || 0,
+    healing:   Number(row.hero_healing) || 0,
+    obs:       Number(row.obs_placed) || 0,
+    sen:       Number(row.sen_placed) || 0,
+    dewards:   Number(row.wards_killed) || 0,
+    camps:     Number(row.camps_stacked) || 0,
+  };
+}
+
+function _v3HasMeaningfulStats(entries) {
+  return entries.some(e => {
+    const s = e.stats;
+    return (
+      s.kills + s.deaths + s.assists + s.gpm + s.xpm +
+      s.hero_dmg + s.tower_dmg + s.healing +
+      s.obs + s.sen + s.dewards + s.camps
+    ) > 0;
+  });
+}
+
+// Per-match V3 modifier breakdown for every player in the match. Returns an
+// entry per raw account_id (post-merge canonical id is also included so the
+// frontend can de-dupe across merged accounts). Mirrors exactly the math used
+// inside computeSeasonTrueSkillV3 so what's shown to the player matches the
+// rating update they actually received.
+async function getMatchV3Modifiers(matchId, _poolForTest = null) {
+  const p = _poolForTest || getPool();
+  const { getCanonical } = await _v3BuildCanonicalResolver(p);
+
+  const rows = await p.query(
+    `SELECT m.match_id, m.radiant_win,
+            ps.account_id, ps.persona_name, ps.team,
+            ps.kills, ps.deaths, ps.assists,
+            ps.gpm, ps.xpm,
+            ps.hero_damage, ps.tower_damage, ps.hero_healing,
+            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked
+     FROM matches m
+     JOIN player_stats ps ON ps.match_id = m.match_id
+     WHERE m.match_id = $1`,
+    [matchId]
+  );
+  if (rows.rows.length === 0) return { modifiers: [], hasStats: false, radiantWin: null };
+
+  const radiantWin = rows.rows[0].radiant_win;
+  const allEntries = [];
+  for (const row of rows.rows) {
+    const rawId = row.account_id > 0 ? row.account_id.toString() : null;
+    if (!rawId) continue;
+    allEntries.push({
+      rawId,
+      canonicalId: getCanonical(rawId),
+      persona: row.persona_name,
+      team: row.team,
+      stats: _v3StatsFromRow(row),
+    });
+  }
+
+  const hasStats = _v3HasMeaningfulStats(allEntries);
+
+  // Per-canonical score (and breakdown) — when a canonical id appears twice
+  // because of merged accounts in the same match, keep the higher-scoring one
+  // (matches computeSeasonTrueSkillV3's behaviour).
+  const scoreByCanon = {};
+  const breakdownByCanon = {};
+  for (const e of allEntries) {
+    const won = (e.team === 'radiant') === radiantWin;
+    const bd = _v3PerfScoreBreakdown(e.stats, won);
+    if (scoreByCanon[e.canonicalId] == null || bd.total > scoreByCanon[e.canonicalId]) {
+      scoreByCanon[e.canonicalId] = bd.total;
+      breakdownByCanon[e.canonicalId] = bd;
+    }
+  }
+  const modByCanon = hasStats ? _v3ScoresToModifiers(scoreByCanon) : {};
+
+  const modifiers = allEntries.map(e => {
+    const won = (e.team === 'radiant') === radiantWin;
+    return {
+      account_id: e.rawId,
+      canonical_id: e.canonicalId,
+      persona_name: e.persona,
+      team: e.team,
+      won,
+      has_stats: hasStats,
+      modifier: hasStats ? (modByCanon[e.canonicalId] ?? 1.0) : 1.0,
+      score: hasStats ? (scoreByCanon[e.canonicalId] ?? 0) : 0,
+      components: hasStats ? (breakdownByCanon[e.canonicalId]?.parts ?? null) : null,
+    };
+  });
+
+  return { modifiers, hasStats, radiantWin };
+}
+
+// Per-match V3 modifier history for a single player (across all matches they
+// played). One DB round-trip pulls every player_stats row for every match the
+// player participated in; modifiers are then computed in memory using the same
+// math as computeSeasonTrueSkillV3. Lobby-only matches with no detailed stats
+// are included with modifier=1.0 and has_stats=false, mirroring the way V3
+// actually treats them (no per-match scaling) so the player's profile chart
+// shows every game they played.
+async function getPlayerV3ModifierHistory(accountId, _poolForTest = null) {
+  const p = _poolForTest || getPool();
+  const ids = _poolForTest
+    ? [parseInt(accountId)].filter(Number.isFinite)
+    : await getMergedAccountIds(accountId);
+  if (!ids || ids.length === 0) return [];
+  const idsAsBigint = ids.map(id => parseInt(id)).filter(Number.isFinite);
+  if (idsAsBigint.length === 0) return [];
+
+  const { getCanonical } = await _v3BuildCanonicalResolver(p);
+  const playerCanonical = getCanonical(String(idsAsBigint[0]));
+
+  const matchIdsRes = await p.query(
+    `SELECT DISTINCT match_id FROM player_stats WHERE account_id = ANY($1::bigint[])`,
+    [idsAsBigint]
+  );
+  const matchIds = matchIdsRes.rows.map(r => r.match_id);
+  if (matchIds.length === 0) return [];
+
+  const rows = await p.query(
+    `SELECT m.match_id, m.date, m.radiant_win,
+            ps.account_id, ps.team,
+            ps.kills, ps.deaths, ps.assists,
+            ps.gpm, ps.xpm,
+            ps.hero_damage, ps.tower_damage, ps.hero_healing,
+            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked
+     FROM matches m
+     JOIN player_stats ps ON ps.match_id = m.match_id
+     WHERE m.match_id = ANY($1)
+     ORDER BY m.date ASC, m.match_id ASC`,
+    [matchIds]
+  );
+
+  const byMatch = new Map();
+  for (const row of rows.rows) {
+    if (!byMatch.has(row.match_id)) {
+      byMatch.set(row.match_id, { date: row.date, radiantWin: row.radiant_win, entries: [] });
+    }
+    const rawId = row.account_id > 0 ? row.account_id.toString() : null;
+    if (!rawId) continue;
+    byMatch.get(row.match_id).entries.push({
+      rawId,
+      canonicalId: getCanonical(rawId),
+      team: row.team,
+      stats: _v3StatsFromRow(row),
+    });
+  }
+
+  const out = [];
+  for (const [matchId, m] of byMatch) {
+    const playerEntry = m.entries.find(e => e.canonicalId === playerCanonical);
+    if (!playerEntry) continue;
+    const won = (playerEntry.team === 'radiant') === m.radiantWin;
+    const hasStats = _v3HasMeaningfulStats(m.entries);
+
+    if (!hasStats) {
+      // Lobby-only match: V3 applies a 1.00× modifier (no penalty), so we
+      // surface it here as well so profile history truly reflects every
+      // played match — explaining why MMR moved with no per-match scaling.
+      out.push({
+        match_id: matchId,
+        date: m.date,
+        modifier: 1.0,
+        score: 0,
+        won,
+        has_stats: false,
+      });
+      continue;
+    }
+
+    const scoreByCanon = {};
+    for (const e of m.entries) {
+      const eWon = (e.team === 'radiant') === m.radiantWin;
+      const sc = _v3PerfScore(e.stats, eWon);
+      scoreByCanon[e.canonicalId] = scoreByCanon[e.canonicalId] != null
+        ? Math.max(scoreByCanon[e.canonicalId], sc)
+        : sc;
+    }
+    const mods = _v3ScoresToModifiers(scoreByCanon);
+    out.push({
+      match_id: matchId,
+      date: m.date,
+      modifier: mods[playerCanonical] ?? 1.0,
+      score: scoreByCanon[playerCanonical] ?? 0,
+      won,
+      has_stats: true,
+    });
+  }
+
+  out.sort((a, b) => new Date(a.date) - new Date(b.date));
+  return out;
 }
 
 // ── TrueSkill 2 (experimental) ──────────────────────────────────────────────
@@ -6089,7 +6336,10 @@ module.exports = {
   computeTS2Leaderboard,
   computeSeasonTrueSkill,
   computeSeasonTrueSkillV3,
+  getMatchV3Modifiers,
+  getPlayerV3ModifierHistory,
   _v3PerfScore,
+  _v3PerfScoreBreakdown,
   _v3ScoresToModifiers,
   _v3HasCrossTeamCollision,
   getSetting,

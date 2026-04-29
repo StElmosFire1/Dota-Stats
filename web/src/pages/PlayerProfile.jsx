@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks } from '../api';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge from '../components/RankBadge';
 import { useSeason } from '../context/SeasonContext';
@@ -83,6 +83,86 @@ function RatingChart({ history }) {
   );
 }
 
+function ModifierHistoryChart({ history }) {
+  if (!history || history.length < 2) return null;
+  const data = history.map((h, i) => ({
+    idx: i + 1,
+    modifier: Number((h.modifier ?? 1).toFixed(3)),
+    score: Number((h.score ?? 0).toFixed(1)),
+    won: h.won ? 'W' : 'L',
+    hasStats: h.has_stats !== false,
+    date: h.date ? new Date(h.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Australia/Sydney' }) : `#${i + 1}`,
+  }));
+  const avg = data.reduce((s, d) => s + d.modifier, 0) / data.length;
+  const last = data[data.length - 1].modifier;
+  const lastColor = last > 1.05 ? 'var(--accent-green)' : last < 0.95 ? 'var(--accent-red)' : 'var(--text-muted)';
+  const lobbyOnlyCount = data.filter(d => !d.hasStats).length;
+  // Show a hollow grey dot on lobby-only (no-stats) matches so it's obvious
+  // why the modifier sits flat at 1.00× there — V3 doesn't penalise them.
+  const renderDot = (props) => {
+    const { cx, cy, payload, key } = props;
+    if (cx == null || cy == null) return null;
+    if (payload && payload.hasStats === false) {
+      return <circle key={key} cx={cx} cy={cy} r={3} fill="var(--bg-card)" stroke="var(--text-muted)" strokeWidth={1.5} />;
+    }
+    return null;
+  };
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
+        <h2 className="section-title" style={{ margin: 0 }}>⚖️ V3 Performance Modifier</h2>
+        <span style={{ fontSize: 13, color: lastColor, fontWeight: 600 }}>
+          last ×{last.toFixed(2)}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
+          avg ×{avg.toFixed(2)} over {data.length} games
+        </span>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+        Per-match scaling factor (0.80×–1.20×) applied to this player's MMR change under V3.
+        Above 1.00 = strong game vs the lobby; below 1.00 = weak game.
+        {lobbyOnlyCount > 0 ? ` ${lobbyOnlyCount} lobby-only match${lobbyOnlyCount === 1 ? '' : 'es'} (no replay) shown as ×1.00 — hollow grey dots.` : ''}
+      </p>
+      <div className="stat-card" style={{ padding: '1rem 0.5rem' }}>
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={data} margin={{ top: 5, right: 16, left: -10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="idx" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} label={{ value: 'Game #', position: 'insideBottomRight', offset: 0, fontSize: 11, fill: 'var(--text-muted)' }} />
+            <YAxis
+              domain={[0.78, 1.22]}
+              ticks={[0.8, 0.9, 1.0, 1.1, 1.2]}
+              tickFormatter={v => `×${v.toFixed(2)}`}
+              tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+              width={56}
+            />
+            <Tooltip
+              contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
+              labelFormatter={(_, payload) => {
+                const p = payload?.[0]?.payload;
+                if (!p) return '';
+                return `${p.date} (${p.won})`;
+              }}
+              formatter={(v, n, p) => {
+                if (n === 'modifier') return [`×${v.toFixed(2)}`, 'Modifier'];
+                return [v, n];
+              }}
+            />
+            <Line
+              type="monotone"
+              dataKey="modifier"
+              stroke="#a855f7"
+              strokeWidth={2}
+              dot={renderDot}
+              activeDot={{ r: 5, fill: '#a855f7' }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
+
 function AchievementBadges({ achievements }) {
   const [showLocked, setShowLocked] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState(false);
@@ -151,6 +231,7 @@ export default function PlayerProfile() {
   const [data, setData] = useState(null);
   const [positions, setPositions] = useState([]);
   const [ratingHistory, setRatingHistory] = useState([]);
+  const [modifierHistory, setModifierHistory] = useState([]);
   const [achievements, setAchievements] = useState([]);
   const [nemesis, setNemesis] = useState([]);
   const [allies, setAllies] = useState([]);
@@ -181,6 +262,7 @@ export default function PlayerProfile() {
       getPlayer(accountId, seasonId).catch(() => null),
       getPlayerPositions(accountId, seasonId).catch(() => ({ positions: [] })),
       getPlayerRatingHistory(accountId).catch(() => ({ history: [] })),
+      getPlayerV3ModifierHistory(accountId).catch(() => ({ history: [] })),
       getPlayerAchievements(accountId).catch(() => ({ achievements: [] })),
       getPlayerNemesis(accountId).catch(() => []),
       getPlayerAlly(accountId, seasonId).catch(() => []),
@@ -191,10 +273,11 @@ export default function PlayerProfile() {
       getPlayerDurationStats(accountId, seasonId).catch(() => ({ stats: [] })),
       getPlayerCommunityRatings(accountId).catch(() => null),
       getPositionAverages(seasonId).catch(() => ({ averages: [] })),
-    ]).then(([playerData, posData, histData, achData, nemData, allyData, wrHistData, predData, counterData, streakData, durData, ratingData, avgData]) => {
+    ]).then(([playerData, posData, histData, modHistData, achData, nemData, allyData, wrHistData, predData, counterData, streakData, durData, ratingData, avgData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
+      setModifierHistory(modHistData?.history || []);
       setAchievements(achData?.achievements || []);
       setNemesis(Array.isArray(nemData) ? nemData : []);
       setAllies(Array.isArray(allyData) ? allyData : []);
@@ -373,6 +456,8 @@ export default function PlayerProfile() {
       )}
 
       <RatingChart history={ratingHistory} />
+
+      <ModifierHistoryChart history={modifierHistory} />
 
       {rawWinRateHistory.length >= 3 && (
         <section style={{ marginBottom: 24 }}>
