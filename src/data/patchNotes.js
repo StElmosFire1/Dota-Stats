@@ -573,4 +573,11 @@ module.exports = [
     content: 'Fixed points (weekend) tournaments not updating their status when their end date passes.\n\n• Status was stored as "upcoming" in the database and never automatically transitioned — so concluded tournaments showed as "Upcoming" on the Tournaments page.\n• The API now auto-transitions each points tournament to "active" when its start date is reached, and to "completed" when its end date passes, on every load.\n• When a tournament is auto-completed for the first time, the bot announces the final results to the Discord announcement channel — showing the winner, their total score, and a top-5 leaderboard.\n• The frontend also derives effective status from dates as an instant safety net, so the correct badge appears even before the API has persisted the new status.',
     author: 'System',
   },
+  {
+    version: '5.40',
+    title: 'TrueSkill V3 — Improved Rating System',
+    published_at: '2026-04-29',
+    content: 'Built a new TrueSkill V3 engine that fixes three real problems with the original rating system, available behind an admin toggle and intended to go live at the start of the next season.\n\n• Draw probability fixed: V1 used the library default of 10% draw chance, but Dota matches can never draw. V3 sets it to 0% so the model better matches reality.\n• Sigma floor: V1 lets uncertainty (σ) collapse toward zero for veteran players, freezing their MMR even after losses. V3 floors σ at 2.5 and bumps the per-match drift (tau) so ratings stay responsive across long careers.\n• Per-match performance modifier: V2 (now retired) used a raw K/D/A modifier that unfairly penalised supports. V3 reuses the weekend tournament scoring formula — kills, assists, GPM, XPM, hero damage, healing, wards, dewards, camps stacked, and a win bonus — z-scored within each match and capped at ±20% of the μ update.\n• Admin Panel: the old "TrueSkill 2 — Experimental" section has been replaced with a new "Rating System" card showing the active engine (V1 or V3), a toggle button with confirmation dialog, and a collapsible side-by-side V3 vs V1 preview table. V2 is retired.\n• System is OFF by default — V1 stays active until an admin flips it. Switch is database-backed so it survives restarts.',
+    author: 'System',
+  },
 ];

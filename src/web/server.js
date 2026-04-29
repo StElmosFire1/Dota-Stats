@@ -2942,14 +2942,66 @@ NOTES
     }
   });
 
-  router.get('/admin/ts2-leaderboard', requireSuperuser, async (req, res) => {
+  // ── Site settings (admin) ─────────────────────────────────────────────
+  router.get('/admin/settings', requireSuperuser, async (req, res) => {
+    try {
+      const settings = await db.getAllSettings();
+      res.json({ settings });
+    } catch (err) {
+      console.error('[API] admin/settings GET error:', err.message);
+      res.status(500).json({ error: 'Failed to load settings' });
+    }
+  });
+
+  router.post('/admin/settings', requireSuperuser, async (req, res) => {
+    try {
+      const { key, value } = req.body || {};
+      if (!key || typeof key !== 'string') {
+        return res.status(400).json({ error: 'key required' });
+      }
+      const stored = await db.setSetting(key, value);
+      res.json({ setting: stored });
+    } catch (err) {
+      console.error('[API] admin/settings POST error:', err.message);
+      res.status(500).json({ error: 'Failed to update setting' });
+    }
+  });
+
+  // V3 vs V1 read-only comparison preview
+  router.get('/admin/v3-preview', requireSuperuser, async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
-      const data = await db.computeTS2Leaderboard(seasonId);
-      res.json({ leaderboard: data });
+      const [v1, v3] = await Promise.all([
+        db.computeSeasonTrueSkill(seasonId),
+        db.computeSeasonTrueSkillV3(seasonId),
+      ]);
+
+      const mmrFor = (mu, sigma) => Math.round((mu - 3 * sigma) * 100) + 2600;
+      const ids = new Set([...Object.keys(v1.ratings), ...Object.keys(v3.ratings)]);
+      const out = [];
+      for (const id of ids) {
+        const a = v1.ratings[id];
+        const b = v3.ratings[id];
+        const v1mmr = a ? (a.mmr ?? mmrFor(a.mu, a.sigma)) : null;
+        const v3mmr = b ? (b.mmr ?? mmrFor(b.mu, b.sigma)) : null;
+        out.push({
+          player_id: id,
+          display_name: (b?.display_name || a?.display_name || id),
+          v1_mmr: v1mmr ?? 0,
+          v3_mmr: v3mmr ?? 0,
+          delta: (v3mmr ?? 0) - (v1mmr ?? 0),
+          v3_mu: b?.mu ?? a?.mu ?? 25,
+          v3_sigma: b?.sigma ?? a?.sigma ?? 8.333,
+          wins:   b?.wins   ?? a?.wins   ?? 0,
+          losses: b?.losses ?? a?.losses ?? 0,
+          games:  (b?.wins ?? a?.wins ?? 0) + (b?.losses ?? a?.losses ?? 0),
+        });
+      }
+      out.sort((x, y) => y.v3_mmr - x.v3_mmr);
+      res.json({ leaderboard: out });
     } catch (err) {
-      console.error('[API] ts2-leaderboard error:', err.message);
-      res.status(500).json({ error: 'Failed to compute TS2 leaderboard' });
+      console.error('[API] admin/v3-preview error:', err.message);
+      res.status(500).json({ error: 'Failed to compute V3 preview' });
     }
   });
 

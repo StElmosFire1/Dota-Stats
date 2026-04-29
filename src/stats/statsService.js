@@ -1,6 +1,11 @@
-const { Rating, quality, rate } = require('ts-trueskill');
+const { Rating, quality, rate, TrueSkill } = require('ts-trueskill');
 
 const MMR_OFFSET = 2600;
+
+// V3 TrueSkill environment: same μ/σ/β as default, but tau bumped from ~0.083 → 0.3
+// (keeps σ from collapsing for veterans) and drawProbability=0 (Dota matches can't draw).
+const TS_V3_ENV = new TrueSkill(25, 8.333, 4.166, 0.3, 0.0);
+const V3_SIGMA_FLOOR = 2.5;
 
 class StatsService {
   constructor() {
@@ -44,6 +49,55 @@ class StatsService {
     }
 
     return results;
+  }
+
+  // V3 — uses custom TrueSkill env, applies a per-player performance modifier to
+  // scale the μ change (so a strong individual game gains more MMR than a weak
+  // one on the same team), and floors σ at V3_SIGMA_FLOOR to keep ratings fluid.
+  // `radiantPlayers` / `direPlayers` items may carry an optional `modifier`
+  // (clamped to [0.80, 1.20]); missing modifiers default to 1.0.
+  calculateNewRatingsV3(radiantPlayers, direPlayers, radiantWin) {
+    const buildRatings = (players) =>
+      players.map(p => TS_V3_ENV.createRating(
+        p.mu ?? this.defaultMu,
+        p.sigma ?? this.defaultSigma
+      ));
+
+    const radiantRatings = buildRatings(radiantPlayers);
+    const direRatings    = buildRatings(direPlayers);
+
+    const teams = [radiantRatings, direRatings];
+    const ranks = radiantWin ? [0, 1] : [1, 0];
+    const newRatings = TS_V3_ENV.rate(teams, ranks);
+
+    const finalize = (players, oldRatings, updatedRatings) => {
+      const out = [];
+      for (let i = 0; i < players.length; i++) {
+        const oldMu = oldRatings[i].mu;
+        const newMu = updatedRatings[i].mu;
+        const rawSigma = updatedRatings[i].sigma;
+
+        const rawMod = (typeof players[i].modifier === 'number' && Number.isFinite(players[i].modifier))
+          ? players[i].modifier : 1.0;
+        const mod = Math.max(0.80, Math.min(1.20, rawMod));
+
+        const adjustedMu = oldMu + (newMu - oldMu) * mod;
+        const sigma = Math.max(V3_SIGMA_FLOOR, rawSigma);
+
+        out.push({
+          id: players[i].id,
+          mu: adjustedMu,
+          sigma,
+          mmr: Math.round((adjustedMu - 3 * sigma) * 100) + MMR_OFFSET,
+        });
+      }
+      return out;
+    };
+
+    return [
+      ...finalize(radiantPlayers, radiantRatings, newRatings[0]),
+      ...finalize(direPlayers,    direRatings,    newRatings[1]),
+    ];
   }
 
   extractMatchStats(matchDetails) {

@@ -696,6 +696,19 @@ async function init() {
     await p.query(`ALTER TABLE signup_requests ADD COLUMN IF NOT EXISTS mmr TEXT`);
     await p.query(`ALTER TABLE signup_requests ADD COLUMN IF NOT EXISTS referral TEXT`);
 
+    // Generic key/value site settings (e.g. feature flags like use_v3_trueskill)
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS site_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(
+      `INSERT INTO site_settings (key, value) VALUES ('use_v3_trueskill', 'false')
+       ON CONFLICT (key) DO NOTHING`
+    );
+
     // Weekend / special event tournaments
     await p.query(`
       CREATE TABLE IF NOT EXISTS weekend_tournaments (
@@ -1454,6 +1467,216 @@ async function computeSeasonTrueSkill(seasonId = null) {
   return { ratings, accountToCanonical };
 }
 
+// ── Site settings (key/value) ───────────────────────────────────────────────
+async function getSetting(key) {
+  const p = getPool();
+  const res = await p.query('SELECT value FROM site_settings WHERE key = $1', [key]);
+  return res.rows[0]?.value ?? null;
+}
+
+async function getAllSettings() {
+  const p = getPool();
+  const res = await p.query('SELECT key, value FROM site_settings');
+  const out = {};
+  for (const row of res.rows) out[row.key] = row.value;
+  return out;
+}
+
+async function setSetting(key, value) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO site_settings (key, value, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [key, value == null ? null : String(value)]
+  );
+  return { key, value };
+}
+
+// ── TrueSkill V3 ────────────────────────────────────────────────────────────
+// Mirrors computeSeasonTrueSkill but uses the V3 environment and a per-match,
+// per-player performance modifier derived from the same scoring formula used by
+// the weekend tournament. Modifier is z-scored within each match (ddof=0),
+// clamped to ±2σ, then mapped to [0.80, 1.20]. Lobby-only matches (no stats)
+// fall back to modifier = 1.0 for everyone.
+function _v3PerfScore(s, won) {
+  const winBonus = won ? 25 : 0;
+  return (
+    (s.kills        || 0) * 4
+    + (s.assists    || 0) * 2.5
+    + (s.deaths     || 0) * -3
+    + (s.gpm        || 0) * 0.25
+    + (s.xpm        || 0) * 0.22
+    + (s.hero_dmg   || 0) / 2000
+    + (s.tower_dmg  || 0) / 1000
+    + (s.healing    || 0) / 1500
+    + (s.camps      || 0) * 7
+    + (s.obs        || 0) * 4
+    + (s.sen        || 0) * 6
+    + (s.dewards    || 0) * 10
+    + winBonus
+  );
+}
+
+async function computeSeasonTrueSkillV3(seasonId = null) {
+  const p = getPool();
+  const { getStatsService } = require('../stats/statsService');
+  const statsService = getStatsService();
+
+  // Same canonical-account merge logic as v1
+  const nickRes = await p.query('SELECT account_id, nickname FROM nicknames');
+  const nicknameToIds = {};
+  for (const row of nickRes.rows) {
+    const aid = row.account_id.toString();
+    const nick = row.nickname.toLowerCase();
+    if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
+    nicknameToIds[nick].push(aid);
+  }
+  const accountToCanonical = {};
+  for (const ids of Object.values(nicknameToIds)) {
+    if (ids.length < 2) continue;
+    ids.sort();
+    const canonical = ids[0];
+    for (const id of ids) accountToCanonical[id] = canonical;
+  }
+  const getCanonical = (id) => accountToCanonical[id] || id;
+
+  const params = [];
+  let matchWhere;
+  if (seasonId === 'legacy') {
+    matchWhere = 'WHERE m.is_legacy = true';
+  } else if (seasonId !== null && seasonId !== undefined) {
+    params.push(parseInt(seasonId));
+    matchWhere = `WHERE m.season_id = $${params.length}`;
+  } else {
+    matchWhere = 'WHERE m.is_legacy = false';
+  }
+
+  // Pull match basics + per-player performance columns
+  const rows = await p.query(
+    `SELECT m.match_id, m.date, m.radiant_win,
+            ps.account_id, ps.persona_name, ps.team,
+            ps.kills, ps.deaths, ps.assists,
+            ps.gpm, ps.xpm,
+            ps.hero_damage, ps.tower_damage, ps.hero_healing,
+            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked
+     FROM matches m
+     JOIN player_stats ps ON ps.match_id = m.match_id
+     ${matchWhere}
+     ORDER BY m.date ASC, m.match_id ASC`,
+    params
+  );
+
+  // Group by match
+  const matchMap = new Map();
+  for (const row of rows.rows) {
+    if (!matchMap.has(row.match_id)) {
+      matchMap.set(row.match_id, { radiantWin: row.radiant_win, radiant: [], dire: [], allEntries: [] });
+    }
+    const rawId = row.account_id > 0 ? row.account_id.toString() : null;
+    if (!rawId) continue;
+    const id = getCanonical(rawId);
+    const stats = {
+      kills:      Number(row.kills) || 0,
+      deaths:     Number(row.deaths) || 0,
+      assists:    Number(row.assists) || 0,
+      gpm:        Number(row.gpm) || 0,
+      xpm:        Number(row.xpm) || 0,
+      hero_dmg:   Number(row.hero_damage) || 0,
+      tower_dmg:  Number(row.tower_damage) || 0,
+      healing:    Number(row.hero_healing) || 0,
+      obs:        Number(row.obs_placed) || 0,
+      sen:        Number(row.sen_placed) || 0,
+      dewards:    Number(row.wards_killed) || 0,
+      camps:      Number(row.camps_stacked) || 0,
+    };
+    const entry = { id, persona_name: row.persona_name, stats };
+    const m = matchMap.get(row.match_id);
+    if (row.team === 'radiant') m.radiant.push(entry);
+    else m.dire.push(entry);
+    m.allEntries.push({ ...entry, team: row.team });
+  }
+
+  const DEFAULT_MU = 25, DEFAULT_SIGMA = 8.333;
+  const ratings = {};
+
+  for (const [matchId, match] of matchMap) {
+    if (match.radiant.length === 0 || match.dire.length === 0) continue;
+
+    // Defensive: if canonical-account merging put the same player ID on both
+    // teams (data quality issue with shared nicknames across players), skip
+    // the match — applying conflicting updates would corrupt the rating.
+    const radiantIds = new Set(match.radiant.map(pl => pl.id));
+    if (match.dire.some(pl => radiantIds.has(pl.id))) {
+      console.warn('[TrueSkillV3] Skipping match', matchId, '— canonical ID collision across teams');
+      continue;
+    }
+
+    // Detect "stats present" — any non-trivial value across the 10 players
+    const hasStats = match.allEntries.some(e => {
+      const s = e.stats;
+      return (s.kills + s.deaths + s.assists + s.gpm + s.xpm + s.hero_dmg + s.tower_dmg + s.healing + s.obs + s.sen + s.dewards + s.camps) > 0;
+    });
+
+    // Compute modifiers per canonical player ID for this match
+    const modByCanon = {};
+    if (hasStats) {
+      const scoreByCanon = {};
+      for (const e of match.allEntries) {
+        const won = (e.team === 'radiant') === match.radiantWin;
+        const sc = _v3PerfScore(e.stats, won);
+        // If a canonical player appears twice (two merged accounts in same match),
+        // keep the higher score
+        scoreByCanon[e.id] = scoreByCanon[e.id] != null ? Math.max(scoreByCanon[e.id], sc) : sc;
+      }
+      const allScores = Object.values(scoreByCanon);
+      const n = allScores.length;
+      const mean = allScores.reduce((a, b) => a + b, 0) / n;
+      const variance = allScores.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+      const std = Math.sqrt(variance);
+      for (const [cid, sc] of Object.entries(scoreByCanon)) {
+        let z = std > 0 ? (sc - mean) / std : 0;
+        if (z >  2) z =  2;
+        if (z < -2) z = -2;
+        // Map z in [-2, +2] → modifier in [0.80, 1.20]
+        modByCanon[cid] = 1.0 + 0.10 * z;
+      }
+    }
+
+    const dedup = (team) => {
+      const seen = new Set();
+      return team.filter(pl => seen.has(pl.id) ? false : seen.add(pl.id));
+    };
+    const buildSide = (side) => dedup(side).map(pl => ({
+      id: pl.id,
+      mu:    ratings[pl.id]?.mu    ?? DEFAULT_MU,
+      sigma: ratings[pl.id]?.sigma ?? DEFAULT_SIGMA,
+      modifier: hasStats ? (modByCanon[pl.id] ?? 1.0) : 1.0,
+    }));
+    const radiant = buildSide(match.radiant);
+    const dire    = buildSide(match.dire);
+
+    const newRatings = statsService.calculateNewRatingsV3(radiant, dire, match.radiantWin);
+
+    for (const r of newRatings) {
+      const isRadiant = radiant.some(pl => pl.id === r.id);
+      const won = isRadiant ? match.radiantWin : !match.radiantWin;
+      const playerInfo = [...match.radiant, ...match.dire].find(pl => pl.id === r.id);
+      if (!ratings[r.id]) {
+        ratings[r.id] = { mu: DEFAULT_MU, sigma: DEFAULT_SIGMA, wins: 0, losses: 0, display_name: playerInfo?.persona_name || r.id };
+      }
+      ratings[r.id].mu = r.mu;
+      ratings[r.id].sigma = r.sigma;
+      ratings[r.id].mmr = r.mmr;
+      if (won) ratings[r.id].wins++;
+      else ratings[r.id].losses++;
+      if (playerInfo?.persona_name) ratings[r.id].display_name = playerInfo.persona_name;
+    }
+  }
+
+  return { ratings, accountToCanonical };
+}
+
 // ── TrueSkill 2 (experimental) ──────────────────────────────────────────────
 // Runs both TS1 and TS2 from scratch in one pass and returns a comparison
 // leaderboard. TS2 differs from TS1 in that the μ update for each player is
@@ -1723,7 +1946,16 @@ function _computeImpactTier(rawScore, allRawScores) {
 async function getComputedLeaderboard(seasonId = null) {
   const p = getPool();
 
-  const { ratings } = await computeSeasonTrueSkill(seasonId);
+  // Route to V3 if the admin toggle is on, else default V1
+  let useV3 = false;
+  try {
+    useV3 = (await getSetting('use_v3_trueskill')) === 'true';
+  } catch (e) {
+    useV3 = false;
+  }
+  const { ratings } = useV3
+    ? await computeSeasonTrueSkillV3(seasonId)
+    : await computeSeasonTrueSkill(seasonId);
 
   // Fetch nicknames and build canonical-account mapping (same logic as computeSeasonTrueSkill)
   const nicknamesRes = await p.query(
@@ -5834,6 +6066,10 @@ module.exports = {
   getImpactScores,
   computeTS2Leaderboard,
   computeSeasonTrueSkill,
+  computeSeasonTrueSkillV3,
+  getSetting,
+  getAllSettings,
+  setSetting,
   updateRating,
   getPlayerRating,
   getPlayerStats,
