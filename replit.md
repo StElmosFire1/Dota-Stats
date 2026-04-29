@@ -8,8 +8,8 @@ I prefer iterative development, with a focus on delivering core features first a
 
 After completing a meaningful batch of changes, add a single grouped entry to `src/data/patchNotes.js` summarising everything that changed (incrementing the version number from the current latest). Group related changes into one patch note rather than posting one per individual change — only publish when there is a significant set of work to describe. This must be done automatically — never wait to be asked.
 
-After completing any set of changes and rebuilding, always push to GitHub automatically using:
-`git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin main`
+After completing any set of changes and rebuilding, the latest commit is pushed to GitHub automatically by the post-merge hook (`scripts/post-merge.sh`), which runs after the platform's auto-commit and uses the `GITHUB_PERSONAL_ACCESS_TOKEN` secret with this credential-helper one-liner:
+`git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin HEAD:main`
 
 The bot runs under PM2. Standard deploy command:
 `cd ~/Dota-Stats && bash deploy.sh`
