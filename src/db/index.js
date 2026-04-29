@@ -2300,7 +2300,12 @@ async function getPlayerStats(accountId, seasonId = null) {
   // Use the canonical ID (in case this account is merged with another under the same nickname).
   let seasonMmr = null;
   if (isRealAccount) {
-    const { ratings: seasonRatings, accountToCanonical } = await computeSeasonTrueSkill(seasonId);
+    // Honour the V1/V3 admin toggle so profile MMR always matches the leaderboard.
+    let useV3 = false;
+    try { useV3 = (await getSetting('use_v3_trueskill')) === 'true'; } catch { useV3 = false; }
+    const { ratings: seasonRatings, accountToCanonical } = useV3
+      ? await computeSeasonTrueSkillV3(seasonId)
+      : await computeSeasonTrueSkill(seasonId);
     const canonicalId = accountToCanonical[accountId.toString()] || accountId.toString();
     const entry = seasonRatings[canonicalId];
     if (entry) {
