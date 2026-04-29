@@ -2984,14 +2984,23 @@ NOTES
         const b = v3.ratings[id];
         const v1mmr = a ? (a.mmr ?? mmrFor(a.mu, a.sigma)) : null;
         const v3mmr = b ? (b.mmr ?? mmrFor(b.mu, b.sigma)) : null;
+        const newMu = b?.mu ?? a?.mu ?? 25;
+        const newSigma = b?.sigma ?? a?.sigma ?? 8.333;
         out.push({
           player_id: id,
           display_name: (b?.display_name || a?.display_name || id),
+          // V3-named keys (current convention)
           v1_mmr: v1mmr ?? 0,
           v3_mmr: v3mmr ?? 0,
           delta: (v3mmr ?? 0) - (v1mmr ?? 0),
-          v3_mu: b?.mu ?? a?.mu ?? 25,
-          v3_sigma: b?.sigma ?? a?.sigma ?? 8.333,
+          v3_mu: newMu,
+          v3_sigma: newSigma,
+          // Legacy aliases — preserve the old `ts2-leaderboard` response shape
+          // so any existing API consumer keeps working unchanged.
+          ts1_mmr: v1mmr ?? 0,
+          ts2_mmr: v3mmr ?? 0,
+          ts2_mu: newMu,
+          ts2_sigma: newSigma,
           wins:   b?.wins   ?? a?.wins   ?? 0,
           losses: b?.losses ?? a?.losses ?? 0,
           games:  (b?.wins ?? a?.wins ?? 0) + (b?.losses ?? a?.losses ?? 0),

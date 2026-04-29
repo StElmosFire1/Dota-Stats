@@ -1600,17 +1600,8 @@ async function computeSeasonTrueSkillV3(seasonId = null) {
   const DEFAULT_MU = 25, DEFAULT_SIGMA = 8.333;
   const ratings = {};
 
-  for (const [matchId, match] of matchMap) {
+  for (const [, match] of matchMap) {
     if (match.radiant.length === 0 || match.dire.length === 0) continue;
-
-    // Defensive: if canonical-account merging put the same player ID on both
-    // teams (data quality issue with shared nicknames across players), skip
-    // the match — applying conflicting updates would corrupt the rating.
-    const radiantIds = new Set(match.radiant.map(pl => pl.id));
-    if (match.dire.some(pl => radiantIds.has(pl.id))) {
-      console.warn('[TrueSkillV3] Skipping match', matchId, '— canonical ID collision across teams');
-      continue;
-    }
 
     // Detect "stats present" — any non-trivial value across the 10 players
     const hasStats = match.allEntries.some(e => {
