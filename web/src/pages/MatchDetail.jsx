@@ -29,6 +29,7 @@ import ImpactBadge from '../components/ImpactBadge';
 import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
+import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import {
   LineChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts';
@@ -898,7 +899,7 @@ function ModifierBadge({ entry }) {
   );
 }
 
-function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {}, v3Modifiers = {} }) {
+function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {}, v3Modifiers = {}, match = null, showMvpBadges = false }) {
   const allPlayers = allPlayersProp || players;
   const hasDetailedStats = players.some(p => p.gpm > 0 || p.hero_damage > 0);
   const hasItems = players.some(p => p.items && p.items.length > 0);
@@ -962,6 +963,20 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
                     <span className="player-badges">
                       {p.firstblood_claimed > 0 && <span className="badge fb" title="First Blood">FB</span>}
                       {p.first_death > 0 && <span className="badge fd" title="First Death">FD</span>}
+                      {showMvpBadges && match?.mvp_account_id && String(p.account_id) === String(match.mvp_account_id) && (
+                        <span
+                          title={`Voted MVP by teammates (${match.mvp_vote_count} vote${match.mvp_vote_count === 1 ? '' : 's'})`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 2,
+                            background: 'rgba(251,191,36,0.15)', color: '#fbbf24',
+                            border: '1px solid rgba(251,191,36,0.5)',
+                            borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700,
+                            marginLeft: 4, letterSpacing: 0.4, cursor: 'default',
+                          }}
+                        >
+                          ⭐ MVP
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="col-stat">
@@ -2476,6 +2491,7 @@ function MatchDetailInner() {
   const { seasons } = useSeason();
   const { isAdmin, adminKey, setShowModal } = useAdmin();
   const { isSuperuser } = useSuperuser();
+  const showMvpBadges = useFeatureFlag('mvp_match_badges');
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -2942,8 +2958,8 @@ function MatchDetailInner() {
 
       <DraftDisplay draft={match.draft} />
 
-      <TeamTable players={radiant} allPlayers={allPlayers} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} />
-      <TeamTable players={dire} allPlayers={allPlayers} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} />
+      <TeamTable players={radiant} allPlayers={allPlayers} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} match={match} showMvpBadges={showMvpBadges} />
+      <TeamTable players={dire} allPlayers={allPlayers} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} match={match} showMvpBadges={showMvpBadges} />
 
       <ExpandedStats players={allPlayers} />
       <PudgeHookStats players={allPlayers} matchId={matchId} />

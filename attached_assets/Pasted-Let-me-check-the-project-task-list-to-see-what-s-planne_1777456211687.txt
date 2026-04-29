@@ -1,0 +1,29 @@
+Let me check the project task list to see what's planned for the remaining waves:
+
+I appreciate the trust, but I need to flag something important: I don't have a written record of what's in Wave 1 tasks #2–6 or what's planned for Wave 2/3/etc. The previous agent's conversation about the wave breakdown wasn't saved to a plan file — only Task #1 (Launch Foundation) was tracked, and the older task-1.md / trueskill-v3.md files in the tasks folder describe an already-completed feature (TrueSkill V3, which is patch v5.40 and already in the codebase).
+
+Before I plough ahead and risk building the wrong things in the wrong order with only ~2 days until the Season 10 launch on Friday, can you tell me what's in your wave plan? Even a rough list works — I'll write it down as we go and tick items off.
+
+From the breadcrumbs in my notes, I can see at least these items were mentioned but not done:
+
+Known deferred items:
+
+    Rank theme / badge visual decision (you wanted to wait until after launch foundation)
+    The 2-sites split (current small community vs future monetised — you said "later")
+    TrueSkill V3 default-on for Season 10 (it's behind an admin toggle today, currently off)
+
+Things I'd guess are in scope for a Season 10 launch but want you to confirm:
+
+    Creating the actual Season 10 row in the DB (and a "Season 9 wrap-up" recap)
+    Resetting MMR / leaderboard at season cutover
+    Test coverage for the new feature flag system + launch cron (no tests written yet)
+    Welcome modal / changelog popup for returning players
+    Any new features you want gated behind preview flags so they all light up at launch
+
+Things I want to make sure we don't gloss over:
+
+    Production deploy of this batch (the launch foundation has only been verified on this dev environment, not yet pushed via your bash deploy.sh flow on the live server)
+    The pre-existing patch-note ordering bug I fixed — worth flagging in case it suggests other auto-merge weirdness
+    A "what's planned for Season 10" patch note communicating to your community what to expect
+
+Could you give me your wave list (even just titles), and confirm or correct the items above? Once I have the picture, I'll create .local/tasks/season10-waves.md to track everything (done + open + deferred), then start working through it without further check-ins.

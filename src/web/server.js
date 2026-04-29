@@ -65,7 +65,9 @@ function authMiddleware(req, res, next) {
   if (!uploadKey && !superuserPassword) {
     return res.status(503).json({ error: 'Admin not configured. Set UPLOAD_KEY or SUPERUSER_PASSWORD.' });
   }
-  const providedKey = req.headers['x-upload-key'];
+  // Accept either header — frontend tournament endpoints send 'x-superuser-key'
+  // while replay/match upload endpoints send 'x-upload-key'. Either valid key works.
+  const providedKey = req.headers['x-upload-key'] || req.headers['x-superuser-key'];
   const validKey = (uploadKey && providedKey === uploadKey) || (superuserPassword && providedKey === superuserPassword);
   if (!validKey) {
     return res.status(403).json({ error: 'Invalid upload key' });
@@ -202,8 +204,20 @@ function createServer(startupStatus = {}) {
       }
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
-        await db.confirmBuyin(session.id);
-        console.log('[Stripe] Confirmed buyin for session', session.id);
+        const purpose = session.metadata?.purpose;
+        if (purpose === 'tournament_entry') {
+          // 1.7 — per-tournament Stripe self-signup
+          const entry = await db.markTournamentEntryPaid(session.id);
+          if (entry) {
+            await db.recomputeTournamentPrizePool(entry.tournament_id).catch(() => {});
+            console.log('[Stripe] Confirmed tournament entry', entry.id, 'session', session.id);
+          } else {
+            console.warn('[Stripe] tournament_entry webhook: no entry for session', session.id);
+          }
+        } else {
+          await db.confirmBuyin(session.id);
+          console.log('[Stripe] Confirmed buyin for session', session.id);
+        }
       }
       res.json({ received: true });
     } catch (err) {
@@ -2595,6 +2609,20 @@ NOTES
     }
   });
 
+  // 1.4 — Profile chart v2 — per-match KDA / GPM / hero damage timeseries
+  // for the new chart on the player's own profile. Gated client-side on
+  // `profile_chart_v2`. Returns up to 100 most-recent matches.
+  router.get('/player/:id/match-stats-history', async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const history = await db.getPlayerMatchStatsHistory(req.params.id, seasonId);
+      res.json({ history });
+    } catch (err) {
+      console.error('[API] match-stats-history error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch match stats history' });
+    }
+  });
+
   router.get('/impact-scores', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
@@ -2683,9 +2711,17 @@ NOTES
 
   router.post('/tournaments', authMiddleware, async (req, res) => {
     try {
-      const { name, description, seasonId, format } = req.body;
+      const {
+        name, description, seasonId, format,
+        tierNumber, entryFeeCents, signupOpenAt, signupCloseAt,
+      } = req.body;
       if (!name) return res.status(400).json({ error: 'Name required' });
-      const tournament = await db.createTournament({ name, description, seasonId, format, createdBy: req.session?.username });
+      const tournament = await db.createTournament({
+        name, description, seasonId, format,
+        tierNumber, entryFeeCents,
+        signupOpenAt, signupCloseAt,
+        createdBy: req.session?.username,
+      });
       res.json({ tournament });
     } catch (err) {
       console.error('[API] create tournament error:', err.message);
@@ -2812,6 +2848,305 @@ NOTES
       res.json({ matches });
     } catch (err) {
       res.status(500).json({ error: 'Failed to clear winner' });
+    }
+  });
+
+  // ─── Multi-Tier Seasons (1.6) ──────────────────────────────────────────
+  router.get('/seasons/:id/tiers', async (req, res) => {
+    try {
+      const tiers = await db.getSeasonTiers(req.params.id);
+      res.json({ tiers });
+    } catch (err) {
+      console.error('[API] season tiers error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch tiers' });
+    }
+  });
+
+  router.post('/seasons/:id/tiers/ensure', requireSuperuser, async (req, res) => {
+    try {
+      const tiers = await db.ensureSeasonTiers(req.params.id);
+      res.json({ tiers });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to provision tiers' });
+    }
+  });
+
+  router.patch('/seasons/:id/tiers/:tierNumber', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const updated = await db.updateSeasonTier(req.params.id, req.params.tierNumber, req.body || {});
+      if (!updated) return res.status(404).json({ error: 'Tier not found or no fields to update' });
+      res.json({ tier: updated });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to update tier' });
+    }
+  });
+
+  router.post('/seasons/:id/tiers/place-all', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const result = await db.placeAllPlayersInSeasonTiers(req.params.id, { force: !!req.body?.force });
+      res.json(result);
+    } catch (err) {
+      console.error('[API] tier place-all error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to place players' });
+    }
+  });
+
+  router.get('/seasons/:id/tiers/:tierNumber/players', async (req, res) => {
+    try {
+      const players = await db.getSeasonTierPlayers(req.params.id, req.params.tierNumber);
+      res.json({ players });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch tier players' });
+    }
+  });
+
+  router.post('/seasons/:id/tiers/override', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { accountId, tierNumber } = req.body || {};
+      if (!accountId || tierNumber == null) {
+        return res.status(400).json({ error: 'accountId and tierNumber required' });
+      }
+      const placement = await db.overridePlayerTier(
+        req.params.id, accountId, tierNumber, req.session?.username || 'admin'
+      );
+      res.json({ placement });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to override tier' });
+    }
+  });
+
+  // ─── Tournament Self-Signup (1.7) ──────────────────────────────────────
+  // Helper: returns true if `tournament_self_signup` is fully on, OR caller is
+  // a superuser. Used by all tournament self-signup-related routes so the
+  // feature surface is hidden when the flag is off (returns 404 to avoid
+  // disclosing the route's existence).
+  function _isSelfSignupSuperuser(req) {
+    return Boolean(
+      req.headers['x-superuser-key']
+      && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
+    );
+  }
+  async function _selfSignupVisible(req) {
+    if (_isSelfSignupSuperuser(req)) return true;
+    const flag = await db.getFeatureFlag('tournament_self_signup').catch(() => null);
+    return !!flag && flag.state === 'on';
+  }
+  // SECURITY: strip payment session ids and other internal identifiers before
+  // returning a tournament_entries row to a non-superuser caller. Superusers
+  // see the full row so the admin panel can debug Stripe sessions.
+  function _publicEntryFields(entry, isSuperuser) {
+    if (!entry) return entry;
+    if (isSuperuser) return entry;
+    const {
+      stripe_session_id: _ssid, steam_id: _sid,
+      ...safe
+    } = entry;
+    return safe;
+  }
+
+  router.get('/tournaments/:id/entries', async (req, res) => {
+    try {
+      if (!(await _selfSignupVisible(req))) return res.status(404).json({ error: 'Not found' });
+      const isSu = _isSelfSignupSuperuser(req);
+      const paidOnly = req.query.paidOnly === '1' || req.query.paidOnly === 'true';
+      const entries = await db.getTournamentEntries(req.params.id, { paidOnly });
+      // SECURITY: strip stripe_session_id / steam_id from public responses.
+      res.json({ entries: (entries || []).map(e => _publicEntryFields(e, isSu)) });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch entries' });
+    }
+  });
+
+  router.get('/tournaments/:id/eligibility', async (req, res) => {
+    try {
+      if (!(await _selfSignupVisible(req))) return res.status(404).json({ error: 'Not found' });
+      const isSu = _isSelfSignupSuperuser(req);
+      // SECURITY: non-superusers can only check their *own* eligibility, to
+      // prevent enumerating other players' enrollment / payment status. The
+      // querystring accountId (when supplied) must match the session.
+      const sessionAccountId = req.session?.accountId;
+      const requested = req.query.accountId;
+      let accountId;
+      if (isSu) {
+        accountId = requested || sessionAccountId;
+      } else {
+        if (!sessionAccountId) return res.status(401).json({ error: 'Sign in with Steam to check eligibility' });
+        if (requested && String(requested) !== String(sessionAccountId)) {
+          return res.status(403).json({ error: 'You can only check your own eligibility' });
+        }
+        accountId = sessionAccountId;
+      }
+      if (!accountId) return res.status(400).json({ error: 'accountId required' });
+      const result = await db.isPlayerEligibleForTournament(req.params.id, accountId);
+      // Also include any existing entry status so UI can show the right CTA.
+      const existing = await db.getTournamentEntry(req.params.id, accountId);
+      res.json({ ...result, existingEntry: _publicEntryFields(existing, isSu) || null });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to check eligibility' });
+    }
+  });
+
+  router.post('/tournaments/:id/checkout', express.json(), async (req, res) => {
+    try {
+      // Gate the entire self-signup flow on the `tournament_self_signup` flag.
+      // When the flag is off the route returns 404 so it doesn't leak that the
+      // feature exists; superusers always bypass the gate.
+      const isSuperuser = Boolean(
+        req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
+      );
+      if (!isSuperuser) {
+        const flag = await db.getFeatureFlag('tournament_self_signup').catch(() => null);
+        if (!flag || flag.state !== 'on') return res.status(404).json({ error: 'Not found' });
+      }
+
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments not configured' });
+      }
+      const tournamentId = parseInt(req.params.id);
+      const { accountId, displayName } = req.body || {};
+      // SECURITY: bind the entry to the *authenticated* Steam session. We only
+      // accept a body-supplied accountId if it matches the session's accountId
+      // (or the caller is a superuser acting on behalf of a player). Without
+      // this check any caller could create a checkout entry charged to another
+      // player's account_id (IDOR on payment path).
+      const sessionAccountId = req.session?.accountId;
+      let finalAccountId = sessionAccountId;
+      if (accountId && String(accountId) !== String(sessionAccountId || '')) {
+        if (!isSuperuser) {
+          return res.status(403).json({ error: 'You can only sign yourself up. Sign in with Steam first.' });
+        }
+        finalAccountId = accountId;
+      }
+      if (!finalAccountId) return res.status(401).json({ error: 'Sign in with Steam to enter this tournament.' });
+
+      const t = await db.getTournamentById(tournamentId);
+      if (!t) return res.status(404).json({ error: 'Tournament not found' });
+      if (!t.entry_fee_cents || t.entry_fee_cents <= 0) {
+        return res.status(400).json({ error: 'This tournament is free — no checkout needed' });
+      }
+
+      // Signup window check (open if no window set or now within window).
+      const now = new Date();
+      if (t.signup_open_at && now < new Date(t.signup_open_at)) {
+        return res.status(400).json({ error: 'Signup not open yet' });
+      }
+      if (t.signup_close_at && now > new Date(t.signup_close_at)) {
+        return res.status(400).json({ error: 'Signup is closed' });
+      }
+
+      const elig = await db.isPlayerEligibleForTournament(tournamentId, finalAccountId);
+      if (!elig.eligible) return res.status(403).json({ error: elig.reason || 'Not eligible' });
+
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const baseUrl = process.env.SITE_URL || `http://170.64.182.110:5000`;
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: {
+              name: `${t.name} — Entry Fee`,
+              description: t.tier_number ? `Tier ${t.tier_number} entry` : 'Tournament entry',
+            },
+            unit_amount: t.entry_fee_cents,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/tournaments/${tournamentId}?signup=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/tournaments/${tournamentId}?signup=cancelled`,
+        metadata: {
+          purpose: 'tournament_entry',
+          tournament_id: String(tournamentId),
+          account_id: String(finalAccountId),
+          display_name: (displayName || '').slice(0, 80),
+        },
+      });
+      await db.createTournamentEntry({
+        tournamentId,
+        accountId: finalAccountId,
+        steamId: req.session?.steamId || null,
+        stripeSessionId: session.id,
+        amountCents: t.entry_fee_cents,
+      });
+      res.json({ url: session.url });
+    } catch (err) {
+      console.error('[API] tournament checkout error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create checkout' });
+    }
+  });
+
+  // 1.7 — Free-event direct entry (no Stripe). Mirrors the auth/eligibility/flag
+  // checks of /checkout but writes a `paid` entry immediately.
+  router.post('/tournaments/:id/free-signup', express.json(), async (req, res) => {
+    try {
+      const isSuperuser = Boolean(
+        req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
+      );
+      if (!isSuperuser) {
+        const flag = await db.getFeatureFlag('tournament_self_signup').catch(() => null);
+        if (!flag || flag.state !== 'on') return res.status(404).json({ error: 'Not found' });
+      }
+      const tournamentId = parseInt(req.params.id);
+      const { accountId } = req.body || {};
+      const sessionAccountId = req.session?.accountId;
+      let finalAccountId = sessionAccountId;
+      if (accountId && String(accountId) !== String(sessionAccountId || '')) {
+        if (!isSuperuser) return res.status(403).json({ error: 'You can only sign yourself up. Sign in with Steam first.' });
+        finalAccountId = accountId;
+      }
+      if (!finalAccountId) return res.status(401).json({ error: 'Sign in with Steam to enter this tournament.' });
+
+      const t = await db.getTournamentById(tournamentId);
+      if (!t) return res.status(404).json({ error: 'Tournament not found' });
+      if (t.entry_fee_cents && t.entry_fee_cents > 0) {
+        return res.status(400).json({ error: 'This tournament has an entry fee — use checkout instead.' });
+      }
+      const now = new Date();
+      if (t.signup_open_at  && now < new Date(t.signup_open_at))  return res.status(400).json({ error: 'Signup not open yet' });
+      if (t.signup_close_at && now > new Date(t.signup_close_at)) return res.status(400).json({ error: 'Signup is closed' });
+
+      const elig = await db.isPlayerEligibleForTournament(tournamentId, finalAccountId);
+      if (!elig.eligible) return res.status(403).json({ error: elig.reason || 'Not eligible' });
+
+      // Use a synthetic stripe_session_id so the unique-on-stripe-session-id
+      // index (if any) doesn't collide and the row is clearly identifiable.
+      const synthetic = `free_${tournamentId}_${finalAccountId}_${Date.now()}`;
+      const entry = await db.createTournamentEntry({
+        tournamentId, accountId: finalAccountId,
+        steamId: req.session?.steamId || null,
+        stripeSessionId: synthetic, amountCents: 0,
+      });
+      // Promote to paid immediately for free events.
+      await db.markTournamentEntryPaid(synthetic).catch(() => {});
+      await db.recomputeTournamentPrizePool(tournamentId).catch(() => {});
+      res.json({ ok: true, entry });
+    } catch (err) {
+      console.error('[API] tournament free signup error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to sign up' });
+    }
+  });
+
+  router.get('/tournaments/:id/entry/confirm', async (req, res) => {
+    try {
+      // Gate the same way as the rest of the self-signup surface.
+      if (!(await _selfSignupVisible(req))) return res.status(404).json({ error: 'Not found' });
+      const isSu = _isSelfSignupSuperuser(req);
+      const { session_id } = req.query;
+      if (!session_id) return res.status(400).json({ error: 'session_id required' });
+      if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const session = await stripe.checkout.sessions.retrieve(session_id);
+      if (session.payment_status !== 'paid') {
+        return res.status(402).json({ error: 'Payment not completed', status: session.payment_status });
+      }
+      const entry = await db.markTournamentEntryPaid(session_id);
+      if (entry) await db.recomputeTournamentPrizePool(entry.tournament_id).catch(() => {});
+      // SECURITY: scrub stripe_session_id / steam_id from the public response.
+      res.json({ entry: _publicEntryFields(entry, isSu), ok: !!entry });
+    } catch (err) {
+      console.error('[API] tournament entry confirm error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to confirm entry' });
     }
   });
 

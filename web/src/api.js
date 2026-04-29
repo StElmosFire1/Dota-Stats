@@ -946,6 +946,82 @@ export async function announceWeekendTournament(id, superuserKey) {
   return d;
 }
 
+// ── Profile chart v2 (1.4) ──────────────────────────────────────────────────
+export async function getPlayerMatchStatsHistory(accountId, seasonId = null) {
+  const url = `/player/${encodeURIComponent(accountId)}/match-stats-history${seasonId ? `?season=${seasonId}` : ''}`;
+  return fetchJson(url);
+}
+
+// ── Multi-tier seasons (1.6) ────────────────────────────────────────────────
+export async function getSeasonTiers(seasonId) {
+  return fetchJson(`/seasons/${seasonId}/tiers`);
+}
+export async function ensureSeasonTiers(seasonId, superuserKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/tiers/ensure`, {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed');
+  return d;
+}
+export async function updateSeasonTier(seasonId, tierNumber, fields, superuserKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/tiers/${tierNumber}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify(fields),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed');
+  return d;
+}
+export async function placeAllPlayersInTiers(seasonId, force, superuserKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/tiers/place-all`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ force: !!force }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed');
+  return d;
+}
+export async function getSeasonTierPlayers(seasonId, tierNumber) {
+  return fetchJson(`/seasons/${seasonId}/tiers/${tierNumber}/players`);
+}
+export async function overridePlayerTier(seasonId, accountId, tierNumber, superuserKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/tiers/override`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ accountId, tierNumber }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed');
+  return d;
+}
+
+// ── Tournament self-signup (1.7) ────────────────────────────────────────────
+export async function getTournamentEntries(tournamentId, paidOnly = false) {
+  return fetchJson(`/tournaments/${tournamentId}/entries${paidOnly ? '?paidOnly=1' : ''}`);
+}
+export async function getTournamentEligibility(tournamentId, accountId) {
+  const q = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+  return fetchJson(`/tournaments/${tournamentId}/eligibility${q}`);
+}
+export async function createTournamentCheckout(tournamentId, accountId, displayName) {
+  const res = await fetch(BASE + `/tournaments/${tournamentId}/checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ accountId, displayName }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed');
+  return d;
+}
+export async function confirmTournamentEntry(tournamentId, sessionId) {
+  return fetchJson(`/tournaments/${tournamentId}/entry/confirm?session_id=${encodeURIComponent(sessionId)}`);
+}
+
 export async function updateSignupRequest(id, { status, adminNotes }, superuserKey) {
   const res = await fetch(BASE + `/admin/signups/${id}`, {
     method: 'PATCH',

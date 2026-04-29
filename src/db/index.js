@@ -286,6 +286,43 @@ async function init() {
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
 
+    // Multi-tier seasons (1.6) — each season can have N tiers (default 8 for S10).
+    // S10 tier placement is based on inhouse TrueSkill MMR via `min_mmr`. The
+    // legacy `rank_floor`/`rank_ceiling` columns are kept for back-compat with any
+    // pre-S10 row that was seeded under the original 3-tier rank_tier model and
+    // are simply ignored when `min_mmr` is set.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_tiers (
+        id SERIAL PRIMARY KEY,
+        season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        tier_number INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        rank_floor INTEGER,
+        rank_ceiling INTEGER,
+        prize_pool_cents INTEGER NOT NULL DEFAULT 0,
+        buyin_cents INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season_id, tier_number)
+      )
+    `);
+    // S10 8-tier MMR-based placement: add min_mmr column on the existing table.
+    // Idempotent — safe to run on legacy rows; existing rank_floor data is left
+    // untouched and ignored once min_mmr is populated.
+    await p.query(`ALTER TABLE season_tiers ADD COLUMN IF NOT EXISTS min_mmr INTEGER`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_tier_players (
+        id SERIAL PRIMARY KEY,
+        season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        tier_number INTEGER NOT NULL,
+        account_id BIGINT NOT NULL,
+        placement_rank_tier INTEGER,
+        override_admin_id TEXT,
+        placed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season_id, account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_season_tier_players_season_tier ON season_tier_players(season_id, tier_number)`);
+
     await p.query(`
       CREATE TABLE IF NOT EXISTS match_draft (
         id SERIAL PRIMARY KEY,
@@ -654,6 +691,31 @@ async function init() {
     `);
     await p.query(`ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS bracket VARCHAR(10) DEFAULT 'W'`);
 
+    // Multi-tier seasons (1.6) — tournaments can be tagged to a specific season
+    // tier (or NULL for cross-tier/exhibition).
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS tier_number INTEGER DEFAULT NULL`);
+
+    // Per-tournament Stripe buy-ins + self-service signup (1.7).
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS entry_fee_cents INTEGER NOT NULL DEFAULT 0`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS signup_open_at TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS signup_close_at TIMESTAMPTZ`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tournament_entries (
+        id SERIAL PRIMARY KEY,
+        tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        steam_id TEXT,
+        paid_at TIMESTAMPTZ,
+        stripe_session_id TEXT,
+        amount_cents INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        refunded_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(tournament_id, account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_tournament_entries_tournament ON tournament_entries(tournament_id, status)`);
+
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_tier INTEGER DEFAULT NULL`);
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_leaderboard_rank INTEGER DEFAULT NULL`);
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_source VARCHAR(16) DEFAULT NULL`);
@@ -724,7 +786,14 @@ async function init() {
     `);
     await p.query(
       `INSERT INTO feature_flags (key, state, description) VALUES
-         ('home_launch_banner', 'off', 'Season 10 launch banner on the home page')
+         ('home_launch_banner', 'off', 'Season 10 launch banner on the home page'),
+         ('home_join_button', 'off', 'Prominent Join the League CTA on the home page'),
+         ('profile_chart_v2', 'off', 'Enhanced profile charts (modifier history, rating overlay, what helped/hurt) for the logged-in player on their own profile only'),
+         ('mvp_match_badges', 'off', 'MVP badge displayed on match scoreboard rows where that player won MVP'),
+         ('multi_tier_seasons', 'off', 'Season tiers system — separate leaderboards/prize pools/brackets per tier (Tier 1 Immortal, Tier 2 Divine+Ancient, Tier 3 Legend and below)'),
+         ('tournament_self_signup', 'off', 'Per-tournament Stripe buy-ins with self-service signup and eligibility checks'),
+         ('new_rank_theme', 'off', 'New 8-tier rank badge theme using inhouse TrueSkill MMR (replaces Dota medal display)'),
+         ('welcome_modal_s10', 'off', 'One-shot Season 10 welcome modal shown post-launch')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -835,6 +904,185 @@ async function createSeason(name) {
     [name]
   );
   return result.rows[0];
+}
+
+// Multi-tier seasons (1.6) helpers ────────────────────────────────────────────
+// Season 10 ladder is **MMR-based 8-tier**. Display MMR uses the V3 formula
+// `round((mu - 3*sigma) * 100) + 5000`, so a fresh player at mu=25/sigma=8.333
+// reads as exactly 5000 → falls into Tier V (the default).
+// Tier names are placeholders — superusers can rename per-season in the admin panel.
+const DEFAULT_S10_TIERS = [
+  { tier_number: 1, name: 'Tier I',    min_mmr: 0,    rank_floor: null, rank_ceiling: null },
+  { tier_number: 2, name: 'Tier II',   min_mmr: 2000, rank_floor: null, rank_ceiling: null },
+  { tier_number: 3, name: 'Tier III',  min_mmr: 3000, rank_floor: null, rank_ceiling: null },
+  { tier_number: 4, name: 'Tier IV',   min_mmr: 4000, rank_floor: null, rank_ceiling: null },
+  { tier_number: 5, name: 'Tier V',    min_mmr: 5000, rank_floor: null, rank_ceiling: null },
+  { tier_number: 6, name: 'Tier VI',   min_mmr: 6000, rank_floor: null, rank_ceiling: null },
+  { tier_number: 7, name: 'Tier VII',  min_mmr: 7000, rank_floor: null, rank_ceiling: null },
+  { tier_number: 8, name: 'Tier VIII', min_mmr: 8000, rank_floor: null, rank_ceiling: null },
+];
+
+// MMR-based placement: pick the highest tier whose min_mmr <= player's MMR.
+// Tiers without min_mmr are ignored (legacy rank_tier rows fall back to tier 1).
+function _tierForMmr(mmr, tiers) {
+  const candidates = [...tiers]
+    .filter(t => Number.isFinite(t.min_mmr) || t.min_mmr === 0)
+    .sort((a, b) => Number(a.min_mmr) - Number(b.min_mmr));
+  if (!candidates.length) return tiers[0]?.tier_number ?? 1;
+  const m = Number(mmr || 0);
+  let pick = candidates[0];
+  for (const t of candidates) {
+    if (m >= Number(t.min_mmr)) pick = t;
+    else break;
+  }
+  return pick.tier_number;
+}
+
+// Legacy rank_tier-based placement (kept for back-compat with pre-S10 rows that
+// don't have min_mmr populated). Not used by the S10 default placement.
+function _tierForRankTier(rankTier, tiers) {
+  const sorted = [...tiers].sort((a, b) => a.tier_number - b.tier_number);
+  if (rankTier == null || rankTier === 0) return sorted[sorted.length - 1].tier_number;
+  for (const t of sorted) {
+    const aboveFloor   = t.rank_floor   == null || rankTier >= t.rank_floor;
+    const belowCeiling = t.rank_ceiling == null || rankTier <= t.rank_ceiling;
+    if (aboveFloor && belowCeiling) return t.tier_number;
+  }
+  return sorted[sorted.length - 1].tier_number;
+}
+
+async function getSeasonTiers(seasonId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT st.*,
+            COALESCE(pc.player_count, 0) AS player_count
+     FROM season_tiers st
+     LEFT JOIN (
+       SELECT tier_number, COUNT(*) AS player_count
+       FROM season_tier_players WHERE season_id = $1
+       GROUP BY tier_number
+     ) pc ON pc.tier_number = st.tier_number
+     WHERE st.season_id = $1
+     ORDER BY st.tier_number ASC`,
+    [parseInt(seasonId)]
+  );
+  return r.rows;
+}
+
+async function ensureSeasonTiers(seasonId, tiers = DEFAULT_S10_TIERS) {
+  const p = getPool();
+  for (const t of tiers) {
+    await p.query(
+      `INSERT INTO season_tiers (season_id, tier_number, name, rank_floor, rank_ceiling, min_mmr)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (season_id, tier_number) DO UPDATE
+         SET min_mmr = COALESCE(season_tiers.min_mmr, EXCLUDED.min_mmr)`,
+      [parseInt(seasonId), t.tier_number, t.name, t.rank_floor ?? null, t.rank_ceiling ?? null, t.min_mmr ?? null]
+    );
+  }
+  return getSeasonTiers(seasonId);
+}
+
+async function updateSeasonTier(seasonId, tierNumber, fields = {}) {
+  const allowed = ['name', 'rank_floor', 'rank_ceiling', 'min_mmr', 'prize_pool_cents', 'buyin_cents'];
+  const sets = []; const vals = []; let i = 1;
+  for (const k of allowed) {
+    if (fields[k] !== undefined) {
+      sets.push(`${k} = $${i++}`);
+      vals.push(fields[k]);
+    }
+  }
+  if (!sets.length) return null;
+  vals.push(parseInt(seasonId), parseInt(tierNumber));
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE season_tiers SET ${sets.join(', ')}
+     WHERE season_id = $${i++} AND tier_number = $${i}
+     RETURNING *`,
+    vals
+  );
+  return r.rows[0] || null;
+}
+
+async function placeAllPlayersInSeasonTiers(seasonId, { force = false } = {}) {
+  const p = getPool();
+  const tiers = await getSeasonTiers(parseInt(seasonId));
+  if (!tiers.length) throw new Error('Season has no tiers configured');
+  // S10 placement is MMR-based. Pull every rated player and compute display MMR
+  // = round((mu - 3*sigma) * 100) + 5000 — matches the V3 formula used everywhere
+  // else (leaderboard, profile, embeds). Falls back to legacy rank_tier-based
+  // placement if a season's tiers have no min_mmr populated (back-compat).
+  const useMmr = tiers.some(t => Number.isFinite(t.min_mmr));
+  const rows = useMmr
+    ? (await p.query(
+        `SELECT player_id::bigint AS account_id, mu, sigma
+         FROM ratings
+         WHERE player_id IS NOT NULL`
+      )).rows
+    : (await p.query(
+        `SELECT account_id::bigint AS account_id, dota_rank_tier
+         FROM nicknames
+         WHERE account_id IS NOT NULL`
+      )).rows;
+  let placed = 0, skipped = 0;
+  for (const row of rows) {
+    let tierNum, basisRankTier = null;
+    if (useMmr) {
+      const mmr = Math.round(((row.mu ?? 25) - 3 * (row.sigma ?? 8.333)) * 100) + 5000;
+      tierNum = _tierForMmr(mmr, tiers);
+    } else {
+      tierNum = _tierForRankTier(row.dota_rank_tier, tiers);
+      basisRankTier = row.dota_rank_tier;
+    }
+    const ins = await p.query(
+      `INSERT INTO season_tier_players (season_id, tier_number, account_id, placement_rank_tier)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (season_id, account_id) DO ${force
+         ? 'UPDATE SET tier_number = EXCLUDED.tier_number, placement_rank_tier = EXCLUDED.placement_rank_tier, override_admin_id = NULL, placed_at = NOW()'
+         : 'NOTHING'}
+       RETURNING id`,
+      [parseInt(seasonId), tierNum, row.account_id, basisRankTier]
+    );
+    if (ins.rowCount > 0) placed++; else skipped++;
+  }
+  return { placed, skipped, total: rows.length, basis: useMmr ? 'mmr' : 'rank_tier' };
+}
+
+async function overridePlayerTier(seasonId, accountId, newTier, adminId) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO season_tier_players (season_id, tier_number, account_id, override_admin_id, placed_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (season_id, account_id) DO UPDATE
+       SET tier_number = EXCLUDED.tier_number,
+           override_admin_id = EXCLUDED.override_admin_id,
+           placed_at = NOW()
+     RETURNING *`,
+    [parseInt(seasonId), parseInt(newTier), String(accountId), adminId || null]
+  );
+  return r.rows[0];
+}
+
+async function getPlayerSeasonTier(seasonId, accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM season_tier_players WHERE season_id = $1 AND account_id = $2`,
+    [parseInt(seasonId), String(accountId)]
+  );
+  return r.rows[0] || null;
+}
+
+async function getSeasonTierPlayers(seasonId, tierNumber) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT stp.*, COALESCE(n.nickname, '') AS nickname, n.dota_rank_tier AS current_rank_tier
+     FROM season_tier_players stp
+     LEFT JOIN nicknames n ON n.account_id::bigint = stp.account_id
+     WHERE stp.season_id = $1 AND stp.tier_number = $2
+     ORDER BY n.nickname NULLS LAST, stp.account_id`,
+    [parseInt(seasonId), parseInt(tierNumber)]
+  );
+  return r.rows;
 }
 
 async function setActiveSeason(id) {
@@ -1302,8 +1550,33 @@ async function getMatch(matchId) {
     [matchId]
   );
 
+  // 1.5 — MVP per match: account_id with the most MVP votes for this match
+  // (ties broken by lower account_id for determinism). Null if no votes cast.
+  let mvpAccountId = null;
+  let mvpVoteCount = 0;
+  try {
+    const mvpRes = await p.query(
+      `SELECT rated_account_id, COUNT(*)::int AS votes
+         FROM match_ratings
+        WHERE match_id = $1 AND is_mvp_vote = TRUE AND rated_account_id IS NOT NULL
+        GROUP BY rated_account_id
+        ORDER BY votes DESC, rated_account_id ASC
+        LIMIT 1`,
+      [matchId]
+    );
+    if (mvpRes.rows[0]) {
+      mvpAccountId = String(mvpRes.rows[0].rated_account_id);
+      mvpVoteCount = mvpRes.rows[0].votes;
+    }
+  } catch (e) {
+    // match_ratings may not exist on very old DBs — fail silent so getMatch works
+    console.warn('[getMatch] mvp lookup failed:', e.message);
+  }
+
   return {
     ...matchResult.rows[0],
+    mvp_account_id: mvpAccountId,
+    mvp_vote_count: mvpVoteCount,
     players: playersResult.rows,
     draft: draftResult.rows,
   };
@@ -1594,15 +1867,52 @@ async function flipPreviewFlagsToOn() {
 async function executeSeason10Launch() {
   const launched = await getSetting('season_10_launched_at');
   if (launched) {
-    return { alreadyLaunched: true, launchedAt: launched, flippedKeys: [] };
+    return {
+      alreadyLaunched: true,
+      launchedAt: launched,
+      flippedKeys: [],
+      seasonId: null,
+      tierPlacement: null,
+    };
   }
   const flippedKeys = await flipPreviewFlagsToOn();
   // Always force the home banner on, even if nobody flipped it to preview.
   await setFeatureFlag('home_launch_banner', { state: 'on' });
   if (!flippedKeys.includes('home_launch_banner')) flippedKeys.push('home_launch_banner');
+
+  // Provision the Season 10 row (idempotent — reuse if it already exists).
+  const p = getPool();
+  let seasonId = null;
+  try {
+    const existing = await p.query(`SELECT id FROM seasons WHERE name = $1 LIMIT 1`, ['Season 10']);
+    if (existing.rows[0]) {
+      seasonId = existing.rows[0].id;
+      await p.query(`UPDATE seasons SET active = false`);
+      await p.query(`UPDATE seasons SET active = true WHERE id = $1`, [seasonId]);
+    } else {
+      const created = await createSeason('Season 10');
+      seasonId = created.id;
+    }
+    // Provision the default tier definitions (no-op if rows already exist).
+    await ensureSeasonTiers(seasonId);
+  } catch (err) {
+    console.error('[Season10Launch] season/tier provisioning failed:', err.message);
+  }
+
+  // Place every registered player into their tier based on Dota rank_tier.
+  // Non-fatal — best-effort; admins can re-run from the panel if needed.
+  let tierPlacement = null;
+  if (seasonId) {
+    try {
+      tierPlacement = await placeAllPlayersInSeasonTiers(seasonId);
+    } catch (err) {
+      console.error('[Season10Launch] tier placement failed:', err.message);
+    }
+  }
+
   const launchedAt = new Date().toISOString();
   await setSetting('season_10_launched_at', launchedAt);
-  return { alreadyLaunched: false, launchedAt, flippedKeys };
+  return { alreadyLaunched: false, launchedAt, flippedKeys, seasonId, tierPlacement };
 }
 
 // ── TrueSkill V3 ────────────────────────────────────────────────────────────
@@ -2154,7 +2464,7 @@ async function computeTS2Leaderboard(seasonId = null) {
   }
 
   const DEFAULT_MU = 25, DEFAULT_SIGMA = 8.333;
-  const MMR_OFFSET = 2600;
+  const MMR_OFFSET = 5000;
   // Two separate rating stores — both start from the same blank slate
   const ts1 = {}; // pure TrueSkill 1
   const ts2 = {}; // TrueSkill 2 (performance-scaled μ)
@@ -2245,8 +2555,8 @@ async function computeTS2Leaderboard(seasonId = null) {
       ts2_mmr:      t2.mmr,
       ts2_mu:       parseFloat(t2.mu.toFixed(3)),
       ts2_sigma:    parseFloat(t2.sigma.toFixed(3)),
-      ts1_mmr:      t1?.mmr ?? 2600,
-      delta:        t2.mmr - (t1?.mmr ?? 2600),
+      ts1_mmr:      t1?.mmr ?? 5000,
+      delta:        t2.mmr - (t1?.mmr ?? 5000),
       wins:         t2.wins,
       losses:       t2.losses,
       games:        t2.wins + t2.losses,
@@ -2454,7 +2764,7 @@ async function getComputedLeaderboard(seasonId = null) {
       nickname: nicknames[player_id] || null,
       mu: r.mu,
       sigma: r.sigma,
-      mmr: r.mmr ?? Math.round((r.mu - 3 * r.sigma) * 100) + 2600,
+      mmr: r.mmr ?? Math.round((r.mu - 3 * r.sigma) * 100) + 5000,
       wins: r.wins,
       losses: r.losses,
       games_played: r.wins + r.losses,
@@ -2600,7 +2910,21 @@ async function getPlayerStats(accountId, seasonId = null) {
   const sc = _sc(seasonId, scParams, 'm');
 
   const recentMatches = await p.query(
-    `SELECT ps.*, m.date, m.duration, m.radiant_win, m.lobby_name
+    `SELECT ps.*, m.date, m.duration, m.radiant_win, m.lobby_name,
+       -- 1.5: MVP-per-match — true if this player got the most MVP votes for the match
+       (
+         SELECT mvp_winner.rated_account_id
+           FROM (
+             SELECT rated_account_id, COUNT(*) AS votes
+               FROM match_ratings
+              WHERE match_id = ps.match_id
+                AND is_mvp_vote = TRUE
+                AND rated_account_id IS NOT NULL
+              GROUP BY rated_account_id
+              ORDER BY votes DESC, rated_account_id ASC
+              LIMIT 1
+           ) AS mvp_winner
+       ) = ps.account_id AS is_mvp
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
      WHERE ${whereClause}${sc}
@@ -2685,7 +3009,7 @@ async function getPlayerStats(accountId, seasonId = null) {
     const canonicalId = accountToCanonical[accountId.toString()] || accountId.toString();
     const entry = seasonRatings[canonicalId];
     if (entry) {
-      seasonMmr = entry.mmr ?? Math.round((entry.mu - 3 * entry.sigma) * 100) + 2600;
+      seasonMmr = entry.mmr ?? Math.round((entry.mu - 3 * entry.sigma) * 100) + 5000;
     }
   }
 
@@ -5320,8 +5644,8 @@ async function getMostImproved(days = 30, seasonId = null) {
       SELECT
         l.player_id AS account_id,
         COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
-        ROUND((l.mu - 3*l.sigma)*100 + 2600) AS current_mmr,
-        ROUND((e.mu - 3*e.sigma)*100 + 2600) AS start_mmr,
+        ROUND((l.mu - 3*l.sigma)*100 + 5000) AS current_mmr,
+        ROUND((e.mu - 3*e.sigma)*100 + 5000) AS start_mmr,
         ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) AS mmr_delta,
         COUNT(ps.match_id) AS games_in_period
       FROM latest l
@@ -5350,8 +5674,8 @@ async function getMostImproved(days = 30, seasonId = null) {
     SELECT
       l.player_id AS account_id,
       COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name,
-      ROUND((l.mu - 3*l.sigma)*100 + 2600) AS current_mmr,
-      ROUND((e.mu - 3*e.sigma)*100 + 2600) AS start_mmr,
+      ROUND((l.mu - 3*l.sigma)*100 + 5000) AS current_mmr,
+      ROUND((e.mu - 3*e.sigma)*100 + 5000) AS start_mmr,
       ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) AS mmr_delta,
       COUNT(ps.match_id) AS games_in_period
     FROM latest l
@@ -6463,6 +6787,14 @@ module.exports = {
   getResolvedFeatureFlags,
   flipPreviewFlagsToOn,
   executeSeason10Launch,
+  getSeasonTiers,
+  ensureSeasonTiers,
+  updateSeasonTier,
+  placeAllPlayersInSeasonTiers,
+  overridePlayerTier,
+  getPlayerSeasonTier,
+  getSeasonTierPlayers,
+  DEFAULT_S10_TIERS,
   updateRating,
   getPlayerRating,
   getPlayerStats,
@@ -6630,11 +6962,18 @@ module.exports = {
   setPlayerRatingsOptOut,
   getPlayerAlly,
   getPlayerWinRateHistory,
+  getPlayerMatchStatsHistory,
   getHallOfFameCareerStats,
   getPlayerBenchmarkAverages,
   getTournaments,
   getTournamentById,
   createTournament,
+  getTournamentEntries,
+  getTournamentEntry,
+  createTournamentEntry,
+  markTournamentEntryPaid,
+  isPlayerEligibleForTournament,
+  recomputeTournamentPrizePool,
   updateTournamentStatus,
   deleteTournament,
   getTournamentParticipants,
@@ -7181,6 +7520,38 @@ async function getPlayerWinRateHistory(accountId, seasonId = null) {
   return result.rows;
 }
 
+// 1.4 — Per-match stats timeseries for the player's own profile chart v2.
+// Returns up to 100 most-recent matches with K/D/A, GPM, hero damage and a
+// rolling K/D/A tracked client-side. Cheap query — single index lookup on
+// player_stats.account_id then a join.
+async function getPlayerMatchStatsHistory(accountId, seasonId = null) {
+  const p = getPool();
+  const params = [accountId];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const result = await p.query(`
+    SELECT
+      m.match_id,
+      m.date,
+      ps.kills,
+      ps.deaths,
+      ps.assists,
+      ps.gpm,
+      ps.xpm,
+      ps.hero_damage,
+      ps.hero_id,
+      CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win)
+        THEN 1 ELSE 0
+      END AS won
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    WHERE ps.account_id::text = $1::text${sc}
+    ORDER BY m.date DESC
+    LIMIT 100
+  `, params);
+  // Reverse so caller gets oldest -> newest for charting.
+  return result.rows.reverse();
+}
+
 async function getHallOfFameCareerStats(seasonId = null) {
   const p = getPool();
   const params = [];
@@ -7263,14 +7634,136 @@ async function getTournamentById(id) {
   return result.rows[0] || null;
 }
 
-async function createTournament({ name, description, seasonId, format, createdBy }) {
+async function createTournament({
+  name, description, seasonId, format, createdBy,
+  tierNumber = null, entryFeeCents = 0,
+  signupOpenAt = null, signupCloseAt = null,
+}) {
   const p = getPool();
   const result = await p.query(
-    `INSERT INTO tournaments (name, description, season_id, format, status, created_by)
-     VALUES ($1, $2, $3, $4, 'upcoming', $5) RETURNING *`,
-    [name, description || null, seasonId ? parseInt(seasonId) : null, format || 'single_elim', createdBy || null]
+    `INSERT INTO tournaments (name, description, season_id, format, status, created_by,
+       tier_number, entry_fee_cents, signup_open_at, signup_close_at)
+     VALUES ($1, $2, $3, $4, 'upcoming', $5, $6, $7, $8, $9) RETURNING *`,
+    [
+      name,
+      description || null,
+      seasonId ? parseInt(seasonId) : null,
+      format || 'single_elim',
+      createdBy || null,
+      tierNumber != null ? parseInt(tierNumber) : null,
+      parseInt(entryFeeCents) || 0,
+      signupOpenAt ? new Date(signupOpenAt) : null,
+      signupCloseAt ? new Date(signupCloseAt) : null,
+    ]
   );
   return result.rows[0];
+}
+
+// Tournament self-signup helpers (1.7) ────────────────────────────────────────
+async function getTournamentEntries(tournamentId, { paidOnly = false } = {}) {
+  const p = getPool();
+  const where = paidOnly ? `AND te.status = 'paid'` : '';
+  const r = await p.query(
+    `SELECT te.*, COALESCE(n.nickname, '') AS nickname
+     FROM tournament_entries te
+     LEFT JOIN nicknames n ON n.account_id::bigint = te.account_id
+     WHERE te.tournament_id = $1 ${where}
+     ORDER BY te.created_at ASC`,
+    [parseInt(tournamentId)]
+  );
+  return r.rows;
+}
+
+async function getTournamentEntry(tournamentId, accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM tournament_entries
+     WHERE tournament_id = $1 AND account_id = $2`,
+    [parseInt(tournamentId), String(accountId)]
+  );
+  return r.rows[0] || null;
+}
+
+async function createTournamentEntry({
+  tournamentId, accountId, steamId, stripeSessionId, amountCents = 0,
+}) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO tournament_entries
+       (tournament_id, account_id, steam_id, stripe_session_id, amount_cents, status)
+     VALUES ($1, $2, $3, $4, $5, 'pending')
+     ON CONFLICT (tournament_id, account_id) DO UPDATE
+       SET stripe_session_id = EXCLUDED.stripe_session_id,
+           amount_cents      = EXCLUDED.amount_cents,
+           status            = CASE
+                                 WHEN tournament_entries.status = 'paid' THEN tournament_entries.status
+                                 ELSE 'pending'
+                               END
+     RETURNING *`,
+    [parseInt(tournamentId), String(accountId), steamId || null, stripeSessionId || null, parseInt(amountCents) || 0]
+  );
+  return r.rows[0];
+}
+
+async function markTournamentEntryPaid(stripeSessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE tournament_entries
+     SET status = 'paid', paid_at = COALESCE(paid_at, NOW())
+     WHERE stripe_session_id = $1
+     RETURNING *`,
+    [String(stripeSessionId)]
+  );
+  return r.rows[0] || null;
+}
+
+// Eligibility check — returns { eligible: bool, reason: string|null, tier: int|null }
+async function isPlayerEligibleForTournament(tournamentId, accountId) {
+  const p = getPool();
+  const t = await getTournamentById(tournamentId);
+  if (!t) return { eligible: false, reason: 'Tournament not found', tier: null };
+  if (!t.tier_number || !t.season_id) {
+    // Cross-tier / no-season tournament — anyone may enter.
+    return { eligible: true, reason: null, tier: null };
+  }
+  const placement = await getPlayerSeasonTier(t.season_id, accountId);
+  if (!placement) {
+    return { eligible: false, reason: 'You have not been placed in a season tier yet', tier: null };
+  }
+  if (placement.tier_number !== t.tier_number) {
+    return {
+      eligible: false,
+      reason: `This tournament is for Tier ${t.tier_number}; you are placed in Tier ${placement.tier_number}`,
+      tier: placement.tier_number,
+    };
+  }
+  // Block double-entry across paid/pending statuses.
+  const existing = await getTournamentEntry(tournamentId, accountId);
+  if (existing && existing.status === 'paid') {
+    return { eligible: false, reason: 'Already entered', tier: placement.tier_number };
+  }
+  return { eligible: true, reason: null, tier: placement.tier_number };
+}
+
+// Recompute and persist the prize pool from paid entries (sum of amount_cents)
+// onto the season_tiers row that backs the tournament. Caller decides when.
+async function recomputeTournamentPrizePool(tournamentId) {
+  const p = getPool();
+  const t = await getTournamentById(tournamentId);
+  if (!t || !t.season_id || !t.tier_number) return null;
+  const r = await p.query(
+    `SELECT COALESCE(SUM(amount_cents), 0)::int AS total_cents
+     FROM tournament_entries
+     WHERE tournament_id = $1 AND status = 'paid'`,
+    [parseInt(tournamentId)]
+  );
+  const total = r.rows[0]?.total_cents || 0;
+  await p.query(
+    `UPDATE season_tiers SET prize_pool_cents = $1
+     WHERE season_id = $2 AND tier_number = $3`,
+    [total, t.season_id, t.tier_number]
+  );
+  return total;
 }
 
 async function updateTournamentStatus(id, status) {
@@ -7291,7 +7784,7 @@ async function getTournamentParticipants(tournamentId) {
   const p = getPool();
   const result = await p.query(`
     SELECT tp.*, COALESCE(n.nickname, pl.persona_name, tp.account_id::text) AS display_name, pl.mu, pl.sigma,
-      ROUND((pl.mu - 3 * pl.sigma) * 100 + 2600) AS mmr
+      ROUND((pl.mu - 3 * pl.sigma) * 100 + 5000) AS mmr
     FROM tournament_participants tp
     LEFT JOIN players pl ON pl.account_id = tp.account_id
     LEFT JOIN nicknames n ON n.account_id = tp.account_id
@@ -7329,7 +7822,7 @@ async function generateTournamentBracket(tournamentId) {
   const n = participants.length;
   if (n < 2) throw new Error('Need at least 2 participants');
   const size = Math.pow(2, Math.ceil(Math.log2(n)));
-  const seeded = [...participants].sort((a, b) => (parseInt(b.mmr) || 2600) - (parseInt(a.mmr) || 2600));
+  const seeded = [...participants].sort((a, b) => (parseInt(b.mmr) || 5000) - (parseInt(a.mmr) || 5000));
   const slots = new Array(size).fill(null);
   const positions = [];
   for (let i = 0; i < size; i++) positions.push(i);

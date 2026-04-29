@@ -17,7 +17,7 @@ const stats = getStatsService();
 const DEFAULT_MU = 25;
 const DEFAULT_SIGMA = 8.333;
 const SIGMA_FLOOR = 2.5;
-const MMR_OFFSET = 2600;
+const MMR_OFFSET = 5000;
 
 function makeTeam(prefix, count, overrides = {}) {
   const team = [];
@@ -310,7 +310,7 @@ test('computeSeasonTrueSkillV3: cross-team canonical-id collision skips the matc
   }
 });
 
-test('calculateNewRatingsV3: MMR formula = round((mu - 3*sigma) * 100) + 2600', () => {
+test('calculateNewRatingsV3: MMR formula = round((mu - 3*sigma) * 100) + 5000', () => {
   const radiant = makeTeam('R', 5);
   const dire    = makeTeam('D', 5);
   const results = stats.calculateNewRatingsV3(radiant, dire, true);

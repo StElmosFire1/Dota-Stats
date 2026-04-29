@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
+import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10 } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
@@ -849,6 +850,218 @@ function FeatureFlagsPanel({ superuserKey }) {
   );
 }
 
+// 1.6 — Season Tiers admin panel.
+// Lists tiers per season with name/MMR-floor editing, plus actions to seed default
+// tiers and place all rated players into their MMR-derived tier in one shot.
+// Whole panel is gated on the `multi_tier_seasons` feature flag — when off the
+// panel is hidden even from superusers (preview/on flips it back on).
+function SeasonTiersPanel({ superuserKey }) {
+  const enabled = useFeatureFlag('multi_tier_seasons');
+  if (!enabled) return null;
+  return <SeasonTiersPanelInner superuserKey={superuserKey} />;
+}
+
+function SeasonTiersPanelInner({ superuserKey }) {
+  const [seasons, setSeasons] = useState([]);
+  const [seasonId, setSeasonId] = useState('');
+  const [tiers, setTiers] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [savingTier, setSavingTier] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [edits, setEdits] = useState({});
+
+  const refreshSeasons = useCallback(async () => {
+    try {
+      const list = await getSeasons();
+      setSeasons(list || []);
+      if (!seasonId && list?.length) {
+        const active = list.find(s => s.is_active) || list[list.length - 1];
+        setSeasonId(String(active.id));
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load seasons');
+    }
+  }, [seasonId]);
+
+  const refreshTiers = useCallback(async () => {
+    if (!seasonId) return;
+    try {
+      setLoading(true);
+      const data = await getSeasonTiers(seasonId);
+      const tierList = data.tiers || [];
+      setTiers(tierList);
+      // Pull player counts per tier in parallel.
+      const counts = {};
+      await Promise.all(tierList.map(async t => {
+        try {
+          const r = await getSeasonTierPlayers(seasonId, t.tier_number);
+          counts[t.tier_number] = (r.players || []).length;
+        } catch {
+          counts[t.tier_number] = 0;
+        }
+      }));
+      setCounts(counts);
+      setEdits({});
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to load tiers');
+    } finally {
+      setLoading(false);
+    }
+  }, [seasonId]);
+
+  useEffect(() => { refreshSeasons(); }, [refreshSeasons]);
+  useEffect(() => { refreshTiers(); }, [refreshTiers]);
+
+  const handleSeed = async () => {
+    if (!seasonId) return;
+    if (!window.confirm('Seed the default 8-tier ladder for this season?\n\nExisting tier names/floors will be left alone — only missing tiers are inserted.')) return;
+    try {
+      setBusy('seed');
+      await ensureSeasonTiers(seasonId, superuserKey);
+      await refreshTiers();
+    } catch (err) {
+      setError(err.message || 'Failed to seed tiers');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handlePlaceAll = async () => {
+    if (!seasonId) return;
+    if (!window.confirm('Place every rated player into their MMR-derived tier?\n\nThis is safe to re-run — players are re-placed based on current TrueSkill MMR.')) return;
+    try {
+      setBusy('place');
+      // helper signature is (seasonId, force, superuserKey) — force=true so
+      // re-running re-places players based on current MMR.
+      const r = await placeAllPlayersInTiers(seasonId, true, superuserKey);
+      await refreshTiers();
+      alert(`Placed ${r.placed || 0} player(s) into tiers.`);
+    } catch (err) {
+      setError(err.message || 'Failed to place players');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setEdit = (tn, patch) => setEdits(e => ({ ...e, [tn]: { ...(e[tn] || {}), ...patch } }));
+
+  const saveTier = async (tn) => {
+    const patch = edits[tn];
+    if (!patch) return;
+    try {
+      setSavingTier(tn);
+      await updateSeasonTier(seasonId, tn, {
+        name: patch.name,
+        min_mmr: patch.min_mmr !== undefined ? Number(patch.min_mmr) : undefined,
+      }, superuserKey);
+      await refreshTiers();
+    } catch (err) {
+      setError(err.message || 'Failed to update tier');
+    } finally {
+      setSavingTier(null);
+    }
+  };
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <h2 style={{ marginBottom: 6 }}>🏆 Season Tiers</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Manage the 8-tier MMR ladder for each season. Players are auto-placed by their TrueSkill MMR
+        (display MMR = round((μ − 3σ) × 100) + 5000). Default Tier V floor is <strong>5000</strong>.
+      </p>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <label style={{ fontSize: 13 }}>Season:&nbsp;
+          <select
+            value={seasonId}
+            onChange={e => setSeasonId(e.target.value)}
+            style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px' }}
+          >
+            <option value="">— select —</option>
+            {seasons.map(s => (
+              <option key={s.id} value={s.id}>
+                #{s.id} {s.name || ''}{s.is_active ? ' (active)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button onClick={handleSeed} disabled={!seasonId || busy === 'seed'} className="btn">
+          {busy === 'seed' ? 'Seeding…' : 'Seed default tiers'}
+        </button>
+        <button onClick={handlePlaceAll} disabled={!seasonId || busy === 'place' || tiers.length === 0} className="btn btn-primary">
+          {busy === 'place' ? 'Placing…' : 'Place all players by MMR'}
+        </button>
+      </div>
+
+      {error && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {loading ? <div>Loading…</div> : tiers.length === 0 ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          {seasonId ? 'No tiers yet — click "Seed default tiers" to create the 8-tier ladder.' : 'Pick a season above.'}
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                <th style={{ padding: '8px 10px' }}>#</th>
+                <th style={{ padding: '8px 10px' }}>Name</th>
+                <th style={{ padding: '8px 10px' }}>Min MMR</th>
+                <th style={{ padding: '8px 10px' }}>Players</th>
+                <th style={{ padding: '8px 10px' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {tiers.map(t => {
+                const draftName = edits[t.tier_number]?.name ?? t.name;
+                const draftFloor = edits[t.tier_number]?.min_mmr ?? t.min_mmr;
+                const dirty = edits[t.tier_number] && (
+                  edits[t.tier_number].name !== undefined && edits[t.tier_number].name !== t.name
+                  || edits[t.tier_number].min_mmr !== undefined && Number(edits[t.tier_number].min_mmr) !== Number(t.min_mmr)
+                );
+                return (
+                  <tr key={t.tier_number} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 10px', fontWeight: 700, color: '#a78bfa' }}>{t.tier_number}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <input
+                        type="text"
+                        value={draftName}
+                        onChange={e => setEdit(t.tier_number, { name: e.target.value })}
+                        style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', width: 200 }}
+                      />
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <input
+                        type="number"
+                        value={draftFloor}
+                        onChange={e => setEdit(t.tier_number, { min_mmr: e.target.value })}
+                        style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', width: 100 }}
+                      />
+                    </td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{counts[t.tier_number] ?? '—'}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <button
+                        onClick={() => saveTier(t.tier_number)}
+                        disabled={!dirty || savingTier === t.tier_number}
+                        className="btn btn-primary"
+                        style={{ fontSize: 12, padding: '4px 10px', opacity: dirty ? 1 : 0.5 }}
+                      >
+                        {savingTier === t.tier_number ? 'Saving…' : 'Save'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SteamBotPanel({ superuserKey }) {
   const auth = { 'x-superuser-key': superuserKey };
   const [status, setStatus] = useState(null);
@@ -1353,6 +1566,9 @@ export default function AdminPanel() {
 
       {/* Feature Flags — preview/launch staging */}
       <FeatureFlagsPanel superuserKey={superuserKey} />
+
+      {/* Season Tiers — 8-tier ladder per season */}
+      <SeasonTiersPanel superuserKey={superuserKey} />
 
       {/* Rating System — V1 vs V3 toggle + preview */}
       <section>

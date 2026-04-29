@@ -51,6 +51,62 @@ function StarDots({ count, color }) {
   );
 }
 
+// ── MMR-Based Badge System (1.8 / Season 10 — `new_rank_theme` flag) ─────────
+// 8-tier badge system based on inhouse TrueSkill MMR (5000 baseline at S10).
+// Tier 5 (5000–5999) is the default starting band. Names are deliberate
+// placeholders — colour scheme + iconography is the visual hook. Updated
+// alongside the broader rank-theme refresh.
+const MMR_BADGE_TIERS = [
+  { tier: 1, name: 'Tier I',    floor: 0,    color: '#6b7280', emoji: '🪨' },
+  { tier: 2, name: 'Tier II',   floor: 2000, color: '#84cc16', emoji: '🌱' },
+  { tier: 3, name: 'Tier III',  floor: 3000, color: '#22d3ee', emoji: '💧' },
+  { tier: 4, name: 'Tier IV',   floor: 4000, color: '#3b82f6', emoji: '🛡️' },
+  { tier: 5, name: 'Tier V',    floor: 5000, color: '#a855f7', emoji: '⚡' },
+  { tier: 6, name: 'Tier VI',   floor: 6000, color: '#f59e0b', emoji: '🔥' },
+  { tier: 7, name: 'Tier VII',  floor: 7000, color: '#f97316', emoji: '☀️' },
+  { tier: 8, name: 'Tier VIII', floor: 8000, color: '#ef4444', emoji: '👑' },
+];
+
+export function decodeMmrBadge(mmr) {
+  if (mmr == null || isNaN(mmr)) return null;
+  const m = Number(mmr);
+  let match = MMR_BADGE_TIERS[0];
+  for (const t of MMR_BADGE_TIERS) {
+    if (m >= t.floor) match = t;
+  }
+  return match;
+}
+
+// Compact MMR-based badge. Render unconditionally — caller is responsible for
+// gating on the `new_rank_theme` feature flag so the legacy Dota rank badge
+// stays the source of truth until the rank-theme refresh ships.
+export function MmrBadge({ mmr, style = {}, size = 'sm' }) {
+  const decoded = decodeMmrBadge(mmr);
+  if (!decoded) return null;
+  const fontSize = size === 'lg' ? 13 : 11;
+  const padding  = size === 'lg' ? '4px 10px' : '2px 7px';
+  return (
+    <span
+      title={`${decoded.name} · ${Math.round(mmr)} MMR`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        background: `${decoded.color}1a`,
+        border: `1px solid ${decoded.color}66`,
+        borderRadius: 8, padding, fontSize, fontWeight: 700,
+        color: decoded.color, whiteSpace: 'nowrap', cursor: 'default',
+        letterSpacing: 0.3,
+        ...style,
+      }}
+    >
+      <span style={{ fontSize: size === 'lg' ? 14 : 12 }}>{decoded.emoji}</span>
+      <span>{decoded.name}</span>
+      <span style={{ fontSize: size === 'lg' ? 11 : 10, opacity: 0.85, fontWeight: 500 }}>
+        {Math.round(mmr)}
+      </span>
+    </span>
+  );
+}
+
 export default function RankBadge({ rankTier, leaderboardRank, source, style = {}, size = 'sm' }) {
   const decoded = decodeRankTier(rankTier);
   if (!decoded) return null;

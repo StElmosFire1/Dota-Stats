@@ -52,6 +52,22 @@ function Season10LaunchBanner() {
   );
 }
 
+function JoinTheLeagueButton() {
+  const enabled = useFeatureFlag('home_join_button');
+  if (!enabled) return null;
+  return (
+    <Link to="/join" className="btn btn-primary" style={{
+      fontSize: 13,
+      background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+      borderColor: '#16a34a',
+      color: '#fff',
+      boxShadow: '0 0 0 1px rgba(34,197,94,0.4)',
+    }}>
+      ✨ Join the League
+    </Link>
+  );
+}
+
 function StatCard({ label, value, sub, icon }) {
   return (
     <div style={{
@@ -172,13 +188,14 @@ export default function Home() {
             A private stats tracker for the OCE inhouse community. Track matches, MMR, hero performance, and more.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <Link to="/leaderboard" className="btn btn-primary" style={{ fontSize: 13 }}>
             🏆 Leaderboard
           </Link>
           <Link to="/matches" className="btn" style={{ fontSize: 13 }}>
             🎮 Matches
           </Link>
+          <JoinTheLeagueButton />
         </div>
       </div>
 

@@ -1,0 +1,154 @@
+WAVE 1 — Ship by Friday 1 May 2026 9am AEST
+
+All tasks ship behind preview flags. Cron flips them all on at launch. Live site stays unchanged for regular players until then.
+1.1 Feature flag system + admin UI + home banner + cron skeleton — ✅ DONE (v5.42)
+1.2 Tournament "Invalid upload key" bug fix
+
+    Flag: none (bug fix)
+    Steps: Reproduce on a fresh tournament upload → trace UPLOAD_KEY mismatch → fix the key comparison/header path → regression note in the API endpoint
+    Requirement: Existing tournament upload flow keeps working
+
+1.3 JOIN button on home page (manual review still)
+
+    Flag: home_join_button (preview)
+    Steps: Add prominent "Join the League" CTA above the fold on Home → routes to existing /join page → entries continue to land in admin pending queue (no flow change)
+    Requirement: Doesn't disturb existing layout for non-superusers
+
+1.4 Profile chart overhaul (logged-in player on own row only)
+
+    Flag: profile_chart_v2 (preview)
+    Steps:
+        Season-aware modifier history chart (line chart, X = match #, Y = MMR change with V3 modifier breakdown)
+        Rating overlay (TrueSkill μ ± σ band over time)
+        Per-season averages panel (KDA, GPM, XPM, win rate, modifier mean)
+        "What helped / what hurt" plain-English summary using V3 perf scoring components
+        Visibility gate: only renders when req.session.steamId === profile.steam_id AND on user's own profile row
+    Requirement: No data leak to other viewers; existing public profile sections unchanged
+
+1.5 MVP-per-match badge
+
+    Flag: mvp_match_badges (preview)
+    Steps: Query MVP votes per match → add MVP badge icon next to player rows in Match Detail scoreboard → show MVP badge in player profile match history rows where they won MVP
+    Requirement: Career MVP count keeps working; badge derived from existing mvp_votes table
+
+1.6 Multi-tier seasons + Season 10 row creation
+
+    Flag: multi_tier_seasons (preview)
+    Steps:
+        DB: New season_tiers table (season_id FK, tier_number, name, mmr_floor, mmr_ceiling, prize_pool_cents, buyin_cents); new season_tier_players table (season_id, tier_number, player_steam_id, placement_mmr, override_admin_id NULL); add tier_number column to tournaments (NULL = cross-tier/exhibition)
+        Helpers: createSeasonTiers(seasonId, tiersConfig), placePlayerInTier(seasonId, steamId) (auto from latest TrueSkill conservative), overridePlayerTier(adminId, seasonId, steamId, newTier), getTierLeaderboard(seasonId, tier), recordTierAwareMatch(matchId) — match counted in tier leaderboard only if all 10 players are in the same tier; otherwise stats-only
+        Season 10 creation: Bake into manual "Launch Season 10" button — creates Season 10 row, creates 3 tier rows with cutoffs from your decision above, sets active. Idempotent.
+        Admin UI: New "Tier Management" tab in Admin Panel — view tier rosters, drag-and-drop reassignments, set prize pools, set buy-ins per tier
+        Public UI: Leaderboard page gets tier filter dropdown ("All / Tier 1 / Tier 2 / Tier 3"); player profile shows their current tier badge
+    Requirement: Existing single-leaderboard view stays default for older seasons; tier view only on Season 10+
+
+1.7 Per-tournament Stripe buy-ins + self-service signup
+
+    Blocked by: 1.6
+    Flag: tournament_self_signup (preview)
+    Steps:
+        DB: tournament_entries table (tournament_id, player_steam_id, paid_at, stripe_session_id, status); add entry_fee_cents, signup_open_at, signup_close_at to tournaments
+        Player flow: "Sign up" button on /tournaments/:id → eligibility check (in good standing, registered for current season's tier matching the tournament tier, account age) → Stripe Checkout for entry fee → on webhook success, auto-add to bracket
+        Admin flow: per-tournament entry fee input; eligibility-failure reasons surfaced to player; refund button per entry
+        Auto prize pool calculation: visible "Prize pool: $X (auto-funded from Y entries)" display
+    Requirement: Existing manual add-each-player admin flow stays as fallback
+
+1.8 Rank theme redesign + SVG badges
+
+    Blocked by: Theme decision above
+    Flag: new_rank_theme (preview)
+    Steps:
+        Generate SVG set for chosen theme — 8 base tier badges (using rank badge ranges A above)
+        Update RankBadge.jsx to map MMR to new theme; keep old Dota-medal renderer as fallback
+        Add theme name + colour palette to a themes/ config file so swapping later is a 1-line change
+        Apply badges everywhere RankBadge is used (leaderboard, profile, match detail, scoreboard PNG)
+    Requirement: RankBadge component stays drop-in compatible (same props)
+
+1.9 Season 10 launch cron polish
+
+    Flag: none (cron itself)
+    Steps:
+        Banner stays permanently per decision 2 — no expiry logic added
+        Extend "Launch Season 10 Now" admin button to: flip preview flags → on, create Season 10 + tiers (calls 1.6 helper), set banner on, post Discord announcement
+        Cron at 9am Fri 1 May runs the same code path as the manual button, but does NOT touch V3 per decision 5 — V3 stays on the existing admin toggle for superuser to flip whenever they choose
+        Update Discord launch embed: mentions multi-tier seasons live, mentions Wave 2 features coming
+        @everyone mention question parked — for now, leave the existing @everyone until you decide
+    Requirement: Idempotent — pressing manual button after cron has fired (or vice versa) is a no-op
+
+1.10 Season 10 welcome modal
+
+    Flag: welcome_modal_s10 (preview)
+    Steps:
+        One-shot modal on first visit after launch (localStorage flag)
+        Headline "Season 10 is live"
+        Bulleted list of new features (rank theme, multi-tier seasons, profile chart, MVP badges, self-signup tournaments)
+        "View patch notes" + "Dismiss" buttons
+        Only triggers when welcome_modal_s10 flag is on AND localStorage hasn't recorded a dismiss
+    Requirement: Doesn't show during preview phase; no double-modal if user dismisses then refreshes
+
+WAVE 2 — First 2–4 weeks of Season 10 (behind own flags)
+2.1 Web-based player draft UI
+
+Pool collection phase, position-aware draft, live team prediction as picks happen, final ±% prediction once teams lock; animated picks; spectator view.
+2.2 Admin moderation surface
+
+Auto-warning at attitude avg ≤ 4; manual review queue at ≤ 3; superuser actions: warning / 1-game suspension / multi-game suspension / season ban; all actions logged to a moderation_actions table with reason + acting admin.
+2.3 Inhouse server dry-run mode + automated test suite
+
+Dry-run mode: !inhouse open --dry-run skips RCON push and replay pull but exercises every other code path. Automated tests: RCON connection, SSH/SCP replay pull, plus feature flag state transitions, executeSeason10Launch idempotency, season-cutover, multi-tier placement. Wire npm test into a validation step.
+2.4 Sponsor surface system + admin monetisation page
+
+Slot management (home banner, scoreboard PNG logo, Discord embed footer, tournament titling, stream overlay URL); per-slot rate cards; active sponsor selector + rollup stats.
+2.5 Premium membership ($5/mo Stripe subscription)
+
+Advanced stats access, replay download, custom highlight cards, no ads, profile cosmetic unlocks. Stripe Checkout subscription + customer portal. players.premium_until column.
+2.6 Profile customisation
+
+Banner image upload, theme colour picker, badge flair selection. Free baseline vs premium-tier extras (premium gates checked).
+2.7 Replay highlights (text/image cards, posted to Discord)
+
+Auto-generated highlight cards from parser combat-log data ("32:00 — Player X 4-0-2 spree, swung the game"). Posted to Discord after each match alongside existing scoreboard. Video clips explicitly out of scope.
+2.8 Match of the Week
+
+Weekly cron picks closest game (by gold lead variance / final score margin / stat density); generates shareable summary PNG card; posts to Discord every Sunday.
+2.9 Previous-season wrap-up recap
+
+db.getSeasonWrapup(seasonId) returning top 10, MVP, biggest comeback, most-played hero, total matches, longest win streak holder. New /season-recap/:id page (read-only, shareable). Discord embed posts automatically when a season is deactivated. Backfill manually for Season 1 once Season 10 takes over.
+WAVE 3 — Season 10 ongoing / Season 11
+3.1 Spectator / HLTV-style live updates
+
+Websocket-backed live feed of active matches (kill feed, score, hero gold/xp from GC).
+3.2 Clans / teams
+
+Persistent rosters, team leaderboards, weekly clan-vs-clan brackets.
+3.3 Coaching marketplace
+
+Stripe-mediated, platform takes a cut.
+3.4 Notifications
+
+Email + push. Discord DMs already partially wired.
+3.5 Owner analytics dashboard
+
+DAU/MAU, revenue, churn, drop-off funnel.
+3.6 Cosmetics shop
+
+Themes, badges, custom team logos.
+3.7 Seasonal challenges / quests
+
+"Win 5 as support this week", reward in cosmetics + free tournament entries.
+3.8 Bulk admin operations + tiered admin roles + audit log expansion
+Parking lot — track for future review
+
+Will be saved to .local/tasks/season10-waves.md so nothing is forgotten.
+
+    @everyone mention on Discord launch embed — left as @everyone for now per decision 6; revisit before Friday or after launch
+    Pre-existing patch-note ordering bug — v5.40 was placed after v5.41 in patchNotes.js; reordered. Suggests auto-merge may occasionally insert at wrong position. Audit pass on rest of file at some point
+    STEAM_SHARED_SECRET secret listed as missing — not currently blocking; only needed if Steam 2FA is ever turned on
+    tests/ only has v3RatingEngine.test.js — Wave 2.3 expands this significantly
+    No CI gating on npm test — tests exist but aren't enforced; Wave 2.3 wires it in
+    Video-clip replay highlights — explicitly deferred indefinitely (needs headless Dota client)
+    Cross-tier MMR semantics — your plan says "stats yes, tier rating no". Open question: does the cross-tier game show in both tiers' match history feeds, or only in a global feed? Resolve during 1.6 build
+    Buy-in money flow auditing — once per-tournament buy-ins (1.7) + premium subs (2.5) + sponsorships (2.4) + coaching (3.3) all exist, you have 4 revenue streams; Wave 3.5 (analytics dashboard) covers it but flagging now
+    Cron timing — built for 9am AEST per decision 1; 1-line edit if you change your mind
+    Database "Season 1" oddity — current "active" season is "Season 1" with id=1 and no Season 9 exists; Wave 1.6 deactivates it cleanly when Season 10 launches; no data loss but flagging the weirdness
+    Production deploy — cd ~/Dota-Stats && bash deploy.sh flow; you'll run it Thursday night per decision 7

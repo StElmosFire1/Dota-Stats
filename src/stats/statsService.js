@@ -1,6 +1,6 @@
 const { Rating, quality, rate, TrueSkill } = require('ts-trueskill');
 
-const MMR_OFFSET = 2600;
+const MMR_OFFSET = 5000;
 
 // V3 TrueSkill environment: same μ/σ/β as default, but tau bumped from ~0.083 → 0.3
 // (keeps σ from collapsing for veterans) and drawProbability=0 (Dota matches can't draw).

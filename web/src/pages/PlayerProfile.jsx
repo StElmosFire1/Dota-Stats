@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory } from '../api';
 import ImpactBadge from '../components/ImpactBadge';
-import RankBadge from '../components/RankBadge';
+import RankBadge, { MmrBadge } from '../components/RankBadge';
+import { useFeatureFlag } from '../context/FeatureFlagsContext';
+import { useSteamAuth } from '../context/SteamAuthContext';
 import { useSeason } from '../context/SeasonContext';
 import { getHeroName } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -224,10 +226,92 @@ function AchievementBadges({ achievements }) {
   );
 }
 
+// 1.4 — Profile chart v2 (own profile only, gated on `profile_chart_v2`)
+// Renders rolling KDA, GPM, and hero damage over the last ~100 matches with a
+// 5-game smoothing window. Data sourced from /player/:id/match-stats-history.
+function ProfileChartV2({ history }) {
+  if (!history || history.length < 5) return null;
+  // Build rolling K/D/A and rolling GPM with a 5-game window.
+  const win = 5;
+  const data = history.map((m, i) => {
+    const slice = history.slice(Math.max(0, i - win + 1), i + 1);
+    const k = slice.reduce((s, x) => s + (x.kills || 0), 0);
+    const d = slice.reduce((s, x) => s + (x.deaths || 0), 0);
+    const a = slice.reduce((s, x) => s + (x.assists || 0), 0);
+    const gpm = slice.reduce((s, x) => s + (x.gpm || 0), 0) / Math.max(slice.length, 1);
+    const kda = ((k + a) / Math.max(d, 1));
+    return {
+      match_num: i + 1,
+      match_id: m.match_id,
+      kda: Number(kda.toFixed(2)),
+      gpm: Math.round(gpm),
+      hero_damage: m.hero_damage || 0,
+    };
+  });
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+        <h2 className="section-title" style={{ margin: 0 }}>📊 Performance Trend</h2>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+          color: '#a855f7', background: 'rgba(168,85,247,0.12)',
+          border: '1px solid rgba(168,85,247,0.4)', borderRadius: 6,
+          padding: '2px 8px',
+        }}>NEW · v2</span>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>only visible to you</span>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+        5-game rolling K/D/A and GPM over your last {history.length} matches.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 12 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 10 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Rolling K/D/A</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <LineChart data={data} margin={{ top: 5, right: 16, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="match_num" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <Tooltip
+                formatter={(v, n, p) => [v, 'KDA']}
+                labelFormatter={i => `Game ${i}`}
+                contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
+              />
+              <Line type="monotone" dataKey="kda" stroke="#a855f7" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 10 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Rolling GPM</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <LineChart data={data} margin={{ top: 5, right: 16, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="match_num" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <Tooltip
+                formatter={(v) => [v, 'GPM']}
+                labelFormatter={i => `Game ${i}`}
+                contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
+              />
+              <Line type="monotone" dataKey="gpm" stroke="#22d3ee" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function PlayerProfile() {
   const { accountId } = useParams();
   const { seasonId } = useSeason();
   const navigate = useNavigate();
+  const { steamUser } = useSteamAuth();
+  // Wave 1 feature flags
+  const showMvpBadges = useFeatureFlag('mvp_match_badges');
+  const newRankTheme  = useFeatureFlag('new_rank_theme');
+  const showProfileChartV2 = useFeatureFlag('profile_chart_v2');
+  // Treat the profile as "own" only when viewing your own Steam-linked profile
+  const isOwnProfile = !!(steamUser?.accountId && String(steamUser.accountId) === String(accountId));
   const [data, setData] = useState(null);
   const [positions, setPositions] = useState([]);
   const [ratingHistory, setRatingHistory] = useState([]);
@@ -246,6 +330,18 @@ export default function PlayerProfile() {
   const [impactScore, setImpactScore] = useState(null);
   const [playerRank, setPlayerRank] = useState(null);
   const [loading, setLoading] = useState(true);
+  // 1.4 — Profile chart v2 timeseries (only fetched when viewing own profile + flag on)
+  const [matchStatsHistory, setMatchStatsHistory] = useState([]);
+
+  useEffect(() => {
+    if (!showProfileChartV2 || !isOwnProfile || !accountId) {
+      setMatchStatsHistory([]);
+      return;
+    }
+    getPlayerMatchStatsHistory(accountId, seasonId)
+      .then(d => setMatchStatsHistory(d?.history || []))
+      .catch(() => setMatchStatsHistory([]));
+  }, [accountId, seasonId, showProfileChartV2, isOwnProfile]);
 
   useEffect(() => {
     getPlayerRanks()
@@ -341,6 +437,10 @@ export default function PlayerProfile() {
             source={playerRank.dota_rank_source}
             size="lg"
           />
+        )}
+        {/* 1.8 — Inhouse MMR badge (8-tier MMR ladder, gated on `new_rank_theme`) */}
+        {newRankTheme && (seasonMmr != null || rating?.mmr != null) && (
+          <MmrBadge mmr={seasonMmr != null ? seasonMmr : rating?.mmr} size="lg" />
         )}
         <button
           onClick={() => {
@@ -458,6 +558,11 @@ export default function PlayerProfile() {
       <RatingChart history={ratingHistory} />
 
       <ModifierHistoryChart history={modifierHistory} />
+
+      {/* 1.4 — Profile chart v2: per-match performance trend on own profile only */}
+      {showProfileChartV2 && isOwnProfile && matchStatsHistory.length >= 5 && (
+        <ProfileChartV2 history={matchStatsHistory} />
+      )}
 
       {rawWinRateHistory.length >= 3 && (
         <section style={{ marginBottom: 24 }}>
@@ -885,6 +990,17 @@ export default function PlayerProfile() {
                         <Link to={`/match/${m.match_id}`} className="player-link">
                           #{m.match_id}
                         </Link>
+                        {/* 1.5 — MVP marker (gated on `mvp_match_badges`) */}
+                        {showMvpBadges && m.is_mvp && (
+                          <span
+                            title="Voted MVP by teammates"
+                            style={{
+                              display: 'inline-block', marginLeft: 6,
+                              color: '#fbbf24', fontWeight: 700, fontSize: 11,
+                              verticalAlign: 'middle',
+                            }}
+                          >⭐</span>
+                        )}
                       </td>
                       <td className="col-hero">{getHeroName(m.hero_id, m.hero_name)}</td>
                       <td className="col-stat">{m.kills}</td>

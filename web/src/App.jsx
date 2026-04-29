@@ -8,6 +8,7 @@ import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
+import WelcomeModal from './components/WelcomeModal';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
@@ -324,6 +325,7 @@ export default function App() {
             <Nav />
             <AdminLoginModal />
             <SuperuserLoginModal />
+            <WelcomeModal />
             <main className="container">
               <Suspense fallback={<div className="loading">Loading…</div>}>
               <Routes>

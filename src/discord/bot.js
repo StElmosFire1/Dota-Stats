@@ -3527,12 +3527,14 @@ class DiscordBot {
       .setTitle('⚡ Season 10 is live')
       .setColor(0xa855f7)
       .setDescription(
-        'A fresh leaderboard, a new rank ladder, and a wave of features unlocking across the site.\n\n'
-        + 'Jump in now and start the climb. Check the patch notes for the full rundown.'
+        'A fresh leaderboard, a brand-new 8-tier rank ladder, and a wave of features unlocking across the site.\n\n'
+        + 'Every player starts on the new MMR baseline at **Tier V** — climb from there. '
+        + 'Tournaments now support per-event Stripe buy-ins, and per-match MVP badges land on every scoreboard.\n\n'
+        + 'Jump in now and start the climb. New here? **[Join the league](https://dota.stats.corvidaeinc.com/join)**.'
       )
       .addFields(
         { name: '🚀 Features unlocked', value: flagsLine, inline: false },
-        { name: '🔗 Where to start', value: '[Leaderboard](https://dota.stats.corvidaeinc.com/leaderboard) · [Patch Notes](https://dota.stats.corvidaeinc.com/patch-notes) · [Tournaments](https://dota.stats.corvidaeinc.com/tournaments)', inline: false }
+        { name: '🔗 Where to start', value: '[Leaderboard](https://dota.stats.corvidaeinc.com/leaderboard) · [Tournaments](https://dota.stats.corvidaeinc.com/tournaments) · [Patch Notes](https://dota.stats.corvidaeinc.com/patch-notes) · [Join the League](https://dota.stats.corvidaeinc.com/join)', inline: false }
       )
       .setFooter({ text: 'Season 10 — good luck on the climb' })
       .setTimestamp();

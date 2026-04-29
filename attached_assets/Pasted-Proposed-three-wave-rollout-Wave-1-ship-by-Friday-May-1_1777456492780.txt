@@ -1,0 +1,34 @@
+Proposed three-wave rollout
+Wave 1 — ship by Friday May 1 (Season 10 launch)
+The foundation everything else hangs off, plus the highest-impact player-facing items.
+Feature flag system (foundation — extends site_settings, plus a small feature_flags table with key, state (off/preview/on), enabled_at)
+Tournament "Invalid upload key" bug fix
+JOIN button on home page (still manual review for now per your call)
+Chart overhaul on player profiles: season-aware modifier history + rating overlay + per-season averages + the "what helped/hurt" plain-English summary, gated to the logged-in player on their own row only
+MVP per-match visibility — career MVP count is already on the profile. What's missing is showing an "MVP" badge on the specific matches you won it; that's a small change.
+Multi-tier seasons — the biggest single item in Wave 1. The model: a season has N "tiers" (e.g. Tier 1: 3500+ MMR, Tier 2: 2800–3499, Tier 3: <2800). Players are auto-placed into a tier at season registration based on their inhouse MMR, with admin override. Each tier has its own leaderboard, prize pool, tournament brackets, and buy-in. Cross-tier games still count for stats but don't affect tier ratings.
+Per-tournament Stripe buy-ins + self-service signup — players join brackets themselves with eligibility check (paid the buy-in, in good standing, registered for the season). Admin-set entry fee per tournament, prize pool auto-funded from entries. Replaces the current manual add-each-player flow.
+Rank name redesign — replace "Gaben / Prime Pick / NPC / Anchor" etc. with a proper named-tier system (e.g. Bronze → Silver → Gold → Platinum → Diamond → Elite, or whatever theme you like). I'll generate a set of clean SVG badges for each. Want me to propose 2–3 naming themes to choose from?
+Season 10 launch cron — Friday 9pm AEST (or whatever start time you pick): flips all preview flags to on, posts launch announcement to Discord, shows banner on home page for 7 days.
+That's 9 items. Aggressive but doable in 48 hours given the foundations are already there.
+Wave 2 — first 2–4 weeks of Season 10
+Things that need more design time but can ship live mid-season behind their own flags.
+Web-based player draft UI with animations + over/underdog stats (your big idea — pool collection, position-aware draft phase, live team prediction as picks happen, final ±% prediction once teams lock)
+Admin moderation surface — action against low-rated players. Tiered: auto-warning at attitude average ≤ 4, manual review queue at ≤ 3, ability for super to issue warnings / 1-game suspension / multi-game suspension / season ban with reason logged
+Inhouse server dry-run mode + automated tests for the RCON / SSH paths
+Sponsor surface system + admin monetisation page — banner slot management, scoreboard PNG sponsor logo, Discord embed footer, tournament titling, stream overlay generator URLs. Admin page where you set active sponsors, slot rates, and view rollup stats
+Premium membership ($5/mo Stripe subscription) — advanced stats, replay download, custom highlight cards, no ads, profile cosmetic unlocks
+Profile customisation — banner image, theme colour, badge flair selection. Free baseline + premium-tier extras
+Replay highlights (text/image) — auto-generated highlight cards from parser data ("32:00 — Player X 4-0-2 spree, swung the game"). Posted to Discord after each match. Video clips from .dem files are a separate, much harder problem (needs a headless Dota client to render — I'd defer that indefinitely)
+Match of the Week — auto-pick the closest / most stat-stuffed game of the week, generate a shareable summary card
+Wave 3 — Season 10 ongoing / Season 11
+The bigger projects.
+Spectator / HLTV-style live updates — text live feed of active matches (kill feed, score, hero gold/xp from GC), websocket-backed. Uses our existing GC subscription so the data path is there; the lift is the live-update infra
+Clans / teams — persistent rosters, team leaderboards, weekly clan-vs-clan brackets
+Coaching marketplace — Stripe-mediated, platform takes a cut
+Notifications — email + push. Discord DMs already partially wired
+Analytics dashboard for you — DAU/MAU, revenue, churn, drop-off funnel
+Cosmetics shop — themes, badges, custom team logos
+Seasonal challenges / quests — "win 5 as support this week", reward in cosmetics + free tournament entries
+Bulk admin operations + tiered admin roles + audit log expansion
+
