@@ -1,5 +1,45 @@
 const BASE = '/api';
 
+// ── Feature flags ──────────────────────────────────────────────────────────
+export async function getFeatureFlags(superuserKey) {
+  const headers = {};
+  if (superuserKey) headers['x-superuser-key'] = superuserKey;
+  const res = await fetch(BASE + '/feature-flags', { headers });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
+export async function getAdminFeatureFlags(superuserKey) {
+  const res = await fetch(BASE + '/admin/feature-flags', {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
+export async function setFeatureFlag({ key, state, description }, superuserKey) {
+  const res = await fetch(BASE + '/admin/feature-flags', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ key, state, description }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
+export async function launchSeason10(superuserKey) {
+  const res = await fetch(BASE + '/admin/launch-season-10', {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
 export async function triggerMissingDMs(matchId, superuserKey) {
   const res = await fetch(`${BASE}/admin/matches/${matchId}/trigger-dms`, {
     method: 'POST',

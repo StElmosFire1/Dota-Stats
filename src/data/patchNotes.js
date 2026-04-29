@@ -574,6 +574,13 @@ module.exports = [
     author: 'System',
   },
   {
+    version: '5.40',
+    title: 'TrueSkill V3 — Improved Rating System',
+    published_at: '2026-04-29',
+    content: 'Built a new TrueSkill V3 engine that fixes three real problems with the original rating system, available behind an admin toggle and intended to go live at the start of the next season.\n\n• Draw probability fixed: V1 used the library default of 10% draw chance, but Dota matches can never draw. V3 sets it to 0% so the model better matches reality.\n• Sigma floor: V1 lets uncertainty (σ) collapse toward zero for veteran players, freezing their MMR even after losses. V3 floors σ at 2.5 and bumps the per-match drift (tau) so ratings stay responsive across long careers.\n• Per-match performance modifier: V2 (now retired) used a raw K/D/A modifier that unfairly penalised supports. V3 reuses the weekend tournament scoring formula — kills, assists, GPM, XPM, hero damage, healing, wards, dewards, camps stacked, and a win bonus — z-scored within each match and capped at ±20% of the μ update.\n• Admin Panel: the old "TrueSkill 2 — Experimental" section has been replaced with a new "Rating System" card showing the active engine (V1 or V3), a toggle button with confirmation dialog, and a collapsible side-by-side V3 vs V1 preview table. V2 is retired.\n• System is OFF by default — V1 stays active until an admin flips it. Switch is database-backed so it survives restarts.',
+    author: 'System',
+  },
+  {
     version: '5.41',
     title: 'V3 MMR Breakdown — "Why Did My MMR Change?"',
     published_at: '2026-04-29',
@@ -581,10 +588,10 @@ module.exports = [
     author: 'System',
   },
   {
-    version: '5.40',
-    title: 'TrueSkill V3 — Improved Rating System',
+    version: '5.42',
+    title: 'Season 10 launch foundation',
     published_at: '2026-04-29',
-    content: 'Built a new TrueSkill V3 engine that fixes three real problems with the original rating system, available behind an admin toggle and intended to go live at the start of the next season.\n\n• Draw probability fixed: V1 used the library default of 10% draw chance, but Dota matches can never draw. V3 sets it to 0% so the model better matches reality.\n• Sigma floor: V1 lets uncertainty (σ) collapse toward zero for veteran players, freezing their MMR even after losses. V3 floors σ at 2.5 and bumps the per-match drift (tau) so ratings stay responsive across long careers.\n• Per-match performance modifier: V2 (now retired) used a raw K/D/A modifier that unfairly penalised supports. V3 reuses the weekend tournament scoring formula — kills, assists, GPM, XPM, hero damage, healing, wards, dewards, camps stacked, and a win bonus — z-scored within each match and capped at ±20% of the μ update.\n• Admin Panel: the old "TrueSkill 2 — Experimental" section has been replaced with a new "Rating System" card showing the active engine (V1 or V3), a toggle button with confirmation dialog, and a collapsible side-by-side V3 vs V1 preview table. V2 is retired.\n• System is OFF by default — V1 stays active until an admin flips it. Switch is database-backed so it survives restarts.',
+    content: 'Built the launch infrastructure that everything else for Season 10 ships behind, so new features can be staged for superuser preview without affecting the live site, and a single cron flips them all on at season start.\n\n• Feature flags: new three-state toggle (off / preview / on) backed by a feature_flags table. Off = hidden from everyone, preview = visible only to logged-in superusers, on = live for all. Resolved at request time so superusers get a real preview of upcoming features without test-environment drift.\n• Admin Feature Flags panel: new section in the Admin Panel listing every flag with a state dropdown and description editor, plus a one-click "Launch Season 10 Now" button (with confirmation) for manual cutover.\n• Season 10 launch cron: scheduled for Friday 1 May 2026 9:00am AEST. Bulk-flips every preview flag to on, stamps the launch timestamp, and posts a launch announcement to Discord. Idempotent — re-runs are no-ops.\n• Home page launch banner: appears when the home_launch_banner flag is enabled, dismissible per-browser, themed for the new season.\n• Public flag endpoint: GET /api/feature-flags returns the resolved flag map for the caller, used by a new FeatureFlagsProvider on the frontend.',
     author: 'System',
   },
 ];

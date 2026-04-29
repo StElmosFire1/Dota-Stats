@@ -3497,6 +3497,59 @@ class DiscordBot {
     }
   }
 
+  // Posts the Season 10 launch announcement. Called by the launch cron and the
+  // manual "Launch Now" admin endpoint. Gated on ANNOUNCE_PATCH_NOTES so dev
+  // bots don't double-post — flag flip and DB state still happen regardless.
+  async announceSeason10Launch({ flippedKeys = [] } = {}) {
+    if (process.env.ANNOUNCE_PATCH_NOTES !== 'true') {
+      console.log('[Season10] Discord announcement disabled (ANNOUNCE_PATCH_NOTES != true) — skipping post.');
+      return { posted: false, reason: 'announcements_disabled' };
+    }
+
+    const channelIds = config.discord.patchChannelIds.length > 0
+      ? config.discord.patchChannelIds
+      : (config.discord.announceChannelId ? [config.discord.announceChannelId] : []);
+    if (!channelIds.length) {
+      console.log('[Season10] No announcement channels configured — skipping post.');
+      return { posted: false, reason: 'no_channels' };
+    }
+    const channels = await this._resolveChannels(channelIds);
+    if (!channels.length) {
+      console.error('[Season10] No accessible announcement channels found.');
+      return { posted: false, reason: 'no_accessible_channels' };
+    }
+
+    const flagsLine = flippedKeys.length
+      ? flippedKeys.map(k => `\`${k}\``).join(' · ')
+      : '_(no preview flags were staged)_';
+
+    const embed = new EmbedBuilder()
+      .setTitle('⚡ Season 10 is live')
+      .setColor(0xa855f7)
+      .setDescription(
+        'A fresh leaderboard, a new rank ladder, and a wave of features unlocking across the site.\n\n'
+        + 'Jump in now and start the climb. Check the patch notes for the full rundown.'
+      )
+      .addFields(
+        { name: '🚀 Features unlocked', value: flagsLine, inline: false },
+        { name: '🔗 Where to start', value: '[Leaderboard](https://dota.stats.corvidaeinc.com/leaderboard) · [Patch Notes](https://dota.stats.corvidaeinc.com/patch-notes) · [Tournaments](https://dota.stats.corvidaeinc.com/tournaments)', inline: false }
+      )
+      .setFooter({ text: 'Season 10 — good luck on the climb' })
+      .setTimestamp();
+
+    let posted = 0;
+    for (const ch of channels) {
+      try {
+        await ch.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
+        posted++;
+        console.log(`[Season10] Posted launch announcement to channel ${ch.id}.`);
+      } catch (err) {
+        console.error(`[Season10] Failed to post in channel ${ch.id}:`, err.message);
+      }
+    }
+    return { posted: posted > 0, channels: posted };
+  }
+
   async postScheduleRsvpEmbed(game) {
     const channelIds = config.discord.scheduleChannelIds.length > 0
       ? config.discord.scheduleChannelIds
@@ -3708,6 +3761,24 @@ class DiscordBot {
         this._postWeeklyRecap();
       }, { timezone: 'UTC' });
       console.log('[Discord] Weekly recap scheduled (Mondays 9am AEST).');
+
+      // Season 10 launch: Friday 1 May 2026 at 9:00am Australia/Sydney.
+      // Idempotent — db.executeSeason10Launch() short-circuits if already done.
+      cron.schedule('0 9 1 5 *', async () => {
+        console.log('[Discord] Season 10 launch cron firing...');
+        try {
+          const result = await db.executeSeason10Launch();
+          if (result.alreadyLaunched) {
+            console.log(`[Discord] Season 10 already launched at ${result.launchedAt} — skipping.`);
+            return;
+          }
+          console.log(`[Discord] Season 10 flipped ${result.flippedKeys.length} flag(s): ${result.flippedKeys.join(', ')}`);
+          await this.announceSeason10Launch({ flippedKeys: result.flippedKeys });
+        } catch (err) {
+          console.error('[Discord] Season 10 launch cron error:', err.message);
+        }
+      }, { timezone: 'Australia/Sydney' });
+      console.log('[Discord] Season 10 launch scheduled (Fri 1 May 2026 9am AEST).');
 
       // Game reminders: check every 10 minutes for upcoming games needing 24h/1h reminders
       setInterval(() => this._sendScheduleReminders().catch(err => console.error('[Reminders] Error:', err.message)), 10 * 60 * 1000);

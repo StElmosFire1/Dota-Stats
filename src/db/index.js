@@ -709,6 +709,25 @@ async function init() {
        ON CONFLICT (key) DO NOTHING`
     );
 
+    // Feature flags — three-state toggle (off / preview / on) used to stage
+    // new features behind a superuser-only "preview" gate before launching to
+    // everyone. Season 10 launch cron bulk-flips all 'preview' flags to 'on'.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS feature_flags (
+        key TEXT PRIMARY KEY,
+        state TEXT NOT NULL DEFAULT 'off' CHECK (state IN ('off', 'preview', 'on')),
+        description TEXT,
+        enabled_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(
+      `INSERT INTO feature_flags (key, state, description) VALUES
+         ('home_launch_banner', 'off', 'Season 10 launch banner on the home page')
+       ON CONFLICT (key) DO NOTHING`
+    );
+
     // Weekend / special event tournaments
     await p.query(`
       CREATE TABLE IF NOT EXISTS weekend_tournaments (
@@ -1491,6 +1510,99 @@ async function setSetting(key, value) {
     [key, value == null ? null : String(value)]
   );
   return { key, value };
+}
+
+// ── Feature flags (off / preview / on) ──────────────────────────────────────
+const FEATURE_FLAG_STATES = new Set(['off', 'preview', 'on']);
+
+async function getAllFeatureFlags() {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT key, state, description, enabled_at, created_at, updated_at
+     FROM feature_flags ORDER BY key`
+  );
+  return res.rows;
+}
+
+async function getFeatureFlag(key) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT key, state, description, enabled_at, created_at, updated_at
+     FROM feature_flags WHERE key = $1`,
+    [key]
+  );
+  return res.rows[0] || null;
+}
+
+async function setFeatureFlag(key, { state, description } = {}) {
+  if (!key || typeof key !== 'string') throw new Error('feature flag key required');
+  if (state != null && !FEATURE_FLAG_STATES.has(state)) {
+    throw new Error(`invalid feature flag state: ${state}`);
+  }
+  const p = getPool();
+  // Stamp enabled_at the first time the flag flips to 'on'.
+  const enabledAtSql = state === 'on'
+    ? `COALESCE(feature_flags.enabled_at, NOW())`
+    : `feature_flags.enabled_at`;
+  const res = await p.query(
+    `INSERT INTO feature_flags (key, state, description, enabled_at, updated_at)
+     VALUES ($1, COALESCE($2, 'off'), $3, CASE WHEN $2 = 'on' THEN NOW() ELSE NULL END, NOW())
+     ON CONFLICT (key) DO UPDATE
+       SET state = COALESCE(EXCLUDED.state, feature_flags.state),
+           description = COALESCE(EXCLUDED.description, feature_flags.description),
+           enabled_at = ${enabledAtSql},
+           updated_at = NOW()
+     RETURNING key, state, description, enabled_at, created_at, updated_at`,
+    [key, state ?? null, description ?? null]
+  );
+  return res.rows[0];
+}
+
+// Returns a flat { key: bool } map resolved for the caller. Preview flags are
+// "enabled" only when the caller is a superuser, so superusers can dogfood new
+// features before they go live for everyone.
+async function getResolvedFeatureFlags({ isSuperuser = false } = {}) {
+  const rows = await getAllFeatureFlags();
+  const out = {};
+  for (const row of rows) {
+    out[row.key] = row.state === 'on' || (row.state === 'preview' && isSuperuser);
+  }
+  return out;
+}
+
+// Bulk-flip every flag currently in 'preview' to 'on'. Used by the Season 10
+// launch cron and the manual "Launch Now" admin button. Idempotent at the
+// row level — re-running won't re-stamp enabled_at on already-on flags.
+async function flipPreviewFlagsToOn() {
+  const p = getPool();
+  const res = await p.query(
+    `UPDATE feature_flags
+     SET state = 'on',
+         enabled_at = COALESCE(enabled_at, NOW()),
+         updated_at = NOW()
+     WHERE state = 'preview'
+     RETURNING key`
+  );
+  return res.rows.map(r => r.key);
+}
+
+// One-shot orchestrator for the Season 10 launch. Returns:
+//   { alreadyLaunched: bool, launchedAt: iso|null, flippedKeys: string[] }
+// Called from both the launch cron (in src/discord/bot.js) and the manual
+// admin "Launch Now" endpoint. The Discord announcement is posted separately
+// by the bot — this function only handles DB state.
+async function executeSeason10Launch() {
+  const launched = await getSetting('season_10_launched_at');
+  if (launched) {
+    return { alreadyLaunched: true, launchedAt: launched, flippedKeys: [] };
+  }
+  const flippedKeys = await flipPreviewFlagsToOn();
+  // Always force the home banner on, even if nobody flipped it to preview.
+  await setFeatureFlag('home_launch_banner', { state: 'on' });
+  if (!flippedKeys.includes('home_launch_banner')) flippedKeys.push('home_launch_banner');
+  const launchedAt = new Date().toISOString();
+  await setSetting('season_10_launched_at', launchedAt);
+  return { alreadyLaunched: false, launchedAt, flippedKeys };
 }
 
 // ── TrueSkill V3 ────────────────────────────────────────────────────────────
@@ -6345,6 +6457,12 @@ module.exports = {
   getSetting,
   getAllSettings,
   setSetting,
+  getAllFeatureFlags,
+  getFeatureFlag,
+  setFeatureFlag,
+  getResolvedFeatureFlags,
+  flipPreviewFlagsToOn,
+  executeSeason10Launch,
   updateRating,
   getPlayerRating,
   getPlayerStats,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10 } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
@@ -707,6 +707,148 @@ function ErrorLogViewer({ superuserKey }) {
   );
 }
 
+function FeatureFlagsPanel({ superuserKey }) {
+  const [flags, setFlags] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(null);
+  const [launching, setLaunching] = useState(false);
+  const [launchResult, setLaunchResult] = useState(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await getAdminFeatureFlags(superuserKey);
+      setFlags(data.flags || []);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
+  }, [superuserKey]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const updateFlag = async (key, patch) => {
+    try {
+      setSaving(key);
+      await apiSetFeatureFlag({ key, ...patch }, superuserKey);
+      await refresh();
+    } catch (err) {
+      setError(err.message || 'Failed to update');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleLaunch = async () => {
+    const previewKeys = flags.filter(f => f.state === 'preview').map(f => f.key);
+    const msg = previewKeys.length
+      ? `Launch Season 10 NOW?\n\nThis will flip ${previewKeys.length} preview flag(s) to ON for everyone:\n\n${previewKeys.map(k => `  • ${k}`).join('\n')}\n\nThis is normally automatic on Fri 1 May 2026 9am AEST. Continue?`
+      : 'Launch Season 10 NOW?\n\nNo preview flags are currently staged, but this will still stamp the launch timestamp and force-enable the home banner.\n\nContinue?';
+    if (!window.confirm(msg)) return;
+    try {
+      setLaunching(true);
+      setLaunchResult(null);
+      const result = await launchSeason10(superuserKey);
+      setLaunchResult(result);
+      await refresh();
+    } catch (err) {
+      setError(err.message || 'Launch failed');
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  const stateColor = s => s === 'on' ? '#22c55e' : s === 'preview' ? '#a855f7' : '#6b7280';
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <h2 style={{ marginBottom: 6 }}>🚩 Feature Flags</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Three-state staging for new features. <strong>Off</strong> hides from everyone; <strong>Preview</strong> shows only to logged-in superusers (you); <strong>On</strong> goes live for all visitors.
+      </p>
+
+      {/* Season 10 Launch button */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(168,85,247,0.10) 0%, rgba(124,58,237,0.05) 100%)',
+        border: '1px solid rgba(168,85,247,0.4)', borderRadius: 10, padding: 16, marginBottom: 16,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>⚡ Season 10 Launch</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Scheduled for Fri 1 May 2026 9:00am AEST. Use this button to launch manually if needed.
+            </div>
+          </div>
+          <button
+            onClick={handleLaunch}
+            disabled={launching}
+            className="btn btn-primary"
+            style={{ background: '#a855f7', borderColor: '#9333ea' }}
+          >
+            {launching ? 'Launching…' : 'Launch Season 10 Now'}
+          </button>
+        </div>
+        {launchResult && (
+          <div style={{ marginTop: 10, fontSize: 12, color: launchResult.alreadyLaunched ? '#fbbf24' : '#22c55e' }}>
+            {launchResult.alreadyLaunched
+              ? `Already launched at ${new Date(launchResult.launchedAt).toLocaleString('en-AU')}.`
+              : `✓ Launched! Flipped ${launchResult.flippedKeys?.length || 0} flag(s)${launchResult.discordPosted ? ' · Discord announcement posted' : ''}.`}
+          </div>
+        )}
+      </div>
+
+      {error && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {loading ? <div>Loading…</div> : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                <th style={{ padding: '8px 10px' }}>Key</th>
+                <th style={{ padding: '8px 10px' }}>State</th>
+                <th style={{ padding: '8px 10px' }}>Description</th>
+                <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>Enabled at</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flags.length === 0 && (
+                <tr><td colSpan={4} style={{ padding: 16, color: 'var(--text-muted)', textAlign: 'center' }}>No feature flags yet.</td></tr>
+              )}
+              {flags.map(f => (
+                <tr key={f.key} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#a78bfa' }}>{f.key}</td>
+                  <td style={{ padding: '8px 10px' }}>
+                    <select
+                      value={f.state}
+                      disabled={saving === f.key}
+                      onChange={e => updateFlag(f.key, { state: e.target.value })}
+                      style={{
+                        background: 'var(--bg-card)', color: stateColor(f.state),
+                        border: `1px solid ${stateColor(f.state)}`, borderRadius: 6,
+                        padding: '4px 8px', fontWeight: 600, fontSize: 12, textTransform: 'uppercase',
+                      }}
+                    >
+                      <option value="off">Off</option>
+                      <option value="preview">Preview</option>
+                      <option value="on">On</option>
+                    </select>
+                  </td>
+                  <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{f.description || <em>—</em>}</td>
+                  <td style={{ padding: '8px 10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {f.enabled_at ? new Date(f.enabled_at).toLocaleString('en-AU') : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SteamBotPanel({ superuserKey }) {
   const auth = { 'x-superuser-key': superuserKey };
   const [status, setStatus] = useState(null);
@@ -1208,6 +1350,9 @@ export default function AdminPanel() {
 
       {/* Server Error Log */}
       <ErrorLogViewer superuserKey={superuserKey} />
+
+      {/* Feature Flags — preview/launch staging */}
+      <FeatureFlagsPanel superuserKey={superuserKey} />
 
       {/* Rating System — V1 vs V3 toggle + preview */}
       <section>

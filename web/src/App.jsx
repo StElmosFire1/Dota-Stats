@@ -7,6 +7,7 @@ import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
+import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
@@ -318,6 +319,7 @@ export default function App() {
       <SteamAuthProvider>
       <AdminProvider>
         <SuperuserProvider>
+          <FeatureFlagsProvider>
           <SeasonProvider>
             <Nav />
             <AdminLoginModal />
@@ -369,6 +371,7 @@ export default function App() {
               </Suspense>
             </main>
           </SeasonProvider>
+          </FeatureFlagsProvider>
         </SuperuserProvider>
       </AdminProvider>
       </SteamAuthProvider>

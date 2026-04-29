@@ -2977,6 +2977,73 @@ NOTES
   // generic key/value store from being abused as a free-form admin scratchpad.
   const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill']);
 
+  // ── Feature flags ─────────────────────────────────────────────────────
+  // Public endpoint — returns the resolved { key: bool } map for the caller.
+  // Optional x-superuser-key header lets a superuser see preview-state flags
+  // as enabled. Non-superusers only see flags whose state is 'on'.
+  router.get('/feature-flags', async (req, res) => {
+    try {
+      const superuserKey = req.headers['x-superuser-key'];
+      const isSuperuser = Boolean(
+        superuserKey && process.env.SUPERUSER_PASSWORD && superuserKey === process.env.SUPERUSER_PASSWORD
+      );
+      const flags = await db.getResolvedFeatureFlags({ isSuperuser });
+      res.json({ flags });
+    } catch (err) {
+      console.error('[API] feature-flags GET error:', err.message);
+      res.status(500).json({ error: 'Failed to load feature flags' });
+    }
+  });
+
+  // Superuser-only — full state for the admin panel.
+  router.get('/admin/feature-flags', requireSuperuser, async (req, res) => {
+    try {
+      const flags = await db.getAllFeatureFlags();
+      res.json({ flags });
+    } catch (err) {
+      console.error('[API] admin/feature-flags GET error:', err.message);
+      res.status(500).json({ error: 'Failed to load feature flags' });
+    }
+  });
+
+  // Superuser-only — upsert a single flag (state and/or description).
+  router.post('/admin/feature-flags', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const { key, state, description } = req.body || {};
+      if (!key || typeof key !== 'string') {
+        return res.status(400).json({ error: 'key required' });
+      }
+      const flag = await db.setFeatureFlag(key, { state, description });
+      res.json({ flag });
+    } catch (err) {
+      console.error('[API] admin/feature-flags POST error:', err.message);
+      res.status(400).json({ error: err.message || 'Failed to update feature flag' });
+    }
+  });
+
+  // Superuser-only — manual "Launch Season 10 Now" button. Performs the same
+  // DB work the launch cron does (flips all preview flags to on, stamps the
+  // launch timestamp, forces the home banner on) and asks the bot to post
+  // the announcement if it's wired up.
+  router.post('/admin/launch-season-10', requireSuperuser, async (req, res) => {
+    try {
+      const result = await db.executeSeason10Launch();
+      let discordPosted = false;
+      if (!result.alreadyLaunched && bot && typeof bot.announceSeason10Launch === 'function') {
+        try {
+          await bot.announceSeason10Launch({ flippedKeys: result.flippedKeys });
+          discordPosted = true;
+        } catch (err) {
+          console.error('[API] launch-season-10 Discord post failed:', err.message);
+        }
+      }
+      res.json({ ...result, discordPosted });
+    } catch (err) {
+      console.error('[API] launch-season-10 error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to launch Season 10' });
+    }
+  });
+
   router.post('/admin/settings', requireSuperuser, async (req, res) => {
     try {
       const { key, value } = req.body || {};

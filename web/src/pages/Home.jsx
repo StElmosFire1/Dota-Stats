@@ -3,7 +3,54 @@ import { Link } from 'react-router-dom';
 import { getHomeStats, getLatestRecap, getSeasons, getPredictions, getWeekendTournaments } from '../api';
 import { fmtDate } from '../utils/dates';
 import { useSeason } from '../context/SeasonContext';
+import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { formatHeroName } from '../utils/heroes';
+
+const LAUNCH_BANNER_DISMISS_KEY = 'season10LaunchBannerDismissed_v1';
+
+function Season10LaunchBanner() {
+  const enabled = useFeatureFlag('home_launch_banner');
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(LAUNCH_BANNER_DISMISS_KEY) === '1'; } catch { return false; }
+  });
+  if (!enabled || dismissed) return null;
+  const handleDismiss = () => {
+    try { localStorage.setItem(LAUNCH_BANNER_DISMISS_KEY, '1'); } catch {}
+    setDismissed(true);
+  };
+  return (
+    <div style={{
+      position: 'relative',
+      background: 'linear-gradient(135deg, #1a0033 0%, #0d0019 60%, #2a0040 100%)',
+      border: '1px solid rgba(168, 85, 247, 0.5)',
+      borderRadius: 14,
+      padding: '20px 28px',
+      marginBottom: 20,
+      boxShadow: '0 0 24px rgba(168, 85, 247, 0.18)',
+      color: '#f5f3ff',
+    }}>
+      <button
+        onClick={handleDismiss}
+        aria-label="Dismiss"
+        style={{
+          position: 'absolute', top: 10, right: 12,
+          background: 'transparent', border: 'none', color: '#c4b5fd',
+          cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4,
+        }}
+      >×</button>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: '#c4b5fd', marginBottom: 6 }}>
+        ⚡ NEW SEASON
+      </div>
+      <h2 style={{ margin: '0 0 6px', fontSize: 24, fontWeight: 800, color: '#f5f3ff' }}>
+        Season 10 is live
+      </h2>
+      <p style={{ margin: 0, fontSize: 13, color: '#ddd6fe', maxWidth: 620 }}>
+        Fresh leaderboard, new rank ladder, and a wave of features unlocking across the site.
+        Check the patch notes for the full rundown — and good luck on the climb.
+      </p>
+    </div>
+  );
+}
 
 function StatCard({ label, value, sub, icon }) {
   return (
@@ -108,6 +155,8 @@ export default function Home() {
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+
+      <Season10LaunchBanner />
 
       {/* Hero banner */}
       <div style={{
