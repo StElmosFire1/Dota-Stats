@@ -98,6 +98,17 @@ const authLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
 });
 
+// Public-write limiter for unauthenticated POSTs that mutate state. Tighter
+// than authLimiter since callers don't need to be signed in. Used on routes
+// like /api/join (signup form) to prevent spam / enumeration.
+const publicWriteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests from this address, please wait and try again.' },
+});
+
 function createServer(startupStatus = {}) {
   const app = express();
 
@@ -105,13 +116,41 @@ function createServer(startupStatus = {}) {
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
   }));
-  app.use(cors());
+
+  // CORS: same-origin only by default. Set CORS_ALLOWED_ORIGINS as a
+  // comma-separated allowlist to permit cross-origin browsers (e.g. a staging
+  // dashboard). The previous `app.use(cors())` accepted *any* Origin header,
+  // which made CSRF + credential abuse easier; the explicit allowlist closes
+  // that gap while preserving the dev workflow.
+  const corsOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  app.use(cors({
+    origin: (origin, cb) => {
+      // Same-origin or non-browser callers (no Origin header) — always allow.
+      if (!origin) return cb(null, true);
+      if (corsOrigins.length === 0) return cb(null, false);
+      // Strict allowlist only — wildcard is intentionally NOT supported here.
+      // If you ever need to open this up, do it by adding the explicit origin
+      // to CORS_ALLOWED_ORIGINS, never with `*`, because `*` combined with
+      // `credentials: true` would re-introduce the vulnerability we just
+      // closed.
+      if (corsOrigins.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  }));
 
   const sessionSecret = process.env.SESSION_SECRET || (() => {
     console.warn('[Session] SESSION_SECRET not set — using insecure default. Add it as an environment secret.');
     return 'dota2-inhouse-default-secret-please-change';
   })();
 
+  // Session cookie hardening: in production we serve over HTTPS (deploy.sh +
+  // PM2 → reverse proxy), so we mark the cookie Secure to prevent it being
+  // sent over plain HTTP. Locally (NODE_ENV !== 'production') we keep
+  // `secure: false` so dev over plain HTTP still works.
+  const inProd = process.env.NODE_ENV === 'production';
+  if (inProd) app.set('trust proxy', 1); // honour X-Forwarded-Proto from reverse proxy
   app.use(session({
     secret: sessionSecret,
     resave: false,
@@ -119,7 +158,7 @@ function createServer(startupStatus = {}) {
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false,
+      secure: inProd,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }));
@@ -193,15 +232,20 @@ function createServer(startupStatus = {}) {
   app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!process.env.STRIPE_SECRET_KEY) return res.status(503).send('Stripe not configured');
+    // SECURITY: refuse to process unsigned webhook payloads. Without
+    // `STRIPE_WEBHOOK_SECRET` an attacker who finds the webhook URL could
+    // POST a forged `checkout.session.completed` payload and mark arbitrary
+    // tournament entries / season buy-ins as paid. Always require the
+    // signature.
+    if (!webhookSecret) {
+      console.error('[Stripe] Webhook rejected: STRIPE_WEBHOOK_SECRET is not configured.');
+      return res.status(503).send('Stripe webhook secret not configured');
+    }
     try {
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-      let event;
-      if (webhookSecret) {
-        const sig = req.headers['stripe-signature'];
-        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-      } else {
-        event = JSON.parse(req.body.toString());
-      }
+      const sig = req.headers['stripe-signature'];
+      if (!sig) return res.status(400).send('Missing stripe-signature header');
+      const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
         const purpose = session.metadata?.purpose;
@@ -3357,17 +3401,37 @@ NOTES
   });
 
   // Superuser-only — manual "Launch Season 10 Now" button. Performs the same
-  // DB work the launch cron does (flips all preview flags to on, stamps the
-  // launch timestamp, forces the home banner on) and asks the bot to post
+  // DB work the launch cron used to do (flips all preview flags to on, stamps
+  // the launch timestamp, forces the home banner on) and asks the bot to post
   // the announcement if it's wired up.
-  router.post('/admin/launch-season-10', requireSuperuser, async (req, res) => {
+  //
+  // Defence in depth: the AdminPanel client requires a typed-phrase
+  // confirmation before calling this endpoint. We mirror that on the server
+  // by requiring `{ confirmation: 'LAUNCH SEASON 10' }` in the request body
+  // so a direct curl/POST with just the superuser key cannot trigger the
+  // launch by accident or by stolen key alone.
+  router.post('/admin/launch-season-10', requireSuperuser, express.json(), async (req, res) => {
     try {
+      const REQUIRED_PHRASE = 'LAUNCH SEASON 10';
+      const provided = (req.body && req.body.confirmation != null)
+        ? String(req.body.confirmation)
+        : '';
+      if (provided !== REQUIRED_PHRASE) {
+        return res.status(400).json({
+          error: `Missing or incorrect confirmation. Send { confirmation: "${REQUIRED_PHRASE}" } in the request body.`,
+        });
+      }
       const result = await db.executeSeason10Launch();
       let discordPosted = false;
-      if (!result.alreadyLaunched && bot && typeof bot.announceSeason10Launch === 'function') {
+      if (!result.alreadyLaunched) {
         try {
-          await bot.announceSeason10Launch({ flippedKeys: result.flippedKeys });
-          discordPosted = true;
+          const bot = getDiscordBot();
+          if (bot && typeof bot.announceSeason10Launch === 'function') {
+            await bot.announceSeason10Launch({ flippedKeys: result.flippedKeys });
+            discordPosted = true;
+          } else {
+            console.warn('[API] launch-season-10: Discord bot unavailable — skipped announcement.');
+          }
         } catch (err) {
           console.error('[API] launch-season-10 Discord post failed:', err.message);
         }
@@ -3888,7 +3952,7 @@ NOTES
     }
   });
 
-  router.post('/join', express.json(), async (req, res) => {
+  router.post('/join', publicWriteLimiter, express.json(), async (req, res) => {
     try {
       const { discordUsername, steamUrl, preferredName, preferredPositions, message, mmr, referral } = req.body;
       if (!discordUsername || !discordUsername.trim()) {

@@ -3764,23 +3764,12 @@ class DiscordBot {
       }, { timezone: 'UTC' });
       console.log('[Discord] Weekly recap scheduled (Mondays 9am AEST).');
 
-      // Season 10 launch: Friday 1 May 2026 at 9:00am Australia/Sydney.
-      // Idempotent — db.executeSeason10Launch() short-circuits if already done.
-      cron.schedule('0 9 1 5 *', async () => {
-        console.log('[Discord] Season 10 launch cron firing...');
-        try {
-          const result = await db.executeSeason10Launch();
-          if (result.alreadyLaunched) {
-            console.log(`[Discord] Season 10 already launched at ${result.launchedAt} — skipping.`);
-            return;
-          }
-          console.log(`[Discord] Season 10 flipped ${result.flippedKeys.length} flag(s): ${result.flippedKeys.join(', ')}`);
-          await this.announceSeason10Launch({ flippedKeys: result.flippedKeys });
-        } catch (err) {
-          console.error('[Discord] Season 10 launch cron error:', err.message);
-        }
-      }, { timezone: 'Australia/Sydney' });
-      console.log('[Discord] Season 10 launch scheduled (Fri 1 May 2026 9am AEST).');
+      // Season 10 launch is no longer scheduled automatically. The launch is
+      // now triggered exclusively via the superuser "Launch Season 10 Now"
+      // button in the Admin Panel (with a double confirmation), which calls
+      // POST /api/admin/launch-season-10 → db.executeSeason10Launch() →
+      // bot.announceSeason10Launch(). Keeping this comment as a signpost.
+      console.log('[Discord] Season 10 launch is manual-only (Admin Panel button).');
 
       // Game reminders: check every 10 minutes for upcoming games needing 24h/1h reminders
       setInterval(() => this._sendScheduleReminders().catch(err => console.error('[Reminders] Error:', err.message)), 10 * 60 * 1000);

@@ -33,7 +33,8 @@ export async function setFeatureFlag({ key, state, description }, superuserKey) 
 export async function launchSeason10(superuserKey) {
   const res = await fetch(BASE + '/admin/launch-season-10', {
     method: 'POST',
-    headers: { 'x-superuser-key': superuserKey },
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ confirmation: 'LAUNCH SEASON 10' }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed');

@@ -745,13 +745,31 @@ function FeatureFlagsPanel({ superuserKey }) {
 
   const handleLaunch = async () => {
     const previewKeys = flags.filter(f => f.state === 'preview').map(f => f.key);
-    const msg = previewKeys.length
-      ? `Launch Season 10 NOW?\n\nThis will flip ${previewKeys.length} preview flag(s) to ON for everyone:\n\n${previewKeys.map(k => `  • ${k}`).join('\n')}\n\nThis is normally automatic on Fri 1 May 2026 9am AEST. Continue?`
-      : 'Launch Season 10 NOW?\n\nNo preview flags are currently staged, but this will still stamp the launch timestamp and force-enable the home banner.\n\nContinue?';
-    if (!window.confirm(msg)) return;
+
+    // Step 1 — high-level confirmation. Spell out the consequences in plain
+    // English so this can't be misclicked.
+    const step1 = previewKeys.length
+      ? `Launch Season 10 NOW?\n\nThis will:\n  • Flip ${previewKeys.length} preview flag(s) to ON for everyone:\n${previewKeys.map(k => `      - ${k}`).join('\n')}\n  • Force-enable the home launch banner.\n  • Stamp the launch timestamp (cannot be undone via this UI).\n  • Post the launch announcement to Discord.\n\nThe automatic launch cron has been removed — this button is the ONLY way to launch.\n\nProceed to confirmation step 2?`
+      : `Launch Season 10 NOW?\n\nNo preview flags are currently staged, but this will still:\n  • Stamp the launch timestamp (cannot be undone via this UI).\n  • Force-enable the home banner.\n  • Post the launch announcement to Discord.\n\nProceed to confirmation step 2?`;
+    if (!window.confirm(step1)) return;
+
+    // Step 2 — typed-phrase confirmation. The user must literally type
+    // "LAUNCH SEASON 10" to proceed; an empty/cancel/wrong value aborts.
+    const PHRASE = 'LAUNCH SEASON 10';
+    const typed = window.prompt(
+      `Final confirmation.\n\nType "${PHRASE}" exactly (without quotes) to launch.\nThis is irreversible.`,
+      ''
+    );
+    if (typed === null) return; // cancelled
+    if (String(typed).trim() !== PHRASE) {
+      setError(`Launch aborted — confirmation phrase did not match "${PHRASE}".`);
+      return;
+    }
+
     try {
       setLaunching(true);
       setLaunchResult(null);
+      setError('');
       const result = await launchSeason10(superuserKey);
       setLaunchResult(result);
       await refresh();
@@ -780,7 +798,8 @@ function FeatureFlagsPanel({ superuserKey }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>⚡ Season 10 Launch</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Scheduled for Fri 1 May 2026 9:00am AEST. Use this button to launch manually if needed.
+              Manual-only launch (the cron has been removed). Two-step confirmation required.
+              Flips all preview flags to ON, force-enables the home banner, and posts the Discord announcement.
             </div>
           </div>
           <button
