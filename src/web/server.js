@@ -5269,7 +5269,15 @@ NOTES
     }
   });
 
-  router.get('/coaches/:id', async (req, res) => {
+  // Alias for the singular `/coach/:id` form — the original session plan
+  // referenced this path, and shared links from older builds may also
+  // hit it. Both routes resolve to the same handler so we don't 404
+  // links that have already been shared in Discord etc.
+  router.get(['/coaches/:id', '/coach/:id'], async (req, res) => {
+    return _coachDetail(req, res);
+  });
+
+  async function _coachDetail(req, res) {
     try {
       if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
       const coach = await db.getCoachById(parseInt(req.params.id));
@@ -5291,7 +5299,7 @@ NOTES
       console.error('[API] coaches/:id:', err.message);
       res.status(500).json({ error: err.message });
     }
-  });
+  }
 
   // Book a session. Creates Stripe Checkout Session in 'payment' mode with
   // application_fee_amount + transfer_data.destination (Connect direct

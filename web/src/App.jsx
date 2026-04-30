@@ -383,6 +383,7 @@ export default function App() {
                 <Route path="/settings/billing" element={<SettingsBilling />} />
                 <Route path="/coaches" element={<Coaches />} />
                 <Route path="/coaches/:id" element={<CoachProfile />} />
+                <Route path="/coach/:id" element={<CoachProfile />} />
                 <Route path="/coach/edit" element={<CoachEdit />} />
                 <Route path="/coach/onboarding" element={<CoachOnboarding />} />
                 <Route path="/me/bookings" element={<MyBookings />} />

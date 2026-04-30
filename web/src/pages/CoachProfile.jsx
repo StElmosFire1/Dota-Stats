@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 const BASE = '/api';
@@ -7,6 +7,74 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function formatPrice(cents, currency = 'aud') {
   if (cents == null) return '—';
   return `$${(cents / 100).toFixed(0)} ${String(currency).toUpperCase()}`;
+}
+
+// Project the coach's weekly availability windows onto the rolling 6-day
+// booking horizon (matches the server's `validateBookingSlot` cap) and
+// emit concrete clickable start instants on the hour, in the user's local
+// timezone. We avoid the silent-failure mode of a free-text datetime
+// input — students were previously hitting "Selected time is outside
+// the coach's published availability" when their local-time guess fell
+// outside a window in the coach's own timezone. The picker generates
+// only valid candidate slots so book-rate friction collapses.
+function generateOpenSlots(availability, durationMinutes) {
+  if (!availability?.length) return [];
+  const out = [];
+  const now = new Date();
+  const earliest = now.getTime() + 30 * 60_000; // server requires ≥30min lead
+  const horizon = now.getTime() + 6 * 86_400_000; // server caps at 6 days
+  const dayMs = 86_400_000;
+  const dur = parseInt(durationMinutes) || 60;
+
+  for (let d = 0; d < 7; d++) {
+    const dayStart = new Date(now.getTime() + d * dayMs);
+    for (const slot of availability) {
+      let tz = 'Australia/Sydney';
+      try { new Intl.DateTimeFormat('en-US', { timeZone: slot.timezone }); tz = slot.timezone; } catch (_) { /* fallback */ }
+      // Walk through every hour in the window and emit the UTC instant
+      // that lands at that local hour in the coach's timezone.
+      const [shH, shM] = String(slot.start_time).split(':').map(n => parseInt(n, 10) || 0);
+      const [ehH, ehM] = String(slot.end_time).split(':').map(n => parseInt(n, 10) || 0);
+      const startMin = shH * 60 + shM;
+      const endMin = ehH * 60 + ehM;
+      // For each candidate hour-aligned start within the window:
+      for (let m = Math.ceil(startMin / 60) * 60; m + dur <= endMin; m += 60) {
+        const target = new Date(dayStart);
+        // We want the date of `dayStart` IN THE COACH'S TIMEZONE, then
+        // hour-of-day = m/60. Use Intl to fish out the coach-tz date
+        // components, then construct a UTC instant by repeated guessing
+        // until it formats back to the right local hour.
+        const fmt = new Intl.DateTimeFormat('en-CA', {
+          timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+          weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+        });
+        const parts = fmt.formatToParts(target);
+        const get = (t) => parts.find(p => p.type === t)?.value;
+        const wd = get('weekday');
+        if ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[wd] !== slot.day_of_week) continue;
+        // Build UTC ts that maps to (coach-tz date) at hh:00.
+        // Compute current local-hour offset and shift.
+        const localH = parseInt(get('hour'), 10);
+        const localM = parseInt(get('minute'), 10);
+        const offsetMins = (localH * 60 + localM) - m;
+        const candidate = new Date(target.getTime() - offsetMins * 60_000);
+        // Re-check the projected local hour matches (DST safety).
+        const recheck = new Intl.DateTimeFormat('en-CA', {
+          timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+        }).formatToParts(candidate);
+        const rH = parseInt(recheck.find(p => p.type === 'hour')?.value || '0', 10);
+        if (rH * 60 !== m) continue;
+        const ts = candidate.getTime();
+        if (ts < earliest || ts > horizon) continue;
+        out.push({ ts, iso: candidate.toISOString(), tz });
+      }
+    }
+  }
+  // Dedupe by ts and sort
+  const seen = new Set();
+  return out
+    .filter(s => { if (seen.has(s.ts)) return false; seen.add(s.ts); return true; })
+    .sort((a, b) => a.ts - b.ts);
 }
 
 export default function CoachProfile() {
@@ -48,6 +116,10 @@ export default function CoachProfile() {
 
   const { coach, availability, reviews, rating, credibility } = data;
   const totalCost = Math.round((coach.hourly_rate_cents * (parseInt(bookForm.duration_minutes) || 60)) / 60);
+  const openSlots = useMemo(
+    () => generateOpenSlots(availability, bookForm.duration_minutes),
+    [availability, bookForm.duration_minutes],
+  );
 
   return (
     <div style={{ maxWidth: 900, margin: '24px auto', padding: 16 }}>
@@ -118,17 +190,11 @@ export default function CoachProfile() {
 
       <h3>Book a session</h3>
       <form onSubmit={handleBook} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 13 }}>
-            Start time (your local)
-            <input type="datetime-local" required value={bookForm.slot_start_at}
-              onChange={e => setBookForm(f => ({ ...f, slot_start_at: e.target.value }))}
-              style={{ padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
-          </label>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', fontSize: 13 }}>
             Duration
             <select value={bookForm.duration_minutes}
-              onChange={e => setBookForm(f => ({ ...f, duration_minutes: e.target.value }))}
+              onChange={e => setBookForm(f => ({ ...f, duration_minutes: e.target.value, slot_start_at: '' }))}
               style={{ padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
               <option value={30}>30 min</option>
               <option value={60}>60 min</option>
@@ -140,11 +206,41 @@ export default function CoachProfile() {
             <div style={{ color: 'var(--text-muted)' }}>Total</div>
             <div style={{ fontWeight: 700, fontSize: 18 }}>{formatPrice(totalCost, coach.currency)}</div>
           </div>
-          <button type="submit" disabled={booking}
-            style={{ padding: '10px 20px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700 }}>
-            {booking ? 'Redirecting…' : '💳 Pay & book'}
-          </button>
         </div>
+
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+          Open slots in the next 6 days (your local time):
+        </div>
+        {openSlots.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            No open slots match this duration in the coach's published availability over the next 6 days. Try a shorter duration, or check back when the coach updates their availability.
+          </p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 6, maxHeight: 240, overflowY: 'auto', marginBottom: 12 }}>
+            {openSlots.map(s => {
+              const selected = bookForm.slot_start_at === s.iso;
+              const local = new Date(s.ts);
+              const label = local.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+              return (
+                <button key={s.iso} type="button"
+                  onClick={() => setBookForm(f => ({ ...f, slot_start_at: s.iso }))}
+                  style={{
+                    padding: '8px 10px', fontSize: 12, borderRadius: 6, cursor: 'pointer',
+                    border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                    background: selected ? 'var(--accent)' : 'var(--bg-secondary)',
+                    color: selected ? '#fff' : 'var(--text-primary)',
+                  }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <button type="submit" disabled={booking || !bookForm.slot_start_at}
+          style={{ padding: '10px 20px', borderRadius: 6, background: bookForm.slot_start_at ? 'var(--accent)' : 'var(--bg-secondary)', color: '#fff', border: 0, cursor: bookForm.slot_start_at ? 'pointer' : 'not-allowed', fontWeight: 700, opacity: bookForm.slot_start_at ? 1 : 0.5 }}>
+          {booking ? 'Redirecting…' : (bookForm.slot_start_at ? '💳 Pay & book' : 'Pick a slot above')}
+        </button>
         {bookMsg && <p style={{ color: bookMsg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)', marginTop: 8 }}>{bookMsg}</p>}
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
           Funds are held in escrow until both you and the coach confirm the session. 10% platform fee.

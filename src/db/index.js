@@ -8016,9 +8016,24 @@ async function listProMembers() {
 async function isCoachEligible(accountId) {
   if (!accountId) return false;
   const p = getPool();
+  // Eligibility path 1: top-5 of the CURRENT season's computed leaderboard.
+  // We deliberately use the active-season leaderboard rather than the
+  // all-time `getLeaderboard()` so the eligibility set rolls over with the
+  // ladder every season — a coach who was top-5 two seasons ago but has
+  // since dropped off shouldn't keep selling sessions on stale credibility.
+  // Falls back to the all-time leaderboard only if there's no active
+  // season (boot/install case) so eligibility never breaks during season
+  // transitions.
   try {
-    const top = await getLeaderboard(5).catch(() => []);
     const aidStr = String(accountId);
+    const activeSeason = await getActiveSeason().catch(() => null);
+    let top;
+    if (activeSeason?.id) {
+      const board = await getComputedLeaderboard(activeSeason.id).catch(() => []);
+      top = board.slice(0, 5);
+    } else {
+      top = await getLeaderboard(5).catch(() => []);
+    }
     if (top.some(r => String(r.player_id) === aidStr)) return true;
   } catch (_) { /* fall through to rank check */ }
   try {
