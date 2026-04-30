@@ -5213,6 +5213,23 @@ NOTES
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       const existing = await db.getCoach(accountId);
       if (!existing) return res.status(404).json({ error: 'Onboard first' });
+      // Note on access: we deliberately allow `kyc_pending` coaches to edit
+      // their profile/availability — the public listing
+      // (`listActiveCoaches` / `GET /api/coaches`) and the booking route
+      // (`POST /api/coaches/:id/book`) both gate strictly on
+      // `status='active'`, so a kyc_pending coach can prepare their bio,
+      // rate, languages, taught roles/heroes and weekly availability while
+      // Stripe finishes verifying their bank details — the moment Stripe
+      // fires `account.updated` with charges_enabled + payouts_enabled,
+      // `setCoachKycActive` flips status to active and the coach goes
+      // live with a fully-populated profile. Gating edit to `active`
+      // would create a chicken-and-egg problem (no published profile
+      // until Stripe verifies, no incentive to verify until you can
+      // publish).
+      // Suspended/delisted statuses are still rejected here:
+      if (existing.status === 'suspended' || existing.status === 'delisted') {
+        return res.status(403).json({ error: `Editing disabled for ${existing.status} coaches. Contact admin.` });
+      }
       const body = req.body || {};
       // Coerce + clamp the rate; everything else passes through the whitelist.
       let patch = { ...body };

@@ -2209,7 +2209,7 @@ function CoachingAdminPanel({ superuserKey }) {
     <section>
       <h2 style={{ marginBottom: 6 }}>🎓 Coaching Marketplace</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-        Operational dashboard. All revenue figures are after Stripe Connect fees.
+        Operational dashboard. Revenue figures show the gross 10% platform fee on completed bookings (excluding Stripe processor fees, which are deducted from the coach's split).
         Sanctions are immediate; dispute resolutions trigger refunds/releases.
       </p>
 

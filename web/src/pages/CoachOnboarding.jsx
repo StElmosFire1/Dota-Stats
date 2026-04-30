@@ -34,7 +34,7 @@ export default function CoachOnboarding() {
   if (!eligibility.eligible) return <div style={{ padding: 24, maxWidth: 700, margin: '0 auto' }}>
     <h1>Apply to coach</h1>
     <p>Coaching is invite-only. To qualify you must be either:</p>
-    <ul><li>Top 5 on the all-time leaderboard, or</li><li>Immortal+ on Dota 2 ranked matchmaking</li></ul>
+    <ul><li>Top 5 on the current season's leaderboard, or</li><li>Immortal+ on Dota 2 ranked matchmaking</li></ul>
     <p style={{ color: 'var(--text-muted)' }}>Climb the leaderboard or link your Steam rank to unlock this.</p>
   </div>;
 
