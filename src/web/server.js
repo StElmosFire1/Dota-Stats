@@ -1562,7 +1562,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.get('/enemy-synergy/heatmap', async (req, res) => {
+  router.get('/enemy-synergy/heatmap', requirePro('synergy_heatmap'), async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
       const data = await db.getEnemySynergyHeatmap(seasonId);
@@ -4453,13 +4453,6 @@ NOTES
   }
 
   // ---------- Pro Tier gating ----------
-  // `requirePro(featureKey)` — express middleware that:
-  //   1. Lets the request through untouched while the `pro_tier` flag is OFF
-  //      (so existing free behavior is preserved until launch day).
-  //   2. When the flag is ON (or PREVIEW + superuser), checks Pro membership.
-  //      Non-Pro users get a structured 402 payload that the frontend turns
-  //      into a PaywallCard. Superusers always pass.
-  // Returns next() on success — never throws, never sends partial responses.
   function requirePro(featureKey) {
     return async function _requirePro(req, res, next) {
       try {
@@ -4468,8 +4461,6 @@ NOTES
         if (_isSu(req)) return next();
         const accountId = req.session?.accountId;
         if (await _isProAccount(accountId)) return next();
-        // Structured payload: the frontend looks for `paywall: true` and
-        // renders a PaywallCard component instead of an error toast.
         return res.status(402).json({
           error: 'This feature requires Pro membership.',
           paywall: true,
@@ -4478,9 +4469,6 @@ NOTES
         });
       } catch (err) {
         console.error('[requirePro] error:', err.message);
-        // Fail-CLOSED: paid entitlement is an authorization boundary.
-        // If our own check breaks, deny the request rather than expose
-        // paid features. Frontend will render a "try again" message.
         return res.status(503).json({
           error: 'Entitlement check temporarily unavailable. Please try again in a moment.',
           paywall: true,
@@ -4700,11 +4688,7 @@ NOTES
   });
 
   // ---------- Profile customization ----------
-  // Pro-tier check — backed by `pro_subscriptions`. Cached for 60s so we
-  // don't hit the DB on every gated request. Cache is invalidated by the
-  // Stripe webhook on purchase/refund and by the local checkout endpoint.
-  // When the `pro_tier` flag is `off`, no endpoint actually gates on this,
-  // so the cache stays cold for free users.
+  // Pro-tier check (cached 60s; invalidated on Stripe webhook + checkout).
   async function _isProAccount(accountId) {
     if (!accountId) return false;
     const key = String(accountId);
@@ -4811,8 +4795,6 @@ NOTES
     try {
       if (!(await _flagOn('profile_customization', req))) return res.status(404).json({ error: 'Not found' });
       const card = await db.getPlayerProfileCard(req.params.id);
-      // Returning 200 + null lets the client render the page without a special
-      // not-customized branch — easier than treating "no customization" as 404.
       res.json({ customization: card });
     } catch (err) {
       console.error('[API] player/:id/profile-card:', err.message);
@@ -4820,14 +4802,7 @@ NOTES
     }
   });
 
-  // ====================================================================
-  // Pro Tier endpoints
-  // ====================================================================
-  // All four are flag-gated on `pro_tier`. While the flag is OFF the
-  // pricing/checkout endpoints 404 (so we don't accidentally take payments
-  // before launch); status returns is_pro:false but doesn't 404, so the
-  // frontend can read it cheaply on every page without breaking anything.
-  // Configurable via PRO_LIFETIME_PRICE_CENTS (defaults to 2000 = AUD $20).
+  // ---------- Pro Tier endpoints ----------
   function _proPriceCents() {
     const n = parseInt(process.env.PRO_LIFETIME_PRICE_CENTS || '2000', 10);
     return Number.isFinite(n) && n > 0 ? n : 2000;
@@ -4838,8 +4813,6 @@ NOTES
       const accountId = req.session?.accountId || null;
       const flag = await db.getFeatureFlag('pro_tier').catch(() => null);
       const flagState = flag?.state || 'off';
-      // gate_on tells the frontend whether the pricing/checkout flow is live
-      // and whether feature endpoints are actually requiring Pro yet.
       const gateOn = flagState === 'on' || (flagState === 'preview' && _isSu(req));
       const isPro = accountId ? await _isProAccount(accountId) : false;
       const sub = (accountId && isPro) ? await db.getProSubscription(accountId).catch(() => null) : null;
@@ -4898,7 +4871,6 @@ NOTES
       if (!(await _flagOn('pro_tier', req))) return res.status(404).json({ error: 'Not found' });
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to upgrade.' });
-      // Idempotency: don't sell Pro to someone who's already Pro.
       if (await _isProAccount(accountId)) {
         return res.status(409).json({ error: 'You are already a Pro member.', is_pro: true });
       }
@@ -4944,10 +4916,6 @@ NOTES
     }
   });
 
-  // CSV export of the signed-in player's match history. Pro-gated so we
-  // don't give away bulk data scraping for free. Streams a deterministic
-  // header row + one row per match. Only the player's own matches are
-  // exported — :id must match the session.
   router.get('/players/:id/matches/export.csv', requirePro('csv_export'), async (req, res) => {
     try {
       const accountId = req.session?.accountId;

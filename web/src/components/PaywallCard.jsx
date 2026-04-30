@@ -10,6 +10,10 @@ const FEATURE_LABELS = {
   compare_players: 'Compare Players',
   player_benchmarks: 'Player Benchmarks',
   csv_export: 'CSV Export',
+  synergy_matrix: 'Synergy Matrix',
+  synergy_heatmap: 'Synergy Heatmap',
+  player_network: 'Player Network',
+  performance_trend: 'Performance Trend',
 };
 
 export default function PaywallCard({ feature, signedIn = null, compact = false, message }) {

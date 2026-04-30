@@ -10,7 +10,9 @@ import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import HeroIcon from '../components/HeroIcon';
 import ProBadge from '../components/ProBadge';
+import PaywallCard from '../components/PaywallCard';
 import useProMembers from '../hooks/useProMembers';
+import useProStatus from '../hooks/useProStatus';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -359,17 +361,22 @@ export default function PlayerProfile() {
   const [impactScore, setImpactScore] = useState(null);
   const [playerRank, setPlayerRank] = useState(null);
   const [loading, setLoading] = useState(true);
-  // 1.4 — Profile chart v2 timeseries (only fetched when viewing own profile + flag on)
   const [matchStatsHistory, setMatchStatsHistory] = useState([]);
+  const [trendPaywall, setTrendPaywall] = useState(null);
 
   useEffect(() => {
     if (!showProfileChartV2 || !isOwnProfile || !accountId) {
       setMatchStatsHistory([]);
+      setTrendPaywall(null);
       return;
     }
+    setTrendPaywall(null);
     getPlayerMatchStatsHistory(accountId, seasonId)
       .then(d => setMatchStatsHistory(d?.history || []))
-      .catch(() => setMatchStatsHistory([]));
+      .catch((err) => {
+        setMatchStatsHistory([]);
+        if (err && err.paywall) setTrendPaywall(err);
+      });
   }, [accountId, seasonId, showProfileChartV2, isOwnProfile]);
 
   useEffect(() => {
@@ -491,6 +498,38 @@ export default function PlayerProfile() {
             borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
           }}
         >🔗 Share</button>
+        <button
+          onClick={async () => {
+            try {
+              const res = await fetch(`/api/players/${accountId}/matches/export.csv${seasonId ? `?season_id=${seasonId}` : ''}`, { credentials: 'same-origin' });
+              if (res.status === 402) {
+                const body = await res.json().catch(() => ({}));
+                setTrendPaywall({ paywall: true, feature: body.feature || 'csv_export', signedIn: body.signed_in });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+              }
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `matches_${accountId}${seasonId ? `_s${seasonId}` : ''}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              alert(`Export failed: ${err.message}`);
+            }
+          }}
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+            borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          }}
+        >📥 Export CSV</button>
+        {trendPaywall && trendPaywall.feature === 'csv_export' && (
+          <PaywallCard feature="csv_export" signedIn={trendPaywall.signedIn} compact />
+        )}
         {showProfileCustomization && isOwnProfile && (
           <Link
             to="/settings/profile"
@@ -685,8 +724,10 @@ export default function PlayerProfile() {
 
       <ModifierHistoryChart history={modifierHistory} />
 
-      {/* 1.4 — Profile chart v2: per-match performance trend on own profile only */}
-      {showProfileChartV2 && isOwnProfile && matchStatsHistory.length >= 5 && (
+      {showProfileChartV2 && isOwnProfile && trendPaywall && (
+        <PaywallCard feature={trendPaywall.feature || 'performance_trend'} signedIn={trendPaywall.signedIn} />
+      )}
+      {showProfileChartV2 && isOwnProfile && !trendPaywall && matchStatsHistory.length >= 5 && (
         <ProfileChartV2 history={matchStatsHistory} />
       )}
 
