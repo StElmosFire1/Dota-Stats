@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getSynergyHeatmap, getEnemySynergyHeatmap } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import PaywallCard from '../components/PaywallCard';
 
 function getWinRateColor(winRate) {
   if (winRate == null) return 'transparent';
@@ -125,11 +126,13 @@ export default function Synergy() {
   const [enemyData, setEnemyData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tooltip, setTooltip] = useState(null);
+  const [paywall, setPaywall] = useState(null);
 
   useEffect(() => {
     setLoading(true);
     setTeammateData(null);
     setEnemyData(null);
+    setPaywall(null);
     Promise.all([
       getSynergyHeatmap(seasonId),
       getEnemySynergyHeatmap(seasonId),
@@ -138,11 +141,20 @@ export default function Synergy() {
         setTeammateData(tm);
         setEnemyData(en);
       })
-      .catch(console.error)
+      .catch((err) => {
+        if (err && err.paywall) setPaywall(err);
+        else console.error(err);
+      })
       .finally(() => setLoading(false));
   }, [seasonId]);
 
   if (loading) return <div className="loading">Loading synergy data...</div>;
+  if (paywall) return (
+    <div>
+      <h1 className="page-title">Player Synergy</h1>
+      <PaywallCard feature={paywall.feature || 'synergy_heatmap'} signedIn={paywall.signedIn} />
+    </div>
+  );
 
   const tabStyle = (active) => ({
     padding: '0.4rem 1.2rem',

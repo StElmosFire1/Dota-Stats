@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getSocialGraph, getPlayerConnections, getAllPlayers } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import PaywallCard from '../components/PaywallCard';
 
 function WinRateBar({ wins, games }) {
   const wr = games > 0 ? (wins / games) * 100 : 0;
@@ -23,14 +24,21 @@ function TopDuosTab() {
   const [minGames, setMinGames] = useState(3);
   const [sortField, setSortField] = useState('wr');
   const [sortDir, setSortDir] = useState(-1);
+  const [paywall, setPaywall] = useState(null);
 
   useEffect(() => {
     setLoading(true);
+    setPaywall(null);
     getSocialGraph(seasonId, minGames)
       .then(d => setDuos(d.duos || []))
-      .catch(() => setDuos([]))
+      .catch((err) => {
+        setDuos([]);
+        if (err && err.paywall) setPaywall(err);
+      })
       .finally(() => setLoading(false));
   }, [seasonId, minGames]);
+
+  if (paywall) return <PaywallCard feature={paywall.feature || 'player_network'} signedIn={paywall.signedIn} />;
 
   const handleSort = (f) => {
     if (sortField === f) setSortDir(d => -d);
@@ -124,6 +132,7 @@ function PlayerConnectionsTab() {
   const [loading, setLoading] = useState(false);
   const [playersLoading, setPlayersLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [paywall, setPaywall] = useState(null);
 
   useEffect(() => {
     setPlayersLoading(true);
@@ -136,11 +145,17 @@ function PlayerConnectionsTab() {
   useEffect(() => {
     if (!selectedId) return;
     setLoading(true);
+    setPaywall(null);
     getPlayerConnections(selectedId, seasonId)
       .then(d => setConnections(d))
-      .catch(() => setConnections(null))
+      .catch((err) => {
+        setConnections(null);
+        if (err && err.paywall) setPaywall(err);
+      })
       .finally(() => setLoading(false));
   }, [selectedId, seasonId]);
+
+  if (paywall) return <PaywallCard feature={paywall.feature || 'player_network'} signedIn={paywall.signedIn} />;
 
   const filteredPlayers = players.filter(p =>
     !search || (p.nickname || p.persona_name || '').toLowerCase().includes(search.toLowerCase())

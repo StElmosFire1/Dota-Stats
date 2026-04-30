@@ -688,7 +688,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.get('/social-graph', async (req, res) => {
+  router.get('/social-graph', requirePro('player_network'), async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
       const minGames = parseInt(req.query.min_games) || 3;
@@ -699,7 +699,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.get('/player-connections/:accountId', async (req, res) => {
+  router.get('/player-connections/:accountId', requirePro('player_network'), async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
       const data = await db.getPlayerConnections(req.params.accountId, seasonId);
@@ -1292,7 +1292,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.get('/synergy', async (req, res) => {
+  router.get('/synergy', requirePro('synergy_matrix'), async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
       const data = await db.getSynergyMatrix(seasonId);
@@ -1551,7 +1551,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.get('/synergy/heatmap', async (req, res) => {
+  router.get('/synergy/heatmap', requirePro('synergy_heatmap'), async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
       const data = await db.getSynergyHeatmap(seasonId);
@@ -2710,7 +2710,7 @@ NOTES
   // 1.4 — Profile chart v2 — per-match KDA / GPM / hero damage timeseries
   // for the new chart on the player's own profile. Gated client-side on
   // `profile_chart_v2`. Returns up to 100 most-recent matches.
-  router.get('/player/:id/match-stats-history', async (req, res) => {
+  router.get('/player/:id/match-stats-history', requirePro('performance_trend'), async (req, res) => {
     try {
       const seasonId = req.query.season || null;
       const history = await db.getPlayerMatchStatsHistory(req.params.id, seasonId);
@@ -4478,8 +4478,16 @@ NOTES
         });
       } catch (err) {
         console.error('[requirePro] error:', err.message);
-        // Fail-open: if our own check breaks, don't paywall the request.
-        return next();
+        // Fail-CLOSED: paid entitlement is an authorization boundary.
+        // If our own check breaks, deny the request rather than expose
+        // paid features. Frontend will render a "try again" message.
+        return res.status(503).json({
+          error: 'Entitlement check temporarily unavailable. Please try again in a moment.',
+          paywall: true,
+          feature: featureKey,
+          signed_in: Boolean(req.session?.accountId),
+          retryable: true,
+        });
       }
     };
   }

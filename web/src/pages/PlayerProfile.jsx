@@ -9,6 +9,8 @@ import { useSeason } from '../context/SeasonContext';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import HeroIcon from '../components/HeroIcon';
+import ProBadge from '../components/ProBadge';
+import useProMembers from '../hooks/useProMembers';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -427,6 +429,9 @@ export default function PlayerProfile() {
     }).catch(() => {});
   }, [accountId, seasonId]);
 
+  const proMembers = useProMembers();
+  const isPlayerPro = proMembers.has(String(accountId));
+
   if (loading) return <div className="loading">Loading player...</div>;
   if (!data) return <div className="error-state">Player not found</div>;
 
@@ -438,8 +443,6 @@ export default function PlayerProfile() {
     return { match_num: idx + 1, win_rate: Math.round((wins / slice.length) * 100) };
   });
   const displayName = nickname || rating?.display_name || `Player ${accountId}`;
-  const proMembers = useProMembers();
-  const isPlayerPro = proMembers.has(String(accountId));
 
   const totalMatches = averages ? parseInt(averages.total_matches) : 0;
   const totalKDA = averages && totalMatches > 0
