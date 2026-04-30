@@ -4624,6 +4624,119 @@ NOTES
     }
   });
 
+  // ---------- Profile customization ----------
+  // The Pro-tier check is a stub for now (no Pro tier is shipped yet) — it
+  // always returns false, so premium titles/themes are rejected with 403 if a
+  // client tries to bypass the locked UI. When Pro tier ships, replace the
+  // stub with the real check; the route shape doesn't need to change.
+  async function _isProAccount(_accountId) {
+    return false;
+  }
+
+  router.get('/me/profile', async (req, res) => {
+    try {
+      if (!(await _flagOn('profile_customization', req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const customization = await db.getPlayerProfileCustomization(accountId);
+      const isPro = await _isProAccount(accountId);
+      res.json({ customization: customization || null, is_pro: isPro });
+    } catch (err) {
+      console.error('[API] me/profile GET:', err.message);
+      res.status(500).json({ error: 'Failed to fetch profile customization' });
+    }
+  });
+
+  router.post('/me/profile', express.json(), async (req, res) => {
+    try {
+      if (!(await _flagOn('profile_customization', req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+
+      const cosm = require('../profileCosmetics');
+      const body = req.body || {};
+
+      // Normalize empty strings to null so they clear the field.
+      const norm = (v) => (v == null || v === '') ? null : v;
+      const bio = norm(body.bio);
+      const customTitle = norm(body.custom_title);
+      const themeAccent = norm(body.theme_accent);
+      const pinnedHeroIdRaw = body.pinned_hero_id;
+      const pinnedHeroCaption = norm(body.pinned_hero_caption);
+      const pinnedMatchIdRaw = body.pinned_match_id;
+
+      // Validate bio length.
+      if (bio != null && (typeof bio !== 'string' || bio.length > cosm.BIO_MAX)) {
+        return res.status(400).json({ error: `Bio must be a string of ≤${cosm.BIO_MAX} chars` });
+      }
+      if (pinnedHeroCaption != null && (typeof pinnedHeroCaption !== 'string' || pinnedHeroCaption.length > cosm.PINNED_HERO_CAPTION_MAX)) {
+        return res.status(400).json({ error: `Pinned hero caption must be ≤${cosm.PINNED_HERO_CAPTION_MAX} chars` });
+      }
+
+      // Validate title + theme against the catalogue (free + premium values).
+      if (!cosm.isValidTitle(customTitle)) {
+        return res.status(400).json({ error: 'Unknown custom title' });
+      }
+      if (!cosm.isValidTheme(themeAccent)) {
+        return res.status(400).json({ error: 'Unknown theme accent' });
+      }
+
+      // Premium gating — reject premium values if the player isn't Pro.
+      const isPro = await _isProAccount(accountId);
+      if (!isPro && cosm.isPremiumTitle(customTitle)) {
+        return res.status(403).json({ error: 'That title is reserved for Pro members' });
+      }
+      if (!isPro && cosm.isPremiumTheme(themeAccent)) {
+        return res.status(403).json({ error: 'That theme is reserved for Pro members' });
+      }
+
+      // Coerce numeric ids; null when blank/invalid.
+      const pinnedHeroId = pinnedHeroIdRaw == null || pinnedHeroIdRaw === ''
+        ? null
+        : (Number.isFinite(parseInt(pinnedHeroIdRaw, 10)) ? parseInt(pinnedHeroIdRaw, 10) : null);
+      const pinnedMatchId = pinnedMatchIdRaw == null || pinnedMatchIdRaw === ''
+        ? null
+        : (Number.isFinite(parseInt(pinnedMatchIdRaw, 10)) ? parseInt(pinnedMatchIdRaw, 10) : null);
+
+      // If a pinned match was supplied, confirm it belongs to this player.
+      if (pinnedMatchId != null) {
+        const owned = await db.getPool().query(
+          `SELECT 1 FROM player_stats WHERE match_id = $1 AND account_id = $2 LIMIT 1`,
+          [pinnedMatchId, accountId]
+        );
+        if (!owned.rows.length) {
+          return res.status(400).json({ error: 'Pinned match must be one you played in' });
+        }
+      }
+
+      const saved = await db.setPlayerProfileCustomization(accountId, {
+        bio,
+        custom_title: customTitle,
+        theme_accent: themeAccent,
+        pinned_hero_id: pinnedHeroId,
+        pinned_hero_caption: pinnedHeroCaption,
+        pinned_match_id: pinnedMatchId,
+      });
+      res.json({ ok: true, customization: saved, is_pro: isPro });
+    } catch (err) {
+      console.error('[API] me/profile POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/player/:id/profile-card', async (req, res) => {
+    try {
+      if (!(await _flagOn('profile_customization', req))) return res.status(404).json({ error: 'Not found' });
+      const card = await db.getPlayerProfileCard(req.params.id);
+      // Returning 200 + null lets the client render the page without a special
+      // not-customized branch — easier than treating "no customization" as 404.
+      res.json({ customization: card });
+    } catch (err) {
+      console.error('[API] player/:id/profile-card:', err.message);
+      res.status(500).json({ error: 'Failed to fetch profile card' });
+    }
+  });
+
   router.delete('/me/push/subscriptions', express.json(), async (req, res) => {
     try {
       if (!(await _flagOn('web_push', req))) return res.status(404).json({ error: 'Not found' });

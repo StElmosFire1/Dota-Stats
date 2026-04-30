@@ -6,7 +6,7 @@ import RankBadge, { MmrBadge } from '../components/RankBadge';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { useSeason } from '../context/SeasonContext';
-import { getHeroName } from '../heroNames';
+import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import HeroIcon from '../components/HeroIcon';
 import {
@@ -313,8 +313,18 @@ export default function PlayerProfile() {
   // Wave 2 / 3 flags
   const showSeasonPass = useFeatureFlag('season_pass_s10');
   const showMvpAttitude = useFeatureFlag('mvp_attitude_analytics');
+  const showProfileCustomization = useFeatureFlag('profile_customization');
   const [seasonPass, setSeasonPass] = useState(null);
   const [mvpTrends, setMvpTrends] = useState(null);
+  const [profileCard, setProfileCard] = useState(null);
+
+  useEffect(() => {
+    if (!showProfileCustomization || !accountId) { setProfileCard(null); return; }
+    fetch(`/api/player/${accountId}/profile-card`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setProfileCard(d?.customization || null))
+      .catch(() => setProfileCard(null));
+  }, [accountId, showProfileCustomization]);
 
   useEffect(() => {
     if (!showSeasonPass || !accountId) { setSeasonPass(null); return; }
@@ -475,7 +485,100 @@ export default function PlayerProfile() {
             borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
           }}
         >🔗 Share</button>
+        {showProfileCustomization && isOwnProfile && (
+          <Link
+            to="/settings/profile"
+            style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+              borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, textDecoration: 'none',
+            }}
+          >✏️ Edit Profile</Link>
+        )}
       </div>
+
+      {/* Profile customization (`profile_customization`) — title + bio under the
+          page header, plus pinned hero / pinned match cards. Theme accent is
+          painted as a left border on the bio block so it doesn't recolour the
+          rest of the page. */}
+      {showProfileCustomization && profileCard && (profileCard.custom_title || profileCard.bio || profileCard.pinned_hero_id || profileCard.pinned_match) && (
+        <div style={{ marginTop: 12, marginBottom: 16 }}>
+          {(profileCard.custom_title || profileCard.bio) && (
+            <div style={{
+              borderLeft: `3px solid ${profileCard.theme_accent || '#3b82f6'}`,
+              paddingLeft: 12, marginBottom: 12,
+            }}>
+              {profileCard.custom_title && (
+                <div style={{
+                  fontSize: 14, fontWeight: 700, letterSpacing: 0.5,
+                  color: profileCard.theme_accent || '#3b82f6', textTransform: 'uppercase',
+                }}>{profileCard.custom_title}</div>
+              )}
+              {profileCard.bio && (
+                <div style={{ fontSize: 14, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 2 }}>
+                  “{profileCard.bio}”
+                </div>
+              )}
+            </div>
+          )}
+          {(profileCard.pinned_hero_id || profileCard.pinned_match) && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {profileCard.pinned_hero_id && (
+                <div style={{
+                  display: 'flex', gap: 10, alignItems: 'center',
+                  padding: '6px 12px', borderRadius: 8,
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderLeft: `3px solid ${profileCard.theme_accent || '#3b82f6'}`,
+                }}>
+                  <img
+                    src={getHeroImageUrl(profileCard.pinned_hero_id)}
+                    alt=""
+                    style={{ width: 48, height: 27, borderRadius: 3, objectFit: 'cover' }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📌 Pinned hero</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{getHeroName(profileCard.pinned_hero_id) || `Hero #${profileCard.pinned_hero_id}`}</div>
+                    {profileCard.pinned_hero_caption && (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{profileCard.pinned_hero_caption}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {profileCard.pinned_match && (
+                <Link
+                  to={`/match/${profileCard.pinned_match.match_id}`}
+                  style={{
+                    display: 'flex', gap: 10, alignItems: 'center',
+                    padding: '6px 12px', borderRadius: 8,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderLeft: `3px solid ${profileCard.theme_accent || '#3b82f6'}`,
+                    textDecoration: 'none', color: 'inherit',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📌 Pinned match</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>
+                      #{profileCard.pinned_match.match_id}
+                      {profileCard.pinned_match.player_won != null && (
+                        <span style={{
+                          marginLeft: 8, fontSize: 11, padding: '1px 6px', borderRadius: 4,
+                          background: profileCard.pinned_match.player_won ? '#0f3a1f' : '#3a0f0f',
+                          color: profileCard.pinned_match.player_won ? '#22c55e' : '#ef4444',
+                        }}>{profileCard.pinned_match.player_won ? 'WIN' : 'LOSS'}</span>
+                      )}
+                    </div>
+                    {profileCard.pinned_match.kills != null && (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {profileCard.pinned_match.hero || `Hero #${profileCard.pinned_match.hero_id}`} • {profileCard.pinned_match.kills}/{profileCard.pinned_match.deaths}/{profileCard.pinned_match.assists}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {rating && (
         <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>

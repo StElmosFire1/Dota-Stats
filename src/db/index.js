@@ -800,9 +800,32 @@ async function init() {
          ('notification_prefs', 'off', 'Wave 2: Per-user opt-in for each notification category (post-match DMs, hot streaks, schedule reminders, etc.)'),
          ('tournament_live_v2', 'off', 'Wave 3: Tournament bracket live view — match-day scoreboard + auto-updating standings + prize distribution'),
          ('mvp_attitude_analytics', 'off', 'Wave 3: MVP rate + attitude trend analytics on player profiles'),
-         ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions')
+         ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions'),
+         ('profile_customization', 'off', 'Player-editable profile bio, custom title, theme accent, pinned hero + pinned match (free tier; premium cosmetics gated by Pro tier later)')
        ON CONFLICT (key) DO NOTHING`
     );
+
+    // Profile customization (`profile_customization`) — per-account cosmetic
+    // overrides that render on the public PlayerProfile page. Keyed by
+    // account_id (UNIQUE) so each player has at most one customization row.
+    // Premium values (custom_title, theme_accent) are validated against the
+    // shared cosmetics catalogue at write time; the gating itself happens in
+    // the route handler (Pro check), not in the schema.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS player_profiles (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL UNIQUE,
+        bio TEXT,
+        custom_title TEXT,
+        theme_accent TEXT,
+        pinned_hero_id INTEGER,
+        pinned_hero_caption TEXT,
+        pinned_match_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_player_profiles_account ON player_profiles (account_id)`);
 
     // Weekend / special event tournaments
     await p.query(`
@@ -7618,6 +7641,106 @@ async function touchPushSubscription(endpoint) {
   await p.query(`UPDATE web_push_subscriptions SET last_used_at = NOW() WHERE endpoint = $1`, [endpoint]);
 }
 
+// ---------- Profile customization (`profile_customization`) ----------
+// One row per account. Returns null when the player has never customized.
+async function getPlayerProfileCustomization(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, bio, custom_title, theme_accent,
+            pinned_hero_id, pinned_hero_caption, pinned_match_id,
+            created_at, updated_at
+       FROM player_profiles
+      WHERE account_id = $1`,
+    [accountId]
+  );
+  return r.rows[0] || null;
+}
+
+// Upsert. All fields are optional; pass null to clear an individual field.
+// The route handler validates premium-gated values BEFORE calling this.
+async function setPlayerProfileCustomization(accountId, fields = {}) {
+  if (!accountId) throw new Error('setPlayerProfileCustomization: account_id required');
+  const p = getPool();
+  const {
+    bio = null,
+    custom_title = null,
+    theme_accent = null,
+    pinned_hero_id = null,
+    pinned_hero_caption = null,
+    pinned_match_id = null,
+  } = fields;
+  const r = await p.query(
+    `INSERT INTO player_profiles
+       (account_id, bio, custom_title, theme_accent,
+        pinned_hero_id, pinned_hero_caption, pinned_match_id, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+     ON CONFLICT (account_id) DO UPDATE
+       SET bio = EXCLUDED.bio,
+           custom_title = EXCLUDED.custom_title,
+           theme_accent = EXCLUDED.theme_accent,
+           pinned_hero_id = EXCLUDED.pinned_hero_id,
+           pinned_hero_caption = EXCLUDED.pinned_hero_caption,
+           pinned_match_id = EXCLUDED.pinned_match_id,
+           updated_at = NOW()
+     RETURNING id, account_id, bio, custom_title, theme_accent,
+               pinned_hero_id, pinned_hero_caption, pinned_match_id,
+               created_at, updated_at`,
+    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id]
+  );
+  return r.rows[0];
+}
+
+// Public read for PlayerProfile rendering — denormalizes the pinned match
+// (winner + duration + start_time) and the player's row in that match (hero +
+// kills/deaths/assists) so the card can render without a second round trip.
+// Returns null if the player has never customized; safe to call without the
+// flag check (the route gates first).
+async function getPlayerProfileCard(accountId) {
+  const p = getPool();
+  const base = await getPlayerProfileCustomization(accountId);
+  if (!base) return null;
+
+  let pinnedMatch = null;
+  if (base.pinned_match_id) {
+    const mres = await p.query(
+      `SELECT m.match_id, m.radiant_win, m.duration, m.start_time
+         FROM matches m
+        WHERE m.match_id = $1`,
+      [base.pinned_match_id]
+    );
+    if (mres.rows[0]) {
+      const m = mres.rows[0];
+      // Pull the player's own row in that match for KDA + hero context.
+      const pres = await p.query(
+        `SELECT hero_id, hero, kills, deaths, assists, player_slot
+           FROM player_stats
+          WHERE match_id = $1 AND account_id = $2
+          LIMIT 1`,
+        [base.pinned_match_id, accountId]
+      );
+      const ps = pres.rows[0] || null;
+      const isRadiant = ps?.player_slot != null ? ps.player_slot < 128 : null;
+      pinnedMatch = {
+        match_id: m.match_id,
+        radiant_win: m.radiant_win,
+        duration: m.duration,
+        start_time: m.start_time,
+        player_won: isRadiant != null ? (isRadiant === m.radiant_win) : null,
+        hero_id: ps?.hero_id || null,
+        hero: ps?.hero || null,
+        kills: ps?.kills ?? null,
+        deaths: ps?.deaths ?? null,
+        assists: ps?.assists ?? null,
+      };
+    }
+  }
+
+  return {
+    ...base,
+    pinned_match: pinnedMatch,
+  };
+}
+
 module.exports = {
   init,
   getPool,
@@ -7754,6 +7877,9 @@ module.exports = {
   getTournamentLive,
   setTournamentPrizeSplit,
   getMvpAttitudeTrends,
+  getPlayerProfileCustomization,
+  setPlayerProfileCustomization,
+  getPlayerProfileCard,
   addPushSubscription,
   removePushSubscriptionByEndpoint,
   getPushSubscriptionsForAccount,
