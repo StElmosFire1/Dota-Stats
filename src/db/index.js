@@ -925,6 +925,7 @@ async function init() {
         currency TEXT NOT NULL DEFAULT 'aud',
         coach_confirmed_at TIMESTAMPTZ,
         student_confirmed_at TIMESTAMPTZ,
+        coach_arrived_at TIMESTAMPTZ,
         completed_at TIMESTAMPTZ,
         dispute_reason TEXT,
         disputed_at TIMESTAMPTZ,
@@ -934,6 +935,10 @@ async function init() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // Idempotent additive migration for environments where coaching_bookings
+    // was created in an earlier round without `coach_arrived_at`. Following
+    // the codebase's standard ADD COLUMN IF NOT EXISTS pattern.
+    await p.query(`ALTER TABLE coaching_bookings ADD COLUMN IF NOT EXISTS coach_arrived_at TIMESTAMPTZ`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_coach ON coaching_bookings (coach_account_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_student ON coaching_bookings (student_account_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_status ON coaching_bookings (status)`);
@@ -8427,15 +8432,41 @@ async function autoReleaseBooking(id) {
 async function raiseBookingDispute(id, reason) {
   if (!id) throw new Error('raiseBookingDispute: id required');
   const p = getPool();
+  // Disputes are only valid while funds are still held (status='paid' =
+  // authorized but not captured). Once the booking is 'completed' the funds
+  // have already been released to the coach via Stripe capture and the
+  // student must use Stripe's chargeback flow instead — admin re-capture
+  // would fail with `payment_intent_unexpected_state`. Locking the state
+  // machine here at the DB layer prevents that whole class of inconsistency.
   const r = await p.query(
     `UPDATE coaching_bookings
         SET status = 'disputed',
             dispute_reason = $2,
             disputed_at = NOW(),
             updated_at = NOW()
-      WHERE id = $1 AND status IN ('paid', 'completed')
+      WHERE id = $1 AND status = 'paid'
       RETURNING *`,
     [id, String(reason || '').slice(0, 1000)]
+  );
+  return r.rows[0] || null;
+}
+
+// Coach signals "I've arrived at the session" — locks out the student-side
+// no-show auto-refund. Idempotent: only the first call within the slot
+// window stamps the timestamp; subsequent calls return the same row.
+// Caller must verify `coachAccountId` matches the booking owner.
+async function markCoachArrived(bookingId, coachAccountId) {
+  if (!bookingId || !coachAccountId) {
+    throw new Error('markCoachArrived: bookingId + coachAccountId required');
+  }
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET coach_arrived_at = COALESCE(coach_arrived_at, NOW()),
+            updated_at = NOW()
+      WHERE id = $1 AND coach_account_id = $2 AND status = 'paid'
+      RETURNING *`,
+    [bookingId, coachAccountId]
   );
   return r.rows[0] || null;
 }
@@ -8530,6 +8561,26 @@ async function validateBookingSlot(coachAccountId, slotStartIso, durationMinutes
   const slotStart = new Date(slotStartIso);
   if (isNaN(slotStart.getTime())) return { ok: false, reason: 'invalid slot_start_at' };
   const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60_000);
+
+  // Booking horizon cap — Stripe authorization holds for manual-capture
+  // PaymentIntents expire after ~7 days for most card networks (some
+  // networks shorter). Because this implementation auths the card at
+  // checkout time and only captures post-session, allowing bookings further
+  // out than the auth window guarantees the capture call will fail with
+  // `payment_intent_unexpected_state`. We cap at 6 days to keep one full
+  // day of safety margin. Coaches can publish recurring weekly slots; the
+  // student just has to (re-)book within the 6-day window. This matches the
+  // pattern used by other Stripe-Connect marketplaces with manual capture.
+  const HORIZON_DAYS = 6;
+  if (slotStart.getTime() > Date.now() + HORIZON_DAYS * 86_400_000) {
+    return {
+      ok: false,
+      reason: `Bookings are limited to ${HORIZON_DAYS} days in advance (Stripe authorization holds expire after that). Please come back closer to the date.`,
+    };
+  }
+  if (slotStart.getTime() < Date.now()) {
+    return { ok: false, reason: 'Cannot book a slot in the past.' };
+  }
 
   const slots = await getCoachAvailability(coachAccountId);
   if (!slots.length) return { ok: false, reason: 'Coach has not published any availability slots.' };
@@ -8858,6 +8909,7 @@ module.exports = {
   markBookingPaidByIntent,
   confirmBookingSide,
   raiseBookingDispute,
+  markCoachArrived,
   markBookingRefunded,
   markBookingRefundedByIntent,
   listOpenDisputes,

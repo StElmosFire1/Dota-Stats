@@ -80,6 +80,13 @@ export default function MyBookings() {
       <td style={{ padding: 8 }}>
         {b.status === 'paid' && (
           <>
+            {mine === 'coach' && !b.coach_arrived_at && (
+              <button onClick={() => action(`/bookings/${b.id}/coach-arrived`)}
+                title="Locks out the student's no-show refund button. Click when you've shown up to the session."
+                style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer', marginRight: 6 }}>
+                ✓ Mark arrived
+              </button>
+            )}
             <button onClick={() => action(`/bookings/${b.id}/confirm-completion`)}
               style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--radiant-color)', color: '#fff', border: 0, cursor: 'pointer', marginRight: 6 }}>
               Mark completed
@@ -90,7 +97,7 @@ export default function MyBookings() {
                   const reason = prompt('Describe the issue:');
                   if (reason) action(`/bookings/${b.id}/dispute`, { reason });
                 }} style={{ padding: '4px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', marginRight: 6 }}>Dispute</button>
-                <button onClick={() => { if (confirm('Coach no-show? This will refund you.')) action(`/bookings/${b.id}/no-show-refund`); }}
+                <button onClick={() => { if (confirm('Coach no-show? This will refund you. (Available 10 minutes after slot start, only if the coach has not marked themselves arrived.)')) action(`/bookings/${b.id}/no-show-refund`); }}
                   style={{ padding: '4px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--dire-color)', color: 'var(--dire-color)', cursor: 'pointer' }}>No-show refund</button>
               </>
             )}

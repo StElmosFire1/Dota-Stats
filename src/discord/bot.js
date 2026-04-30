@@ -4215,6 +4215,7 @@ class DiscordBot {
               { account_id: b.student_account_id, name: coach.display_name || `Coach #${coach.id}` },
               { account_id: coach.account_id, name: b.student_name || `Player ${b.student_account_id}` },
             ];
+            const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
             for (const r of recipients) {
               const allowed = await db.isNotificationEnabled(r.account_id, 'coaching_session_reminder').catch(() => true);
               if (!allowed) continue;
@@ -4223,7 +4224,14 @@ class DiscordBot {
               const user = await this.client.users.fetch(discordId).catch(() => null);
               if (!user) continue;
               const when = new Date(b.slot_start_at).toLocaleString('en-AU', { timeZone: 'Australia/Sydney' });
-              await user.send(`⏰ Coaching session with **${r.name}** in ~1 hour (${when} Sydney). See you in Discord!`).catch(() => {});
+              // Coach gets an extra nudge to click "Mark arrived" — without
+              // it the student can unilaterally trigger no-show refund 10
+              // minutes after slot start.
+              const isCoach = String(r.account_id) === String(b.coach_account_id);
+              const extra = isCoach
+                ? `\n👉 When you join voice, click **✓ Mark arrived** on ${siteUrl}/me/bookings so the student can't accidentally trigger a no-show refund.`
+                : '';
+              await user.send(`⏰ Coaching session with **${r.name}** in ~1 hour (${when} Sydney). See you in Discord!${extra}`).catch(() => {});
             }
             await db.stampBookingReminderSent(b.id).catch(() => {});
           } catch (e) { console.warn(`[Coaching] reminder failed for booking ${b.id}:`, e.message); }

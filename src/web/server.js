@@ -5483,8 +5483,14 @@ NOTES
       if (String(booking.student_account_id) !== String(accountId)) {
         return res.status(403).json({ error: 'Only the student can raise a dispute' });
       }
-      if (!['paid', 'completed'].includes(booking.status)) {
-        return res.status(400).json({ error: `Cannot dispute a ${booking.status} booking` });
+      // Only `paid` (= held / authorized but not captured) bookings can be
+      // disputed. Once the booking is `completed` the funds have already
+      // been captured to the coach via Stripe; admin re-capture would fail
+      // and the dispute would enter an irrecoverable state. After capture,
+      // the student's recourse is Stripe's chargeback flow, not our admin
+      // panel. Db-layer also enforces this in raiseBookingDispute.
+      if (booking.status !== 'paid') {
+        return res.status(400).json({ error: `Cannot dispute a ${booking.status} booking. Disputes are only valid while funds are still held in escrow.` });
       }
       const slotEndMs = new Date(booking.slot_start_at).getTime() + (booking.duration_minutes * 60_000);
       if (Date.now() > slotEndMs + 48 * 3600_000) {
@@ -5517,8 +5523,23 @@ NOTES
       }
       if (booking.status !== 'paid') return res.status(400).json({ error: `Cannot refund a ${booking.status} booking` });
       const slotStartMs = new Date(booking.slot_start_at).getTime();
-      if (Date.now() < slotStartMs) {
-        return res.status(400).json({ error: 'Wait until the slot start time before requesting a no-show refund.' });
+      // 10-minute grace after slot start: gives the coach a window to click
+      // "Mark arrived" if they've shown up but the student is itching to
+      // refund. Without this grace, a student could one-click refund the
+      // instant the slot ticks over even if the coach is in voice ready to
+      // go. Combined with the `coach_arrived_at` lockout below, this stops
+      // the gameable auto-refund pattern flagged in code review.
+      const NO_SHOW_GRACE_MIN = 10;
+      const earliestRefundMs = slotStartMs + NO_SHOW_GRACE_MIN * 60_000;
+      if (Date.now() < earliestRefundMs) {
+        const minsLeft = Math.ceil((earliestRefundMs - Date.now()) / 60_000);
+        return res.status(400).json({ error: `No-show refund is available ${NO_SHOW_GRACE_MIN} minutes after the slot start (${minsLeft} min to go). Give the coach a chance to mark arrival.` });
+      }
+      // Hard block: if the coach has stamped arrival OR confirmed completion,
+      // they have asserted attendance. The student must use the dispute flow
+      // (admin-mediated) instead of unilateral refund.
+      if (booking.coach_arrived_at) {
+        return res.status(400).json({ error: 'Coach has marked themselves as arrived — raise a dispute instead if there is a problem.' });
       }
       if (booking.coach_confirmed_at) {
         return res.status(400).json({ error: 'Coach has confirmed attendance — raise a dispute instead.' });
@@ -5560,6 +5581,45 @@ NOTES
       res.json({ ok: true, booking: updated });
     } catch (err) {
       console.error('[API] bookings/:id/no-show-refund:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Coach-side arrival signal — locks out the student's unilateral no-show
+  // refund button. Without this, a student could one-click refund the
+  // moment the slot ticks over even if the coach is in voice ready to
+  // teach (since `coach_confirmed_at` is only set at session END via the
+  // Mark-completed flow). Allowed window: from 30 min BEFORE slot start
+  // up to slot END — outside that window the coach should use the regular
+  // confirm-completion flow instead. Idempotent: stamps coach_arrived_at
+  // only on first call, returns the same row on repeat.
+  router.post('/bookings/:id/coach-arrived', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const booking = await db.getBooking(parseInt(req.params.id));
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      if (String(booking.coach_account_id) !== String(accountId)) {
+        return res.status(403).json({ error: 'Only the coach can mark themselves as arrived' });
+      }
+      if (booking.status !== 'paid') {
+        return res.status(400).json({ error: `Cannot mark arrival on a ${booking.status} booking` });
+      }
+      const slotStartMs = new Date(booking.slot_start_at).getTime();
+      const slotEndMs = slotStartMs + booking.duration_minutes * 60_000;
+      const now = Date.now();
+      if (now < slotStartMs - 30 * 60_000) {
+        return res.status(400).json({ error: 'Mark-arrived opens 30 minutes before the slot start.' });
+      }
+      if (now > slotEndMs) {
+        return res.status(400).json({ error: 'Slot has already ended — use Mark-completed instead.' });
+      }
+      const updated = await db.markCoachArrived(booking.id, booking.coach_account_id);
+      if (!updated) return res.status(409).json({ error: 'Could not mark arrival (booking may have changed status).' });
+      res.json({ ok: true, booking: updated });
+    } catch (err) {
+      console.error('[API] bookings/:id/coach-arrived:', err.message);
       res.status(500).json({ error: err.message });
     }
   });
@@ -5760,18 +5820,55 @@ NOTES
       // coach's Connect balance via the original transfer_data). Only on a
       // successful capture do we flip the row to 'completed' so we never
       // mark the row settled when the money is still sitting at the issuer.
+      //
+      // Idempotency / race safety: `payment_intent_unexpected_state` is
+      // returned by Stripe for *several* reasons (already captured, already
+      // canceled, requires_action, etc) — treating it blindly as success
+      // would let a `canceled`/refunded PI flip our row to `completed` and
+      // double-pay the coach. So on that error code we EXPLICITLY retrieve
+      // the PI and only treat status='succeeded' as already-captured. Any
+      // other status (canceled, requires_action, requires_payment_method)
+      // returns 409 and we DON'T mutate the DB.
       try {
         await stripe.paymentIntents.capture(booking.stripe_payment_intent);
       } catch (e) {
-        console.error('[admin dispute resolve] stripe capture failed:', e.message);
-        return res.status(502).json({ error: `Stripe capture failed: ${e.message}` });
+        const code = e?.code || e?.raw?.code;
+        if (code !== 'payment_intent_unexpected_state') {
+          console.error('[admin dispute resolve] stripe capture failed:', e.message);
+          return res.status(502).json({ error: `Stripe capture failed: ${e.message}` });
+        }
+        try {
+          const pi = await stripe.paymentIntents.retrieve(booking.stripe_payment_intent);
+          if (pi?.status !== 'succeeded') {
+            console.warn(`[admin dispute resolve] PI ${booking.stripe_payment_intent} in unexpected state '${pi?.status}' — refusing to flip booking to completed.`);
+            return res.status(409).json({
+              error: `Cannot release: PaymentIntent is in state '${pi?.status}' (expected 'succeeded' for already-captured). The booking may have been refunded or canceled by another process — refresh and re-check.`,
+            });
+          }
+          console.warn(`[admin dispute resolve] PI ${booking.stripe_payment_intent} already captured (succeeded) — treating as success.`);
+        } catch (retrieveErr) {
+          console.error('[admin dispute resolve] PI retrieve failed:', retrieveErr.message);
+          return res.status(502).json({ error: `Could not verify PI state after capture conflict: ${retrieveErr.message}` });
+        }
       }
+      // Transition-guarded UPDATE — only flip to 'completed' if the row is
+      // still 'disputed'. Stops a stale/concurrent admin click (or a webhook
+      // race) from overwriting a later 'refunded' state. If the row has
+      // already moved on, we return 409 so the admin re-fetches before
+      // acting again.
       const p = db.getPool();
       const r = await p.query(
-        `UPDATE coaching_bookings SET status = 'completed', completed_at = NOW(), updated_at = NOW()
-          WHERE id = $1 RETURNING *`,
+        `UPDATE coaching_bookings
+            SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+          WHERE id = $1 AND status = 'disputed'
+          RETURNING *`,
         [booking.id]
       );
+      if (!r.rows.length) {
+        return res.status(409).json({
+          error: 'Booking is no longer in disputed state — another admin action may have resolved it. Refresh the dashboard to see the current status.',
+        });
+      }
       res.json({ ok: true, booking: r.rows[0], resolution });
     } catch (err) {
       console.error('[API] admin/coaching/dispute/:id/resolve:', err.message);
