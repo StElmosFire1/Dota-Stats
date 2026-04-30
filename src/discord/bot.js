@@ -3047,6 +3047,10 @@ class DiscordBot {
         const optedIn = await db.getPlayerReportCardOptOut(reg.discord_id).catch(() => false);
         if (!optedIn) continue;
 
+        // Wave 2 F4 — per-category notification preference gate.
+        const allowed = await db.isNotificationEnabled(reg.account_id_32, 'post_match_dm').catch(() => true);
+        if (!allowed) continue;
+
         const user = await this.client.users.fetch(reg.discord_id).catch(() => null);
         if (!user) continue;
 
@@ -3323,6 +3327,10 @@ class DiscordBot {
         const optedOut = await db.getPlayerRatingsOptOut(rater.discord_id).catch(() => false);
         if (optedOut) continue;
 
+        // Wave 2 F4 — gate MVP/attitude DM on notification prefs (mvp_vote category covers both steps).
+        const ratingsAllowed = await db.isNotificationEnabled(rater.account_id, 'mvp_vote').catch(() => true);
+        if (!ratingsAllowed) continue;
+
         const allOthers = players.filter(p => p.account_id !== rater.account_id);
         if (allOthers.length === 0) continue;
 
@@ -3397,6 +3405,15 @@ class DiscordBot {
 
       // Attitude step: only rate own team
       const ownTeam = session.teammates.filter(p => p.team === session.raterTeam);
+
+      // Wave 2 F4 — gate the attitude DM step on the separate `attitude_vote` category.
+      // If the player has opted out of attitude prompts only, end the session after MVP.
+      const attitudeAllowed = await db.isNotificationEnabled(session.raterAccountId, 'attitude_vote').catch(() => true);
+      if (!attitudeAllowed || ownTeam.length === 0) {
+        this.pendingRatingSessions.delete(msg.author.id);
+        return;
+      }
+
       session.step = 'attitude';
       session.attitudePlayers = ownTeam;
       this.pendingRatingSessions.set(msg.author.id, session);
@@ -3649,6 +3666,12 @@ class DiscordBot {
         const discordIn = rsvps.filter(r => r.status === 'yes' && !r.discord_id.startsWith('web:'));
         for (const rsvp of discordIn) {
           try {
+            // Wave 2 F4 — gate schedule reminder DM on notification prefs.
+            const reg = await db.getPlayerByDiscordId(rsvp.discord_id).catch(() => null);
+            if (reg?.account_id_32) {
+              const allowed = await db.isNotificationEnabled(reg.account_id_32, 'schedule_reminder').catch(() => true);
+              if (!allowed) continue;
+            }
             const user = await this.client.users.fetch(rsvp.discord_id).catch(() => null);
             if (!user) continue;
             await user.send(

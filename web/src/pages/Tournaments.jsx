@@ -8,6 +8,7 @@ import {
 } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
+import { useFeatureFlag } from '../context/FeatureFlagsContext';
 
 const STATUS_LABELS = { upcoming: '⏳ Upcoming', active: '🏆 Active', completed: '✅ Completed' };
 const STATUS_COLORS = { upcoming: 'var(--text-muted)', active: 'var(--accent-gold, #f59e0b)', completed: 'var(--radiant-color)' };
@@ -251,6 +252,8 @@ function TournamentDetail() {
           {tournament.description && <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: 14 }}>{tournament.description}</p>}
         </div>
       </div>
+
+      <TournamentLivePanel tournamentId={id} />
 
       {isAdmin && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -610,6 +613,70 @@ function TournamentList() {
         })}
       </div>
     </div>
+  );
+}
+
+function TournamentLivePanel({ tournamentId }) {
+  const enabled = useFeatureFlag('tournament_live_v2');
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    if (!enabled || !tournamentId) return undefined;
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/tournaments/${tournamentId}/live`);
+        if (!res.ok) return;
+        const d = await res.json();
+        if (!cancelled) setData(d);
+      } catch {}
+    }
+    load();
+    const t = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [enabled, tournamentId]);
+
+  if (!enabled || !data) return null;
+  const split = Array.isArray(data.prize_split) ? data.prize_split : [50, 30, 20];
+  const pool = Number(data.prize_pool || 0);
+  const recent = Array.isArray(data.recent_matches) ? data.recent_matches : [];
+
+  return (
+    <section style={{ marginBottom: 20, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+      <h2 className="section-title" style={{ marginTop: 0 }}>📡 Live</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="stat-card">
+          <div className="stat-value">${pool.toFixed(2)}</div>
+          <div className="stat-label">Prize Pool</div>
+        </div>
+        {split.map((pct, i) => (
+          <div className="stat-card" key={i}>
+            <div className="stat-value">${(pool * pct / 100).toFixed(2)}</div>
+            <div className="stat-label">{i === 0 ? '🥇 1st' : i === 1 ? '🥈 2nd' : i === 2 ? '🥉 3rd' : `#${i + 1}`} ({pct}%)</div>
+          </div>
+        ))}
+      </div>
+      <h3 style={{ margin: '12px 0 6px', fontSize: 14, color: 'var(--text-muted)' }}>Recent matches ({recent.length})</h3>
+      {recent.length === 0 ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No matches recorded yet.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {recent.slice(0, 8).map(m => (
+            <Link key={m.match_id} to={`/match/${m.match_id}`} style={{
+              display: 'flex', justifyContent: 'space-between', padding: '8px 12px',
+              background: 'var(--bg-hover)', borderRadius: 6, textDecoration: 'none', color: 'inherit',
+            }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 13 }}>#{m.match_id}</span>
+              <span style={{ fontSize: 13 }}>{m.radiant_win ? 'Radiant Win' : 'Dire Win'}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {m.match_date ? new Date(m.match_date).toLocaleString() : ''}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>Auto-refreshes every 30 seconds.</div>
+    </section>
   );
 }
 

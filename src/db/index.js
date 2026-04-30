@@ -793,7 +793,14 @@ async function init() {
          ('multi_tier_seasons', 'off', 'Season tiers system — separate leaderboards/prize pools/brackets per tier (Tier 1 Immortal, Tier 2 Divine+Ancient, Tier 3 Legend and below)'),
          ('tournament_self_signup', 'off', 'Per-tournament Stripe buy-ins with self-service signup and eligibility checks'),
          ('new_rank_theme', 'off', 'New 8-tier rank badge theme using inhouse TrueSkill MMR (replaces Dota medal display)'),
-         ('welcome_modal_s10', 'off', 'One-shot Season 10 welcome modal shown post-launch')
+         ('welcome_modal_s10', 'off', 'One-shot Season 10 welcome modal shown post-launch'),
+         ('hero_meta_v2', 'off', 'Wave 2: Hero analytics overhaul — position-specific WR, pick frequency by tier, best counters'),
+         ('draft_assistant_v2', 'off', 'Wave 2: Live counter-pick + synergy suggestions during the captain draft phase'),
+         ('season_pass_s10', 'off', 'Wave 2: Season Pass — XP from games (win/loss/MVP/streak), tier rewards, progression bar'),
+         ('notification_prefs', 'off', 'Wave 2: Per-user opt-in for each notification category (post-match DMs, hot streaks, schedule reminders, etc.)'),
+         ('tournament_live_v2', 'off', 'Wave 3: Tournament bracket live view — match-day scoreboard + auto-updating standings + prize distribution'),
+         ('mvp_attitude_analytics', 'off', 'Wave 3: MVP rate + attitude trend analytics on player profiles'),
+         ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -856,6 +863,63 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_session_players_session ON inhouse_session_players (session_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_sessions_status ON inhouse_sessions (status)`);
+
+    // ===== Wave 2 / 3 schema =====
+    // F3 — Season Pass: per-event XP ledger. account_id + season_number +
+    // match_id + source must be unique so re-running the post-match grant
+    // is idempotent (ON CONFLICT DO NOTHING in awardSeasonPassXp).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_pass_xp_events (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        season_number INTEGER NOT NULL,
+        match_id VARCHAR(50),
+        source TEXT NOT NULL,
+        xp_delta INTEGER NOT NULL,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (account_id, season_number, match_id, source)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_spxp_account_season ON season_pass_xp_events (account_id, season_number)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_spxp_season ON season_pass_xp_events (season_number)`);
+
+    // F4 — Notification preferences: per (account_id, category) toggle.
+    // Default is "enabled" if no row exists, so the table only stores
+    // explicit opt-outs / re-enables.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS notification_prefs (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        category TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (account_id, category)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_notif_prefs_account ON notification_prefs (account_id)`);
+
+    // F7 — Web push subscriptions: one row per (account_id, endpoint).
+    // Endpoint is unique across the whole table because a single push
+    // endpoint identifies a single browser install.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        user_agent TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_web_push_account ON web_push_subscriptions (account_id)`);
+
+    // F5 — Tournament prize-split (top 1/2/3 default 50/30/20). JSONB so
+    // future tournaments can configure 4-place / 5-place splits without a
+    // schema change.
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS prize_split JSONB DEFAULT '[50,30,20]'::jsonb`);
 
     console.log('[DB] Schema migrations applied.');
     return true;
@@ -1447,6 +1511,19 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
 
     await client.query('COMMIT');
     console.log(`[DB] Recorded match ${matchStats.matchId}`);
+
+    // Wave 2 F3 — grant Season Pass XP (win/loss/hot-streak) for every player.
+    // Idempotent (UNIQUE constraint), gated only by the season being known.
+    // Failures here must NOT roll back the recorded match — XP is best-effort.
+    if (seasonId) {
+      try {
+        const r = await grantSeasonPassXpForMatch(matchStats.matchId, seasonId);
+        if (r.granted > 0) console.log(`[SeasonPass] match ${matchStats.matchId}: ${r.granted} XP events granted`);
+      } catch (e) {
+        console.warn(`[SeasonPass] grant failed for match ${matchStats.matchId}: ${e.message}`);
+      }
+    }
+
     return matchStats.matchId;
   } catch (err) {
     await client.query('ROLLBACK');
@@ -3175,6 +3252,19 @@ async function saveMatchRating(matchId, raterAccountId, ratedAccountId, attitude
      DO UPDATE SET attitude_score = $4, is_mvp_vote = $5`,
     [matchId, raterAccountId, ratedAccountId, attitudeScore || null, isMvpVote || false]
   );
+
+  // Wave 2 F3 — best-effort MVP XP grant on every MVP vote save. Idempotent
+  // (UNIQUE on account_id+season+match+source). If MVP later flips to a
+  // different player they also get XP — that's intentionally generous.
+  if (isMvpVote) {
+    try {
+      const mr = await p.query(`SELECT season_id FROM matches WHERE match_id = $1`, [matchId]);
+      const sid = mr.rows[0]?.season_id;
+      if (sid) await grantSeasonPassXpForMatchMvp(matchId, sid);
+    } catch (e) {
+      console.warn(`[SeasonPass] MVP grant failed for match ${matchId}: ${e.message}`);
+    }
+  }
 }
 
 async function getMatchRaterIds(matchId) {
@@ -6755,6 +6845,779 @@ async function assignInhouseTeams(sessionId, assignments) {
   }
 }
 
+// =====================================================================
+// Wave 2 / 3 helpers — F1 hero_meta_v2, F2 draft_assistant_v2,
+// F3 season_pass_s10, F4 notification_prefs, F5 tournament_live_v2,
+// F6 mvp_attitude_analytics, F7 web_push.
+// All preview-flag-gated at the route layer.
+// =====================================================================
+
+// ---------- F1: Hero Meta V2 ----------
+// Returns one row per hero with overall pick/win counts plus a per-position
+// breakdown (positions 1..5) and a per-tier pick distribution. Optional
+// `tier` filter narrows by season_tier_players.tier_number for the given
+// season; `season` narrows by matches.season_id (pass null to use all
+// non-legacy matches). Result is suitable for a "hero meta" overview panel
+// or a per-hero detail panel (clients can pull the relevant row).
+async function getHeroMetaV2({ tier = null, season = null } = {}) {
+  const p = getPool();
+  const params = [];
+  let matchSc;
+  if (!season) matchSc = ' AND m.is_legacy = false';
+  else if (season === 'legacy') matchSc = ' AND m.is_legacy = true';
+  else { params.push(parseInt(season)); matchSc = ` AND m.season_id = $${params.length}`; }
+
+  // Tier filter joins season_tier_players on the player + season. When
+  // tier is provided we must also know which season's tier placement to
+  // use — we use the match's season unless caller passed a season.
+  let tierJoin = '';
+  let tierWhere = '';
+  if (tier !== null && tier !== undefined && tier !== '') {
+    params.push(parseInt(tier));
+    tierWhere = ` AND stp.tier_number = $${params.length}`;
+    tierJoin = ` LEFT JOIN season_tier_players stp
+                   ON stp.account_id = ps.account_id
+                  AND stp.season_id = m.season_id`;
+  }
+
+  // Overall row per hero
+  const overall = await p.query(`
+    SELECT ps.hero_id,
+           MIN(ps.hero_name) AS hero_name,
+           COUNT(*)::int AS picks,
+           SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    ${tierJoin}
+    WHERE ps.hero_id > 0 ${matchSc} ${tierWhere}
+    GROUP BY ps.hero_id
+    HAVING COUNT(*) >= 1
+    ORDER BY picks DESC
+  `, params);
+
+  // Per-position breakdown
+  const byPos = await p.query(`
+    SELECT ps.hero_id, ps.position::int AS position,
+           COUNT(*)::int AS picks,
+           SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    ${tierJoin}
+    WHERE ps.hero_id > 0 AND ps.position BETWEEN 1 AND 5 ${matchSc} ${tierWhere}
+    GROUP BY ps.hero_id, ps.position
+  `, params);
+
+  // Per-tier breakdown (always — we ignore the tier filter here so the
+  // panel can show "this hero is most picked by Tier 2 players" even when
+  // the user is filtering to a specific tier elsewhere).
+  const tierParams = [];
+  let tierMatchSc;
+  if (!season) tierMatchSc = ' AND m.is_legacy = false';
+  else if (season === 'legacy') tierMatchSc = ' AND m.is_legacy = true';
+  else { tierParams.push(parseInt(season)); tierMatchSc = ` AND m.season_id = $${tierParams.length}`; }
+
+  const byTier = await p.query(`
+    SELECT ps.hero_id, stp.tier_number::int AS tier_number,
+           COUNT(*)::int AS picks,
+           SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    JOIN season_tier_players stp
+      ON stp.account_id = ps.account_id
+     AND stp.season_id = m.season_id
+    WHERE ps.hero_id > 0 ${tierMatchSc}
+    GROUP BY ps.hero_id, stp.tier_number
+  `, tierParams);
+
+  // Per-hero counter: opponent heroes faced, sorted by their WR against us.
+  // Limited to a top-5 list per hero to keep the payload small.
+  const counters = await p.query(`
+    SELECT ps_us.hero_id AS hero_id,
+           ps_them.hero_id AS opp_hero_id,
+           MIN(ps_them.hero_name) AS opp_hero_name,
+           COUNT(*)::int AS games,
+           SUM(CASE WHEN (ps_them.team='radiant' AND m.radiant_win) OR (ps_them.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS opp_wins
+    FROM player_stats ps_us
+    JOIN player_stats ps_them ON ps_them.match_id = ps_us.match_id AND ps_them.team != ps_us.team
+    JOIN matches m ON m.match_id = ps_us.match_id
+    WHERE ps_us.hero_id > 0 AND ps_them.hero_id > 0 ${tierMatchSc}
+    GROUP BY ps_us.hero_id, ps_them.hero_id
+    HAVING COUNT(*) >= 3
+  `, tierParams);
+
+  const byHero = new Map();
+  for (const row of overall.rows) {
+    byHero.set(row.hero_id, {
+      hero_id: row.hero_id,
+      hero_name: row.hero_name,
+      picks: row.picks,
+      wins: row.wins,
+      win_rate: row.picks > 0 ? row.wins / row.picks : 0,
+      by_position: [],
+      by_tier: [],
+      worst_matchups: [],
+      // UI-friendly: { 1..5 -> win_rate } populated below
+      lane_wr: {},
+      lane_picks: {},
+    });
+  }
+  for (const row of byPos.rows) {
+    const h = byHero.get(row.hero_id); if (!h) continue;
+    const wr = row.picks > 0 ? row.wins / row.picks : 0;
+    h.by_position.push({
+      position: row.position, picks: row.picks, wins: row.wins,
+      win_rate: wr,
+    });
+    h.lane_wr[row.position] = wr;
+    h.lane_picks[row.position] = row.picks;
+  }
+  for (const row of byTier.rows) {
+    const h = byHero.get(row.hero_id); if (!h) continue;
+    h.by_tier.push({
+      tier_number: row.tier_number, picks: row.picks, wins: row.wins,
+      win_rate: row.picks > 0 ? row.wins / row.picks : 0,
+    });
+  }
+  // Sort + truncate counters per hero to top 5 worst matchups for that hero.
+  const counterByHero = new Map();
+  for (const row of counters.rows) {
+    if (!counterByHero.has(row.hero_id)) counterByHero.set(row.hero_id, []);
+    counterByHero.get(row.hero_id).push({
+      opp_hero_id: row.opp_hero_id,
+      opp_hero_name: row.opp_hero_name,
+      games: row.games,
+      opp_win_rate: row.games > 0 ? row.opp_wins / row.games : 0,
+    });
+  }
+  for (const [heroId, list] of counterByHero) {
+    list.sort((a, b) => b.opp_win_rate - a.opp_win_rate);
+    const h = byHero.get(heroId);
+    if (h) h.worst_matchups = list.slice(0, 5);
+  }
+
+  return Array.from(byHero.values()).sort((a, b) => b.picks - a.picks);
+}
+
+// ---------- F2: Draft Assistant V2 ----------
+// Returns suggestions with a per-pick breakdown:
+//   {hero_id, hero_name, score, base_wr, synergy: [{ally_hero_id, win_rate, games}],
+//    counter: [{enemy_hero_id, opp_win_rate, games}]}
+// `side` is 'radiant'|'dire' — used to weight base WR by side advantage.
+// Score = 0.4 * base_wr + 0.35 * avg(synergy) + 0.25 * (1 - avg(opp_win_rate)).
+async function getDraftSuggestionsV2({ allies = [], enemies = [], banned = [], side = null, season = null } = {}) {
+  const p = getPool();
+  const excluded = [...allies, ...enemies, ...banned].filter(Boolean);
+  const params = [];
+  let sc;
+  if (!season) sc = ' AND m.is_legacy = false';
+  else if (season === 'legacy') sc = ' AND m.is_legacy = true';
+  else { params.push(parseInt(season)); sc = ` AND m.season_id = $${params.length}`; }
+
+  // Base WR per hero (overall).
+  const baseRes = await p.query(`
+    SELECT ps.hero_id, MIN(ps.hero_name) AS hero_name,
+           COUNT(*)::int AS games,
+           SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.hero_id > 0 ${excluded.length ? ` AND ps.hero_id != ALL($${params.push(excluded)})` : ''} ${sc}
+    GROUP BY ps.hero_id
+    HAVING COUNT(*) >= 3
+  `, params);
+
+  // Synergy with each ally hero
+  const synergyByPair = new Map(); // key `${candidate}-${ally}` -> {games, wins}
+  for (const allyId of allies) {
+    const ap = [allyId];
+    let asc;
+    if (!season) asc = ' AND m.is_legacy = false';
+    else if (season === 'legacy') asc = ' AND m.is_legacy = true';
+    else { ap.push(parseInt(season)); asc = ` AND m.season_id = $${ap.length}`; }
+    const r = await p.query(`
+      SELECT ps.hero_id,
+             COUNT(*)::int AS games,
+             SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id > 0
+        AND EXISTS (SELECT 1 FROM player_stats ps2
+                     WHERE ps2.match_id = ps.match_id AND ps2.team = ps.team AND ps2.hero_id = $1) ${asc}
+      GROUP BY ps.hero_id
+      HAVING COUNT(*) >= 1
+    `, ap);
+    for (const row of r.rows) {
+      synergyByPair.set(`${row.hero_id}-${allyId}`, { games: row.games, wins: row.wins });
+    }
+  }
+
+  // Counter against each enemy hero (we want enemy WIN rate vs candidate — lower is better for us)
+  const counterByPair = new Map(); // key `${candidate}-${enemy}` -> {games, opp_wins}
+  for (const enemyId of enemies) {
+    const ep = [enemyId];
+    let esc;
+    if (!season) esc = ' AND m.is_legacy = false';
+    else if (season === 'legacy') esc = ' AND m.is_legacy = true';
+    else { ep.push(parseInt(season)); esc = ` AND m.season_id = $${ep.length}`; }
+    const r = await p.query(`
+      SELECT ps.hero_id,
+             COUNT(*)::int AS games,
+             SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins,
+             SUM(CASE WHEN (ps.team='radiant' AND NOT m.radiant_win) OR (ps.team='dire' AND m.radiant_win) THEN 1 ELSE 0 END)::int AS losses
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id > 0
+        AND EXISTS (SELECT 1 FROM player_stats ps2
+                     WHERE ps2.match_id = ps.match_id AND ps2.team != ps.team AND ps2.hero_id = $1) ${esc}
+      GROUP BY ps.hero_id
+      HAVING COUNT(*) >= 1
+    `, ep);
+    for (const row of r.rows) {
+      // opp_win_rate from candidate's perspective = losses / games
+      counterByPair.set(`${row.hero_id}-${enemyId}`, { games: row.games, opp_wins: row.losses });
+    }
+  }
+
+  return baseRes.rows.map(r => {
+    const candidateId = r.hero_id;
+    const games = r.games;
+    const wins = r.wins;
+    const baseWr = games > 0 ? wins / games : 0.5;
+
+    const synergy = allies.map(a => {
+      const v = synergyByPair.get(`${candidateId}-${a}`) || { games: 0, wins: 0 };
+      return {
+        ally_hero_id: a,
+        games: v.games,
+        win_rate: v.games > 0 ? v.wins / v.games : baseWr,
+      };
+    });
+    const counter = enemies.map(e => {
+      const v = counterByPair.get(`${candidateId}-${e}`) || { games: 0, opp_wins: 0 };
+      return {
+        enemy_hero_id: e,
+        games: v.games,
+        opp_win_rate: v.games > 0 ? v.opp_wins / v.games : 0.5,
+      };
+    });
+    const avgSyn = synergy.length > 0
+      ? synergy.reduce((s, x) => s + x.win_rate, 0) / synergy.length : baseWr;
+    const avgCtr = counter.length > 0
+      ? counter.reduce((s, x) => s + x.opp_win_rate, 0) / counter.length : 0.5;
+    const score = 0.4 * baseWr + 0.35 * avgSyn + 0.25 * (1 - avgCtr);
+
+    return {
+      hero_id: candidateId,
+      hero_name: r.hero_name,
+      games,
+      wins,
+      base_wr: baseWr,
+      avg_synergy_wr: avgSyn,
+      avg_counter_opp_wr: avgCtr,
+      score,
+      synergy,
+      counter,
+    };
+  }).sort((a, b) => b.score - a.score).slice(0, 30);
+}
+
+// ---------- F3: Season Pass ----------
+const SEASON_PASS_TIERS = [
+  { name: 'Bronze',   min_xp: 0 },
+  { name: 'Silver',   min_xp: 100 },
+  { name: 'Gold',     min_xp: 300 },
+  { name: 'Platinum', min_xp: 700 },
+  { name: 'Diamond',  min_xp: 1500 },
+  { name: 'Master',   min_xp: 3000 },
+];
+const SEASON_PASS_XP = {
+  win: 30,
+  loss: 10,
+  mvp: 20,
+  hot_streak_5: 50,
+  hot_streak_10: 100,
+};
+
+function _seasonPassTierFor(xp) {
+  let current = SEASON_PASS_TIERS[0];
+  let next = null;
+  for (let i = 0; i < SEASON_PASS_TIERS.length; i++) {
+    if (xp >= SEASON_PASS_TIERS[i].min_xp) {
+      current = SEASON_PASS_TIERS[i];
+      next = SEASON_PASS_TIERS[i + 1] || null;
+    }
+  }
+  const tierStart = current.min_xp;
+  const tierEnd = next ? next.min_xp : current.min_xp;
+  const span = Math.max(tierEnd - tierStart, 1);
+  const into = Math.max(xp - tierStart, 0);
+  return {
+    tier_name: current.name,
+    tier_min_xp: tierStart,
+    next_tier_name: next ? next.name : null,
+    next_tier_min_xp: next ? next.min_xp : null,
+    progress_pct: next ? Math.min(100, Math.round((into / span) * 100)) : 100,
+    xp_into_tier: into,
+    xp_to_next: next ? Math.max(0, next.min_xp - xp) : 0,
+  };
+}
+
+async function awardSeasonPassXp({ accountId, seasonNumber, matchId, source, xpDelta, notes = null }) {
+  if (!accountId || !seasonNumber || !source || typeof xpDelta !== 'number') return false;
+  const p = getPool();
+  // Idempotent insert via UNIQUE (account_id, season_number, match_id, source).
+  // matchId may be null for non-match XP sources (none currently, but reserved).
+  const r = await p.query(
+    `INSERT INTO season_pass_xp_events (account_id, season_number, match_id, source, xp_delta, notes)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (account_id, season_number, match_id, source) DO NOTHING
+     RETURNING id`,
+    [accountId, seasonNumber, matchId || null, source, xpDelta, notes]
+  );
+  return r.rowCount > 0;
+}
+
+// Grant win/loss + hot-streak XP for every player in a freshly-recorded match.
+// Hot streaks are awarded when the player's rolling win streak reaches a
+// 5- or 10-game threshold for the first time in this season (idempotent
+// via UNIQUE constraint on source).
+async function grantSeasonPassXpForMatch(matchId, seasonId) {
+  if (!matchId || !seasonId) return { granted: 0 };
+  const p = getPool();
+  const psRes = await p.query(`
+    SELECT ps.account_id, ps.team, m.radiant_win
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.match_id = $1 AND ps.account_id != 0
+  `, [matchId]);
+
+  let granted = 0;
+  for (const row of psRes.rows) {
+    const won = (row.team === 'radiant') === row.radiant_win;
+    const src = won ? 'win' : 'loss';
+    const xp = won ? SEASON_PASS_XP.win : SEASON_PASS_XP.loss;
+    if (await awardSeasonPassXp({ accountId: row.account_id, seasonNumber: seasonId, matchId, source: src, xpDelta: xp })) granted++;
+
+    if (won) {
+      try {
+        const streak = await getPlayerCurrentStreak([row.account_id]);
+        // Only fire once per match for the first time the streak hits each milestone.
+        // Idempotency comes from the UNIQUE (account_id, season, match_id, source) constraint
+        // — if streak hits 7 then 8, hot_streak_5 was already inserted for the *match where it
+        // first hit 5*, not this match. So we only grant when streak === 5 or === 10 exactly.
+        if (streak === 5) {
+          if (await awardSeasonPassXp({ accountId: row.account_id, seasonNumber: seasonId, matchId, source: 'hot_streak_5', xpDelta: SEASON_PASS_XP.hot_streak_5 })) granted++;
+        } else if (streak === 10) {
+          if (await awardSeasonPassXp({ accountId: row.account_id, seasonNumber: seasonId, matchId, source: 'hot_streak_10', xpDelta: SEASON_PASS_XP.hot_streak_10 })) granted++;
+        }
+      } catch (e) {
+        // Streak detection is best-effort — never block XP grant on it.
+      }
+    }
+  }
+  return { granted };
+}
+
+// Grant MVP XP for the current MVP of a match (whoever has the most votes).
+// Called from saveMatchRating after each MVP vote insert; idempotent.
+async function grantSeasonPassXpForMatchMvp(matchId, seasonId) {
+  if (!matchId || !seasonId) return false;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT rated_account_id
+       FROM match_ratings
+      WHERE match_id = $1 AND is_mvp_vote = TRUE AND rated_account_id IS NOT NULL
+      GROUP BY rated_account_id
+      ORDER BY COUNT(*) DESC, rated_account_id ASC
+      LIMIT 1`,
+    [matchId]
+  );
+  if (!r.rows[0]) return false;
+  return await awardSeasonPassXp({
+    accountId: r.rows[0].rated_account_id,
+    seasonNumber: seasonId,
+    matchId,
+    source: 'mvp',
+    xpDelta: SEASON_PASS_XP.mvp,
+  });
+}
+
+async function getSeasonPassProgress(accountId, seasonNumber) {
+  const p = getPool();
+  // Resolve season — fall back to current active season if not provided.
+  let season = seasonNumber;
+  if (!season) {
+    const a = await getActiveSeason();
+    if (!a) return null;
+    season = a.id;
+  }
+  const totalRes = await p.query(
+    `SELECT COALESCE(SUM(xp_delta),0)::int AS total_xp,
+            COUNT(*)::int AS event_count
+       FROM season_pass_xp_events
+      WHERE account_id = $1 AND season_number = $2`,
+    [accountId, season]
+  );
+  const recentRes = await p.query(
+    `SELECT match_id, source, xp_delta, notes, created_at
+       FROM season_pass_xp_events
+      WHERE account_id = $1 AND season_number = $2
+      ORDER BY created_at DESC, id DESC
+      LIMIT 20`,
+    [accountId, season]
+  );
+  const totalXp = totalRes.rows[0]?.total_xp || 0;
+  const tier = _seasonPassTierFor(totalXp);
+  return {
+    account_id: String(accountId),
+    season_number: season,
+    total_xp: totalXp,
+    event_count: totalRes.rows[0]?.event_count || 0,
+    tier,
+    tiers: SEASON_PASS_TIERS,
+    xp_rules: SEASON_PASS_XP,
+    recent_events: recentRes.rows,
+  };
+}
+
+async function getSeasonPassLeaderboard(seasonNumber = null, limit = 50) {
+  const p = getPool();
+  let season = seasonNumber;
+  if (!season) {
+    const a = await getActiveSeason();
+    if (!a) return [];
+    season = a.id;
+  }
+  const res = await p.query(`
+    SELECT spxp.account_id,
+           COALESCE(NULLIF(n.nickname, ''), 'Unknown') AS nickname,
+           COALESCE(SUM(spxp.xp_delta), 0)::int AS total_xp,
+           COUNT(*)::int AS event_count
+      FROM season_pass_xp_events spxp
+      LEFT JOIN nicknames n ON n.account_id = spxp.account_id
+     WHERE spxp.season_number = $1
+     GROUP BY spxp.account_id, n.nickname
+     ORDER BY total_xp DESC
+     LIMIT $2
+  `, [season, limit]);
+  return res.rows.map(r => ({
+    ...r,
+    account_id: String(r.account_id),
+    tier: _seasonPassTierFor(r.total_xp),
+  }));
+}
+
+// Backfill all season-pass events for a season from match history.
+// Safe to re-run — every insert is idempotent. Returns count of newly inserted events.
+async function recomputeSeasonPassFromHistory(seasonNumber = null) {
+  const p = getPool();
+  let season = seasonNumber;
+  if (!season) {
+    const a = await getActiveSeason();
+    if (!a) return { granted: 0, processed_matches: 0 };
+    season = a.id;
+  }
+  const matchesRes = await p.query(
+    `SELECT match_id FROM matches WHERE season_id = $1 AND is_legacy = false ORDER BY match_id ASC`,
+    [season]
+  );
+  let total = 0;
+  for (const m of matchesRes.rows) {
+    const r = await grantSeasonPassXpForMatch(m.match_id, season);
+    total += r.granted;
+    // MVP grant — best effort
+    await grantSeasonPassXpForMatchMvp(m.match_id, season).catch(() => {});
+  }
+  return { granted: total, processed_matches: matchesRes.rows.length };
+}
+
+// ---------- F4: Notification preferences ----------
+const NOTIFICATION_CATEGORIES = [
+  { key: 'post_match_dm',     label: 'Post-match report DM',          default: true },
+  { key: 'mvp_vote',          label: 'MVP vote prompt',               default: true },
+  { key: 'attitude_vote',     label: 'Teammate attitude vote prompt', default: true },
+  { key: 'hot_streak',        label: 'Hot streak announcement DM',    default: true },
+  { key: 'schedule_reminder', label: 'Game schedule reminder DM',     default: true },
+  { key: 'weekly_recap',      label: 'Weekly recap DM',               default: true },
+];
+
+async function isNotificationEnabled(accountId, category) {
+  if (!accountId || !category) return true; // fail-open
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `SELECT enabled FROM notification_prefs WHERE account_id = $1 AND category = $2`,
+      [accountId, category]
+    );
+    if (!r.rows.length) return true; // no row = default enabled
+    return !!r.rows[0].enabled;
+  } catch (e) {
+    return true; // never block a DM on a pref-table failure
+  }
+}
+
+async function getNotificationPrefs(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT category, enabled FROM notification_prefs WHERE account_id = $1`,
+    [accountId]
+  );
+  const map = {};
+  for (const row of r.rows) map[row.category] = !!row.enabled;
+  return NOTIFICATION_CATEGORIES.map(c => ({
+    key: c.key,
+    label: c.label,
+    enabled: c.key in map ? map[c.key] : c.default,
+  }));
+}
+
+async function setNotificationPref(accountId, category, enabled) {
+  const p = getPool();
+  const known = NOTIFICATION_CATEGORIES.find(c => c.key === category);
+  if (!known) throw new Error(`Unknown notification category: ${category}`);
+  await p.query(
+    `INSERT INTO notification_prefs (account_id, category, enabled, updated_at)
+     VALUES ($1,$2,$3,NOW())
+     ON CONFLICT (account_id, category)
+     DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()`,
+    [accountId, category, !!enabled]
+  );
+  return true;
+}
+
+// ---------- F5: Tournament live ----------
+async function getTournamentLive(tournamentId) {
+  const p = getPool();
+  const t = await p.query(`SELECT * FROM tournaments WHERE id = $1`, [tournamentId]);
+  if (!t.rows[0]) return null;
+  const tournament = t.rows[0];
+
+  // All bracket matches plus the linked recorded match outcome (if any)
+  const matchesRes = await p.query(`
+    SELECT tm.id AS bracket_match_id, tm.round, tm.position, tm.winner_id,
+           tm.player1_id AS p1_account_id, tm.player2_id AS p2_account_id,
+           tm.match_id AS recorded_match_id,
+           m.radiant_win, m.start_time, m.duration,
+           n1.nickname AS p1_nickname, n2.nickname AS p2_nickname
+      FROM tournament_matches tm
+      LEFT JOIN matches m ON m.match_id = tm.match_id
+      LEFT JOIN nicknames n1 ON n1.account_id = tm.player1_id
+      LEFT JOIN nicknames n2 ON n2.account_id = tm.player2_id
+     WHERE tm.tournament_id = $1
+     ORDER BY tm.round ASC, tm.position ASC
+  `, [tournamentId]);
+
+  // Standings — wins per participant
+  const standingsRes = await p.query(`
+    SELECT tp.account_id,
+           COALESCE(NULLIF(n.nickname,''), 'Unknown') AS nickname,
+           COALESCE(SUM(CASE WHEN tm.winner_id = tp.account_id THEN 1 ELSE 0 END), 0)::int AS wins,
+           COALESCE(SUM(CASE WHEN tm.winner_id IS NOT NULL
+                              AND (tm.player1_id = tp.account_id OR tm.player2_id = tp.account_id)
+                              AND tm.winner_id != tp.account_id THEN 1 ELSE 0 END), 0)::int AS losses
+      FROM tournament_participants tp
+      LEFT JOIN nicknames n ON n.account_id = tp.account_id
+      LEFT JOIN tournament_matches tm ON tm.tournament_id = tp.tournament_id
+                                      AND (tm.player1_id = tp.account_id OR tm.player2_id = tp.account_id)
+     WHERE tp.tournament_id = $1
+     GROUP BY tp.account_id, n.nickname
+     ORDER BY wins DESC, losses ASC
+  `, [tournamentId]);
+
+  // Prize split distribution
+  const split = Array.isArray(tournament.prize_split) ? tournament.prize_split : [50, 30, 20];
+  const pool = parseFloat(tournament.prize_pool || 0);
+  const standings = standingsRes.rows;
+  const distribution = split.map((pct, idx) => ({
+    place: idx + 1,
+    pct,
+    amount: Math.round(pool * (pct / 100) * 100) / 100,
+    account_id: standings[idx] ? String(standings[idx].account_id) : null,
+    nickname: standings[idx] ? standings[idx].nickname : null,
+  }));
+
+  // UI-friendly alias: only matches that have a recorded match outcome, sorted newest first.
+  const recentMatches = matchesRes.rows
+    .filter(r => r.recorded_match_id != null)
+    .sort((a, b) => {
+      const ta = a.start_time ? new Date(a.start_time).getTime() : 0;
+      const tb = b.start_time ? new Date(b.start_time).getTime() : 0;
+      return tb - ta;
+    })
+    .slice(0, 20)
+    .map(r => ({
+      match_id: r.recorded_match_id,
+      radiant_win: r.radiant_win,
+      match_date: r.start_time,
+      duration: r.duration,
+    }));
+
+  return {
+    tournament: {
+      ...tournament,
+      account_id: tournament.account_id ? String(tournament.account_id) : null,
+    },
+    matches: matchesRes.rows,
+    recent_matches: recentMatches,
+    standings: standings.map(s => ({ ...s, account_id: String(s.account_id) })),
+    prize_pool: pool,
+    prize_split: split,
+    prize_distribution: distribution,
+    refreshed_at: new Date().toISOString(),
+  };
+}
+
+async function setTournamentPrizeSplit(tournamentId, splitArray) {
+  if (!Array.isArray(splitArray) || splitArray.length === 0) {
+    throw new Error('prize_split must be a non-empty array of percentages');
+  }
+  const cleaned = splitArray.map(n => Math.max(0, Math.min(100, parseFloat(n) || 0)));
+  const sum = cleaned.reduce((s, x) => s + x, 0);
+  if (Math.abs(sum - 100) > 0.5) {
+    throw new Error(`prize_split percentages must sum to 100 (got ${sum})`);
+  }
+  const p = getPool();
+  await p.query(
+    `UPDATE tournaments SET prize_split = $1::jsonb WHERE id = $2`,
+    [JSON.stringify(cleaned), tournamentId]
+  );
+  return cleaned;
+}
+
+// ---------- F6: MVP / attitude trends ----------
+// Rolling windowed stats per match for an account, used for a trend chart.
+// Each row = "after this match, the player's last N MVP rate + avg attitude".
+async function getMvpAttitudeTrends(accountId, windowSize = 10) {
+  const p = getPool();
+  const matchesRes = await p.query(`
+    SELECT ps.match_id, m.start_time
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.account_id = $1 AND m.is_legacy = false
+     ORDER BY m.start_time ASC NULLS LAST, ps.match_id ASC
+  `, [accountId]);
+
+  if (!matchesRes.rows.length) return { points: [], window_size: windowSize };
+
+  const matchIds = matchesRes.rows.map(r => r.match_id);
+
+  // For each match, was this account the MVP?
+  const mvpRes = await p.query(`
+    SELECT match_id, rated_account_id, COUNT(*)::int AS votes
+      FROM match_ratings
+     WHERE match_id = ANY($1) AND is_mvp_vote = TRUE AND rated_account_id IS NOT NULL
+     GROUP BY match_id, rated_account_id
+  `, [matchIds]);
+  const mvpMap = new Map(); // match_id -> winner account id
+  const mvpWinners = {};
+  for (const r of mvpRes.rows) {
+    const cur = mvpWinners[r.match_id];
+    if (!cur || r.votes > cur.votes || (r.votes === cur.votes && String(r.rated_account_id) < String(cur.account))) {
+      mvpWinners[r.match_id] = { account: String(r.rated_account_id), votes: r.votes };
+    }
+  }
+  for (const [mid, v] of Object.entries(mvpWinners)) mvpMap.set(mid, v.account);
+
+  // Average attitude received per match (from teammates that rated them)
+  const attRes = await p.query(`
+    SELECT match_id, ROUND(AVG(attitude_score)::numeric, 2) AS avg_attitude, COUNT(*)::int AS rating_count
+      FROM match_ratings
+     WHERE match_id = ANY($1) AND rated_account_id = $2 AND attitude_score IS NOT NULL
+     GROUP BY match_id
+  `, [matchIds, accountId]);
+  const attMap = new Map();
+  for (const r of attRes.rows) attMap.set(r.match_id, { avg: r.avg_attitude, n: r.rating_count });
+
+  // Walk forward, maintain window
+  const window = []; // [{ wasMvp: 0|1, attitude: number|null }]
+  const points = [];
+  for (const m of matchesRes.rows) {
+    const wasMvp = mvpMap.get(m.match_id) === String(accountId) ? 1 : 0;
+    const att = attMap.get(m.match_id);
+    window.push({ wasMvp, attitude: att ? parseFloat(att.avg) : null });
+    if (window.length > windowSize) window.shift();
+
+    const mvpRate = window.reduce((s, x) => s + x.wasMvp, 0) / window.length;
+    const attVals = window.map(x => x.attitude).filter(v => v !== null);
+    const attAvg = attVals.length ? attVals.reduce((s, x) => s + x, 0) / attVals.length : null;
+
+    points.push({
+      match_id: m.match_id,
+      start_time: m.start_time,
+      mvp_rate: Math.round(mvpRate * 1000) / 1000,
+      avg_attitude: attAvg !== null ? Math.round(attAvg * 100) / 100 : null,
+      window_size: window.length,
+    });
+  }
+
+  // Aggregate aliases for the UI — total counts + the latest rolling-window values.
+  const mvpCount = points.reduce((s, pt, i) => {
+    const isMvp = mvpMap.get(matchesRes.rows[i].match_id) === String(accountId);
+    return s + (isMvp ? 1 : 0);
+  }, 0);
+  const last = points[points.length - 1] || null;
+
+  return {
+    account_id: String(accountId),
+    mvp_count: mvpCount,
+    mvp_rate: last ? last.mvp_rate : null,
+    attitude_avg: last ? last.avg_attitude : null,
+    window_size: windowSize,
+    total_matches: matchesRes.rows.length,
+    points,
+  };
+}
+
+// ---------- F7: Web push ----------
+async function addPushSubscription({ accountId, endpoint, p256dh, auth, userAgent = null }) {
+  if (!accountId || !endpoint || !p256dh || !auth) {
+    throw new Error('addPushSubscription: missing required field');
+  }
+  const p = getPool();
+  await p.query(
+    `INSERT INTO web_push_subscriptions (account_id, endpoint, p256dh, auth, user_agent)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (endpoint) DO UPDATE
+       SET account_id = EXCLUDED.account_id,
+           p256dh     = EXCLUDED.p256dh,
+           auth       = EXCLUDED.auth,
+           user_agent = EXCLUDED.user_agent`,
+    [accountId, endpoint, p256dh, auth, userAgent]
+  );
+  return true;
+}
+
+async function removePushSubscriptionByEndpoint(endpoint) {
+  const p = getPool();
+  const r = await p.query(`DELETE FROM web_push_subscriptions WHERE endpoint = $1`, [endpoint]);
+  return r.rowCount;
+}
+
+async function getPushSubscriptionsForAccount(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, endpoint, p256dh, auth, user_agent, created_at, last_used_at
+       FROM web_push_subscriptions WHERE account_id = $1`,
+    [accountId]
+  );
+  return r.rows;
+}
+
+async function getPushSubscriptionsForAccounts(accountIds) {
+  if (!Array.isArray(accountIds) || !accountIds.length) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, endpoint, p256dh, auth, user_agent
+       FROM web_push_subscriptions WHERE account_id = ANY($1::bigint[])`,
+    [accountIds]
+  );
+  return r.rows;
+}
+
+async function touchPushSubscription(endpoint) {
+  const p = getPool();
+  await p.query(`UPDATE web_push_subscriptions SET last_used_at = NOW() WHERE endpoint = $1`, [endpoint]);
+}
+
 module.exports = {
   init,
   getPool,
@@ -6873,6 +7736,29 @@ module.exports = {
   findDuplicateMatches,
   getPlayerRecentResults,
   getPlayerCurrentStreak,
+  // Wave 2 / 3
+  getHeroMetaV2,
+  getDraftSuggestionsV2,
+  awardSeasonPassXp,
+  grantSeasonPassXpForMatch,
+  grantSeasonPassXpForMatchMvp,
+  getSeasonPassProgress,
+  getSeasonPassLeaderboard,
+  recomputeSeasonPassFromHistory,
+  SEASON_PASS_TIERS,
+  SEASON_PASS_XP,
+  NOTIFICATION_CATEGORIES,
+  isNotificationEnabled,
+  getNotificationPrefs,
+  setNotificationPref,
+  getTournamentLive,
+  setTournamentPrizeSplit,
+  getMvpAttitudeTrends,
+  addPushSubscription,
+  removePushSubscriptionByEndpoint,
+  getPushSubscriptionsForAccount,
+  getPushSubscriptionsForAccounts,
+  touchPushSubscription,
   getPlayerNemesis,
   getHomeStats,
   saveWeeklyRecap,

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 
@@ -289,6 +290,7 @@ function FormDots({ results }) {
 
 export default function Leaderboard() {
   const { seasonId, seasons } = useSeason();
+  const showSeasonPass = useFeatureFlag('season_pass_s10');
   const [data, setData] = useState({ leaderboard: [] });
   const [loading, setLoading] = useState(true);
   const [improved, setImproved] = useState([]);
@@ -296,6 +298,7 @@ export default function Leaderboard() {
   const [bestFairest, setBestFairest] = useState([]);
   const [bestFairestLoading, setBestFairestLoading] = useState(true);
   const [playerForm, setPlayerForm] = useState({});
+  const [xpMap, setXpMap] = useState({}); // accountId -> { xp, tier_name }
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -309,6 +312,20 @@ export default function Leaderboard() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [seasonId]);
+
+  useEffect(() => {
+    if (!showSeasonPass) { setXpMap({}); return; }
+    fetch(`/api/season-pass/leaderboard?limit=200${seasonId ? `&season=${seasonId}` : ''}`)
+      .then(r => (r.ok ? r.json() : { leaderboard: [] }))
+      .then(d => {
+        const m = {};
+        for (const row of (d.leaderboard || [])) {
+          m[String(row.account_id)] = { xp: row.xp, tier_name: row.tier_name };
+        }
+        setXpMap(m);
+      })
+      .catch(() => setXpMap({}));
+  }, [showSeasonPass, seasonId]);
 
   useEffect(() => {
     setImprovedLoading(true);
@@ -399,6 +416,9 @@ export default function Leaderboard() {
                 <th className="col-stat" title="Impact Score 1–10: ranked by K/D/A, win rate and games played">Impact</th>
                 <th className="col-stat" title="Current win or loss streak">Streak</th>
                 <th className="col-stat" title="Last 10 games — green=win, red=loss, left=most recent">Form</th>
+                {showSeasonPass && (
+                  <th className="col-stat" title="Season Pass XP — earn from wins, MVPs and hot streaks">XP</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -435,6 +455,13 @@ export default function Leaderboard() {
                     <td className="col-stat">
                       <FormDots results={playerForm[p.player_id?.toString()] || []} />
                     </td>
+                    {showSeasonPass && (
+                      <td className="col-stat" title={xpMap[String(p.player_id)]?.tier_name || ''}>
+                        {xpMap[String(p.player_id)]?.xp != null
+                          ? xpMap[String(p.player_id)].xp.toLocaleString()
+                          : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

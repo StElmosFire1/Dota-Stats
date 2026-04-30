@@ -4,6 +4,7 @@ import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { Link } from 'react-router-dom';
 import { useSeason } from '../context/SeasonContext';
+import { useFeatureFlag } from '../context/FeatureFlagsContext';
 
 const ALL_HEROES = {
   1: 'Anti-Mage', 2: 'Axe', 3: 'Bane', 4: 'Bloodseeker', 5: 'Crystal Maiden',
@@ -716,6 +717,65 @@ export default function Heroes({ defaultTab }) {
       )}
 
       {tab === 'stats' && loading && <div className="loading">Loading hero stats...</div>}
+
+      <HeroMetaV2Panel />
     </div>
+  );
+}
+
+function HeroMetaV2Panel() {
+  const enabled = useFeatureFlag('hero_meta_v2');
+  const { seasonId } = useSeason();
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    setLoading(true);
+    fetch(`/api/heroes/meta-v2${seasonId ? `?season=${seasonId}` : ''}`)
+      .then(r => (r.ok ? r.json() : { heroes: [] }))
+      .then(d => setRows(d.heroes || []))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, [enabled, seasonId]);
+  if (!enabled) return null;
+  return (
+    <section style={{ marginTop: 28, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+      <h2 className="section-title" style={{ marginTop: 0 }}>📊 Hero Meta V2</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+        Win rates by lane role and pick frequency, including breakdown by IH tier.
+      </p>
+      {loading ? <div className="loading">Loading meta…</div> : (
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard">
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Hero</th>
+                <th>Picks</th>
+                <th>Win %</th>
+                <th>Safe Lane WR</th>
+                <th>Mid WR</th>
+                <th>Off WR</th>
+                <th>Soft Sup WR</th>
+                <th>Hard Sup WR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 50).map(h => (
+                <tr key={h.hero_id}>
+                  <td style={{ textAlign: 'left' }}>{formatHeroName(getHeroName(h.hero_id))}</td>
+                  <td>{h.picks ?? 0}</td>
+                  <td>{h.win_rate != null ? `${(h.win_rate * 100).toFixed(1)}%` : '—'}</td>
+                  <td>{h.lane_wr?.[1] != null ? `${(h.lane_wr[1] * 100).toFixed(0)}%` : '—'}</td>
+                  <td>{h.lane_wr?.[2] != null ? `${(h.lane_wr[2] * 100).toFixed(0)}%` : '—'}</td>
+                  <td>{h.lane_wr?.[3] != null ? `${(h.lane_wr[3] * 100).toFixed(0)}%` : '—'}</td>
+                  <td>{h.lane_wr?.[4] != null ? `${(h.lane_wr[4] * 100).toFixed(0)}%` : '—'}</td>
+                  <td>{h.lane_wr?.[5] != null ? `${(h.lane_wr[5] * 100).toFixed(0)}%` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

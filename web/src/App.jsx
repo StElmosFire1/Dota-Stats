@@ -43,6 +43,7 @@ const RecordMatch = lazy(() => import('./pages/RecordMatch'));
 const Inhouse = lazy(() => import('./pages/Inhouse'));
 const PlayerInsights = lazy(() => import('./pages/PlayerInsights'));
 const Join = lazy(() => import('./pages/Join'));
+const SettingsNotifications = lazy(() => import('./pages/SettingsNotifications'));
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -369,6 +370,7 @@ export default function App() {
                 <Route path="/hall-of-fame" element={<HallOfFame />} />
                 <Route path="/admin/record-match" element={<RecordMatch />} />
                 <Route path="/join" element={<Join />} />
+                <Route path="/settings/notifications" element={<SettingsNotifications />} />
               </Routes>
               </Suspense>
             </main>

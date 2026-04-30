@@ -310,6 +310,23 @@ export default function PlayerProfile() {
   const showMvpBadges = useFeatureFlag('mvp_match_badges');
   const newRankTheme  = useFeatureFlag('new_rank_theme');
   const showProfileChartV2 = useFeatureFlag('profile_chart_v2');
+  // Wave 2 / 3 flags
+  const showSeasonPass = useFeatureFlag('season_pass_s10');
+  const showMvpAttitude = useFeatureFlag('mvp_attitude_analytics');
+  const [seasonPass, setSeasonPass] = useState(null);
+  const [mvpTrends, setMvpTrends] = useState(null);
+
+  useEffect(() => {
+    if (!showSeasonPass || !accountId) { setSeasonPass(null); return; }
+    fetch(`/api/player/${accountId}/season-pass${seasonId ? `?season=${seasonId}` : ''}`)
+      .then(r => (r.ok ? r.json() : null)).then(setSeasonPass).catch(() => setSeasonPass(null));
+  }, [accountId, seasonId, showSeasonPass]);
+
+  useEffect(() => {
+    if (!showMvpAttitude || !accountId) { setMvpTrends(null); return; }
+    fetch(`/api/player/${accountId}/mvp-attitude-trends?window=10`)
+      .then(r => (r.ok ? r.json() : null)).then(setMvpTrends).catch(() => setMvpTrends(null));
+  }, [accountId, showMvpAttitude]);
   // Treat the profile as "own" only when viewing your own Steam-linked profile
   const isOwnProfile = !!(steamUser?.accountId && String(steamUser.accountId) === String(accountId));
   const [data, setData] = useState(null);
@@ -599,6 +616,48 @@ export default function PlayerProfile() {
       )}
 
       <AchievementBadges achievements={achievements} />
+
+      {showSeasonPass && seasonPass && (
+        <section style={{ marginBottom: 24, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+            <h2 className="section-title" style={{ margin: 0 }}>🎟️ Season Pass — {seasonPass.tier?.tier_name || 'Bronze'}</h2>
+            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{(seasonPass.total_xp ?? 0).toLocaleString()} XP</span>
+          </div>
+          <div style={{ height: 14, background: 'var(--bg-hover)', borderRadius: 7, overflow: 'hidden', position: 'relative' }}>
+            <div style={{
+              height: '100%',
+              width: `${Math.min(100, Math.max(0, seasonPass.tier?.progress_pct || 0)).toFixed(1)}%`,
+              background: 'linear-gradient(90deg, var(--accent-gold,#f59e0b), #fbbf24)',
+              transition: 'width 0.4s ease',
+            }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, color: 'var(--text-muted)', fontSize: 12 }}>
+            <span>{seasonPass.tier?.tier_name || 'Bronze'}</span>
+            <span>
+              {seasonPass.tier?.next_tier_name
+                ? `${seasonPass.tier.xp_to_next} XP to ${seasonPass.tier.next_tier_name}`
+                : 'Max tier reached'}
+            </span>
+          </div>
+        </section>
+      )}
+
+      {showMvpAttitude && mvpTrends && (
+        <section style={{ marginBottom: 24, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+          <h2 className="section-title" style={{ marginTop: 0, marginBottom: 10 }}>🌟 MVP & Attitude Trends</h2>
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+            <div className="stat-card"><div className="stat-value">{mvpTrends.mvp_count ?? 0}</div><div className="stat-label">MVP Wins</div></div>
+            <div className="stat-card"><div className="stat-value">{mvpTrends.mvp_rate != null ? `${(mvpTrends.mvp_rate * 100).toFixed(1)}%` : '—'}</div><div className="stat-label">MVP Rate</div></div>
+            <div className="stat-card"><div className="stat-value">{mvpTrends.attitude_avg != null ? Number(mvpTrends.attitude_avg).toFixed(2) : '—'}</div><div className="stat-label">Attitude (avg)</div></div>
+          </div>
+          {Array.isArray(mvpTrends.points) && mvpTrends.points.length > 0 && (
+            <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+              Rolling {mvpTrends.window_size}-game window: {mvpTrends.points.length} data point{mvpTrends.points.length === 1 ? '' : 's'}.
+              Latest attitude {mvpTrends.points[mvpTrends.points.length - 1]?.avg_attitude != null ? Number(mvpTrends.points[mvpTrends.points.length - 1].avg_attitude).toFixed(2) : '—'}.
+            </div>
+          )}
+        </section>
+      )}
 
       {predictionStats && parseInt(predictionStats.total) > 0 && (
         <section style={{ marginBottom: 24 }}>

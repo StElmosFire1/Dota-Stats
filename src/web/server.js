@@ -8,6 +8,25 @@ const session = require('express-session');
 const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
 const db = require('../db');
+// Web push (Wave 3 F7). Loaded lazily — if VAPID env vars are missing the
+// push routes respond 503 cleanly. We do require() unconditionally so the
+// module is in the bundle, but configure it only when keys exist.
+let webpush = null;
+try {
+  webpush = require('web-push');
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'mailto:admin@dota-stats.local',
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+  }
+} catch (e) {
+  console.warn('[WebPush] module load failed:', e.message);
+}
+function _webPushReady() {
+  return Boolean(webpush && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+}
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
 const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/groqService');
@@ -4379,6 +4398,248 @@ NOTES
       res.json({ ok: true, ...result });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // =====================================================================
+  // Wave 2 / 3 endpoints — preview-flag-gated. Helpers used by all of these:
+  //   _isSu(req)        — superuser key header check (matches existing pattern)
+  //   _flagOn(key, req) — flag is 'on', or ('preview' && superuser)
+  // =====================================================================
+  function _isSu(req) {
+    return Boolean(req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD);
+  }
+  async function _flagOn(key, req) {
+    const flag = await db.getFeatureFlag(key).catch(() => null);
+    if (!flag) return false;
+    if (flag.state === 'on') return true;
+    if (flag.state === 'preview' && _isSu(req)) return true;
+    return false;
+  }
+
+  // ---------- F1: Hero Meta V2 ----------
+  router.get('/heroes/meta-v2', async (req, res) => {
+    try {
+      if (!(await _flagOn('hero_meta_v2', req))) return res.status(404).json({ error: 'Not found' });
+      const tier = req.query.tier ? parseInt(req.query.tier) : null;
+      const season = req.query.season || null;
+      const data = await db.getHeroMetaV2({ tier, season });
+      res.json({ heroes: data });
+    } catch (err) {
+      console.error('[API] heroes/meta-v2:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero meta' });
+    }
+  });
+
+  // ---------- F2: Draft Assistant V2 ----------
+  router.post('/draft/suggestions', express.json(), async (req, res) => {
+    try {
+      if (!(await _flagOn('draft_assistant_v2', req))) return res.status(404).json({ error: 'Not found' });
+      const allies = (req.body?.allies || []).map(Number).filter(Boolean);
+      const enemies = (req.body?.enemies || []).map(Number).filter(Boolean);
+      const banned = (req.body?.banned || []).map(Number).filter(Boolean);
+      const side = req.body?.side || null;
+      const season = req.body?.season || null;
+      const suggestions = await db.getDraftSuggestionsV2({ allies, enemies, banned, side, season });
+      res.json({ suggestions });
+    } catch (err) {
+      console.error('[API] draft/suggestions:', err.message);
+      res.status(500).json({ error: 'Failed to fetch draft suggestions' });
+    }
+  });
+
+  // ---------- F3: Season Pass ----------
+  router.get('/player/:id/season-pass', async (req, res) => {
+    try {
+      if (!(await _flagOn('season_pass_s10', req))) return res.status(404).json({ error: 'Not found' });
+      const season = req.query.season ? parseInt(req.query.season) : null;
+      const progress = await db.getSeasonPassProgress(req.params.id, season);
+      if (!progress) return res.status(404).json({ error: 'No active season' });
+      res.json(progress);
+    } catch (err) {
+      console.error('[API] season-pass:', err.message);
+      res.status(500).json({ error: 'Failed to fetch season pass progress' });
+    }
+  });
+
+  router.get('/season-pass/leaderboard', async (req, res) => {
+    try {
+      if (!(await _flagOn('season_pass_s10', req))) return res.status(404).json({ error: 'Not found' });
+      const season = req.query.season ? parseInt(req.query.season) : null;
+      const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+      const rows = await db.getSeasonPassLeaderboard(season, limit);
+      res.json({ leaderboard: rows });
+    } catch (err) {
+      console.error('[API] season-pass/leaderboard:', err.message);
+      res.status(500).json({ error: 'Failed to fetch season pass leaderboard' });
+    }
+  });
+
+  router.post('/admin/season-pass/recompute', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const season = req.body?.season ? parseInt(req.body.season) : null;
+      const result = await db.recomputeSeasonPassFromHistory(season);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[API] season-pass/recompute:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---------- F4: Notification preferences ----------
+  router.get('/me/notifications', async (req, res) => {
+    try {
+      if (!(await _flagOn('notification_prefs', req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const prefs = await db.getNotificationPrefs(accountId);
+      res.json({ categories: prefs });
+    } catch (err) {
+      console.error('[API] me/notifications GET:', err.message);
+      res.status(500).json({ error: 'Failed to fetch notification preferences' });
+    }
+  });
+
+  router.post('/me/notifications', express.json(), async (req, res) => {
+    try {
+      if (!(await _flagOn('notification_prefs', req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const updates = req.body?.updates;
+      if (!Array.isArray(updates)) return res.status(400).json({ error: 'updates must be an array of {category, enabled}' });
+      for (const u of updates) {
+        if (!u || typeof u.category !== 'string' || typeof u.enabled !== 'boolean') {
+          return res.status(400).json({ error: 'each update must be {category: string, enabled: boolean}' });
+        }
+        await db.setNotificationPref(accountId, u.category, u.enabled);
+      }
+      const prefs = await db.getNotificationPrefs(accountId);
+      res.json({ ok: true, categories: prefs });
+    } catch (err) {
+      console.error('[API] me/notifications POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---------- F5: Tournament live ----------
+  router.get('/tournaments/:id/live', async (req, res) => {
+    try {
+      if (!(await _flagOn('tournament_live_v2', req))) return res.status(404).json({ error: 'Not found' });
+      const data = await db.getTournamentLive(req.params.id);
+      if (!data) return res.status(404).json({ error: 'Tournament not found' });
+      res.json(data);
+    } catch (err) {
+      console.error('[API] tournaments/:id/live:', err.message);
+      res.status(500).json({ error: 'Failed to fetch tournament live data' });
+    }
+  });
+
+  router.post('/tournaments/:id/prize-split', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const split = req.body?.prize_split;
+      const cleaned = await db.setTournamentPrizeSplit(req.params.id, split);
+      res.json({ ok: true, prize_split: cleaned });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ---------- F6: MVP / attitude analytics ----------
+  router.get('/player/:id/mvp-attitude-trends', async (req, res) => {
+    try {
+      if (!(await _flagOn('mvp_attitude_analytics', req))) return res.status(404).json({ error: 'Not found' });
+      const win = Math.max(3, Math.min(parseInt(req.query.window) || 10, 50));
+      const data = await db.getMvpAttitudeTrends(req.params.id, win);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] mvp-attitude-trends:', err.message);
+      res.status(500).json({ error: 'Failed to fetch MVP/attitude trends' });
+    }
+  });
+
+  // ---------- F7: Web push ----------
+  router.get('/web-push/public-key', async (req, res) => {
+    if (!(await _flagOn('web_push', req))) return res.status(404).json({ error: 'Not found' });
+    if (!process.env.VAPID_PUBLIC_KEY) return res.status(503).json({ error: 'Web push not configured' });
+    res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
+  });
+
+  router.post('/me/push/subscribe', express.json(), async (req, res) => {
+    try {
+      if (!(await _flagOn('web_push', req))) return res.status(404).json({ error: 'Not found' });
+      if (!_webPushReady()) return res.status(503).json({ error: 'Web push not configured' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const sub = req.body?.subscription;
+      if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
+        return res.status(400).json({ error: 'Invalid PushSubscription payload' });
+      }
+      await db.addPushSubscription({
+        accountId,
+        endpoint: sub.endpoint,
+        p256dh: sub.keys.p256dh,
+        auth: sub.keys.auth,
+        userAgent: req.headers['user-agent'] || null,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] push/subscribe:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/push/test', express.json(), async (req, res) => {
+    try {
+      if (!(await _flagOn('web_push', req))) return res.status(404).json({ error: 'Not found' });
+      if (!_webPushReady()) return res.status(503).json({ error: 'Web push not configured' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const subs = await db.getPushSubscriptionsForAccount(accountId);
+      if (!subs.length) return res.status(404).json({ error: 'No push subscriptions for this account' });
+      const payload = JSON.stringify({
+        title: 'Dota 2 Inhouse — Test push',
+        body: 'Push notifications are working. You can manage these in /settings/notifications.',
+        url: '/',
+      });
+      let sent = 0;
+      for (const s of subs) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+            payload
+          );
+          await db.touchPushSubscription(s.endpoint);
+          sent++;
+        } catch (err) {
+          // 410 / 404 = subscription expired → drop it.
+          if (err && (err.statusCode === 404 || err.statusCode === 410)) {
+            await db.removePushSubscriptionByEndpoint(s.endpoint).catch(() => {});
+          }
+        }
+      }
+      res.json({ ok: true, sent });
+    } catch (err) {
+      console.error('[API] push/test:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/me/push/subscriptions', express.json(), async (req, res) => {
+    try {
+      if (!(await _flagOn('web_push', req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const endpoint = req.body?.endpoint || req.query?.endpoint;
+      if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
+      const subs = await db.getPushSubscriptionsForAccount(accountId);
+      if (!subs.find(s => s.endpoint === endpoint)) {
+        return res.status(403).json({ error: 'You can only unsubscribe your own endpoints' });
+      }
+      await db.removePushSubscriptionByEndpoint(endpoint);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] push/unsubscribe:', err.message);
+      res.status(500).json({ error: err.message });
     }
   });
 
