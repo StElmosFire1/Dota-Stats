@@ -124,6 +124,16 @@ export default function Coaches() {
                 )}
               </div>
             )}
+            {(c.languages || c.response_time_hours) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+                {c.languages && (
+                  <span>🌐 <strong style={{ color: 'var(--text-primary)' }}>{c.languages}</strong></span>
+                )}
+                {c.response_time_hours != null && (
+                  <span>⏱ Replies in <strong style={{ color: 'var(--text-primary)' }}>~{c.response_time_hours}h</strong></span>
+                )}
+              </div>
+            )}
             {c.bio && <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {c.bio}
             </div>}

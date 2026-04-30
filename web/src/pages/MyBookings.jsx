@@ -49,11 +49,16 @@ export default function MyBookings() {
 
   const submitReview = async () => {
     if (!reviewModal) return;
-    const { coach_id, booking_id, rating, written_review } = reviewModal;
-    const r = await fetch(`${BASE}/coaches/${coach_id}/reviews`, {
+    const { booking_id, rating, written_review } = reviewModal;
+    // Booking-keyed endpoint — works even when the coach has been
+    // suspended / delisted between the session and the review (the old
+    // /coaches/:id/reviews path required resolving the coach via the
+    // public active-coach directory, which would 404 for non-active
+    // coaches and silently break review submission).
+    const r = await fetch(`${BASE}/bookings/${booking_id}/review`, {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ booking_id, rating, written_review }),
+      body: JSON.stringify({ rating, written_review }),
     });
     const d = await r.json();
     if (!r.ok) { alert(d.error || 'Failed'); return; }
@@ -92,7 +97,7 @@ export default function MyBookings() {
           </>
         )}
         {b.status === 'completed' && mine === 'student' && (
-          <button onClick={() => setReviewModal({ coach_id: null, booking_id: b.id, rating: 5, written_review: '', coach_name: b.coach_name, _resolveCoach: true })}
+          <button onClick={() => setReviewModal({ booking_id: b.id, rating: 5, written_review: '', coach_name: b.coach_name })}
             style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer' }}>★ Leave review</button>
         )}
       </td>
@@ -128,52 +133,22 @@ export default function MyBookings() {
           onClick={() => setReviewModal(null)}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 10, maxWidth: 500, width: '90%' }}>
             <h3 style={{ marginTop: 0 }}>Review {reviewModal.coach_name}</h3>
-            <ResolveCoachAndReview modal={reviewModal} setModal={setReviewModal} onSubmit={submitReview} />
+            <label>Rating:&nbsp;
+              <select value={reviewModal.rating} onChange={e => setReviewModal(m => ({ ...m, rating: parseInt(e.target.value) }))}
+                style={{ padding: 6, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
+                {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
+              </select>
+            </label>
+            <textarea value={reviewModal.written_review} onChange={e => setReviewModal(m => ({ ...m, written_review: e.target.value }))}
+              rows={4} placeholder="Optional written review"
+              style={{ width: '100%', marginTop: 12, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+              <button onClick={() => setReviewModal(null)} style={{ padding: '6px 14px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={submitReview} style={{ padding: '6px 14px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700 }}>Submit</button>
+            </div>
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-// The booking row only knows the student's coach_account_id (not the coach's
-// db.id needed for the review endpoint). We resolve it via /api/bookings/:id.
-function ResolveCoachAndReview({ modal, setModal, onSubmit }) {
-  const [resolving, setResolving] = useState(modal._resolveCoach);
-  useEffect(() => {
-    if (!modal._resolveCoach) return;
-    fetch(`${BASE}/bookings/${modal.booking_id}`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => {
-        const coachAccountId = d.booking?.coach_account_id;
-        if (!coachAccountId) { alert('Could not resolve coach'); return; }
-        return fetch(`${BASE}/coaches?`, { credentials: 'include' })
-          .then(r => r.json())
-          .then(list => {
-            const found = (list.coaches || []).find(c => String(c.account_id) === String(coachAccountId));
-            if (!found) { alert('Could not find coach in directory'); return; }
-            setModal(m => ({ ...m, coach_id: found.id, _resolveCoach: false }));
-            setResolving(false);
-          });
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  if (resolving) return <p>Loading…</p>;
-  return (
-    <>
-      <label>Rating:&nbsp;
-        <select value={modal.rating} onChange={e => setModal(m => ({ ...m, rating: parseInt(e.target.value) }))}
-          style={{ padding: 6, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
-          {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
-        </select>
-      </label>
-      <textarea value={modal.written_review} onChange={e => setModal(m => ({ ...m, written_review: e.target.value }))}
-        rows={4} placeholder="Optional written review"
-        style={{ width: '100%', marginTop: 12, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
-      <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
-        <button onClick={() => setModal(null)} style={{ padding: '6px 14px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
-        <button onClick={onSubmit} disabled={!modal.coach_id} style={{ padding: '6px 14px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700 }}>Submit</button>
-      </div>
-    </>
   );
 }

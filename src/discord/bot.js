@@ -4120,6 +4120,14 @@ class DiscordBot {
       // there is no `coach_id` field. db.getCoach takes the account_id.
       const coach = await db.getCoach(booking.coach_account_id).catch(() => null);
       if (!coach) return;
+      // Site URL + voice channel link must be env-driven so DMs work across
+      // dev / staging / prod and we never bake a deploy IP into chat. The
+      // voice link points at the community guild (DISCORD_INVITE) since we
+      // deliberately don't ship a built-in video tool — sessions happen in
+      // the community Discord.
+      const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const voiceUrl = config.discord.serverInvite || null;
+      const cancelUrl = `${siteUrl}/me/bookings`;
       const recipients = [
         { account_id: booking.student_account_id, role: 'student' },
         { account_id: coach.account_id, role: 'coach' },
@@ -4135,19 +4143,28 @@ class DiscordBot {
         const otherName = r.role === 'student'
           ? (coach.display_name || `Coach #${coach.id}`)
           : (booking.student_name || `Player ${booking.student_account_id}`);
+        const lines = [
+          `Your coaching session is locked in!`,
+          ``,
+          `**With:** ${otherName}`,
+          `**When:** ${when} (Sydney)`,
+          `**Length:** ${booking.duration_minutes} minutes`,
+          ``,
+          (r.role === 'student'
+            ? `Funds are held in escrow until you both confirm completion.`
+            : `You'll receive payout via Stripe after the session is confirmed.`),
+          ``,
+          voiceUrl
+            ? `🎙 **Voice:** [Join the community Discord](${voiceUrl}) — coach + student meet in voice at the scheduled time.`
+            : `🎙 **Voice:** Meet in your community Discord voice channel at the scheduled time.`,
+          (r.role === 'student'
+            ? `❌ **Cancel / no-show refund:** [${cancelUrl}](${cancelUrl})`
+            : `📋 **Manage booking:** [${cancelUrl}](${cancelUrl})`),
+        ];
         const embed = new EmbedBuilder()
           .setTitle('🎓 Coaching booking confirmed')
           .setColor(0x10b981)
-          .setDescription(
-            `Your coaching session is locked in!\n\n` +
-            `**With:** ${otherName}\n` +
-            `**When:** ${when} (Sydney)\n` +
-            `**Length:** ${booking.duration_minutes} minutes\n\n` +
-            (r.role === 'student'
-              ? `Funds are held in escrow until you both confirm completion.`
-              : `You'll receive payout via Stripe after the session is confirmed.`) +
-            `\n\nMeet up in the community Discord at the scheduled time.`
-          )
+          .setDescription(lines.join('\n'))
           .setFooter({ text: 'Toggle off in /settings/notifications' });
         await user.send({ embeds: [embed] }).catch(() => {});
       }
@@ -4165,12 +4182,16 @@ class DiscordBot {
       if (!user) return;
       const coach = await db.getCoach(booking.coach_account_id).catch(() => null);
       const coachName = coach?.display_name || `Coach #${booking.coach_account_id}`;
+      // Env-driven site URL — never bake a deploy IP into outbound DMs so
+      // links keep working across dev / staging / prod.
+      const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const reviewUrl = `${siteUrl}/me/bookings`;
       const embed = new EmbedBuilder()
         .setTitle('★ How was your coaching session?')
         .setColor(0xfbbf24)
         .setDescription(
           `Your session with **${coachName}** is complete.\n\n` +
-          `[Leave a review](http://170.64.182.110:5000/me/bookings) — it helps other players find great coaches.`
+          `[Leave a review](${reviewUrl}) — it helps other players find great coaches.`
         )
         .setFooter({ text: 'Toggle off in /settings/notifications' });
       await user.send({ embeds: [embed] }).catch(() => {});

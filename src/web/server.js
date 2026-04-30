@@ -5601,6 +5601,43 @@ NOTES
     }
   });
 
+  // Booking-keyed review endpoint — preferred over /coaches/:id/reviews from
+  // the student's "My bookings" page because the coach may have been
+  // suspended / delisted between session and review and would no longer be
+  // resolvable via the public coach directory. Reviews must remain possible
+  // for any historically-completed booking, regardless of the coach's
+  // current status, so we resolve the coach via the booking row rather than
+  // the active-coach list. Same authorization rules as /coaches/:id/reviews.
+  router.post('/bookings/:id/review', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const bookingId = parseInt(req.params.id);
+      if (!bookingId) return res.status(400).json({ error: 'booking id required' });
+      const booking = await db.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      if (String(booking.student_account_id) !== String(accountId)) {
+        return res.status(403).json({ error: 'You can only review your own sessions' });
+      }
+      if (booking.status !== 'completed') {
+        return res.status(400).json({ error: 'You can only review completed sessions' });
+      }
+      const created = await db.createCoachingReview({
+        bookingId,
+        studentAccountId: accountId,
+        coachAccountId: booking.coach_account_id,
+        rating: req.body?.rating,
+        writtenReview: req.body?.written_review,
+      });
+      if (!created) return res.status(409).json({ error: 'You have already reviewed this session' });
+      res.json({ ok: true, review: created });
+    } catch (err) {
+      console.error('[API] bookings/:id/review:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ---------- Coaching admin ----------
   // Flag-gated alongside the public coaching endpoints — when the marketplace
   // is off the entire feature is invisible, including for superusers, so the
