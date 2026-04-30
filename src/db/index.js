@@ -8329,6 +8329,27 @@ async function markBookingPaidBySession(stripeSessionId, paymentIntent = null, c
   return r.rows[0] || null;
 }
 
+// Abandoned checkout cleanup. Stripe fires `checkout.session.expired`
+// when the student walks away from the Stripe-hosted page. We flip the
+// row to 'cancelled' so the slot frees up for other students — without
+// this the row stays 'pending' forever and validateBookingSlot's
+// double-booking check (which treats 'pending' as live) would block all
+// future bookings on the same time. Status guard (`status='pending'`)
+// makes it idempotent against a session that paid right before expiry.
+async function markBookingCancelledBySession(stripeSessionId) {
+  if (!stripeSessionId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'cancelled',
+            updated_at = NOW()
+      WHERE stripe_session_id = $1 AND status = 'pending'
+      RETURNING *`,
+    [stripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
 async function markBookingPaidByIntent(paymentIntent, chargeId = null) {
   if (!paymentIntent) return null;
   const p = getPool();
@@ -8625,14 +8646,22 @@ async function validateBookingSlot(coachAccountId, slotStartIso, durationMinutes
   }
   if (!fitsAnySlot) return { ok: false, reason: 'Selected time is outside the coach\'s published availability.' };
 
-  // Double-booking check — anything live (pending/paid/disputed/completed
-  // and not yet refunded) on the same slot for the same coach blocks the
-  // request. Refunded/cancelled bookings free the slot back up.
+  // Double-booking check — anything live (paid/disputed/completed) on the
+  // same slot for the same coach blocks the request. 'pending' rows only
+  // block while their 30-minute Stripe checkout session could still pay
+  // (we treat anything older than 35 min — 30 min checkout window + a 5
+  // min webhook-delivery margin — as effectively dead). Without this
+  // grace, an abandoned checkout where the `checkout.session.expired`
+  // webhook was missed/delayed would lock the slot indefinitely.
+  // Refunded/cancelled bookings free the slot back up immediately.
   const p = getPool();
   const conflict = await p.query(
     `SELECT 1 FROM coaching_bookings
       WHERE coach_account_id = $1
-        AND status IN ('pending', 'paid', 'disputed', 'completed')
+        AND (
+          status IN ('paid', 'disputed', 'completed')
+          OR (status = 'pending' AND created_at > NOW() - INTERVAL '35 minutes')
+        )
         AND tstzrange(slot_start_at, slot_start_at + (duration_minutes || ' minutes')::interval, '[)')
             && tstzrange($2::timestamptz, $2::timestamptz + ($3 || ' minutes')::interval, '[)')
       LIMIT 1`,
@@ -8906,6 +8935,7 @@ module.exports = {
   listCoachBookings,
   listStudentBookings,
   markBookingPaidBySession,
+  markBookingCancelledBySession,
   markBookingPaidByIntent,
   confirmBookingSide,
   raiseBookingDispute,

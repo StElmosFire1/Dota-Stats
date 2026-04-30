@@ -369,6 +369,22 @@ function createServer(startupStatus = {}) {
             console.log('[Stripe] Coach KYC active', updated.account_id, 'stripe_account', acct.id);
           }
         }
+      } else if (event.type === 'checkout.session.expired') {
+        // Student opened checkout and walked away. Stripe expires the
+        // session after the `expires_at` we set on creation (30min for
+        // coaching) and fires this event. Without this branch the row
+        // would stay 'pending' indefinitely and the slot-conflict check
+        // in validateBookingSlot would block all future bookings on that
+        // time. We only flip rows that are still 'pending' (idempotent —
+        // a session that paid right before expiry is already 'paid' and
+        // we don't touch it).
+        const session = event.data.object;
+        if (session.metadata?.purpose === 'coaching_booking') {
+          const cancelled = await db.markBookingCancelledBySession(session.id).catch(() => null);
+          if (cancelled) {
+            console.log('[Stripe] Coaching booking checkout expired (slot freed)', cancelled.id);
+          }
+        }
       } else if (event.type === 'payment_intent.canceled') {
         // Backup: payment_intent.cancel is what we call from no-show /
         // dispute-refund / admin-refund routes. Synchronous DB update is
@@ -5352,6 +5368,14 @@ NOTES
         },
         success_url: `${baseUrl}/me/bookings?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/coaches/${coach.id}?checkout=cancelled`,
+        // Force the checkout session to expire after 30 minutes (Stripe's
+        // minimum). When the student abandons the tab Stripe fires
+        // `checkout.session.expired` and our webhook flips the matching
+        // pending booking to 'cancelled' — releasing the held slot for
+        // other students. Without this, abandoned sessions would leave
+        // orphan 'pending' rows that block the time forever (default
+        // session lifetime is 24h).
+        expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
         metadata: {
           purpose: 'coaching_booking',
           coach_account_id: String(coach.account_id),

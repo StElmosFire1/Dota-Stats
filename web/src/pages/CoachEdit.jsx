@@ -81,26 +81,38 @@ export default function CoachEdit() {
     <div style={{ maxWidth: 900, margin: '24px auto', padding: 16 }}>
       <h1>Coach editor</h1>
 
-      {kyc && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 20 }}>
-          <strong>KYC status:</strong>{' '}
-          <span style={{ color: kyc.charges_enabled ? 'var(--radiant-color)' : '#fbbf24' }}>
-            {kyc.charges_enabled ? 'Active — accepting bookings' : `Pending (${kyc.requirements_due?.length || 0} requirements due)`}
-          </span>
-          {!kyc.charges_enabled && (
-            <button
-              onClick={async () => {
-                const r = await fetch(`${BASE}/coach/onboard`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-                const d = await r.json();
-                if (d.url) window.location.href = d.url;
-                else setMsg(`Error: ${d.error}`);
-              }}
-              style={{ marginLeft: 12, padding: '6px 14px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer' }}>
-              Continue Stripe setup
-            </button>
-          )}
-        </div>
-      )}
+      {kyc && (() => {
+        // Backend gates 'active' on BOTH charges_enabled AND payouts_enabled
+        // (we use manual capture so funds sit in escrow — there's no point
+        // accepting a booking we can't pay out). Mirror that here so we
+        // don't tell a coach they're "Active" while bookings are still
+        // failing on the validateBookingSlot status check.
+        const fullyActive = kyc.charges_enabled && kyc.payouts_enabled;
+        let statusLabel;
+        if (fullyActive) statusLabel = 'Active — accepting bookings';
+        else if (kyc.charges_enabled && !kyc.payouts_enabled) statusLabel = 'Almost there — Stripe needs your payout details (bank account) before you can accept bookings.';
+        else statusLabel = `Pending (${kyc.requirements_due?.length || 0} requirements due)`;
+        return (
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 20 }}>
+            <strong>KYC status:</strong>{' '}
+            <span style={{ color: fullyActive ? 'var(--radiant-color)' : '#fbbf24' }}>
+              {statusLabel}
+            </span>
+            {!fullyActive && (
+              <button
+                onClick={async () => {
+                  const r = await fetch(`${BASE}/coach/onboard`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                  const d = await r.json();
+                  if (d.url) window.location.href = d.url;
+                  else setMsg(`Error: ${d.error}`);
+                }}
+                style={{ marginLeft: 12, padding: '6px 14px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer' }}>
+                Continue Stripe setup
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       <form onSubmit={save} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
         <h3 style={{ marginTop: 0 }}>Profile</h3>
