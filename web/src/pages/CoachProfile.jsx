@@ -111,15 +111,22 @@ export default function CoachProfile() {
     } finally { setBooking(false); }
   };
 
+  // React requires that hooks always run in the same order on every
+  // render — so useMemo MUST come BEFORE the early returns. We compute
+  // openSlots from `data?.availability` (safe-navigated) so it works
+  // both before and after data loads. Without this guard the hook count
+  // changes between the loading render and the data render and React
+  // throws "Rendered more hooks than during the previous render."
+  const openSlots = useMemo(
+    () => generateOpenSlots(data?.availability, bookForm.duration_minutes),
+    [data?.availability, bookForm.duration_minutes],
+  );
+
   if (error) return <div style={{ padding: 24 }}><h1>Coach</h1><p style={{ color: 'var(--dire-color)' }}>{error}</p></div>;
   if (!data) return <div style={{ padding: 24 }}>Loading…</div>;
 
   const { coach, availability, reviews, rating, credibility } = data;
   const totalCost = Math.round((coach.hourly_rate_cents * (parseInt(bookForm.duration_minutes) || 60)) / 60);
-  const openSlots = useMemo(
-    () => generateOpenSlots(availability, bookForm.duration_minutes),
-    [availability, bookForm.duration_minutes],
-  );
 
   return (
     <div style={{ maxWidth: 900, margin: '24px auto', padding: 16 }}>
