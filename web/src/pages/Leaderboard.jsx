@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
+import ProBadge from '../components/ProBadge';
+import useProMembers from '../hooks/useProMembers';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 
@@ -115,6 +117,7 @@ function StreakBadge({ streak }) {
 
 function MostImprovedWidget({ data, loading, seasonLabel }) {
   const title = seasonLabel ? `Most Improved — ${seasonLabel}` : 'Most Improved — last 30 days';
+  const proMembers = useProMembers();
   if (loading) return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
@@ -161,8 +164,10 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
               <Link to={`/player/${p.account_id}`} style={{
                 fontWeight: 600, fontSize: 13, color: 'var(--text-primary)',
                 textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
                 {p.display_name}
+                {proMembers.has(String(p.account_id)) && <ProBadge size="sm" />}
               </Link>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -192,6 +197,7 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
 
 function BestAndFairestWidget({ data, loading, seasonLabel }) {
   const title = seasonLabel ? `Best & Fairest — ${seasonLabel}` : 'Best & Fairest — All Time';
+  const proMembers = useProMembers();
 
   if (loading) return (
     <div style={{
@@ -249,8 +255,10 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
               <Link to={`/player/${p.account_id}`} style={{
                 fontWeight: 600, fontSize: 13, color: 'var(--text-primary)',
                 textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
                 {p.display_name || `Player ${p.account_id}`}
+                {proMembers.has(String(p.account_id)) && <ProBadge size="sm" />}
               </Link>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -291,6 +299,7 @@ function FormDots({ results }) {
 export default function Leaderboard() {
   const { seasonId, seasons } = useSeason();
   const showSeasonPass = useFeatureFlag('season_pass_s10');
+  const proMembers = useProMembers();
   const [data, setData] = useState({ leaderboard: [] });
   const [loading, setLoading] = useState(true);
   const [improved, setImproved] = useState([]);
@@ -430,8 +439,9 @@ export default function Leaderboard() {
                   <tr key={p.player_id} className={i < 3 ? `rank-${i + 1}` : ''}>
                     <td className="col-rank">{i + 1}</td>
                     <td className="col-player">
-                      <Link to={`/player/${p.player_id}`} className="player-link">
+                      <Link to={`/player/${p.player_id}`} className="player-link" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         {p.nickname || p.display_name || p.player_id}
+                        {proMembers.has(String(p.player_id)) && <ProBadge size="sm" />}
                       </Link>
                     </td>
                     <td className="col-stat">

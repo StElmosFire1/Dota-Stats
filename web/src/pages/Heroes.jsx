@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups } from '../api';
+import PaywallCard from '../components/PaywallCard';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { Link } from 'react-router-dom';
@@ -317,15 +318,20 @@ function HeroMatchupsTab() {
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('matchups');
   const [sortDir, setSortDir] = useState(-1);
+  const [paywall, setPaywall] = useState(null);
 
   const heroOptions = Object.entries(ALL_HEROES).sort((a, b) => a[1].localeCompare(b[1]));
 
   useEffect(() => {
     if (!selectedHero) return;
     setLoading(true);
+    setPaywall(null);
     getHeroMatchups(selectedHero, seasonId)
       .then(d => setMatchups(d.matchups || []))
-      .catch(() => setMatchups([]))
+      .catch(err => {
+        if (err.paywall) { setPaywall(err); setMatchups([]); }
+        else setMatchups([]);
+      })
       .finally(() => setLoading(false));
   }, [selectedHero, seasonId]);
 
@@ -343,6 +349,10 @@ function HeroMatchupsTab() {
     });
 
   const si = (f) => sortField === f ? (sortDir > 0 ? ' ▲' : ' ▼') : '';
+
+  if (paywall) {
+    return <PaywallCard feature={paywall.feature || 'hero_matchups'} signedIn={paywall.signedIn} />;
+  }
 
   return (
     <div>
@@ -728,16 +738,35 @@ function HeroMetaV2Panel() {
   const { seasonId } = useSeason();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [paywall, setPaywall] = useState(null);
   useEffect(() => {
     if (!enabled) return;
     setLoading(true);
+    setPaywall(null);
+    // Direct fetch (not fetchJson) so we can read 402 status manually.
     fetch(`/api/heroes/meta-v2${seasonId ? `?season=${seasonId}` : ''}`)
-      .then(r => (r.ok ? r.json() : { heroes: [] }))
+      .then(async r => {
+        if (r.status === 402) {
+          const data = await r.json().catch(() => ({}));
+          if (data?.paywall) {
+            setPaywall({ feature: data.feature || 'hero_meta_v2', signedIn: Boolean(data.signed_in) });
+          }
+          return { heroes: [] };
+        }
+        return r.ok ? r.json() : { heroes: [] };
+      })
       .then(d => setRows(d.heroes || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
   }, [enabled, seasonId]);
   if (!enabled) return null;
+  if (paywall) {
+    return (
+      <section style={{ marginTop: 28 }}>
+        <PaywallCard feature={paywall.feature} signedIn={paywall.signedIn} />
+      </section>
+    );
+  }
   return (
     <section style={{ marginTop: 28, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
       <h2 className="section-title" style={{ marginTop: 0 }}>📊 Hero Meta V2</h2>

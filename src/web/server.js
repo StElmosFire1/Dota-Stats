@@ -32,6 +32,11 @@ const { getStatsService } = require('../stats/statsService');
 const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/groqService');
 const { getDiscordBot } = require('../discord/bot');
 
+// Pro Tier membership cache (module-scope so the Stripe webhook handler
+// in createServer() and the _isProAccount() helper inside createApiRouter()
+// share the same Map). Keyed by stringified account_id; entries TTL after 60s.
+const _proCache = new Map();
+
 const CHUNK_DIR = '/tmp/replay-chunks';
 const UPLOAD_DIR = '/tmp/replay-uploads';
 // Replay store: persistent directory where parsed .dem files are kept for download.
@@ -277,9 +282,39 @@ function createServer(startupStatus = {}) {
           } else {
             console.warn('[Stripe] tournament_entry webhook: no entry for session', session.id);
           }
+        } else if (purpose === 'pro_lifetime') {
+          // Pro Tier — lifetime unlock. Flip the pending row to active and
+          // stash the payment_intent so a later refund can find it.
+          const row = await db.confirmProPurchase({
+            stripeSessionId: session.id,
+            stripePaymentIntent: session.payment_intent || null,
+            amountCents: session.amount_total != null ? session.amount_total : null,
+            currency: session.currency || null,
+          });
+          if (row) {
+            // Drop the cached membership status so the player sees Pro
+            // immediately on their next request (no 60s wait).
+            try { _proCache.delete(String(row.account_id)); } catch (_) {}
+            console.log('[Stripe] Confirmed Pro purchase', row.id, 'session', session.id, 'account', row.account_id);
+          } else {
+            console.warn('[Stripe] pro_lifetime webhook: no row for session', session.id);
+          }
         } else {
           await db.confirmBuyin(session.id);
           console.log('[Stripe] Confirmed buyin for session', session.id);
+        }
+      } else if (event.type === 'charge.refunded') {
+        // Refund handler — match by payment_intent so we revoke the right
+        // Pro subscription. Non-Pro refunds (tournament entries, buy-ins)
+        // fall through silently.
+        const charge = event.data.object;
+        const pi = charge.payment_intent;
+        if (pi) {
+          const refunded = await db.markProRefunded(pi).catch(() => null);
+          if (refunded) {
+            try { _proCache.delete(String(refunded.account_id)); } catch (_) {}
+            console.log('[Stripe] Refunded Pro subscription', refunded.id, 'account', refunded.account_id);
+          }
         }
       }
       res.json({ received: true });
@@ -694,7 +729,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.get('/hero-matchups', async (req, res) => {
+  router.get('/hero-matchups', requirePro('hero_matchups'), async (req, res) => {
     try {
       const { hero_id, season_id } = req.query;
       if (!hero_id) return res.status(400).json({ error: 'hero_id required' });
@@ -1176,7 +1211,7 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.get('/heroes/:heroId/skill-builds', async (req, res) => {
+  router.get('/heroes/:heroId/skill-builds', requirePro('skill_builds'), async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
       const data = await db.getHeroSkillBuilds(parseInt(req.params.heroId), seasonId);
@@ -2453,7 +2488,7 @@ NOTES
     }
   });
 
-  router.get('/head-to-head', async (req, res) => {
+  router.get('/head-to-head', requirePro('head_to_head'), async (req, res) => {
     try {
       const { a, b, season_id } = req.query;
       if (!a || !b) return res.status(400).json({ error: 'Provide ?a=accountId&b=accountId' });
@@ -2464,7 +2499,7 @@ NOTES
     }
   });
 
-  router.get('/compare', async (req, res) => {
+  router.get('/compare', requirePro('compare_players'), async (req, res) => {
     try {
       const { a, b, season_id } = req.query;
       if (!a || !b) return res.status(400).json({ error: 'Provide ?a=accountId&b=accountId' });
@@ -2716,7 +2751,7 @@ NOTES
     }
   });
 
-  router.get('/benchmarks', async (req, res) => {
+  router.get('/benchmarks', requirePro('player_benchmarks'), async (req, res) => {
     try {
       const seasonId = req.query.season || null;
       const data = await db.getPlayerBenchmarkAverages(seasonId);
@@ -4417,8 +4452,40 @@ NOTES
     return false;
   }
 
+  // ---------- Pro Tier gating ----------
+  // `requirePro(featureKey)` — express middleware that:
+  //   1. Lets the request through untouched while the `pro_tier` flag is OFF
+  //      (so existing free behavior is preserved until launch day).
+  //   2. When the flag is ON (or PREVIEW + superuser), checks Pro membership.
+  //      Non-Pro users get a structured 402 payload that the frontend turns
+  //      into a PaywallCard. Superusers always pass.
+  // Returns next() on success — never throws, never sends partial responses.
+  function requirePro(featureKey) {
+    return async function _requirePro(req, res, next) {
+      try {
+        const gateOn = await _flagOn('pro_tier', req);
+        if (!gateOn) return next();
+        if (_isSu(req)) return next();
+        const accountId = req.session?.accountId;
+        if (await _isProAccount(accountId)) return next();
+        // Structured payload: the frontend looks for `paywall: true` and
+        // renders a PaywallCard component instead of an error toast.
+        return res.status(402).json({
+          error: 'This feature requires Pro membership.',
+          paywall: true,
+          feature: featureKey,
+          signed_in: Boolean(accountId),
+        });
+      } catch (err) {
+        console.error('[requirePro] error:', err.message);
+        // Fail-open: if our own check breaks, don't paywall the request.
+        return next();
+      }
+    };
+  }
+
   // ---------- F1: Hero Meta V2 ----------
-  router.get('/heroes/meta-v2', async (req, res) => {
+  router.get('/heroes/meta-v2', requirePro('hero_meta_v2'), async (req, res) => {
     try {
       if (!(await _flagOn('hero_meta_v2', req))) return res.status(404).json({ error: 'Not found' });
       const tier = req.query.tier ? parseInt(req.query.tier) : null;
@@ -4625,12 +4692,20 @@ NOTES
   });
 
   // ---------- Profile customization ----------
-  // The Pro-tier check is a stub for now (no Pro tier is shipped yet) — it
-  // always returns false, so premium titles/themes are rejected with 403 if a
-  // client tries to bypass the locked UI. When Pro tier ships, replace the
-  // stub with the real check; the route shape doesn't need to change.
-  async function _isProAccount(_accountId) {
-    return false;
+  // Pro-tier check — backed by `pro_subscriptions`. Cached for 60s so we
+  // don't hit the DB on every gated request. Cache is invalidated by the
+  // Stripe webhook on purchase/refund and by the local checkout endpoint.
+  // When the `pro_tier` flag is `off`, no endpoint actually gates on this,
+  // so the cache stays cold for free users.
+  async function _isProAccount(accountId) {
+    if (!accountId) return false;
+    const key = String(accountId);
+    const now = Date.now();
+    const cached = _proCache.get(key);
+    if (cached && cached.expiresAt > now) return cached.value;
+    const value = await db.isProMember(accountId).catch(() => false);
+    _proCache.set(key, { value, expiresAt: now + 60_000 });
+    return value;
   }
 
   router.get('/me/profile', async (req, res) => {
@@ -4734,6 +4809,177 @@ NOTES
     } catch (err) {
       console.error('[API] player/:id/profile-card:', err.message);
       res.status(500).json({ error: 'Failed to fetch profile card' });
+    }
+  });
+
+  // ====================================================================
+  // Pro Tier endpoints
+  // ====================================================================
+  // All four are flag-gated on `pro_tier`. While the flag is OFF the
+  // pricing/checkout endpoints 404 (so we don't accidentally take payments
+  // before launch); status returns is_pro:false but doesn't 404, so the
+  // frontend can read it cheaply on every page without breaking anything.
+  // Configurable via PRO_LIFETIME_PRICE_CENTS (defaults to 2000 = AUD $20).
+  function _proPriceCents() {
+    const n = parseInt(process.env.PRO_LIFETIME_PRICE_CENTS || '2000', 10);
+    return Number.isFinite(n) && n > 0 ? n : 2000;
+  }
+
+  router.get('/pro/status', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId || null;
+      const flag = await db.getFeatureFlag('pro_tier').catch(() => null);
+      const flagState = flag?.state || 'off';
+      // gate_on tells the frontend whether the pricing/checkout flow is live
+      // and whether feature endpoints are actually requiring Pro yet.
+      const gateOn = flagState === 'on' || (flagState === 'preview' && _isSu(req));
+      const isPro = accountId ? await _isProAccount(accountId) : false;
+      const sub = (accountId && isPro) ? await db.getProSubscription(accountId).catch(() => null) : null;
+      res.json({
+        signed_in: Boolean(accountId),
+        is_pro: isPro,
+        gate_on: gateOn,
+        flag_state: flagState,
+        subscription: sub
+          ? {
+              plan_type: sub.plan_type,
+              status: sub.status,
+              amount_cents: sub.amount_cents,
+              currency: sub.currency,
+              purchased_at: sub.purchased_at,
+            }
+          : null,
+      });
+    } catch (err) {
+      console.error('[API] pro/status:', err.message);
+      res.status(500).json({ error: 'Failed to fetch Pro status' });
+    }
+  });
+
+  // Public list of Pro account_ids (no names, no payment data) so the frontend
+  // can render the ProBadge next to leaderboard rows + player headers in one
+  // round-trip. Returns empty list when the `pro_tier` flag is OFF, so badges
+  // simply don't appear pre-launch.
+  router.get('/pro/members', async (req, res) => {
+    try {
+      if (!(await _flagOn('pro_tier', req))) return res.json({ member_ids: [] });
+      const rows = await db.listProMembers().catch(() => []);
+      res.json({ member_ids: rows.map(r => String(r.account_id)) });
+    } catch (err) {
+      console.error('[API] pro/members:', err.message);
+      res.json({ member_ids: [] });
+    }
+  });
+
+  router.get('/pro/pricing', async (req, res) => {
+    try {
+      if (!(await _flagOn('pro_tier', req))) return res.status(404).json({ error: 'Not found' });
+      res.json({
+        plan_type: 'lifetime',
+        price_cents: _proPriceCents(),
+        currency: 'aud',
+      });
+    } catch (err) {
+      console.error('[API] pro/pricing:', err.message);
+      res.status(500).json({ error: 'Failed to fetch pricing' });
+    }
+  });
+
+  router.post('/pro/checkout', express.json(), async (req, res) => {
+    try {
+      if (!(await _flagOn('pro_tier', req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to upgrade.' });
+      // Idempotency: don't sell Pro to someone who's already Pro.
+      if (await _isProAccount(accountId)) {
+        return res.status(409).json({ error: 'You are already a Pro member.', is_pro: true });
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments are not configured. Please try again later.' });
+      }
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const priceCents = _proPriceCents();
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: {
+              name: 'Inhouse Stats — Pro Tier (Lifetime)',
+              description: 'One-time purchase. Unlocks all Pro analytics + premium profile cosmetics.',
+            },
+            unit_amount: priceCents,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pro?checkout=cancelled`,
+        metadata: {
+          purpose: 'pro_lifetime',
+          account_id: String(accountId),
+        },
+      });
+      await db.createProCheckout({
+        accountId,
+        stripeSessionId: session.id,
+        planType: 'lifetime',
+        amountCents: priceCents,
+        currency: 'aud',
+      });
+      try { _proCache.delete(String(accountId)); } catch (_) {}
+      res.json({ url: session.url });
+    } catch (err) {
+      console.error('[API] pro/checkout:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create checkout' });
+    }
+  });
+
+  // CSV export of the signed-in player's match history. Pro-gated so we
+  // don't give away bulk data scraping for free. Streams a deterministic
+  // header row + one row per match. Only the player's own matches are
+  // exported — :id must match the session.
+  router.get('/players/:id/matches/export.csv', requirePro('csv_export'), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const requestedId = req.params.id;
+      if (String(requestedId) !== String(accountId) && !_isSu(req)) {
+        return res.status(403).json({ error: 'You can only export your own match history.' });
+      }
+      const seasonId = req.query.season_id || null;
+      const matches = await db.getMatchHistory(requestedId, seasonId).catch(() => []);
+      const cols = [
+        'match_id', 'date', 'duration_seconds', 'won', 'hero', 'kills', 'deaths', 'assists',
+        'gpm', 'xpm', 'last_hits', 'denies', 'hero_damage', 'tower_damage', 'hero_healing',
+        'net_worth', 'level',
+      ];
+      const escape = (v) => {
+        if (v == null) return '';
+        const s = String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const lines = [cols.join(',')];
+      for (const m of (matches || [])) {
+        // getMatchHistory rows: match_id, date, duration, radiant_win, player_slot,
+        // hero, kills, deaths, assists, gpm, xpm, last_hits, denies, hero_damage,
+        // tower_damage, hero_healing, net_worth, level — defensive on shape.
+        const isRadiant = m.player_slot != null ? m.player_slot < 128 : null;
+        const won = (isRadiant != null && m.radiant_win != null) ? (isRadiant === m.radiant_win) : '';
+        lines.push([
+          m.match_id, m.date, m.duration, won, m.hero,
+          m.kills, m.deaths, m.assists, m.gpm, m.xpm,
+          m.last_hits, m.denies, m.hero_damage, m.tower_damage,
+          m.hero_healing, m.net_worth, m.level,
+        ].map(escape).join(','));
+      }
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="matches_${requestedId}.csv"`);
+      res.send(lines.join('\n'));
+    } catch (err) {
+      console.error('[API] matches/export.csv:', err.message);
+      res.status(500).json({ error: 'Failed to export matches' });
     }
   });
 

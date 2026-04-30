@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getPlayerBenchmarks } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import PaywallCard from '../components/PaywallCard';
 
 const METRICS = [
   { key: 'avg_kda', label: 'KDA', fmt: v => parseFloat(v).toFixed(2), higher: true },
@@ -36,12 +37,17 @@ export default function PlayerBenchmarks() {
   const [sortKey, setSortKey] = useState('avg_kda');
   const [sortDir, setSortDir] = useState('desc');
   const [search, setSearch] = useState('');
+  const [paywall, setPaywall] = useState(null);
 
   useEffect(() => {
     setLoading(true);
+    setPaywall(null);
     getPlayerBenchmarks(seasonId || null)
       .then(d => setData(d?.benchmarks || []))
-      .catch(() => setData([]))
+      .catch(err => {
+        if (err.paywall) { setPaywall(err); setData([]); }
+        else setData([]);
+      })
       .finally(() => setLoading(false));
   }, [seasonId]);
 
@@ -76,6 +82,15 @@ export default function PlayerBenchmarks() {
   );
 
   if (loading) return <div className="loading">Loading benchmarks…</div>;
+
+  if (paywall) {
+    return (
+      <div>
+        <h1 className="page-title">📊 Player Benchmarks</h1>
+        <PaywallCard feature={paywall.feature || 'player_benchmarks'} signedIn={paywall.signedIn} />
+      </div>
+    );
+  }
 
   return (
     <div>

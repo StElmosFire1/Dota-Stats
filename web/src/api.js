@@ -96,9 +96,45 @@ async function fetchJson(url) {
   const res = await fetch(BASE + url);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    const err = new Error(data.error || `Request failed: ${res.status}`);
+    err.status = res.status;
+    // Pro Tier paywall — backend returns 402 with { paywall:true, feature, signed_in }.
+    // Pages catch this and render <PaywallCard /> instead of an error toast.
+    if (res.status === 402 && data.paywall) {
+      err.paywall = true;
+      err.feature = data.feature || null;
+      err.signedIn = Boolean(data.signed_in);
+    }
+    throw err;
   }
   return res.json();
+}
+
+// Pro Tier API helpers. getProStatus() is safe to call when signed-out
+// (returns is_pro:false, gate_on:flag-state) and never 404s.
+export async function getProStatus() {
+  return fetchJson('/pro/status');
+}
+export async function getProPricing() {
+  return fetchJson('/pro/pricing');
+}
+export async function getProMembers() {
+  return fetchJson('/pro/members');
+}
+export async function createProCheckout() {
+  const res = await fetch(BASE + '/pro/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: '{}',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `Checkout failed: ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data; // { url }
 }
 
 function seasonParam(seasonId) {

@@ -45,6 +45,8 @@ const PlayerInsights = lazy(() => import('./pages/PlayerInsights'));
 const Join = lazy(() => import('./pages/Join'));
 const SettingsNotifications = lazy(() => import('./pages/SettingsNotifications'));
 const SettingsProfile = lazy(() => import('./pages/SettingsProfile'));
+const Pro = lazy(() => import('./pages/Pro'));
+const SettingsBilling = lazy(() => import('./pages/SettingsBilling'));
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -373,6 +375,8 @@ export default function App() {
                 <Route path="/join" element={<Join />} />
                 <Route path="/settings/notifications" element={<SettingsNotifications />} />
                 <Route path="/settings/profile" element={<SettingsProfile />} />
+                <Route path="/settings/billing" element={<SettingsBilling />} />
+                <Route path="/pro" element={<Pro />} />
               </Routes>
               </Suspense>
             </main>

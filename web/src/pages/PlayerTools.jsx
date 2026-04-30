@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { getPlayerComparison, getHeadToHead, getAllPlayers } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
+import PaywallCard from '../components/PaywallCard';
 
 function formatDuration(s) {
   if (!s) return '--';
@@ -134,14 +135,21 @@ function CompareTab({ players, seasonId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [paywall, setPaywall] = useState(null);
 
   const search = useCallback(async () => {
     if (!playerA || !playerB || playerA === playerB) return;
     setLoading(true);
     setError(null);
     try {
-      const d = await getPlayerComparison(playerA, playerB, seasonId);
-      setData(d);
+      try {
+        const d = await getPlayerComparison(playerA, playerB, seasonId);
+        setData(d);
+        setPaywall(null);
+      } catch (err) {
+        if (err.paywall) { setPaywall(err); setData(null); }
+        else throw err;
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -158,6 +166,7 @@ function CompareTab({ players, seasonId }) {
         onSearch={search} loading={loading} buttonLabel="Compare Stats"
       />
       {error && <div className="error-state" style={{ marginTop: '1rem' }}>{error}</div>}
+      {paywall && <PaywallCard feature={paywall.feature || 'compare_players'} signedIn={paywall.signedIn} />}
 
       {data && (
         <div style={{ marginTop: '1.5rem' }}>
@@ -204,6 +213,7 @@ function HeadToHeadTab({ players, seasonId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [paywall, setPaywall] = useState(null);
 
   const nameFor = (id) => {
     const p = players.find(x => x.account_id?.toString() === id?.toString());
@@ -218,8 +228,14 @@ function HeadToHeadTab({ players, seasonId }) {
     setLoading(true);
     setError(null);
     try {
-      const d = await getHeadToHead(playerA, playerB, seasonId);
-      setData(d);
+      try {
+        const d = await getHeadToHead(playerA, playerB, seasonId);
+        setData(d);
+        setPaywall(null);
+      } catch (err) {
+        if (err.paywall) { setPaywall(err); setData(null); }
+        else throw err;
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -236,6 +252,7 @@ function HeadToHeadTab({ players, seasonId }) {
         onSearch={search} loading={loading} buttonLabel="Find Matches"
       />
       {error && <div className="error-state" style={{ marginTop: '1rem' }}>{error}</div>}
+      {paywall && <PaywallCard feature={paywall.feature || 'head_to_head'} signedIn={paywall.signedIn} />}
 
       {data && (
         <div style={{ marginTop: '1.5rem' }}>

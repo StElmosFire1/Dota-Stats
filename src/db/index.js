@@ -801,7 +801,8 @@ async function init() {
          ('tournament_live_v2', 'off', 'Wave 3: Tournament bracket live view — match-day scoreboard + auto-updating standings + prize distribution'),
          ('mvp_attitude_analytics', 'off', 'Wave 3: MVP rate + attitude trend analytics on player profiles'),
          ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions'),
-         ('profile_customization', 'off', 'Player-editable profile bio, custom title, theme accent, pinned hero + pinned match (free tier; premium cosmetics gated by Pro tier later)')
+         ('profile_customization', 'off', 'Player-editable profile bio, custom title, theme accent, pinned hero + pinned match (free tier; premium cosmetics gated by Pro tier later)'),
+         ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -826,6 +827,31 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_profiles_account ON player_profiles (account_id)`);
+
+    // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
+    // status: 'pending' (checkout created), 'active' (paid via webhook),
+    // 'refunded' (charge.refunded webhook). isProMember() looks for an
+    // 'active' row keyed on account_id. plan_type is reserved for future
+    // monthly/annual tiers; today only 'lifetime' is issued.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS pro_subscriptions (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        plan_type TEXT NOT NULL DEFAULT 'lifetime',
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'refunded')),
+        stripe_session_id TEXT UNIQUE,
+        stripe_payment_intent TEXT,
+        amount_cents INTEGER,
+        currency TEXT DEFAULT 'aud',
+        purchased_at TIMESTAMPTZ,
+        refunded_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_account ON pro_subscriptions (account_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_active ON pro_subscriptions (account_id) WHERE status = 'active'`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_pi ON pro_subscriptions (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
 
     // Weekend / special event tournaments
     await p.query(`
@@ -7741,6 +7767,113 @@ async function getPlayerProfileCard(accountId) {
   };
 }
 
+// ---------- Pro Tier (`pro_tier`) ----------
+// Lifetime-unlock paid feature. One row per Stripe checkout. Active rows
+// grant Pro membership; refunded rows revoke it. The route layer caches
+// isProMember() results briefly so we don't hammer the DB on every gated
+// request.
+async function isProMember(accountId) {
+  if (!accountId) return false;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT 1 FROM pro_subscriptions
+      WHERE account_id = $1 AND status = 'active'
+      LIMIT 1`,
+    [accountId]
+  );
+  return r.rows.length > 0;
+}
+
+// Returns the most-relevant subscription row for the player (active wins,
+// then most recent pending, then most recent refunded). Used to render the
+// settings/billing page so the player can see receipt details.
+async function getProSubscription(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, plan_type, status, stripe_session_id,
+            stripe_payment_intent, amount_cents, currency,
+            purchased_at, refunded_at, created_at, updated_at
+       FROM pro_subscriptions
+      WHERE account_id = $1
+      ORDER BY (status = 'active') DESC,
+               (status = 'pending') DESC,
+               created_at DESC
+      LIMIT 1`,
+    [accountId]
+  );
+  return r.rows[0] || null;
+}
+
+// Insert a pending checkout row. Called from POST /api/pro/checkout.
+async function createProCheckout({ accountId, stripeSessionId, planType = 'lifetime', amountCents = null, currency = 'aud' }) {
+  if (!accountId) throw new Error('createProCheckout: accountId required');
+  if (!stripeSessionId) throw new Error('createProCheckout: stripeSessionId required');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO pro_subscriptions
+       (account_id, plan_type, status, stripe_session_id, amount_cents, currency)
+     VALUES ($1, $2, 'pending', $3, $4, $5)
+     ON CONFLICT (stripe_session_id) DO UPDATE
+       SET updated_at = NOW()
+     RETURNING id, account_id, status, stripe_session_id`,
+    [accountId, planType, stripeSessionId, amountCents, currency]
+  );
+  return r.rows[0];
+}
+
+// Confirm a pending checkout via webhook. Idempotent: if the row is already
+// active, this is a no-op. Stamps purchased_at + the payment_intent so we
+// can match later charge.refunded events back to the right row.
+async function confirmProPurchase({ stripeSessionId, stripePaymentIntent = null, amountCents = null, currency = null }) {
+  if (!stripeSessionId) throw new Error('confirmProPurchase: stripeSessionId required');
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE pro_subscriptions
+        SET status = 'active',
+            stripe_payment_intent = COALESCE($2, stripe_payment_intent),
+            amount_cents = COALESCE($3, amount_cents),
+            currency = COALESCE($4, currency),
+            purchased_at = COALESCE(purchased_at, NOW()),
+            updated_at = NOW()
+      WHERE stripe_session_id = $1
+      RETURNING id, account_id, status, purchased_at`,
+    [stripeSessionId, stripePaymentIntent, amountCents, currency]
+  );
+  return r.rows[0] || null;
+}
+
+// Stripe `charge.refunded` handler. Marks any active row with the matching
+// payment_intent as refunded. Returns the affected row (if any).
+async function markProRefunded(stripePaymentIntent) {
+  if (!stripePaymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE pro_subscriptions
+        SET status = 'refunded',
+            refunded_at = NOW(),
+            updated_at = NOW()
+      WHERE stripe_payment_intent = $1 AND status = 'active'
+      RETURNING id, account_id, status, refunded_at`,
+    [stripePaymentIntent]
+  );
+  return r.rows[0] || null;
+}
+
+// Admin / debug listing of all active Pro members. Used by the admin panel.
+async function listProMembers() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ps.id, ps.account_id, ps.plan_type, ps.amount_cents, ps.currency,
+            ps.purchased_at, COALESCE(rp.display_name, ps.account_id::text) AS display_name
+       FROM pro_subscriptions ps
+       LEFT JOIN registered_players rp ON rp.account_id = ps.account_id
+      WHERE ps.status = 'active'
+      ORDER BY ps.purchased_at DESC NULLS LAST, ps.id DESC`
+  );
+  return r.rows;
+}
+
 module.exports = {
   init,
   getPool,
@@ -7880,6 +8013,12 @@ module.exports = {
   getPlayerProfileCustomization,
   setPlayerProfileCustomization,
   getPlayerProfileCard,
+  isProMember,
+  getProSubscription,
+  createProCheckout,
+  confirmProPurchase,
+  markProRefunded,
+  listProMembers,
   addPushSubscription,
   removePushSubscriptionByEndpoint,
   getPushSubscriptionsForAccount,

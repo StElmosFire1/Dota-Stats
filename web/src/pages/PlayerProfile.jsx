@@ -438,6 +438,8 @@ export default function PlayerProfile() {
     return { match_num: idx + 1, win_rate: Math.round((wins / slice.length) * 100) };
   });
   const displayName = nickname || rating?.display_name || `Player ${accountId}`;
+  const proMembers = useProMembers();
+  const isPlayerPro = proMembers.has(String(accountId));
 
   const totalMatches = averages ? parseInt(averages.total_matches) : 0;
   const totalKDA = averages && totalMatches > 0
@@ -457,6 +459,7 @@ export default function PlayerProfile() {
             </span>
           )}
         </h1>
+        {isPlayerPro && <ProBadge size="lg" />}
         {playerRank?.dota_rank_tier && (
           <RankBadge
             rankTier={playerRank.dota_rank_tier}
