@@ -539,6 +539,10 @@ export default function PlayerProfile() {
             }}
           >✏️ Edit Profile</Link>
         )}
+        {/* Coaching marketplace — "Apply to coach" CTA shows on own profile when
+            eligible (top-5 leaderboard or Immortal+). Hidden when the
+            `coaching_marketplace` flag is off (eligibility endpoint 404s). */}
+        {isOwnProfile && <CoachingApplyCta />}
       </div>
 
       {/* Profile customization (`profile_customization`) — title + bio under the
@@ -1228,5 +1232,27 @@ export default function PlayerProfile() {
         </section>
       )}
     </div>
+  );
+}
+
+function CoachingApplyCta() {
+  const [data, setData] = React.useState(null);
+  React.useEffect(() => {
+    fetch('/api/coaching/eligibility/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => {});
+  }, []);
+  if (!data || !data.signed_in || !data.eligible) return null;
+  const linkTo = data.has_coach_row ? '/coach/edit' : '/coach/onboarding';
+  const label = data.has_coach_row ? '⚙️ Coach profile' : '🎓 Apply to coach';
+  return (
+    <Link
+      to={linkTo}
+      style={{
+        background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#000',
+        borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, textDecoration: 'none',
+      }}
+    >{label}</Link>
   );
 }

@@ -3801,6 +3801,10 @@ class DiscordBot {
       // Auto-create lobby at game time: check every minute
       setInterval(() => this._autoCreateScheduledLobbies().catch(err => console.error('[LobbyAuto] Error:', err.message)), 60 * 1000);
 
+      // Coaching marketplace reminders (T13) — hourly cron, no-ops while flag is off
+      this.startCoachingReminderCron();
+      console.log('[Discord] Coaching session reminder cron scheduled.');
+
       // 10-player seated notification
       const lobbyMgr = this._lobbyManager;
       if (lobbyMgr) {
@@ -4103,7 +4107,113 @@ class DiscordBot {
     }
   }
 
+  // ───────── Coaching Marketplace (T13) ─────────
+  // All three DMs no-op when the `coaching_marketplace` flag is off (callers
+  // already check it) and additionally consult `db.isNotificationEnabled` so
+  // each player can opt out of any category from /settings/notifications.
+
+  async notifyCoachingBookingConfirmed(booking) {
+    if (!booking) return;
+    try {
+      // Booking rows expose `coach_account_id` (BIGINT, the Steam account id);
+      // there is no `coach_id` field. db.getCoach takes the account_id.
+      const coach = await db.getCoach(booking.coach_account_id).catch(() => null);
+      if (!coach) return;
+      const recipients = [
+        { account_id: booking.student_account_id, role: 'student' },
+        { account_id: coach.account_id, role: 'coach' },
+      ];
+      for (const r of recipients) {
+        const allowed = await db.isNotificationEnabled(r.account_id, 'coaching_booking_confirmed').catch(() => true);
+        if (!allowed) continue;
+        const discordId = await db.getDiscordIdByAccountId(r.account_id).catch(() => null);
+        if (!discordId) continue;
+        const user = await this.client.users.fetch(discordId).catch(() => null);
+        if (!user) continue;
+        const when = new Date(booking.slot_start_at).toLocaleString('en-AU', { timeZone: 'Australia/Sydney' });
+        const otherName = r.role === 'student'
+          ? (coach.display_name || `Coach #${coach.id}`)
+          : (booking.student_name || `Player ${booking.student_account_id}`);
+        const embed = new EmbedBuilder()
+          .setTitle('🎓 Coaching booking confirmed')
+          .setColor(0x10b981)
+          .setDescription(
+            `Your coaching session is locked in!\n\n` +
+            `**With:** ${otherName}\n` +
+            `**When:** ${when} (Sydney)\n` +
+            `**Length:** ${booking.duration_minutes} minutes\n\n` +
+            (r.role === 'student'
+              ? `Funds are held in escrow until you both confirm completion.`
+              : `You'll receive payout via Stripe after the session is confirmed.`) +
+            `\n\nMeet up in the community Discord at the scheduled time.`
+          )
+          .setFooter({ text: 'Toggle off in /settings/notifications' });
+        await user.send({ embeds: [embed] }).catch(() => {});
+      }
+    } catch (e) { console.warn('[Coaching] notifyCoachingBookingConfirmed failed:', e.message); }
+  }
+
+  async notifyCoachingReviewPrompt(booking) {
+    if (!booking) return;
+    try {
+      const allowed = await db.isNotificationEnabled(booking.student_account_id, 'coaching_review_request').catch(() => true);
+      if (!allowed) return;
+      const discordId = await db.getDiscordIdByAccountId(booking.student_account_id).catch(() => null);
+      if (!discordId) return;
+      const user = await this.client.users.fetch(discordId).catch(() => null);
+      if (!user) return;
+      const coach = await db.getCoach(booking.coach_account_id).catch(() => null);
+      const coachName = coach?.display_name || `Coach #${booking.coach_account_id}`;
+      const embed = new EmbedBuilder()
+        .setTitle('★ How was your coaching session?')
+        .setColor(0xfbbf24)
+        .setDescription(
+          `Your session with **${coachName}** is complete.\n\n` +
+          `[Leave a review](http://170.64.182.110:5000/me/bookings) — it helps other players find great coaches.`
+        )
+        .setFooter({ text: 'Toggle off in /settings/notifications' });
+      await user.send({ embeds: [embed] }).catch(() => {});
+    } catch (e) { console.warn('[Coaching] notifyCoachingReviewPrompt failed:', e.message); }
+  }
+
+  // Hourly cron — DM both parties ~1h before slot starts.
+  // Idempotent via `coaching_bookings.reminder_sent_at` (set inside the helper).
+  startCoachingReminderCron() {
+    if (this._coachingReminderTimer) return;
+    const tick = async () => {
+      try {
+        const flag = await db.getFeatureFlag('coaching_marketplace').catch(() => null);
+        if (flag?.state !== 'on') return;
+        const due = await db.listBookingsDueForReminder().catch(() => []);
+        for (const b of due) {
+          try {
+            const coach = await db.getCoach(b.coach_account_id).catch(() => null);
+            if (!coach) continue;
+            const recipients = [
+              { account_id: b.student_account_id, name: coach.display_name || `Coach #${coach.id}` },
+              { account_id: coach.account_id, name: b.student_name || `Player ${b.student_account_id}` },
+            ];
+            for (const r of recipients) {
+              const allowed = await db.isNotificationEnabled(r.account_id, 'coaching_session_reminder').catch(() => true);
+              if (!allowed) continue;
+              const discordId = await db.getDiscordIdByAccountId(r.account_id).catch(() => null);
+              if (!discordId) continue;
+              const user = await this.client.users.fetch(discordId).catch(() => null);
+              if (!user) continue;
+              const when = new Date(b.slot_start_at).toLocaleString('en-AU', { timeZone: 'Australia/Sydney' });
+              await user.send(`⏰ Coaching session with **${r.name}** in ~1 hour (${when} Sydney). See you in Discord!`).catch(() => {});
+            }
+            await db.stampBookingReminderSent(b.id).catch(() => {});
+          } catch (e) { console.warn(`[Coaching] reminder failed for booking ${b.id}:`, e.message); }
+        }
+      } catch (e) { console.warn('[Coaching] reminder cron failed:', e.message); }
+    };
+    this._coachingReminderTimer = setInterval(tick, 60 * 60 * 1000); // 1h
+    setTimeout(tick, 30 * 1000); // first run after 30s
+  }
+
   async shutdown() {
+    if (this._coachingReminderTimer) clearInterval(this._coachingReminderTimer);
     this.client.destroy();
     console.log('[Discord] Bot shut down.');
   }

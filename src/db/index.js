@@ -802,7 +802,8 @@ async function init() {
          ('mvp_attitude_analytics', 'off', 'Wave 3: MVP rate + attitude trend analytics on player profiles'),
          ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions'),
          ('profile_customization', 'off', 'Player-editable profile bio, custom title, theme accent, pinned hero + pinned match (free tier; premium cosmetics gated by Pro tier later)'),
-         ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on')
+         ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on'),
+         ('coaching_marketplace', 'off', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -852,6 +853,123 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_account ON pro_subscriptions (account_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_active ON pro_subscriptions (account_id) WHERE status = 'active'`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_pi ON pro_subscriptions (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
+
+    // ---------- Coaching Marketplace (`coaching_marketplace`) ----------
+    // 1:1 paid coaching via Stripe Connect Express. 10% platform take rate.
+    // One `coaches` row per applicant. status:
+    //   'kyc_pending' — Connect account created, KYC not complete
+    //   'active'      — charges_enabled per Stripe `account.updated` webhook
+    //   'suspended'   — admin sanction
+    //   'delisted'    — terminal admin sanction
+    // No destructive ALTERs anywhere in this block; all CREATE TABLE IF NOT
+    // EXISTS so repeated init() calls are safe.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coaches (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL UNIQUE,
+        stripe_account_id TEXT UNIQUE,
+        status TEXT NOT NULL DEFAULT 'kyc_pending'
+          CHECK (status IN ('kyc_pending', 'active', 'suspended', 'delisted')),
+        hourly_rate_cents INTEGER NOT NULL DEFAULT 5000,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        bio TEXT,
+        languages TEXT,
+        taught_roles TEXT,
+        taught_heroes TEXT,
+        intro_video_url TEXT,
+        sample_replays TEXT,
+        response_time_hours INTEGER DEFAULT 24,
+        country TEXT DEFAULT 'AU',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coaches_status ON coaches (status)`);
+
+    // Weekly availability slots — repeating weekly (no calendar sync v1).
+    // day_of_week 0=Sun..6=Sat, times stored as HH:MM strings in slot timezone.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_availability_slots (
+        id SERIAL PRIMARY KEY,
+        coach_account_id BIGINT NOT NULL,
+        day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        timezone TEXT NOT NULL DEFAULT 'Australia/Sydney',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coach_avail_account ON coach_availability_slots (coach_account_id)`);
+
+    // Bookings — one row per session sale. status flow:
+    //   'pending'       — Payment Intent created, awaiting webhook
+    //   'paid'          — payment_intent.succeeded, funds held in escrow
+    //   'completed'     — both confirmed OR 48h auto-release; payout issued
+    //   'disputed'      — student raised within 48h, awaiting admin
+    //   'refunded'      — coach no-show, admin refund, or charge.refunded
+    //   'cancelled'     — pre-payment cancel
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coaching_bookings (
+        id SERIAL PRIMARY KEY,
+        coach_account_id BIGINT NOT NULL,
+        student_account_id BIGINT NOT NULL,
+        slot_start_at TIMESTAMPTZ NOT NULL,
+        duration_minutes INTEGER NOT NULL DEFAULT 60,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'paid', 'completed', 'disputed', 'refunded', 'cancelled')),
+        stripe_session_id TEXT UNIQUE,
+        stripe_payment_intent TEXT,
+        stripe_charge_id TEXT,
+        amount_cents INTEGER NOT NULL,
+        platform_fee_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        coach_confirmed_at TIMESTAMPTZ,
+        student_confirmed_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        dispute_reason TEXT,
+        disputed_at TIMESTAMPTZ,
+        refunded_at TIMESTAMPTZ,
+        reminder_sent_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_coach ON coaching_bookings (coach_account_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_student ON coaching_bookings (student_account_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_status ON coaching_bookings (status)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_pi ON coaching_bookings (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
+
+    // Reviews — one per booking max (UNIQUE booking_id), gated server-side
+    // to bookings whose status is 'completed'.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coaching_reviews (
+        id SERIAL PRIMARY KEY,
+        booking_id INTEGER NOT NULL UNIQUE,
+        student_account_id BIGINT NOT NULL,
+        coach_account_id BIGINT NOT NULL,
+        rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        written_review TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_reviews_coach ON coaching_reviews (coach_account_id)`);
+
+    // Sanctions log — applied by admins. severity:
+    //   'warning'  — informational, no behaviour change
+    //   'suspended' — coach.status flipped to 'suspended' (hidden from browse)
+    //   'delisted'  — coach.status flipped to 'delisted' (terminal)
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_sanctions (
+        id SERIAL PRIMARY KEY,
+        coach_account_id BIGINT NOT NULL,
+        severity TEXT NOT NULL CHECK (severity IN ('warning', 'suspended', 'delisted')),
+        reason TEXT NOT NULL,
+        applied_by_admin_id BIGINT,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coach_sanctions_coach ON coach_sanctions (coach_account_id)`);
 
     // Weekend / special event tournaments
     await p.query(`
@@ -7387,6 +7505,12 @@ const NOTIFICATION_CATEGORIES = [
   { key: 'hot_streak',        label: 'Hot streak announcement DM',    default: true },
   { key: 'schedule_reminder', label: 'Game schedule reminder DM',     default: true },
   { key: 'weekly_recap',      label: 'Weekly recap DM',               default: true },
+  // Coaching marketplace categories — only meaningful while
+  // `coaching_marketplace` flag is on, but registered here so they show up
+  // in the existing notification settings page once the flag flips.
+  { key: 'coaching_booking_confirmed', label: 'Coaching: booking confirmed DM', default: true },
+  { key: 'coaching_session_reminder',  label: 'Coaching: 1-hour session reminder DM', default: true },
+  { key: 'coaching_review_request',    label: 'Coaching: post-session review prompt DM', default: true },
 ];
 
 async function isNotificationEnabled(accountId, category) {
@@ -7874,6 +7998,528 @@ async function listProMembers() {
   return r.rows;
 }
 
+// =============================================================================
+// Coaching Marketplace (`coaching_marketplace`) helpers.
+// All mutations are best-effort idempotent; status transitions are enforced
+// in the route layer (so admin overrides remain possible). Eligibility is
+// recomputed on every onboarding attempt — no caching beyond the request.
+// =============================================================================
+
+// Eligibility = top 5 of the all-time leaderboard OR Immortal+ Steam rank.
+// Immortal in Valve's tier scheme is rank tier 80+. Returns boolean.
+// Superusers / admins should bypass this in the route layer.
+async function isCoachEligible(accountId) {
+  if (!accountId) return false;
+  const p = getPool();
+  try {
+    const top = await getLeaderboard(5).catch(() => []);
+    const aidStr = String(accountId);
+    if (top.some(r => String(r.player_id) === aidStr)) return true;
+  } catch (_) { /* fall through to rank check */ }
+  try {
+    const r = await p.query(
+      `SELECT dota_rank_tier FROM nicknames WHERE account_id = $1`,
+      [accountId]
+    );
+    const tier = r.rows[0]?.dota_rank_tier;
+    if (tier != null && Number(tier) >= 80) return true;
+  } catch (_) { /* ignore */ }
+  return false;
+}
+
+async function getCoach(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM coaches WHERE account_id = $1`, [accountId]);
+  return r.rows[0] || null;
+}
+
+async function getCoachById(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM coaches WHERE id = $1`, [id]);
+  return r.rows[0] || null;
+}
+
+// Insert-on-first-call coach row used by Stripe Connect onboarding. After
+// the row exists, subsequent updateCoach() calls patch fields. The Stripe
+// account id is set once and never overwritten.
+async function createCoachRow({ accountId, stripeAccountId = null, country = 'AU' }) {
+  if (!accountId) throw new Error('createCoachRow: accountId required');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coaches (account_id, stripe_account_id, country)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE
+       SET stripe_account_id = COALESCE(coaches.stripe_account_id, EXCLUDED.stripe_account_id),
+           updated_at = NOW()
+     RETURNING *`,
+    [accountId, stripeAccountId, country]
+  );
+  return r.rows[0];
+}
+
+// Patch arbitrary editable fields. Whitelist enforced here so the route
+// handler can pass req.body straight through.
+const COACH_EDITABLE_FIELDS = new Set([
+  'hourly_rate_cents', 'currency', 'bio', 'languages', 'taught_roles',
+  'taught_heroes', 'intro_video_url', 'sample_replays', 'response_time_hours',
+]);
+async function updateCoach(accountId, patch) {
+  if (!accountId) throw new Error('updateCoach: accountId required');
+  const sets = [];
+  const args = [];
+  let i = 1;
+  for (const [k, v] of Object.entries(patch || {})) {
+    if (!COACH_EDITABLE_FIELDS.has(k)) continue;
+    sets.push(`${k} = $${i++}`);
+    args.push(v);
+  }
+  if (!sets.length) return getCoach(accountId);
+  args.push(accountId);
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaches SET ${sets.join(', ')}, updated_at = NOW()
+      WHERE account_id = $${i} RETURNING *`,
+    args
+  );
+  return r.rows[0] || null;
+}
+
+// Stripe `account.updated` webhook flips this when charges_enabled goes true.
+// Status only advances 'kyc_pending' → 'active'; never overwrites a
+// 'suspended' or 'delisted' row (admin sanctions take priority).
+async function setCoachKycActive(stripeAccountId) {
+  if (!stripeAccountId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaches
+        SET status = 'active', updated_at = NOW()
+      WHERE stripe_account_id = $1 AND status = 'kyc_pending'
+      RETURNING *`,
+    [stripeAccountId]
+  );
+  return r.rows[0] || null;
+}
+
+async function setCoachStatus(accountId, status) {
+  if (!['kyc_pending', 'active', 'suspended', 'delisted'].includes(status)) {
+    throw new Error(`setCoachStatus: invalid status ${status}`);
+  }
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaches SET status = $2, updated_at = NOW()
+      WHERE account_id = $1 RETURNING *`,
+    [accountId, status]
+  );
+  return r.rows[0] || null;
+}
+
+// Public browse listing — only active coaches. Filters narrow further.
+async function listActiveCoaches({ language, role, hero, maxPriceCents } = {}) {
+  const p = getPool();
+  const conds = [`c.status = 'active'`];
+  const args = [];
+  let i = 1;
+  if (language) { conds.push(`c.languages ILIKE $${i++}`); args.push(`%${language}%`); }
+  if (role)     { conds.push(`c.taught_roles ILIKE $${i++}`); args.push(`%${role}%`); }
+  if (hero)     { conds.push(`c.taught_heroes ILIKE $${i++}`); args.push(`%${hero}%`); }
+  if (maxPriceCents != null) { conds.push(`c.hourly_rate_cents <= $${i++}`); args.push(maxPriceCents); }
+  const r = await p.query(
+    `SELECT c.id, c.account_id, c.hourly_rate_cents, c.currency, c.bio,
+            c.languages, c.taught_roles, c.taught_heroes, c.intro_video_url,
+            c.response_time_hours, c.country, c.created_at,
+            COALESCE(n.nickname, c.account_id::text) AS display_name,
+            (SELECT ROUND(AVG(rating)::numeric, 2) FROM coaching_reviews WHERE coach_account_id = c.account_id) AS avg_rating,
+            (SELECT COUNT(*)::int FROM coaching_reviews WHERE coach_account_id = c.account_id) AS review_count
+       FROM coaches c
+       LEFT JOIN nicknames n ON n.account_id = c.account_id
+      WHERE ${conds.join(' AND ')}
+      ORDER BY c.created_at DESC`,
+    args
+  );
+  return r.rows;
+}
+
+// Admin listing — every coach regardless of status. Used by the Coaching
+// admin panel for KYC / sanction overview.
+async function listAllCoaches() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT c.*, COALESCE(n.nickname, c.account_id::text) AS display_name
+       FROM coaches c
+       LEFT JOIN nicknames n ON n.account_id = c.account_id
+      ORDER BY c.created_at DESC`
+  );
+  return r.rows;
+}
+
+async function getCoachAvailability(coachAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, day_of_week, start_time, end_time, timezone
+       FROM coach_availability_slots
+      WHERE coach_account_id = $1
+      ORDER BY day_of_week ASC, start_time ASC`,
+    [coachAccountId]
+  );
+  return r.rows;
+}
+
+// Replace-all semantics: drop every existing slot for the coach and reinsert.
+// Keeps the editor simple — no per-slot diffing in the API.
+async function setCoachAvailability(coachAccountId, slots) {
+  if (!coachAccountId) throw new Error('setCoachAvailability: coachAccountId required');
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM coach_availability_slots WHERE coach_account_id = $1`, [coachAccountId]);
+    for (const s of (slots || [])) {
+      const day = parseInt(s.day_of_week);
+      if (Number.isNaN(day) || day < 0 || day > 6) continue;
+      const start = String(s.start_time || '').slice(0, 5);
+      const end   = String(s.end_time || '').slice(0, 5);
+      if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) continue;
+      const tz = String(s.timezone || 'Australia/Sydney').slice(0, 64);
+      await client.query(
+        `INSERT INTO coach_availability_slots
+           (coach_account_id, day_of_week, start_time, end_time, timezone)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [coachAccountId, day, start, end, tz]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+  return getCoachAvailability(coachAccountId);
+}
+
+// Booking creation. Called from POST /api/coach/:id/book BEFORE the Stripe
+// Payment Intent is created — the row sits in 'pending' until the webhook.
+async function createBooking({
+  coachAccountId, studentAccountId, slotStartAt, durationMinutes = 60,
+  amountCents, platformFeeCents, currency = 'aud', stripeSessionId = null,
+  stripePaymentIntent = null,
+}) {
+  if (!coachAccountId || !studentAccountId) throw new Error('createBooking: coach + student required');
+  if (!slotStartAt) throw new Error('createBooking: slotStartAt required');
+  if (amountCents == null || platformFeeCents == null) throw new Error('createBooking: amounts required');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coaching_bookings
+       (coach_account_id, student_account_id, slot_start_at, duration_minutes,
+        amount_cents, platform_fee_cents, currency, stripe_session_id,
+        stripe_payment_intent, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending')
+     RETURNING *`,
+    [coachAccountId, studentAccountId, slotStartAt, durationMinutes,
+     amountCents, platformFeeCents, currency, stripeSessionId, stripePaymentIntent]
+  );
+  return r.rows[0];
+}
+
+async function getBooking(id) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT b.*, COALESCE(nc.nickname, b.coach_account_id::text) AS coach_name,
+            COALESCE(ns.nickname, b.student_account_id::text) AS student_name
+       FROM coaching_bookings b
+       LEFT JOIN nicknames nc ON nc.account_id = b.coach_account_id
+       LEFT JOIN nicknames ns ON ns.account_id = b.student_account_id
+      WHERE b.id = $1`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+
+async function listCoachBookings(coachAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT b.*, COALESCE(ns.nickname, b.student_account_id::text) AS student_name
+       FROM coaching_bookings b
+       LEFT JOIN nicknames ns ON ns.account_id = b.student_account_id
+      WHERE b.coach_account_id = $1
+      ORDER BY b.slot_start_at DESC`,
+    [coachAccountId]
+  );
+  return r.rows;
+}
+
+async function listStudentBookings(studentAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT b.*, COALESCE(nc.nickname, b.coach_account_id::text) AS coach_name
+       FROM coaching_bookings b
+       LEFT JOIN nicknames nc ON nc.account_id = b.coach_account_id
+      WHERE b.student_account_id = $1
+      ORDER BY b.slot_start_at DESC`,
+    [studentAccountId]
+  );
+  return r.rows;
+}
+
+// Webhook handlers — keyed by stripe_session_id (checkout) or
+// stripe_payment_intent (payment_intent.succeeded fallback).
+async function markBookingPaidBySession(stripeSessionId, paymentIntent = null, chargeId = null) {
+  if (!stripeSessionId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'paid',
+            stripe_payment_intent = COALESCE($2, stripe_payment_intent),
+            stripe_charge_id = COALESCE($3, stripe_charge_id),
+            updated_at = NOW()
+      WHERE stripe_session_id = $1 AND status = 'pending'
+      RETURNING *`,
+    [stripeSessionId, paymentIntent, chargeId]
+  );
+  return r.rows[0] || null;
+}
+
+async function markBookingPaidByIntent(paymentIntent, chargeId = null) {
+  if (!paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'paid',
+            stripe_charge_id = COALESCE($2, stripe_charge_id),
+            updated_at = NOW()
+      WHERE stripe_payment_intent = $1 AND status = 'pending'
+      RETURNING *`,
+    [paymentIntent, chargeId]
+  );
+  return r.rows[0] || null;
+}
+
+// Mark either side's confirmation. When both are stamped we transition to
+// 'completed'. Returns the resulting row (or null if booking not found /
+// status disallowed).
+async function confirmBookingSide(id, side) {
+  if (!['coach', 'student'].includes(side)) throw new Error('confirmBookingSide: invalid side');
+  const col = side === 'coach' ? 'coach_confirmed_at' : 'student_confirmed_at';
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET ${col} = COALESCE(${col}, NOW()),
+            updated_at = NOW()
+      WHERE id = $1 AND status IN ('paid', 'disputed')
+      RETURNING *`,
+    [id]
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  // If both sides confirmed and not disputed, complete it.
+  if (row.coach_confirmed_at && row.student_confirmed_at && row.status === 'paid') {
+    const r2 = await p.query(
+      `UPDATE coaching_bookings
+          SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND status = 'paid'
+        RETURNING *`,
+      [id]
+    );
+    return r2.rows[0] || row;
+  }
+  return row;
+}
+
+async function raiseBookingDispute(id, reason) {
+  if (!id) throw new Error('raiseBookingDispute: id required');
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'disputed',
+            dispute_reason = $2,
+            disputed_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1 AND status IN ('paid', 'completed')
+      RETURNING *`,
+    [id, String(reason || '').slice(0, 1000)]
+  );
+  return r.rows[0] || null;
+}
+
+// Used by both no-show auto-refund and admin manual refund. The actual
+// Stripe refund call happens in the route layer; this only mutates state.
+async function markBookingRefunded(id) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'refunded', refunded_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+
+// charge.refunded webhook fallback — match by payment_intent.
+async function markBookingRefundedByIntent(paymentIntent) {
+  if (!paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'refunded', refunded_at = NOW(), updated_at = NOW()
+      WHERE stripe_payment_intent = $1 AND status <> 'refunded'
+      RETURNING *`,
+    [paymentIntent]
+  );
+  return r.rows[0] || null;
+}
+
+async function listOpenDisputes() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT b.*, COALESCE(nc.nickname, b.coach_account_id::text) AS coach_name,
+            COALESCE(ns.nickname, b.student_account_id::text) AS student_name
+       FROM coaching_bookings b
+       LEFT JOIN nicknames nc ON nc.account_id = b.coach_account_id
+       LEFT JOIN nicknames ns ON ns.account_id = b.student_account_id
+      WHERE b.status = 'disputed'
+      ORDER BY b.disputed_at DESC NULLS LAST`
+  );
+  return r.rows;
+}
+
+// Bookings that have started + 1h ago, are still 'paid', and neither side
+// has raised a dispute. Used by the 48h auto-release cron (route layer).
+async function listAutoReleasableBookings(graceHours = 48) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM coaching_bookings
+      WHERE status = 'paid'
+        AND slot_start_at + (duration_minutes || ' minutes')::interval + ($1 || ' hours')::interval < NOW()`,
+    [graceHours]
+  );
+  return r.rows;
+}
+
+// Reminder cron query — bookings starting in [55min, 65min] window that
+// have not yet had a reminder sent. The route handler stamps reminder_sent_at
+// after dispatch.
+async function listBookingsDueForReminder() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM coaching_bookings
+      WHERE status = 'paid'
+        AND reminder_sent_at IS NULL
+        AND slot_start_at BETWEEN NOW() + INTERVAL '55 minutes' AND NOW() + INTERVAL '65 minutes'`
+  );
+  return r.rows;
+}
+
+async function stampBookingReminderSent(id) {
+  const p = getPool();
+  await p.query(
+    `UPDATE coaching_bookings SET reminder_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
+    [id]
+  );
+}
+
+// ---------- Reviews ----------
+// One review per booking max (UNIQUE constraint). Caller must verify that the
+// booking is 'completed' AND owned by the student before invoking.
+async function createCoachingReview({ bookingId, studentAccountId, coachAccountId, rating, writtenReview }) {
+  if (!bookingId || !studentAccountId || !coachAccountId) {
+    throw new Error('createCoachingReview: ids required');
+  }
+  const r = parseInt(rating);
+  if (!Number.isFinite(r) || r < 1 || r > 5) throw new Error('createCoachingReview: rating must be 1–5');
+  const p = getPool();
+  const result = await p.query(
+    `INSERT INTO coaching_reviews
+       (booking_id, student_account_id, coach_account_id, rating, written_review)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (booking_id) DO NOTHING
+     RETURNING *`,
+    [bookingId, studentAccountId, coachAccountId, r, String(writtenReview || '').slice(0, 2000) || null]
+  );
+  return result.rows[0] || null;
+}
+
+async function getCoachReviews(coachAccountId, limit = 50) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT cr.id, cr.rating, cr.written_review, cr.created_at,
+            COALESCE(ns.nickname, cr.student_account_id::text) AS student_name
+       FROM coaching_reviews cr
+       LEFT JOIN nicknames ns ON ns.account_id = cr.student_account_id
+      WHERE cr.coach_account_id = $1
+      ORDER BY cr.created_at DESC
+      LIMIT $2`,
+    [coachAccountId, Math.min(limit, 200)]
+  );
+  return r.rows;
+}
+
+async function getCoachAggregateRating(coachAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ROUND(AVG(rating)::numeric, 2) AS avg_rating, COUNT(*)::int AS review_count
+       FROM coaching_reviews WHERE coach_account_id = $1`,
+    [coachAccountId]
+  );
+  return r.rows[0] || { avg_rating: null, review_count: 0 };
+}
+
+// ---------- Sanctions ----------
+async function applyCoachSanction({ coachAccountId, severity, reason, adminId = null, expiresAt = null }) {
+  if (!coachAccountId) throw new Error('applyCoachSanction: coachAccountId required');
+  if (!['warning', 'suspended', 'delisted'].includes(severity)) throw new Error('applyCoachSanction: invalid severity');
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
+      `INSERT INTO coach_sanctions
+         (coach_account_id, severity, reason, applied_by_admin_id, expires_at)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [coachAccountId, severity, String(reason || '').slice(0, 1000), adminId, expiresAt]
+    );
+    if (severity === 'suspended' || severity === 'delisted') {
+      await client.query(
+        `UPDATE coaches SET status = $2, updated_at = NOW() WHERE account_id = $1`,
+        [coachAccountId, severity]
+      );
+    }
+    await client.query('COMMIT');
+    return r.rows[0];
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function listCoachSanctions(coachAccountId = null) {
+  const p = getPool();
+  const r = coachAccountId
+    ? await p.query(
+        `SELECT * FROM coach_sanctions WHERE coach_account_id = $1 ORDER BY applied_at DESC`,
+        [coachAccountId])
+    : await p.query(
+        `SELECT cs.*, COALESCE(n.nickname, cs.coach_account_id::text) AS coach_name
+           FROM coach_sanctions cs
+           LEFT JOIN nicknames n ON n.account_id = cs.coach_account_id
+          ORDER BY cs.applied_at DESC LIMIT 200`);
+  return r.rows;
+}
+
+// Lifetime platform revenue = sum of platform_fee_cents on completed bookings.
+async function getCoachingPlatformRevenue() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT COALESCE(SUM(platform_fee_cents), 0)::bigint AS total_cents,
+            COUNT(*)::int AS completed_bookings
+       FROM coaching_bookings WHERE status = 'completed'`
+  );
+  return r.rows[0] || { total_cents: 0, completed_bookings: 0 };
+}
+
 module.exports = {
   init,
   getPool,
@@ -8019,6 +8665,38 @@ module.exports = {
   confirmProPurchase,
   markProRefunded,
   listProMembers,
+  // Coaching marketplace
+  isCoachEligible,
+  getCoach,
+  getCoachById,
+  createCoachRow,
+  updateCoach,
+  setCoachKycActive,
+  setCoachStatus,
+  listActiveCoaches,
+  listAllCoaches,
+  getCoachAvailability,
+  setCoachAvailability,
+  createBooking,
+  getBooking,
+  listCoachBookings,
+  listStudentBookings,
+  markBookingPaidBySession,
+  markBookingPaidByIntent,
+  confirmBookingSide,
+  raiseBookingDispute,
+  markBookingRefunded,
+  markBookingRefundedByIntent,
+  listOpenDisputes,
+  listAutoReleasableBookings,
+  listBookingsDueForReminder,
+  stampBookingReminderSent,
+  createCoachingReview,
+  getCoachReviews,
+  getCoachAggregateRating,
+  applyCoachSanction,
+  listCoachSanctions,
+  getCoachingPlatformRevenue,
   addPushSubscription,
   removePushSubscriptionByEndpoint,
   getPushSubscriptionsForAccount,

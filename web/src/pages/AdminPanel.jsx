@@ -1589,6 +1589,9 @@ export default function AdminPanel() {
       {/* Season Tiers — 8-tier ladder per season */}
       <SeasonTiersPanel superuserKey={superuserKey} />
 
+      {/* Coaching Marketplace — pending KYC + open disputes + revenue (T13) */}
+      <CoachingAdminPanel superuserKey={superuserKey} />
+
       {/* Rating System — V1 vs V3 toggle + preview */}
       <section>
         <h2 style={{ marginBottom: 6 }}>⚖️ Rating System</h2>
@@ -2139,6 +2142,149 @@ function ReplayInspectorPanel({ superuserKey }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ───────── Coaching Marketplace admin panel (T13) ─────────
+// Renders nothing if /api/admin/coaching/dashboard returns 404 (flag off).
+// Shows pending KYC, open disputes, and revenue summary; lets superusers
+// resolve disputes (release/refund) and apply sanctions (warn/suspend).
+function CoachingAdminPanel({ superuserKey }) {
+  const [data, setData] = React.useState(null);
+  const [hidden, setHidden] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const load = React.useCallback(async () => {
+    if (!superuserKey) return;
+    try {
+      const r = await fetch('/api/admin/coaching/dashboard', {
+        credentials: 'include',
+        headers: { 'X-Superuser-Key': superuserKey },
+      });
+      if (r.status === 404) { setHidden(true); return; }
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+      setData(await r.json());
+    } catch (e) { setMsg(`Error: ${e.message}`); }
+  }, [superuserKey]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const resolveDispute = async (id, resolution) => {
+    const note = prompt(`Note for ${resolution} (audit log only):`);
+    if (note === null) return;
+    const r = await fetch(`/api/admin/coaching/dispute/${id}/resolve`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+      body: JSON.stringify({ resolution, note }),
+    });
+    if (r.ok) { setMsg('Dispute resolved'); load(); }
+    else setMsg(`Error: ${(await r.json()).error}`);
+  };
+
+  const sanction = async (coachAccountId) => {
+    const reason = prompt('Sanction reason:');
+    if (!reason) return;
+    // Backend (db.applyCoachSanction) accepts only these three canonical
+    // severities — must match the CHECK constraint on coach_sanctions.
+    const severity = prompt('Severity (warning / suspended / delisted):', 'warning');
+    if (!['warning', 'suspended', 'delisted'].includes(severity)) return;
+    const r = await fetch('/api/admin/coaching/sanction', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+      body: JSON.stringify({ coach_account_id: coachAccountId, severity, reason }),
+    });
+    if (r.ok) { setMsg(`Sanction applied: ${severity}`); load(); }
+    else setMsg(`Error: ${(await r.json()).error}`);
+  };
+
+  if (hidden) return null;
+  if (!data) return (
+    <section><h2>🎓 Coaching Marketplace</h2>
+      <p style={{ color: 'var(--text-muted)' }}>{msg || 'Loading…'}</p>
+    </section>
+  );
+
+  return (
+    <section>
+      <h2 style={{ marginBottom: 6 }}>🎓 Coaching Marketplace</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Operational dashboard. All revenue figures are after Stripe Connect fees.
+        Sanctions are immediate; dispute resolutions trigger refunds/releases.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <Stat label="Active coaches" value={data.stats?.active_coaches ?? 0} />
+        <Stat label="Pending KYC" value={data.stats?.pending_kyc ?? 0} />
+        <Stat label="Open disputes" value={data.stats?.open_disputes ?? 0} accent={data.stats?.open_disputes > 0 ? '#fbbf24' : null} />
+        <Stat label="Bookings (30d)" value={data.stats?.bookings_30d ?? 0} />
+        <Stat label="Platform fees (30d)" value={`$${((data.stats?.platform_fees_30d_cents || 0) / 100).toFixed(2)}`} />
+      </div>
+
+      {(data.pending_kyc?.length || 0) > 0 && (
+        <>
+          <h3 style={{ marginBottom: 6 }}>Pending KYC</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, fontSize: 13 }}>
+            <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
+              <th align="left">Coach</th><th align="left">Stripe acct</th><th align="left">Created</th>
+            </tr></thead>
+            <tbody>{data.pending_kyc.map(c => (
+              <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: 6 }}>{c.display_name || `#${c.id}`}</td>
+                <td style={{ padding: 6, fontFamily: 'monospace', fontSize: 11 }}>{c.stripe_account_id || '—'}</td>
+                <td style={{ padding: 6 }}>{new Date(c.created_at).toLocaleDateString()}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </>
+      )}
+
+      {(data.open_disputes?.length || 0) > 0 && (
+        <>
+          <h3 style={{ marginBottom: 6, color: '#fbbf24' }}>Open disputes ({data.open_disputes.length})</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, fontSize: 13 }}>
+            <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
+              <th align="left">Booking</th><th align="left">Student</th><th align="left">Coach</th>
+              <th align="left">Reason</th><th align="right">Amount</th><th></th>
+            </tr></thead>
+            <tbody>{data.open_disputes.map(d => (
+              <tr key={d.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: 6 }}>#{d.id}</td>
+                <td style={{ padding: 6 }}>{d.student_name}</td>
+                <td style={{ padding: 6 }}>{d.coach_name}</td>
+                <td style={{ padding: 6, maxWidth: 280, fontSize: 12 }}>{d.dispute_reason}</td>
+                <td style={{ padding: 6, textAlign: 'right' }}>${(d.amount_cents / 100).toFixed(2)}</td>
+                <td style={{ padding: 6 }}>
+                  <button onClick={() => resolveDispute(d.id, 'release')}
+                    style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--radiant-color)', color: '#fff', border: 0, cursor: 'pointer', marginRight: 4, fontSize: 12 }}>Release</button>
+                  <button onClick={() => resolveDispute(d.id, 'refund')}
+                    style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--dire-color)', color: '#fff', border: 0, cursor: 'pointer', marginRight: 4, fontSize: 12 }}>Refund</button>
+                  <button onClick={() => sanction(d.coach_account_id)}
+                    style={{ padding: '4px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>Sanction coach</button>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </>
+      )}
+
+      {(!data.pending_kyc?.length && !data.open_disputes?.length) && (
+        <p style={{ color: 'var(--text-muted)' }}>No pending KYC or open disputes. ✓</p>
+      )}
+
+      {msg && <p style={{ color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)' }}>{msg}</p>}
+    </section>
+  );
+}
+
+function Stat({ label, value, accent }) {
+  return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderRadius: 8, padding: 12,
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: accent || 'var(--text-primary)' }}>{value}</div>
     </div>
   );
 }

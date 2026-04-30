@@ -1,7 +1,7 @@
 # Dota 2 Inhouse Stats Bot
 
 ## Overview
-This Node.js Discord bot tracks Dota 2 inhouse game statistics for an OCE community, offering a privacy-first solution by recording match data without relying on public match APIs. It provides various recording methods, including replay parsing and real-time lobby monitoring, complemented by a web dashboard for stats, leaderboards, and player profiles. The project aims to be a comprehensive platform for competitive inhouse Dota 2 communities.
+The Dota 2 Inhouse Stats Bot is a Node.js Discord bot designed to track and display Dota 2 inhouse game statistics for an OCE community. It prioritizes privacy by not relying on public match APIs and offers various methods for recording match data, including replay parsing and real-time lobby monitoring. A comprehensive web dashboard complements the bot, providing features like match history, TrueSkill MMR leaderboards, detailed player profiles, and tools for community management. The project aims to be a complete platform for competitive inhouse Dota 2 communities, incorporating features such as season management, prize pools, and advanced statistical analysis.
 
 ## User Preferences
 I prefer iterative development, with a focus on delivering core features first and then refining them. When making changes, please prioritize robust error handling and graceful degradation. I value clear, concise explanations for any complex technical decisions or implementations.
@@ -17,73 +17,42 @@ This script: pulls latest code (`git reset --hard origin/main`), runs `npm insta
 After rebuilding the Java JAR (`cd odota-parser && mvn package -q -DskipTests`), run the deploy script to pick it up.
 
 ## System Architecture
-The bot is built with Node.js, utilizing `discord.js` for Discord integration and a custom Steam client (`steam-user`, `dota2-user`) for Dota 2 Game Coordinator interactions. Data is primarily stored in PostgreSQL.
+The system is built on Node.js, integrating with Discord and Steam for game interactions. Data persistence is managed using PostgreSQL.
 
 **UI/UX Decisions:**
-A web dashboard (React + Vite frontend, Express backend) provides extensive features for match history, detailed scoreboards, TrueSkill MMR-based leaderboards, player profiles with hero and statistical breakdowns, and synergy matrices. It includes player management, replay uploads, season and prize pool management (Stripe integration), and Steam OpenID sign-in. Key UI/UX features include multi-kill leaderboards, combined Player Tools (Head to Head, Compare Players), enhanced captain win rate displays, improved gold lead computation, hero position meta, and expandable hero stats tables. Support reporting details are granular, and the power spikes panel is refined. Recent additions include a Hero Breakdown tab, a merged Draft page, a comprehensive Predictions page, and "Most Improved" and "Form Guide" widgets on the Leaderboard. Further UI enhancements include a Hero Tier List, Hero Matchups, Player Benchmarks, an expanded achievement system, a Player Network page, a Hall of Fame page, and a Tournament Brackets system. Player profiles are enhanced with shareable links, Best Allies, and rolling 5-game win rate charts. A live search/filter box is available on the Players page. The Records page features Most Denies, Most Courier Kills, and Most Buybacks. A "Join the League" page allows prospective players to submit interest forms.
+The web dashboard is a React-based frontend with an Express backend, offering extensive features such as match history, TrueSkill MMR leaderboards, player profiles with detailed breakdowns, and synergy matrices. Key UI elements include multi-kill leaderboards, player comparison tools, enhanced gold lead displays, hero meta analysis, and expandable stats tables. Recent additions include a Hero Breakdown tab, a merged Draft page, a Predictions page, and "Most Improved" and "Form Guide" widgets. Further planned enhancements include a Hero Tier List, Hero Matchups, Player Benchmarks, an expanded achievement system, a Player Network page, a Hall of Fame, and Tournament Brackets. Player profiles feature shareable links, best allies, and rolling win rate charts.
 
-**Technical Implementations & Feature Specifications:**
-- **Replay Parsing:** Uses a local instance of OpenDota's Java-based parser to extract detailed match statistics from `.dem` files, extended for deeper combat log analysis.
-- **Lobby-Based Recording:** Monitors Dota 2 lobbies via the Game Coordinator for basic match outcome recording.
-- **Friend Lobby Auto-Detection:** Automatically detects and joins lobbies via Steam friends' rich presence.
-- **Auto-Detect System (OpenDota Fallback):** Can poll OpenDota for recent practice lobby matches with public data.
-- **TrueSkill MMR:** Implements TrueSkill for dynamic player rating calculations, with a specific display formula and 8-tier ladder system configurable via `season_tiers`.
-- **Impact Score System:** A position-neutral 1–10 performance rating.
-- **Courier Kills Tracking:** Tracks courier kills and awards related achievements.
-- **Sign-Up / Join Page:** Manages community interest forms through a dedicated `/join` route and admin panel.
-- **TrueSkill 2 (Experimental):** Hidden admin-only simulation for evaluating TrueSkill 2.
-- **Per-Tournament Stripe Buy-ins:** Supports paid tournament sign-ups with auto-growing prize pools via Stripe.
-- **MVP-per-Match Badges:** Displays MVPs in match details and player profiles.
-- **Profile Chart V2:** Shows 5-game rolling K/D/A and GPM on player profiles.
-- **Welcome Modal & Home Page CTA:** One-shot welcome modal and prominent call-to-action on the home page.
-- **Feature Flags + Season 10 Launch:** A three-state toggle system (`off` / `preview` / `on`) for features, managed via an Admin Panel with a manual two-step "Launch Season 10 Now" button.
-- **Web Security Hardening:** Includes Stripe webhook signature verification, secure session cookies, an allowlist for CORS, and rate limiting for public signup forms.
-- **Discord Commands:** Provides commands for player registration, lobby management, stats, and manual match recording.
-- **Nickname System:** Manages custom player nicknames.
-- **Match Deletion:** Supports authenticated match deletion with TrueSkill recalculation.
-- **Draft Team Assignment:** Determines teams using `hero_id` for accurate assignments.
-- **AI Match Commentary:** Grok generates post-match MVP one-liners and narratives.
-- **Scoreboard Image Generation:** Creates and sends PNG scoreboard cards to Discord after matches.
-- **Hot Streak Announcements:** Notifies players of 5-win and 10-win streaks.
-- **Match Notes:** Allows admins to add/delete text notes to matches via the web dashboard.
-- **Match Prediction System:** Discord command `!predict` and API endpoints for predictions.
-- **Replay File Retention:** Archives and manages uploaded `.dem` files with configurable expiry.
-- **Discord ID Linking:** Links player profiles to Discord IDs for DMs.
-- **Team Balancer:** Discord command `!balance` for optimal MMR-balanced team splits.
-- **Game Schedule:** Discord commands for scheduling, listing, and canceling games, with a web view.
-- **Post-match MVP + Attitude Ratings:** DMs players for MVP votes and teammate attitude ratings.
-- **Records & Comebacks Page:** Displays all-time single-game bests, First Blood leaderboard, and greatest comebacks.
-- **Player Profiles Enhancements:** Includes First Bloods stats and Win Rate by Game Duration.
-- **Skill Builds Tab:** Shows common ability leveling data.
-- **Patch Notes Auto-Announce:** Bot announces new patch notes to Discord.
-- **Automated Tests:** Comprehensive tests for the V3 rating engine.
-- **FACEIT-Style Inhouse Lobby (`/inhouse`):** End-to-end inhouse session flow with player sign-in, position registration, timed Accept Phase, captain selection, captain draft UI, and dedicated server integration for game provisioning and replay pulling.
-- **Hero Meta V2 (`hero_meta_v2`):** Position-specific win rates per hero (using `lane_role`), pick frequency, and tier-aware breakdown. Surfaced as a "Hero Meta V2" panel on `/heroes`. Endpoint: `GET /api/heroes/meta-v2`.
-- **Draft Assistant V2 (`draft_assistant_v2`):** Live counter-pick + synergy scoring based on already-picked heroes for both teams. Endpoint: `POST /api/draft/suggestions { allies, enemies, banned, side, season }`.
-- **Season Pass (`season_pass_s10`):** Per-season XP economy. New `season_pass_xp_events` table (id SERIAL PK, idempotent UNIQUE on account+season+match+source). XP rules: win=+30, loss=+10, mvp=+20, hot_streak_5=+50, hot_streak_10=+100. Tiers Bronze/Silver/Gold/Platinum/Diamond/Master. Auto-grant in `recordMatch()` and `saveMatchRating()` (best-effort). Endpoints: `GET /api/player/:id/season-pass`, `GET /api/season-pass/leaderboard`, `POST /api/admin/season-pass/recompute`. UI: progress bar on PlayerProfile, optional XP column on Leaderboard.
-- **Notification Preferences (`notification_prefs`):** Per-player opt-out per category (post_match_dm, mvp_vote, attitude_vote, hot_streak, schedule_reminder, weekly_recap). Settings page at `/settings/notifications`. Bot DM senders consult `db.isNotificationEnabled(accountId, category)`. Endpoints: `GET/POST /api/me/notifications`.
-- **Tournament Bracket Live (`tournament_live_v2`):** Auto-refreshing live panel inside `/tournaments/:id` with prize pool, configurable prize-distribution split (default 50/30/20 via new `tournaments.prize_split` JSONB column) and recent matches. Endpoints: `GET /api/tournaments/:id/live`, `POST /api/tournaments/:id/prize-split`.
-- **MVP / Attitude Analytics (`mvp_attitude_analytics`):** Per-player MVP rate + attitude trend (rolling 10-game window) on PlayerProfile. Endpoint: `GET /api/player/:id/mvp-attitude-trends`. Voter-quality weighting + dispute mechanism PARKED.
-- **Profile Customization (`profile_customization`):** Signed-in players can personalise their profile with a bio (≤300 chars), a custom title (free + premium options), a theme accent colour (free + premium swatches), a pinned hero (id + ≤80-char caption), and a pinned match (must be one they played in). New `player_profiles` table (id SERIAL PK, account_id BIGINT UNIQUE) stores the data; one row per player, upsert on save. Cosmetic catalogue in `src/profileCosmetics.js` (server) + mirror `web/src/profileCosmetics.js` (client) defines all titles + themes and exposes shared validators (`isValidTitle`, `isValidTheme`, `isPremiumTitle`, `isPremiumTheme`). Endpoints: `GET /api/me/profile`, `POST /api/me/profile` (validates bio length, title/theme catalogue, premium 403, pinned-match ownership), `GET /api/player/:id/profile-card` (denormalises pinned match + the player's row in it). Settings page at `/settings/profile` with live preview card. PlayerProfile renders the title/bio/pinned cards with the accent as a left border, plus an "Edit Profile" link next to Share when viewing your own profile. Pro-tier check (`_isProAccount`) is now backed by the `pro_subscriptions` table — premium titles & themes light up automatically for Pro members.
-- **Pro Tier (`pro_tier`):** First paid tier — $20 AUD lifetime unlock via Stripe, configurable via `PRO_LIFETIME_PRICE_CENTS`. New `pro_subscriptions` table (id SERIAL PK, account_id BIGINT, plan_type, status, stripe_session_id UNIQUE, stripe_payment_intent, amount_cents, currency, purchased_at, refunded_at). Helpers: `isProMember`, `getProSubscription`, `createProCheckout`, `confirmProPurchase`, `markProRefunded`, `listProMembers`. Membership check cached 60s in module-scope `_proCache` Map, invalidated by webhook + checkout. `requirePro(featureKey)` middleware is a no-op when the flag is OFF; when ON it returns 402 `{paywall:true, feature, signed_in}` for non-Pro users (superusers bypass). Six endpoints gated: `/heroes/meta-v2`, `/heroes/:heroId/skill-builds`, `/hero-matchups`, `/head-to-head`, `/compare`, `/benchmarks`. New endpoints: `GET /api/pro/status`, `GET /api/pro/pricing`, `POST /api/pro/checkout`, `GET /api/pro/members` (public account_id list for badges), `GET /api/players/:id/matches/export.csv` (Pro-gated CSV export). Stripe webhook handles `purpose==='pro_lifetime'` (`checkout.session.completed`) and `charge.refunded`. UI: `/pro` (pitch + buy), `/settings/billing` (membership/receipt), reusable `<PaywallCard />` + `<ProBadge />`, `useProStatus` + `useProMembers` hooks. Inline PaywallCard renders on the gated pages when their API returns 402; ProBadge appears on PlayerProfile header.
-- **Web Push (`web_push`):** Browser push subscriptions stored in new `web_push_subscriptions` table (id SERIAL PK, endpoint UNIQUE). Service worker at `web/public/sw.js`. Settings page enable/test/disable buttons. Endpoints: `GET /api/web-push/public-key`, `POST /api/me/push/subscribe`, `POST /api/me/push/test`, `DELETE /api/me/push/subscriptions`. Requires `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` env vars; endpoints return 503 cleanly if missing.
+**Technical Implementations:**
+- **Data Recording:** Supports replay parsing via a local OpenDota Java parser instance and real-time lobby monitoring through the Dota 2 Game Coordinator.
+- **Automated Match Detection:** Includes friend lobby auto-detection and an OpenDota fallback system for practice lobby matches.
+- **Player Rating:** Implements TrueSkill for dynamic MMR calculations, with an 8-tier ladder system and an Impact Score for position-neutral performance rating. TrueSkill 2 is also being experimentally evaluated.
+- **Monetization & Management:** Integrates Stripe for per-tournament buy-ins and managing prize pools. Features include season pass with XP economy, player profile customization, and a "Pro Tier" subscription for advanced features like detailed hero meta and analytics.
+- **Community Features:** Includes a sign-up/join page, nickname system, Discord commands for bot interaction, and an AI match commentary system using Grok.
+- **Advanced Match Analytics:** Provides post-match MVP voting, attitude ratings, scoreboard image generation, and hot streak announcements.
+- **Match Prediction System:** Allows users to predict match outcomes.
+- **Game Scheduling & Balancing:** Features Discord commands for scheduling games and an MMR-based team balancer.
+- **Inhouse Lobby System:** A FACEIT-style inhouse lobby (`/inhouse`) provides a complete session flow from player sign-in, position registration, timed accept phase, captain selection, and a captain draft UI, integrated with dedicated servers for game provisioning and replay pulling.
+- **Hero Meta & Draft Assistant:** `Hero Meta V2` provides position-specific hero win rates and pick frequencies. `Draft Assistant V2` offers live counter-pick and synergy scoring based on real-time picks.
+- **Notifications:** A comprehensive notification system allows players to manage preferences for various alerts (e.g., post-match DMs, MVP votes, hot streaks) through a dedicated settings page and web push notifications.
+- **Profile Customization:** Signed-in players can personalize their profiles with bios, custom titles, accent colors, pinned heroes, and matches.
+- **Coaching Marketplace:** A peer-to-peer coaching marketplace, built with Stripe Connect Express, allows eligible top players or high-ranked users to offer paid coaching sessions.
 
 **System Design Choices:**
-- **Modularity:** Structured components for Discord, Steam, Lobby, API, Stats, Sheets, Replay.
-- **Graceful Degradation:** Core functionality persists even if optional components are unavailable.
-- **Child Processes:** Java replay parser runs as a child process.
+- **Modularity:** Components are structured for Discord, Steam, Lobby, API, Stats, Sheets, and Replay processing.
+- **Graceful Degradation:** Core functionalities are designed to remain operational even if non-critical components are unavailable.
+- **Child Processes:** The Java replay parser is executed as a child process.
 
 ## External Dependencies
 - **Discord API:** `discord.js`
 - **Steam API:** `steam-user`, `dota2-user`
-- **OpenDota API:** For match data and via `odota/parser`
-- **Google Sheets API:** `google-spreadsheet` (optional)
+- **OpenDota API:** For match data and the `odota/parser`
 - **PostgreSQL Database**
-- **odota/parser (Java):** OpenDota's replay parser
-- **ts-trueskill:** TrueSkill MMR library
-- **node-fetch:** HTTP requests, Steam OpenID
-- **Stripe:** For payment processing (`stripe` npm package)
-- **express-session:** Server-side sessions for Steam auth
-- **helmet:** HTTP security middleware
-- **express-rate-limit:** Rate limiting on auth endpoints
-- **@napi-rs/canvas:** For scoreboard image generation
+- **odota/parser (Java):** OpenDota's replay parser for detailed match statistics.
+- **ts-trueskill:** Library for TrueSkill MMR calculations.
+- **Stripe:** For payment processing, including tournament buy-ins, season passes, and the coaching marketplace.
+- **@napi-rs/canvas:** Used for generating scoreboard images.
+- **Google Sheets API:** (Optional) `google-spreadsheet` for sheets integration.
+- **node-fetch:** For HTTP requests and Steam OpenID authentication.
+- **express-session:** For server-side session management.
+- **helmet:** For HTTP security.
+- **express-rate-limit:** For rate limiting on authentication endpoints.

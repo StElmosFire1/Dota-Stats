@@ -47,6 +47,11 @@ const SettingsNotifications = lazy(() => import('./pages/SettingsNotifications')
 const SettingsProfile = lazy(() => import('./pages/SettingsProfile'));
 const Pro = lazy(() => import('./pages/Pro'));
 const SettingsBilling = lazy(() => import('./pages/SettingsBilling'));
+const Coaches = lazy(() => import('./pages/Coaches'));
+const CoachProfile = lazy(() => import('./pages/CoachProfile'));
+const CoachEdit = lazy(() => import('./pages/CoachEdit'));
+const CoachOnboarding = lazy(() => import('./pages/CoachOnboarding'));
+const MyBookings = lazy(() => import('./pages/MyBookings'));
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -376,6 +381,11 @@ export default function App() {
                 <Route path="/settings/notifications" element={<SettingsNotifications />} />
                 <Route path="/settings/profile" element={<SettingsProfile />} />
                 <Route path="/settings/billing" element={<SettingsBilling />} />
+                <Route path="/coaches" element={<Coaches />} />
+                <Route path="/coaches/:id" element={<CoachProfile />} />
+                <Route path="/coach/edit" element={<CoachEdit />} />
+                <Route path="/coach/onboarding" element={<CoachOnboarding />} />
+                <Route path="/me/bookings" element={<MyBookings />} />
                 <Route path="/pro" element={<Pro />} />
               </Routes>
               </Suspense>

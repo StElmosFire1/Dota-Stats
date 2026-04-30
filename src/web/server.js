@@ -299,6 +299,28 @@ function createServer(startupStatus = {}) {
           } else {
             console.warn('[Stripe] pro_lifetime webhook: no row for session', session.id);
           }
+        } else if (purpose === 'coaching_booking') {
+          // Coaching marketplace — primary success path. Bookings are created
+          // with stripe_session_id but no payment_intent (Stripe doesn't
+          // surface that until the session is paid), so we key off session.id
+          // here and stash the PI for the later refund flow + the
+          // payment_intent.succeeded fallback.
+          const row = await db.markBookingPaidBySession(
+            session.id,
+            session.payment_intent || null,
+            null,
+          );
+          if (row) {
+            console.log('[Stripe] Coaching booking paid (session)', row.id);
+            try {
+              const bot = getDiscordBot();
+              if (bot && typeof bot.notifyCoachingBookingConfirmed === 'function') {
+                bot.notifyCoachingBookingConfirmed(row).catch(() => {});
+              }
+            } catch (_) { /* DM dispatch is best-effort */ }
+          } else {
+            console.warn('[Stripe] coaching_booking webhook: no booking for session', session.id);
+          }
         } else {
           await db.confirmBuyin(session.id);
           console.log('[Stripe] Confirmed buyin for session', session.id);
@@ -306,7 +328,8 @@ function createServer(startupStatus = {}) {
       } else if (event.type === 'charge.refunded') {
         // Refund handler — match by payment_intent so we revoke the right
         // Pro subscription. Non-Pro refunds (tournament entries, buy-ins)
-        // fall through silently.
+        // fall through silently. Coaching bookings also funnel through here
+        // so any Stripe-issued refund (auto or manual) flips the booking row.
         const charge = event.data.object;
         const pi = charge.payment_intent;
         if (pi) {
@@ -314,6 +337,41 @@ function createServer(startupStatus = {}) {
           if (refunded) {
             try { _proCache.delete(String(refunded.account_id)); } catch (_) {}
             console.log('[Stripe] Refunded Pro subscription', refunded.id, 'account', refunded.account_id);
+          }
+          const refundedBooking = await db.markBookingRefundedByIntent(pi).catch(() => null);
+          if (refundedBooking) {
+            console.log('[Stripe] Refunded coaching booking', refundedBooking.id);
+          }
+        }
+      } else if (event.type === 'payment_intent.succeeded') {
+        // Coaching bookings book funds via Payment Intent (with
+        // application_fee_amount + transfer_data.destination), not Checkout
+        // Sessions, so the success signal arrives here. checkout.session.completed
+        // also handles the bookings created via Stripe Checkout below.
+        const intent = event.data.object;
+        if (intent.metadata?.purpose === 'coaching_booking') {
+          const charge = intent.latest_charge || null;
+          const row = await db.markBookingPaidByIntent(intent.id, charge).catch(() => null);
+          if (row) {
+            console.log('[Stripe] Coaching booking paid', row.id);
+            try {
+              const bot = getDiscordBot();
+              if (bot && typeof bot.notifyCoachingBookingConfirmed === 'function') {
+                bot.notifyCoachingBookingConfirmed(row).catch(() => {});
+              }
+            } catch (_) { /* DM dispatch is best-effort */ }
+          }
+        }
+      } else if (event.type === 'account.updated') {
+        // Stripe Connect Express KYC completion. We only flip the coach row
+        // to 'active' once charges_enabled goes true; payouts_enabled may
+        // still be pending while bank verification finishes, but the coach
+        // can already accept bookings (funds held in escrow until completion).
+        const acct = event.data.object;
+        if (acct.charges_enabled) {
+          const updated = await db.setCoachKycActive(acct.id).catch(() => null);
+          if (updated) {
+            console.log('[Stripe] Coach KYC active', updated.account_id, 'stripe_account', acct.id);
           }
         }
       }
@@ -4974,6 +5032,628 @@ NOTES
       res.json({ ok: true });
     } catch (err) {
       console.error('[API] push/unsubscribe:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // =====================================================================
+  // Coaching Marketplace (`coaching_marketplace`)
+  // 10% platform fee, Stripe Connect Express. Eligibility = top-5
+  // leaderboard OR Immortal+ (rank tier 80+). Whole feature gated behind
+  // the flag — every endpoint 404s when off (preview lets superusers in).
+  // =====================================================================
+  const COACHING_TAKE_RATE = 0.10;
+
+  async function _coachingOn(req) { return _flagOn('coaching_marketplace', req); }
+
+  function _stripe() {
+    if (!process.env.STRIPE_SECRET_KEY) return null;
+    return require('stripe')(process.env.STRIPE_SECRET_KEY);
+  }
+
+  // Eligibility for the viewer's own account. Superusers always pass so we
+  // can manually onboard test coaches. Used by the "Apply to coach" CTA on
+  // the player's own profile.
+  router.get('/coaching/eligibility/me', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.json({ signed_in: false, eligible: false });
+      if (_isSu(req)) return res.json({ signed_in: true, eligible: true, reason: 'superuser' });
+      const eligible = await db.isCoachEligible(accountId);
+      const existing = await db.getCoach(accountId);
+      res.json({ signed_in: true, eligible, has_coach_row: Boolean(existing), coach_status: existing?.status || null });
+    } catch (err) {
+      console.error('[API] coaching/eligibility/me:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Begin (or resume) Stripe Connect Express onboarding. Idempotent: if a
+  // Stripe account already exists for this coach, we reuse it and just
+  // generate a fresh AccountLink.
+  router.post('/coach/onboard', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const eligible = _isSu(req) || await db.isCoachEligible(accountId);
+      if (!eligible) {
+        return res.status(403).json({
+          error: 'Coaching is invite-only — you must be top-5 on the leaderboard or Immortal+ rank.',
+        });
+      }
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments are not configured. Please try again later.' });
+
+      const country = ['AU', 'NZ'].includes(String(req.body?.country || '').toUpperCase())
+        ? String(req.body.country).toUpperCase() : 'AU';
+
+      let coach = await db.getCoach(accountId);
+      let stripeAccountId = coach?.stripe_account_id || null;
+      if (!stripeAccountId) {
+        const acct = await stripe.accounts.create({
+          type: 'express',
+          country,
+          capabilities: {
+            transfers: { requested: true },
+            card_payments: { requested: true },
+          },
+          business_type: 'individual',
+          metadata: { purpose: 'coaching', account_id: String(accountId) },
+        });
+        stripeAccountId = acct.id;
+      }
+      coach = await db.createCoachRow({ accountId, stripeAccountId, country });
+
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const link = await stripe.accountLinks.create({
+        account: stripeAccountId,
+        refresh_url: `${baseUrl}/coach/onboarding?refresh=1`,
+        return_url: `${baseUrl}/coach/edit?onboarded=1`,
+        type: 'account_onboarding',
+      });
+      res.json({ url: link.url, status: coach.status });
+    } catch (err) {
+      console.error('[API] coach/onboard:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to start onboarding' });
+    }
+  });
+
+  // Polls Stripe for the live KYC state — useful for the editor page so we
+  // can show "Stripe still needs more info" without waiting for the webhook.
+  router.get('/coach/onboarding-status', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoach(accountId);
+      if (!coach) return res.json({ has_coach_row: false });
+      const out = {
+        has_coach_row: true,
+        status: coach.status,
+        stripe_account_id: coach.stripe_account_id,
+        charges_enabled: false,
+        payouts_enabled: false,
+        details_submitted: false,
+        requirements_due: [],
+      };
+      const stripe = _stripe();
+      if (stripe && coach.stripe_account_id) {
+        try {
+          const acct = await stripe.accounts.retrieve(coach.stripe_account_id);
+          out.charges_enabled = Boolean(acct.charges_enabled);
+          out.payouts_enabled = Boolean(acct.payouts_enabled);
+          out.details_submitted = Boolean(acct.details_submitted);
+          out.requirements_due = acct.requirements?.currently_due || [];
+          // Self-heal if webhook missed an event.
+          if (acct.charges_enabled && coach.status === 'kyc_pending') {
+            await db.setCoachKycActive(coach.stripe_account_id);
+            out.status = 'active';
+          }
+        } catch (e) {
+          console.warn('[coach/onboarding-status] stripe lookup failed:', e.message);
+        }
+      }
+      res.json(out);
+    } catch (err) {
+      console.error('[API] coach/onboarding-status:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Own-coach profile (editor data + bookings + earnings).
+  router.get('/coach/me', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoach(accountId);
+      if (!coach) return res.status(404).json({ error: 'No coach profile yet' });
+      const [availability, bookings, agg] = await Promise.all([
+        db.getCoachAvailability(accountId),
+        db.listCoachBookings(accountId),
+        db.getCoachAggregateRating(accountId),
+      ]);
+      res.json({ coach, availability, bookings, rating: agg });
+    } catch (err) {
+      console.error('[API] coach/me GET:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/coach/me', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const existing = await db.getCoach(accountId);
+      if (!existing) return res.status(404).json({ error: 'Onboard first' });
+      const body = req.body || {};
+      // Coerce + clamp the rate; everything else passes through the whitelist.
+      let patch = { ...body };
+      if (patch.hourly_rate_cents != null) {
+        const n = parseInt(patch.hourly_rate_cents, 10);
+        if (!Number.isFinite(n) || n < 1000 || n > 50_000) {
+          return res.status(400).json({ error: 'Hourly rate must be $10–$500 AUD (in cents).' });
+        }
+        patch.hourly_rate_cents = n;
+      }
+      // Truncate string fields defensively.
+      for (const f of ['bio', 'languages', 'taught_roles', 'taught_heroes', 'intro_video_url', 'sample_replays']) {
+        if (typeof patch[f] === 'string') patch[f] = patch[f].slice(0, 2000);
+      }
+      const updated = await db.updateCoach(accountId, patch);
+      res.json({ ok: true, coach: updated });
+    } catch (err) {
+      console.error('[API] coach/me POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/coach/me/availability', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const existing = await db.getCoach(accountId);
+      if (!existing) return res.status(404).json({ error: 'Onboard first' });
+      const slots = Array.isArray(req.body?.slots) ? req.body.slots : [];
+      if (slots.length > 50) return res.status(400).json({ error: 'Too many slots (max 50).' });
+      const out = await db.setCoachAvailability(accountId, slots);
+      res.json({ ok: true, availability: out });
+    } catch (err) {
+      console.error('[API] coach/me/availability:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Public browse — only active coaches; payouts may still be pending but
+  // they can already accept bookings (funds sit in escrow until completion).
+  router.get('/coaches', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const language = req.query.language || null;
+      const role = req.query.role || null;
+      const hero = req.query.hero || null;
+      const maxPriceCents = req.query.max_price_cents ? parseInt(req.query.max_price_cents) : null;
+      const coaches = await db.listActiveCoaches({ language, role, hero, maxPriceCents });
+      res.json({ coaches });
+    } catch (err) {
+      console.error('[API] coaches:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/coaches/:id', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const coach = await db.getCoachById(parseInt(req.params.id));
+      if (!coach) return res.status(404).json({ error: 'Coach not found' });
+      // Hide non-active coaches from public detail (admins still get them via admin panel).
+      if (coach.status !== 'active' && !_isSu(req)) {
+        return res.status(404).json({ error: 'Coach not found' });
+      }
+      const [availability, reviews, agg] = await Promise.all([
+        db.getCoachAvailability(coach.account_id),
+        db.getCoachReviews(coach.account_id, 25),
+        db.getCoachAggregateRating(coach.account_id),
+      ]);
+      res.json({ coach, availability, reviews, rating: agg });
+    } catch (err) {
+      console.error('[API] coaches/:id:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Book a session. Creates Stripe Checkout Session in 'payment' mode with
+  // application_fee_amount + transfer_data.destination (Connect direct
+  // charge via destination charges pattern). Booking row sits in 'pending'
+  // until the webhook confirms.
+  router.post('/coaches/:id/book', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const studentAccountId = req.session?.accountId;
+      if (!studentAccountId) return res.status(401).json({ error: 'Sign in with Steam to book' });
+
+      const coach = await db.getCoachById(parseInt(req.params.id));
+      if (!coach) return res.status(404).json({ error: 'Coach not found' });
+      if (coach.status !== 'active') return res.status(400).json({ error: 'Coach not currently accepting bookings' });
+      if (!coach.stripe_account_id) return res.status(400).json({ error: 'Coach has no payout account' });
+      if (String(coach.account_id) === String(studentAccountId)) {
+        return res.status(400).json({ error: "You can't book yourself." });
+      }
+
+      const slotStartIso = req.body?.slot_start_at;
+      const duration = Math.min(Math.max(parseInt(req.body?.duration_minutes) || 60, 30), 180);
+      if (!slotStartIso) return res.status(400).json({ error: 'slot_start_at required (ISO 8601)' });
+      const slotStart = new Date(slotStartIso);
+      if (isNaN(slotStart.getTime())) return res.status(400).json({ error: 'invalid slot_start_at' });
+      if (slotStart.getTime() < Date.now() + 30 * 60_000) {
+        return res.status(400).json({ error: 'Slot must start at least 30 minutes from now.' });
+      }
+
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments are not configured.' });
+
+      const amountCents = Math.round((coach.hourly_rate_cents * duration) / 60);
+      const platformFeeCents = Math.round(amountCents * COACHING_TAKE_RATE);
+      const currency = (coach.currency || 'aud').toLowerCase();
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+
+      const checkout = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency,
+            product_data: {
+              name: `Coaching session — ${coach.account_id}`,
+              description: `${duration}-minute 1:1 Dota 2 coaching session.`,
+            },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        }],
+        payment_intent_data: {
+          application_fee_amount: platformFeeCents,
+          transfer_data: { destination: coach.stripe_account_id },
+          metadata: {
+            purpose: 'coaching_booking',
+            coach_account_id: String(coach.account_id),
+            student_account_id: String(studentAccountId),
+          },
+        },
+        success_url: `${baseUrl}/me/bookings?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/coaches/${coach.id}?checkout=cancelled`,
+        metadata: {
+          purpose: 'coaching_booking',
+          coach_account_id: String(coach.account_id),
+          student_account_id: String(studentAccountId),
+        },
+      });
+
+      const booking = await db.createBooking({
+        coachAccountId: coach.account_id,
+        studentAccountId,
+        slotStartAt: slotStart.toISOString(),
+        durationMinutes: duration,
+        amountCents,
+        platformFeeCents,
+        currency,
+        stripeSessionId: checkout.id,
+      });
+
+      res.json({ url: checkout.url, booking_id: booking.id });
+    } catch (err) {
+      console.error('[API] coaches/:id/book:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create booking' });
+    }
+  });
+
+  // Booking detail — accessible by either party or admin.
+  router.get('/bookings/:id', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const booking = await db.getBooking(parseInt(req.params.id));
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      const isParty = String(booking.coach_account_id) === String(accountId)
+                   || String(booking.student_account_id) === String(accountId);
+      if (!isParty && !_isSu(req)) return res.status(403).json({ error: 'Forbidden' });
+      res.json({ booking });
+    } catch (err) {
+      console.error('[API] bookings/:id:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/me/coaching/bookings', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const [asStudent, asCoach] = await Promise.all([
+        db.listStudentBookings(accountId),
+        db.listCoachBookings(accountId),
+      ]);
+      res.json({ as_student: asStudent, as_coach: asCoach });
+    } catch (err) {
+      console.error('[API] me/coaching/bookings:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Either side confirms completion. When both are stamped the row
+  // transitions to 'completed' and Stripe automatically settles the funds
+  // (the destination charge already routed funds into the coach's pending
+  // balance; the application_fee stays with the platform).
+  router.post('/bookings/:id/confirm-completion', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const booking = await db.getBooking(parseInt(req.params.id));
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      let side = null;
+      if (String(booking.coach_account_id) === String(accountId)) side = 'coach';
+      else if (String(booking.student_account_id) === String(accountId)) side = 'student';
+      else return res.status(403).json({ error: 'Not your booking' });
+      if (!['paid', 'disputed'].includes(booking.status)) {
+        return res.status(400).json({ error: `Cannot confirm a ${booking.status} booking` });
+      }
+      const updated = await db.confirmBookingSide(booking.id, side);
+      // If the student just confirmed and we transitioned to completed,
+      // fire the review-prompt DM (gated by the notification preference).
+      if (updated?.status === 'completed' && side === 'student') {
+        try {
+          const bot = getDiscordBot();
+          if (bot && typeof bot.notifyCoachingReviewPrompt === 'function') {
+            bot.notifyCoachingReviewPrompt(updated).catch(() => {});
+          }
+        } catch (_) { /* best-effort */ }
+      }
+      res.json({ ok: true, booking: updated });
+    } catch (err) {
+      console.error('[API] bookings/:id/confirm-completion:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Student raises a dispute — must be within 48h of slot end. Freezes the
+  // booking; admin resolves later via /api/admin/coaching/dispute/:id/resolve.
+  router.post('/bookings/:id/dispute', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const booking = await db.getBooking(parseInt(req.params.id));
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      if (String(booking.student_account_id) !== String(accountId)) {
+        return res.status(403).json({ error: 'Only the student can raise a dispute' });
+      }
+      if (!['paid', 'completed'].includes(booking.status)) {
+        return res.status(400).json({ error: `Cannot dispute a ${booking.status} booking` });
+      }
+      const slotEndMs = new Date(booking.slot_start_at).getTime() + (booking.duration_minutes * 60_000);
+      if (Date.now() > slotEndMs + 48 * 3600_000) {
+        return res.status(400).json({ error: 'Dispute window (48h after session end) has passed.' });
+      }
+      const updated = await db.raiseBookingDispute(booking.id, req.body?.reason || '');
+      res.json({ ok: true, booking: updated });
+    } catch (err) {
+      console.error('[API] bookings/:id/dispute:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // No-show refund — student-initiated, only valid if the slot has started
+  // and the coach has not stamped coach_confirmed_at within 30 minutes of
+  // slot start. Issues a Stripe refund (which reverses the application_fee
+  // back too via reverse_transfer/refund_application_fee = true).
+  router.post('/bookings/:id/no-show-refund', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const booking = await db.getBooking(parseInt(req.params.id));
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      if (String(booking.student_account_id) !== String(accountId)) {
+        return res.status(403).json({ error: 'Only the student can request a no-show refund' });
+      }
+      if (booking.status !== 'paid') return res.status(400).json({ error: `Cannot refund a ${booking.status} booking` });
+      const slotStartMs = new Date(booking.slot_start_at).getTime();
+      if (Date.now() < slotStartMs + 30 * 60_000) {
+        return res.status(400).json({ error: 'Wait until at least 30 minutes after slot start before requesting a no-show refund.' });
+      }
+      if (booking.coach_confirmed_at) {
+        return res.status(400).json({ error: 'Coach has confirmed attendance — raise a dispute instead.' });
+      }
+      const stripe = _stripe();
+      // Refund integrity: only flip the DB row to 'refunded' if Stripe
+      // actually returned the money. A failed refund here means the funds
+      // are still sitting in Stripe — surfacing 502 lets the student retry
+      // (or contact admin) instead of losing track of the booking.
+      if (!stripe || !booking.stripe_payment_intent) {
+        return res.status(400).json({ error: 'Cannot refund: missing Stripe payment intent on booking' });
+      }
+      try {
+        await stripe.refunds.create({
+          payment_intent: booking.stripe_payment_intent,
+          refund_application_fee: true,
+          reverse_transfer: true,
+          metadata: { reason: 'coach_no_show', booking_id: String(booking.id) },
+        });
+      } catch (e) {
+        console.error('[no-show-refund] stripe refund failed:', e.message);
+        return res.status(502).json({ error: `Stripe refund failed: ${e.message}` });
+      }
+      const updated = await db.markBookingRefunded(booking.id);
+      res.json({ ok: true, booking: updated });
+    } catch (err) {
+      console.error('[API] bookings/:id/no-show-refund:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Reviews — gated server-side to bookings the student owns AND that are
+  // already 'completed'. UNIQUE constraint on booking_id stops duplicates.
+  router.post('/coaches/:id/reviews', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoachById(parseInt(req.params.id));
+      if (!coach) return res.status(404).json({ error: 'Coach not found' });
+      const bookingId = parseInt(req.body?.booking_id);
+      if (!bookingId) return res.status(400).json({ error: 'booking_id required' });
+      const booking = await db.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      if (String(booking.student_account_id) !== String(accountId)) {
+        return res.status(403).json({ error: 'You can only review your own sessions' });
+      }
+      if (String(booking.coach_account_id) !== String(coach.account_id)) {
+        return res.status(400).json({ error: 'Booking does not belong to this coach' });
+      }
+      if (booking.status !== 'completed') {
+        return res.status(400).json({ error: 'You can only review completed sessions' });
+      }
+      const created = await db.createCoachingReview({
+        bookingId,
+        studentAccountId: accountId,
+        coachAccountId: coach.account_id,
+        rating: req.body?.rating,
+        writtenReview: req.body?.written_review,
+      });
+      if (!created) return res.status(409).json({ error: 'You have already reviewed this session' });
+      res.json({ ok: true, review: created });
+    } catch (err) {
+      console.error('[API] coaches/:id/reviews:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---------- Coaching admin ----------
+  // Flag-gated alongside the public coaching endpoints — when the marketplace
+  // is off the entire feature is invisible, including for superusers, so the
+  // admin tab silently disappears instead of showing an empty/broken panel.
+  router.get('/admin/coaching/dashboard', requireSuperuser, async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const pool = db.getPool();
+      const [allCoaches, disputes, revenue, sanctions, last30] = await Promise.all([
+        db.listAllCoaches(),
+        db.listOpenDisputes(),
+        db.getCoachingPlatformRevenue(),
+        db.listCoachSanctions(null),
+        // 30-day rolling window for the dashboard stat cards. Counts paid /
+        // completed / disputed bookings (anything that actually saw money
+        // move) — refunded ones are excluded so the fee total reflects net.
+        pool.query(
+          `SELECT COUNT(*)::int AS bookings_30d,
+                  COALESCE(SUM(platform_fee_cents), 0)::bigint AS platform_fees_30d_cents
+             FROM coaching_bookings
+            WHERE created_at >= NOW() - INTERVAL '30 days'
+              AND status IN ('paid', 'completed', 'disputed')`,
+        ),
+      ]);
+      const pendingKyc = allCoaches.filter(c => c.status === 'kyc_pending');
+      const last30Row = last30.rows[0] || { bookings_30d: 0, platform_fees_30d_cents: 0 };
+      res.json({
+        // Both the flat lists (for the dispute / KYC tables) and a derived
+        // `stats` object (for the top-of-page summary cards) so the frontend
+        // can render the dashboard without a second round-trip.
+        coaches: allCoaches,
+        pending_kyc: pendingKyc,
+        open_disputes: disputes,
+        revenue,
+        recent_sanctions: sanctions,
+        stats: {
+          active_coaches: allCoaches.filter(c => c.status === 'active').length,
+          pending_kyc: pendingKyc.length,
+          open_disputes: disputes.length,
+          bookings_30d: Number(last30Row.bookings_30d) || 0,
+          platform_fees_30d_cents: Number(last30Row.platform_fees_30d_cents) || 0,
+        },
+      });
+    } catch (err) {
+      console.error('[API] admin/coaching/dashboard:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/coaching/sanction', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const coachAccountId = req.body?.coach_account_id;
+      const severity = req.body?.severity;
+      const reason = req.body?.reason;
+      if (!coachAccountId || !severity || !reason) {
+        return res.status(400).json({ error: 'coach_account_id, severity, reason required' });
+      }
+      const sanction = await db.applyCoachSanction({
+        coachAccountId,
+        severity,
+        reason,
+        adminId: req.session?.accountId || null,
+      });
+      res.json({ ok: true, sanction });
+    } catch (err) {
+      console.error('[API] admin/coaching/sanction:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Resolve a disputed booking. resolution:
+  //   'release' — funds stay with the coach, mark completed.
+  //   'refund'  — full refund to student (reverses transfer + app fee).
+  router.post('/admin/coaching/dispute/:id/resolve', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const booking = await db.getBooking(parseInt(req.params.id));
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      if (booking.status !== 'disputed') {
+        return res.status(400).json({ error: `Cannot resolve a ${booking.status} booking` });
+      }
+      const resolution = req.body?.resolution;
+      if (!['release', 'refund'].includes(resolution)) {
+        return res.status(400).json({ error: "resolution must be 'release' or 'refund'" });
+      }
+      const stripe = _stripe();
+      if (resolution === 'refund') {
+        // Refund integrity: only flip the DB row to 'refunded' if Stripe
+        // actually returned the money. If the API call fails we surface 502
+        // so the admin can retry — otherwise we'd lose track of money that
+        // is still sitting in Stripe and have to reconcile by hand.
+        if (!stripe || !booking.stripe_payment_intent) {
+          return res.status(400).json({ error: 'Cannot refund: missing Stripe payment intent on booking' });
+        }
+        try {
+          await stripe.refunds.create({
+            payment_intent: booking.stripe_payment_intent,
+            refund_application_fee: true,
+            reverse_transfer: true,
+            metadata: { reason: 'admin_dispute_refund', booking_id: String(booking.id) },
+          });
+        } catch (e) {
+          console.error('[admin dispute resolve] stripe refund failed:', e.message);
+          return res.status(502).json({ error: `Stripe refund failed: ${e.message}` });
+        }
+        const updated = await db.markBookingRefunded(booking.id);
+        return res.json({ ok: true, booking: updated, resolution });
+      }
+      // 'release' — funds were already routed to coach's pending balance via
+      // destination charge; we just need to flip the row to completed.
+      const p = db.getPool();
+      const r = await p.query(
+        `UPDATE coaching_bookings SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+          WHERE id = $1 RETURNING *`,
+        [booking.id]
+      );
+      res.json({ ok: true, booking: r.rows[0], resolution });
+    } catch (err) {
+      console.error('[API] admin/coaching/dispute/:id/resolve:', err.message);
       res.status(500).json({ error: err.message });
     }
   });
