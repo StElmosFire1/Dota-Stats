@@ -344,35 +344,40 @@ function createServer(startupStatus = {}) {
           }
         }
       } else if (event.type === 'payment_intent.succeeded') {
-        // Coaching bookings book funds via Payment Intent (with
-        // application_fee_amount + transfer_data.destination), not Checkout
-        // Sessions, so the success signal arrives here. checkout.session.completed
-        // also handles the bookings created via Stripe Checkout below.
+        // With manual capture, payment_intent.succeeded only fires AFTER
+        // we call paymentIntents.capture() — which our route handlers do
+        // synchronously when releasing funds, then mark the row 'completed'
+        // themselves. So this branch is the safety net: if Stripe captured
+        // but our route crashed before updating the DB, the webhook will
+        // promote the row from 'paid' -> 'completed' here. Idempotent.
         const intent = event.data.object;
         if (intent.metadata?.purpose === 'coaching_booking') {
-          const charge = intent.latest_charge || null;
-          const row = await db.markBookingPaidByIntent(intent.id, charge).catch(() => null);
-          if (row) {
-            console.log('[Stripe] Coaching booking paid', row.id);
-            try {
-              const bot = getDiscordBot();
-              if (bot && typeof bot.notifyCoachingBookingConfirmed === 'function') {
-                bot.notifyCoachingBookingConfirmed(row).catch(() => {});
-              }
-            } catch (_) { /* DM dispatch is best-effort */ }
-          }
+          const row = await db.markBookingCompletedByIntent(intent.id).catch(() => null);
+          if (row) console.log('[Stripe] Coaching booking captured (PI safety net)', row.id);
         }
       } else if (event.type === 'account.updated') {
-        // Stripe Connect Express KYC completion. We only flip the coach row
-        // to 'active' once charges_enabled goes true; payouts_enabled may
-        // still be pending while bank verification finishes, but the coach
-        // can already accept bookings (funds held in escrow until completion).
+        // Stripe Connect Express KYC completion. We require BOTH
+        // `charges_enabled` (we can run a payment intent) AND
+        // `payouts_enabled` (Stripe can actually pay the coach out) before
+        // promoting the coach to 'active'. With manual capture funds sit
+        // in escrow until completion, so charges_enabled alone isn't
+        // enough — there's no point taking a booking we can't pay out.
         const acct = event.data.object;
-        if (acct.charges_enabled) {
+        if (acct.charges_enabled && acct.payouts_enabled) {
           const updated = await db.setCoachKycActive(acct.id).catch(() => null);
           if (updated) {
             console.log('[Stripe] Coach KYC active', updated.account_id, 'stripe_account', acct.id);
           }
+        }
+      } else if (event.type === 'payment_intent.canceled') {
+        // Backup: payment_intent.cancel is what we call from no-show /
+        // dispute-refund / admin-refund routes. Synchronous DB update is
+        // already done there; this is the safety-net flip in case the API
+        // call returned 200 but the route then crashed before updating.
+        const intent = event.data.object;
+        if (intent.metadata?.purpose === 'coaching_booking') {
+          const refunded = await db.markBookingRefundedByIntent(intent.id).catch(() => null);
+          if (refunded) console.log('[Stripe] Coaching booking canceled (PI)', refunded.id);
         }
       }
       res.json({ received: true });
@@ -5146,8 +5151,11 @@ NOTES
           out.payouts_enabled = Boolean(acct.payouts_enabled);
           out.details_submitted = Boolean(acct.details_submitted);
           out.requirements_due = acct.requirements?.currently_due || [];
-          // Self-heal if webhook missed an event.
-          if (acct.charges_enabled && coach.status === 'kyc_pending') {
+          // Self-heal: same dual-condition check as the webhook so a coach
+          // who has charges_enabled but no payouts_enabled (bank not yet
+          // verified) doesn't get prematurely promoted. We hold back until
+          // Stripe can actually pay them out.
+          if (acct.charges_enabled && acct.payouts_enabled && coach.status === 'kyc_pending') {
             await db.setCoachKycActive(coach.stripe_account_id);
             out.status = 'active';
           }
@@ -5326,6 +5334,14 @@ NOTES
           quantity: 1,
         }],
         payment_intent_data: {
+          // Manual capture = true escrow. Funds are authorized at checkout
+          // and held by Stripe (the card issuer guarantees them) but the
+          // money does NOT move to the coach's Connect account until we
+          // call paymentIntents.capture() on completion / auto-release. If
+          // the booking is cancelled or refunded before capture we call
+          // paymentIntents.cancel() which releases the auth without ever
+          // moving real money — no clawback risk for the coach.
+          capture_method: 'manual',
           application_fee_amount: platformFeeCents,
           transfer_data: { destination: coach.stripe_account_id },
           metadata: {
@@ -5413,18 +5429,42 @@ NOTES
       if (!['paid', 'disputed'].includes(booking.status)) {
         return res.status(400).json({ error: `Cannot confirm a ${booking.status} booking` });
       }
-      const updated = await db.confirmBookingSide(booking.id, side);
-      // If the student just confirmed and we transitioned to completed,
-      // fire the review-prompt DM (gated by the notification preference).
-      if (updated?.status === 'completed' && side === 'student') {
+      // Step 1: stamp the side timestamp without flipping financial status.
+      const stamped = await db.confirmBookingSide(booking.id, side);
+      if (!stamped) return res.status(400).json({ error: 'Could not stamp confirmation' });
+      let finalRow = stamped;
+      // Step 2: if both sides have now confirmed AND we're still in 'paid'
+      // (i.e. funds authorized & uncaptured), capture the funds via Stripe
+      // FIRST, then promote the row. We never flip the DB ahead of money:
+      // a Stripe capture failure must leave the row in 'paid' so the user
+      // can retry.
+      if (stamped.both_confirmed) {
+        const stripe = _stripe();
+        if (!stripe || !booking.stripe_payment_intent) {
+          return res.status(400).json({ error: 'Cannot capture: missing Stripe payment intent on booking' });
+        }
         try {
-          const bot = getDiscordBot();
-          if (bot && typeof bot.notifyCoachingReviewPrompt === 'function') {
-            bot.notifyCoachingReviewPrompt(updated).catch(() => {});
-          }
-        } catch (_) { /* best-effort */ }
+          await stripe.paymentIntents.capture(booking.stripe_payment_intent);
+        } catch (e) {
+          console.error('[confirm-completion] stripe capture failed:', e.message);
+          return res.status(502).json({ error: `Stripe capture failed: ${e.message}` });
+        }
+        const completed = await db.markBookingCompletedById(booking.id);
+        if (completed) finalRow = completed;
+        // Review-prompt DM only fires when we actually transition to
+        // 'completed' here (i.e. the student was the side that closed it
+        // out, since a coach can't unilaterally complete without student
+        // confirmation already in place).
+        if (side === 'student') {
+          try {
+            const bot = getDiscordBot();
+            if (bot && typeof bot.notifyCoachingReviewPrompt === 'function') {
+              bot.notifyCoachingReviewPrompt(finalRow).catch(() => {});
+            }
+          } catch (_) { /* best-effort */ }
+        }
       }
-      res.json({ ok: true, booking: updated });
+      res.json({ ok: true, booking: finalRow });
     } catch (err) {
       console.error('[API] bookings/:id/confirm-completion:', err.message);
       res.status(500).json({ error: err.message });
@@ -5458,10 +5498,13 @@ NOTES
     }
   });
 
-  // No-show refund — student-initiated, only valid if the slot has started
-  // and the coach has not stamped coach_confirmed_at within 30 minutes of
-  // slot start. Issues a Stripe refund (which reverses the application_fee
-  // back too via reverse_transfer/refund_application_fee = true).
+  // No-show refund — student-initiated, valid the moment the slot start
+  // time has passed without the coach stamping `coach_confirmed_at`. The
+  // student should not have to wait 30 minutes past start to recover their
+  // own money; if the coach hasn't shown up by slot start they're a
+  // no-show by definition. Because we use manual capture the funds are
+  // still uncaptured at this point, so we cancel the PI (auth release) —
+  // no money ever moved, no clawback risk.
   router.post('/bookings/:id/no-show-refund', async (req, res) => {
     try {
       if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
@@ -5474,30 +5517,44 @@ NOTES
       }
       if (booking.status !== 'paid') return res.status(400).json({ error: `Cannot refund a ${booking.status} booking` });
       const slotStartMs = new Date(booking.slot_start_at).getTime();
-      if (Date.now() < slotStartMs + 30 * 60_000) {
-        return res.status(400).json({ error: 'Wait until at least 30 minutes after slot start before requesting a no-show refund.' });
+      if (Date.now() < slotStartMs) {
+        return res.status(400).json({ error: 'Wait until the slot start time before requesting a no-show refund.' });
       }
       if (booking.coach_confirmed_at) {
         return res.status(400).json({ error: 'Coach has confirmed attendance — raise a dispute instead.' });
       }
       const stripe = _stripe();
       // Refund integrity: only flip the DB row to 'refunded' if Stripe
-      // actually returned the money. A failed refund here means the funds
-      // are still sitting in Stripe — surfacing 502 lets the student retry
-      // (or contact admin) instead of losing track of the booking.
+      // actually released the auth. A failed cancel here means the auth is
+      // still sitting at Stripe — surface 502 so the student can retry (or
+      // contact admin) rather than losing track of the booking.
       if (!stripe || !booking.stripe_payment_intent) {
         return res.status(400).json({ error: 'Cannot refund: missing Stripe payment intent on booking' });
       }
       try {
-        await stripe.refunds.create({
-          payment_intent: booking.stripe_payment_intent,
-          refund_application_fee: true,
-          reverse_transfer: true,
-          metadata: { reason: 'coach_no_show', booking_id: String(booking.id) },
-        });
-      } catch (e) {
-        console.error('[no-show-refund] stripe refund failed:', e.message);
-        return res.status(502).json({ error: `Stripe refund failed: ${e.message}` });
+        // Cancel releases the uncaptured auth (no funds ever moved). If the
+        // PI was somehow already captured (race with auto-release / admin
+        // release), `cancel` errors and we fall back to a real refund.
+        await stripe.paymentIntents.cancel(booking.stripe_payment_intent);
+      } catch (cancelErr) {
+        // Fall back to a real refund only if Stripe says the PI is no longer
+        // cancellable (i.e. already captured) — any other error surfaces as 502.
+        const code = cancelErr?.code || cancelErr?.raw?.code;
+        if (code !== 'payment_intent_unexpected_state') {
+          console.error('[no-show-refund] stripe cancel failed:', cancelErr.message);
+          return res.status(502).json({ error: `Stripe cancel failed: ${cancelErr.message}` });
+        }
+        try {
+          await stripe.refunds.create({
+            payment_intent: booking.stripe_payment_intent,
+            refund_application_fee: true,
+            reverse_transfer: true,
+            metadata: { reason: 'coach_no_show', booking_id: String(booking.id) },
+          });
+        } catch (e) {
+          console.error('[no-show-refund] stripe refund fallback failed:', e.message);
+          return res.status(502).json({ error: `Stripe refund failed: ${e.message}` });
+        }
       }
       const updated = await db.markBookingRefunded(booking.id);
       res.json({ ok: true, booking: updated });
@@ -5631,30 +5688,47 @@ NOTES
         return res.status(400).json({ error: "resolution must be 'release' or 'refund'" });
       }
       const stripe = _stripe();
+      if (!stripe || !booking.stripe_payment_intent) {
+        return res.status(400).json({ error: 'Cannot resolve: missing Stripe payment intent on booking' });
+      }
       if (resolution === 'refund') {
-        // Refund integrity: only flip the DB row to 'refunded' if Stripe
-        // actually returned the money. If the API call fails we surface 502
-        // so the admin can retry — otherwise we'd lose track of money that
-        // is still sitting in Stripe and have to reconcile by hand.
-        if (!stripe || !booking.stripe_payment_intent) {
-          return res.status(400).json({ error: 'Cannot refund: missing Stripe payment intent on booking' });
-        }
+        // Funds are still uncaptured (booking is 'disputed' = frozen at
+        // 'paid'/auth-only). Cancel the PI to release the auth — no money
+        // ever moved, nothing to refund. Fall back to a true refund only
+        // if the PI was already captured (race vs auto-release).
         try {
-          await stripe.refunds.create({
-            payment_intent: booking.stripe_payment_intent,
-            refund_application_fee: true,
-            reverse_transfer: true,
-            metadata: { reason: 'admin_dispute_refund', booking_id: String(booking.id) },
-          });
-        } catch (e) {
-          console.error('[admin dispute resolve] stripe refund failed:', e.message);
-          return res.status(502).json({ error: `Stripe refund failed: ${e.message}` });
+          await stripe.paymentIntents.cancel(booking.stripe_payment_intent);
+        } catch (cancelErr) {
+          const code = cancelErr?.code || cancelErr?.raw?.code;
+          if (code !== 'payment_intent_unexpected_state') {
+            console.error('[admin dispute resolve] stripe cancel failed:', cancelErr.message);
+            return res.status(502).json({ error: `Stripe cancel failed: ${cancelErr.message}` });
+          }
+          try {
+            await stripe.refunds.create({
+              payment_intent: booking.stripe_payment_intent,
+              refund_application_fee: true,
+              reverse_transfer: true,
+              metadata: { reason: 'admin_dispute_refund', booking_id: String(booking.id) },
+            });
+          } catch (e) {
+            console.error('[admin dispute resolve] stripe refund fallback failed:', e.message);
+            return res.status(502).json({ error: `Stripe refund failed: ${e.message}` });
+          }
         }
         const updated = await db.markBookingRefunded(booking.id);
         return res.json({ ok: true, booking: updated, resolution });
       }
-      // 'release' — funds were already routed to coach's pending balance via
-      // destination charge; we just need to flip the row to completed.
+      // 'release' — capture the held funds first (which moves money to the
+      // coach's Connect balance via the original transfer_data). Only on a
+      // successful capture do we flip the row to 'completed' so we never
+      // mark the row settled when the money is still sitting at the issuer.
+      try {
+        await stripe.paymentIntents.capture(booking.stripe_payment_intent);
+      } catch (e) {
+        console.error('[admin dispute resolve] stripe capture failed:', e.message);
+        return res.status(502).json({ error: `Stripe capture failed: ${e.message}` });
+      }
       const p = db.getPool();
       const r = await p.query(
         `UPDATE coaching_bookings SET status = 'completed', completed_at = NOW(), updated_at = NOW()

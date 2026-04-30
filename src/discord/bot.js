@@ -4214,23 +4214,59 @@ class DiscordBot {
   }
 
   // Auto-release cron — every 30min, look for paid bookings whose slot ended
-  // more than 48h ago without a dispute, flip them to 'completed', and fire
-  // the review-prompt DM to the student. With destination charges the funds
-  // were already routed to the coach's pending balance at payment time, so
-  // the "release" here is just the DB state transition (and the review
-  // window opening).
+  // more than 48h ago without a dispute. With manual capture the funds were
+  // only AUTHORIZED at payment time, not transferred — so "release" here
+  // means: capture the PI via Stripe (which moves money to the coach's
+  // Connect balance through the original transfer_data.destination + takes
+  // our application_fee), THEN flip the row to 'completed' and DM the
+  // student a review prompt. We never flip the row before capture succeeds:
+  // if Stripe errors, the booking stays 'paid' and the next cron tick will
+  // retry. Idempotent — autoReleaseBooking only fires when status='paid'.
   startCoachingAutoReleaseCron() {
     if (this._coachingAutoReleaseTimer) return;
+    // Lazy Stripe instantiation — only construct the SDK when we actually
+    // have a key. Bot starts fine without Stripe (cron just no-ops on rows
+    // that need capture, which is the safe failure mode).
+    let _stripe = null;
+    const stripeFn = () => {
+      if (_stripe) return _stripe;
+      const key = process.env.STRIPE_SECRET_KEY;
+      if (!key) return null;
+      try { _stripe = require('stripe')(key); } catch (_) { _stripe = null; }
+      return _stripe;
+    };
     const tick = async () => {
       try {
         const flag = await db.getFeatureFlag('coaching_marketplace').catch(() => null);
         if (flag?.state !== 'on') return;
         const due = await db.listAutoReleasableBookings(48).catch(() => []);
+        if (!due.length) return;
+        const stripe = stripeFn();
         for (const b of due) {
           try {
+            // Step 1: capture the held funds. Skip silently if we don't
+            // have Stripe configured or the booking is missing a PI — those
+            // rows can't be auto-released safely and need admin attention.
+            if (!stripe || !b.stripe_payment_intent) {
+              console.warn(`[Coaching] auto-release skipped booking ${b.id}: missing stripe or PI`);
+              continue;
+            }
+            try {
+              await stripe.paymentIntents.capture(b.stripe_payment_intent);
+            } catch (capErr) {
+              const code = capErr?.code || capErr?.raw?.code;
+              // 'payment_intent_unexpected_state' = already captured (e.g.
+              // race with confirm-completion). Treat as success and let
+              // the DB flip proceed.
+              if (code !== 'payment_intent_unexpected_state') {
+                console.warn(`[Coaching] auto-release capture failed for booking ${b.id}: ${capErr.message}`);
+                continue; // leave row at 'paid' for next tick / admin
+              }
+            }
+            // Step 2: only now flip the DB row.
             const released = await db.autoReleaseBooking(b.id).catch(() => null);
             if (!released) continue; // raced with a dispute / manual release
-            console.log(`[Coaching] Auto-released booking ${b.id} after 48h grace`);
+            console.log(`[Coaching] Auto-released booking ${b.id} after 48h grace (captured)`);
             try {
               if (typeof this.notifyCoachingReviewPrompt === 'function') {
                 this.notifyCoachingReviewPrompt(released).catch(() => {});

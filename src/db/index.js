@@ -8339,9 +8339,13 @@ async function markBookingPaidByIntent(paymentIntent, chargeId = null) {
   return r.rows[0] || null;
 }
 
-// Mark either side's confirmation. When both are stamped we transition to
-// 'completed'. Returns the resulting row (or null if booking not found /
-// status disallowed).
+// Stamp a side's confirmation timestamp (idempotent — re-stamps preserve
+// the original time via COALESCE). Returns the row + a derived
+// `both_confirmed` flag so the caller can decide whether to call Stripe
+// capture and then markBookingCompleted(). Critically does NOT auto-flip
+// to 'completed' anymore — funds are still authorized-but-uncaptured at
+// this point and the financial transition belongs in the caller alongside
+// the Stripe API call so we never set DB ahead of money.
 async function confirmBookingSide(id, side) {
   if (!['coach', 'student'].includes(side)) throw new Error('confirmBookingSide: invalid side');
   const col = side === 'coach' ? 'coach_confirmed_at' : 'student_confirmed_at';
@@ -8356,18 +8360,49 @@ async function confirmBookingSide(id, side) {
   );
   const row = r.rows[0];
   if (!row) return null;
-  // If both sides confirmed and not disputed, complete it.
-  if (row.coach_confirmed_at && row.student_confirmed_at && row.status === 'paid') {
-    const r2 = await p.query(
-      `UPDATE coaching_bookings
-          SET status = 'completed', completed_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND status = 'paid'
-        RETURNING *`,
-      [id]
-    );
-    return r2.rows[0] || row;
-  }
-  return row;
+  return {
+    ...row,
+    both_confirmed: !!(row.coach_confirmed_at && row.student_confirmed_at) && row.status === 'paid',
+  };
+}
+
+// Synchronous "you've already captured the funds via Stripe — flip the row"
+// transition. Idempotent and race-safe: only fires when the row is still in
+// 'paid' (i.e. authorized & uncaptured) so a webhook arriving after we've
+// already moved the row is a no-op. Returns the updated row or null.
+async function markBookingCompletedById(id) {
+  if (!id) throw new Error('markBookingCompletedById: id required');
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'completed',
+            completed_at = COALESCE(completed_at, NOW()),
+            updated_at = NOW()
+      WHERE id = $1 AND status = 'paid'
+      RETURNING *`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+
+// Backup webhook path: payment_intent.succeeded only fires AFTER a
+// capture call lands, so by the time it arrives the route handler has
+// usually already marked the booking 'completed' synchronously. This is
+// the idempotent safety net for the rare case where the capture call
+// succeeded but the route then failed before updating the DB.
+async function markBookingCompletedByIntent(paymentIntent) {
+  if (!paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'completed',
+            completed_at = COALESCE(completed_at, NOW()),
+            updated_at = NOW()
+      WHERE stripe_payment_intent = $1 AND status = 'paid'
+      RETURNING *`,
+    [paymentIntent]
+  );
+  return r.rows[0] || null;
 }
 
 // Auto-release a paid booking after the 48h grace window has passed without
@@ -8829,6 +8864,8 @@ module.exports = {
   listAutoReleasableBookings,
   validateBookingSlot,
   autoReleaseBooking,
+  markBookingCompletedById,
+  markBookingCompletedByIntent,
   getCoachCredibilityStats,
   listBookingsDueForReminder,
   stampBookingReminderSent,
