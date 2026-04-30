@@ -46,7 +46,7 @@ export default function CoachProfile() {
   if (error) return <div style={{ padding: 24 }}><h1>Coach</h1><p style={{ color: 'var(--dire-color)' }}>{error}</p></div>;
   if (!data) return <div style={{ padding: 24 }}>Loading…</div>;
 
-  const { coach, availability, reviews, rating } = data;
+  const { coach, availability, reviews, rating, credibility } = data;
   const totalCost = Math.round((coach.hourly_rate_cents * (parseInt(bookForm.duration_minutes) || 60)) / 60);
 
   return (
@@ -59,6 +59,32 @@ export default function CoachProfile() {
         {' · '}
         Responds within ~{coach.response_time_hours || 24}h
       </div>
+
+      {(credibility?.mmr || credibility?.games_played > 0) && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 16, padding: 12, marginBottom: 16,
+          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13,
+        }}>
+          {credibility.mmr && (
+            <div><span style={{ color: 'var(--text-muted)' }}>Inhouse MMR </span>
+              <strong>{credibility.mmr}</strong></div>
+          )}
+          {credibility.games_played > 0 && (
+            <>
+              <div><span style={{ color: 'var(--text-muted)' }}>Record </span>
+                <strong>{credibility.wins}W – {credibility.losses}L</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Win rate </span>
+                <strong>{Math.round((credibility.wins / Math.max(1, credibility.games_played)) * 100)}%</strong>
+                <span style={{ color: 'var(--text-muted)' }}> ({credibility.games_played} games)</span></div>
+            </>
+          )}
+          {credibility.top_hero_id && (
+            <div><span style={{ color: 'var(--text-muted)' }}>Most-played hero </span>
+              <strong>#{credibility.top_hero_id}</strong>
+              <span style={{ color: 'var(--text-muted)' }}> ({credibility.top_hero_games} games)</span></div>
+          )}
+        </div>
+      )}
 
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
         <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>

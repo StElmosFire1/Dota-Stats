@@ -2219,6 +2219,8 @@ function CoachingAdminPanel({ superuserKey }) {
         <Stat label="Open disputes" value={data.stats?.open_disputes ?? 0} accent={data.stats?.open_disputes > 0 ? '#fbbf24' : null} />
         <Stat label="Bookings (30d)" value={data.stats?.bookings_30d ?? 0} />
         <Stat label="Platform fees (30d)" value={`$${((data.stats?.platform_fees_30d_cents || 0) / 100).toFixed(2)}`} />
+        <Stat label="Lifetime revenue" value={`$${((data.revenue?.total_cents || 0) / 100).toFixed(2)}`}
+              accent="var(--radiant-color)" />
       </div>
 
       {(data.pending_kyc?.length || 0) > 0 && (
@@ -2268,8 +2270,40 @@ function CoachingAdminPanel({ superuserKey }) {
         </>
       )}
 
-      {(!data.pending_kyc?.length && !data.open_disputes?.length) && (
-        <p style={{ color: 'var(--text-muted)' }}>No pending KYC or open disputes. ✓</p>
+      {(data.recent_sanctions?.length || 0) > 0 && (
+        <>
+          <h3 style={{ marginBottom: 6 }}>Recent sanctions</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, fontSize: 13 }}>
+            <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
+              <th align="left">When</th><th align="left">Coach</th>
+              <th align="left">Severity</th><th align="left">Reason</th><th align="left">Expires</th>
+            </tr></thead>
+            <tbody>{data.recent_sanctions.slice(0, 25).map(s => (
+              <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                  {new Date(s.applied_at).toLocaleString()}
+                </td>
+                <td style={{ padding: 6 }}>{s.coach_name || `#${s.coach_account_id}`}</td>
+                <td style={{ padding: 6 }}>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                    background: s.severity === 'delisted' ? 'var(--dire-color)'
+                              : s.severity === 'suspended' ? '#fbbf24' : 'var(--border)',
+                    color: s.severity === 'warning' ? 'var(--text-primary)' : '#fff',
+                  }}>{s.severity}</span>
+                </td>
+                <td style={{ padding: 6, maxWidth: 320, fontSize: 12 }}>{s.reason}</td>
+                <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                  {s.expires_at ? new Date(s.expires_at).toLocaleDateString() : '—'}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </>
+      )}
+
+      {(!data.pending_kyc?.length && !data.open_disputes?.length && !data.recent_sanctions?.length) && (
+        <p style={{ color: 'var(--text-muted)' }}>No pending KYC, open disputes, or sanctions. ✓</p>
       )}
 
       {msg && <p style={{ color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)' }}>{msg}</p>}

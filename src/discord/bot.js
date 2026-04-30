@@ -3803,7 +3803,8 @@ class DiscordBot {
 
       // Coaching marketplace reminders (T13) — hourly cron, no-ops while flag is off
       this.startCoachingReminderCron();
-      console.log('[Discord] Coaching session reminder cron scheduled.');
+      this.startCoachingAutoReleaseCron();
+      console.log('[Discord] Coaching reminder + auto-release crons scheduled.');
 
       // 10-player seated notification
       const lobbyMgr = this._lobbyManager;
@@ -4212,8 +4213,40 @@ class DiscordBot {
     setTimeout(tick, 30 * 1000); // first run after 30s
   }
 
+  // Auto-release cron — every 30min, look for paid bookings whose slot ended
+  // more than 48h ago without a dispute, flip them to 'completed', and fire
+  // the review-prompt DM to the student. With destination charges the funds
+  // were already routed to the coach's pending balance at payment time, so
+  // the "release" here is just the DB state transition (and the review
+  // window opening).
+  startCoachingAutoReleaseCron() {
+    if (this._coachingAutoReleaseTimer) return;
+    const tick = async () => {
+      try {
+        const flag = await db.getFeatureFlag('coaching_marketplace').catch(() => null);
+        if (flag?.state !== 'on') return;
+        const due = await db.listAutoReleasableBookings(48).catch(() => []);
+        for (const b of due) {
+          try {
+            const released = await db.autoReleaseBooking(b.id).catch(() => null);
+            if (!released) continue; // raced with a dispute / manual release
+            console.log(`[Coaching] Auto-released booking ${b.id} after 48h grace`);
+            try {
+              if (typeof this.notifyCoachingReviewPrompt === 'function') {
+                this.notifyCoachingReviewPrompt(released).catch(() => {});
+              }
+            } catch (_) { /* DM dispatch is best-effort */ }
+          } catch (e) { console.warn(`[Coaching] auto-release failed for booking ${b.id}:`, e.message); }
+        }
+      } catch (e) { console.warn('[Coaching] auto-release cron failed:', e.message); }
+    };
+    this._coachingAutoReleaseTimer = setInterval(tick, 30 * 60 * 1000); // 30min
+    setTimeout(tick, 60 * 1000); // first run after 60s
+  }
+
   async shutdown() {
     if (this._coachingReminderTimer) clearInterval(this._coachingReminderTimer);
+    if (this._coachingAutoReleaseTimer) clearInterval(this._coachingAutoReleaseTimer);
     this.client.destroy();
     console.log('[Discord] Bot shut down.');
   }

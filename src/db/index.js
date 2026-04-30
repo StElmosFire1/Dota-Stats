@@ -8130,14 +8130,58 @@ async function listActiveCoaches({ language, role, hero, maxPriceCents } = {}) {
             c.response_time_hours, c.country, c.created_at,
             COALESCE(n.nickname, c.account_id::text) AS display_name,
             (SELECT ROUND(AVG(rating)::numeric, 2) FROM coaching_reviews WHERE coach_account_id = c.account_id) AS avg_rating,
-            (SELECT COUNT(*)::int FROM coaching_reviews WHERE coach_account_id = c.account_id) AS review_count
+            (SELECT COUNT(*)::int FROM coaching_reviews WHERE coach_account_id = c.account_id) AS review_count,
+            -- Inhouse credibility stats joined from ratings so the browse
+            -- card can show MMR / W-L / win rate without an N+1 fetch.
+            (SELECT MAX(mmr)::int FROM ratings WHERE player_id::text = c.account_id::text) AS mmr,
+            (SELECT COALESCE(SUM(wins), 0)::int  FROM ratings WHERE player_id::text = c.account_id::text) AS wins,
+            (SELECT COALESCE(SUM(losses), 0)::int FROM ratings WHERE player_id::text = c.account_id::text) AS losses,
+            (SELECT COALESCE(SUM(games_played), 0)::int FROM ratings WHERE player_id::text = c.account_id::text) AS games_played,
+            -- Top hero from full match history. LATERAL keeps it to one row
+            -- per coach so the outer query stays a flat list.
+            top_hero.hero_id  AS top_hero_id,
+            top_hero.games    AS top_hero_games
        FROM coaches c
+       LEFT JOIN LATERAL (
+         SELECT hero_id, COUNT(*)::int AS games
+           FROM player_stats
+          WHERE account_id::text = c.account_id::text AND hero_id IS NOT NULL
+          GROUP BY hero_id ORDER BY games DESC LIMIT 1
+       ) top_hero ON TRUE
        LEFT JOIN nicknames n ON n.account_id = c.account_id
       WHERE ${conds.join(' AND ')}
       ORDER BY c.created_at DESC`,
     args
   );
   return r.rows;
+}
+
+// Lightweight credibility stats for a single coach — MMR, win/loss totals,
+// and the most-played hero from match history. Used by /coaches/:id to
+// surface the same context the browse page shows.
+async function getCoachCredibilityStats(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const ratings = await p.query(
+    `SELECT MAX(mmr)::int AS mmr,
+            COALESCE(SUM(wins), 0)::int AS wins,
+            COALESCE(SUM(losses), 0)::int AS losses,
+            COALESCE(SUM(games_played), 0)::int AS games_played
+       FROM ratings WHERE player_id::text = $1::text`,
+    [String(accountId)]
+  );
+  const topHero = await p.query(
+    `SELECT hero_id, COUNT(*)::int AS games
+       FROM player_stats
+      WHERE account_id::text = $1::text AND hero_id IS NOT NULL
+      GROUP BY hero_id ORDER BY games DESC LIMIT 1`,
+    [String(accountId)]
+  ).catch(() => ({ rows: [] }));
+  return {
+    ...(ratings.rows[0] || { mmr: null, wins: 0, losses: 0, games_played: 0 }),
+    top_hero_id: topHero.rows[0]?.hero_id || null,
+    top_hero_games: topHero.rows[0]?.games || 0,
+  };
 }
 
 // Admin listing — every coach regardless of status. Used by the Coaching
@@ -8326,6 +8370,25 @@ async function confirmBookingSide(id, side) {
   return row;
 }
 
+// Auto-release a paid booking after the 48h grace window has passed without
+// either side raising a dispute. Idempotent — re-running is a no-op once the
+// row is no longer 'paid'. Returns the updated row or null if it was
+// already past the 'paid' state (e.g. someone disputed mid-cron).
+async function autoReleaseBooking(id) {
+  if (!id) throw new Error('autoReleaseBooking: id required');
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET status = 'completed',
+            completed_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1 AND status = 'paid'
+      RETURNING *`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+
 async function raiseBookingDispute(id, reason) {
   if (!id) throw new Error('raiseBookingDispute: id required');
   const p = getPool();
@@ -8417,6 +8480,81 @@ async function stampBookingReminderSent(id) {
     `UPDATE coaching_bookings SET reminder_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
     [id]
   );
+}
+
+// Validate a proposed booking slot against the coach's published weekly
+// availability (in the coach's own timezone) AND ensure it doesn't overlap
+// any existing live booking. Returns { ok: true } or { ok: false, reason }.
+//
+// The coach declares slots like "Mon 18:00–22:00 Australia/Sydney"; we
+// project the requested UTC slot_start_at into that timezone using
+// Intl.DateTimeFormat (no timezone tables in PG needed) and check that
+// [start, start+duration] fits inside one published window.
+async function validateBookingSlot(coachAccountId, slotStartIso, durationMinutes) {
+  if (!coachAccountId) return { ok: false, reason: 'coachAccountId required' };
+  const slotStart = new Date(slotStartIso);
+  if (isNaN(slotStart.getTime())) return { ok: false, reason: 'invalid slot_start_at' };
+  const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60_000);
+
+  const slots = await getCoachAvailability(coachAccountId);
+  if (!slots.length) return { ok: false, reason: 'Coach has not published any availability slots.' };
+
+  // Project the UTC instant into each slot's timezone and check fit.
+  const dowMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const localizeMinutes = (date, tz) => {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+    const parts = fmt.formatToParts(date);
+    const wd = parts.find(p => p.type === 'weekday')?.value;
+    const h = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+    const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+    return { dow: dowMap[wd], minutes: h * 60 + m };
+  };
+  const toMinutes = (hhmm) => {
+    const [h, m] = String(hhmm).split(':').map(n => parseInt(n, 10));
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  let fitsAnySlot = false;
+  for (const s of slots) {
+    let tz = 'Australia/Sydney';
+    try { new Intl.DateTimeFormat('en-US', { timeZone: s.timezone }); tz = s.timezone; } catch (_) { /* fall back */ }
+    const startLocal = localizeMinutes(slotStart, tz);
+    const endLocal = localizeMinutes(slotEnd, tz);
+    const slotStartMins = toMinutes(s.start_time);
+    const slotEndMins = toMinutes(s.end_time);
+    // Both endpoints must land on the same published day_of_week within the
+    // window — short-circuits sessions that straddle midnight or fall outside
+    // the published hours.
+    if (
+      startLocal.dow === s.day_of_week &&
+      endLocal.dow === s.day_of_week &&
+      startLocal.minutes >= slotStartMins &&
+      endLocal.minutes <= slotEndMins
+    ) {
+      fitsAnySlot = true;
+      break;
+    }
+  }
+  if (!fitsAnySlot) return { ok: false, reason: 'Selected time is outside the coach\'s published availability.' };
+
+  // Double-booking check — anything live (pending/paid/disputed/completed
+  // and not yet refunded) on the same slot for the same coach blocks the
+  // request. Refunded/cancelled bookings free the slot back up.
+  const p = getPool();
+  const conflict = await p.query(
+    `SELECT 1 FROM coaching_bookings
+      WHERE coach_account_id = $1
+        AND status IN ('pending', 'paid', 'disputed', 'completed')
+        AND tstzrange(slot_start_at, slot_start_at + (duration_minutes || ' minutes')::interval, '[)')
+            && tstzrange($2::timestamptz, $2::timestamptz + ($3 || ' minutes')::interval, '[)')
+      LIMIT 1`,
+    [coachAccountId, slotStart.toISOString(), durationMinutes],
+  );
+  if (conflict.rows.length) return { ok: false, reason: 'That slot is already booked.' };
+
+  return { ok: true };
 }
 
 // ---------- Reviews ----------
@@ -8689,6 +8827,9 @@ module.exports = {
   markBookingRefundedByIntent,
   listOpenDisputes,
   listAutoReleasableBookings,
+  validateBookingSlot,
+  autoReleaseBooking,
+  getCoachCredibilityStats,
   listBookingsDueForReminder,
   stampBookingReminderSent,
   createCoachingReview,

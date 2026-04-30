@@ -5254,12 +5254,15 @@ NOTES
       if (coach.status !== 'active' && !_isSu(req)) {
         return res.status(404).json({ error: 'Coach not found' });
       }
-      const [availability, reviews, agg] = await Promise.all([
+      const [availability, reviews, agg, credibility, nick] = await Promise.all([
         db.getCoachAvailability(coach.account_id),
         db.getCoachReviews(coach.account_id, 25),
         db.getCoachAggregateRating(coach.account_id),
+        db.getCoachCredibilityStats(coach.account_id).catch(() => null),
+        db.getNickname?.(coach.account_id).catch(() => null),
       ]);
-      res.json({ coach, availability, reviews, rating: agg });
+      const display_name = (typeof nick === 'string' ? nick : nick?.nickname) || String(coach.account_id);
+      res.json({ coach: { ...coach, display_name }, availability, reviews, rating: agg, credibility });
     } catch (err) {
       console.error('[API] coaches/:id:', err.message);
       res.status(500).json({ error: err.message });
@@ -5292,6 +5295,13 @@ NOTES
       if (slotStart.getTime() < Date.now() + 30 * 60_000) {
         return res.status(400).json({ error: 'Slot must start at least 30 minutes from now.' });
       }
+
+      // Slot validation — must fall inside one of the coach's published
+      // weekly availability windows AND must not overlap any existing live
+      // booking. Without this, the API would happily accept arbitrary
+      // timestamps and let students double-book a coach.
+      const slotCheck = await db.validateBookingSlot(coach.account_id, slotStart.toISOString(), duration);
+      if (!slotCheck.ok) return res.status(400).json({ error: slotCheck.reason });
 
       const stripe = _stripe();
       if (!stripe) return res.status(503).json({ error: 'Payments are not configured.' });

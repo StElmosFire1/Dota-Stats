@@ -109,6 +109,21 @@ export default function Coaches() {
                 {c.avg_rating ? `★ ${c.avg_rating} (${c.review_count})` : 'No reviews yet'}
               </span>
             </div>
+            {(c.mmr || c.games_played > 0 || c.top_hero_id) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+                {c.mmr && <span><strong style={{ color: 'var(--text-primary)' }}>{c.mmr}</strong> MMR</span>}
+                {c.games_played > 0 && (
+                  <span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{c.wins}W-{c.losses}L</strong>
+                    {' · '}
+                    {Math.round((c.wins / Math.max(1, c.games_played)) * 100)}%
+                  </span>
+                )}
+                {c.top_hero_id && (
+                  <span>Top hero <strong style={{ color: 'var(--text-primary)' }}>#{c.top_hero_id}</strong></span>
+                )}
+              </div>
+            )}
             {c.bio && <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {c.bio}
             </div>}
