@@ -1422,6 +1422,19 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.put('/seasons/:id/archive', requireSuperuser, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
+      const season = await db.archiveSeason(id);
+      if (!season) return res.status(404).json({ error: 'Season not found' });
+      res.json({ season });
+    } catch (err) {
+      console.error('[API] archiveSeason:', err.message);
+      res.status(500).json({ error: 'Failed to archive season' });
+    }
+  });
+
   // --- Season Buy-in Routes ---
 
   router.put('/seasons/:id/buyin-amount', authMiddleware, async (req, res) => {

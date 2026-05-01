@@ -635,6 +635,25 @@ export default function Seasons() {
     }
   }
 
+  async function handleArchive(season) {
+    if (!isSuperuser) { setSuperuserModal(true); return; }
+    if (!window.confirm(`Archive "${season.name}"? Its matches will be hidden from all stats and leaderboards. The data is preserved and can be recovered by an admin directly in the database.`)) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/seasons/${season.id}/archive`, {
+        method: 'PUT',
+        headers: { 'x-admin-key': superuserKey },
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+      await refreshSeasons();
+      feedback('', `Season "${season.name}" archived.`);
+    } catch (err) {
+      feedback(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (!isSuperuser) {
     return (
       <div style={{ maxWidth: 600, margin: '80px auto', textAlign: 'center', padding: '0 16px' }}>
@@ -776,6 +795,17 @@ export default function Seasons() {
                           {isAdmin && (
                             <button className="btn btn-small" onClick={() => setBuyinAmountModal(s)} title="Set buy-in amount">
                               {hasBuyin ? 'Edit Buy-in' : 'Set Buy-in'}
+                            </button>
+                          )}
+                          {isSuperuser && !s.active && !s.is_legacy && (
+                            <button
+                              className="btn btn-small"
+                              style={{ fontSize: 11, opacity: 0.8, background: 'var(--surface2)', color: 'var(--muted)' }}
+                              disabled={loading}
+                              onClick={() => handleArchive(s)}
+                              title="Hide all data from this season without deleting it"
+                            >
+                              Archive
                             </button>
                           )}
                           {isSuperuser && (

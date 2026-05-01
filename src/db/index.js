@@ -1331,6 +1331,27 @@ async function setActiveSeason(id) {
   return result.rows[0];
 }
 
+async function archiveSeason(id) {
+  const p = getPool();
+  await p.query('BEGIN');
+  try {
+    await p.query(
+      `UPDATE seasons SET active = false, is_legacy = true WHERE id = $1`,
+      [id]
+    );
+    await p.query(
+      `UPDATE matches SET is_legacy = true WHERE season_id = $1`,
+      [id]
+    );
+    await p.query('COMMIT');
+    const result = await p.query(`SELECT * FROM seasons WHERE id = $1`, [id]);
+    return result.rows[0] || null;
+  } catch (err) {
+    await p.query('ROLLBACK');
+    throw err;
+  }
+}
+
 async function deleteSeason(id) {
   const p = getPool();
   await p.query('BEGIN');
@@ -8885,6 +8906,7 @@ module.exports = {
   getActiveSeason,
   createSeason,
   setActiveSeason,
+  archiveSeason,
   updateMatchMeta,
   updateMatchDetails,
   updatePlayerStats,
