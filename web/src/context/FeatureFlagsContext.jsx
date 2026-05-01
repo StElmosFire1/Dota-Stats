@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useSuperuser } from './SuperuserContext';
+import { useAdmin } from './AdminContext';
 
 const FeatureFlagsContext = createContext({ flags: {}, loading: true, refresh: () => {} });
 
 export function FeatureFlagsProvider({ children }) {
   const { superuserKey } = useSuperuser() || {};
+  const { adminKey } = useAdmin() || {};
   const [flags, setFlags] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -12,6 +14,7 @@ export function FeatureFlagsProvider({ children }) {
     try {
       const headers = {};
       if (superuserKey) headers['x-superuser-key'] = superuserKey;
+      if (adminKey) headers['x-admin-key'] = adminKey;
       const res = await fetch('/api/feature-flags', { headers });
       if (!res.ok) throw new Error('failed');
       const data = await res.json();
@@ -21,7 +24,7 @@ export function FeatureFlagsProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [superuserKey]);
+  }, [superuserKey, adminKey]);
 
   useEffect(() => {
     refresh();

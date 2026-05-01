@@ -3508,9 +3508,14 @@ NOTES
   // as enabled. Non-superusers only see flags whose state is 'on'.
   router.get('/feature-flags', async (req, res) => {
     try {
-      const superuserKey = req.headers['x-superuser-key'];
+      const providedKey = req.headers['x-superuser-key'] || req.headers['x-admin-key'];
+      const uploadKey = process.env.UPLOAD_KEY;
+      const superuserPassword = process.env.SUPERUSER_PASSWORD;
       const isSuperuser = Boolean(
-        superuserKey && process.env.SUPERUSER_PASSWORD && superuserKey === process.env.SUPERUSER_PASSWORD
+        providedKey && (
+          (superuserPassword && providedKey === superuserPassword) ||
+          (uploadKey && providedKey === uploadKey)
+        )
       );
       const flags = await db.getResolvedFeatureFlags({ isSuperuser });
       res.json({ flags });
