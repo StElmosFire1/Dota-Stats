@@ -1,0 +1,191 @@
+const SteamUser = require('steam-user');
+const SteamTotp = require('steam-totp');
+const { config } = require('../config');
+const { Dota2GCClient, DOTA2_APPID } = require('./dota2GC');
+const EventEmitter = require('events');
+
+class SteamDotaClient extends EventEmitter {
+  constructor() {
+    super();
+    this.steamClient = new SteamUser();
+    this.gcClient = null;
+    this.isLoggedIn = false;
+    this.isGCReady = false;
+    this._setupListeners();
+  }
+
+  _setupListeners() {
+    this.steamClient.on('loggedOn', () => {
+      console.log('[Steam] Logged in successfully.');
+      this.isLoggedIn = true;
+      this.steamClient.setPersona(SteamUser.EPersonaState.Online, 'Dota Bot');
+
+      this.gcClient = new Dota2GCClient(this.steamClient);
+
+      this.gcClient.on('ready', () => {
+        console.log('[Steam] Dota 2 GC is ready!');
+        this.isGCReady = true;
+        this.emit('gcReady');
+      });
+
+      this.steamClient.gamesPlayed([DOTA2_APPID]);
+    });
+
+    this.steamClient.on('steamGuard', (domain, callback, lastCodeWrong) => {
+      if (config.steam.sharedSecret) {
+        const code = SteamTotp.generateAuthCode(config.steam.sharedSecret);
+        console.log('[Steam] Providing Steam Guard code from shared secret...');
+        callback(code);
+      } else {
+        console.error('[Steam] Steam Guard code requested but no shared secret configured.');
+        console.error('[Steam] Either disable Steam Guard on this account or set STEAM_SHARED_SECRET.');
+        callback('');
+      }
+    });
+
+    this.steamClient.on('friendRelationship', (steamID, relationship) => {
+      if (relationship === SteamUser.EFriendRelationship.RequestRecipient) {
+        this.steamClient.addFriend(steamID, (err) => {
+          if (err) {
+            console.warn(`[Steam] Failed to accept friend request from ${steamID.getSteamID64()}: ${err.message}`);
+          } else {
+            console.log(`[Steam] Accepted friend request from ${steamID.getSteamID64()}`);
+          }
+        });
+      }
+    });
+
+    this.steamClient.on('error', (err) => {
+      this.isLoggedIn = false;
+      this.isGCReady = false;
+      if (err.eresult === 34 || err.message === 'LogonSessionReplaced') {
+        console.warn('[Steam] Session replaced by another login — Steam disconnected. Bot continues running without Steam.');
+        this.emit('steamDisconnected', 'LogonSessionReplaced');
+      } else {
+        console.error('[Steam] Login error:', err.message);
+        this.emit('steamDisconnected', err.message);
+      }
+    });
+
+    this.steamClient.on('disconnected', (eresult, msg) => {
+      console.warn(`[Steam] Disconnected: ${msg} (${eresult})`);
+      this.isLoggedIn = false;
+      this.isGCReady = false;
+    });
+  }
+
+  login() {
+    return new Promise((resolve, reject) => {
+      if (!config.steam.accountName || !config.steam.password) {
+        return reject(new Error('Steam credentials not configured.'));
+      }
+
+      const loginOptions = {
+        accountName: config.steam.accountName,
+        password: config.steam.password,
+      };
+
+      const gcTimeout = setTimeout(() => {
+        cleanup();
+        console.warn('[Steam] GC connection timed out — Steam is logged in but Dota 2 GC did not connect. Lobby commands will report GC unavailable until it connects.');
+        resolve();
+      }, 45000);
+
+      const onReady = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = (err) => {
+        cleanup();
+        reject(err);
+      };
+      const cleanup = () => {
+        clearTimeout(gcTimeout);
+        this.removeListener('gcReady', onReady);
+        this.steamClient.removeListener('error', onError);
+      };
+
+      this.once('gcReady', onReady);
+      this.steamClient.once('error', onError);
+
+      console.log('[Steam] Logging in...');
+      this.steamClient.logOn(loginOptions);
+    });
+  }
+
+  /**
+   * Add all known players as Steam friends. Skips anyone already on the friends list.
+   * Sends requests slowly (1 per second) to avoid rate limits.
+   */
+  async addAllKnownFriends(accountIds) {
+    if (!this.isLoggedIn || !this.steamClient) return;
+    const friends = this.steamClient.myFriends || {};
+    let added = 0;
+    let skipped = 0;
+    for (const accountId32 of accountIds) {
+      try {
+        const steam64 = (BigInt('76561197960265728') + BigInt(accountId32)).toString();
+        const rel = friends[steam64];
+        if (rel === 3 /* EFriendRelationship.Friend */) { skipped++; continue; }
+        await new Promise((resolve) => {
+          this.steamClient.addFriend(steam64, (err) => {
+            if (err) console.warn(`[Steam] addFriend ${steam64} failed: ${err.message}`);
+            else added++;
+            resolve();
+          });
+        });
+        await new Promise(r => setTimeout(r, 1000));
+      } catch (err) {
+        console.error(`[Steam] addAllKnownFriends error for ${accountId32}:`, err.message);
+      }
+    }
+    console.log(`[Steam] addAllKnownFriends: ${added} requests sent, ${skipped} already friends`);
+  }
+
+  /**
+   * Send a Steam friend message to a player by their 32-bit account ID.
+   * The bot must be Steam friends with them for this to work.
+   */
+  sendSteamMessage(accountId32, message) {
+    if (!this.isLoggedIn || !this.steamClient) {
+      console.warn('[Steam] Cannot send message — not logged in');
+      return false;
+    }
+    try {
+      const steam64 = (BigInt('76561197960265728') + BigInt(accountId32)).toString();
+      if (typeof this.steamClient.chat?.sendFriendMessage === 'function') {
+        this.steamClient.chat.sendFriendMessage(steam64, message);
+      } else {
+        this.steamClient.chatMessage(steam64, message);
+      }
+      console.log(`[Steam] Sent message to account ${accountId32} (${steam64})`);
+      return true;
+    } catch (err) {
+      console.error(`[Steam] Failed to send message to ${accountId32}:`, err.message);
+      return false;
+    }
+  }
+
+  shutdown() {
+    if (this.gcClient) {
+      this.gcClient.shutdown();
+    }
+    if (this.isLoggedIn) {
+      this.steamClient.logOff();
+    }
+    this.isLoggedIn = false;
+    this.isGCReady = false;
+    console.log('[Steam] Shut down.');
+  }
+}
+
+let instance = null;
+
+function getSteamClient() {
+  if (!instance) {
+    instance = new SteamDotaClient();
+  }
+  return instance;
+}
+
+module.exports = { getSteamClient, SteamDotaClient };
