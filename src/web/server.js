@@ -520,17 +520,31 @@ function createApiRouter(startupStatus = {}) {
   });
 
   router.post('/admin/superuser-login', authLimiter, express.json(), (req, res) => {
-    const key = process.env.SUPERUSER_PASSWORD;
-    if (!key) return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
+    const superuserPassword = process.env.SUPERUSER_PASSWORD;
+    const uploadKey = process.env.UPLOAD_KEY;
+    if (!superuserPassword && !uploadKey) {
+      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD or UPLOAD_KEY.' });
+    }
     const { password } = req.body || {};
-    if (password === key) return res.json({ success: true });
+    const valid =
+      (superuserPassword && password === superuserPassword) ||
+      (uploadKey && password === uploadKey);
+    if (valid) return res.json({ success: true });
     return res.status(401).json({ error: 'Invalid password' });
   });
 
   function requireSuperuser(req, res, next) {
-    const key = process.env.SUPERUSER_PASSWORD;
-    if (!key) return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
-    if (req.headers['x-superuser-key'] !== key) return res.status(403).json({ error: 'Invalid superuser key' });
+    const superuserPassword = process.env.SUPERUSER_PASSWORD;
+    const uploadKey = process.env.UPLOAD_KEY;
+    // At least one credential must be configured.
+    if (!superuserPassword && !uploadKey) {
+      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD or UPLOAD_KEY.' });
+    }
+    const provided = req.headers['x-superuser-key'] || req.headers['x-admin-key'];
+    const valid =
+      (superuserPassword && provided === superuserPassword) ||
+      (uploadKey && provided === uploadKey);
+    if (!valid) return res.status(403).json({ error: 'Invalid superuser key' });
     next();
   }
 
