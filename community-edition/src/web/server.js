@@ -295,26 +295,14 @@ function createApiRouter(startupStatus = {}) {
       dbOk = true;
     } catch {}
 
-    const replayParser = getReplayParser();
-    const parserOk = replayParser?.parserReady === true;
+    const uptime = startupStatus.startedAt
+      ? Math.round((Date.now() - new Date(startupStatus.startedAt).getTime()) / 1000)
+      : Math.round(process.uptime());
 
     res.json({
-      ok: startupStatus.discord && dbOk,
-      uptime: startupStatus.startedAt
-        ? Math.round((Date.now() - new Date(startupStatus.startedAt).getTime()) / 1000)
-        : null,
-      startedAt: startupStatus.startedAt || null,
-      services: {
-        discord:      { ok: !!startupStatus.discord,      label: 'Discord Bot' },
-        database:     { ok: dbOk,                         label: 'Database' },
-        steam:        { ok: !!startupStatus.steam,        label: 'Steam' },
-        replayParser: { ok: parserOk,                     label: 'Replay Parser' },
-      },
-      dormant: {
-        sheets:      'Google Sheets sync',
-        matchPoller: 'OpenDota match poller',
-        lobby:       'Steam lobby / friend monitor',
-      },
+      status: dbOk ? 'ok' : 'error',
+      db: dbOk,
+      uptime,
     });
   });
 

@@ -50,13 +50,11 @@ function HealthDot() {
     return () => clearInterval(t);
   }, []);
 
-  const allOk = health?.ok;
+  const allOk = health?.status === 'ok';
   const color = health === null ? '#888' : allOk ? '#4caf50' : '#f44336';
   const label = health === null ? 'Checking…' : allOk ? 'All systems OK' : 'Service issue';
 
-  const services = health?.services
-    ? Object.values(health.services).map(s => `${s.ok ? '✓' : '✗'} ${s.label}`).join('\n')
-    : '';
+  const dbStr = health != null ? (health.db ? '✓ Database' : '✗ Database') : '';
 
   const uptimeStr = health?.uptime != null
     ? (() => {
@@ -67,7 +65,7 @@ function HealthDot() {
       })()
     : null;
 
-  const tooltip = [label, services, uptimeStr ? `Uptime: ${uptimeStr}` : ''].filter(Boolean).join('\n');
+  const tooltip = [label, dbStr, uptimeStr ? `Uptime: ${uptimeStr}` : ''].filter(Boolean).join('\n');
 
   return (
     <span
