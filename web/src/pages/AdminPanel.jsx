@@ -989,9 +989,10 @@ function SeasonTiersPanelInner({ superuserKey }) {
 
   const refreshSeasons = useCallback(async () => {
     try {
-      const list = await getSeasons();
-      setSeasons(list || []);
-      if (!seasonId && list?.length) {
+      const raw = await getSeasons();
+      const list = raw?.seasons || (Array.isArray(raw) ? raw : []);
+      setSeasons(list);
+      if (!seasonId && list.length) {
         const active = list.find(s => s.is_active) || list[list.length - 1];
         setSeasonId(String(active.id));
       }
