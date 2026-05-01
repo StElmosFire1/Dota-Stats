@@ -8,7 +8,8 @@ import useProMembers from '../hooks/useProMembers';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 
-const MMR_TIERS = [
+// V1 thresholds — fresh player starts at ~2600 MMR
+const MMR_TIERS_V1 = [
   { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100, color: '#FFD700',   bg: 'rgba(255,215,0,0.12)',   border: 'rgba(255,215,0,0.45)'    },
   { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 3800, color: '#CE93D8',   bg: 'rgba(156,39,176,0.15)',  border: 'rgba(156,39,176,0.45)'   },
   { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 3500, color: '#90CAF9',   bg: 'rgba(33,150,243,0.12)',  border: 'rgba(33,150,243,0.4)'    },
@@ -22,15 +23,33 @@ const MMR_TIERS = [
   { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
 ];
 
-function getTier(mmr) {
-  for (const t of MMR_TIERS) {
+// V3 thresholds — fresh player starts at exactly 5000 MMR (+2400 offset from V1)
+const MMR_TIERS_V3 = [
+  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 6500, color: '#FFD700',   bg: 'rgba(255,215,0,0.12)',   border: 'rgba(255,215,0,0.45)'    },
+  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 6200, color: '#CE93D8',   bg: 'rgba(156,39,176,0.15)',  border: 'rgba(156,39,176,0.45)'   },
+  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 5900, color: '#90CAF9',   bg: 'rgba(33,150,243,0.12)',  border: 'rgba(33,150,243,0.4)'    },
+  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 5600, color: '#80DEEA',   bg: 'rgba(0,188,212,0.12)',   border: 'rgba(0,188,212,0.4)'     },
+  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 5300, color: '#A5D6A7',   bg: 'rgba(76,175,80,0.12)',   border: 'rgba(76,175,80,0.4)'     },
+  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 5000, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 4700, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 4400, color: '#FFCC80',   bg: 'rgba(255,152,0,0.12)',   border: 'rgba(255,152,0,0.4)'     },
+  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 4100, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
+  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 3800, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
+  { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
+];
+
+// Back-compat alias — components that don't know about V3 yet default to V1
+const MMR_TIERS = MMR_TIERS_V1;
+
+function getTier(mmr, tiers = MMR_TIERS_V1) {
+  for (const t of tiers) {
     if (mmr >= t.min) return t;
   }
-  return MMR_TIERS[MMR_TIERS.length - 1];
+  return tiers[tiers.length - 1];
 }
 
-function TierBadge({ mmr }) {
-  const t = getTier(mmr);
+function TierBadge({ mmr, useV3 = false }) {
+  const t = getTier(mmr, useV3 ? MMR_TIERS_V3 : MMR_TIERS_V1);
   if (!t) return null;
   return (
     <span
@@ -300,7 +319,7 @@ export default function Leaderboard() {
   const { seasonId, seasons } = useSeason();
   const showSeasonPass = useFeatureFlag('season_pass_s10');
   const proMembers = useProMembers();
-  const [data, setData] = useState({ leaderboard: [] });
+  const [data, setData] = useState({ leaderboard: [], useV3: false });
   const [loading, setLoading] = useState(true);
   const [improved, setImproved] = useState([]);
   const [improvedLoading, setImprovedLoading] = useState(true);
@@ -380,7 +399,7 @@ export default function Leaderboard() {
         alignItems: 'center',
       }}>
         <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4, whiteSpace: 'nowrap' }}>worst →</span>
-        {[...MMR_TIERS].reverse().map((t, i) => (
+        {[...(data.useV3 ? MMR_TIERS_V3 : MMR_TIERS_V1)].reverse().map((t, i) => (
           <span
             key={t.name}
             title={t.description}
@@ -450,7 +469,7 @@ export default function Leaderboard() {
                         leaderboardRank={p.dota_leaderboard_rank}
                       />
                     </td>
-                    <td className="col-stat"><TierBadge mmr={p.mmr} /></td>
+                    <td className="col-stat"><TierBadge mmr={p.mmr} useV3={data.useV3} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>

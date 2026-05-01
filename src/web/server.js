@@ -694,14 +694,15 @@ function createApiRouter(startupStatus = {}) {
   router.get('/leaderboard', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
-      const [leaderboard, streaks] = await Promise.all([
+      const [leaderboard, streaks, v3Setting] = await Promise.all([
         db.getComputedLeaderboard(seasonId),
         db.getPlayerStreaks(seasonId),
+        db.getSetting('use_v3_trueskill').catch(() => 'false'),
       ]);
       for (const p of leaderboard) {
         p.streak = streaks[p.player_id?.toString()] || 0;
       }
-      res.json({ leaderboard });
+      res.json({ leaderboard, useV3: v3Setting === 'true' });
     } catch (err) {
       console.error('[API] Error fetching leaderboard:', err.message);
       res.status(500).json({ error: 'Failed to fetch leaderboard' });
