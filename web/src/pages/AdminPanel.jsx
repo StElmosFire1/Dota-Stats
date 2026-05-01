@@ -708,6 +708,21 @@ function ErrorLogViewer({ superuserKey }) {
   );
 }
 
+// Maps each feature flag key to the page(s) where the feature is visible.
+// Used to render a direct "View →" link next to each flag row.
+const FLAG_PREVIEW_URLS = {
+  coaching_marketplace:   [{ label: 'Browse Coaches', url: '/coaches' }],
+  hero_meta_v2:           [{ label: 'Heroes', url: '/heroes' }],
+  draft_assistant_v2:     [{ label: 'Draft', url: '/draft' }],
+  season_pass_s10:        [{ label: 'Leaderboard', url: '/leaderboard' }],
+  profile_customization:  [{ label: 'Your Profile', url: '/player/me' }],
+  pro_tier:               [{ label: 'Leaderboard', url: '/leaderboard' }],
+  multi_tier_seasons:     [{ label: 'Leaderboard', url: '/leaderboard' }],
+  new_rank_theme:         [{ label: 'Leaderboard', url: '/leaderboard' }],
+  match_predictions:      [{ label: 'Predictions', url: '/predictions' }],
+  player_network:         [{ label: 'Stats', url: '/stats' }],
+};
+
 function FeatureFlagsPanel({ superuserKey }) {
   const [flags, setFlags] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -830,37 +845,68 @@ function FeatureFlagsPanel({ superuserKey }) {
                 <th style={{ padding: '8px 10px' }}>State</th>
                 <th style={{ padding: '8px 10px' }}>Description</th>
                 <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>Enabled at</th>
+                <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>View</th>
               </tr>
             </thead>
             <tbody>
               {flags.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: 16, color: 'var(--text-muted)', textAlign: 'center' }}>No feature flags yet.</td></tr>
+                <tr><td colSpan={5} style={{ padding: 16, color: 'var(--text-muted)', textAlign: 'center' }}>No feature flags yet.</td></tr>
               )}
-              {flags.map(f => (
-                <tr key={f.key} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#a78bfa' }}>{f.key}</td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <select
-                      value={f.state}
-                      disabled={saving === f.key}
-                      onChange={e => updateFlag(f.key, { state: e.target.value })}
-                      style={{
-                        background: 'var(--bg-card)', color: stateColor(f.state),
-                        border: `1px solid ${stateColor(f.state)}`, borderRadius: 6,
-                        padding: '4px 8px', fontWeight: 600, fontSize: 12, textTransform: 'uppercase',
-                      }}
-                    >
-                      <option value="off">Off</option>
-                      <option value="preview">Preview</option>
-                      <option value="on">On</option>
-                    </select>
-                  </td>
-                  <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{f.description || <em>—</em>}</td>
-                  <td style={{ padding: '8px 10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                    {f.enabled_at ? new Date(f.enabled_at).toLocaleString('en-AU') : '—'}
-                  </td>
-                </tr>
-              ))}
+              {flags.map(f => {
+                const previewLinks = FLAG_PREVIEW_URLS[f.key] || [];
+                const showLinks = f.state === 'preview' || f.state === 'on';
+                return (
+                  <tr key={f.key} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#a78bfa' }}>{f.key}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <select
+                        value={f.state}
+                        disabled={saving === f.key}
+                        onChange={e => updateFlag(f.key, { state: e.target.value })}
+                        style={{
+                          background: 'var(--bg-card)', color: stateColor(f.state),
+                          border: `1px solid ${stateColor(f.state)}`, borderRadius: 6,
+                          padding: '4px 8px', fontWeight: 600, fontSize: 12, textTransform: 'uppercase',
+                        }}
+                      >
+                        <option value="off">Off</option>
+                        <option value="preview">Preview</option>
+                        <option value="on">On</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{f.description || <em>—</em>}</td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      {f.enabled_at ? new Date(f.enabled_at).toLocaleString('en-AU') : '—'}
+                    </td>
+                    <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                      {showLinks && previewLinks.length > 0 ? (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {previewLinks.map(link => (
+                            <a
+                              key={link.url}
+                              href={link.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                fontSize: 11, fontWeight: 600, padding: '3px 8px',
+                                borderRadius: 6, textDecoration: 'none',
+                                background: f.state === 'preview' ? 'rgba(168,85,247,0.15)' : 'rgba(34,197,94,0.12)',
+                                border: `1px solid ${f.state === 'preview' ? 'rgba(168,85,247,0.5)' : 'rgba(34,197,94,0.4)'}`,
+                                color: f.state === 'preview' ? '#a855f7' : '#22c55e',
+                              }}
+                            >
+                              {link.label} →
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
