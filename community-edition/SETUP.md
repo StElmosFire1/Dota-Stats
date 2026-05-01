@@ -37,7 +37,7 @@ Open **Secrets** (the lock icon in the sidebar) and add the following:
 | `WEEKLY_RECAP_CHANNEL_ID` | No | Channel for weekly recap (falls back to `ANNOUNCE_CHANNEL_ID`) |
 | `PORT` | No | Web server port (default: `5000`) |
 | `STEAM_API_KEY` | No | Steam Web API key for Dota 2 rank lookups |
-| `GOOGLE_SHEETS_ID` | No | Google Sheet ID for stats sync |
+| `SHEET_ID` | No | Google Sheet ID for stats sync |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | No | Service account email for Sheets |
 | `GOOGLE_PRIVATE_KEY` | No | RSA private key for Sheets |
 | `REPLAY_STORE_DIR` | No | Path to store .dem replay files |
@@ -82,7 +82,13 @@ cd web && npm install && npm run build && cd ..
 
 ### Configure
 
-Create a `.env` file with the secrets listed in the table above.
+Copy the example env file and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+Then open `.env` and set the variables listed in the table above.
 
 ### Run
 
