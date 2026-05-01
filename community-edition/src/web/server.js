@@ -299,10 +299,13 @@ function createApiRouter(startupStatus = {}) {
       ? Math.round((Date.now() - new Date(startupStatus.startedAt).getTime()) / 1000)
       : Math.round(process.uptime());
 
+    const { version } = require('../../package.json');
+
     res.json({
       status: dbOk ? 'ok' : 'error',
       db: dbOk,
       uptime,
+      version,
     });
   });
 
