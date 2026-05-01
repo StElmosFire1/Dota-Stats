@@ -6,6 +6,56 @@ import { useSeason } from '../context/SeasonContext';
 import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
+// Catches render-phase errors in any child component and shows a helpful
+// message instead of a blank screen.
+class AdminErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          margin: '40px auto', maxWidth: 640, padding: 24,
+          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)',
+          borderRadius: 10, fontFamily: 'monospace', fontSize: 13,
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: '#ef4444', marginBottom: 8 }}>
+            ⚠️ Admin panel crashed
+          </div>
+          <div style={{ color: 'var(--text-muted)', marginBottom: 12 }}>
+            A section failed to render. This is usually caused by a newly-enabled feature flag
+            whose component encountered unexpected data. Try disabling the most recently
+            enabled preview flag and refreshing.
+          </div>
+          <pre style={{
+            background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: 12,
+            color: '#fca5a5', overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          }}>
+            {this.state.error?.message || String(this.state.error)}
+            {this.state.error?.stack ? '\n\n' + this.state.error.stack : ''}
+          </pre>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{
+              marginTop: 12, padding: '6px 16px', borderRadius: 6,
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13,
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
 
 function makeEmptyPlayer(team) {
@@ -1486,6 +1536,7 @@ export default function AdminPanel() {
   }
 
   return (
+    <AdminErrorBoundary>
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <h1 style={{ margin: 0 }}>🔒 Admin Panel</h1>
@@ -2102,6 +2153,7 @@ export default function AdminPanel() {
       </section>
 
     </div>
+    </AdminErrorBoundary>
   );
 }
 
