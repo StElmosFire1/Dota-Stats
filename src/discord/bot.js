@@ -1084,9 +1084,14 @@ class DiscordBot {
     const ds = config.dota?.dedicatedServer;
     if (!ds?.ip || !ds?.rconPassword) return; // no RCON config, nothing to check
 
+    const hasSshConfig = !!(ds.ssh?.host && ds.ssh?.privateKey);
     const timeoutMs = (config.discord.queueTimeoutMinutes || 10) * 60 * 1000;
     const pingIntervalMs = 30_000;
+    const MAX_GAME_WATCH_MS = 3 * 60 * 60 * 1000; // 3-hour hard cap on game watch phase
     let elapsed = 0;
+    let allConnected = false;
+    let gameWatchElapsed = 0;
+    let gameEndTriggered = false;
     console.log(`[Queue] Connection monitor started — ${players.length} expected, timeout ${timeoutMs / 60000} min`);
 
     this._connectionMonitorTimer = setInterval(async () => {
@@ -1096,7 +1101,7 @@ class DiscordBot {
         const result = await pingServer();
         if (!result.ok) {
           console.warn('[Queue] RCON ping failed:', result.error);
-          if (elapsed >= timeoutMs + pingIntervalMs) {
+          if (!allConnected && elapsed >= timeoutMs + pingIntervalMs) {
             clearInterval(this._connectionMonitorTimer);
             this._connectionMonitorTimer = null;
           }
@@ -1106,26 +1111,77 @@ class DiscordBot {
         const connectedIds = this._parseRconStatusSteamIds(result.response);
         const missing = players.filter(p => p.steam64 && !connectedIds.has(p.steam64));
 
-        if (missing.length === 0 && elapsed > pingIntervalMs) {
-          clearInterval(this._connectionMonitorTimer);
-          this._connectionMonitorTimer = null;
-          console.log('[Queue] All players connected — monitor stopped.');
-          this._notifyQueueChannel('✅ All 10 players connected! Good luck!');
-          return;
-        }
+        if (!allConnected) {
+          // === Phase 1: Wait for all players to connect ===
+          if (missing.length === 0 && elapsed > pingIntervalMs) {
+            allConnected = true;
+            console.log('[Queue] All players connected — switching to game-watch mode.');
+            this._notifyQueueChannel(`✅ All ${players.length} players connected! Good luck!`);
+            // Do NOT stop — continue monitoring for game end below
+          } else if (elapsed >= timeoutMs) {
+            if (missing.length > 0) {
+              const mentions = missing.filter(p => p.discordId).map(p => `<@${p.discordId}>`).join(' ');
+              const nameList = missing.map(p => `**${p.nickname}**`).join(', ');
+              this._notifyQueueChannel(
+                `⏰ **Connection timeout!** ${nameList} ${missing.length === 1 ? 'has' : 'have'} not connected.\n` +
+                `${mentions ? mentions + ' — ' : ''}please join now!\n` +
+                `Server: \`${session.server_ip}:${session.server_port}\` · Password: \`${session.match_password}\``
+              );
+              console.log(`[Queue] Connection timeout — ${missing.length} player(s) missing.`);
+            }
+            // Switch to game-watch anyway so we still capture game end
+            allConnected = true;
+          }
+        } else {
+          // === Phase 2: Game-watch — detect when all players have left (game over) ===
+          gameWatchElapsed += pingIntervalMs;
 
-        if (elapsed >= timeoutMs) {
-          clearInterval(this._connectionMonitorTimer);
-          this._connectionMonitorTimer = null;
-          if (missing.length > 0) {
-            const mentions = missing.filter(p => p.discordId).map(p => `<@${p.discordId}>`).join(' ');
-            const nameList = missing.map(p => `**${p.nickname}**`).join(', ');
-            this._notifyQueueChannel(
-              `⏰ **Connection timeout!** ${nameList} ${missing.length === 1 ? 'has' : 'have'} not connected.\n` +
-              `${mentions ? mentions + ' — ' : ''}please join now!\n` +
-              `Server: \`${session.server_ip}:${session.server_port}\` · Password: \`${session.match_password}\``
-            );
-            console.log(`[Queue] Connection timeout — ${missing.length} player(s) missing.`);
+          if (!gameEndTriggered && connectedIds.size === 0) {
+            // All players have disconnected — game has ended
+            gameEndTriggered = true;
+            clearInterval(this._connectionMonitorTimer);
+            this._connectionMonitorTimer = null;
+            console.log('[Queue] Game end detected via RCON (all players disconnected).');
+
+            if (hasSshConfig) {
+              // GC path handles post-game via matchEnded if available.
+              // SSH replay fetch is the automatic fallback for GC-unavailable games.
+              this._notifyQueueChannel(
+                '🏁 Game ended — fetching replay from dedicated server in 60 s...'
+              );
+              setTimeout(async () => {
+                try {
+                  const { fetchLatestReplay } = require('../services/serverReplayFetcher');
+                  const { processReplayInternal } = require('../web/server');
+                  const fs = require('fs');
+                  this._notifyQueueChannel('📦 Fetching replay from server...');
+                  const r = await fetchLatestReplay();
+                  const sizeMb = (fs.statSync(r.localPath).size / 1024 / 1024).toFixed(1);
+                  this._notifyQueueChannel(`📦 Replay fetched (${sizeMb} MB) — parsing...`);
+                  await processReplayInternal(r.localPath, `auto-queue:${session.id}`);
+                  try { fs.unlinkSync(r.localPath); } catch (_) {}
+                  console.log(`[Queue] Post-game SSH replay pipeline complete (session ${session.id}).`);
+                } catch (err) {
+                  console.warn('[Queue] Post-game SSH replay fetch failed:', err.message);
+                  this._notifyQueueChannel(
+                    `⚠️ Replay fetch failed: ${err.message}\n` +
+                    `Use \`!record <match_id>\` to record stats manually.`
+                  );
+                }
+              }, 60_000);
+            } else {
+              this._notifyQueueChannel(
+                '🏁 Game ended. Stats should be recorded automatically via the GC lobby. ' +
+                'If not, use `!record <match_id>`.'
+              );
+            }
+            return;
+          }
+
+          if (gameWatchElapsed >= MAX_GAME_WATCH_MS) {
+            clearInterval(this._connectionMonitorTimer);
+            this._connectionMonitorTimer = null;
+            console.log('[Queue] Game-watch monitor expired after 3 hours.');
           }
         }
       } catch (err) {
@@ -1156,17 +1212,25 @@ class DiscordBot {
     // Balance teams
     const { radiant, dire, diff } = this._mmrBalancePlayers(players);
 
-    // Clear queue now that we know no session conflict exists
+    // Create session BEFORE clearing queue so players are not lost on failure
+    let session;
+    try {
+      session = await db.createInhouseSession({
+        captainMode: 'balanced',
+        createdBy: 'auto-queue',
+        acceptPhaseSeconds: 0,
+      });
+    } catch (sessionErr) {
+      this._notifyQueueChannel(
+        `❌ Failed to create game session: ${sessionErr.message}. Queue preserved — please try again.`
+      );
+      throw sessionErr;
+    }
+
+    // Queue clear is safe now that session exists
     this._inhouseQueue.clear();
     this._queueMsgRef = null;
     await db.clearQueue().catch(e => console.warn('[Queue] DB clearQueue failed:', e.message));
-
-    // Create session — bypasses the accept/draft phases since queue was the gate
-    const session = await db.createInhouseSession({
-      captainMode: 'balanced',
-      createdBy: 'auto-queue',
-      acceptPhaseSeconds: 0,
-    });
 
     // Add players + assign teams
     const STEAM64_OFFSET = 76561197960265728n;
@@ -2214,6 +2278,18 @@ class DiscordBot {
     }
     setTimeout(() => this._initiateRatingSession(matchStats).catch(e => console.error('[Ratings] DM error:', e.message)), 3000);
     setTimeout(() => this._sendReportCardDMs(matchStats).catch(e => console.error('[ReportCard] DM error:', e.message)), 5000);
+    // If queue has enough players for the next game, auto-launch immediately after
+    // match recording so the continuous pipeline needs zero admin intervention
+    setTimeout(() => {
+      if (this._inhouseQueue.size >= 10) {
+        this._notifyQueueChannel(
+          `🎮 Queue has **${this._inhouseQueue.size}** players ready — auto-launching next game!`
+        );
+        this._autoLaunchQueue(null).catch(e =>
+          console.error('[Queue] Post-match auto-launch error:', e.message)
+        );
+      }
+    }, 6000);
   }
 
   async _checkMatchQuality(matchStats) {
