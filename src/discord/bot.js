@@ -1017,7 +1017,14 @@ class DiscordBot {
     if (this.lobbyChannelId) ids.add(this.lobbyChannelId);
     for (const id of ids) {
       const ch = this.client.channels.cache.get(id);
-      if (ch) ch.send(message).catch(() => {});
+      if (ch) {
+        ch.send(message).catch(() => {});
+      } else {
+        // Channel not in cache — fetch and send (non-blocking)
+        this.client.channels.fetch(id).then(fetched => {
+          if (fetched) fetched.send(message).catch(() => {});
+        }).catch(() => {});
+      }
     }
   }
 
@@ -1134,22 +1141,25 @@ class DiscordBot {
     if (!forced && players.length < 10) return;
     if (players.length < 2) return; // absolute minimum even when forced
 
-    // Balance teams
-    const { radiant, dire, diff } = this._mmrBalancePlayers(players);
-
-    // Clear queue immediately so more joiners don't trigger a second launch
-    this._inhouseQueue.clear();
-    this._queueMsgRef = null;
-    await db.clearQueue().catch(e => console.warn('[Queue] DB clearQueue failed:', e.message));
-
-    // Guard against a concurrent active session
+    // Guard against a concurrent active session BEFORE touching the queue,
+    // so queued players are not discarded if a session is already running.
     const existing = await db.getActiveInhouseSession().catch(() => null);
     if (existing) {
       this._notifyQueueChannel(
-        `⚠️ Queue popped but an active session already exists (#${existing.id}). Queue has been cleared. Use the dashboard to manage the existing session.`
+        `⚠️ Queue popped but an active session already exists (#${existing.id}). ` +
+        `Queue has been kept intact — manage the existing session via the dashboard, ` +
+        `then players can rejoin/relaunch when it ends.`
       );
       return;
     }
+
+    // Balance teams
+    const { radiant, dire, diff } = this._mmrBalancePlayers(players);
+
+    // Clear queue now that we know no session conflict exists
+    this._inhouseQueue.clear();
+    this._queueMsgRef = null;
+    await db.clearQueue().catch(e => console.warn('[Queue] DB clearQueue failed:', e.message));
 
     // Create session — bypasses the accept/draft phases since queue was the gate
     const session = await db.createInhouseSession({
