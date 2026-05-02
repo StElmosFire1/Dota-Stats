@@ -497,6 +497,17 @@ class DiscordBot {
           } catch (embedErr) {
             console.warn('[Queue] Could not re-post queue embed after restart:', embedErr.message);
           }
+
+          // If the queue was already full when the bot restarted, auto-launch immediately
+          // (provided no session is already running — checked inside _autoLaunchQueue).
+          if (this._inhouseQueue.size >= 10) {
+            console.log('[Queue] Restored queue is full — auto-launching after 5s delay.');
+            setTimeout(() => {
+              this._autoLaunchQueue(null).catch(e =>
+                console.error('[Queue] Startup auto-launch error:', e.message)
+              );
+            }, 5000);
+          }
         }
       } catch (err) {
         console.warn('[Queue] Failed to restore queue from DB:', err.message);
