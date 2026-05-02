@@ -1110,9 +1110,10 @@ class DiscordBot {
 
   // When queue reaches 10, balance teams, create a session, provision the
   // server (if configured), post team embed, and start connection monitor.
-  async _autoLaunchQueue(fallbackChannel) {
+  async _autoLaunchQueue(fallbackChannel, { forced = false } = {}) {
     const players = [...this._inhouseQueue.values()];
-    if (players.length < 10) return;
+    if (!forced && players.length < 10) return;
+    if (players.length < 2) return; // absolute minimum even when forced
 
     // Balance teams
     const { radiant, dire, diff } = this._mmrBalancePlayers(players);
@@ -1234,6 +1235,63 @@ class DiscordBot {
       if (freshMsg) this._queueMsgRef = { channelId: channel.id, messageId: freshMsg.id };
     }
 
+    // === GC Lobby — wires the matchEnded post-game pipeline ===
+    // If Steam/GC is connected, create a practice lobby so the bot receives the
+    // matchId and the existing matchEnded handler triggers replay fetch, stat
+    // recording, MMR update, and all post-game announcements automatically.
+    // If GC is not available the session is still valid; post-game recording
+    // falls back to SSH replay fetch (Task #30) or manual !record.
+    const lobbyManager = this._resolveLobbyManager();
+    const steamClient = tryGetSteamClient();
+    const gcAvailable = !!(steamClient?.isGCReady && steamClient?.gcClient && lobbyManager);
+
+    if (gcAvailable) {
+      const lobbyName = `Queue Game #${session.id}`;
+      try {
+        await lobbyManager.createLobby(lobbyName, matchPassword || '', 'auto-queue');
+        console.log(`[Queue] GC lobby "${lobbyName}" created — inviting ${enriched.length} players.`);
+
+        // Invite every player so they get a Steam pop-up to join.
+        for (const p of enriched) {
+          if (p.steam64) {
+            try { lobbyManager.invitePlayer(p.steam64); } catch (_) {}
+            await new Promise(r => setTimeout(r, 600));
+          }
+        }
+
+        // Assign GC team slots 30 s after invites are sent — gives players time to join.
+        const radiantSteam64 = enriched.filter(e => e.team === 1).map(e => e.steam64).filter(Boolean);
+        const direSteam64   = enriched.filter(e => e.team === 2).map(e => e.steam64).filter(Boolean);
+        setTimeout(async () => {
+          try {
+            const result = await lobbyManager.assignTeams(radiantSteam64, direSteam64);
+            console.log(`[Queue] GC team slots assigned — ${result.moved.length} moved, ${result.errors.length} errors.`);
+          } catch (e) {
+            console.warn('[Queue] GC team assignment failed:', e.message);
+          }
+        }, 30_000);
+
+        console.log(`[Queue] GC lobby wired — post-game pipeline active via matchEnded event.`);
+        if (channel) {
+          channel.send(
+            `🖥️ **GC lobby created:** \`${lobbyName}\` — Steam invites sent to all players. ` +
+            `Join via your Steam friends list. Team slots will be assigned automatically in 30 s.`
+          ).catch(() => {});
+        }
+      } catch (gcErr) {
+        console.warn('[Queue] GC lobby creation failed:', gcErr.message,
+          '— post-game pipeline unavailable; use SSH replay fetch or !record to record stats.');
+        if (channel) {
+          channel.send(
+            `⚠️ Could not create GC lobby (\`${gcErr.message}\`). ` +
+            `Stats will be recorded via SSH replay fetch (if configured) or use \`!record <match_id>\` after the game.`
+          ).catch(() => {});
+        }
+      }
+    } else {
+      console.log('[Queue] GC not available — RCON/SSH path only. Use !record to record stats after the game.');
+    }
+
     // Start connection monitor if server was provisioned
     if (serverIp) {
       const updatedSession = await db.getInhouseSession(session.id).catch(() => session);
@@ -1338,7 +1396,7 @@ class DiscordBot {
     const count = this._inhouseQueue.size;
     if (count < 2) return msg.reply(`Not enough players to force-launch (${count} in queue, need at least 2).`);
     await msg.reply(`🚀 Force-launching with ${count} player(s)…`);
-    await this._autoLaunchQueue(msg.channel).catch(e => msg.reply(`❌ Launch failed: ${e.message}`));
+    await this._autoLaunchQueue(msg.channel, { forced: true }).catch(e => msg.reply(`❌ Launch failed: ${e.message}`));
   }
 
   async _cmdGcDebug(msg) {
