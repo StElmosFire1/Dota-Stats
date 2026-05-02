@@ -4485,6 +4485,22 @@ NOTES
         started_at: new Date(),
       });
       res.json({ session, rcon: rconResult });
+
+      // Notify Discord with one-click connect link
+      try {
+        const { getDiscordBot } = require('../discord/bot');
+        const bot = getDiscordBot();
+        if (bot && ip) {
+          const connectLink = `steam://connect/${ip}:${port}/${encodeURIComponent(safePwd)}`;
+          bot._notifyChannel(
+            `🖥️ **Inhouse server provisioned — game is live!**\n` +
+            `Server: \`${ip}:${port}\` · Password: \`${safePwd}\`\n` +
+            `**One-click connect:** <${connectLink}>`
+          );
+        }
+      } catch (e) {
+        console.warn('[Inhouse] Could not notify Discord of server provisioning:', e.message);
+      }
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

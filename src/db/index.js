@@ -568,6 +568,7 @@ async function init() {
 
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS game_timeline JSONB`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS lane_outcomes JSONB`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS flagged_for_review BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ward_placements JSONB DEFAULT '[]'`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS nemesis_hero_name VARCHAR(100) DEFAULT ''`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS nemesis_kills INTEGER DEFAULT 0`);

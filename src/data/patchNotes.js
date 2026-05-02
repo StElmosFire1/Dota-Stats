@@ -658,6 +658,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "5.53",
+    "title": "Dedicated server auto-pipeline",
+    "published_at": "2026-05-02",
+    "content": "Four interconnected improvements that close the loop between a dedicated server game ending and the stats being fully recorded without any admin intervention.\n\n**SSH-first replay fetch:** When a dedicated server SSH key is configured, the bot now automatically fetches the .dem replay directly from the server 60 seconds after POST_GAME fires (allowing time for the game server to finalise the file). This replaces the previous 5-minute Steam GC wait for dedicated server games. If the SSH fetch fails for any reason, the bot falls back to the original Steam GC download path with a Discord notification explaining the fallback.\n\n**One-click connect link:** When an admin provisions the inhouse server from the dashboard (the 'Start Server' button in the draft phase), the bot immediately posts a `steam://connect/ip:port/password` deep link to the lobby channel. Players can click it to connect directly without manually entering server details.\n\n**Auto server reset via RCON:** After match stats are successfully recorded to the database, the bot sends `changelevel dota` via RCON to reset the dedicated server back to the main menu, making it ready for the next game without manual intervention.\n\n**Data quality flags:** Every newly recorded match is automatically checked for suspicious data: zero player rows, total kills below 5, or any player with both 0 GPM and 0 XPM (a reliable indicator of a partial parse). Flagged matches are marked `flagged_for_review = true` in the database and a Discord alert is posted naming the specific issues, prompting an admin to re-parse the replay.",
+    "author": "System"
+  },
+  {
     "version": "5.52",
     "title": "V3 deward weights drastically reduced — tiebreaker not position bonus",
     "published_at": "2026-05-02",

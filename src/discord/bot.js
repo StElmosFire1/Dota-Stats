@@ -193,23 +193,66 @@ class DiscordBot {
       this._notifyChannel(`Match ended! Recording match **${matchId || 'unknown'}**...`);
 
       if (matchId) {
-        const steamClient = tryGetSteamClient();
-        const gcClient = steamClient?.gcClient;
-        if (gcClient) {
-          try {
-            const { autoDownloadAndProcessReplay } = require('../services/replayDownloader');
-            const { processReplayInternal } = require('../web/server');
-            autoDownloadAndProcessReplay(
-              gcClient,
-              matchId,
-              (filePath, source) => processReplayInternal(filePath, source),
-              (msg) => this._notifyChannel(msg)
-            ).catch(err => console.error('[ReplayDL] Unhandled error:', err.message));
-          } catch (err) {
-            console.warn('[ReplayDL] Could not start auto-download:', err.message);
-          }
+        const ds = config.dota?.dedicatedServer;
+        const hasSshConfig = !!(ds?.ssh?.host && ds?.ssh?.privateKey);
+
+        if (hasSshConfig) {
+          // Dedicated server path — SSH-fetch the .dem immediately after game ends.
+          // Wait 60s for the game server to fully flush and close the replay file.
+          setTimeout(async () => {
+            try {
+              const { fetchLatestReplay } = require('../services/serverReplayFetcher');
+              const { processReplayInternal } = require('../web/server');
+              const fs = require('fs');
+              this._notifyChannel(`🖥️ Fetching replay from dedicated server for match **${matchId}**...`);
+              const r = await fetchLatestReplay();
+              const sizeMb = (fs.statSync(r.localPath).size / 1024 / 1024).toFixed(1);
+              this._notifyChannel(`📦 Replay fetched (${sizeMb} MB) — parsing match **${matchId}**...`);
+              await processReplayInternal(r.localPath, `auto-ds:${matchId}`);
+              try { fs.unlinkSync(r.localPath); } catch (_) {}
+              console.log(`[ReplayDL] Dedicated server replay pipeline complete for match ${matchId}`);
+            } catch (err) {
+              console.warn(`[ReplayDL] Dedicated server replay fetch failed: ${err.message} — falling back to Steam GC`);
+              this._notifyChannel(`⚠️ Dedicated server replay fetch failed: ${err.message}. Falling back to Steam GC download...`);
+              const steamClient = tryGetSteamClient();
+              const gcClient = steamClient?.gcClient;
+              if (gcClient) {
+                try {
+                  const { autoDownloadAndProcessReplay } = require('../services/replayDownloader');
+                  const { processReplayInternal } = require('../web/server');
+                  autoDownloadAndProcessReplay(
+                    gcClient, matchId,
+                    (filePath, source) => processReplayInternal(filePath, source),
+                    (msg) => this._notifyChannel(msg)
+                  ).catch(e => console.error('[ReplayDL] Fallback GC error:', e.message));
+                } catch (e) {
+                  console.warn('[ReplayDL] Could not start GC fallback:', e.message);
+                }
+              } else {
+                console.warn('[ReplayDL] No GC client available for fallback.');
+              }
+            }
+          }, 60000);
         } else {
-          console.warn('[ReplayDL] No GC client available — skipping auto-replay download.');
+          // Original Steam GC path
+          const steamClient = tryGetSteamClient();
+          const gcClient = steamClient?.gcClient;
+          if (gcClient) {
+            try {
+              const { autoDownloadAndProcessReplay } = require('../services/replayDownloader');
+              const { processReplayInternal } = require('../web/server');
+              autoDownloadAndProcessReplay(
+                gcClient,
+                matchId,
+                (filePath, source) => processReplayInternal(filePath, source),
+                (msg) => this._notifyChannel(msg)
+              ).catch(err => console.error('[ReplayDL] Unhandled error:', err.message));
+            } catch (err) {
+              console.warn('[ReplayDL] Could not start auto-download:', err.message);
+            }
+          } else {
+            console.warn('[ReplayDL] No GC client available — skipping auto-replay download.');
+          }
         }
       }
 
@@ -1625,11 +1668,50 @@ class DiscordBot {
     }
     try {
       await db.recordMatch(matchStats, lobbyName, recordedBy);
+      await this._checkMatchQuality(matchStats).catch(e => console.error('[QualityCheck] Error:', e.message));
+      this._rconResetServer().catch(e => console.log('[RCON] Post-match reset skipped:', e.message));
     } catch (err) {
       console.error('[DB] Record match error:', err.message);
     }
     setTimeout(() => this._initiateRatingSession(matchStats).catch(e => console.error('[Ratings] DM error:', e.message)), 3000);
     setTimeout(() => this._sendReportCardDMs(matchStats).catch(e => console.error('[ReportCard] DM error:', e.message)), 5000);
+  }
+
+  async _checkMatchQuality(matchStats) {
+    const players = matchStats.players || [];
+    const reasons = [];
+    if (players.length === 0) {
+      reasons.push('zero player rows recorded');
+    } else {
+      const totalKills = players.reduce((s, p) => s + (p.kills || 0), 0);
+      if (totalKills < 5) reasons.push(`suspiciously low total kills (${totalKills})`);
+      const zeroStats = players.filter(p => (p.goldPerMin || 0) === 0 && (p.xpPerMin || 0) === 0);
+      if (zeroStats.length > 0) reasons.push(`${zeroStats.length} player(s) with 0 GPM and 0 XPM (possible parse failure)`);
+    }
+    if (reasons.length === 0) return;
+    const matchId = matchStats.matchId;
+    console.warn(`[QualityCheck] Match ${matchId} flagged: ${reasons.join('; ')}`);
+    try {
+      await db.getPool().query(
+        'UPDATE matches SET flagged_for_review = true WHERE match_id = $1',
+        [matchId]
+      );
+    } catch (e) {
+      console.error('[QualityCheck] DB flag error:', e.message);
+    }
+    this._notifyChannel(
+      `⚠️ **Match ${matchId} flagged for review**\n` +
+      `Issues detected: ${reasons.join(', ')}.\n` +
+      `Check the admin panel and re-parse the replay if needed.`
+    );
+  }
+
+  async _rconResetServer() {
+    const ds = config.dota?.dedicatedServer;
+    if (!ds?.ip || !ds?.rconPassword) return;
+    const { rconExec } = require('../services/rconClient');
+    await rconExec('changelevel dota');
+    console.log('[RCON] Server reset with changelevel dota after match recorded.');
   }
 
   async _markRecorded(matchId, source) {
