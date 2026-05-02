@@ -156,16 +156,52 @@ function getMmrTier(mmr) {
 }
 
 function validateConfig() {
-  const missing = [];
-  if (!config.discord.token) missing.push('DISCORD_TOKEN');
-  if (!config.steam.accountName) missing.push('STEAM_ACCOUNT');
-  if (!config.steam.password) missing.push('STEAM_PASSWORD');
-  if (!config.sheets.sheetId) missing.push('SHEET_ID');
+  const required = [
+    'DATABASE_URL',
+    'SESSION_SECRET',
+    'UPLOAD_KEY',
+    'SUPERUSER_PASSWORD',
+    'DISCORD_TOKEN',
+    'STEAM_ACCOUNT',
+    'STEAM_PASSWORD',
+  ];
+
+  const optional = [
+    'SHEET_ID',
+    'ANNOUNCE_CHANNEL_ID',
+    'WEEKLY_RECAP_CHANNEL_ID',
+    'SCHEDULE_CHANNEL_IDS',
+    'STATS_CHANNEL_IDS',
+    'PATCH_CHANNEL_IDS',
+    'DISCORD_INVITE',
+    'STEAM_SHARED_SECRET',
+    'TRUSTED_STEAM_IDS',
+    'DEDICATED_SERVER_IP',
+    'DEDICATED_SERVER_PORT',
+    'DEDICATED_SERVER_STEAM_ID',
+    'DEDICATED_SERVER_RCON_PASSWORD',
+    'DISABLE_STEAM',
+  ];
+
+  const missing = required.filter((key) => !process.env[key]);
 
   if (missing.length > 0) {
-    console.warn(`[Config] Missing env vars: ${missing.join(', ')}`);
-    console.warn('[Config] Some features may be unavailable.');
+    console.error('[Config] ===================================================');
+    console.error('[Config] STARTUP FAILED — missing required environment variables:');
+    missing.forEach((key) => console.error(`[Config]   - ${key}`));
+    console.error('[Config]');
+    console.error('[Config] Set the above variables in your .env file or shell');
+    console.error('[Config] environment and restart the process.');
+    console.error('[Config] ===================================================');
+    process.exit(1);
   }
+
+  const missingOptional = optional.filter((key) => !process.env[key]);
+  if (missingOptional.length > 0) {
+    console.warn('[Config] Optional env vars not set (some features may be limited):');
+    missingOptional.forEach((key) => console.warn(`[Config]   - ${key}`));
+  }
+
   return missing;
 }
 
