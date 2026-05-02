@@ -301,12 +301,18 @@ function createApiRouter(startupStatus = {}) {
 
     const { version } = require('../../package.json');
 
-    res.json({
+    const response = {
       status: dbOk ? 'ok' : 'error',
       db: dbOk,
       uptime,
       version,
-    });
+    };
+
+    if (process.env.BUILD_DATE) {
+      response.deployedAt = process.env.BUILD_DATE;
+    }
+
+    res.json(response);
   });
 
   router.get('/auth/me', (req, res) => {
