@@ -6110,6 +6110,12 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
     const seasonId = activeSeason ? activeSeason.id : null;
     await db.recordMatch(matchStats, '', `web:${ip}`, fileHash, patch, seasonId);
 
+    // Data quality check + RCON server reset — same pipeline as bot._recordMatchData
+    try {
+      getDiscordBot()._checkMatchQuality(matchStats).catch(e => console.error('[QualityCheck] Replay job error:', e.message));
+      getDiscordBot()._rconResetServer().catch(e => console.log('[RCON] Post-replay reset skipped:', e.message));
+    } catch (_) {}
+
     updateJobStep(jobId, 'Updating ratings...');
 
     const statsService = getStatsService();

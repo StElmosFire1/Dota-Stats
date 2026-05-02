@@ -658,17 +658,17 @@ module.exports = [
     "author": "System"
   },
   {
-    "version": "5.53",
-    "title": "Dedicated server auto-pipeline",
-    "published_at": "2026-05-02",
-    "content": "Four interconnected improvements that close the loop between a dedicated server game ending and the stats being fully recorded without any admin intervention.\n\n**SSH-first replay fetch:** When a dedicated server SSH key is configured, the bot now automatically fetches the .dem replay directly from the server 60 seconds after POST_GAME fires (allowing time for the game server to finalise the file). This replaces the previous 5-minute Steam GC wait for dedicated server games. If the SSH fetch fails for any reason, the bot falls back to the original Steam GC download path with a Discord notification explaining the fallback.\n\n**One-click connect link:** When an admin provisions the inhouse server from the dashboard (the 'Start Server' button in the draft phase), the bot immediately posts a `steam://connect/ip:port/password` deep link to the lobby channel. Players can click it to connect directly without manually entering server details.\n\n**Auto server reset via RCON:** After match stats are successfully recorded to the database, the bot sends `changelevel dota` via RCON to reset the dedicated server back to the main menu, making it ready for the next game without manual intervention.\n\n**Data quality flags:** Every newly recorded match is automatically checked for suspicious data: zero player rows, total kills below 5, or any player with both 0 GPM and 0 XPM (a reliable indicator of a partial parse). Flagged matches are marked `flagged_for_review = true` in the database and a Discord alert is posted naming the specific issues, prompting an admin to re-parse the replay.",
-    "author": "System"
-  },
-  {
     "version": "5.52",
     "title": "V3 deward weights drastically reduced — tiebreaker not position bonus",
     "published_at": "2026-05-02",
     "content": "The 40pt cap introduced in v5.51 did not solve the underlying problem: with obs×5 and sen×2, the pos 4 and pos 5 supports routinely hit the cap every game, turning it into a flat '+40 pts for being a hard support' rather than a reward for exceptional dewarding.\n\nDeward weights are now small enough that they act as a tiebreaker between similarly-performing players, not a position-wide bonus:\n\n• Observer kills: 1.5 pts each (was 5)\n• Sentry kills: 0.5 pts each (was 2)\n• Hard cap removed — unnecessary at these weights\n• Legacy fallback (combined wards_killed): 0.75 pts each (was 3)\n\nA typical support game (5 obs + 10 sentry kills) now contributes ~12 pts from dewards instead of ~40. An extreme outlier (20 obs + 57 sen) contributes ~59 pts, which is still meaningful but must compete with all other stat dimensions to move the z-score needle. Dewards remain in the scoring to reward active vision control — they just no longer override a player's entire game performance.",
+    "author": "System"
+  },
+  {
+    "version": "5.53",
+    "title": "Dedicated server auto-pipeline",
+    "published_at": "2026-05-02",
+    "content": "Four interconnected improvements that close the loop between a dedicated server game ending and stats being fully recorded without any admin intervention.\n\n**SSH-first replay fetch:** When a dedicated server SSH key is configured, the bot automatically fetches the .dem replay directly from the server 60 seconds after POST_GAME fires (allowing time for the game server to finalise the file). This replaces the previous 5-minute Steam GC wait for dedicated server games. If the SSH fetch fails for any reason, the bot falls back to the original Steam GC download path with a Discord notification explaining the fallback.\n\n**One-click connect link:** When an admin provisions the server from the inhouse dashboard, the bot immediately posts a `steam://connect/ip:port/password` deep link to the lobby channel so players can connect in one click.\n\n**Auto server reset via RCON:** After match stats are successfully recorded to the database, the bot sends `changelevel dota` via RCON to reset the dedicated server back to the main menu, ready for the next game. This fires for both GC-recorded matches and replay-parsed matches.\n\n**Data quality flags:** Every newly recorded match (via GC data, replay parse, or web upload) is automatically checked for suspicious data: zero player rows, total kills below 5, or any player with both 0 GPM and 0 XPM (a reliable indicator of a partial parse). Flagged matches are marked `flagged_for_review = true` in the database and a Discord alert is posted to the admin channel with a direct review link, prompting an admin to re-parse if needed. Set `ADMIN_CHANNEL_ID` to route these alerts to a private admin channel; they fall back to the announce channel if not set.",
     "author": "System"
   }
 ];

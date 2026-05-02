@@ -1699,11 +1699,26 @@ class DiscordBot {
     } catch (e) {
       console.error('[QualityCheck] DB flag error:', e.message);
     }
-    this._notifyChannel(
+    const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const reviewUrl = `${siteUrl}/admin/matches/${matchId}`;
+    this._notifyAdminChannel(
       `⚠️ **Match ${matchId} flagged for review**\n` +
       `Issues detected: ${reasons.join(', ')}.\n` +
-      `Check the admin panel and re-parse the replay if needed.`
+      `Review/delete: ${reviewUrl}`
     );
+  }
+
+  _notifyAdminChannel(msg) {
+    const adminId = config.discord.adminChannelId;
+    if (adminId) {
+      const ch = this.client.channels.cache.get(adminId) || null;
+      if (ch) { ch.send(msg).catch(e => console.error('[AdminChannel] Send error:', e.message)); return; }
+      this.client.channels.fetch(adminId).then(fetched => {
+        if (fetched) fetched.send(msg).catch(e => console.error('[AdminChannel] Send error:', e.message));
+      }).catch(() => this._notifyChannel(msg));
+    } else {
+      this._notifyChannel(msg);
+    }
   }
 
   async _rconResetServer() {
