@@ -2193,15 +2193,15 @@ async function executeSeason10Launch() {
 // fall back to modifier = 1.0 for everyone.
 function _v3PerfScore(s, won) {
   const winBonus = won ? 25 : 0;
-  // Deward scoring: observer kills (5 pts) > sentry kills (2 pts), capped at 40.
-  // obs_dewarded_count / sen_dewarded_count are only populated for matches parsed
-  // with the extended parser. When the split is missing (both zero but wards_killed
-  // is nonzero), fall back to 3 pts per combined kill — still capped at 40.
+  // Deward scoring: small tiebreaker weights — obs kills (1.5 pts), sentry kills (0.5 pts), no cap.
+  // Weights are intentionally small so dewards differentiate active vs passive supports
+  // without creating a systematic position-wide bonus on top of obs_placed / sen_placed.
+  // obs_dewarded_count / sen_dewarded_count are only populated for matches parsed with
+  // the extended parser. When the split is missing, fall back to 0.75 pts per combined kill.
   const hasDewardSplit = (s.obs_dewards || 0) + (s.sen_dewards || 0) > 0;
-  const rawDewardPts = hasDewardSplit
-    ? (s.obs_dewards || 0) * 5 + (s.sen_dewards || 0) * 2
-    : (s.dewards    || 0) * 3;
-  const dewardPts = Math.min(rawDewardPts, 40);
+  const dewardPts = hasDewardSplit
+    ? (s.obs_dewards || 0) * 1.5 + (s.sen_dewards || 0) * 0.5
+    : (s.dewards    || 0) * 0.75;
   return (
     (s.kills        || 0) * 4
     + (s.assists    || 0) * 2.5
@@ -2224,10 +2224,9 @@ function _v3PerfScore(s, won) {
 // equals what _v3PerfScore returns.
 function _v3PerfScoreBreakdown(s, won) {
   const hasDewardSplit = (s.obs_dewards || 0) + (s.sen_dewards || 0) > 0;
-  const rawDewardPts = hasDewardSplit
-    ? (s.obs_dewards || 0) * 5 + (s.sen_dewards || 0) * 2
-    : (s.dewards    || 0) * 3;
-  const dewardPts = Math.min(rawDewardPts, 40);
+  const dewardPts = hasDewardSplit
+    ? (s.obs_dewards || 0) * 1.5 + (s.sen_dewards || 0) * 0.5
+    : (s.dewards    || 0) * 0.75;
   const parts = {
     kills:        (s.kills      || 0) * 4,
     assists:      (s.assists    || 0) * 2.5,
