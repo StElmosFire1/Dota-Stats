@@ -1094,6 +1094,18 @@ async function init() {
     // schema change.
     await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS prize_split JSONB DEFAULT '[50,30,20]'::jsonb`);
 
+    // Task #31 — Automated inhouse queue (persistent across restarts)
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS inhouse_queue (
+        id SERIAL PRIMARY KEY,
+        discord_id VARCHAR(100) NOT NULL UNIQUE,
+        account_id BIGINT NOT NULL,
+        mmr REAL DEFAULT 2600,
+        nickname VARCHAR(255),
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -7060,6 +7072,40 @@ async function assignInhouseTeams(sessionId, assignments) {
 }
 
 // =====================================================================
+// Task #31 — Inhouse queue helpers
+// =====================================================================
+
+async function addToQueue(discordId, accountId, mmr, nickname) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO inhouse_queue (discord_id, account_id, mmr, nickname)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (discord_id) DO UPDATE SET
+       account_id = EXCLUDED.account_id,
+       mmr = EXCLUDED.mmr,
+       nickname = EXCLUDED.nickname,
+       joined_at = NOW()`,
+    [discordId, accountId, mmr || 2600, nickname || null]
+  );
+}
+
+async function removeFromQueue(discordId) {
+  const p = getPool();
+  await p.query(`DELETE FROM inhouse_queue WHERE discord_id = $1`, [discordId]);
+}
+
+async function clearQueue() {
+  const p = getPool();
+  await p.query(`DELETE FROM inhouse_queue`);
+}
+
+async function getQueue() {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM inhouse_queue ORDER BY joined_at ASC`);
+  return r.rows;
+}
+
+// =====================================================================
 // Wave 2 / 3 helpers — F1 hero_meta_v2, F2 draft_assistant_v2,
 // F3 season_pass_s10, F4 notification_prefs, F5 tournament_live_v2,
 // F6 mvp_attitude_analytics, F7 web_push.
@@ -9055,6 +9101,10 @@ module.exports = {
   setReplayFilePath,
   getReplayFilePath,
   expireOldReplayFiles,
+  addToQueue,
+  removeFromQueue,
+  clearQueue,
+  getQueue,
   logServerError,
   getServerLogs,
   reparseMatchFromStats,

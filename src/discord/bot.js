@@ -51,6 +51,10 @@ class DiscordBot {
     // Stores last !balance result for !assign to apply.
     // { radiant: [{name, mmr, steam64, discordId}], dire: [{...}] }
     this._lastBalance = null;
+    // Inhouse queue state
+    this._inhouseQueue = new Map(); // discordId → { discordId, accountId, mmr, nickname }
+    this._queueMsgRef = null;       // { channelId, messageId } for the live embed
+    this._connectionMonitorTimer = null;
     this._setupHandlers();
   }
 
@@ -458,9 +462,26 @@ class DiscordBot {
   }
 
   _setupHandlers() {
-    this.client.on('ready', () => {
+    this.client.on('ready', async () => {
       console.log(`[Discord] Bot online as ${this.client.user.tag}`);
       this.client.user.setActivity('Dota 2 Inhouse | !help', { type: 3 });
+      // Restore queue from DB so players don't lose their spot after a restart
+      try {
+        const rows = await db.getQueue();
+        for (const row of rows) {
+          this._inhouseQueue.set(row.discord_id, {
+            discordId: row.discord_id,
+            accountId: row.account_id.toString(),
+            mmr: Math.round(Number(row.mmr) || 2600),
+            nickname: row.nickname || 'Unknown',
+          });
+        }
+        if (this._inhouseQueue.size > 0) {
+          console.log(`[Queue] Restored ${this._inhouseQueue.size} player(s) from DB after restart.`);
+        }
+      } catch (err) {
+        console.warn('[Queue] Failed to restore queue from DB:', err.message);
+      }
     });
 
     this.client.on('messageReactionAdd', async (reaction, user) => {
@@ -570,6 +591,7 @@ class DiscordBot {
           case 'ds_status': await this._cmdDsStatus(msg); break;
           case 'ds_replay': await this._cmdDsReplay(msg); break;
           case 'inhouse': await this._cmdInhouse(msg, args); break;
+          case 'queue': await this._cmdQueue(msg, args); break;
           case 'gc_debug': await this._cmdGcDebug(msg); break;
           case 'invite': await this._cmdInvite(msg, args); break;
           case 'invite_me': await this._cmdInviteMe(msg); break;
@@ -673,6 +695,17 @@ class DiscordBot {
           value: [
             '`!analyze [@user]` - AI performance analysis from the coaching bot',
             '`!roast [@user]` - Let the AI trash-talk someone\'s stats (all in good fun)',
+          ].join('\n'),
+        },
+        {
+          name: '🎯 Auto-Queue',
+          value: [
+            '`!queue join` — Join the inhouse queue (must have Steam linked)',
+            '`!queue leave` — Leave the queue',
+            '`!queue status` — Show current queue',
+            '`!queue clear` — Clear the queue *(admin)*',
+            '`!queue force` — Force-launch with current players *(admin)*',
+            'When 10 players join, teams are auto-balanced by MMR and a game starts instantly!',
           ].join('\n'),
         },
         {
@@ -887,6 +920,425 @@ class DiscordBot {
     }
 
     return msg.reply('Usage: `!inhouse status` | `!inhouse open [highest_rank|random|highest_roll]`');
+  }
+
+  // ---------------------------------------------------------------
+  // Admin permission helper (also used by existing commands)
+  // ---------------------------------------------------------------
+  _isAdmin(msg) {
+    if (!msg?.author) return false;
+    return (
+      msg.author.id === OWNER_DISCORD_ID ||
+      msg.member?.permissions?.has('ManageGuild') ||
+      msg.member?.permissions?.has('Administrator')
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // Inhouse queue helpers
+  // ---------------------------------------------------------------
+
+  _buildQueueEmbed() {
+    const players = [...this._inhouseQueue.values()].sort((a, b) => b.mmr - a.mmr);
+    const count = players.length;
+    const color = count >= 10 ? 0x4caf50 : count >= 7 ? 0xff9800 : 0x2196f3;
+    const embed = new EmbedBuilder()
+      .setTitle(`🎮 Inhouse Queue — ${count}/10`)
+      .setColor(color)
+      .setTimestamp();
+    if (players.length === 0) {
+      embed.setDescription('No players in queue. Type `!queue join` to be first!');
+    } else {
+      const lines = players.map((p, i) => `${i + 1}. **${p.nickname}** — ${p.mmr} MMR`);
+      embed.setDescription(lines.join('\n'));
+      embed.setFooter({
+        text: count >= 10
+          ? '🚀 Full! Starting game…'
+          : `${10 - count} more player${10 - count === 1 ? '' : 's'} needed`,
+      });
+    }
+    return embed;
+  }
+
+  async _postOrUpdateQueueEmbed(fallbackChannel) {
+    const embed = this._buildQueueEmbed();
+    const queueChannelId = config.discord.queueChannelId;
+    let channel = null;
+    if (queueChannelId) {
+      channel = this.client.channels.cache.get(queueChannelId)
+        || await this.client.channels.fetch(queueChannelId).catch(() => null);
+    }
+    if (!channel) channel = fallbackChannel;
+    if (!channel) return;
+
+    // Try to edit the existing live-embed message
+    if (this._queueMsgRef) {
+      try {
+        const prevCh = this.client.channels.cache.get(this._queueMsgRef.channelId)
+          || await this.client.channels.fetch(this._queueMsgRef.channelId).catch(() => null);
+        if (prevCh) {
+          const prevMsg = await prevCh.messages.fetch(this._queueMsgRef.messageId).catch(() => null);
+          if (prevMsg) {
+            await prevMsg.edit({ embeds: [embed] });
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Post a fresh embed
+    const sent = await channel.send({ embeds: [embed] }).catch(() => null);
+    if (sent) this._queueMsgRef = { channelId: channel.id, messageId: sent.id };
+  }
+
+  _notifyQueueChannel(message) {
+    const ids = new Set();
+    if (config.discord.queueChannelId) ids.add(config.discord.queueChannelId);
+    config.discord.statsChannelIds.forEach(id => ids.add(id));
+    if (this.lobbyChannelId) ids.add(this.lobbyChannelId);
+    for (const id of ids) {
+      const ch = this.client.channels.cache.get(id);
+      if (ch) ch.send(message).catch(() => {});
+    }
+  }
+
+  // Shared MMR balance algorithm (used by !balance, !rematch, and auto-queue)
+  _mmrBalancePlayers(players) {
+    const n = players.length;
+    const half = Math.floor(n / 2);
+    const indices = Array.from({ length: n }, (_, i) => i);
+    function combinations(arr, k) {
+      if (k === 0) return [[]];
+      if (arr.length < k) return [];
+      const [first, ...rest] = arr;
+      return [...combinations(rest, k - 1).map(c => [first, ...c]), ...combinations(rest, k)];
+    }
+    const combos = combinations(indices, half);
+    let bestDiff = Infinity, bestA = [], bestB = [];
+    for (const comboA of combos) {
+      const comboB = indices.filter(i => !comboA.includes(i));
+      const mmrA = comboA.reduce((s, i) => s + players[i].mmr, 0);
+      const mmrB = comboB.reduce((s, i) => s + players[i].mmr, 0);
+      const diff = Math.abs(mmrA - mmrB);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestA = comboA.map(i => players[i]);
+        bestB = comboB.map(i => players[i]);
+      }
+    }
+    return { radiant: bestA, dire: bestB, diff: bestDiff };
+  }
+
+  // Parse Steam IDs from RCON 'status' output
+  // Format: "STEAM_X:Y:Z" — accountId32 = Z*2+Y, steam64 = accountId32 + offset
+  _parseRconStatusSteamIds(statusOutput) {
+    const ids = new Set();
+    if (!statusOutput) return ids;
+    const STEAM64_OFFSET = 76561197960265728n;
+    const re = /STEAM_\d+:(\d+):(\d+)/g;
+    let m;
+    while ((m = re.exec(statusOutput)) !== null) {
+      const y = parseInt(m[1], 10);
+      const z = parseInt(m[2], 10);
+      const accountId32 = z * 2 + y;
+      try {
+        ids.add((BigInt(accountId32) + STEAM64_OFFSET).toString());
+      } catch (_) {}
+    }
+    return ids;
+  }
+
+  // Start a periodic RCON-poll that pings Discord-linked players who haven't
+  // connected to the game server within the configured timeout.
+  _startConnectionMonitor(session, players) {
+    if (this._connectionMonitorTimer) {
+      clearInterval(this._connectionMonitorTimer);
+      this._connectionMonitorTimer = null;
+    }
+    const ds = config.dota?.dedicatedServer;
+    if (!ds?.ip || !ds?.rconPassword) return; // no RCON config, nothing to check
+
+    const timeoutMs = (config.discord.queueTimeoutMinutes || 10) * 60 * 1000;
+    const pingIntervalMs = 30_000;
+    let elapsed = 0;
+    console.log(`[Queue] Connection monitor started — ${players.length} expected, timeout ${timeoutMs / 60000} min`);
+
+    this._connectionMonitorTimer = setInterval(async () => {
+      elapsed += pingIntervalMs;
+      try {
+        const { pingServer } = require('../services/rconClient');
+        const result = await pingServer();
+        if (!result.ok) {
+          console.warn('[Queue] RCON ping failed:', result.error);
+          if (elapsed >= timeoutMs + pingIntervalMs) {
+            clearInterval(this._connectionMonitorTimer);
+            this._connectionMonitorTimer = null;
+          }
+          return;
+        }
+
+        const connectedIds = this._parseRconStatusSteamIds(result.response);
+        const missing = players.filter(p => p.steam64 && !connectedIds.has(p.steam64));
+
+        if (missing.length === 0 && elapsed > pingIntervalMs) {
+          clearInterval(this._connectionMonitorTimer);
+          this._connectionMonitorTimer = null;
+          console.log('[Queue] All players connected — monitor stopped.');
+          this._notifyQueueChannel('✅ All 10 players connected! Good luck!');
+          return;
+        }
+
+        if (elapsed >= timeoutMs) {
+          clearInterval(this._connectionMonitorTimer);
+          this._connectionMonitorTimer = null;
+          if (missing.length > 0) {
+            const mentions = missing.filter(p => p.discordId).map(p => `<@${p.discordId}>`).join(' ');
+            const nameList = missing.map(p => `**${p.nickname}**`).join(', ');
+            this._notifyQueueChannel(
+              `⏰ **Connection timeout!** ${nameList} ${missing.length === 1 ? 'has' : 'have'} not connected.\n` +
+              `${mentions ? mentions + ' — ' : ''}please join now!\n` +
+              `Server: \`${session.server_ip}:${session.server_port}\` · Password: \`${session.match_password}\``
+            );
+            console.log(`[Queue] Connection timeout — ${missing.length} player(s) missing.`);
+          }
+        }
+      } catch (err) {
+        console.error('[Queue] Connection monitor error:', err.message);
+      }
+    }, pingIntervalMs);
+  }
+
+  // When queue reaches 10, balance teams, create a session, provision the
+  // server (if configured), post team embed, and start connection monitor.
+  async _autoLaunchQueue(fallbackChannel) {
+    const players = [...this._inhouseQueue.values()];
+    if (players.length < 10) return;
+
+    // Balance teams
+    const { radiant, dire, diff } = this._mmrBalancePlayers(players);
+
+    // Clear queue immediately so more joiners don't trigger a second launch
+    this._inhouseQueue.clear();
+    this._queueMsgRef = null;
+    await db.clearQueue().catch(e => console.warn('[Queue] DB clearQueue failed:', e.message));
+
+    // Guard against a concurrent active session
+    const existing = await db.getActiveInhouseSession().catch(() => null);
+    if (existing) {
+      this._notifyQueueChannel(
+        `⚠️ Queue popped but an active session already exists (#${existing.id}). Queue has been cleared. Use the dashboard to manage the existing session.`
+      );
+      return;
+    }
+
+    // Create session — bypasses the accept/draft phases since queue was the gate
+    const session = await db.createInhouseSession({
+      captainMode: 'balanced',
+      createdBy: 'auto-queue',
+      acceptPhaseSeconds: 0,
+    });
+
+    // Add players + assign teams
+    const STEAM64_OFFSET = 76561197960265728n;
+    const enriched = [];
+    for (const [teamNum, group] of [[1, radiant], [2, dire]]) {
+      for (let i = 0; i < group.length; i++) {
+        const p = group[i];
+        await db.joinInhouseSession(session.id, p.accountId).catch(() => {});
+        await db.updateInhouseSessionPlayer(session.id, p.accountId, {
+          status: 'accepted',
+          team: teamNum,
+          pick_order: i,
+        }).catch(() => {});
+        let steam64 = null;
+        try { steam64 = (BigInt(p.accountId) + STEAM64_OFFSET).toString(); } catch (_) {}
+        enriched.push({ ...p, team: teamNum, steam64 });
+      }
+    }
+
+    // Provision dedicated server if configured
+    const ds = config.dota?.dedicatedServer;
+    let matchPassword = null, serverIp = null, serverPort = null, rconOk = false;
+    if (ds?.ip) {
+      const { generateMatchPassword } = require('../services/steamConnectLink');
+      matchPassword = generateMatchPassword(8);
+      serverIp = ds.ip;
+      serverPort = ds.port || 27015;
+      try {
+        const { setMatchPassword } = require('../services/rconClient');
+        await setMatchPassword(matchPassword);
+        rconOk = true;
+      } catch (rconErr) {
+        console.warn('[Queue] RCON setMatchPassword failed:', rconErr.message);
+      }
+    }
+
+    await db.updateInhouseSession(session.id, {
+      status: 'in_progress',
+      server_ip: serverIp,
+      server_port: serverPort,
+      match_password: matchPassword,
+      started_at: new Date(),
+    });
+
+    // Build and post team assignment embed
+    const avgRadiant = Math.round(radiant.reduce((s, p) => s + p.mmr, 0) / radiant.length);
+    const avgDire = Math.round(dire.reduce((s, p) => s + p.mmr, 0) / dire.length);
+    const fmtTeam = (group) =>
+      group.map(p => `• **${p.nickname}** (${p.mmr} MMR)`).join('\n');
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎮 Inhouse Match Ready!')
+      .setColor(0x4caf50)
+      .setDescription(`Queue popped with 10 players — MMR difference: **${diff}**`)
+      .addFields(
+        { name: `🟢 Radiant — avg ${avgRadiant} MMR`, value: fmtTeam(radiant), inline: true },
+        { name: `🔴 Dire — avg ${avgDire} MMR`, value: fmtTeam(dire), inline: true },
+      )
+      .setTimestamp();
+
+    if (serverIp && matchPassword) {
+      const connectLink = `steam://connect/${serverIp}:${serverPort}/${encodeURIComponent(matchPassword)}`;
+      embed.addFields({
+        name: '🖥️ Connect to Server',
+        value:
+          `**[One-click connect](${connectLink})** — \`${serverIp}:${serverPort}\`\n` +
+          `Password: \`${matchPassword}\`\n` +
+          `Console: \`connect ${serverIp}:${serverPort}; password ${matchPassword}\``,
+      });
+      if (!rconOk) {
+        embed.addFields({ name: '⚠️ RCON Note', value: 'Password push via RCON failed — set it manually in your Dota 2 lobby.' });
+      }
+    } else {
+      embed.addFields({
+        name: '⚙️ No Dedicated Server',
+        value: 'No dedicated server configured. Create a lobby in Dota 2 and share the password with both teams.',
+      });
+    }
+
+    const queueChannelId = config.discord.queueChannelId;
+    let channel = null;
+    if (queueChannelId) {
+      channel = this.client.channels.cache.get(queueChannelId)
+        || await this.client.channels.fetch(queueChannelId).catch(() => null);
+    }
+    if (!channel) channel = fallbackChannel;
+
+    if (channel) {
+      const pings = enriched.filter(p => p.discordId).map(p => `<@${p.discordId}>`).join(' ');
+      if (pings) await channel.send(pings).catch(() => {});
+      await channel.send({ embeds: [embed] }).catch(() => {});
+      // Post a fresh empty queue embed so players can re-queue immediately
+      const freshEmbed = this._buildQueueEmbed();
+      const freshMsg = await channel.send({ embeds: [freshEmbed] }).catch(() => null);
+      if (freshMsg) this._queueMsgRef = { channelId: channel.id, messageId: freshMsg.id };
+    }
+
+    // Start connection monitor if server was provisioned
+    if (serverIp) {
+      const updatedSession = await db.getInhouseSession(session.id).catch(() => session);
+      this._startConnectionMonitor(updatedSession, enriched);
+    }
+
+    console.log(`[Queue] Auto-launched session #${session.id} — radiant avg ${avgRadiant}, dire avg ${avgDire}, diff ${diff}`);
+  }
+
+  // ---------------------------------------------------------------
+  // !queue command
+  // ---------------------------------------------------------------
+
+  async _cmdQueue(msg, args) {
+    const sub = (args[0] || 'status').toLowerCase();
+    switch (sub) {
+      case 'join':   await this._queueJoin(msg); break;
+      case 'leave':  await this._queueLeave(msg); break;
+      case 'status': await this._queueStatus(msg); break;
+      case 'clear':  await this._queueClear(msg); break;
+      case 'force':  await this._queueForce(msg); break;
+      default:
+        await msg.reply(
+          '**Queue commands:**\n' +
+          '`!queue join` — Join the inhouse queue\n' +
+          '`!queue leave` — Leave the queue\n' +
+          '`!queue status` — Show current queue\n' +
+          '`!queue clear` — Clear the queue _(admin)_\n' +
+          '`!queue force` — Force-launch with current players _(admin)_'
+        );
+    }
+  }
+
+  async _queueJoin(msg) {
+    const discordId = msg.author.id;
+    if (this._inhouseQueue.has(discordId)) {
+      return msg.reply(`You're already in the queue! (${this._inhouseQueue.size}/10)`);
+    }
+    if (this._inhouseQueue.size >= 10) {
+      return msg.reply('The queue is full (10/10). A game is starting — hang tight!');
+    }
+
+    // Check if player is registered
+    const steamData = await db.getSteamByDiscordId(discordId).catch(() => null);
+    if (!steamData || !steamData.account_id) {
+      return msg.reply(
+        "You need to link your Steam account first.\n" +
+        "Use `!register <steam64_id>` or visit the Players page on the dashboard."
+      );
+    }
+
+    const accountId = steamData.account_id.toString();
+    const rating = await db.getPlayerRating(accountId).catch(() => null);
+    const mmr = rating ? Math.round(Number(rating.mmr) || 0) : 2600;
+    const nickname = steamData.nickname || msg.author.username;
+
+    this._inhouseQueue.set(discordId, { discordId, accountId, mmr, nickname });
+    await db.addToQueue(discordId, accountId, mmr, nickname).catch(e =>
+      console.warn('[Queue] DB addToQueue failed:', e.message)
+    );
+
+    const count = this._inhouseQueue.size;
+    await msg.reply(`✅ Joined queue as **${nickname}** (${mmr} MMR) — **${count}/10**`);
+    await this._postOrUpdateQueueEmbed(msg.channel).catch(() => {});
+
+    if (count >= 10) {
+      await this._autoLaunchQueue(msg.channel).catch(e => {
+        console.error('[Queue] Auto-launch error:', e.message);
+        this._notifyQueueChannel(`❌ Auto-launch failed: ${e.message}\nUse \`!inhouse open\` to start manually.`);
+      });
+    }
+  }
+
+  async _queueLeave(msg) {
+    const discordId = msg.author.id;
+    if (!this._inhouseQueue.has(discordId)) {
+      return msg.reply("You're not in the queue.");
+    }
+    this._inhouseQueue.delete(discordId);
+    await db.removeFromQueue(discordId).catch(e =>
+      console.warn('[Queue] DB removeFromQueue failed:', e.message)
+    );
+    await msg.reply(`👋 Left the queue. Queue: **${this._inhouseQueue.size}/10**`);
+    await this._postOrUpdateQueueEmbed(msg.channel).catch(() => {});
+  }
+
+  async _queueStatus(msg) {
+    const embed = this._buildQueueEmbed();
+    await msg.channel.send({ embeds: [embed] }).catch(() => {});
+  }
+
+  async _queueClear(msg) {
+    if (!this._isAdmin(msg)) return msg.reply('Admin only.');
+    this._inhouseQueue.clear();
+    this._queueMsgRef = null;
+    await db.clearQueue().catch(() => {});
+    await msg.reply('✅ Queue cleared.');
+  }
+
+  async _queueForce(msg) {
+    if (!this._isAdmin(msg)) return msg.reply('Admin only.');
+    const count = this._inhouseQueue.size;
+    if (count < 2) return msg.reply(`Not enough players to force-launch (${count} in queue, need at least 2).`);
+    await msg.reply(`🚀 Force-launching with ${count} player(s)…`);
+    await this._autoLaunchQueue(msg.channel).catch(e => msg.reply(`❌ Launch failed: ${e.message}`));
   }
 
   async _cmdGcDebug(msg) {
