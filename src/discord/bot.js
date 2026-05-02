@@ -1092,6 +1092,9 @@ class DiscordBot {
     let allConnected = false;
     let gameWatchElapsed = 0;
     let gameEndTriggered = false;
+    // Guards game-watch phase: only enter if at least one expected player was ever
+    // observed on the server — prevents false "game ended" when nobody joined at all.
+    let gameEverStarted = false;
     console.log(`[Queue] Connection monitor started — ${players.length} expected, timeout ${timeoutMs / 60000} min`);
 
     this._connectionMonitorTimer = setInterval(async () => {
@@ -1111,13 +1114,19 @@ class DiscordBot {
         const connectedIds = this._parseRconStatusSteamIds(result.response);
         const missing = players.filter(p => p.steam64 && !connectedIds.has(p.steam64));
 
+        // Mark game started the first time any expected player appears on the server
+        if (!gameEverStarted && players.some(p => p.steam64 && connectedIds.has(p.steam64))) {
+          gameEverStarted = true;
+          console.log('[Queue] First expected player observed on server — game started.');
+        }
+
         if (!allConnected) {
           // === Phase 1: Wait for all players to connect ===
           if (missing.length === 0 && elapsed > pingIntervalMs) {
             allConnected = true;
             console.log('[Queue] All players connected — switching to game-watch mode.');
             this._notifyQueueChannel(`✅ All ${players.length} players connected! Good luck!`);
-            // Do NOT stop — continue monitoring for game end below
+            // Do NOT stop — continue monitoring for game end in Phase 2 below
           } else if (elapsed >= timeoutMs) {
             if (missing.length > 0) {
               const mentions = missing.filter(p => p.discordId).map(p => `<@${p.discordId}>`).join(' ');
@@ -1129,14 +1138,23 @@ class DiscordBot {
               );
               console.log(`[Queue] Connection timeout — ${missing.length} player(s) missing.`);
             }
-            // Switch to game-watch anyway so we still capture game end
-            allConnected = true;
+            if (gameEverStarted) {
+              // At least one player was seen — game is underway, switch to game-watch
+              allConnected = true;
+              console.log('[Queue] Timeout with partial connects; game started — continuing game-watch.');
+            } else {
+              // Nobody ever connected — stop cleanly, no game to watch for
+              clearInterval(this._connectionMonitorTimer);
+              this._connectionMonitorTimer = null;
+              console.log('[Queue] Timeout with zero players connected — monitor stopped (no game).');
+            }
           }
         } else {
           // === Phase 2: Game-watch — detect when all players have left (game over) ===
           gameWatchElapsed += pingIntervalMs;
 
-          if (!gameEndTriggered && connectedIds.size === 0) {
+          // Only trigger game-end if the game actually started (players were seen on server)
+          if (!gameEndTriggered && gameEverStarted && connectedIds.size === 0) {
             // All players have disconnected — game has ended
             gameEndTriggered = true;
             clearInterval(this._connectionMonitorTimer);
