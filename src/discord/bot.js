@@ -478,6 +478,25 @@ class DiscordBot {
         }
         if (this._inhouseQueue.size > 0) {
           console.log(`[Queue] Restored ${this._inhouseQueue.size} player(s) from DB after restart.`);
+          // Re-post the queue embed so the channel is up to date after restart
+          try {
+            const queueChannelId = config.discord.queueChannelId;
+            let queueCh = null;
+            if (queueChannelId) {
+              queueCh = this.client.channels.cache.get(queueChannelId)
+                || await this.client.channels.fetch(queueChannelId).catch(() => null);
+            }
+            if (queueCh) {
+              const embed = this._buildQueueEmbed();
+              const freshMsg = await queueCh.send({
+                content: `♻️ Bot restarted — queue restored with **${this._inhouseQueue.size}** player(s).`,
+                embeds: [embed],
+              }).catch(() => null);
+              if (freshMsg) this._queueMsgRef = { channelId: queueCh.id, messageId: freshMsg.id };
+            }
+          } catch (embedErr) {
+            console.warn('[Queue] Could not re-post queue embed after restart:', embedErr.message);
+          }
         }
       } catch (err) {
         console.warn('[Queue] Failed to restore queue from DB:', err.message);
