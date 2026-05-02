@@ -1161,9 +1161,14 @@ class DiscordBot {
             this._connectionMonitorTimer = null;
             console.log('[Queue] Game end detected via RCON (all players disconnected).');
 
-            if (hasSshConfig) {
-              // GC path handles post-game via matchEnded if available.
-              // SSH replay fetch is the automatic fallback for GC-unavailable games.
+            // Only use SSH replay fetch if GC is not currently available.
+            // When GC is connected, the matchEnded event handles post-game automatically
+            // and the SSH path would cause duplicate processing of the same game.
+            const gcCurrentlyAvailable = !!(
+              tryGetSteamClient()?.isGCReady && tryGetSteamClient()?.gcClient
+            );
+            if (hasSshConfig && !gcCurrentlyAvailable) {
+              // SSH replay fetch: automatic fallback for GC-unavailable dedicated server games.
               this._notifyQueueChannel(
                 '🏁 Game ended — fetching replay from dedicated server in 60 s...'
               );
@@ -1256,12 +1261,16 @@ class DiscordBot {
     for (const [teamNum, group] of [[1, radiant], [2, dire]]) {
       for (let i = 0; i < group.length; i++) {
         const p = group[i];
-        await db.joinInhouseSession(session.id, p.accountId).catch(() => {});
+        await db.joinInhouseSession(session.id, p.accountId).catch(e =>
+          console.warn(`[Queue] joinInhouseSession failed for ${p.nickname} (${p.accountId}):`, e.message)
+        );
         await db.updateInhouseSessionPlayer(session.id, p.accountId, {
           status: 'accepted',
           team: teamNum,
           pick_order: i,
-        }).catch(() => {});
+        }).catch(e =>
+          console.warn(`[Queue] updateSessionPlayer failed for ${p.nickname} (${p.accountId}):`, e.message)
+        );
         let steam64 = null;
         try { steam64 = (BigInt(p.accountId) + STEAM64_OFFSET).toString(); } catch (_) {}
         enriched.push({ ...p, team: teamNum, steam64 });
