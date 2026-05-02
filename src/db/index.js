@@ -2193,6 +2193,15 @@ async function executeSeason10Launch() {
 // fall back to modifier = 1.0 for everyone.
 function _v3PerfScore(s, won) {
   const winBonus = won ? 25 : 0;
+  // Deward scoring: observer kills (5 pts) > sentry kills (2 pts), capped at 40.
+  // obs_dewarded_count / sen_dewarded_count are only populated for matches parsed
+  // with the extended parser. When the split is missing (both zero but wards_killed
+  // is nonzero), fall back to 3 pts per combined kill — still capped at 40.
+  const hasDewardSplit = (s.obs_dewards || 0) + (s.sen_dewards || 0) > 0;
+  const rawDewardPts = hasDewardSplit
+    ? (s.obs_dewards || 0) * 5 + (s.sen_dewards || 0) * 2
+    : (s.dewards    || 0) * 3;
+  const dewardPts = Math.min(rawDewardPts, 40);
   return (
     (s.kills        || 0) * 4
     + (s.assists    || 0) * 2.5
@@ -2205,7 +2214,7 @@ function _v3PerfScore(s, won) {
     + (s.camps      || 0) * 7
     + (s.obs        || 0) * 4
     + (s.sen        || 0) * 6
-    + (s.dewards    || 0) * 10
+    + dewardPts
     + winBonus
   );
 }
@@ -2214,6 +2223,11 @@ function _v3PerfScore(s, won) {
 // can explain *why* a player's modifier landed where it did. The component sum
 // equals what _v3PerfScore returns.
 function _v3PerfScoreBreakdown(s, won) {
+  const hasDewardSplit = (s.obs_dewards || 0) + (s.sen_dewards || 0) > 0;
+  const rawDewardPts = hasDewardSplit
+    ? (s.obs_dewards || 0) * 5 + (s.sen_dewards || 0) * 2
+    : (s.dewards    || 0) * 3;
+  const dewardPts = Math.min(rawDewardPts, 40);
   const parts = {
     kills:        (s.kills      || 0) * 4,
     assists:      (s.assists    || 0) * 2.5,
@@ -2226,7 +2240,7 @@ function _v3PerfScoreBreakdown(s, won) {
     camps:        (s.camps      || 0) * 7,
     obs:          (s.obs        || 0) * 4,
     sen:          (s.sen        || 0) * 6,
-    dewards:      (s.dewards    || 0) * 10,
+    dewards:      dewardPts,
     win:          won ? 25 : 0,
   };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
@@ -2304,7 +2318,8 @@ async function computeSeasonTrueSkillV3(seasonId = null, _poolForTest = null) {
             ps.kills, ps.deaths, ps.assists,
             ps.gpm, ps.xpm,
             ps.hero_damage, ps.tower_damage, ps.hero_healing,
-            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked
+            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked,
+            ps.obs_dewarded_count, ps.sen_dewarded_count
      FROM matches m
      JOIN player_stats ps ON ps.match_id = m.match_id
      ${matchWhere}
@@ -2330,10 +2345,12 @@ async function computeSeasonTrueSkillV3(seasonId = null, _poolForTest = null) {
       hero_dmg:   Number(row.hero_damage) || 0,
       tower_dmg:  Number(row.tower_damage) || 0,
       healing:    Number(row.hero_healing) || 0,
-      obs:        Number(row.obs_placed) || 0,
-      sen:        Number(row.sen_placed) || 0,
-      dewards:    Number(row.wards_killed) || 0,
-      camps:      Number(row.camps_stacked) || 0,
+      obs:          Number(row.obs_placed) || 0,
+      sen:          Number(row.sen_placed) || 0,
+      dewards:      Number(row.wards_killed) || 0,
+      obs_dewards:  Number(row.obs_dewarded_count) || 0,
+      sen_dewards:  Number(row.sen_dewarded_count) || 0,
+      camps:        Number(row.camps_stacked) || 0,
     };
     const entry = { id, persona_name: row.persona_name, stats };
     const m = matchMap.get(row.match_id);
@@ -2435,18 +2452,20 @@ async function _v3BuildCanonicalResolver(p) {
 
 function _v3StatsFromRow(row) {
   return {
-    kills:     Number(row.kills) || 0,
-    deaths:    Number(row.deaths) || 0,
-    assists:   Number(row.assists) || 0,
-    gpm:       Number(row.gpm) || 0,
-    xpm:       Number(row.xpm) || 0,
-    hero_dmg:  Number(row.hero_damage) || 0,
-    tower_dmg: Number(row.tower_damage) || 0,
-    healing:   Number(row.hero_healing) || 0,
-    obs:       Number(row.obs_placed) || 0,
-    sen:       Number(row.sen_placed) || 0,
-    dewards:   Number(row.wards_killed) || 0,
-    camps:     Number(row.camps_stacked) || 0,
+    kills:       Number(row.kills) || 0,
+    deaths:      Number(row.deaths) || 0,
+    assists:     Number(row.assists) || 0,
+    gpm:         Number(row.gpm) || 0,
+    xpm:         Number(row.xpm) || 0,
+    hero_dmg:    Number(row.hero_damage) || 0,
+    tower_dmg:   Number(row.tower_damage) || 0,
+    healing:     Number(row.hero_healing) || 0,
+    obs:         Number(row.obs_placed) || 0,
+    sen:         Number(row.sen_placed) || 0,
+    dewards:     Number(row.wards_killed) || 0,
+    obs_dewards: Number(row.obs_dewarded_count) || 0,
+    sen_dewards: Number(row.sen_dewarded_count) || 0,
+    camps:       Number(row.camps_stacked) || 0,
   };
 }
 
@@ -2476,7 +2495,8 @@ async function getMatchV3Modifiers(matchId, _poolForTest = null) {
             ps.kills, ps.deaths, ps.assists,
             ps.gpm, ps.xpm,
             ps.hero_damage, ps.tower_damage, ps.hero_healing,
-            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked
+            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked,
+            ps.obs_dewarded_count, ps.sen_dewarded_count
      FROM matches m
      JOIN player_stats ps ON ps.match_id = m.match_id
      WHERE m.match_id = $1`,
@@ -2565,7 +2585,8 @@ async function getPlayerV3ModifierHistory(accountId, _poolForTest = null) {
             ps.kills, ps.deaths, ps.assists,
             ps.gpm, ps.xpm,
             ps.hero_damage, ps.tower_damage, ps.hero_healing,
-            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked
+            ps.obs_placed, ps.sen_placed, ps.wards_killed, ps.camps_stacked,
+            ps.obs_dewarded_count, ps.sen_dewarded_count
      FROM matches m
      JOIN player_stats ps ON ps.match_id = m.match_id
      WHERE m.match_id = ANY($1)
