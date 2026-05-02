@@ -1114,10 +1114,16 @@ class DiscordBot {
         const connectedIds = this._parseRconStatusSteamIds(result.response);
         const missing = players.filter(p => p.steam64 && !connectedIds.has(p.steam64));
 
-        // Mark game started the first time any expected player appears on the server
-        if (!gameEverStarted && players.some(p => p.steam64 && connectedIds.has(p.steam64))) {
-          gameEverStarted = true;
-          console.log('[Queue] First expected player observed on server — game started.');
+        // Mark game started when a majority (≥60%) of expected players are simultaneously
+        // connected in the same poll. Requiring a threshold prevents a single player who
+        // briefly joins the lobby before the match starts from triggering game-watch mode.
+        if (!gameEverStarted) {
+          const expectedConnected = players.filter(p => p.steam64 && connectedIds.has(p.steam64)).length;
+          const threshold = Math.max(2, Math.ceil(players.length * 0.6));
+          if (expectedConnected >= threshold) {
+            gameEverStarted = true;
+            console.log(`[Queue] Game started — ${expectedConnected}/${players.length} expected players on server.`);
+          }
         }
 
         if (!allConnected) {
@@ -1467,6 +1473,16 @@ class DiscordBot {
     const rating = await db.getPlayerRating(accountId).catch(() => null);
     const mmr = rating ? Math.round(Number(rating.mmr) || 0) : 2600;
     const nickname = steamData.nickname || msg.author.username;
+
+    // Recheck capacity after async lookups — prevents race conditions where two
+    // players join simultaneously around the 10-player limit (both see 9/10 → both
+    // get accepted → 11-player launch with a 5/6 team split).
+    if (this._inhouseQueue.has(discordId)) {
+      return msg.reply(`You joined while we were loading your info — you're already in! (${this._inhouseQueue.size}/10)`);
+    }
+    if (this._inhouseQueue.size >= 10) {
+      return msg.reply('Queue filled up while loading your info — it\'s at 10/10. A game is starting!');
+    }
 
     this._inhouseQueue.set(discordId, { discordId, accountId, mmr, nickname });
     await db.addToQueue(discordId, accountId, mmr, nickname).catch(e =>
