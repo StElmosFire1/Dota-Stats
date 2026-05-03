@@ -1116,7 +1116,7 @@ async function init() {
     // schema change.
     await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS prize_split JSONB DEFAULT '[50,30,20]'::jsonb`);
 
-    // Task #31 — Automated inhouse queue (persistent across restarts)
+    // Inhouse queue — persistent across restarts
     await p.query(`
       CREATE TABLE IF NOT EXISTS inhouse_queue (
         id SERIAL PRIMARY KEY,
@@ -1131,6 +1131,12 @@ async function init() {
     // Invite / referral: track which account referred each player
     await p.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS referred_by BIGINT DEFAULT NULL`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_players_referred_by ON players (referred_by)`);
+
+    // Tournament bracket state model
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS bracket_type VARCHAR(20)`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS bracket_data JSONB`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS seeding JSONB`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS bracket_size INTEGER`);
 
     // All-time per-match records table. One row per stat_key; holds the record
     // value, who set it, and which match it was set in.
@@ -7628,7 +7634,7 @@ async function assignInhouseTeams(sessionId, assignments) {
 }
 
 // =====================================================================
-// Task #31 — Inhouse queue helpers
+// Inhouse queue helpers
 // =====================================================================
 
 async function addToQueue(discordId, accountId, mmr, nickname) {
@@ -9889,10 +9895,12 @@ module.exports = {
   getTournamentParticipants,
   addTournamentParticipant,
   removeTournamentParticipant,
+  reseedTournamentParticipants,
   generateTournamentBracket,
   getTournamentMatches,
   setTournamentMatchWinner,
   clearTournamentMatchWinner,
+  linkTournamentMatch,
   createWeekendTournament,
   getWeekendTournaments,
   getWeekendTournamentById,
@@ -10747,17 +10755,21 @@ async function createTournament({
   name, description, seasonId, format, createdBy,
   tierNumber = null, entryFeeCents = 0,
   signupOpenAt = null, signupCloseAt = null,
+  bracketSize = null,
 }) {
   const p = getPool();
+  const fmt = format || 'single_elim';
   const result = await p.query(
-    `INSERT INTO tournaments (name, description, season_id, format, status, created_by,
+    `INSERT INTO tournaments (name, description, season_id, format, bracket_type, bracket_size, status, created_by,
        tier_number, entry_fee_cents, signup_open_at, signup_close_at)
-     VALUES ($1, $2, $3, $4, 'upcoming', $5, $6, $7, $8, $9) RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5, $6, 'upcoming', $7, $8, $9, $10, $11) RETURNING *`,
     [
       name,
       description || null,
       seasonId ? parseInt(seasonId) : null,
-      format || 'single_elim',
+      fmt,
+      fmt === 'weekend_points' ? 'none' : fmt,
+      bracketSize ? parseInt(bracketSize) : null,
       createdBy || null,
       tierNumber != null ? parseInt(tierNumber) : null,
       parseInt(entryFeeCents) || 0,
@@ -10892,15 +10904,111 @@ async function deleteTournament(id) {
 async function getTournamentParticipants(tournamentId) {
   const p = getPool();
   const result = await p.query(`
-    SELECT tp.*, COALESCE(n.nickname, pl.persona_name, tp.account_id::text) AS display_name, pl.mu, pl.sigma,
-      ROUND((pl.mu - 3 * pl.sigma) * 100 + 5000) AS mmr
+    SELECT tp.*,
+      COALESCE(n.nickname, (
+        SELECT ps.persona_name FROM player_stats ps
+        JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id = tp.account_id
+        ORDER BY m.date DESC LIMIT 1
+      ), tp.account_id::text) AS display_name,
+      r.mu, r.sigma,
+      ROUND((r.mu - 3 * r.sigma) * 100 + 5000) AS mmr
     FROM tournament_participants tp
-    LEFT JOIN players pl ON pl.account_id = tp.account_id
+    LEFT JOIN ratings r ON r.player_id = tp.account_id
     LEFT JOIN nicknames n ON n.account_id = tp.account_id
     WHERE tp.tournament_id = $1
-    ORDER BY tp.seed ASC NULLS LAST, mmr DESC NULLS LAST
+    ORDER BY tp.seed ASC NULLS LAST, ROUND((r.mu - 3 * r.sigma) * 100 + 5000) DESC NULLS LAST
   `, [parseInt(tournamentId)]);
-  return result.rows;
+
+  if (!result.rows.length) return [];
+
+  const accountIds = result.rows.map(r => r.account_id);
+  const formRes = await p.query(`
+    SELECT ps.account_id,
+           m.radiant_win,
+           ps.team,
+           m.date,
+           ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.date DESC) AS rn
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = ANY($1) AND m.is_legacy = FALSE
+  `, [accountIds]);
+
+  const formMap = {};
+  for (const row of formRes.rows) {
+    if (row.rn > 5) continue;
+    if (!formMap[row.account_id]) formMap[row.account_id] = [];
+    const won = (row.team === 'radiant' && row.radiant_win) || (row.team === 'dire' && !row.radiant_win);
+    formMap[row.account_id].push(won ? 'W' : 'L');
+  }
+
+  return result.rows.map(r => ({
+    ...r,
+    mmr: r.mmr ? parseInt(r.mmr) : null,
+    recent_form: (formMap[r.account_id] || []).join(''),
+  }));
+}
+
+async function linkTournamentMatch(matchId, inhouseMatchId) {
+  const p = getPool();
+  const result = await p.query(
+    `UPDATE tournament_matches SET inhouse_match_id = $2 WHERE id = $1 RETURNING *`,
+    [parseInt(matchId), inhouseMatchId ? String(inhouseMatchId) : null]
+  );
+  if (!result.rows[0]) throw new Error('Match not found');
+  const bracketMatch = result.rows[0];
+
+  // When linking a real match (not unlinking), and both bracket slots are filled,
+  // attempt to auto-derive the winner from the recorded inhouse match result.
+  if (inhouseMatchId && bracketMatch.p1_id && bracketMatch.p2_id) {
+    const matchRes = await p.query(
+      `SELECT match_id, radiant_win FROM matches WHERE match_id = $1`,
+      [String(inhouseMatchId)]
+    );
+    const match = matchRes.rows[0];
+    if (match) {
+      const [p1Stats, p2Stats] = await Promise.all([
+        p.query(
+          `SELECT team FROM player_stats WHERE match_id = $1 AND account_id = $2 LIMIT 1`,
+          [String(inhouseMatchId), bracketMatch.p1_id]
+        ),
+        p.query(
+          `SELECT team FROM player_stats WHERE match_id = $1 AND account_id = $2 LIMIT 1`,
+          [String(inhouseMatchId), bracketMatch.p2_id]
+        ),
+      ]);
+      const p1Row = p1Stats.rows[0];
+      const p2Row = p2Stats.rows[0];
+      // Both bracket players must appear in the linked match on OPPOSING teams to auto-advance
+      if (p1Row && p2Row && p1Row.team !== p2Row.team) {
+        const p1Won =
+          (p1Row.team === 'radiant' && match.radiant_win) ||
+          (p1Row.team === 'dire' && !match.radiant_win);
+        const winnerId = p1Won ? bracketMatch.p1_id : bracketMatch.p2_id;
+        // setTournamentMatchWinner handles round advancement and bracket_data sync internally
+        return setTournamentMatchWinner(matchId, winnerId);
+      }
+    }
+  }
+
+  // No auto-advance: just sync bracket_data to reflect the new inhouse_match_id link
+  const linkedMatches = await getTournamentMatches(bracketMatch.tournament_id);
+  await p.query(
+    `UPDATE tournaments SET bracket_data = $2 WHERE id = $1`,
+    [bracketMatch.tournament_id, JSON.stringify(linkedMatches)]
+  );
+  return linkedMatches;
+}
+
+async function reseedTournamentParticipants(tournamentId, orderedAccountIds) {
+  const p = getPool();
+  for (let i = 0; i < orderedAccountIds.length; i++) {
+    await p.query(
+      `UPDATE tournament_participants SET seed = $3 WHERE tournament_id = $1 AND account_id = $2`,
+      [parseInt(tournamentId), BigInt(orderedAccountIds[i]), i + 1]
+    );
+  }
+  return getTournamentParticipants(tournamentId);
 }
 
 async function addTournamentParticipant(tournamentId, accountId, seed) {
@@ -10921,6 +11029,73 @@ async function removeTournamentParticipant(tournamentId, accountId) {
   );
 }
 
+// Standard single-elimination bracket position array of length `size`.
+// e.g. size=8 → [1,8,4,5,2,7,3,6] giving matches 1v8, 4v5, 2v7, 3v6.
+function _buildBracketPositions(size) {
+  let positions = [1];
+  let round = 1;
+  while (round < size) {
+    const next = [];
+    for (const pos of positions) {
+      next.push(pos);
+      next.push(round * 2 + 1 - pos);
+    }
+    positions = next;
+    round *= 2;
+  }
+  return positions;
+}
+
+// Auto-advance generated byes: only touches round-1 matches where one slot was
+// never seeded (a true bracket bye).  Later-round matches whose empty slot is
+// waiting for an upstream result are NOT advanced here — that is handled inline
+// in setTournamentMatchWinner via _checkAndAdvanceSingleElimBye after routing.
+async function _autoAdvanceByes(tournamentId) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT id, COALESCE(p1_id, p2_id) AS solo_id FROM tournament_matches
+     WHERE tournament_id = $1 AND round = 1 AND winner_id IS NULL
+       AND ((p1_id IS NOT NULL AND p2_id IS NULL) OR (p1_id IS NULL AND p2_id IS NOT NULL))
+     ORDER BY slot ASC`,
+    [parseInt(tournamentId)]
+  );
+  for (const bye of res.rows) {
+    await setTournamentMatchWinner(bye.id, bye.solo_id);
+  }
+}
+
+// After routing a winner to a later-round placeholder, check whether that
+// destination match is now a bye: one player present and the OTHER feeder
+// match is permanently empty (p1_id IS NULL AND p2_id IS NULL — it was a
+// seeding gap that never got any participant).  If so, advance immediately.
+async function _checkAndAdvanceSingleElimBye(p, tournamentId, destRound, destSlot, destMatchId) {
+  const destRes = await p.query(
+    `SELECT * FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round = $2 AND slot = $3`,
+    [tournamentId, destRound, destSlot]
+  );
+  const dest = destRes.rows[0];
+  if (!dest || dest.winner_id) return;
+
+  const soloId = (dest.p1_id && !dest.p2_id) ? dest.p1_id
+               : (!dest.p1_id && dest.p2_id) ? dest.p2_id
+               : null;
+  if (!soloId) return;
+
+  // Determine which feeder (prev-round slot) provides the empty position.
+  // p1 comes from prev-round slot (2*destSlot - 1), p2 from (2*destSlot).
+  const emptyIsP2 = Boolean(dest.p1_id);
+  const feederSlot = emptyIsP2 ? destSlot * 2 : destSlot * 2 - 1;
+  const feederRes = await p.query(
+    `SELECT * FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round = $2 AND slot = $3`,
+    [tournamentId, destRound - 1, feederSlot]
+  );
+  const feeder = feederRes.rows[0];
+  // Only advance when the feeder is permanently empty (never had any participant).
+  if (feeder && !feeder.p1_id && !feeder.p2_id && !feeder.winner_id) {
+    await setTournamentMatchWinner(dest.id, soloId);
+  }
+}
+
 async function generateTournamentBracket(tournamentId) {
   const p = getPool();
   await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1`, [parseInt(tournamentId)]);
@@ -10930,36 +11105,82 @@ async function generateTournamentBracket(tournamentId) {
   const participants = await getTournamentParticipants(tournamentId);
   const n = participants.length;
   if (n < 2) throw new Error('Need at least 2 participants');
-  const size = Math.pow(2, Math.ceil(Math.log2(n)));
-  const seeded = [...participants].sort((a, b) => (parseInt(b.mmr) || 5000) - (parseInt(a.mmr) || 5000));
-  const slots = new Array(size).fill(null);
-  const positions = [];
-  for (let i = 0; i < size; i++) positions.push(i);
-  const snaked = [];
-  for (let i = 0; i < size; i++) {
-    if (i % 2 === 0) snaked.push(positions[i]);
-    else snaked.unshift(positions[i]);
+
+  // Determine bracket size: use the configured bracket_size if set, otherwise
+  // round up to the next power of 2 that fits all participants.
+  const VALID_SIZES = [4, 8, 16];
+  const minSize = Math.pow(2, Math.ceil(Math.log2(Math.max(n, 2))));
+  let size;
+  if (tournament.bracket_size) {
+    if (!VALID_SIZES.includes(tournament.bracket_size)) {
+      throw new Error('Bracket size must be 4, 8, or 16');
+    }
+    if (n > tournament.bracket_size) {
+      throw new Error(`Too many participants (${n}) for a ${tournament.bracket_size}-player bracket`);
+    }
+    size = tournament.bracket_size;
+  } else {
+    if (n > 16) throw new Error('Maximum 16 participants supported (4/8/16-player brackets)');
+    size = minSize;
   }
-  seeded.forEach((player, i) => { slots[snaked[i]] = player; });
+
+  const ordered = participants;
+  const bracketType = tournament.format === 'double_elim' ? 'double_elim' : 'single_elim';
+
+  const bracketPositions = _buildBracketPositions(size);
+  const slots = bracketPositions.map(seedNum => ordered[seedNum - 1] || null);
+
+  // Preserve original slot positions — do NOT skip empty pairs or swap p1/p2.
+  // This keeps downstream routing correct when bracket_size > participant count.
   const pairs = [];
   for (let i = 0; i < size; i += 2) {
-    pairs.push([slots[i], slots[i + 1]]);
+    pairs.push([slots[i] || null, slots[i + 1] || null]);
   }
+
+  const seedingSnapshot = JSON.stringify(
+    ordered.map(pl => ({ account_id: String(pl.account_id), display_name: pl.display_name, mmr: pl.mmr || null }))
+  );
+  await p.query(
+    `UPDATE tournaments SET bracket_type = $2, seeding = $3 WHERE id = $1`,
+    [parseInt(tournamentId), bracketType, seedingSnapshot]
+  );
 
   if (tournament.format === 'double_elim') {
-    return generateDoubleElimBracket(parseInt(tournamentId), pairs, size);
+    await generateDoubleElimBracket(parseInt(tournamentId), pairs, size);
+  } else {
+    for (let slot = 0; slot < pairs.length; slot++) {
+      const pair = pairs[slot];
+      await p.query(
+        `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id)
+         VALUES ($1, 'W', 1, $2, $3, $4)`,
+        [parseInt(tournamentId), slot + 1, pair[0]?.account_id || null, pair[1]?.account_id || null]
+      );
+    }
+    // Pre-create placeholder rows for all future rounds so the full bracket tree
+    // is visible immediately with TBD slots rather than appearing lazily.
+    const numRounds = Math.log2(size);
+    for (let r = 2; r <= numRounds; r++) {
+      const matchCount = size / Math.pow(2, r);
+      for (let s = 1; s <= matchCount; s++) {
+        await p.query(
+          `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id)
+           VALUES ($1, 'W', $2, $3, NULL, NULL)`,
+          [parseInt(tournamentId), r, s]
+        );
+      }
+    }
+    await p.query(`UPDATE tournaments SET status = 'active' WHERE id = $1`, [parseInt(tournamentId)]);
   }
 
-  const inserts = pairs.map((pair, slot) =>
-    p.query(
-      `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id)
-       VALUES ($1, 'W', 1, $2, $3, $4)`,
-      [parseInt(tournamentId), slot + 1, pair[0]?.account_id || null, pair[1]?.account_id || null]
-    )
+  await _autoAdvanceByes(parseInt(tournamentId));
+
+  const matches = await getTournamentMatches(tournamentId);
+  await p.query(
+    `UPDATE tournaments SET bracket_data = $2 WHERE id = $1`,
+    [parseInt(tournamentId), JSON.stringify(matches)]
   );
-  await Promise.all(inserts);
-  await p.query(`UPDATE tournaments SET status = 'active' WHERE id = $1`, [parseInt(tournamentId)]);
-  return getTournamentMatches(tournamentId);
+
+  return matches;
 }
 
 async function generateDoubleElimBracket(tournamentId, pairs, size) {
@@ -10994,8 +11215,14 @@ async function generateDoubleElimBracket(tournamentId, pairs, size) {
     }
   }
 
+  // GF R1: WB finalist vs LB finalist. If LB finalist wins, GF R2 (reset) is played.
   await p.query(
     `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id) VALUES ($1, 'GF', 1, 1, NULL, NULL)`,
+    [tournamentId]
+  );
+  // GF R2 placeholder (bracket reset): only populated if LB finalist wins GF R1.
+  await p.query(
+    `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id) VALUES ($1, 'GF', 2, 1, NULL, NULL)`,
     [tournamentId]
   );
 
@@ -11028,13 +11255,22 @@ async function setTournamentMatchWinner(matchId, winnerId) {
   const matchRes = await p.query(`SELECT * FROM tournament_matches WHERE id = $1`, [parseInt(matchId)]);
   const match = matchRes.rows[0];
   if (!match) throw new Error('Match not found');
+  // Idempotent: if already resolved (e.g. via recursive bye-advance), skip.
+  if (match.winner_id) return getTournamentMatches(match.tournament_id);
+
+  if (!winnerId) throw new Error('winnerId required');
 
   const tournamentRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [match.tournament_id]);
   const tournament = tournamentRes.rows[0];
   const isDoubleElim = tournament?.format === 'double_elim';
 
-  await p.query(`UPDATE tournament_matches SET winner_id = $2 WHERE id = $1`, [parseInt(matchId), BigInt(winnerId)]);
-  const loserId = BigInt(winnerId) === BigInt(match.p1_id) ? match.p2_id : match.p1_id;
+  const winnerBig = BigInt(winnerId);
+  await p.query(`UPDATE tournament_matches SET winner_id = $2 WHERE id = $1`, [parseInt(matchId), winnerBig]);
+
+  // Determine loser only when both slots are occupied.
+  const loserId = (match.p1_id && match.p2_id)
+    ? (winnerBig === BigInt(match.p1_id) ? match.p2_id : match.p1_id)
+    : null;
 
   if (isDoubleElim) {
     await _routeDoubleElim(p, match, BigInt(winnerId), loserId ? BigInt(loserId) : null);
@@ -11043,29 +11279,44 @@ async function setTournamentMatchWinner(matchId, winnerId) {
       await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`,
         [match.tournament_id, loserId]);
     }
-    const allMatches = await p.query(`SELECT * FROM tournament_matches WHERE tournament_id = $1 AND round = $2`, [match.tournament_id, match.round]);
-    const allDone = allMatches.rows.every(m => m.winner_id != null || (m.p1_id == null && m.p2_id == null) || (m.p1_id != null && m.p2_id == null));
-    if (allDone) {
-      const winners = allMatches.rows.filter(m => m.winner_id != null).map(m => m.winner_id);
-      const byes = allMatches.rows.filter(m => m.p1_id != null && m.p2_id == null).map(m => m.p1_id);
-      const nextPlayers = [...winners, ...byes];
-      if (nextPlayers.length === 1) {
-        await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [match.tournament_id]);
-      } else {
-        const nextRound = match.round + 1;
-        const existing = await p.query(`SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round = $2`, [match.tournament_id, nextRound]);
-        if (parseInt(existing.rows[0].count) === 0) {
-          for (let i = 0; i < nextPlayers.length; i += 2) {
-            await p.query(
-              `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id) VALUES ($1, 'W', $2, $3, $4, $5)`,
-              [match.tournament_id, nextRound, Math.floor(i / 2) + 1, nextPlayers[i] || null, nextPlayers[i + 1] || null]
-            );
-          }
-        }
+    // Immediate slot-based routing: place the winner into the next round
+    // without waiting for the rest of the current round to finish.
+    const maxRoundRes = await p.query(
+      `SELECT MAX(round) AS max_round FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W'`,
+      [match.tournament_id]);
+    const maxWBRound = parseInt(maxRoundRes.rows[0].max_round) || 1;
+    if (match.round >= maxWBRound) {
+      // Grand final complete → tournament over.
+      await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [match.tournament_id]);
+    } else {
+      const nextRound = match.round + 1;
+      const nextSlot = Math.ceil(match.slot / 2);
+      const position = match.slot % 2 === 1 ? 'p1' : 'p2';
+      const updated = await p.query(
+        `UPDATE tournament_matches SET ${position}_id = $1
+         WHERE tournament_id = $2 AND bracket = 'W' AND round = $3 AND slot = $4
+         RETURNING id`,
+        [winnerBig, match.tournament_id, nextRound, nextSlot]
+      );
+      if (updated.rows.length === 0) {
+        // Legacy fallback (no pre-created placeholder for this slot).
+        await p.query(
+          `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, ${position}_id)
+           VALUES ($1, 'W', $2, $3, $4)`,
+          [match.tournament_id, nextRound, nextSlot, winnerBig]
+        );
       }
+      // Check whether the destination match is now a bye: solo player +
+      // permanently-empty feeder for the missing slot.  Advance if so.
+      await _checkAndAdvanceSingleElimBye(p, match.tournament_id, nextRound, nextSlot);
     }
   }
-  return getTournamentMatches(match.tournament_id);
+  const finalMatches = await getTournamentMatches(match.tournament_id);
+  await p.query(
+    `UPDATE tournaments SET bracket_data = $2 WHERE id = $1`,
+    [match.tournament_id, JSON.stringify(finalMatches)]
+  );
+  return finalMatches;
 }
 
 async function _routeDoubleElim(p, match, winnerId, loserId) {
@@ -11087,9 +11338,21 @@ async function _routeDoubleElim(p, match, winnerId, loserId) {
   };
 
   if (bracket === 'GF') {
-    await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [tid]);
-    if (loserId) {
-      await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`, [tid, loserId]);
+    if (match.round === 1 && match.p1_id && loserId && loserId === BigInt(match.p1_id)) {
+      // LB finalist beat the WB finalist in GF round 1.
+      // WB finalist has now taken their first (and only allowed) loss.
+      // Trigger a bracket reset: GF round 2 with same matchup.
+      await p.query(
+        `UPDATE tournament_matches SET p1_id = $2, p2_id = $3, winner_id = NULL
+         WHERE tournament_id = $1 AND bracket = 'GF' AND round = 2 AND slot = 1`,
+        [tid, match.p1_id, match.p2_id]
+      );
+    } else {
+      // WB finalist won GF R1 (never lost), or someone won GF R2 (reset) → champion.
+      await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [tid]);
+      if (loserId) {
+        await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`, [tid, loserId]);
+      }
     }
     return;
   }
@@ -11110,14 +11373,34 @@ async function _routeDoubleElim(p, match, winnerId, loserId) {
         const lbSlot = Math.ceil(slot / 2);
         const lbPosition = slot % 2 === 1 ? 'p1' : 'p2';
         await placePlayer('L', 1, lbSlot, lbPosition, loserId);
+        // After routing, check if the LB slot is now a true bye (one player
+        // only, because the complementary WB R1 slot was a generated bye and
+        // sent no loser). If so, auto-advance the single player immediately.
+        const lbRes = await p.query(
+          `SELECT * FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'L' AND round = 1 AND slot = $2`,
+          [tid, lbSlot]);
+        const lbMatch = lbRes.rows[0];
+        if (lbMatch && !lbMatch.winner_id) {
+          const soloId = (lbMatch.p1_id && !lbMatch.p2_id) ? lbMatch.p1_id
+                       : (!lbMatch.p1_id && lbMatch.p2_id) ? lbMatch.p2_id
+                       : null;
+          if (soloId) {
+            // Confirm by checking if the complementary WB R1 feeder was a bye.
+            const feedSlots = [lbSlot * 2 - 1, lbSlot * 2];
+            for (const fs of feedSlots) {
+              const wbRes = await p.query(
+                `SELECT * FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round = 1 AND slot = $2`,
+                [tid, fs]);
+              const wbFeed = wbRes.rows[0];
+              if (wbFeed && wbFeed.winner_id && !wbFeed.p2_id) {
+                await setTournamentMatchWinner(lbMatch.id, soloId);
+                break;
+              }
+            }
+          }
+        }
       } else {
         await placePlayer('L', 2 * (round - 1), slot, 'p2', loserId);
-      }
-    }
-    if (loserId) {
-      const needsElim = bracket === 'W' && false;
-      if (needsElim) {
-        await p.query(`UPDATE tournament_participants SET eliminated = TRUE WHERE tournament_id = $1 AND account_id = $2`, [tid, loserId]);
       }
     }
   } else if (bracket === 'L') {
@@ -11135,10 +11418,42 @@ async function _routeDoubleElim(p, match, winnerId, loserId) {
     }
   }
 
-  const gfRes = await p.query(`SELECT * FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'GF'`, [tid]);
-  const gf = gfRes.rows[0];
-  if (gf && gf.p1_id && gf.p2_id && !gf.winner_id) {
+}
+
+// Surgically clear only the downstream bracket path starting from the winner of
+// the match at (fromRound, fromSlot). Leaves matches on unaffected paths intact.
+async function _clearSingleElimPath(p, tournamentId, fromRound, fromSlot, trackedPlayerId) {
+  const nextRound = fromRound + 1;
+  const nextSlot = Math.ceil(fromSlot / 2);
+  const position = fromSlot % 2 === 1 ? 'p1' : 'p2';
+
+  const nextRes = await p.query(
+    `SELECT * FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round = $2 AND slot = $3`,
+    [tournamentId, nextRound, nextSlot]
+  );
+  if (!nextRes.rows.length) return;
+  const nextMatch = nextRes.rows[0];
+
+  const slotValue = position === 'p1' ? nextMatch.p1_id : nextMatch.p2_id;
+  if (!slotValue || BigInt(slotValue) !== BigInt(trackedPlayerId)) return;
+
+  if (nextMatch.winner_id) {
+    // Cascade further using whoever won this downstream match.
+    await _clearSingleElimPath(p, tournamentId, nextRound, nextSlot, nextMatch.winner_id);
+    // Restore the loser who was eliminated when this match was played.
+    const loserId = BigInt(nextMatch.winner_id) === BigInt(nextMatch.p1_id || 0)
+      ? nextMatch.p2_id : nextMatch.p1_id;
+    if (loserId && BigInt(loserId) !== BigInt(trackedPlayerId)) {
+      await p.query(
+        `UPDATE tournament_participants SET eliminated = FALSE WHERE tournament_id = $1 AND account_id = $2`,
+        [tournamentId, loserId]);
+    }
   }
+
+  await p.query(
+    `UPDATE tournament_matches SET ${position}_id = NULL, winner_id = NULL WHERE id = $1`,
+    [nextMatch.id]
+  );
 }
 
 async function clearTournamentMatchWinner(matchId) {
@@ -11151,7 +11466,9 @@ async function clearTournamentMatchWinner(matchId) {
   const tournament = tournamentRes.rows[0];
   const isDoubleElim = tournament?.format === 'double_elim';
 
-  const loserId = BigInt(match.winner_id) === BigInt(match.p1_id) ? match.p2_id : match.p1_id;
+  const loserId = (match.p1_id && match.p2_id)
+    ? (BigInt(match.winner_id) === BigInt(match.p1_id) ? match.p2_id : match.p1_id)
+    : null;
   await p.query(`UPDATE tournament_matches SET winner_id = NULL WHERE id = $1`, [parseInt(matchId)]);
 
   if (isDoubleElim) {
@@ -11176,9 +11493,16 @@ async function clearTournamentMatchWinner(matchId) {
       await p.query(`UPDATE tournament_participants SET eliminated = FALSE WHERE tournament_id = $1 AND account_id = $2`,
         [match.tournament_id, loserId]);
     }
-    await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1 AND bracket = 'W' AND round > $2`, [match.tournament_id, match.round]);
+    // Surgically clear only the downstream path of the winner (slot-based).
+    await _clearSingleElimPath(p, match.tournament_id, match.round, match.slot, BigInt(match.winner_id));
+    await p.query(`UPDATE tournaments SET status = 'active' WHERE id = $1 AND status = 'completed'`, [match.tournament_id]);
   }
-  return getTournamentMatches(match.tournament_id);
+  const clearedMatches = await getTournamentMatches(match.tournament_id);
+  await p.query(
+    `UPDATE tournaments SET bracket_data = $2 WHERE id = $1`,
+    [match.tournament_id, JSON.stringify(clearedMatches)]
+  );
+  return clearedMatches;
 }
 
 // ─── Weekend / Special Event Tournaments ───────────────────────────────────

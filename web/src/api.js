@@ -956,6 +956,26 @@ export async function clearTournamentMatchWinner(matchId, superuserKey) {
   return res.json();
 }
 
+export async function linkTournamentMatch(matchId, inhouseMatchId, superuserKey) {
+  const res = await fetch(BASE + `/tournament-matches/${matchId}/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ inhouseMatchId }),
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}
+
+export async function reseedTournamentParticipants(tournamentId, orderedAccountIds, superuserKey) {
+  const res = await fetch(BASE + `/tournaments/${tournamentId}/reseed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ orderedAccountIds }),
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+  return res.json();
+}
+
 export async function deleteTournament(id, superuserKey) {
   const res = await fetch(BASE + `/tournaments/${id}`, {
     method: 'DELETE',

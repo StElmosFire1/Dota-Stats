@@ -5,6 +5,7 @@ import {
   removeTournamentParticipant, generateTournamentBracket, setTournamentMatchWinner,
   clearTournamentMatchWinner, deleteTournament, getAllPlayers,
   getWeekendTournaments, createWeekendTournament,
+  linkTournamentMatch, reseedTournamentParticipants,
 } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -36,9 +37,13 @@ function LBRoundName(round, totalLBRounds) {
 }
 
 function ChampionBanner({ matches, tournament }) {
+  if (tournament.status !== 'completed') return null;
   let champion = null;
   if (tournament.format === 'double_elim') {
-    const gf = matches.find(m => m.bracket === 'GF' && m.winner_id);
+    // Prefer GF round 2 (bracket reset) winner; fall back to GF round 1 winner.
+    const gf2 = matches.find(m => m.bracket === 'GF' && m.round === 2 && m.winner_id);
+    const gf1 = matches.find(m => m.bracket === 'GF' && m.round === 1 && m.winner_id);
+    const gf = gf2 || gf1;
     if (gf) champion = { name: gf.winner_name, id: gf.winner_id };
   } else {
     const maxRound = Math.max(...matches.map(m => m.round));
@@ -67,8 +72,46 @@ function ChampionBanner({ matches, tournament }) {
   );
 }
 
-function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin }) {
+function PlayerTooltip({ player, participants }) {
+  const info = participants?.find(p => String(p.account_id) === String(player.id));
+  if (!info) return null;
+  const mmr = info.mmr;
+  const form = info.recent_form || '';
+  if (!mmr && !form) return null;
+  return (
+    <div style={{
+      position: 'absolute', zIndex: 50, bottom: '110%', left: '50%', transform: 'translateX(-50%)',
+      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8,
+      padding: '8px 12px', pointerEvents: 'none', whiteSpace: 'nowrap',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.4)', minWidth: 130,
+    }}>
+      {mmr != null && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: form ? 4 : 0 }}>
+          MMR: <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{mmr}</span>
+        </div>
+      )}
+      {form && (
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 2 }}>Form:</span>
+          {form.split('').map((c, i) => (
+            <span key={i} style={{
+              fontSize: 10, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
+              background: c === 'W' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)',
+              color: c === 'W' ? '#4ade80' : '#f87171',
+            }}>{c}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin, participants }) {
   const [loading, setLoading] = useState(false);
+  const [linkInput, setLinkInput] = useState('');
+  const [showLink, setShowLink] = useState(false);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [hoveredIdx, setHoveredIdx] = useState(null);
   const isBye = match.p1_id && !match.p2_id;
 
   const handleSetWinner = async (winnerId) => {
@@ -76,7 +119,7 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin }) {
     setLoading(true);
     try {
       const result = await setTournamentMatchWinner(match.id, winnerId, superuserKey);
-      onWinnerSet(result.matches);
+      onWinnerSet(result.matches, result.tournament);
     } catch (e) {
       alert(e.message);
     } finally {
@@ -89,11 +132,38 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin }) {
     setLoading(true);
     try {
       const result = await clearTournamentMatchWinner(match.id, superuserKey);
-      onWinnerSet(result.matches);
+      onWinnerSet(result.matches, result.tournament);
     } catch (e) {
       alert(e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLinkMatch = async () => {
+    if (!linkInput.trim()) return;
+    setLinkLoading(true);
+    try {
+      const result = await linkTournamentMatch(match.id, linkInput.trim(), superuserKey);
+      onWinnerSet(result.matches, result.tournament);
+      setShowLink(false);
+      setLinkInput('');
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  const handleUnlinkMatch = async () => {
+    setLinkLoading(true);
+    try {
+      const result = await linkTournamentMatch(match.id, null, superuserKey);
+      onWinnerSet(result.matches, result.tournament);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setLinkLoading(false);
     }
   };
 
@@ -102,18 +172,28 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin }) {
   const isP1Winner = match.winner_id && String(match.winner_id) === String(match.p1_id);
   const isP2Winner = match.winner_id && String(match.winner_id) === String(match.p2_id);
 
+  const getSeed = (accountId) => {
+    if (!accountId || !participants?.length) return null;
+    const idx = participants.findIndex(p => String(p.account_id) === String(accountId));
+    return idx >= 0 ? idx + 1 : null;
+  };
+
+  const players = [
+    { id: match.p1_id, name: p1Name, isWinner: isP1Winner, seed: getSeed(match.p1_id) },
+    { id: match.p2_id, name: p2Name, isWinner: isP2Winner, isBye, seed: getSeed(match.p2_id) },
+  ];
+
   return (
     <div style={{
-      border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden',
+      border: '1px solid var(--border)', borderRadius: 10, overflow: 'visible',
       minWidth: 210, background: 'var(--bg-card)',
       boxShadow: match.winner_id ? '0 0 0 1px var(--accent-blue)' : 'none',
     }}>
-      {[
-        { id: match.p1_id, name: p1Name, isWinner: isP1Winner },
-        { id: match.p2_id, name: p2Name, isWinner: isP2Winner, isBye },
-      ].map((player, idx) => (
+      {players.map((player, idx) => (
         <div
           key={idx}
+          onMouseEnter={() => setHoveredIdx(idx)}
+          onMouseLeave={() => setHoveredIdx(null)}
           onClick={() => {
             if (loading || !isAdmin || !player.id || isBye || match.winner_id) return;
             if (window.confirm(`Set ${player.name} as winner?`)) handleSetWinner(player.id);
@@ -121,6 +201,7 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin }) {
           style={{
             padding: '10px 14px',
             borderTop: idx === 1 ? '1px solid var(--border)' : 'none',
+            borderRadius: idx === 0 ? '10px 10px 0 0' : 0,
             background: player.isWinner
               ? 'rgba(34,197,94,0.12)'
               : match.winner_id && !player.isWinner
@@ -129,9 +210,21 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin }) {
             cursor: isAdmin && player.id && !isBye && !match.winner_id ? 'pointer' : 'default',
             display: 'flex', alignItems: 'center', gap: 8,
             transition: 'background 0.15s',
+            position: 'relative',
           }}
           title={isAdmin && player.id && !isBye && !match.winner_id ? `Click to set ${player.name} as winner` : ''}
         >
+          {hoveredIdx === idx && player.id && (
+            <PlayerTooltip player={player} participants={participants} />
+          )}
+          {player.seed != null && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, minWidth: 20, textAlign: 'center',
+              color: 'var(--text-muted)', flexShrink: 0,
+            }}>
+              #{player.seed}
+            </span>
+          )}
           <span style={{ fontSize: 14, color: player.isWinner
             ? 'var(--radiant-color)'
             : match.winner_id && !player.isWinner
@@ -143,15 +236,57 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin }) {
             {player.isWinner ? '🏆 ' : ''}{player.name}
           </span>
           {player.isBye && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BYE</span>}
+          {match.winner_id && player.id && (
+            <span style={{
+              fontSize: 11, fontWeight: 700, minWidth: 14, textAlign: 'center', flexShrink: 0,
+              color: player.isWinner ? 'var(--radiant-color)' : 'var(--text-muted)',
+            }}>
+              {player.isWinner ? '1' : '0'}
+            </span>
+          )}
         </div>
       ))}
       {isAdmin && match.winner_id && (
-        <div style={{ padding: '4px 10px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+        <div style={{ padding: '4px 10px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
             onClick={handleClearWinner}
             disabled={loading}
             style={{ fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
           >↩ Undo result</button>
+        </div>
+      )}
+      {isAdmin && (
+        <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', padding: '4px 10px' }}>
+          {match.inhouse_match_id ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+              <Link to={`/match/${match.inhouse_match_id}`} style={{ color: 'var(--accent-blue)', textDecoration: 'none' }}>
+                🔗 Match #{match.inhouse_match_id}
+              </Link>
+              <button onClick={handleUnlinkMatch} disabled={linkLoading}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11, padding: 0 }}>✕</button>
+            </div>
+          ) : showLink ? (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <input
+                value={linkInput}
+                onChange={e => setLinkInput(e.target.value)}
+                placeholder="Match ID…"
+                onKeyDown={e => e.key === 'Enter' && handleLinkMatch()}
+                style={{ fontSize: 11, padding: '2px 6px', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 4, width: 90 }}
+              />
+              <button onClick={handleLinkMatch} disabled={linkLoading || !linkInput.trim()}
+                style={{ fontSize: 11, padding: '2px 6px', background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                {linkLoading ? '…' : 'Link'}
+              </button>
+              <button onClick={() => { setShowLink(false); setLinkInput(''); }}
+                style={{ fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowLink(true)}
+              style={{ fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              🔗 Link match
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -168,6 +303,10 @@ function TournamentDetail() {
   const isAdmin = isSuperuser;
   const [addSearch, setAddSearch] = useState('');
   const [addLoading, setAddLoading] = useState(false);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+  const [reseedLoading, setReseedLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -178,6 +317,14 @@ function TournamentDetail() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Poll for bracket updates every 15 seconds so spectators see results without refreshing
+  useEffect(() => {
+    const interval = setInterval(() => {
+      getTournamentById(id).then(d => { if (d) setData(d); }).catch(() => {});
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [id]);
 
   if (loading) return <div className="loading">Loading tournament…</div>;
   if (!data) return <div className="error-state">Tournament not found.</div>;
@@ -217,6 +364,33 @@ function TournamentDetail() {
     } catch (e) { alert(e.message); }
   };
 
+  const handleDragStart = (idx) => setDragIdx(idx);
+  const handleDragOver = (e, idx) => { e.preventDefault(); setDragOverIdx(idx); };
+  const handleDrop = async (e, dropIdx) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); setDragOverIdx(null); return; }
+    const reordered = [...participants];
+    const [moved] = reordered.splice(dragIdx, 1);
+    reordered.splice(dropIdx, 0, moved);
+    setData(prev => ({ ...prev, participants: reordered }));
+    setDragIdx(null);
+    setDragOverIdx(null);
+    setReseedLoading(true);
+    try {
+      const result = await reseedTournamentParticipants(id, reordered.map(p => p.account_id), superuserKey);
+      setData(prev => ({ ...prev, participants: result.participants || reordered }));
+    } catch (e) { alert('Reseed failed: ' + e.message); load(); }
+    setReseedLoading(false);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => alert('Could not copy link'));
+  };
+
   const handleGenerate = async () => {
     if (!window.confirm(`Generate bracket for ${participants.length} players? This will clear any existing bracket.`)) return;
     try {
@@ -232,6 +406,17 @@ function TournamentDetail() {
       await deleteTournament(id, superuserKey);
       navigate('/tournaments');
     } catch (e) { alert(e.message); }
+  };
+
+  const bracketMatchProps = { superuserKey, isAdmin, participants };
+  const onWinnerSet = (updatedMatches, updatedTournament) => {
+    setData(prev => ({
+      ...prev,
+      matches: updatedMatches,
+      ...(updatedTournament ? { tournament: updatedTournament } : {}),
+    }));
+    // Re-load full tournament state if status changed to catch completion, etc.
+    if (updatedTournament && updatedTournament.status !== tournament.status) load();
   };
 
   return (
@@ -251,37 +436,72 @@ function TournamentDetail() {
           </div>
           {tournament.description && <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: 14 }}>{tournament.description}</p>}
         </div>
+        <button
+          onClick={handleCopyLink}
+          style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: copied ? '#4ade80' : 'var(--text-muted)', borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontSize: 13, flexShrink: 0 }}>
+          {copied ? '✓ Copied!' : '📋 Share bracket'}
+        </button>
       </div>
 
       <TournamentLivePanel tournamentId={id} />
 
       {isAdmin && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button onClick={handleGenerate} style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
             ⚡ Generate Bracket
           </button>
           <button onClick={handleDelete} style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
             🗑️ Delete Tournament
           </button>
+          {reseedLoading && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Saving seed order…</span>}
         </div>
       )}
 
       <div className="tournament-layout">
         <div>
-          <h2 className="section-title">Participants ({participants.length})</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <h2 className="section-title" style={{ marginBottom: 0 }}>Participants ({participants.length})</h2>
+            {isAdmin && tournament.status === 'upcoming' && participants.length > 1 && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>drag to reseed</span>
+            )}
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {participants.map((p, i) => (
-              <div key={p.account_id} style={{
-                background: p.eliminated ? 'rgba(239,68,68,0.06)' : 'var(--bg-card)',
-                border: '1px solid var(--border)', borderRadius: 8,
-                padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8,
-                opacity: p.eliminated ? 0.55 : 1,
-              }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 20 }}>#{i + 1}</span>
+              <div
+                key={p.account_id}
+                draggable={isAdmin && tournament.status === 'upcoming'}
+                onDragStart={() => handleDragStart(i)}
+                onDragOver={e => handleDragOver(e, i)}
+                onDrop={e => handleDrop(e, i)}
+                onDragEnd={handleDragEnd}
+                style={{
+                  background: dragOverIdx === i && dragIdx !== i ? 'rgba(59,130,246,0.12)' : p.eliminated ? 'rgba(239,68,68,0.06)' : 'var(--bg-card)',
+                  border: dragOverIdx === i && dragIdx !== i ? '1px dashed var(--accent-blue)' : '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8,
+                  opacity: dragIdx === i ? 0.4 : p.eliminated ? 0.55 : 1,
+                  cursor: isAdmin && tournament.status === 'upcoming' ? 'grab' : 'default',
+                  transition: 'background 0.1s, border 0.1s',
+                }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 20 }}>
+                  {isAdmin && tournament.status === 'upcoming' ? '⠿' : `#${i + 1}`}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 16 }}>#{i + 1}</span>
                 <Link to={`/player/${p.account_id}`} style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>
                   {p.display_name}
                 </Link>
-                {p.mmr && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.mmr}</span>}
+                {p.mmr != null && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.mmr}</span>}
+                {p.recent_form && (
+                  <span style={{ display: 'flex', gap: 2 }}>
+                    {p.recent_form.split('').map((c, ci) => (
+                      <span key={ci} style={{
+                        fontSize: 9, fontWeight: 700, padding: '1px 3px', borderRadius: 3,
+                        background: c === 'W' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)',
+                        color: c === 'W' ? '#4ade80' : '#f87171',
+                      }}>{c}</span>
+                    ))}
+                  </span>
+                )}
                 {p.eliminated && <span style={{ fontSize: 11, color: 'var(--accent-red)' }}>OUT</span>}
                 {isAdmin && (
                   <button onClick={() => handleRemoveParticipant(p.account_id)}
@@ -344,9 +564,7 @@ function TournamentDetail() {
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             {wbMatches.filter(m => m.round === round).map(match => (
-                              <BracketMatch key={match.id} match={match} superuserKey={superuserKey}
-                                onWinnerSet={(updatedMatches) => setData(prev => ({ ...prev, matches: updatedMatches }))}
-                                isAdmin={isAdmin} />
+                              <BracketMatch key={match.id} match={match} {...bracketMatchProps} onWinnerSet={onWinnerSet} />
                             ))}
                           </div>
                         </div>
@@ -369,9 +587,7 @@ function TournamentDetail() {
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             {lbMatches.filter(m => m.round === round).map(match => (
-                              <BracketMatch key={match.id} match={match} superuserKey={superuserKey}
-                                onWinnerSet={(updatedMatches) => setData(prev => ({ ...prev, matches: updatedMatches }))}
-                                isAdmin={isAdmin} />
+                              <BracketMatch key={match.id} match={match} {...bracketMatchProps} onWinnerSet={onWinnerSet} />
                             ))}
                           </div>
                         </div>
@@ -387,9 +603,7 @@ function TournamentDetail() {
                   </div>
                   <div style={{ maxWidth: 260 }}>
                     {gfMatches.map(match => (
-                      <BracketMatch key={match.id} match={match} superuserKey={superuserKey}
-                        onWinnerSet={(updatedMatches) => setData(prev => ({ ...prev, matches: updatedMatches }))}
-                        isAdmin={isAdmin} />
+                      <BracketMatch key={match.id} match={match} {...bracketMatchProps} onWinnerSet={onWinnerSet} />
                     ))}
                   </div>
                 </div>
@@ -407,13 +621,7 @@ function TournamentDetail() {
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, justifyContent: 'space-around', height: '100%' }}>
                         {roundMatches.map(match => (
-                          <BracketMatch
-                            key={match.id}
-                            match={match}
-                            superuserKey={superuserKey}
-                            onWinnerSet={(updatedMatches) => setData(prev => ({ ...prev, matches: updatedMatches }))}
-                            isAdmin={isAdmin}
-                          />
+                          <BracketMatch key={match.id} match={match} {...bracketMatchProps} onWinnerSet={onWinnerSet} />
                         ))}
                       </div>
                     </div>
@@ -438,7 +646,7 @@ function TournamentList() {
   const { isSuperuser, superuserKey } = useSuperuser();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
-    name: '', description: '', format: 'single_elim',
+    name: '', description: '', format: 'single_elim', bracketSize: '',
     startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '',
   });
   const [creating, setCreating] = useState(false);
@@ -476,7 +684,7 @@ function TournamentList() {
       } else {
         await createTournament({ ...formWithUtcDates, seasonId }, superuserKey);
         loadAll();
-        setForm({ name: '', description: '', format: 'single_elim', startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '' });
+        setForm({ name: '', description: '', format: 'single_elim', bracketSize: '', startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '' });
         setShowCreate(false);
       }
     } catch (e) { alert(e.message); }
@@ -513,6 +721,17 @@ function TournamentList() {
                 <option value="weekend_points">Points Tournament</option>
               </select>
             </div>
+            {!isPoints && (
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Bracket Size</label>
+                <select value={form.bracketSize} onChange={e => setForm(f => ({ ...f, bracketSize: e.target.value }))} style={inputStyle}>
+                  <option value="">Auto (up to 16 players)</option>
+                  <option value="4">4 players</option>
+                  <option value="8">8 players</option>
+                  <option value="16">16 players</option>
+                </select>
+              </div>
+            )}
             {isPoints && (
               <>
                 <div>

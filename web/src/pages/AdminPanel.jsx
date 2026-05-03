@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -1968,8 +1968,11 @@ export default function AdminPanel() {
       {/* Season Lifecycle — end conditions + manual close */}
       <SeasonLifecyclePanel superuserKey={superuserKey} />
 
-      {/* Coaching Marketplace — pending KYC + open disputes + revenue (T13) */}
+      {/* Coaching Marketplace — pending KYC + open disputes + revenue */}
       <CoachingAdminPanel superuserKey={superuserKey} />
+
+      {/* Tournament Brackets — active tournaments and bracket management */}
+      <TournamentBracketPanel />
 
       {/* Rating System — V1 vs V3 toggle + preview */}
       <section>
@@ -2822,5 +2825,100 @@ function Stat({ label, value, accent }) {
       <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: accent || 'var(--text-primary)' }}>{value}</div>
     </div>
+  );
+}
+
+function TournamentBracketPanel() {
+  const [tournaments, setTournaments] = useState(null);
+
+  useEffect(() => {
+    getTournaments().then(d => setTournaments(Array.isArray(d) ? d : (d?.tournaments || []))).catch(() => setTournaments([]));
+  }, []);
+
+  const STATUS_LABELS = { upcoming: 'Upcoming', active: 'Active', completed: 'Completed' };
+  const STATUS_COLORS = { upcoming: 'var(--text-muted)', active: 'var(--accent-gold, #f59e0b)', completed: 'var(--radiant-color)' };
+  const FORMAT_LABELS = { single_elim: 'Single Elim', double_elim: 'Double Elim', weekend_points: 'Points' };
+
+  const active = tournaments?.filter(t => t.status !== 'completed') || [];
+  const completed = tournaments?.filter(t => t.status === 'completed') || [];
+
+  return (
+    <section>
+      <h2 style={{ marginBottom: 6 }}>🏆 Tournament Brackets</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Manage bracket configuration, seeding, and match results from each tournament's detail page.
+      </p>
+
+      {tournaments === null ? (
+        <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
+      ) : tournaments.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)' }}>No tournaments yet. Create one from the <Link to="/tournaments" style={{ color: 'var(--accent-blue)' }}>Tournaments</Link> page.</p>
+      ) : (
+        <>
+          {active.length > 0 && (
+            <>
+              <h3 style={{ marginBottom: 8, fontSize: 14 }}>Active / Upcoming</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                {active.map(t => (
+                  <div key={t.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8,
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{t.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {FORMAT_LABELS[t.format] || t.format}
+                        {t.bracket_size ? ` · ${t.bracket_size}-player` : ''}
+                        {t.bracket_type && t.bracket_type !== 'none' ? ` · ${t.bracket_type}` : ''}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: STATUS_COLORS[t.status] }}>
+                      {STATUS_LABELS[t.status] || t.status}
+                    </span>
+                    <Link
+                      to={`/tournaments/${t.id}`}
+                      style={{
+                        padding: '5px 12px', background: 'var(--accent-blue)', color: '#fff',
+                        borderRadius: 6, fontSize: 12, textDecoration: 'none', fontWeight: 600,
+                      }}
+                    >
+                      Manage →
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {completed.length > 0 && (
+            <>
+              <h3 style={{ marginBottom: 8, fontSize: 14, color: 'var(--text-muted)' }}>Completed ({completed.length})</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {completed.slice(0, 5).map(t => (
+                  <div key={t.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px',
+                    background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8,
+                    opacity: 0.75,
+                  }}>
+                    <div style={{ flex: 1, fontSize: 13 }}>{t.name}</div>
+                    <Link to={`/tournaments/${t.id}`} style={{ fontSize: 12, color: 'var(--accent-blue)', textDecoration: 'none' }}>View bracket</Link>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div style={{ marginTop: 14 }}>
+            <Link to="/tournaments" style={{
+              display: 'inline-block', padding: '7px 16px', background: 'var(--bg-card)',
+              border: '1px solid var(--border)', borderRadius: 8, fontSize: 13,
+              color: 'var(--text-primary)', textDecoration: 'none',
+            }}>
+              + Create / manage all tournaments
+            </Link>
+          </div>
+        </>
+      )}
+    </section>
   );
 }

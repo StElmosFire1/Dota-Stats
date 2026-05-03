@@ -3167,12 +3167,12 @@ NOTES
   router.post('/tournaments', authMiddleware, async (req, res) => {
     try {
       const {
-        name, description, seasonId, format,
+        name, description, seasonId, format, bracketSize,
         tierNumber, entryFeeCents, signupOpenAt, signupCloseAt,
       } = req.body;
       if (!name) return res.status(400).json({ error: 'Name required' });
       const tournament = await db.createTournament({
-        name, description, seasonId, format,
+        name, description, seasonId, format, bracketSize,
         tierNumber, entryFeeCents,
         signupOpenAt, signupCloseAt,
         createdBy: req.session?.username,
@@ -3249,7 +3249,9 @@ NOTES
       if (!winnerId) return res.status(400).json({ error: 'winnerId required' });
 
       const matches = await db.setTournamentMatchWinner(req.params.matchId, winnerId);
-      res.json({ matches });
+      const tournamentId = matches.length ? matches[0].tournament_id : null;
+      const tournament = tournamentId ? await db.getTournamentById(tournamentId) : null;
+      res.json({ matches, tournament });
 
       // Discord notification — fire-and-forget
       try {
@@ -3300,9 +3302,38 @@ NOTES
   router.delete('/tournament-matches/:matchId/winner', authMiddleware, async (req, res) => {
     try {
       const matches = await db.clearTournamentMatchWinner(req.params.matchId);
-      res.json({ matches });
+      const tournamentId = matches.length ? matches[0].tournament_id : null;
+      const tournament = tournamentId ? await db.getTournamentById(tournamentId) : null;
+      res.json({ matches, tournament });
     } catch (err) {
       res.status(500).json({ error: 'Failed to clear winner' });
+    }
+  });
+
+  router.post('/tournament-matches/:matchId/link', authMiddleware, express.json(), async (req, res) => {
+    try {
+      const { inhouseMatchId } = req.body;
+      const matches = await db.linkTournamentMatch(req.params.matchId, inhouseMatchId || null);
+      const tournamentId = matches.length ? matches[0].tournament_id : null;
+      const tournament = tournamentId ? await db.getTournamentById(tournamentId) : null;
+      res.json({ matches, tournament });
+    } catch (err) {
+      console.error('[API] link tournament match error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to link match' });
+    }
+  });
+
+  router.post('/tournaments/:id/reseed', authMiddleware, express.json(), async (req, res) => {
+    try {
+      const { orderedAccountIds } = req.body;
+      if (!Array.isArray(orderedAccountIds) || orderedAccountIds.length === 0) {
+        return res.status(400).json({ error: 'orderedAccountIds array required' });
+      }
+      const participants = await db.reseedTournamentParticipants(req.params.id, orderedAccountIds);
+      res.json({ participants });
+    } catch (err) {
+      console.error('[API] reseed error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to reseed' });
     }
   });
 
