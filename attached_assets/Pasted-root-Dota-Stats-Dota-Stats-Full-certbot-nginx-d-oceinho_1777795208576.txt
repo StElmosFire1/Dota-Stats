@@ -1,0 +1,41 @@
+root@Dota-Stats:~/Dota-Stats-Full# certbot --nginx -d oceinhouse.gg -d www.oceinhouse.gg
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+Requesting a certificate for oceinhouse.gg and www.oceinhouse.gg
+
+Certbot failed to authenticate some domains (authenticator: nginx). The Certificate Authority reported these problems:
+  Domain: oceinhouse.gg
+  Type:   unauthorized
+  Detail: 15.197.148.33: Invalid response from http://oceinhouse.gg/.well-known/acme-challenge/uPj-9bkhHX9gu8_MiRHB4TyVuXQMYqXmgKmrs7BhMO4: 403
+
+  Domain: www.oceinhouse.gg
+  Type:   unauthorized
+  Detail: 3.33.130.190: Invalid response from http://www.oceinhouse.gg/.well-known/acme-challenge/X0c35RhviZ_URyJVUeVd5rtkn8HPalb_FVNbiNR_ydI: 403
+
+Hint: The Certificate Authority failed to verify the temporary nginx configuration changes made by Certbot. Ensure the listed domains point to this nginx server and that it is accessible from the internet.
+
+Some challenges have failed.
+Ask for help or search for solutions at https://community.letsencrypt.org. See the logfile /var/log/letsencrypt/letsencrypt.log or re-run Certbot with -v for more details.
+root@Dota-Stats:~/Dota-Stats-Full# dig oceinhouse.gg +short
+3.33.130.190
+15.197.148.33
+root@Dota-Stats:~/Dota-Stats-Full# dig oceinhouse.gg +short
+15.197.148.33
+170.64.182.110
+3.33.130.190
+root@Dota-Stats:~/Dota-Stats-Full# certbot --nginx -d oceinhouse.gg -d www.oceinhouse.gg
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+Requesting a certificate for oceinhouse.gg and www.oceinhouse.gg
+
+Certbot failed to authenticate some domains (authenticator: nginx). The Certificate Authority reported these problems:
+  Domain: oceinhouse.gg
+  Type:   unauthorized
+  Detail: 15.197.148.33: Invalid response from http://oceinhouse.gg/.well-known/acme-challenge/bIg7NozGnCMFX7Ss_lD3Ejo-MmwaLNdkdFw_0ogT-30: 403
+
+  Domain: www.oceinhouse.gg
+  Type:   unauthorized
+  Detail: 3.33.130.190: Invalid response from http://www.oceinhouse.gg/.well-known/acme-challenge/9Jb2oxb-f2GAl1rSHylgOF1Ha7Yo5OkFKt4z8fAFTT0: 403
+
+Hint: The Certificate Authority failed to verify the temporary nginx configuration changes made by Certbot. Ensure the listed domains point to this nginx server and that it is accessible from the internet.
+
+Some challenges have failed.
+Ask for help or search for solutions at https://community.letsencrypt.org. See the logfile /var/log/letsencrypt/letsencrypt.log or re-run Certbot with -v for more details.
