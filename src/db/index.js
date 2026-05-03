@@ -6141,6 +6141,35 @@ async function getAchievementLeaderboard(limit = 10) {
   }
 }
 
+async function getReferralLeaderboard(limit = 10) {
+  const p = getPool();
+  try {
+    const result = await p.query(
+      `SELECT
+         ref.account_id_32 AS account_id,
+         COALESCE(NULLIF(n.nickname, ''), NULLIF(ps_name.persona_name, ''), NULLIF(ref.discord_name, ''), ref.account_id_32::text) AS display_name,
+         COUNT(referred.account_id_32) AS referral_count
+       FROM players ref
+       JOIN players referred ON referred.referred_by = ref.account_id_32::bigint
+       LEFT JOIN nicknames n ON n.account_id = ref.account_id_32::bigint
+       LEFT JOIN LATERAL (
+         SELECT persona_name FROM player_stats
+         WHERE account_id = ref.account_id_32::bigint
+         ORDER BY match_id DESC LIMIT 1
+       ) ps_name ON TRUE
+       GROUP BY ref.account_id_32, ref.discord_name, n.nickname, ps_name.persona_name
+       HAVING COUNT(referred.account_id_32) > 0
+       ORDER BY referral_count DESC, display_name ASC
+       LIMIT $1`,
+      [limit]
+    );
+    return result.rows;
+  } catch (err) {
+    console.warn(`[DB] getReferralLeaderboard failed: ${err.message}`);
+    return [];
+  }
+}
+
 async function recomputeAllAchievements() {
   const p = getPool();
   const players = await p.query(
@@ -10081,6 +10110,7 @@ module.exports = {
   getPlayerAchievements,
   checkAndGrantAchievements,
   getAchievementLeaderboard,
+  getReferralLeaderboard,
   recomputeAllAchievements,
   getPredictions,
   savePrediction,

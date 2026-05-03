@@ -3273,6 +3273,17 @@ NOTES
     }
   });
 
+  router.get('/leaderboard/referrals', async (req, res) => {
+    try {
+      const limit = Math.max(1, Math.min(parseInt(req.query.limit) || 10, 50));
+      const referrers = await db.getReferralLeaderboard(limit);
+      res.json({ referrers });
+    } catch (err) {
+      console.error('[API] leaderboard/referrals error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch referral leaderboard' });
+    }
+  });
+
   router.post('/admin/recompute-achievements', requireSuperuser, async (req, res) => {
     try {
       console.log('[Admin] Recomputing all achievements...');

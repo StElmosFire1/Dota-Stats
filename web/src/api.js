@@ -521,6 +521,10 @@ export async function getAchievementLeaderboard(limit = 25) {
   return fetchJson(`/achievement-leaderboard?limit=${limit}`);
 }
 
+export async function getReferralLeaderboard(limit = 10) {
+  return fetchJson(`/leaderboard/referrals?limit=${limit}`);
+}
+
 export async function recomputeAchievements(superuserKey) {
   const res = await fetch(BASE + '/admin/recompute-achievements', {
     method: 'POST',

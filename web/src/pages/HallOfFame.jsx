@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getHallOfFame, getAchievementLeaderboard } from '../api';
+import { getHallOfFame, getAchievementLeaderboard, getReferralLeaderboard } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import HeroIcon from '../components/HeroIcon';
 import { formatHeroName as formatHero } from '../utils/heroes';
@@ -53,6 +53,7 @@ export default function HallOfFame() {
   const { seasonId } = useSeason();
   const [data, setData] = useState(null);
   const [hunters, setHunters] = useState([]);
+  const [referrers, setReferrers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('records');
 
@@ -61,10 +62,12 @@ export default function HallOfFame() {
     Promise.all([
       getHallOfFame(seasonId),
       getAchievementLeaderboard(10).catch(() => ({ hunters: [] })),
+      getReferralLeaderboard(10).catch(() => ({ referrers: [] })),
     ])
-      .then(([hof, ach]) => {
+      .then(([hof, ach, ref]) => {
         setData(hof);
         setHunters(hof.achievementHunters || ach.hunters || []);
+        setReferrers(ref.referrers || []);
       })
       .catch(() => setData(null))
       .finally(() => setLoading(false));
@@ -78,13 +81,14 @@ export default function HallOfFame() {
     { id: 'records', label: '🏅 Match Records' },
     { id: 'career', label: '📊 Career Rankings' },
     { id: 'hunters', label: '🎖️ Achievement Hunters' },
+    { id: 'recruiters', label: '📣 Top Recruiters' },
   ];
 
   return (
     <div>
       <h1 className="page-title">🏆 Hall of Fame</h1>
       <p style={{ color: 'var(--text-muted)', marginBottom: 24, fontSize: 14 }}>
-        All-time single-match records, career achievements, and the top achievement hunters.
+        All-time single-match records, career achievements, top achievement hunters, and the most active recruiters.
       </p>
 
       <div className="tabs" style={{ marginBottom: 24 }}>
@@ -202,6 +206,48 @@ export default function HallOfFame() {
                             }} />
                           </div>
                           <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{pct}% of catalogue</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'recruiters' && (
+        <div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+            Players who have brought the most new members into the inhouse group. Invite your friends to climb the ranks!
+          </p>
+          {referrers.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>No referral data yet. Share your invite link to get started!</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="scoreboard" style={{ width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th style={{ textAlign: 'left' }}>Player</th>
+                    <th>Players Recruited</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {referrers.map((r, i) => {
+                    const medal = ['🥇', '🥈', '🥉'][i] || `${i + 1}`;
+                    const count = parseInt(r.referral_count);
+                    return (
+                      <tr key={r.account_id}>
+                        <td style={{ textAlign: 'center', fontWeight: 700 }}>{medal}</td>
+                        <td>
+                          <Link to={`/player/${r.account_id}`} style={{ fontWeight: 600 }}>
+                            {r.display_name}
+                          </Link>
+                        </td>
+                        <td className="col-stat" style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>
+                          📣 {count}
                         </td>
                       </tr>
                     );
