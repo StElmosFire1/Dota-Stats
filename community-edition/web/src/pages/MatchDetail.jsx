@@ -923,7 +923,7 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
               <th className="col-stat" title="Kills">K</th>
               <th className="col-stat" title="Deaths">D</th>
               <th className="col-stat" title="Assists">A</th>
-              <th className="col-stat" title="Match Performance Score 1–10: each factor is z-score normalised independently within the match, then combined — kill involvement (25%), hero damage (20%), survival/deaths (18%), net worth (15%), healing (12%), tower damage (7%), win bonus (3%). Every role has meaningful contribution paths.">Perf</th>
+              <th className="col-stat" title="Match Performance Score 1–10: each factor is z-score normalised independently within the match, then combined — kill involvement/assists×0.5 (25%), survival/deaths (15%), hero damage (15%), net worth (10%), vision/dewards (10%), tower damage (10%), stun duration (5%), healing (5%), win bonus (5%). Designed to reward every role.">Perf</th>
               <th className="col-stat" title="TrueSkill V3 performance modifier: scales the player's MMR change by 0.80×–1.20× based on a per-match score that combines K/D/A, GPM/XPM, hero/tower damage, healing, wards, stacks, and a win bonus. Hover each row for the score breakdown.">Mod</th>
               {hasDetailedStats && (
                 <>
@@ -2637,20 +2637,24 @@ function MatchDetailInner() {
     };
     const radK = radiant.reduce((s, p) => s + (p.kills || 0), 0);
     const dirK = dire.reduce((s, p) => s + (p.kills || 0), 0);
-    // Kill involvement: kills count more than assists
+    // Kill involvement: kills + assists×0.5 relative to team kills
     const kiZ   = zscore(allPlayers.map(p => {
       const tk = p.team === 'radiant' ? radK : dirK;
       return tk > 0 ? ((p.kills || 0) + (p.assists || 0) * 0.5) / tk : 0;
     }));
-    // Raw hero damage — naturally rewards high-damage carries and mids
+    // Raw hero damage — rewards carries and mids
     const damZ  = zscore(allPlayers.map(p => p.hero_damage || 0));
     // Survival — lower deaths = higher score, universal across all roles
     const survZ = zscore(allPlayers.map(p => 1 / ((p.deaths || 0) + 1)));
     // Net worth — farm and resource efficiency
     const nwZ   = zscore(allPlayers.map(p => p.net_worth || 0));
-    // Healing — primary contribution path for dedicated supports
+    // Healing — contribution path for healers
     const healZ = zscore(allPlayers.map(p => p.hero_healing || 0));
-    // Tower damage — rewards pushers and objective-focused play
+    // Vision control — observer wards placed + enemy wards dewarded (primary support path)
+    const visZ  = zscore(allPlayers.map(p => (p.obs_placed || 0) + (p.wards_killed || 0)));
+    // Stun / disable duration — rewards initiators, supports, and utility heroes
+    const stunZ = zscore(allPlayers.map(p => p.stun_duration || 0));
+    // Tower damage — objective and push contribution
     const tdZ   = zscore(allPlayers.map(p => p.tower_damage || 0));
     // Win bonus — binary, z-scored so both sides are symmetric
     const wonZ  = zscore(allPlayers.map(p =>
@@ -2660,12 +2664,14 @@ function MatchDetailInner() {
     allPlayers.forEach((p, i) => {
       const combined =
         kiZ[i]   * 0.25 +
-        damZ[i]  * 0.20 +
-        survZ[i] * 0.18 +
-        nwZ[i]   * 0.15 +
-        healZ[i] * 0.12 +
-        tdZ[i]   * 0.07 +
-        wonZ[i]  * 0.03;
+        survZ[i] * 0.15 +
+        damZ[i]  * 0.15 +
+        nwZ[i]   * 0.10 +
+        visZ[i]  * 0.10 +
+        tdZ[i]   * 0.10 +
+        stunZ[i] * 0.05 +
+        healZ[i] * 0.05 +
+        wonZ[i]  * 0.05;
       ranks[p.slot] = Math.max(1, Math.min(10, Math.round(5.5 + combined * 2)));
     });
     return ranks;
