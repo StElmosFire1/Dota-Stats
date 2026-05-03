@@ -1,0 +1,302 @@
+root@Dota-Stats:~/Dota-Stats-Full/web# cd ~/Dota-Stats-Full && git pull && cd web && npm run build && pm2 restart 1
+remote: Enumerating objects: 78, done.
+remote: Counting objects: 100% (78/78), done.
+remote: Compressing objects: 100% (20/20), done.
+remote: Total 57 (delta 48), reused 46 (delta 37), pack-reused 0 (from 0)
+Unpacking objects: 100% (57/57), 61.03 KiB | 1.25 MiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   41b57b6..80a532f  main       -> origin/main
+Updating 41b57b6..80a532f
+Fast-forward
+ .replit                                         |  20 ++++++++++++++++----
+ attached_assets/image_1777812905313.png         | Bin 0 -> 49771 bytes
+ community-edition/web/src/pages/MatchDetail.jsx |  28 +++++++++++++++++-----------
+ src/data/patchNotes.js                          |   7 +++++++
+ web/src/App.jsx                                 |  13 +++++++++++++
+ web/src/context/SteamAuthContext.jsx            |  27 +++++++++++++++++++++++----
+ web/src/pages/AdminPanel.jsx                    | 102 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++------------
+ web/src/pages/Heroes.jsx                        |  58 ++++++++++++++++++++++++++++++++++++++++------------------
+ web/src/pages/Home.jsx                          |  21 ---------------------
+ web/src/pages/MatchDetail.jsx                   |  28 +++++++++++++++++-----------
+ web/src/pages/PlayerProfile.jsx                 |  86 +++++++++++++++++++++++++++++++++++++++++++++++---------------------------------------
+ 11 files changed, 270 insertions(+), 120 deletions(-)
+ create mode 100644 attached_assets/image_1777812905313.png
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 803 modules transformed.
+dist/index.html                                  0.47 kB │ gzip:   0.31 kB
+dist/assets/index-q7HmBhMZ.css                  19.06 kB │ gzip:   4.55 kB
+dist/assets/useProMembers-CsszhPwN.js            0.35 kB │ gzip:   0.27 kB
+dist/assets/ProBadge-D7jq-_BO.js                 0.53 kB │ gzip:   0.41 kB
+dist/assets/useProStatus-D_c-ZVrl.js             0.61 kB │ gzip:   0.39 kB
+dist/assets/profileCosmetics-B6IADAMj.js         1.22 kB │ gzip:   0.60 kB
+dist/assets/PlayerInsights-xC5Zs5zO.js           1.28 kB │ gzip:   0.73 kB
+dist/assets/ImpactBadge-BzSAgOyn.js              1.37 kB │ gzip:   0.68 kB
+dist/assets/heroes-B4IkSDsk.js                   1.55 kB │ gzip:   0.88 kB
+dist/assets/PaywallCard-Bsvdy2gi.js              1.78 kB │ gzip:   0.98 kB
+dist/assets/BuyinSuccess-C3BuLfTT.js             1.85 kB │ gzip:   0.86 kB
+dist/assets/CoachOnboarding-D7Kj-6XA.js          2.67 kB │ gzip:   1.32 kB
+dist/assets/RankBadge-BHqh1gf7.js                2.87 kB │ gzip:   1.34 kB
+dist/assets/SettingsBilling-BT1Dav35.js          3.57 kB │ gzip:   1.42 kB
+dist/assets/PlayerBenchmarks-BFjmoTpJ.js         3.94 kB │ gzip:   1.73 kB
+dist/assets/Synergy-CDkaiWn7.js                  4.18 kB │ gzip:   1.70 kB
+dist/assets/MultiKills-CFwYkx_G.js               4.74 kB │ gzip:   1.70 kB
+dist/assets/Pro-BG3lB_yo.js                      4.81 kB │ gzip:   2.01 kB
+dist/assets/OverallStats-CIIzEWyw.js             4.92 kB │ gzip:   1.73 kB
+dist/assets/Coaches-B4liiiv0.js                  5.39 kB │ gzip:   2.01 kB
+dist/assets/SettingsNotifications-Bn1k6zyj.js    5.94 kB │ gzip:   2.30 kB
+dist/assets/PatchNotes-C59lMYno.js               6.43 kB │ gzip:   2.37 kB
+dist/assets/Join-DbEgrkat.js                     6.67 kB │ gzip:   2.50 kB
+dist/assets/MyBookings-9rKYysLp.js               6.81 kB │ gzip:   2.25 kB
+dist/assets/SeasonSummary-Cmjy27z5.js            6.89 kB │ gzip:   2.13 kB
+dist/assets/heroNames-DWJuq7ae.js                7.14 kB │ gzip:   3.40 kB
+dist/assets/MatchList-1m2uxzM_.js                7.14 kB │ gzip:   2.62 kB
+dist/assets/Players-PBYcRFxP.js                  7.46 kB │ gzip:   2.50 kB
+dist/assets/RecordMatch-Bnd-Murq.js              7.77 kB │ gzip:   2.79 kB
+dist/assets/Social-hRnPaYeZ.js                   8.05 kB │ gzip:   2.57 kB
+dist/assets/HallOfFame-DVtdQKpG.js               8.51 kB │ gzip:   2.80 kB
+dist/assets/CoachEdit-BP7MlYp0.js                9.28 kB │ gzip:   2.79 kB
+dist/assets/CoachProfile-ykySLfTf.js             9.77 kB │ gzip:   3.50 kB
+dist/assets/WardMap-DrDbNX_G.js                 10.07 kB │ gzip:   3.38 kB
+dist/assets/Schedule-B_IQNbtC.js                10.81 kB │ gzip:   3.59 kB
+dist/assets/PudgeStats-SfPKz-u1.js              10.90 kB │ gzip:   3.38 kB
+dist/assets/PositionStats-As8uZZsS.js           10.94 kB │ gzip:   2.75 kB
+dist/assets/Upload-BnadhZLF.js                  11.14 kB │ gzip:   3.91 kB
+dist/assets/PlayerTools-D-cZnMcM.js             11.98 kB │ gzip:   3.47 kB
+dist/assets/Predictions-B3nwDadD.js             12.62 kB │ gzip:   3.96 kB
+dist/assets/SettingsProfile-DsKATbpx.js         13.21 kB │ gzip:   4.05 kB
+dist/assets/StatsEditor-CZbtCN4V.js             13.30 kB │ gzip:   4.05 kB
+dist/assets/WeekendTournament-B5mt-wTj.js       13.74 kB │ gzip:   4.65 kB
+dist/assets/Records-Dzjv3eb-.js                 15.14 kB │ gzip:   4.49 kB
+dist/assets/Inhouse-Bd6A1UT-.js                 17.48 kB │ gzip:   4.87 kB
+dist/assets/Draft-C3ouukPr.js                   19.84 kB │ gzip:   5.01 kB
+dist/assets/Leaderboard-CF590D0K.js             20.19 kB │ gzip:   5.48 kB
+dist/assets/Home-DExwe-Z-.js                    22.04 kB │ gzip:   5.84 kB
+dist/assets/Seasons-Bf8bD8n-.js                 25.20 kB │ gzip:   6.44 kB
+dist/assets/Heroes-BWZVqNhX.js                  27.85 kB │ gzip:   8.21 kB
+dist/assets/Tournaments-CoofcPJR.js             28.02 kB │ gzip:   7.38 kB
+dist/assets/PlayerProfile-DEgq-wCH.js           59.00 kB │ gzip:  13.56 kB
+dist/assets/AdminPanel-sMsfmfed.js              92.19 kB │ gzip:  22.55 kB
+dist/assets/MatchDetail-IPO2r9vK.js            106.91 kB │ gzip:  29.76 kB
+dist/assets/index-B28ZL9m-.js                  220.65 kB │ gzip:  67.56 kB
+dist/assets/LineChart-B49qA2Zn.js              350.83 kB │ gzip: 104.50 kB
+✓ built in 7.40s
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [1](ids: [ '1' ])
+[PM2] [oi-bot](1) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 3807     │ 5h     │ 3    │ online    │ 0%       │ 340.5mb  │ root     │ disabled │
+│ 1  │ oi-bot         │ default     │ 1.0.0   │ fork    │ 10468    │ 0s     │ 61   │ online    │ 0%       │ 18.9mb   │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats-Full/web# cd ~/Dota-Stats && git pull && cd community-edition/web && npm install && npm run build && pm2 restart 0
+remote: Enumerating objects: 558, done.
+remote: Counting objects: 100% (557/557), done.
+remote: Compressing objects: 100% (185/185), done.
+remote: Total 511 (delta 334), reused 430 (delta 254), pack-reused 0 (from 0)
+Receiving objects: 100% (511/511), 2.17 MiB | 18.21 MiB/s, done.
+Resolving deltas: 100% (334/334), completed with 37 local objects.
+From https://github.com/StElmosFire1/Dota-Stats
+   a265895..80a532f  main       -> origin/main
+Updating a265895..80a532f
+Fast-forward
+ .replit                                                                                          |   20 +-
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Full-certbot-certonly-manual_1777804649679.txt |   64 +++
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Full-certbot-nginx-d-oceinho_1777795208576.txt |   41 ++
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Full-grep-CHANNEL-root-Dota-_1777793607713.txt |  278 +++++++++++++
+ attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Full-sudo-u-postgres-psql-d-_1777793847973.txt |  116 ++++++
+ attached_assets/Pasted-root-Dota-Stats-cd-root-Dota-Stats-Full-npm-install-cd-_1777789432619.txt |   96 +++++
+ attached_assets/Pasted-root-Dota-Stats-cd-root-Dota-Stats-Full-npm-install-cd-_1777789467468.txt |   98 +++++
+ attached_assets/Pasted-root-Dota-Stats-cd-root-Dota-Stats-Full-pm2-start-src-i_1777793139302.txt |  462 ++++++++++++++++++++++
+ attached_assets/image_1777650515974.png                                                          |  Bin 0 -> 102255 bytes
+ attached_assets/image_1777721675383.png                                                          |  Bin 0 -> 73928 bytes
+ attached_assets/image_1777788266350.png                                                          |  Bin 0 -> 9419 bytes
+ attached_assets/image_1777788315028.png                                                          |  Bin 0 -> 79629 bytes
+ attached_assets/image_1777788620318.png                                                          |  Bin 0 -> 11547 bytes
+ attached_assets/image_1777788740771.png                                                          |  Bin 0 -> 111693 bytes
+ attached_assets/image_1777788866062.png                                                          |  Bin 0 -> 69051 bytes
+ attached_assets/image_1777789209245.png                                                          |  Bin 0 -> 39025 bytes
+ attached_assets/image_1777789239513.png                                                          |  Bin 0 -> 14570 bytes
+ attached_assets/image_1777789283308.png                                                          |  Bin 0 -> 5088 bytes
+ attached_assets/image_1777789379884.png                                                          |  Bin 0 -> 18218 bytes
+ attached_assets/image_1777790681678.png                                                          |  Bin 0 -> 77717 bytes
+ attached_assets/image_1777791075481.png                                                          |  Bin 0 -> 69121 bytes
+ attached_assets/image_1777791163658.png                                                          |  Bin 0 -> 4870 bytes
+ attached_assets/image_1777791271685.png                                                          |  Bin 0 -> 8632 bytes
+ attached_assets/image_1777791384003.png                                                          |  Bin 0 -> 67128 bytes
+ attached_assets/image_1777791660787.png                                                          |  Bin 0 -> 18233 bytes
+ attached_assets/image_1777791694543.png                                                          |  Bin 0 -> 44042 bytes
+ attached_assets/image_1777791837060.png                                                          |  Bin 0 -> 45306 bytes
+ attached_assets/image_1777792958133.png                                                          |  Bin 0 -> 75062 bytes
+ attached_assets/image_1777793721732.png                                                          |  Bin 0 -> 80721 bytes
+ attached_assets/image_1777793775360.png                                                          |  Bin 0 -> 29601 bytes
+ attached_assets/image_1777793929956.png                                                          |  Bin 0 -> 61982 bytes
+ attached_assets/image_1777794360254.png                                                          |  Bin 0 -> 47494 bytes
+ attached_assets/image_1777794426572.png                                                          |  Bin 0 -> 24743 bytes
+ attached_assets/image_1777794470344.png                                                          |  Bin 0 -> 28380 bytes
+ attached_assets/image_1777794520539.png                                                          |  Bin 0 -> 44834 bytes
+ attached_assets/image_1777794560937.png                                                          |  Bin 0 -> 5659 bytes
+ attached_assets/image_1777795029867.png                                                          |  Bin 0 -> 90924 bytes
+ attached_assets/image_1777795109119.png                                                          |  Bin 0 -> 10145 bytes
+ attached_assets/image_1777795170135.png                                                          |  Bin 0 -> 6030 bytes
+ attached_assets/image_1777795281058.png                                                          |  Bin 0 -> 188032 bytes
+ attached_assets/image_1777795291018.png                                                          |  Bin 0 -> 188032 bytes
+ attached_assets/image_1777804229388.png                                                          |  Bin 0 -> 22358 bytes
+ attached_assets/image_1777804235673.png                                                          |  Bin 0 -> 30455 bytes
+ attached_assets/image_1777804305534.png                                                          |  Bin 0 -> 300228 bytes
+ attached_assets/image_1777804763647.png                                                          |  Bin 0 -> 36195 bytes
+ attached_assets/image_1777804831322.png                                                          |  Bin 0 -> 24410 bytes
+ attached_assets/image_1777805273878.png                                                          |  Bin 0 -> 75771 bytes
+ attached_assets/image_1777810146085.png                                                          |  Bin 0 -> 14873 bytes
+ attached_assets/image_1777812561339.png                                                          |  Bin 0 -> 159044 bytes
+ attached_assets/image_1777812905313.png                                                          |  Bin 0 -> 49771 bytes
+ community-edition/package.json                                                                   |    3 +-
+ community-edition/scripts/check-env-sync.js                                                      |  177 +++++++++
+ community-edition/src/config.js                                                                  |   50 ++-
+ community-edition/src/data/patchNotes.js                                                         |   12 +
+ community-edition/src/web/server.js                                                              |   13 +-
+ community-edition/web/src/pages/MatchDetail.jsx                                                  |   28 +-
+ src/config.js                                                                                    |    3 +
+ src/data/achievements.js                                                                         |  144 +++++++
+ src/data/patchNotes.js                                                                           |   49 +++
+ src/db/index.js                                                                                  | 2262 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++------------
+ src/discord/bot.js                                                                               | 1266 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ src/profileCosmetics.js                                                                          |   28 ++
+ src/services/scoreboardImage.js                                                                  |  150 ++++++-
+ src/services/serverReplayFetcher.js                                                              |   73 +++-
+ src/web/server.js                                                                                | 1057 +++++++++++++++++++++++++++++++++++++++++++++++--
+ web/src/App.jsx                                                                                  |   15 +
+ web/src/api.js                                                                                   |  201 ++++++++++
+ web/src/components/OnboardingWizard.jsx                                                          |  289 ++++++++++++++
+ web/src/context/FeatureFlagsContext.jsx                                                          |   42 +-
+ web/src/context/SteamAuthContext.jsx                                                             |   27 +-
+ web/src/pages/AdminPanel.jsx                                                                     |  998 +++++++++++++++++++++++++++++++++++++---------
+ web/src/pages/HallOfFame.jsx                                                                     |  120 +++++-
+ web/src/pages/Heroes.jsx                                                                         |  187 ++++++---
+ web/src/pages/Home.jsx                                                                           |  389 +++++++++++++++++-
+ web/src/pages/Join.jsx                                                                           |   13 +-
+ web/src/pages/Leaderboard.jsx                                                                    |  135 ++++++-
+ web/src/pages/MatchDetail.jsx                                                                    |  151 +++++--
+ web/src/pages/PlayerProfile.jsx                                                                  |  548 ++++++++++++++++++++++++--
+ web/src/pages/SeasonSummary.jsx                                                                  |  228 +++++++++++
+ web/src/pages/Seasons.jsx                                                                        |    9 +
+ web/src/pages/SettingsProfile.jsx                                                                |  190 ++++++++-
+ web/src/pages/Tournaments.jsx                                                                    |  295 ++++++++++++--
+ web/src/profileCosmetics.js                                                                      |   27 ++
+ 83 files changed, 9619 insertions(+), 735 deletions(-)
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Full-certbot-certonly-manual_1777804649679.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Full-certbot-nginx-d-oceinho_1777795208576.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Full-grep-CHANNEL-root-Dota-_1777793607713.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-Dota-Stats-Full-sudo-u-postgres-psql-d-_1777793847973.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-cd-root-Dota-Stats-Full-npm-install-cd-_1777789432619.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-cd-root-Dota-Stats-Full-npm-install-cd-_1777789467468.txt
+ create mode 100644 attached_assets/Pasted-root-Dota-Stats-cd-root-Dota-Stats-Full-pm2-start-src-i_1777793139302.txt
+ create mode 100644 attached_assets/image_1777650515974.png
+ create mode 100644 attached_assets/image_1777721675383.png
+ create mode 100644 attached_assets/image_1777788266350.png
+ create mode 100644 attached_assets/image_1777788315028.png
+ create mode 100644 attached_assets/image_1777788620318.png
+ create mode 100644 attached_assets/image_1777788740771.png
+ create mode 100644 attached_assets/image_1777788866062.png
+ create mode 100644 attached_assets/image_1777789209245.png
+ create mode 100644 attached_assets/image_1777789239513.png
+ create mode 100644 attached_assets/image_1777789283308.png
+ create mode 100644 attached_assets/image_1777789379884.png
+ create mode 100644 attached_assets/image_1777790681678.png
+ create mode 100644 attached_assets/image_1777791075481.png
+ create mode 100644 attached_assets/image_1777791163658.png
+ create mode 100644 attached_assets/image_1777791271685.png
+ create mode 100644 attached_assets/image_1777791384003.png
+ create mode 100644 attached_assets/image_1777791660787.png
+ create mode 100644 attached_assets/image_1777791694543.png
+ create mode 100644 attached_assets/image_1777791837060.png
+ create mode 100644 attached_assets/image_1777792958133.png
+ create mode 100644 attached_assets/image_1777793721732.png
+ create mode 100644 attached_assets/image_1777793775360.png
+ create mode 100644 attached_assets/image_1777793929956.png
+ create mode 100644 attached_assets/image_1777794360254.png
+ create mode 100644 attached_assets/image_1777794426572.png
+ create mode 100644 attached_assets/image_1777794470344.png
+ create mode 100644 attached_assets/image_1777794520539.png
+ create mode 100644 attached_assets/image_1777794560937.png
+ create mode 100644 attached_assets/image_1777795029867.png
+ create mode 100644 attached_assets/image_1777795109119.png
+ create mode 100644 attached_assets/image_1777795170135.png
+ create mode 100644 attached_assets/image_1777795281058.png
+ create mode 100644 attached_assets/image_1777795291018.png
+ create mode 100644 attached_assets/image_1777804229388.png
+ create mode 100644 attached_assets/image_1777804235673.png
+ create mode 100644 attached_assets/image_1777804305534.png
+ create mode 100644 attached_assets/image_1777804763647.png
+ create mode 100644 attached_assets/image_1777804831322.png
+ create mode 100644 attached_assets/image_1777805273878.png
+ create mode 100644 attached_assets/image_1777810146085.png
+ create mode 100644 attached_assets/image_1777812561339.png
+ create mode 100644 attached_assets/image_1777812905313.png
+ create mode 100644 community-edition/scripts/check-env-sync.js
+ create mode 100644 src/data/achievements.js
+ create mode 100644 web/src/components/OnboardingWizard.jsx
+ create mode 100644 web/src/pages/SeasonSummary.jsx
+
+added 112 packages, and audited 113 packages in 3s
+
+9 packages are looking for funding
+  run `npm fund` for details
+
+2 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 780 modules transformed.
+dist/index.html                          0.47 kB │ gzip:   0.31 kB
+dist/assets/index-q7HmBhMZ.css          19.06 kB │ gzip:   4.55 kB
+dist/assets/ImpactBadge-BKpBxbXE.js      1.37 kB │ gzip:   0.68 kB
+dist/assets/heroes-B4IkSDsk.js           1.55 kB │ gzip:   0.88 kB
+dist/assets/RankBadge-Of372VGD.js        2.87 kB │ gzip:   1.34 kB
+dist/assets/Synergy-BuV1iPHO.js          3.87 kB │ gzip:   1.59 kB
+dist/assets/MultiKills-C2YZeh73.js       4.74 kB │ gzip:   1.70 kB
+dist/assets/HeroBreakdown-BG7qla1-.js    4.80 kB │ gzip:   1.64 kB
+dist/assets/OverallStats-Bzy74AqR.js     4.91 kB │ gzip:   1.73 kB
+dist/assets/HallOfFame-CIQnvCGV.js       5.22 kB │ gzip:   2.12 kB
+dist/assets/Seasons-DIaEtBwA.js          5.54 kB │ gzip:   1.94 kB
+dist/assets/PatchNotes-jZXz9OaO.js       6.43 kB │ gzip:   2.37 kB
+dist/assets/heroNames-Du5QXGww.js        7.13 kB │ gzip:   3.40 kB
+dist/assets/MatchList-BXiXjEWo.js        7.14 kB │ gzip:   2.62 kB
+dist/assets/Players-Bs4KKygJ.js          7.46 kB │ gzip:   2.50 kB
+dist/assets/DraftStats-DDgW0OPo.js       7.60 kB │ gzip:   1.93 kB
+dist/assets/RecordMatch-CYEXVs6e.js      7.77 kB │ gzip:   2.79 kB
+dist/assets/Draft-DT2f2bV7.js            7.87 kB │ gzip:   1.97 kB
+dist/assets/Home-B8WrI1ar.js             8.01 kB │ gzip:   2.85 kB
+dist/assets/PudgeStats-iF8Z-hZV.js      10.90 kB │ gzip:   3.38 kB
+dist/assets/PositionStats-5r8RFaZ2.js   10.94 kB │ gzip:   2.74 kB
+dist/assets/Upload-DBezA127.js          11.14 kB │ gzip:   3.91 kB
+dist/assets/StatsEditor-CSZibVJJ.js     13.30 kB │ gzip:   4.05 kB
+dist/assets/Leaderboard-CPdsztep.js     14.79 kB │ gzip:   4.19 kB
+dist/assets/Records-vXJlQ5cf.js         15.14 kB │ gzip:   4.48 kB
+dist/assets/Heroes-B_pizJ4W.js          19.88 kB │ gzip:   6.20 kB
+dist/assets/PlayerProfile-HZxQ2eOV.js   32.89 kB │ gzip:   8.10 kB
+dist/assets/AdminPanel-DWl657sb.js      54.11 kB │ gzip:  14.03 kB
+dist/assets/MatchDetail-Ca2ljR9g.js    104.52 kB │ gzip:  28.97 kB
+dist/assets/index-CmSUSvkn.js          195.04 kB │ gzip:  62.20 kB
+dist/assets/LineChart-5snfpgCD.js      353.54 kB │ gzip: 105.21 kB
+✓ built in 6.63s
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [0](ids: [ '0' ])
+[PM2] [inhouse-bot](0) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 10564    │ 0s     │ 4    │ online    │ 0%       │ 17.8mb   │ root     │ disabled │
+│ 1  │ oi-bot         │ default     │ 1.0.0   │ fork    │ 10468    │ 59s    │ 61   │ online    │ 0%       │ 219.4mb  │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
