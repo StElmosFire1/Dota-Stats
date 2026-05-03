@@ -684,5 +684,12 @@ module.exports = [
     "published_at": "2026-05-03",
     "content": "Full automated season lifecycle — zero admin needed at season end.\n\n**End conditions:** Each season can now be configured with an end date, a match count limit, or both. After every match is recorded the bot checks the active season's conditions and closes it automatically when they are met.\n\n**End-of-season Discord embed:** When a season closes (automatically or manually), the bot posts a richly formatted embed: season name, total matches, total players, final top-3 leaderboard with MMR and W/L, longest win streak of the season, most improved player (biggest MMR delta start→end), and hero of the season (highest win rate, minimum 5 picks).\n\n**Auto next-season activation:** After archiving the closed season, the bot immediately activates the next pending season and announces it on Discord. If no next season exists, an admin alert is sent instead.\n\n**Season summary page:** Each season now has a `/seasons/:id/summary` page on the website showing all end-of-season records in a clean layout. The Discord embed links directly to it. The Seasons page also has a Summary button on every season row.\n\n**Admin panel controls:** A new Season Lifecycle section in the admin panel lets superusers configure end conditions (date / match limit) for any season and manually trigger the close+announce flow at any time — useful for early closure or testing.",
     "author": "System"
+  },
+  {
+    "version": "5.56",
+    "title": "Admin panel cleanup — all features fully live",
+    "published_at": "2026-05-03",
+    "content": "All features are now fully enabled — the Season 10 preview/launch staging system has been removed from the admin panel.\n\n**Removed:** Launch Season 10 button, Preview state option on feature flags, and all associated preview-gating UI.\n\n**Feature flags** now have a simple On/Off toggle only. All flags on the oceinhouse.gg deployment have been set to On, making hero meta, draft assistant, season pass, coaching marketplace, profile customisation, pro tier, notifications, tournament brackets, and all other Wave 2/3 features available to all players.",
+    "author": "System"
   }
 ];

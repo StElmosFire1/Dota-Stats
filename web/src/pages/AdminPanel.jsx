@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -873,7 +873,7 @@ function ErrorLogViewer({ superuserKey }) {
 
 // Maps each feature flag key to the page(s) where the feature is visible.
 // Used to render a direct "View →" link next to each flag row.
-const FLAG_PREVIEW_URLS = {
+const FLAG_URLS = {
   coaching_marketplace:   [{ label: 'Browse Coaches', url: '/coaches' }],
   hero_meta_v2:           [{ label: 'Heroes', url: '/heroes' }],
   draft_assistant_v2:     [{ label: 'Draft', url: '/draft' }],
@@ -891,8 +891,6 @@ function FeatureFlagsPanel({ superuserKey }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(null);
-  const [launching, setLaunching] = useState(false);
-  const [launchResult, setLaunchResult] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -921,82 +919,14 @@ function FeatureFlagsPanel({ superuserKey }) {
     }
   };
 
-  const handleLaunch = async () => {
-    const previewKeys = flags.filter(f => f.state === 'preview').map(f => f.key);
-
-    // Step 1 — high-level confirmation. Spell out the consequences in plain
-    // English so this can't be misclicked.
-    const step1 = previewKeys.length
-      ? `Launch Season 10 NOW?\n\nThis will:\n  • Flip ${previewKeys.length} preview flag(s) to ON for everyone:\n${previewKeys.map(k => `      - ${k}`).join('\n')}\n  • Force-enable the home launch banner.\n  • Stamp the launch timestamp (cannot be undone via this UI).\n  • Post the launch announcement to Discord.\n\nThe automatic launch cron has been removed — this button is the ONLY way to launch.\n\nProceed to confirmation step 2?`
-      : `Launch Season 10 NOW?\n\nNo preview flags are currently staged, but this will still:\n  • Stamp the launch timestamp (cannot be undone via this UI).\n  • Force-enable the home banner.\n  • Post the launch announcement to Discord.\n\nProceed to confirmation step 2?`;
-    if (!window.confirm(step1)) return;
-
-    // Step 2 — typed-phrase confirmation. The user must literally type
-    // "LAUNCH SEASON 10" to proceed; an empty/cancel/wrong value aborts.
-    const PHRASE = 'LAUNCH SEASON 10';
-    const typed = window.prompt(
-      `Final confirmation.\n\nType "${PHRASE}" exactly (without quotes) to launch.\nThis is irreversible.`,
-      ''
-    );
-    if (typed === null) return; // cancelled
-    if (String(typed).trim() !== PHRASE) {
-      setError(`Launch aborted — confirmation phrase did not match "${PHRASE}".`);
-      return;
-    }
-
-    try {
-      setLaunching(true);
-      setLaunchResult(null);
-      setError('');
-      const result = await launchSeason10(superuserKey);
-      setLaunchResult(result);
-      await refresh();
-    } catch (err) {
-      setError(err.message || 'Launch failed');
-    } finally {
-      setLaunching(false);
-    }
-  };
-
-  const stateColor = s => s === 'on' ? '#22c55e' : s === 'preview' ? '#a855f7' : '#6b7280';
+  const stateColor = s => s === 'on' ? '#22c55e' : '#6b7280';
 
   return (
     <section style={{ marginBottom: 36 }}>
       <h2 style={{ marginBottom: 6 }}>🚩 Feature Flags</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-        Three-state staging for new features. <strong>Off</strong> hides from everyone; <strong>Preview</strong> shows only to logged-in superusers (you); <strong>On</strong> goes live for all visitors.
+        Toggle features on or off. <strong>Off</strong> hides from everyone; <strong>On</strong> goes live for all visitors.
       </p>
-
-      {/* Season 10 Launch button */}
-      <div style={{
-        background: 'linear-gradient(135deg, rgba(168,85,247,0.10) 0%, rgba(124,58,237,0.05) 100%)',
-        border: '1px solid rgba(168,85,247,0.4)', borderRadius: 10, padding: 16, marginBottom: 16,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>⚡ Season 10 Launch</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Manual-only launch (the cron has been removed). Two-step confirmation required.
-              Flips all preview flags to ON, force-enables the home banner, and posts the Discord announcement.
-            </div>
-          </div>
-          <button
-            onClick={handleLaunch}
-            disabled={launching}
-            className="btn btn-primary"
-            style={{ background: '#a855f7', borderColor: '#9333ea' }}
-          >
-            {launching ? 'Launching…' : 'Launch Season 10 Now'}
-          </button>
-        </div>
-        {launchResult && (
-          <div style={{ marginTop: 10, fontSize: 12, color: launchResult.alreadyLaunched ? '#fbbf24' : '#22c55e' }}>
-            {launchResult.alreadyLaunched
-              ? `Already launched at ${new Date(launchResult.launchedAt).toLocaleString('en-AU')}.`
-              : `✓ Launched! Flipped ${launchResult.flippedKeys?.length || 0} flag(s)${launchResult.discordPosted ? ' · Discord announcement posted' : ''}.`}
-          </div>
-        )}
-      </div>
 
       {error && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
       {loading ? <div>Loading…</div> : (
@@ -1016,8 +946,8 @@ function FeatureFlagsPanel({ superuserKey }) {
                 <tr><td colSpan={5} style={{ padding: 16, color: 'var(--text-muted)', textAlign: 'center' }}>No feature flags yet.</td></tr>
               )}
               {flags.map(f => {
-                const previewLinks = FLAG_PREVIEW_URLS[f.key] || [];
-                const showLinks = f.state === 'preview' || f.state === 'on';
+                const previewLinks = FLAG_URLS[f.key] || [];
+                const showLinks = f.state === 'on';
                 return (
                   <tr key={f.key} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#a78bfa' }}>{f.key}</td>
@@ -1033,7 +963,6 @@ function FeatureFlagsPanel({ superuserKey }) {
                         }}
                       >
                         <option value="off">Off</option>
-                        <option value="preview">Preview</option>
                         <option value="on">On</option>
                       </select>
                     </td>
@@ -1054,9 +983,9 @@ function FeatureFlagsPanel({ superuserKey }) {
                                 display: 'inline-flex', alignItems: 'center', gap: 4,
                                 fontSize: 11, fontWeight: 600, padding: '3px 8px',
                                 borderRadius: 6, textDecoration: 'none',
-                                background: f.state === 'preview' ? 'rgba(168,85,247,0.15)' : 'rgba(34,197,94,0.12)',
-                                border: `1px solid ${f.state === 'preview' ? 'rgba(168,85,247,0.5)' : 'rgba(34,197,94,0.4)'}`,
-                                color: f.state === 'preview' ? '#a855f7' : '#22c55e',
+                                background: 'rgba(34,197,94,0.12)',
+                                border: '1px solid rgba(34,197,94,0.4)',
+                                color: '#22c55e',
                               }}
                             >
                               {link.label} →
