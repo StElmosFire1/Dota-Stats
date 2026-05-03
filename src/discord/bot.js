@@ -4914,6 +4914,27 @@ class DiscordBot {
       this.startCoachingAutoReleaseCron();
       console.log('[Discord] Coaching reminder + auto-release crons scheduled.');
 
+      // Daily season end-date check — runs at midnight Australia/Sydney time
+      // (AEDT UTC+11 in summer, AEST UTC+10 in winter — node-cron handles DST).
+      // Ensures seasons are closed and announced even if no match is played on
+      // the final day (end_date check normally fires only after a match is recorded).
+      cron.schedule('0 0 * * *', () => {
+        console.log('[Season] Running daily end-condition check...');
+        this._checkSeasonEndCondition().catch(e =>
+          console.error('[Season] Daily end-condition check error:', e.message)
+        );
+      }, { timezone: 'Australia/Sydney' });
+      console.log('[Discord] Daily season end-condition check scheduled (midnight Australia/Sydney time).');
+
+      // Startup check — catch any season whose end_date already passed before
+      // the next scheduled midnight (e.g. the bot restarted after a missed run).
+      setTimeout(() => {
+        console.log('[Season] Running startup end-condition check...');
+        this._checkSeasonEndCondition().catch(e =>
+          console.error('[Season] Startup end-condition check error:', e.message)
+        );
+      }, 30000);
+
       // 10-player seated notification
       const lobbyMgr = this._lobbyManager;
       if (lobbyMgr) {
