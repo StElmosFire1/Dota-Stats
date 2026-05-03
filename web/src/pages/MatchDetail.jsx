@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Component, useCallback } from 'react';
 
 class MatchErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -30,6 +30,7 @@ import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
+import useProStatus from '../hooks/useProStatus';
 import {
   LineChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts';
@@ -2485,6 +2486,110 @@ function MatchNotes({ matchId, isAdmin, adminKey }) {
   );
 }
 
+function RemoteReplayButton({ match }) {
+  const { status: proStatus } = useProStatus();
+  const { isSuperuser, superuserKey } = useSuperuser();
+  const { isAdmin, adminKey } = useAdmin();
+  const [downloading, setDownloading] = useState(false);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+
+  const isPro = isSuperuser || isAdmin || proStatus?.is_pro;
+
+  const handleDownload = useCallback(async () => {
+    if (!isPro) {
+      setPaywallVisible(true);
+      return;
+    }
+    setDownloading(true);
+    try {
+      const headers = {};
+      if (isSuperuser && superuserKey) headers['x-superuser-key'] = superuserKey;
+      else if (isAdmin && adminKey) headers['x-upload-key'] = adminKey;
+      const res = await fetch(`/api/matches/${match.match_id}/replay`, { credentials: 'include', headers });
+      if (res.status === 402) {
+        setPaywallVisible(true);
+        return;
+      }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert('Download failed: ' + (d.error || res.status));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `match_${match.match_id}.dem`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Download failed: ' + err.message);
+    } finally {
+      setDownloading(false);
+    }
+  }, [match.match_id, isPro, isSuperuser, superuserKey, isAdmin, adminKey]);
+
+  if (!match.has_remote_replay) return null;
+
+  return (
+    <>
+      <button
+        onClick={handleDownload}
+        disabled={downloading}
+        title={!isPro ? 'Pro membership required to download replays' : 'Download the .dem replay file archived from the dedicated server'}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          background: !isPro ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)',
+          border: `1px solid ${!isPro ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'}`,
+          color: !isPro ? '#fbbf24' : '#34d399',
+          borderRadius: 8, padding: '2px 10px',
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          opacity: downloading ? 0.7 : 1,
+        }}
+      >
+        {downloading ? '⏳ Downloading…' : !isPro ? '★ Download Replay (Pro)' : '⬇ Download Replay (Archive)'}
+      </button>
+      {paywallVisible && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setPaywallVisible(false)}>
+          <div style={{
+            background: 'var(--bg-card, #1e293b)', border: '1px solid rgba(245,158,11,0.4)',
+            borderRadius: 12, padding: '28px 32px', maxWidth: 420, width: '90vw',
+            textAlign: 'center',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>★</div>
+            <h3 style={{ margin: '0 0 8px', color: 'var(--text-primary, #f1f5f9)' }}>Replay Download is a Pro Feature</h3>
+            <p style={{ margin: '0 0 18px', color: 'var(--text-muted, #64748b)', fontSize: 13 }}>
+              Download .dem replay files for any archived match — one-time Pro membership, yours forever.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Link to="/pro" style={{
+                display: 'inline-block', padding: '8px 18px',
+                background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+                color: '#1a1a1a', borderRadius: 6, fontWeight: 700,
+                textDecoration: 'none', fontSize: 13,
+              }}>
+                See Pro Tier
+              </Link>
+              <button onClick={() => setPaywallVisible(false)} style={{
+                padding: '8px 18px', borderRadius: 6, fontWeight: 600,
+                fontSize: 13, cursor: 'pointer',
+                background: 'transparent', border: '1px solid var(--border, #334155)',
+                color: 'var(--text-muted, #64748b)',
+              }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function MatchDetailInner() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -2938,21 +3043,7 @@ function MatchDetailInner() {
               {match.mmr_diff} MMR gap
             </span>
           )}
-          {match.has_replay && (
-            <a
-              href={`/api/replays/${match.match_id}/download`}
-              download
-              title="Download the .dem replay file for this match"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.4)',
-                color: '#818cf8', borderRadius: 8, padding: '2px 10px',
-                fontSize: 12, fontWeight: 600, textDecoration: 'none', cursor: 'pointer',
-              }}
-            >
-              ⬇ Download Replay
-            </a>
-          )}
+          <RemoteReplayButton match={match} />
         </div>
       </div>
 

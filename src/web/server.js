@@ -664,9 +664,13 @@ function createApiRouter(startupStatus = {}) {
           }
         }
       }
-      // Indicate whether a replay file is stored and downloadable for this match.
+      // Indicate whether a locally stored replay file exists for this match.
       const replayRow = await db.getReplayFilePath(req.params.matchId).catch(() => null);
       match.has_replay = !!(replayRow?.replay_file_path && fs.existsSync(replayRow.replay_file_path));
+      // Indicate whether a remote (dedicated-server) archived replay is available.
+      // Do NOT expose replay_path (internal filesystem path) to public clients.
+      const remoteReplayRow = await db.getReplayPath(req.params.matchId).catch(() => null);
+      match.has_remote_replay = !!(remoteReplayRow?.replay_path);
       // Per-player V3 performance modifier breakdown (so the scoreboard can
       // explain "why did my MMR change by +24"). Failure to compute this is
       // non-fatal — the rest of the match payload should still render.
@@ -1227,10 +1231,131 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  // Public: download the archived .dem replay file for a match.
+  // Pro/admin: download the archived .dem replay from dedicated server for a match.
+  router.get('/matches/:matchId/replay', async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      // Always enforce Pro/admin — replay archive downloads are a paid feature
+      // regardless of whether the pro_tier feature flag is currently active.
+      // Accept superuser (SUPERUSER_PASSWORD) and admin/upload (UPLOAD_KEY) credentials.
+      // UPLOAD_KEY may arrive as x-upload-key, x-admin-key, OR x-superuser-key (the
+      // superuser login endpoint also accepts it, so clients logged in via SuperuserContext
+      // with the upload key will always send x-superuser-key).
+      const isSu = _isSu(req);
+      const uploadKey = process.env.UPLOAD_KEY;
+      const providedKey = req.headers['x-superuser-key'] || req.headers['x-upload-key'] || req.headers['x-admin-key'];
+      const isAdminKey = Boolean(uploadKey && providedKey === uploadKey);
+      if (!isSu && !isAdminKey) {
+        const accountId = req.session?.accountId;
+        const isPro = await _isProAccount(accountId);
+        if (!isPro) {
+          return res.status(402).json({
+            error: 'Replay download requires Pro membership.',
+            paywall: true,
+            feature: 'replay_download',
+            signed_in: Boolean(accountId),
+          });
+        }
+      }
+      const row = await db.getReplayPath(matchId);
+      if (!row || !row.replay_path) {
+        return res.status(404).json({ error: 'No archived replay for this match.' });
+      }
+      const { streamReplayFromArchive } = require('../services/serverReplayFetcher');
+      const safeMatchId = String(matchId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `match_${safeMatchId}.dem`;
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      try {
+        await streamReplayFromArchive(row.replay_path, res);
+      } catch (streamErr) {
+        // Map SFTP read failures (stale / missing path) to a clean 404 before headers are sent.
+        if (!res.headersSent) {
+          const code = streamErr?.code;
+          if (code === 2 /* SSH_FX_NO_SUCH_FILE */ || code === 'ENOENT') {
+            return res.status(404).json({ error: 'Replay file not found on archive server.' });
+          }
+        }
+        throw streamErr;
+      }
+    } catch (err) {
+      console.error('[API] Remote replay download error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Replay download failed: ' + err.message });
+      }
+    }
+  });
+
+  // Superuser: manually set (or clear) the remote replay_path for a match.
+  // If the value looks like a bare filename (no leading slash or path separator),
+  // it is resolved against REPLAY_ARCHIVE_DIR so admins can type just the filename.
+  router.post('/admin/matches/:matchId/set-replay-path', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      let { replay_path } = req.body || {};
+      if (replay_path) {
+        const ssh = config.dota?.dedicatedServer?.ssh || {};
+        const archiveDir = process.env.REPLAY_ARCHIVE_DIR || ssh.replayArchiveDir || '/opt/dota2/game/dota/replays/archive';
+        // Resolve bare filenames (no path separator) against the archive directory.
+        if (!replay_path.startsWith('/')) {
+          replay_path = `${archiveDir}/${replay_path}`;
+        }
+        // Normalize and validate the path is within the archive directory.
+        const normalizedPath = require('path').normalize(replay_path);
+        const normalizedDir = require('path').normalize(archiveDir);
+        if (!normalizedPath.startsWith(normalizedDir + '/') && normalizedPath !== normalizedDir) {
+          return res.status(400).json({ error: 'Replay path must be within the archive directory.' });
+        }
+        // Only allow .dem files.
+        if (!normalizedPath.endsWith('.dem')) {
+          return res.status(400).json({ error: 'Replay path must point to a .dem file.' });
+        }
+        replay_path = normalizedPath;
+      }
+      await db.setReplayPath(matchId, replay_path || null);
+      res.json({ success: true, matchId, replay_path: replay_path || null });
+    } catch (err) {
+      console.error('[API] set-replay-path error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Superuser: list all matches with their replay archive status.
+  router.get('/admin/matches/replay-status', requireSuperuser, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+      const offset = parseInt(req.query.offset) || 0;
+      const rows = await db.getMatchesWithReplayStatus(limit, offset);
+      res.json({ matches: rows, limit, offset });
+    } catch (err) {
+      console.error('[API] replay-status error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Pro/admin: download the locally stored .dem replay file for a match.
+  // This route is gated the same way as /matches/:matchId/replay to prevent
+  // free users from bypassing the paywall via the legacy local-copy URL.
   router.get('/replays/:matchId/download', async (req, res) => {
     try {
       const { matchId } = req.params;
+      // Enforce Pro/admin — accept SUPERUSER_PASSWORD and UPLOAD_KEY from any auth header.
+      const isSu = _isSu(req);
+      const uploadKey = process.env.UPLOAD_KEY;
+      const providedKey = req.headers['x-superuser-key'] || req.headers['x-upload-key'] || req.headers['x-admin-key'];
+      const isAdminKey = Boolean(uploadKey && providedKey === uploadKey);
+      if (!isSu && !isAdminKey) {
+        const accountId = req.session?.accountId;
+        const isPro = await _isProAccount(accountId);
+        if (!isPro) {
+          return res.status(402).json({
+            error: 'Replay download requires Pro membership.',
+            paywall: true,
+            feature: 'replay_download',
+            signed_in: Boolean(accountId),
+          });
+        }
+      }
       const row = await db.getReplayFilePath(matchId);
       if (!row || !row.replay_file_path) {
         return res.status(404).json({ error: 'No replay file stored for this match.' });
@@ -6184,7 +6309,7 @@ async function drainParseQueue() {
   parseRunning = false;
 }
 
-async function processReplayJob(jobId, filePath, ip, patch = null) {
+async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
   try {
     updateJobStep(jobId, 'Computing file hash...');
 
@@ -6319,6 +6444,20 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
     } catch (archErr) {
       console.warn(`[API] Could not archive replay for match ${matchStats.matchId}:`, archErr.message);
     }
+
+    // If a remote path was provided (dedicated-server replay), archive it on the
+    // server under a permanent match-ID filename and store the path in the DB.
+    if (opts.remotePath && matchStats.matchId) {
+      try {
+        const { archiveMatchReplay } = require('../services/serverReplayFetcher');
+        const archivePath = await archiveMatchReplay(matchStats.matchId, opts.remotePath);
+        await db.setReplayPath(matchStats.matchId, archivePath);
+        console.log(`[API] Remote replay archived: ${archivePath}`);
+      } catch (remoteArchErr) {
+        console.warn(`[API] Could not archive remote replay for match ${matchStats.matchId}:`, remoteArchErr.message);
+      }
+    }
+
     cleanupFile(filePath);
     setJobTerminal(jobId, {
       status: 'complete',
@@ -6360,7 +6499,7 @@ function setJobTerminal(jobId, data) {
   setTimeout(() => uploadJobs.delete(jobId), 30 * 60 * 1000);
 }
 
-function processReplayInternal(filePath, source) {
+function processReplayInternal(filePath, source, opts = {}) {
   const jobId = crypto.randomBytes(8).toString('hex');
   let fileSize = 0;
   try { fileSize = fs.statSync(filePath).size; } catch (_) {}
@@ -6375,7 +6514,7 @@ function processReplayInternal(filePath, source) {
     filePath,
   });
   return new Promise((resolve, reject) => {
-    processReplayJob(jobId, filePath, source).then(() => {
+    processReplayJob(jobId, filePath, source, null, opts).then(() => {
       const result = uploadJobs.get(jobId);
       if (result && result.status === 'error') {
         reject(new Error(result.error || 'Parse failed'));

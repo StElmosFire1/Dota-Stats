@@ -41,6 +41,29 @@ export async function launchSeason10(superuserKey) {
   return data;
 }
 
+export async function setMatchReplayPath(matchId, replayPath, superuserKey) {
+  const res = await fetch(`${BASE}/admin/matches/${matchId}/set-replay-path`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-superuser-key': superuserKey,
+    },
+    body: JSON.stringify({ replay_path: replayPath }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to set replay path');
+  return data;
+}
+
+export async function getMatchReplayStatus(superuserKey, limit = 100, offset = 0) {
+  const res = await fetch(`${BASE}/admin/matches/replay-status?limit=${limit}&offset=${offset}`, {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
 export async function triggerMissingDMs(matchId, superuserKey) {
   const res = await fetch(`${BASE}/admin/matches/${matchId}/trigger-dms`, {
     method: 'POST',

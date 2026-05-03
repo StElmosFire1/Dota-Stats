@@ -196,6 +196,7 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS dieback_count INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_path TEXT DEFAULT NULL`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_expires_at TIMESTAMPTZ DEFAULT NULL`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_path TEXT DEFAULT NULL`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS patch_notes (
@@ -9507,6 +9508,9 @@ module.exports = {
   setReplayFilePath,
   getReplayFilePath,
   expireOldReplayFiles,
+  setReplayPath,
+  getReplayPath,
+  getMatchesWithReplayStatus,
   addToQueue,
   removeFromQueue,
   clearQueue,
@@ -9854,6 +9858,35 @@ async function getReplayFilePath(matchId) {
     [matchId]
   );
   return res.rows[0] || null;
+}
+
+async function setReplayPath(matchId, remotePath) {
+  const p = getPool();
+  await p.query(
+    `UPDATE matches SET replay_path = $1 WHERE match_id = $2`,
+    [remotePath || null, matchId]
+  );
+}
+
+async function getReplayPath(matchId) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT replay_path FROM matches WHERE match_id = $1`,
+    [matchId]
+  );
+  return res.rows[0] || null;
+}
+
+async function getMatchesWithReplayStatus(limit = 100, offset = 0) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT match_id, date, replay_path, replay_file_path
+     FROM matches
+     ORDER BY date DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return res.rows;
 }
 
 async function expireOldReplayFiles() {

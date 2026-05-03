@@ -212,7 +212,7 @@ class DiscordBot {
               const r = await fetchLatestReplay();
               const sizeMb = (fs.statSync(r.localPath).size / 1024 / 1024).toFixed(1);
               this._notifyChannel(`📦 Replay fetched (${sizeMb} MB) — parsing match **${matchId}**...`);
-              await processReplayInternal(r.localPath, `auto-ds:${matchId}`);
+              await processReplayInternal(r.localPath, `auto-ds:${matchId}`, { remotePath: r.remotePath });
               try { fs.unlinkSync(r.localPath); } catch (_) {}
               console.log(`[ReplayDL] Dedicated server replay pipeline complete for match ${matchId}`);
             } catch (err) {
@@ -1198,7 +1198,7 @@ class DiscordBot {
                   const r = await fetchLatestReplay();
                   const sizeMb = (fs.statSync(r.localPath).size / 1024 / 1024).toFixed(1);
                   this._notifyQueueChannel(`📦 Replay fetched (${sizeMb} MB) — parsing...`);
-                  await processReplayInternal(r.localPath, `auto-queue:${session.id}`);
+                  await processReplayInternal(r.localPath, `auto-queue:${session.id}`, { remotePath: r.remotePath });
                   try { fs.unlinkSync(r.localPath); } catch (_) {}
                   console.log(`[Queue] Post-game SSH replay pipeline complete (session ${session.id}).`);
                 } catch (err) {

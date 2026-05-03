@@ -101,4 +101,75 @@ async function testConnection() {
   }
 }
 
-module.exports = { listReplays, fetchLatestReplay, fetchReplayByName, testConnection };
+async function archiveMatchReplay(matchId, remotePath) {
+  const ssh = config.dota?.dedicatedServer?.ssh || {};
+  const archiveDir = process.env.REPLAY_ARCHIVE_DIR || ssh.replayArchiveDir || '/opt/dota2/game/dota/replays/archive';
+  const safeMatchId = String(matchId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const archiveFilename = `match_${safeMatchId}.dem`;
+  const archivePath = `${archiveDir}/${archiveFilename}`;
+  // Use SFTP mkdir+rename instead of shell commands to avoid injection risks
+  // from user-influenced path values.
+  return withConnection(async (conn) => {
+    await new Promise((resolve, reject) => {
+      conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+        // Recursive mkdir-p over SFTP: walk each path segment and create if missing.
+        const mkdirp = (dir, cb) => {
+          sftp.mkdir(dir, (mkErr) => {
+            if (!mkErr || mkErr.code === 4 /* SSH_FX_FAILURE = already exists */) return cb(null);
+            // If mkdir failed because the parent doesn't exist, create the parent first.
+            const parent = require('path').posix.dirname(dir);
+            if (parent === dir) return cb(mkErr); // reached root
+            mkdirp(parent, (parentErr) => {
+              if (parentErr) return cb(parentErr);
+              sftp.mkdir(dir, (retryErr) => {
+                if (!retryErr || retryErr.code === 4) return cb(null);
+                cb(retryErr);
+              });
+            });
+          });
+        };
+        mkdirp(archiveDir, (mkdirpErr) => {
+          if (mkdirpErr) return reject(mkdirpErr);
+          sftp.rename(remotePath, archivePath, (renErr) => {
+            if (renErr) return reject(renErr);
+            resolve();
+          });
+        });
+      });
+    });
+    console.log(`[ReplayArchive] Archived ${remotePath} -> ${archivePath}`);
+    return archivePath;
+  });
+}
+
+function streamReplayFromArchive(remotePath, res) {
+  return new Promise((resolve, reject) => {
+    const conn = new Client();
+    let settled = false;
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      try { conn.end(); } catch (_) {}
+      if (err) reject(err);
+      else resolve();
+    };
+    conn.on('ready', () => {
+      conn.sftp((err, sftp) => {
+        if (err) return finish(err);
+        const remoteStream = sftp.createReadStream(remotePath);
+        remoteStream.on('error', finish);
+        remoteStream.on('end', () => finish(null));
+        remoteStream.pipe(res, { end: false });
+        remoteStream.on('close', () => {
+          res.end();
+          finish(null);
+        });
+      });
+    });
+    conn.on('error', finish);
+    try { conn.connect(getSshOpts()); } catch (e) { finish(e); }
+  });
+}
+
+module.exports = { listReplays, fetchLatestReplay, fetchReplayByName, testConnection, archiveMatchReplay, streamReplayFromArchive };

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, setMatchReplayPath, getMatchReplayStatus } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -514,6 +514,119 @@ function ReplayManager({ superuserKey }) {
       <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
         Replays are kept permanently by default. Set <code>REPLAY_STORE_DAYS=N</code> to auto-expire after N days.
         Use <code>REPLAY_STORE_DIR</code> to set a custom storage path.
+      </p>
+    </section>
+  );
+}
+
+function ReplayArchiveManager({ superuserKey }) {
+  const [matches, setMatches] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [pathInputs, setPathInputs] = useState({});
+  const [saving, setSaving] = useState({});
+  const [saveMsg, setSaveMsg] = useState({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getMatchReplayStatus(superuserKey);
+      setMatches(data.matches || []);
+    } catch (err) {
+      setMatches([]);
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [superuserKey]);
+
+  const handleSavePath = useCallback(async (matchId) => {
+    const p = (pathInputs[matchId] || '').trim();
+    setSaving(s => ({ ...s, [matchId]: true }));
+    setSaveMsg(s => ({ ...s, [matchId]: '' }));
+    try {
+      const result = await setMatchReplayPath(matchId, p, superuserKey);
+      const storedPath = result?.replay_path || null;
+      setSaveMsg(s => ({ ...s, [matchId]: storedPath ? `✓ Saved: ${storedPath}` : '✓ Cleared' }));
+      setMatches(ms => ms.map(m => m.match_id === matchId ? { ...m, replay_path: storedPath } : m));
+    } catch (err) {
+      setSaveMsg(s => ({ ...s, [matchId]: '✗ ' + err.message }));
+    } finally {
+      setSaving(s => ({ ...s, [matchId]: false }));
+    }
+  }, [pathInputs, superuserKey]);
+
+  return (
+    <section className="admin-section">
+      <h2>Replay Archive (Dedicated Server)</h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+        Matches archived from the dedicated server via SSH. Pro members and admins can download these. Use the path field to manually link a .dem file.
+      </p>
+      <button className="btn" onClick={load} disabled={loading}>
+        {loading ? 'Loading…' : matches === null ? 'Load Replay Archive Status' : 'Refresh'}
+      </button>
+      {matches !== null && matches.length === 0 && (
+        <p style={{ fontSize: 13, marginTop: 10, color: 'var(--text-muted)' }}>No matches found.</p>
+      )}
+      {matches !== null && matches.length > 0 && (
+        <div style={{ overflowX: 'auto', marginTop: 12 }}>
+          <table className="admin-table" style={{ fontSize: 12, width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Match ID</th>
+                <th>Date</th>
+                <th>Archive Status</th>
+                <th>Remote Path</th>
+                <th>Set Path Manually</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matches.map(m => (
+                <tr key={m.match_id}>
+                  <td>
+                    <a href={`/match/${m.match_id}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                      {m.match_id}
+                    </a>
+                  </td>
+                  <td>{m.date ? new Date(m.date).toLocaleDateString() : '—'}</td>
+                  <td>
+                    {m.replay_path
+                      ? <span style={{ color: '#4ade80', fontWeight: 600 }}>✓ Archived</span>
+                      : <span style={{ color: '#f87171' }}>✗ Not archived</span>}
+                  </td>
+                  <td style={{ maxWidth: 260, wordBreak: 'break-all', fontSize: 11, color: 'var(--text-muted)' }}>
+                    {m.replay_path || '—'}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input
+                        type="text"
+                        placeholder="match_123.dem or full path (empty to clear)"
+                        value={pathInputs[m.match_id] || ''}
+                        onChange={e => setPathInputs(p => ({ ...p, [m.match_id]: e.target.value }))}
+                        style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, minWidth: 220,
+                          background: 'var(--bg-input, #0f172a)', border: '1px solid var(--border, #334155)',
+                          color: 'var(--text-primary, #f1f5f9)' }}
+                      />
+                      <button className="btn" style={{ fontSize: 11, padding: '2px 8px' }}
+                        disabled={saving[m.match_id]}
+                        onClick={() => handleSavePath(m.match_id)}>
+                        {saving[m.match_id] ? '…' : 'Save'}
+                      </button>
+                      {saveMsg[m.match_id] && (
+                        <span style={{ fontSize: 11, color: saveMsg[m.match_id].startsWith('✓') ? '#4ade80' : '#f87171' }}>
+                          {saveMsg[m.match_id]}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+        Archive directory is controlled by <code>REPLAY_ARCHIVE_DIR</code> on the dedicated server.
       </p>
     </section>
   );
@@ -1833,6 +1946,9 @@ export default function AdminPanel() {
 
       {/* Stored Replays */}
       <ReplayManager superuserKey={superuserKey} />
+
+      {/* Replay Archive (dedicated server) */}
+      <ReplayArchiveManager superuserKey={superuserKey} />
 
       {/* Test Post-Match DM */}
       <TestDmPanel superuserKey={superuserKey} />
