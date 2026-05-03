@@ -48,14 +48,33 @@ const PREMIUM_THEMES = [
   '#000000', // void black
 ];
 
+// Profile frames — CSS-based, no external assets.
+// 'none' = no frame (default). Free frames are available to all players.
+// Premium frames require Pro membership.
+const FREE_FRAMES = [
+  'none',
+  'silver',
+];
+
+const PREMIUM_FRAMES = [
+  'gold',
+  'neon-blue',
+  'cosmic',
+  'fire',
+];
+
 const ALL_TITLES = [...FREE_TITLES, ...PREMIUM_TITLES];
 const ALL_THEMES = [...FREE_THEMES, ...PREMIUM_THEMES];
+const ALL_FRAMES = [...FREE_FRAMES, ...PREMIUM_FRAMES];
 
 function isPremiumTitle(title) {
   return PREMIUM_TITLES.includes(title);
 }
 function isPremiumTheme(theme) {
   return PREMIUM_THEMES.includes(theme);
+}
+function isPremiumFrame(frame) {
+  return PREMIUM_FRAMES.includes(frame);
 }
 function isValidTitle(title) {
   if (title == null || title === '') return true;
@@ -64,6 +83,10 @@ function isValidTitle(title) {
 function isValidTheme(theme) {
   if (theme == null || theme === '') return true;
   return ALL_THEMES.includes(theme);
+}
+function isValidFrame(frame) {
+  if (frame == null || frame === '' || frame === 'none') return true;
+  return ALL_FRAMES.includes(frame);
 }
 
 const BIO_MAX = 300;
@@ -74,12 +97,17 @@ module.exports = {
   PREMIUM_TITLES,
   FREE_THEMES,
   PREMIUM_THEMES,
+  FREE_FRAMES,
+  PREMIUM_FRAMES,
   ALL_TITLES,
   ALL_THEMES,
+  ALL_FRAMES,
   isPremiumTitle,
   isPremiumTheme,
+  isPremiumFrame,
   isValidTitle,
   isValidTheme,
+  isValidFrame,
   BIO_MAX,
   PINNED_HERO_CAPTION_MAX,
 };

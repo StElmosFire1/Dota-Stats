@@ -1347,6 +1347,9 @@ function SeasonTiersPanelInner({ superuserKey }) {
       await updateSeasonTier(seasonId, tn, {
         name: patch.name,
         min_mmr: patch.min_mmr !== undefined ? Number(patch.min_mmr) : undefined,
+        sponsor_name: patch.sponsor_name !== undefined ? (patch.sponsor_name || null) : undefined,
+        sponsor_active_from: patch.sponsor_active_from !== undefined ? (patch.sponsor_active_from || null) : undefined,
+        sponsor_active_until: patch.sponsor_active_until !== undefined ? (patch.sponsor_active_until || null) : undefined,
       }, superuserKey);
       await refreshTiers();
     } catch (err) {
@@ -1400,6 +1403,7 @@ function SeasonTiersPanelInner({ superuserKey }) {
                 <th style={{ padding: '8px 10px' }}>#</th>
                 <th style={{ padding: '8px 10px' }}>Name</th>
                 <th style={{ padding: '8px 10px' }}>Min MMR</th>
+                <th style={{ padding: '8px 10px' }}>Sponsor (optional)</th>
                 <th style={{ padding: '8px 10px' }}>Players</th>
                 <th style={{ padding: '8px 10px' }}></th>
               </tr>
@@ -1408,9 +1412,15 @@ function SeasonTiersPanelInner({ superuserKey }) {
               {tiers.map(t => {
                 const draftName = edits[t.tier_number]?.name ?? t.name;
                 const draftFloor = edits[t.tier_number]?.min_mmr ?? t.min_mmr;
+                const draftSponsor = edits[t.tier_number]?.sponsor_name ?? (t.sponsor_name || '');
+                const draftSponsorFrom = edits[t.tier_number]?.sponsor_active_from ?? (t.sponsor_active_from ? t.sponsor_active_from.slice(0, 10) : '');
+                const draftSponsorUntil = edits[t.tier_number]?.sponsor_active_until ?? (t.sponsor_active_until ? t.sponsor_active_until.slice(0, 10) : '');
                 const dirty = edits[t.tier_number] && (
-                  edits[t.tier_number].name !== undefined && edits[t.tier_number].name !== t.name
-                  || edits[t.tier_number].min_mmr !== undefined && Number(edits[t.tier_number].min_mmr) !== Number(t.min_mmr)
+                  (edits[t.tier_number].name !== undefined && edits[t.tier_number].name !== t.name)
+                  || (edits[t.tier_number].min_mmr !== undefined && Number(edits[t.tier_number].min_mmr) !== Number(t.min_mmr))
+                  || edits[t.tier_number].sponsor_name !== undefined
+                  || edits[t.tier_number].sponsor_active_from !== undefined
+                  || edits[t.tier_number].sponsor_active_until !== undefined
                 );
                 return (
                   <tr key={t.tier_number} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1430,6 +1440,34 @@ function SeasonTiersPanelInner({ superuserKey }) {
                         onChange={e => setEdit(t.tier_number, { min_mmr: e.target.value })}
                         style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', width: 100 }}
                       />
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <input
+                          type="text"
+                          value={draftSponsor}
+                          onChange={e => setEdit(t.tier_number, { sponsor_name: e.target.value })}
+                          placeholder="Sponsor name (optional)"
+                          style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', width: 180 }}
+                        />
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <input
+                            type="date"
+                            value={draftSponsorFrom}
+                            onChange={e => setEdit(t.tier_number, { sponsor_active_from: e.target.value })}
+                            title="Sponsor active from"
+                            style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', fontSize: 12 }}
+                          />
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>→</span>
+                          <input
+                            type="date"
+                            value={draftSponsorUntil}
+                            onChange={e => setEdit(t.tier_number, { sponsor_active_until: e.target.value })}
+                            title="Sponsor active until"
+                            style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', fontSize: 12 }}
+                          />
+                        </div>
+                      </div>
                     </td>
                     <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{counts[t.tier_number] ?? '—'}</td>
                     <td style={{ padding: '8px 10px' }}>

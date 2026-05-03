@@ -310,6 +310,60 @@ async function init() {
     // Idempotent — safe to run on legacy rows; existing rank_floor data is left
     // untouched and ignored once min_mmr is populated.
     await p.query(`ALTER TABLE season_tiers ADD COLUMN IF NOT EXISTS min_mmr INTEGER`);
+    await p.query(`ALTER TABLE season_tiers ADD COLUMN IF NOT EXISTS sponsor_name TEXT`);
+    await p.query(`ALTER TABLE season_tiers ADD COLUMN IF NOT EXISTS sponsor_active_from TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE season_tiers ADD COLUMN IF NOT EXISTS sponsor_active_until TIMESTAMPTZ`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS gift_purchases (
+        id SERIAL PRIMARY KEY,
+        gifter_account_id BIGINT NOT NULL,
+        recipient_account_id BIGINT NOT NULL,
+        gift_type VARCHAR(50) NOT NULL,
+        stripe_session_id VARCHAR(200) UNIQUE,
+        amount_cents INTEGER,
+        currency VARCHAR(10) DEFAULT 'aud',
+        status VARCHAR(20) DEFAULT 'pending',
+        completed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_gift_purchases_recipient ON gift_purchases(recipient_account_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_gift_purchases_session ON gift_purchases(stripe_session_id)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS frame_purchases (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        frame_id VARCHAR(50) NOT NULL,
+        stripe_session_id VARCHAR(200) UNIQUE,
+        amount_cents INTEGER,
+        currency VARCHAR(10) DEFAULT 'aud',
+        status VARCHAR(20) DEFAULT 'pending',
+        purchased_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(account_id, frame_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_frame_purchases_account ON frame_purchases(account_id)`);
+
+    // Season pass purchases: records players who have purchased/received the season pass.
+    // This is the entitlement record that unlocks the premium season pass progression tier.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_pass_purchases (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        season_number INTEGER NOT NULL,
+        stripe_session_id VARCHAR(200) UNIQUE,
+        gift_stripe_session_id VARCHAR(200),
+        source VARCHAR(50) NOT NULL DEFAULT 'purchase',
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(account_id, season_number)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_spp_account ON season_pass_purchases(account_id)`);
     await p.query(`
       CREATE TABLE IF NOT EXISTS season_tier_players (
         id SERIAL PRIMARY KEY,
@@ -851,6 +905,7 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_profiles_account ON player_profiles (account_id)`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS onboarding_complete BOOLEAN NOT NULL DEFAULT false`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS profile_frame TEXT`);
 
     // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
     // status: 'pending' (checkout created), 'active' (paid via webhook),
@@ -1330,7 +1385,7 @@ async function ensureSeasonTiers(seasonId, tiers = DEFAULT_S10_TIERS) {
 }
 
 async function updateSeasonTier(seasonId, tierNumber, fields = {}) {
-  const allowed = ['name', 'rank_floor', 'rank_ceiling', 'min_mmr', 'prize_pool_cents', 'buyin_cents'];
+  const allowed = ['name', 'rank_floor', 'rank_ceiling', 'min_mmr', 'prize_pool_cents', 'buyin_cents', 'sponsor_name', 'sponsor_active_from', 'sponsor_active_until'];
   const sets = []; const vals = []; let i = 1;
   for (const k of allowed) {
     if (fields[k] !== undefined) {
@@ -8614,7 +8669,7 @@ async function getPlayerProfileCustomization(accountId) {
   const r = await p.query(
     `SELECT id, account_id, bio, custom_title, theme_accent,
             pinned_hero_id, pinned_hero_caption, pinned_match_id,
-            created_at, updated_at
+            profile_frame, created_at, updated_at
        FROM player_profiles
       WHERE account_id = $1`,
     [accountId]
@@ -8634,12 +8689,13 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
     pinned_hero_id = null,
     pinned_hero_caption = null,
     pinned_match_id = null,
+    profile_frame = null,
   } = fields;
   const r = await p.query(
     `INSERT INTO player_profiles
        (account_id, bio, custom_title, theme_accent,
-        pinned_hero_id, pinned_hero_caption, pinned_match_id, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
      ON CONFLICT (account_id) DO UPDATE
        SET bio = EXCLUDED.bio,
            custom_title = EXCLUDED.custom_title,
@@ -8647,11 +8703,12 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
            pinned_hero_id = EXCLUDED.pinned_hero_id,
            pinned_hero_caption = EXCLUDED.pinned_hero_caption,
            pinned_match_id = EXCLUDED.pinned_match_id,
+           profile_frame = EXCLUDED.profile_frame,
            updated_at = NOW()
      RETURNING id, account_id, bio, custom_title, theme_accent,
                pinned_hero_id, pinned_hero_caption, pinned_match_id,
-               created_at, updated_at`,
-    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id]
+               profile_frame, created_at, updated_at`,
+    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame]
   );
   return r.rows[0];
 }
@@ -8854,6 +8911,149 @@ async function getPlayerProfileCard(accountId) {
     ...base,
     pinned_match: pinnedMatch,
   };
+}
+
+// ---------- Gift purchases ----------
+// Tracks gift checkouts for Pro and season-pass gifts. On webhook
+// completion the recipient is activated. Gifter name is stored for the
+// Discord DM notification.
+async function createGiftCheckout({ gifterAccountId, recipientAccountId, giftType, stripeSessionId, amountCents, currency }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO gift_purchases
+       (gifter_account_id, recipient_account_id, gift_type, stripe_session_id, amount_cents, currency, status, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW())
+     RETURNING *`,
+    [gifterAccountId, recipientAccountId, giftType, stripeSessionId, amountCents, currency || 'aud']
+  );
+  return r.rows[0];
+}
+
+async function confirmGiftCheckout(stripeSessionId) {
+  const p = getPool();
+  // Mark pending → completed, but ALSO return already-completed rows so that
+  // Stripe webhook retries can still retrieve the gift and re-check whether the
+  // entitlement was granted (idempotent fulfillment pattern).
+  const r = await p.query(
+    `UPDATE gift_purchases
+     SET status = CASE WHEN status = 'pending' THEN 'completed' ELSE status END,
+         completed_at = COALESCE(completed_at, NOW())
+     WHERE stripe_session_id = $1
+     RETURNING *`,
+    [stripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
+// ---------- Frame purchases ----------
+async function createFrameCheckout({ accountId, frameId, stripeSessionId, amountCents, currency }) {
+  const p = getPool();
+  // On conflict by session ID (exact duplicate) → fetch existing row.
+  // On conflict by (account_id, frame_id) with a pending row (abandoned checkout)
+  // → update the stripe_session_id to the new one so the new checkout can complete.
+  const r = await p.query(
+    `INSERT INTO frame_purchases (account_id, frame_id, stripe_session_id, amount_cents, currency, status, created_at)
+     VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+     ON CONFLICT (account_id, frame_id) DO UPDATE
+       SET stripe_session_id = EXCLUDED.stripe_session_id,
+           amount_cents = EXCLUDED.amount_cents,
+           created_at = NOW()
+     WHERE frame_purchases.status = 'pending'
+     RETURNING *`,
+    [accountId, frameId, stripeSessionId, amountCents, currency || 'aud']
+  );
+  // If the UPDATE was skipped (frame already active), return the existing row.
+  if (!r.rows[0]) {
+    const existing = await p.query(
+      `SELECT * FROM frame_purchases WHERE account_id = $1 AND frame_id = $2`,
+      [accountId, frameId]
+    );
+    return existing.rows[0] || null;
+  }
+  return r.rows[0];
+}
+
+// confirmFramePurchase uses the Stripe session metadata (accountId, frameId)
+// to activate the frame — independent of which pending stripe_session_id is
+// stored in the table. This survives the race where a second checkout session
+// overwrote the first session's ID; any paid session can still fulfil the frame.
+// Errors propagate so the Stripe webhook returns 500 and Stripe retries.
+async function confirmFramePurchase(stripeSessionId, accountId, frameId) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO frame_purchases (account_id, frame_id, stripe_session_id, status, purchased_at, created_at)
+     VALUES ($1, $2, $3, 'active', NOW(), NOW())
+     ON CONFLICT (account_id, frame_id) DO UPDATE
+       SET status = 'active',
+           purchased_at = COALESCE(frame_purchases.purchased_at, NOW()),
+           stripe_session_id = EXCLUDED.stripe_session_id
+     RETURNING *`,
+    [accountId, frameId, stripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
+// Frames included in the Pro tier at no extra charge.
+const PRO_BUNDLED_FRAMES = ['gold'];
+
+async function hasFrameUnlocked(accountId, frameId, isPro = false) {
+  if (isPro && PRO_BUNDLED_FRAMES.includes(frameId)) return true;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT 1 FROM frame_purchases WHERE account_id = $1 AND frame_id = $2 AND status = 'active' LIMIT 1`,
+    [accountId, frameId]
+  );
+  return r.rows.length > 0;
+}
+
+async function getOwnedFrames(accountId, isPro = false) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT frame_id FROM frame_purchases WHERE account_id = $1 AND status = 'active'`,
+    [accountId]
+  );
+  const purchased = r.rows.map(row => row.frame_id);
+  if (isPro) {
+    for (const f of PRO_BUNDLED_FRAMES) {
+      if (!purchased.includes(f)) purchased.push(f);
+    }
+  }
+  return purchased;
+}
+
+// ---------- Season pass purchases (entitlement) ----------
+async function grantSeasonPassActivation({ accountId, seasonNumber, giftStripeSessionId }) {
+  const p = getPool();
+  // Idempotent: ON CONFLICT (account_id, season_number) DO NOTHING so retries are safe.
+  const r = await p.query(
+    `INSERT INTO season_pass_purchases
+       (account_id, season_number, gift_stripe_session_id, source, status, purchased_at)
+     VALUES ($1, $2, $3, 'gift', 'active', NOW())
+     ON CONFLICT (account_id, season_number) DO NOTHING
+     RETURNING *`,
+    [accountId, seasonNumber, giftStripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
+async function hasSeasonPassActivation(accountId, seasonNumber) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT 1 FROM season_pass_purchases WHERE account_id = $1 AND season_number = $2 AND status = 'active' LIMIT 1`,
+    [accountId, seasonNumber]
+  );
+  return r.rows.length > 0;
+}
+
+async function grantSeasonPassXpGift({ recipientAccountId, seasonId, xpAmount, stripeSessionId }) {
+  return awardSeasonPassXp({
+    accountId: recipientAccountId,
+    seasonNumber: seasonId,
+    matchId: null,
+    source: `gift_${stripeSessionId?.slice(-8) || 'unknown'}`,
+    xpDelta: xpAmount,
+    notes: 'Gift purchase',
+  });
 }
 
 // ---------- Pro Tier (`pro_tier`) ----------
@@ -9893,6 +10093,15 @@ module.exports = {
   getPlayerProfileCustomization,
   setPlayerProfileCustomization,
   getPlayerProfileCard,
+  createGiftCheckout,
+  confirmGiftCheckout,
+  grantSeasonPassXpGift,
+  createFrameCheckout,
+  confirmFramePurchase,
+  hasFrameUnlocked,
+  getOwnedFrames,
+  grantSeasonPassActivation,
+  hasSeasonPassActivation,
   getOnboardingStatus,
   setOnboardingComplete,
   getPlayerHomeData,

@@ -6,8 +6,10 @@ import { ALL_HEROES, getHeroName, getHeroImageUrl } from '../heroNames';
 import {
   FREE_TITLES, PREMIUM_TITLES,
   FREE_THEMES, PREMIUM_THEMES,
-  BIO_MAX, PINNED_HERO_CAPTION_MAX, DEFAULT_THEME,
+  FREE_FRAMES, PREMIUM_FRAMES,
+  BIO_MAX, PINNED_HERO_CAPTION_MAX, DEFAULT_THEME, DEFAULT_FRAME, FRAME_META,
 } from '../profileCosmetics';
+import { getOwnedFrames, purchaseFrameCheckout } from '../api';
 
 // Compact, dependency-free UI for editing /settings/profile. Renders three
 // sections (basics / cosmetics / pins) plus a live preview card. The premium
@@ -112,6 +114,10 @@ export default function SettingsProfile() {
   const [pinnedHeroSearch, setPinnedHeroSearch] = useState('');
   const [pinnedHeroCaption, setPinnedHeroCaption] = useState('');
   const [pinnedMatchId, setPinnedMatchId] = useState('');
+  const [profileFrame, setProfileFrame] = useState(DEFAULT_FRAME);
+  const [ownedFrames, setOwnedFrames] = useState([]);
+  const [framePurchaseLoading, setFramePurchaseLoading] = useState(null);
+  const [framePurchaseError, setFramePurchaseError] = useState(null);
 
   const [ownMatches, setOwnMatches] = useState([]);
 
@@ -134,6 +140,7 @@ export default function SettingsProfile() {
       setPinnedHeroId(c.pinned_hero_id ? String(c.pinned_hero_id) : '');
       setPinnedHeroCaption(c.pinned_hero_caption || '');
       setPinnedMatchId(c.pinned_match_id ? String(c.pinned_match_id) : '');
+      setProfileFrame(c.profile_frame || DEFAULT_FRAME);
       if (c.pinned_hero_id) {
         setPinnedHeroSearch(getHeroName(c.pinned_hero_id) || '');
       }
@@ -142,6 +149,12 @@ export default function SettingsProfile() {
   }, []);
 
   useEffect(() => { if (enabled && accountId) loadProfile(); }, [enabled, accountId, loadProfile]);
+
+  // Fetch owned premium frames when user is a Pro member.
+  useEffect(() => {
+    if (!accountId) return;
+    getOwnedFrames().then(setOwnedFrames).catch(() => {});
+  }, [accountId]);
 
   // Pull the player's own matches for the pinned-match picker. Reuses the
   // existing /api/players/:id endpoint which returns recentMatches.
@@ -186,6 +199,7 @@ export default function SettingsProfile() {
         pinned_hero_id: pinnedHeroId || null,
         pinned_hero_caption: pinnedHeroCaption || null,
         pinned_match_id: pinnedMatchId || null,
+        profile_frame: profileFrame || null,
       };
       const res = await fetch('/api/me/profile', {
         method: 'POST', credentials: 'include',
@@ -334,6 +348,118 @@ export default function SettingsProfile() {
                   locked={!isPro}
                   onClick={() => setThemeAccent(c)} />
               ))}
+            </div>
+          </section>
+
+          <section style={{ marginTop: 24 }}>
+            <h2 style={{ marginBottom: 8 }}>Profile frame</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+              A decorative border around your profile card. Premium frames require Pro membership.
+            </p>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {FREE_FRAMES.map(f => {
+                const meta = FRAME_META[f] || {};
+                const selected = profileFrame === f;
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setProfileFrame(f)}
+                    style={{
+                      padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                      background: selected ? 'rgba(59,130,246,0.15)' : 'var(--bg-card)',
+                      border: selected ? '2px solid #60a5fa' : '1px solid var(--border)',
+                      color: selected ? '#60a5fa' : 'var(--text-primary)',
+                      ...meta.style,
+                    }}
+                  >
+                    {meta.label || f}
+                  </button>
+                );
+              })}
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', marginLeft: 4 }}>Premium frames:</span>
+              {PREMIUM_FRAMES.map(f => {
+                const meta = FRAME_META[f] || {};
+                const selected = profileFrame === f;
+                const owned = ownedFrames.includes(f);
+                const buying = framePurchaseLoading === f;
+                const proBundled = f === 'gold';
+                // Gold is Pro-bundled — show it as "included with Pro" for Pro members,
+                // or as locked for non-Pro users (it cannot be purchased separately).
+                if (proBundled && !isPro) {
+                  return (
+                    <button key={f} type="button" disabled title="Gold frame is included with Pro membership"
+                      style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'not-allowed', opacity: 0.45, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                      {meta.label || f} ★
+                    </button>
+                  );
+                }
+                if (proBundled && isPro) {
+                  return (
+                    <button
+                      key={f} type="button"
+                      onClick={() => setProfileFrame(f)}
+                      title={`${meta.label} — included with Pro`}
+                      style={{
+                        padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                        cursor: 'pointer',
+                        background: selected ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.07)',
+                        border: selected ? '1px solid #f59e0b' : '1px solid rgba(245,158,11,0.35)',
+                        color: '#f59e0b',
+                      }}
+                    >
+                      {meta.label} ★ Pro
+                    </button>
+                  );
+                }
+                if (!owned) {
+                  return (
+                    <button
+                      key={f} type="button"
+                      title={`Buy ${meta.label} frame`}
+                      disabled={buying}
+                      onClick={async () => {
+                        setFramePurchaseError(null);
+                        setFramePurchaseLoading(f);
+                        try {
+                          const { url } = await purchaseFrameCheckout(f);
+                          window.location.href = url;
+                        } catch (err) {
+                          setFramePurchaseError(err.message);
+                          setFramePurchaseLoading(null);
+                        }
+                      }}
+                      style={{
+                        padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                        cursor: buying ? 'wait' : 'pointer',
+                        background: 'rgba(168,85,247,0.08)',
+                        border: '1px dashed rgba(168,85,247,0.5)',
+                        color: '#a855f7',
+                      }}
+                    >
+                      {buying ? 'Opening…' : `Buy ${meta.label}`}
+                    </button>
+                  );
+                }
+                return (
+                  <button
+                    key={f} type="button"
+                    onClick={() => setProfileFrame(f)}
+                    title={meta.label}
+                    style={{
+                      padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      background: selected ? 'rgba(168,85,247,0.15)' : 'var(--bg-card)',
+                      border: selected ? '2px solid #a855f7' : '1px solid rgba(168,85,247,0.35)',
+                      color: selected ? '#a855f7' : 'var(--text-primary)',
+                    }}
+                  >
+                    {meta.label || f} ✓
+                  </button>
+                );
+              })}
+              {framePurchaseError && (
+                <div style={{ width: '100%', marginTop: 6, fontSize: 12, color: '#ef4444' }}>{framePurchaseError}</div>
+              )}
             </div>
           </section>
 

@@ -5444,6 +5444,30 @@ class DiscordBot {
     }
   }
 
+  async notifyGiftReceived({ recipientAccountId, gifterName, giftType }) {
+    try {
+      const discordId = await db.getDiscordIdByAccountId(recipientAccountId).catch(() => null);
+      if (!discordId) return;
+      const user = await this.client.users.fetch(discordId).catch(() => null);
+      if (!user) return;
+      const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const giftLabel = giftType === 'pro' ? '⭐ Pro Membership' : '🎫 Season Pass';
+      const embed = new EmbedBuilder()
+        .setTitle(`🎁 You received a gift!`)
+        .setColor(0xf59e0b)
+        .setDescription(
+          `**${gifterName || 'A fellow player'}** gifted you **${giftLabel}** on Inhouse Stats!\n\n` +
+          `${giftType === 'pro'
+            ? `Your Pro membership is now active. Enjoy all Pro features at [${siteUrl}/pro](${siteUrl}/pro).`
+            : `Your Season Pass has been activated for the current season. Check your progress at [${siteUrl}/players](${siteUrl}/players).`}`
+        )
+        .setFooter({ text: 'Inhouse Stats' });
+      await user.send({ embeds: [embed] }).catch(() => {});
+    } catch (e) {
+      console.warn('[Gift] notifyGiftReceived failed:', e.message);
+    }
+  }
+
   async shutdown() {
     if (this._coachingReminderTimer) clearInterval(this._coachingReminderTimer);
     if (this._coachingAutoReleaseTimer) clearInterval(this._coachingAutoReleaseTimer);

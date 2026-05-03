@@ -1193,3 +1193,66 @@ export async function closeSeasonApi(seasonId, superuserKey) {
   if (!res.ok) throw new Error(data.error || 'Failed to close season');
   return data;
 }
+
+// ── Gift purchasing ─────────────────────────────────────────────────────────
+export async function createGiftProCheckout(recipientAccountId) {
+  const res = await fetch(BASE + '/gift/pro', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipientAccountId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to create gift checkout');
+  return data;
+}
+
+export async function createGiftSeasonPassCheckout(recipientAccountId) {
+  const res = await fetch(BASE + '/gift/season-pass', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipientAccountId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to create gift checkout');
+  return data;
+}
+
+// ── Profile frame purchases ──────────────────────────────────────────────────
+export async function getOwnedFrames() {
+  const res = await fetch(BASE + '/me/frames', { credentials: 'include' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch owned frames');
+  return data.owned_frames || [];
+}
+
+export async function purchaseFrameCheckout(frameId) {
+  const res = await fetch(BASE + `/frames/${frameId}/checkout`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || 'Failed to create frame checkout');
+    if (res.status === 402) err.paywall = true;
+    if (data.already_owned) err.already_owned = true;
+    throw err;
+  }
+  return data;
+}
+
+// ── Scouting report ─────────────────────────────────────────────────────────
+export async function getScoutingReport(playerId) {
+  const res = await fetch(BASE + `/player/${playerId}/scouting-report`, {
+    credentials: 'include',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    if (res.status === 402) err.paywall = true;
+    throw err;
+  }
+  return data;
+}

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport } from '../api';
+import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
@@ -444,6 +445,11 @@ export default function PlayerProfile() {
   const [seasonPass, setSeasonPass] = useState(null);
   const [mvpTrends, setMvpTrends] = useState(null);
   const [profileCard, setProfileCard] = useState(null);
+  const [scoutingReport, setScoutingReport] = useState(null);
+  const [scoutingLoading, setScoutingLoading] = useState(false);
+  const [scoutingError, setScoutingError] = useState(null);
+  const [giftError, setGiftError] = useState(null);
+  const [giftLoading, setGiftLoading] = useState(null);
 
   useEffect(() => {
     if (!showProfileCustomization || !accountId) { setProfileCard(null); return; }
@@ -588,10 +594,22 @@ export default function PlayerProfile() {
     ? ((parseInt(averages.total_kills) + parseInt(averages.total_assists)) / Math.max(parseInt(averages.total_deaths), 1)).toFixed(2)
     : null;
 
+  const activeFrameId = showProfileCustomization && profileCard?.profile_frame && profileCard.profile_frame !== 'none'
+    ? profileCard.profile_frame : null;
+  const activeFrameStyle = activeFrameId ? (FRAME_META[activeFrameId]?.style || {}) : {};
+
   return (
     <div>
       <Link to="/players" className="back-link">&larr; Back to players</Link>
 
+      {/* Profile card — wrapped in a styled border if the player has set a frame */}
+      <div style={{
+        borderRadius: activeFrameId ? 14 : 0,
+        padding: activeFrameId ? '14px 16px 12px' : 0,
+        marginBottom: activeFrameId ? 16 : 0,
+        transition: 'box-shadow 0.2s',
+        ...activeFrameStyle,
+      }}>
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 0 }}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>
           {displayName}
@@ -675,7 +693,91 @@ export default function PlayerProfile() {
             eligible (top-5 leaderboard or Immortal+). Hidden when the
             `coaching_marketplace` flag is off (eligibility endpoint 404s). */}
         {isOwnProfile && <CoachingApplyCta />}
+        {/* Gift buttons — shown when viewing another player's profile and you're signed in */}
+        {!isOwnProfile && steamUser?.accountId && (
+          <>
+            <button
+              onClick={async () => {
+                setGiftError(null);
+                setGiftLoading('pro');
+                try {
+                  const { url } = await createGiftProCheckout(accountId);
+                  window.location.href = url;
+                } catch (err) {
+                  setGiftError(err.message);
+                  setGiftLoading(null);
+                }
+              }}
+              disabled={giftLoading != null}
+              style={{
+                background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%)',
+                border: '1px solid rgba(245,158,11,0.5)', color: '#f59e0b',
+                borderRadius: 8, padding: '6px 14px', cursor: giftLoading ? 'wait' : 'pointer',
+                fontSize: 13, fontWeight: 600,
+              }}
+            >🎁 {giftLoading === 'pro' ? 'Redirecting…' : 'Gift Pro'}</button>
+            <button
+              onClick={async () => {
+                setGiftError(null);
+                setGiftLoading('sp');
+                try {
+                  const { url } = await createGiftSeasonPassCheckout(accountId);
+                  window.location.href = url;
+                } catch (err) {
+                  setGiftError(err.message);
+                  setGiftLoading(null);
+                }
+              }}
+              disabled={giftLoading != null}
+              style={{
+                background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(168,85,247,0.05) 100%)',
+                border: '1px solid rgba(168,85,247,0.5)', color: '#a855f7',
+                borderRadius: 8, padding: '6px 14px', cursor: giftLoading ? 'wait' : 'pointer',
+                fontSize: 13, fontWeight: 600,
+              }}
+            >🎫 {giftLoading === 'sp' ? 'Redirecting…' : 'Gift Season Pass'}</button>
+          </>
+        )}
+        {/* Scouting report — Pro feature, shown on any profile when viewer is signed in */}
+        {steamUser?.accountId && (
+          <button
+            onClick={async () => {
+              if (scoutingLoading) return;
+              setScoutingReport(null);
+              setScoutingError(null);
+              setScoutingLoading(true);
+              try {
+                const data = await getScoutingReport(accountId);
+                setScoutingReport(data);
+                setTimeout(() => {
+                  document.getElementById('scouting-report-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                }, 100);
+              } catch (err) {
+                setScoutingError(err.paywall ? 'AI Scouting Reports require Pro membership.' : err.message);
+              } finally {
+                setScoutingLoading(false);
+              }
+            }}
+            disabled={scoutingLoading}
+            style={{
+              background: 'linear-gradient(135deg, rgba(6,182,212,0.15) 0%, rgba(6,182,212,0.05) 100%)',
+              border: '1px solid rgba(6,182,212,0.5)', color: '#06b6d4',
+              borderRadius: 8, padding: '6px 14px', cursor: scoutingLoading ? 'wait' : 'pointer',
+              fontSize: 13, fontWeight: 600,
+            }}
+          >🔍 {scoutingLoading ? 'Generating…' : 'AI Scout'}</button>
+        )}
       </div>
+      {giftError && (
+        <div style={{ marginTop: 8, padding: '6px 12px', background: '#3a0f0f', border: '1px solid #ef4444', borderRadius: 6, fontSize: 13, color: '#ef4444' }}>
+          {giftError}
+        </div>
+      )}
+      {scoutingError && (
+        <div style={{ marginTop: 8, padding: '6px 12px', background: '#3a0f0f', border: '1px solid #ef4444', borderRadius: 6, fontSize: 13, color: '#ef4444' }}>
+          {scoutingError}
+        </div>
+      )}
 
       {/* Invite link — shown only on own profile */}
       {isOwnProfile && <InviteLinkCard accountId={accountId} />}
@@ -684,6 +786,8 @@ export default function PlayerProfile() {
           page header, plus pinned hero / pinned match cards. Theme accent is
           painted as a left border on the bio block so it doesn't recolour the
           rest of the page. */}
+      </div>{/* end profile card frame wrapper */}
+
       {showProfileCustomization && profileCard && (profileCard.custom_title || profileCard.bio || profileCard.pinned_hero_id || profileCard.pinned_match) && (
         <div style={{ marginTop: 12, marginBottom: 16 }}>
           {(profileCard.custom_title || profileCard.bio) && (
@@ -761,6 +865,125 @@ export default function PlayerProfile() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* AI Scouting Report (Pro feature) */}
+      {scoutingReport && (
+        <div id="scouting-report-anchor" style={{
+          marginTop: 20, marginBottom: 8,
+          background: 'linear-gradient(135deg, rgba(6,182,212,0.07) 0%, var(--bg-card) 100%)',
+          border: '1px solid rgba(6,182,212,0.35)', borderRadius: 12, padding: '18px 22px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <span style={{ fontSize: 18 }}>🔍</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#06b6d4' }}>AI Scouting Report</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                Generated {new Date(scoutingReport.generated_at).toLocaleString('en-AU')} · Pro feature
+              </div>
+            </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 20 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                <strong style={{ color: '#4ade80' }}>{scoutingReport.stats.wins}W</strong> / <strong style={{ color: '#f87171' }}>{scoutingReport.stats.losses}L</strong>
+              </span>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                KDA {scoutingReport.stats.avg_kills}/{scoutingReport.stats.avg_deaths}/{scoutingReport.stats.avg_assists}
+              </span>
+            </div>
+          </div>
+          {/* One-line summary */}
+          {scoutingReport.summary && (
+            <div style={{ fontSize: 14, fontWeight: 600, fontStyle: 'italic', color: '#06b6d4', marginBottom: 10, lineHeight: 1.5 }}>
+              {scoutingReport.summary}
+            </div>
+          )}
+          {/* Overview */}
+          {scoutingReport.overview && (
+            <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)', marginBottom: 14 }}>
+              {scoutingReport.overview}
+            </div>
+          )}
+
+          {/* Hero pool + strongest position */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
+            {scoutingReport.strongest_position && (
+              <div style={{ flex: 1, minWidth: 180, background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Strongest Position</div>
+                <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{scoutingReport.strongest_position}</div>
+              </div>
+            )}
+            {scoutingReport.hero_pool?.length > 0 && (
+              <div style={{ flex: 2, minWidth: 220, background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Hero Pool</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {scoutingReport.hero_pool.map((h, i) => (
+                    <span key={i} style={{ fontSize: 12, padding: '2px 8px', borderRadius: 6, background: 'rgba(6,182,212,0.12)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.25)' }}>{h}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Strengths / Improvements side by side */}
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+            {scoutingReport.strengths?.length > 0 && (
+              <div style={{ flex: 1, minWidth: 200, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>✓ Strengths</div>
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {scoutingReport.strengths.map((s, i) => (
+                    <li key={i} style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 3, lineHeight: 1.5 }}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {scoutingReport.improvements?.length > 0 && (
+              <div style={{ flex: 1, minWidth: 200, background: 'rgba(251,146,60,0.06)', border: '1px solid rgba(251,146,60,0.2)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#fb923c', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>↑ Areas to Improve</div>
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {scoutingReport.improvements.map((s, i) => (
+                    <li key={i} style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 3, lineHeight: 1.5 }}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Counters */}
+          {scoutingReport.counters?.length > 0 && (
+            <div style={{ marginBottom: 14, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>⚔ Counter Picks</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {scoutingReport.counters.map((c, i) => (
+                  <span key={i} style={{ fontSize: 12, padding: '2px 10px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)' }}>{c}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Draft recommendation */}
+          {scoutingReport.draft_recommendation && (
+            <div style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Draft Recommendation</div>
+              <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>{scoutingReport.draft_recommendation}</div>
+            </div>
+          )}
+          <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => window.print()}
+              style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+                borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              }}
+            >🖨 Print / Save PDF</button>
+            <button
+              onClick={() => setScoutingReport(null)}
+              style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+                borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontSize: 12,
+              }}
+            >✕ Close</button>
+          </div>
         </div>
       )}
 
@@ -909,7 +1132,14 @@ export default function PlayerProfile() {
       {showSeasonPass && seasonPass && (
         <section style={{ marginBottom: 24, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-            <h2 className="section-title" style={{ margin: 0 }}>🎟️ Season Pass — {seasonPass.tier?.tier_name || 'Bronze'}</h2>
+            <h2 className="section-title" style={{ margin: 0 }}>
+              🎟️ Season Pass — {seasonPass.tier?.tier_name || 'Bronze'}
+              {seasonPass.has_season_pass && (
+                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', color: '#f59e0b', borderRadius: 6, padding: '2px 8px', verticalAlign: 'middle' }}>
+                  ★ Pass Active
+                </span>
+              )}
+            </h2>
             <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{(seasonPass.total_xp ?? 0).toLocaleString()} XP</span>
           </div>
           <div style={{ height: 14, background: 'var(--bg-hover)', borderRadius: 7, overflow: 'hidden', position: 'relative' }}>

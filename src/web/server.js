@@ -321,6 +321,132 @@ function createServer(startupStatus = {}) {
           } else {
             console.warn('[Stripe] coaching_booking webhook: no booking for session', session.id);
           }
+        } else if (purpose === 'frame_purchase') {
+          const frameId = session.metadata?.frame_id;
+          const frameAccountId = session.metadata?.account_id;
+          if (frameId && frameAccountId) {
+            // Errors propagate — no catch — so Stripe retries on transient DB failures.
+            await db.confirmFramePurchase(session.id, frameAccountId, frameId);
+            console.log('[Stripe] Frame purchase confirmed:', frameId, 'for account', frameAccountId);
+          }
+        } else if (purpose === 'gift_pro') {
+          let gift = await db.confirmGiftCheckout(session.id).catch(() => null);
+          // Recovery path: if the gift row was never persisted (DB failure at checkout time),
+          // reconstruct from Stripe session metadata so fulfillment is not lost.
+          if (!gift && session.metadata?.recipient_account_id) {
+            const metaGifter = session.metadata.account_id;
+            const metaRecipient = session.metadata.recipient_account_id;
+            try {
+              await db.createGiftCheckout({ gifterAccountId: metaGifter, recipientAccountId: metaRecipient, giftType: 'pro', stripeSessionId: session.id, amountCents: session.amount_total || 0, currency: session.currency || 'aud' });
+              gift = await db.confirmGiftCheckout(session.id).catch(() => null);
+            } catch (_) {}
+          }
+          if (gift) {
+            // Check if entitlement was already granted (idempotent — Stripe may retry).
+            const giftSessionRef = `gift_${session.id}`;
+            const alreadyPro = await db.isProMember(gift.recipient_account_id).catch(() => false);
+            if (!alreadyPro) {
+              // Fulfil Pro for the recipient — errors propagate so Stripe retries.
+              await db.createProCheckout({
+                accountId: gift.recipient_account_id,
+                stripeSessionId: giftSessionRef,
+                planType: 'lifetime',
+                amountCents: session.amount_total || gift.amount_cents,
+                currency: session.currency || 'aud',
+              });
+              await db.confirmProPurchase({
+                stripeSessionId: giftSessionRef,
+                stripePaymentIntent: session.payment_intent || null,
+                amountCents: session.amount_total || gift.amount_cents,
+                currency: session.currency || 'aud',
+              });
+            }
+            try { _proCache.delete(String(gift.recipient_account_id)); } catch (_) {}
+            console.log('[Stripe] Gift Pro confirmed for recipient', gift.recipient_account_id);
+            // DM notification is best-effort; failure should NOT block Stripe ACK.
+            (async () => {
+              try {
+                const pool = db.getPool();
+                const r = await pool.query(
+                  `SELECT COALESCE(n.nickname, ps.persona_name) AS name
+                   FROM player_stats ps
+                   LEFT JOIN nicknames n ON n.account_id = ps.account_id
+                   WHERE ps.account_id = $1 ORDER BY ps.date DESC LIMIT 1`,
+                  [gift.gifter_account_id]
+                );
+                const gifterName = r.rows[0]?.name || null;
+                const bot = getDiscordBot();
+                if (bot?.notifyGiftReceived) {
+                  await bot.notifyGiftReceived({ recipientAccountId: gift.recipient_account_id, gifterName, giftType: 'pro' });
+                }
+              } catch (dmErr) {
+                console.warn('[Stripe] gift_pro DM failed (non-fatal):', dmErr.message);
+              }
+            })();
+          } else {
+            console.warn('[Stripe] gift_pro webhook: no gift for session', session.id);
+          }
+        } else if (purpose === 'gift_season_pass') {
+          let gift = await db.confirmGiftCheckout(session.id).catch(() => null);
+          // Recovery path: if the gift row was never persisted (DB failure at checkout time),
+          // reconstruct from Stripe session metadata so fulfillment is not lost.
+          if (!gift && session.metadata?.recipient_account_id) {
+            const metaGifter = session.metadata.account_id;
+            const metaRecipient = session.metadata.recipient_account_id;
+            try {
+              await db.createGiftCheckout({ gifterAccountId: metaGifter, recipientAccountId: metaRecipient, giftType: 'season_pass', stripeSessionId: session.id, amountCents: session.amount_total || 0, currency: session.currency || 'aud' });
+              gift = await db.confirmGiftCheckout(session.id).catch(() => null);
+            } catch (_) {}
+          }
+          if (gift) {
+            const p = db.getPool();
+            const seasonMeta = session.metadata?.season_id
+              ? await p.query(`SELECT id FROM seasons WHERE id = $1`, [session.metadata.season_id]).then(r => r.rows[0])
+              : await p.query(`SELECT id FROM seasons WHERE active = true ORDER BY id DESC LIMIT 1`).then(r => r.rows[0]);
+            const seasonNumber = seasonMeta?.id || null;
+            // Activate the season pass (idempotent ON CONFLICT DO NOTHING).
+            // Returns the newly-created row, or null if already activated.
+            const activation = await db.grantSeasonPassActivation({
+              accountId: gift.recipient_account_id,
+              seasonNumber,
+              giftStripeSessionId: session.id,
+            });
+            // Grant 500 XP bonus only when a new activation row was created.
+            // This prevents duplicate XP on Stripe webhook retries because the
+            // UNIQUE(account_id, season_number, match_id, source) key allows
+            // duplicate NULLs for match_id (PostgreSQL NULL != NULL in indexes).
+            if (activation && seasonNumber) {
+              await db.grantSeasonPassXpGift({
+                recipientAccountId: gift.recipient_account_id,
+                seasonId: seasonNumber,
+                xpAmount: 500,
+                stripeSessionId: session.id,
+              });
+            }
+            console.log('[Stripe] Gift Season Pass activated for', gift.recipient_account_id, 'season', seasonNumber);
+            // DM notification is best-effort.
+            (async () => {
+              try {
+                const pool = db.getPool();
+                const r = await pool.query(
+                  `SELECT COALESCE(n.nickname, ps.persona_name) AS name
+                   FROM player_stats ps
+                   LEFT JOIN nicknames n ON n.account_id = ps.account_id
+                   WHERE ps.account_id = $1 ORDER BY ps.date DESC LIMIT 1`,
+                  [gift.gifter_account_id]
+                );
+                const gifterName = r.rows[0]?.name || null;
+                const bot = getDiscordBot();
+                if (bot?.notifyGiftReceived) {
+                  await bot.notifyGiftReceived({ recipientAccountId: gift.recipient_account_id, gifterName, giftType: 'season_pass' });
+                }
+              } catch (dmErr) {
+                console.warn('[Stripe] gift_season_pass DM failed (non-fatal):', dmErr.message);
+              }
+            })();
+          } else {
+            console.warn('[Stripe] gift_season_pass webhook: no gift for session', session.id);
+          }
         } else {
           await db.confirmBuyin(session.id);
           console.log('[Stripe] Confirmed buyin for session', session.id);
@@ -712,13 +838,20 @@ function createApiRouter(startupStatus = {}) {
   router.get('/leaderboard', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
-      const [leaderboard, streaks, v3Setting] = await Promise.all([
+      const pool = db.getPool();
+      const [leaderboard, streaks, v3Setting, framesRes] = await Promise.all([
         db.getComputedLeaderboard(seasonId),
         db.getPlayerStreaks(seasonId),
         db.getSetting('use_v3_trueskill').catch(() => 'false'),
+        pool.query(`SELECT account_id, profile_frame FROM player_profiles WHERE profile_frame IS NOT NULL AND profile_frame != 'none'`).catch(() => ({ rows: [] })),
       ]);
+      const framesByAccountId = {};
+      for (const fr of framesRes.rows) {
+        framesByAccountId[String(fr.account_id)] = fr.profile_frame;
+      }
       for (const p of leaderboard) {
         p.streak = streaks[p.player_id?.toString()] || 0;
+        p.profile_frame = framesByAccountId[String(p.player_id)] || null;
       }
       res.json({ leaderboard, useV3: v3Setting === 'true' });
     } catch (err) {
@@ -2433,7 +2566,7 @@ function createApiRouter(startupStatus = {}) {
         p.query(`SELECT COUNT(*) FROM matches WHERE is_legacy = false`),
         p.query(`SELECT COUNT(DISTINCT account_id) FROM player_stats WHERE account_id != 0`),
         p.query(`SELECT COUNT(*) FROM matches WHERE parse_method = 'manual'`),
-        p.query(`SELECT * FROM seasons WHERE is_active = true LIMIT 1`),
+        p.query(`SELECT * FROM seasons WHERE active = true LIMIT 1`),
       ]);
       res.json({
         totalMatches: parseInt(matchCount.rows[0].count),
@@ -3361,6 +3494,21 @@ NOTES
   });
 
   // ─── Multi-Tier Seasons (1.6) ──────────────────────────────────────────
+  // GET /api/seasons/active/tiers — tiers for whichever season is currently active.
+  // Used by the leaderboard to show sponsored tier names without a selected season.
+  router.get('/seasons/active/tiers', async (req, res) => {
+    try {
+      const p = db.getPool();
+      const activeRes = await p.query(`SELECT id FROM seasons WHERE active = true ORDER BY id DESC LIMIT 1`);
+      if (!activeRes.rows[0]) return res.json({ tiers: [] });
+      const tiers = await db.getSeasonTiers(activeRes.rows[0].id);
+      res.json({ tiers });
+    } catch (err) {
+      console.error('[API] seasons/active/tiers error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch active season tiers' });
+    }
+  });
+
   router.get('/seasons/:id/tiers', async (req, res) => {
     try {
       const tiers = await db.getSeasonTiers(req.params.id);
@@ -4998,7 +5146,8 @@ NOTES
       const season = req.query.season ? parseInt(req.query.season) : null;
       const progress = await db.getSeasonPassProgress(req.params.id, season);
       if (!progress) return res.status(404).json({ error: 'No active season' });
-      res.json(progress);
+      const hasActivation = await db.hasSeasonPassActivation(req.params.id, progress.season_number).catch(() => false);
+      res.json({ ...progress, has_season_pass: hasActivation });
     } catch (err) {
       console.error('[API] season-pass:', err.message);
       res.status(500).json({ error: 'Failed to fetch season pass progress' });
@@ -5256,6 +5405,20 @@ NOTES
         }
       }
 
+      // Profile frame
+      const profileFrameRaw = norm(body.profile_frame);
+      if (!cosm.isValidFrame(profileFrameRaw)) {
+        return res.status(400).json({ error: 'Unknown profile frame' });
+      }
+      if (cosm.isPremiumFrame(profileFrameRaw)) {
+        // Gold frame is Pro-bundled; other premium frames are individually purchasable.
+        // All premium frames require either Pro (gold) or a completed frame purchase.
+        const frameOwned = await db.hasFrameUnlocked(accountId, profileFrameRaw, isPro);
+        if (!frameOwned) {
+          return res.status(403).json({ error: 'You have not unlocked this frame. Purchase it or upgrade to Pro.', unpurchased: true });
+        }
+      }
+
       const saved = await db.setPlayerProfileCustomization(accountId, {
         bio,
         custom_title: customTitle,
@@ -5263,6 +5426,7 @@ NOTES
         pinned_hero_id: pinnedHeroId,
         pinned_hero_caption: pinnedHeroCaption,
         pinned_match_id: pinnedMatchId,
+        profile_frame: profileFrameRaw,
       });
       res.json({ ok: true, customization: saved, is_pro: isPro });
     } catch (err) {
@@ -5383,6 +5547,321 @@ NOTES
     } catch (err) {
       console.error('[API] pro/pricing:', err.message);
       res.status(500).json({ error: 'Failed to fetch pricing' });
+    }
+  });
+
+  // ── Profile frame purchases ──────────────────────────────────────────────
+  // GET /api/me/frames — list frames the current user has unlocked
+  router.get('/me/frames', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const isPro = await _isProAccount(accountId);
+      const owned = await db.getOwnedFrames(accountId, isPro);
+      res.json({ owned_frames: owned });
+    } catch (err) {
+      console.error('[API] me/frames GET:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/frames/:frameId/checkout — create a Stripe checkout for a premium frame
+  router.post('/frames/:frameId/checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to purchase a frame.' });
+      const isPro = await _isProAccount(accountId);
+      const { frameId } = req.params;
+      // 'gold' is bundled with Pro — it cannot be purchased separately.
+      // All other premium frames are standalone one-off purchases (no Pro required).
+      const purchasablePremiumFrames = ['neon-blue', 'cosmic', 'fire'];
+      if (!purchasablePremiumFrames.includes(frameId)) {
+        return res.status(400).json({ error: 'Unknown premium frame.' });
+      }
+      if (await db.hasFrameUnlocked(accountId, frameId, isPro)) {
+        return res.status(409).json({ error: 'You already own this frame.', already_owned: true });
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments are not configured.' });
+      }
+      const FRAME_PRICES = { gold: 299, 'neon-blue': 299, cosmic: 399, fire: 399 };
+      const priceCents = FRAME_PRICES[frameId] || 299;
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const frameLabelMap = { gold: 'Gold', 'neon-blue': 'Neon Blue', cosmic: 'Cosmic', fire: 'Fire' };
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: {
+              name: `Inhouse Stats — ${frameLabelMap[frameId] || frameId} Profile Frame`,
+              description: `One-off purchase: unlocks the ${frameLabelMap[frameId] || frameId} CSS border frame for your profile.`,
+            },
+            unit_amount: priceCents,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/settings/profile?frame_purchased=${frameId}`,
+        cancel_url: `${baseUrl}/settings/profile`,
+        metadata: {
+          purpose: 'frame_purchase',
+          account_id: String(accountId),
+          frame_id: frameId,
+        },
+      });
+      await db.createFrameCheckout({
+        accountId,
+        frameId,
+        stripeSessionId: session.id,
+        amountCents: priceCents,
+        currency: 'aud',
+      });
+      res.json({ url: session.url });
+    } catch (err) {
+      console.error('[API] frames/checkout:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create frame checkout' });
+    }
+  });
+
+  // ── Gift purchasing ──────────────────────────────────────────────────────
+  // POST /api/gift/pro — create a Stripe checkout to gift Pro to another player
+  router.post('/gift/pro', express.json(), async (req, res) => {
+    try {
+      if (!(await _flagOn('pro_tier', req))) return res.status(404).json({ error: 'Not found' });
+      const gifterAccountId = req.session?.accountId;
+      if (!gifterAccountId) return res.status(401).json({ error: 'Sign in with Steam to send a gift.' });
+      const { recipientAccountId } = req.body || {};
+      if (!recipientAccountId) return res.status(400).json({ error: 'recipientAccountId is required' });
+      if (String(recipientAccountId) === String(gifterAccountId)) {
+        return res.status(400).json({ error: 'You cannot gift yourself.' });
+      }
+      if (await _isProAccount(recipientAccountId)) {
+        return res.status(409).json({ error: 'That player already has Pro.', already_pro: true });
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments are not configured.' });
+      }
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const priceCents = _proPriceCents();
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: {
+              name: 'Inhouse Stats — Gift: Pro Tier (Lifetime)',
+              description: `Gift a lifetime Pro membership to another player.`,
+            },
+            unit_amount: priceCents,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pro?checkout=cancelled`,
+        metadata: {
+          purpose: 'gift_pro',
+          account_id: String(gifterAccountId),
+          recipient_account_id: String(recipientAccountId),
+        },
+      });
+      await db.createGiftCheckout({
+        gifterAccountId,
+        recipientAccountId,
+        giftType: 'pro',
+        stripeSessionId: session.id,
+        amountCents: priceCents,
+        currency: 'aud',
+      });
+      res.json({ url: session.url });
+    } catch (err) {
+      console.error('[API] gift/pro:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create gift checkout' });
+    }
+  });
+
+  // POST /api/gift/season-pass — create a Stripe checkout to gift a Season Pass activation
+  router.post('/gift/season-pass', express.json(), async (req, res) => {
+    try {
+      const gifterAccountId = req.session?.accountId;
+      if (!gifterAccountId) return res.status(401).json({ error: 'Sign in with Steam to send a gift.' });
+      const { recipientAccountId } = req.body || {};
+      if (!recipientAccountId) return res.status(400).json({ error: 'recipientAccountId is required' });
+      if (String(recipientAccountId) === String(gifterAccountId)) {
+        return res.status(400).json({ error: 'You cannot gift yourself.' });
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments are not configured.' });
+      }
+      const p = db.getPool();
+      const seasonRes = await p.query(`SELECT id FROM seasons WHERE active = true ORDER BY id DESC LIMIT 1`);
+      const activeSeason = seasonRes.rows[0];
+      if (!activeSeason) {
+        return res.status(409).json({ error: 'There is no active season to gift a Season Pass for. Try again when a season is running.' });
+      }
+      // Check recipient has not already received this season's pass.
+      const alreadyHas = await db.hasSeasonPassActivation(recipientAccountId, activeSeason.id).catch(() => false);
+      if (alreadyHas) {
+        return res.status(409).json({ error: 'This player already has the Season Pass for the current season.', already_active: true });
+      }
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const SEASON_PASS_GIFT_CENTS = 799;
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: {
+              name: 'Inhouse Stats — Gift: Season Pass',
+              description: `Gift a Season Pass to another player — activates premium progression for the current season plus a 500 XP welcome bonus.`,
+            },
+            unit_amount: SEASON_PASS_GIFT_CENTS,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pro?checkout=cancelled`,
+        metadata: {
+          purpose: 'gift_season_pass',
+          account_id: String(gifterAccountId),
+          recipient_account_id: String(recipientAccountId),
+          season_id: activeSeason ? String(activeSeason.id) : '',
+        },
+      });
+      await db.createGiftCheckout({
+        gifterAccountId,
+        recipientAccountId,
+        giftType: 'season_pass',
+        stripeSessionId: session.id,
+        amountCents: SEASON_PASS_GIFT_CENTS,
+        currency: 'aud',
+      });
+      res.json({ url: session.url });
+    } catch (err) {
+      console.error('[API] gift/season-pass:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create gift checkout' });
+    }
+  });
+
+  // ── AI Scouting Report (Pro-gated, Grok-powered) ─────────────────────────
+  router.get('/player/:id/scouting-report', async (req, res) => {
+    try {
+      const viewerAccountId = req.session?.accountId;
+      if (!viewerAccountId) return res.status(401).json({ error: 'Sign in with Steam.' });
+      if (!(await _isProAccount(viewerAccountId))) {
+        return res.status(402).json({ error: 'AI Scouting Reports are a Pro feature.', paywall: true });
+      }
+      const subjectAccountId = req.params.id;
+      const p = db.getPool();
+      const [statsRes, posRes, heroRes, streakRes] = await Promise.all([
+        p.query(
+          `SELECT ps.kills, ps.deaths, ps.assists, ps.hero_id,
+                  m.radiant_win, ps.team,
+                  COALESCE(n.nickname, ps.persona_name) AS name
+             FROM player_stats ps
+             JOIN matches m ON m.match_id = ps.match_id
+             LEFT JOIN nicknames n ON n.account_id = ps.account_id
+            WHERE ps.account_id = $1
+            ORDER BY m.date DESC LIMIT 30`,
+          [subjectAccountId]
+        ),
+        p.query(
+          `SELECT ps2.position, COUNT(*) AS games,
+                  ROUND(AVG(ps2.kills)::numeric, 1) AS avg_kills,
+                  ROUND(AVG(ps2.deaths)::numeric, 1) AS avg_deaths,
+                  ROUND(AVG(ps2.assists)::numeric, 1) AS avg_assists,
+                  SUM(CASE WHEN (ps2.team = 'radiant') = m2.radiant_win THEN 1 ELSE 0 END) AS wins
+             FROM player_stats ps2
+             JOIN matches m2 ON m2.match_id = ps2.match_id
+            WHERE ps2.account_id = $1 AND ps2.position IS NOT NULL
+            GROUP BY ps2.position
+            ORDER BY games DESC`,
+          [subjectAccountId]
+        ),
+        p.query(
+          `SELECT ps3.hero_id, COUNT(*) AS games,
+                  SUM(CASE WHEN (ps3.team = 'radiant') = m3.radiant_win THEN 1 ELSE 0 END) AS wins
+             FROM player_stats ps3
+             JOIN matches m3 ON m3.match_id = ps3.match_id
+            WHERE ps3.account_id = $1
+            GROUP BY ps3.hero_id
+            ORDER BY games DESC LIMIT 5`,
+          [subjectAccountId]
+        ),
+        db.getPlayerCurrentStreak([subjectAccountId]).catch(() => 0),
+      ]);
+      if (!statsRes.rows.length) {
+        return res.status(404).json({ error: 'No match data found for this player.' });
+      }
+      const playerName = statsRes.rows[0]?.name || `Player ${subjectAccountId}`;
+      const recentGames = statsRes.rows.length;
+      const wins = statsRes.rows.filter(r => (r.team === 'radiant') === r.radiant_win).length;
+      const avgKills   = (statsRes.rows.reduce((s, r) => s + (r.kills || 0), 0) / recentGames).toFixed(1);
+      const avgDeaths  = (statsRes.rows.reduce((s, r) => s + (r.deaths || 0), 0) / recentGames).toFixed(1);
+      const avgAssists = (statsRes.rows.reduce((s, r) => s + (r.assists || 0), 0) / recentGames).toFixed(1);
+      const positionSummary = posRes.rows.map(r =>
+        `Pos ${r.position}: ${r.games} games, ${r.avg_kills}/${r.avg_deaths}/${r.avg_assists} KDA, ${r.wins}W`
+      ).join('; ');
+      const topHeroes = heroRes.rows.map(r =>
+        `hero_id ${r.hero_id} (${r.games} games, ${r.wins}W)`
+      ).join(', ');
+      const topHeroNames = heroRes.rows.map(r => `hero_id ${r.hero_id} (${r.games}g ${r.wins}W)`);
+      const strongestPos = posRes.rows[0];
+      const prompt = `You are a professional Dota 2 scout. Respond ONLY with a valid JSON object — no markdown, no prose, no code fences.
+
+Player stats:
+- Name: ${playerName}
+- Recent form: ${wins}W ${recentGames - wins}L (${Math.round(wins / recentGames * 100)}% WR, last ${recentGames} games)
+- Average KDA: ${avgKills}/${avgDeaths}/${avgAssists}
+- Streak: ${streakRes > 0 ? `+${streakRes} win streak` : streakRes < 0 ? `${streakRes} loss streak` : 'no streak'}
+- Positions: ${positionSummary || 'no data'}
+- Top heroes: ${topHeroes || 'no data'}
+
+Return exactly this JSON shape (all fields required, arrays of strings):
+{
+  "summary": "One sentence that captures this player in a nutshell",
+  "overview": "2-3 sentence summary of this player's playstyle and recent form",
+  "strengths": ["strength 1", "strength 2", "strength 3"],
+  "improvements": ["improvement 1", "improvement 2"],
+  "draft_recommendation": "1-2 sentences on how to pick around or against this player",
+  "hero_pool": ["hero_id X (Ng NW)", "..."],
+  "strongest_position": "Pos N — description",
+  "counters": ["counter suggestion 1", "counter suggestion 2", "counter suggestion 3"]
+}`;
+
+      const raw = await generateChatResponse({ message: prompt });
+      if (!raw || raw.startsWith('AI chat is not configured')) {
+        return res.status(503).json({ error: 'AI scouting is not available (API key not configured).' });
+      }
+      const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim();
+      let structured;
+      try {
+        structured = JSON.parse(cleaned);
+      } catch (_) {
+        return res.status(503).json({ error: 'AI scouting returned an unexpected response. Please try again.' });
+      }
+      res.json({
+        player_name: playerName,
+        account_id: subjectAccountId,
+        stats: { wins, losses: recentGames - wins, avg_kills: avgKills, avg_deaths: avgDeaths, avg_assists: avgAssists },
+        summary: structured.summary || '',
+        overview: structured.overview || '',
+        strengths: Array.isArray(structured.strengths) ? structured.strengths : [],
+        improvements: Array.isArray(structured.improvements) ? structured.improvements : [],
+        draft_recommendation: structured.draft_recommendation || '',
+        hero_pool: Array.isArray(structured.hero_pool) ? structured.hero_pool : topHeroNames,
+        strongest_position: structured.strongest_position || (strongestPos ? `Pos ${strongestPos.position}` : ''),
+        counters: Array.isArray(structured.counters) ? structured.counters : [],
+        generated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('[API] scouting-report:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to generate scouting report' });
     }
   });
 

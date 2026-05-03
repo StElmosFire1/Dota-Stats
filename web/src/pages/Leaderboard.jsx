@@ -7,6 +7,7 @@ import ProBadge from '../components/ProBadge';
 import useProMembers from '../hooks/useProMembers';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
+import { FRAME_META } from '../profileCosmetics';
 
 // V1 thresholds — fresh player starts at ~2600 MMR
 const MMR_TIERS_V1 = [
@@ -48,22 +49,46 @@ function getTier(mmr, tiers = MMR_TIERS_V1) {
   return tiers[tiers.length - 1];
 }
 
-function TierBadge({ mmr, useV3 = false }) {
-  const t = getTier(mmr, useV3 ? MMR_TIERS_V3 : MMR_TIERS_V1);
+function TierBadge({ mmr, useV3 = false, dbTiers = null }) {
+  const tiers = useV3 ? MMR_TIERS_V3 : MMR_TIERS_V1;
+  const t = getTier(mmr, tiers);
   if (!t) return null;
+
+  const now = Date.now();
+  let sponsorName = null;
+  let matchedDbTier = null;
+  if (dbTiers && Array.isArray(dbTiers) && dbTiers.length > 0) {
+    const sorted = [...dbTiers].filter(dt => dt.min_mmr != null).sort((a, b) => b.min_mmr - a.min_mmr);
+    matchedDbTier = sorted.find(dt => mmr >= dt.min_mmr) || null;
+    if (matchedDbTier?.sponsor_name) {
+      const from = matchedDbTier.sponsor_active_from ? new Date(matchedDbTier.sponsor_active_from).getTime() : 0;
+      const until = matchedDbTier.sponsor_active_until ? new Date(matchedDbTier.sponsor_active_until).getTime() : Infinity;
+      if (now >= from && now <= until) {
+        sponsorName = matchedDbTier.sponsor_name;
+      }
+    }
+  }
+
+  // Prefer the DB-managed tier name over the hardcoded display name when available.
+  const tierDisplayName = matchedDbTier?.name || t.name;
+  const label = sponsorName ? `${tierDisplayName} — powered by ${sponsorName}` : tierDisplayName;
+  const tooltipText = sponsorName
+    ? `${t.description} · Sponsored by ${sponsorName}`
+    : t.description;
+
   return (
     <span
-      title={t.description}
+      title={tooltipText}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        gap: 4, width: 118, flexShrink: 0,
-        background: t.bg, border: `1px solid ${t.border}`,
-        borderRadius: 8, padding: '3px 0', fontSize: 11, fontWeight: 600,
+        gap: 4, minWidth: 118, flexShrink: 0,
+        background: t.bg, border: `1px solid ${sponsorName ? '#f59e0b' : t.border}`,
+        borderRadius: 8, padding: '3px 6px', fontSize: 11, fontWeight: 600,
         color: t.color, whiteSpace: 'nowrap', cursor: 'default',
         letterSpacing: 0.2,
       }}
     >
-      {t.emoji} {t.name}
+      {sponsorName ? '🤝' : t.emoji} {label}
     </span>
   );
 }
@@ -326,7 +351,8 @@ export default function Leaderboard() {
   const [bestFairest, setBestFairest] = useState([]);
   const [bestFairestLoading, setBestFairestLoading] = useState(true);
   const [playerForm, setPlayerForm] = useState({});
-  const [xpMap, setXpMap] = useState({}); // accountId -> { xp, tier_name }
+  const [xpMap, setXpMap] = useState({});
+  const [dbTiers, setDbTiers] = useState(null);
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -369,6 +395,16 @@ export default function Leaderboard() {
       .then(d => setBestFairest(d.rows || []))
       .catch(() => setBestFairest([]))
       .finally(() => setBestFairestLoading(false));
+  }, [seasonId]);
+
+  useEffect(() => {
+    const url = seasonId
+      ? `/api/seasons/${seasonId}/tiers`
+      : '/api/seasons/active/tiers';
+    fetch(url)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setDbTiers(d?.tiers || null))
+      .catch(() => setDbTiers(null));
   }, [seasonId]);
 
   if (loading) return <div className="loading">Loading leaderboard...</div>;
@@ -458,10 +494,25 @@ export default function Leaderboard() {
                   <tr key={p.player_id} className={i < 3 ? `rank-${i + 1}` : ''}>
                     <td className="col-rank">{i + 1}</td>
                     <td className="col-player">
-                      <Link to={`/player/${p.player_id}`} className="player-link" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {p.nickname || p.display_name || p.player_id}
-                        {proMembers.has(String(p.player_id)) && <ProBadge size="sm" />}
-                      </Link>
+                      {(() => {
+                        const frameMeta = p.profile_frame ? FRAME_META[p.profile_frame] : null;
+                        const frameStyle = frameMeta?.style || {};
+                        return (
+                          <Link
+                            to={`/player/${p.player_id}`}
+                            className="player-link"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              borderRadius: frameMeta ? 6 : 0,
+                              padding: frameMeta ? '1px 6px 1px 4px' : 0,
+                              ...frameStyle,
+                            }}
+                          >
+                            {p.nickname || p.display_name || p.player_id}
+                            {proMembers.has(String(p.player_id)) && <ProBadge size="sm" />}
+                          </Link>
+                        );
+                      })()}
                     </td>
                     <td className="col-stat">
                       <DotaRankText
@@ -469,7 +520,7 @@ export default function Leaderboard() {
                         leaderboardRank={p.dota_leaderboard_rank}
                       />
                     </td>
-                    <td className="col-stat"><TierBadge mmr={p.mmr} useV3={data.useV3} /></td>
+                    <td className="col-stat"><TierBadge mmr={p.mmr} useV3={data.useV3} dbTiers={dbTiers} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>
