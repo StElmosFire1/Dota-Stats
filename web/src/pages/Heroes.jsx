@@ -242,6 +242,27 @@ function HeroBreakdownTab() {
   );
 }
 
+function HeroPortrait({ src, alt }) {
+  const [errored, setErrored] = useState(false);
+  if (!src || errored) {
+    return (
+      <div style={{
+        width: '100%', height: '100%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 28, color: 'var(--text-muted)',
+      }}>🦸</div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      onError={() => setErrored(true)}
+    />
+  );
+}
+
 const TIER_DEFS = [
   { key: 'S', label: 'S Tier', color: '#ff6b35', bg: 'rgba(255,107,53,0.12)', desc: '≥58% win rate' },
   { key: 'A', label: 'A Tier', color: '#f7c059', bg: 'rgba(247,192,89,0.12)', desc: '53–58%' },
@@ -314,38 +335,39 @@ function HeroTierTab() {
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {tierHeroes.map(h => {
-                const heroImg = getHeroImageUrl(h.hero_id);
+                const heroImg = getHeroImageUrl(h.hero_id, h.hero_name);
                 const wrPct = (h.win_rate * 100).toFixed(1);
+                const heroDisplayName = formatHeroName(h.hero_name);
                 return (
                   <div key={h.hero_id} style={{
                     background: tier.bg, border: `1px solid ${tier.color}44`,
-                    borderRadius: 8, padding: '8px 10px', minWidth: 150, maxWidth: 200,
-                    display: 'flex', flexDirection: 'column', gap: 4, flex: '0 0 auto',
+                    borderRadius: 8, overflow: 'hidden', minWidth: 140, maxWidth: 180,
+                    display: 'flex', flexDirection: 'column', flex: '0 0 auto',
                     position: 'relative',
                   }}>
                     {h.is_overridden && (
                       <span title="Tier manually set by admin" style={{
-                        position: 'absolute', top: 4, right: 6,
+                        position: 'absolute', top: 4, right: 6, zIndex: 1,
                         fontSize: 10, color: 'var(--text-muted)',
                       }}>✏️</span>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {heroImg && (
-                        <img src={heroImg} alt={h.hero_name} style={{ width: 32, height: 18, borderRadius: 2, flexShrink: 0 }} />
-                      )}
-                      <span style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{formatHeroName(h.hero_name)}</span>
+                    <div style={{ width: '100%', aspectRatio: '16/9', background: 'rgba(0,0,0,0.4)', overflow: 'hidden', flexShrink: 0 }}>
+                      <HeroPortrait src={heroImg} alt={heroDisplayName} />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 3, height: 5, overflow: 'hidden' }}>
-                        <div style={{ width: `${h.win_rate * 100}%`, height: '100%', background: tier.color, borderRadius: 3 }} />
+                    <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontWeight: 600, fontSize: 12, lineHeight: 1.2 }}>{heroDisplayName}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 3, height: 4, overflow: 'hidden' }}>
+                          <div style={{ width: `${h.win_rate * 100}%`, height: '100%', background: tier.color, borderRadius: 3 }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: tier.color, fontWeight: 700, flexShrink: 0 }}>{wrPct}%</span>
                       </div>
-                      <span style={{ fontSize: 11, color: tier.color, fontWeight: 700, flexShrink: 0 }}>{wrPct}%</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                        {h.games}G · {h.wins}W
+                        {h.bans > 0 && ` · ${h.bans} bans`}
+                        {h.primary_position > 0 && filterPos === 0 && ` · Pos${h.primary_position}`}
+                      </span>
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {h.games}G · {h.wins}W
-                      {h.bans > 0 && ` · ${h.bans} bans`}
-                      {h.primary_position > 0 && filterPos === 0 && ` · Pos${h.primary_position}`}
-                    </span>
                   </div>
                 );
               })}
