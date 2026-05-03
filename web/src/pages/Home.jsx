@@ -5,6 +5,9 @@ import { fmtDate } from '../utils/dates';
 import { useSeason } from '../context/SeasonContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { formatHeroName } from '../utils/heroes';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import OnboardingWizard from '../components/OnboardingWizard';
+import { MmrBadge } from '../components/RankBadge';
 
 const LAUNCH_BANNER_DISMISS_KEY = 'season10LaunchBannerDismissed_v1';
 
@@ -118,7 +121,305 @@ function MatchRow({ m }) {
   );
 }
 
+function PersonalMatchRow({ m }) {
+  const heroName = formatHeroName(m.hero_name) || m.hero_name || '?';
+  const won = m.won;
+  return (
+    <Link to={`/match/${m.match_id}`} style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '10px 14px', borderRadius: 8,
+      background: 'var(--bg-hover)', textDecoration: 'none',
+      border: '1px solid transparent', transition: 'border-color 0.15s',
+    }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
+    >
+      <span style={{
+        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, flexShrink: 0,
+        background: won ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+        color: won ? 'var(--accent-green, #22c55e)' : 'var(--accent-red, #ef4444)',
+        border: `1px solid ${won ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+      }}>
+        {won ? 'WIN' : 'LOSS'}
+      </span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
+        {heroName}
+      </span>
+      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+        {m.kills}/{m.deaths}/{m.assists}
+      </span>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        {fmtDuration(m.duration)}
+      </span>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        {fmtDate(m.date)}
+      </span>
+    </Link>
+  );
+}
+
+function StreakBadge({ streak }) {
+  if (!streak) return null;
+  const isWin = streak > 0;
+  const count = Math.abs(streak);
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '4px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700,
+      background: isWin ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+      color: isWin ? 'var(--accent-green, #22c55e)' : 'var(--accent-red, #ef4444)',
+      border: `1px solid ${isWin ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+    }}>
+      {isWin ? '🔥' : '❄️'} {count}-{isWin ? 'win' : 'loss'} streak
+    </span>
+  );
+}
+
+function PersonalisedDashboard({ steamUser }) {
+  const [homeData, setHomeData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showWizard, setShowWizard] = useState(false);
+
+  const fetchHomeData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/me/home', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setHomeData(data);
+        if (data.onboarding_complete === false) {
+          setShowWizard(true);
+        }
+      }
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchHomeData();
+  }, [fetchHomeData]);
+
+  const handleWizardComplete = useCallback(() => {
+    setShowWizard(false);
+    fetchHomeData();
+  }, [fetchHomeData]);
+
+  const handleWizardDismiss = useCallback(() => {
+    setShowWizard(false);
+  }, []);
+
+  const displayName = steamUser?.displayName || `Player ${steamUser?.accountId}`;
+  const accountId = steamUser?.accountId;
+
+  return (
+    <>
+      {showWizard && (
+        <OnboardingWizard
+          onComplete={handleWizardComplete}
+          onDismiss={handleWizardDismiss}
+        />
+      )}
+
+      {/* Personal hero banner */}
+      <div style={{
+        background: 'linear-gradient(135deg, var(--bg-card) 0%, rgba(59,130,246,0.1) 100%)',
+        border: '1px solid var(--border)', borderRadius: 16, padding: '28px 32px',
+        marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20,
+      }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+            Welcome back
+          </div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: 'var(--text-primary)' }}>
+            {displayName}
+          </h1>
+          {!loading && homeData && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+                  {homeData.mmr !== null && (
+                <MmrBadge mmr={homeData.mmr} size="lg" />
+              )}
+              {homeData.games_played > 0 && (
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                  {homeData.wins}W – {homeData.losses}L
+                </span>
+              )}
+              {homeData.streak !== 0 && <StreakBadge streak={homeData.streak} />}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {accountId && (
+            <Link to={`/player/${accountId}`} className="btn btn-primary" style={{ fontSize: 13 }}>
+              👤 My Profile
+            </Link>
+          )}
+          <Link to="/leaderboard" className="btn" style={{ fontSize: 13 }}>
+            🏆 Leaderboard
+          </Link>
+          <Link to="/matches" className="btn" style={{ fontSize: 13 }}>
+            🎮 Matches
+          </Link>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="loading" style={{ marginBottom: 28 }}>Loading your stats…</div>
+      ) : homeData ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+
+          {/* Last 3 matches */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 22 }}>
+            <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>🕐 Recent Games</span>
+              {accountId && (
+                <Link to={`/player/${accountId}`} style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>
+                  All matches →
+                </Link>
+              )}
+            </h2>
+            {homeData.last_matches?.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {homeData.last_matches.map(m => (
+                  <PersonalMatchRow key={m.match_id} m={m} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No matches played yet.</div>
+            )}
+          </div>
+
+          {/* Stats + hero spotlight */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* Stat cards */}
+            {homeData.games_played > 0 && (
+              <div style={{ display: 'flex', gap: 12 }}>
+                <StatCard
+                  icon="🎮"
+                  label="Games"
+                  value={homeData.games_played}
+                />
+                <StatCard
+                  icon="📊"
+                  label="Win rate"
+                  value={homeData.games_played > 0
+                    ? `${Math.round((homeData.wins / homeData.games_played) * 100)}%`
+                    : '—'}
+                />
+              </div>
+            )}
+
+            {/* Hero spotlight */}
+            {homeData.top_hero && (
+              <div style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 20px',
+              }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                  ⭐ Your hero this week
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{
+                    width: 56, height: 32, borderRadius: 6, overflow: 'hidden',
+                    background: 'var(--bg-hover)', flexShrink: 0,
+                  }}>
+                    <img
+                      src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${homeData.top_hero.hero_name || ''}.png`}
+                      alt={homeData.top_hero.hero_name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={e => { e.target.style.display = 'none'; }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {formatHeroName(homeData.top_hero.hero_name) || homeData.top_hero.hero_name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {homeData.top_hero.picks} game{homeData.top_hero.picks !== 1 ? 's' : ''} this week
+                      {homeData.top_hero.picks > 0 && homeData.top_hero.wins != null && (
+                        <> · {Math.round((homeData.top_hero.wins / homeData.top_hero.picks) * 100)}% WR</>
+                      )}
+                    </div>
+                  </div>
+                  <Link
+                    to={`/heroes`}
+                    style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}
+                  >
+                    Heroes →
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Active inhouse lobby */}
+            {homeData.active_session && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(34,197,94,0.12) 0%, var(--bg-card) 100%)',
+                border: '1px solid rgba(34,197,94,0.35)', borderRadius: 12, padding: '16px 20px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    🎮 Active lobby
+                  </span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10,
+                    background: 'rgba(34,197,94,0.15)', color: '#22c55e',
+                    border: '1px solid rgba(34,197,94,0.3)', textTransform: 'uppercase', letterSpacing: 1,
+                  }}>
+                    {homeData.active_session.status.replace('_', ' ')}
+                  </span>
+                  {homeData.active_session.player_joined && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10,
+                      background: 'rgba(59,130,246,0.15)', color: '#3b82f6',
+                      border: '1px solid rgba(59,130,246,0.3)', textTransform: 'uppercase', letterSpacing: 1,
+                    }}>
+                      You're in
+                    </span>
+                  )}
+                </div>
+                {homeData.active_session.notes && (
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+                    {homeData.active_session.notes}
+                  </div>
+                )}
+                <Link to="/inhouse" style={{ fontSize: 12, color: '#22c55e', textDecoration: 'none', fontWeight: 600 }}>
+                  {homeData.active_session.player_joined ? 'View lobby →' : 'Join lobby →'}
+                </Link>
+              </div>
+            )}
+
+            {/* Upcoming game (only when no active session) */}
+            {!homeData.active_session && homeData.upcoming_game && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, var(--bg-card) 100%)',
+                border: '1px solid rgba(59,130,246,0.3)', borderRadius: 12, padding: '16px 20px',
+              }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                  📅 Next scheduled game
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {new Date(homeData.upcoming_game.scheduled_at).toLocaleDateString('en-AU', {
+                    weekday: 'short', day: 'numeric', month: 'short',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
+                </div>
+                {homeData.upcoming_game.note && (
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {homeData.upcoming_game.note}
+                  </div>
+                )}
+                <Link to="/schedule" style={{ fontSize: 12, color: 'var(--accent-blue, #3b82f6)', marginTop: 8, display: 'inline-block', textDecoration: 'none' }}>
+                  View schedule →
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export default function Home() {
+  const { steamUser, loading: authLoading } = useSteamAuth() || {};
   const { seasonId } = useSeason();
   const [stats, setStats] = useState(null);
   const [recap, setRecap] = useState(null);
@@ -162,12 +463,41 @@ export default function Home() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 60000); // refresh every 60s
+    const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
   const totals = stats?.totals || {};
   const recentMatches = stats?.recentMatches || [];
+
+  if (!authLoading && steamUser) {
+    return (
+      <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+        <Season10LaunchBanner />
+        <PersonalisedDashboard steamUser={steamUser} />
+
+        {/* Community stats section below personalized view */}
+        <div style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+          padding: '16px 22px', marginBottom: 20,
+        }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700, color: 'var(--text-secondary)' }}>
+            🌏 Community stats
+          </h2>
+          {loading ? (
+            <div className="loading">Loading…</div>
+          ) : (
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <StatCard icon="🎮" label="Total Matches" value={totals.total_matches} />
+              <StatCard icon="👥" label="Players" value={totals.total_players} />
+              <StatCard icon="📅" label="This Week" value={totals.matches_this_week} sub="matches played" />
+              <StatCard icon="🦸" label="Most Played Hero" value={formatHeroName(totals.most_played_hero)} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>

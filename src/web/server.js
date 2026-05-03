@@ -5018,6 +5018,46 @@ NOTES
     }
   });
 
+  // ---------- Personalised home + onboarding ----------
+  router.get('/me/home', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const [homeData, onboardingComplete] = await Promise.all([
+        db.getPlayerHomeData(accountId),
+        db.getOnboardingStatus(accountId),
+      ]);
+      res.json({ ...homeData, onboarding_complete: onboardingComplete });
+    } catch (err) {
+      console.error('[API] me/home GET:', err.message);
+      res.status(500).json({ error: 'Failed to fetch home data' });
+    }
+  });
+
+  router.post('/me/onboarding/complete', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      await db.setOnboardingComplete(accountId, true);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] me/onboarding/complete POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/onboarding/reset', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      await db.setOnboardingComplete(accountId, false);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] me/onboarding/reset POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/player/:id/profile-card', async (req, res) => {
     try {
       if (!(await _flagOn('profile_customization', req))) return res.status(404).json({ error: 'Not found' });

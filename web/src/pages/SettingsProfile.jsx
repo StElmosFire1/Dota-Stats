@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import OnboardingWizard from '../components/OnboardingWizard';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { ALL_HEROES, getHeroName, getHeroImageUrl } from '../heroNames';
 import {
@@ -101,6 +102,8 @@ export default function SettingsProfile() {
   const [error, setError] = useState(null);
   const [savedMsg, setSavedMsg] = useState(null);
   const [isPro, setIsPro] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardResetting, setWizardResetting] = useState(false);
 
   const [bio, setBio] = useState('');
   const [customTitle, setCustomTitle] = useState('');
@@ -158,6 +161,21 @@ export default function SettingsProfile() {
     return ALL_HEROES.filter(h => h.name.toLowerCase().includes(q)).slice(0, 8);
   }, [pinnedHeroSearch]);
 
+  const handleRedoWizard = async () => {
+    setWizardResetting(true);
+    try {
+      const res = await fetch('/api/me/onboarding/reset', { method: 'POST', credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || `Could not reset wizard (${res.status})`);
+        setWizardResetting(false);
+        return;
+      }
+      setShowWizard(true);
+    } catch (e) { setError(e.message); }
+    setWizardResetting(false);
+  };
+
   const onSave = async () => {
     setSaving(true); setError(null); setSavedMsg(null);
     try {
@@ -187,7 +205,27 @@ export default function SettingsProfile() {
   if (!enabled) {
     return (
       <div className="container" style={{ maxWidth: 760, padding: '24px 16px' }}>
-        <h1>Profile Customization</h1>
+        {showWizard && (
+          <OnboardingWizard
+            onComplete={() => setShowWizard(false)}
+            onDismiss={() => setShowWizard(false)}
+          />
+        )}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 4 }}>
+          <h1 style={{ margin: 0 }}>Profile Customization</h1>
+          {accountId && (
+            <button
+              className="btn btn-small"
+              onClick={handleRedoWizard}
+              disabled={wizardResetting}
+              title="Redo the onboarding setup wizard"
+              style={{ fontSize: 13, opacity: 0.8 }}
+            >
+              {wizardResetting ? 'Loading…' : '🔁 Redo setup wizard'}
+            </button>
+          )}
+        </div>
+        {error && <div className="error-state" style={{ margin: '12px 0' }}>{error}</div>}
         <p>Profile customization is not enabled yet.</p>
       </div>
     );
@@ -210,8 +248,26 @@ export default function SettingsProfile() {
 
   return (
     <div className="container" style={{ maxWidth: 760, padding: '24px 16px' }}>
-      <h1 style={{ marginBottom: 4 }}>Profile Customization</h1>
-      <p style={{ color: 'var(--text-muted)', marginTop: 0 }}>
+      {showWizard && (
+        <OnboardingWizard
+          onComplete={() => setShowWizard(false)}
+          onDismiss={() => setShowWizard(false)}
+        />
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 4 }}>
+        <h1 style={{ margin: 0 }}>Profile Customization</h1>
+        <button
+          className="btn btn-small"
+          onClick={handleRedoWizard}
+          disabled={wizardResetting}
+          title="Redo the onboarding setup wizard"
+          style={{ fontSize: 13, opacity: 0.8 }}
+        >
+          {wizardResetting ? 'Loading…' : '🔁 Redo setup wizard'}
+        </button>
+      </div>
+      <p style={{ color: 'var(--text-muted)', marginTop: 4 }}>
         Personalise how your profile looks to other players. Premium options unlock with the upcoming Pro tier.
       </p>
 

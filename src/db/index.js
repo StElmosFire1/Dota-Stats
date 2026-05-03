@@ -834,6 +834,7 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_profiles_account ON player_profiles (account_id)`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS onboarding_complete BOOLEAN NOT NULL DEFAULT false`);
 
     // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
     // status: 'pending' (checkout created), 'active' (paid via webhook),
@@ -8184,6 +8185,155 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
   return r.rows[0];
 }
 
+// ---------- Onboarding ----------
+async function getOnboardingStatus(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT onboarding_complete FROM player_profiles WHERE account_id = $1`,
+    [accountId]
+  );
+  if (!r.rows[0]) return false;
+  return !!r.rows[0].onboarding_complete;
+}
+
+async function setOnboardingComplete(accountId, complete = true) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO player_profiles (account_id, onboarding_complete, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (account_id) DO UPDATE
+       SET onboarding_complete = EXCLUDED.onboarding_complete,
+           updated_at = NOW()`,
+    [accountId, !!complete]
+  );
+  return true;
+}
+
+// ---------- Personalised home data ----------
+async function getPlayerHomeData(accountId) {
+  const p = getPool();
+
+  const [ratingRes, recentRes, streakRes, heroRes, scheduleRes, activeSessionRes, playerInSessionRes] = await Promise.all([
+    // MMR + record
+    p.query(
+      `SELECT mmr, wins, losses, games_played, mu, sigma
+         FROM ratings WHERE player_id = $1`,
+      [accountId]
+    ),
+    // Last 3 matches with player's own row
+    p.query(
+      `SELECT m.match_id, m.date, m.radiant_win, m.duration,
+              ps.hero_id, ps.hero_name, ps.kills, ps.deaths, ps.assists, ps.team,
+              CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                     OR (ps.team = 'dire' AND NOT m.radiant_win)
+                   THEN true ELSE false END AS won
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id = $1 AND m.is_legacy = false
+        ORDER BY m.date DESC, m.match_id DESC
+        LIMIT 3`,
+      [accountId]
+    ),
+    // Current streak
+    p.query(
+      `SELECT ps.team, m.radiant_win
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id = $1 AND m.is_legacy = false
+        ORDER BY m.date DESC, m.match_id DESC
+        LIMIT 15`,
+      [accountId]
+    ),
+    // Top hero from last 7 days
+    p.query(
+      `SELECT ps.hero_id, ps.hero_name, COUNT(*) AS picks,
+              SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                            OR (ps.team = 'dire' AND NOT m.radiant_win)
+                       THEN 1 ELSE 0 END) AS wins
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id = $1
+          AND m.date >= NOW() - INTERVAL '7 days'
+          AND m.is_legacy = false
+        GROUP BY ps.hero_id, ps.hero_name
+        ORDER BY picks DESC, wins DESC
+        LIMIT 1`,
+      [accountId]
+    ),
+    // Next upcoming scheduled game
+    p.query(
+      `SELECT id, scheduled_at, note
+         FROM scheduled_games
+        WHERE scheduled_at > NOW() AND is_cancelled = false
+        ORDER BY scheduled_at ASC
+        LIMIT 1`
+    ),
+    // Active inhouse lobby/session
+    p.query(
+      `SELECT id, status, captain_mode, notes, created_at, accept_phase_seconds
+         FROM inhouse_sessions
+        WHERE status IN ('open','accepting','drafting','in_progress')
+        ORDER BY created_at DESC
+        LIMIT 1`
+    ),
+    // Is this player already in the active session?
+    p.query(
+      `SELECT isp.account_id, isp.team, isp.status AS player_status, isp.accepted_at
+         FROM inhouse_session_players isp
+         JOIN inhouse_sessions s ON s.id = isp.session_id
+        WHERE isp.account_id = $1
+          AND s.status IN ('open','accepting','drafting','in_progress')
+        LIMIT 1`,
+      [accountId]
+    ),
+  ]);
+
+  const rating = ratingRes.rows[0] || null;
+  const lastMatches = recentRes.rows;
+
+  // Compute streak
+  let streak = 0;
+  const streakRows = streakRes.rows;
+  if (streakRows.length > 0) {
+    const firstWon = (streakRows[0].team === 'radiant') === streakRows[0].radiant_win;
+    let count = 0;
+    for (const row of streakRows) {
+      const won = (row.team === 'radiant') === row.radiant_win;
+      if (won === firstWon) count++;
+      else break;
+    }
+    streak = firstWon ? count : -count;
+  }
+
+  const activeSession = activeSessionRes.rows[0] || null;
+  const playerInSession = playerInSessionRes.rows[0] || null;
+
+  return {
+    mmr: rating ? Math.round(parseFloat(rating.mmr)) : null,
+    wins: rating ? rating.wins : null,
+    losses: rating ? rating.losses : null,
+    games_played: rating ? rating.games_played : null,
+    last_matches: lastMatches,
+    streak,
+    top_hero: heroRes.rows[0] || null,
+    upcoming_game: scheduleRes.rows[0] || null,
+    active_session: activeSession
+      ? {
+          id: activeSession.id,
+          status: activeSession.status,
+          captain_mode: activeSession.captain_mode,
+          notes: activeSession.notes,
+          created_at: activeSession.created_at,
+          player_joined: !!playerInSession,
+          player_team: playerInSession?.team || null,
+          player_accepted: playerInSession
+            ? (playerInSession.player_status === 'accepted' || !!playerInSession.accepted_at)
+            : null,
+        }
+      : null,
+  };
+}
+
 // Public read for PlayerProfile rendering — denormalizes the pinned match
 // (winner + duration + start_time) and the player's row in that match (hero +
 // kills/deaths/assists) so the card can render without a second round trip.
@@ -9269,6 +9419,9 @@ module.exports = {
   getPlayerProfileCustomization,
   setPlayerProfileCustomization,
   getPlayerProfileCard,
+  getOnboardingStatus,
+  setOnboardingComplete,
+  getPlayerHomeData,
   isProMember,
   getProSubscription,
   createProCheckout,
