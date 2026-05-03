@@ -528,6 +528,21 @@ async function init() {
       )
     `);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS hero_tier_overrides (
+        id SERIAL PRIMARY KEY,
+        season_id INTEGER,
+        hero_id INTEGER NOT NULL,
+        tier VARCHAR(1) NOT NULL CHECK (tier IN ('S','A','B','C','D')),
+        set_by VARCHAR(200),
+        set_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_hero_tier_overrides_unique
+      ON hero_tier_overrides (COALESCE(season_id, -1), hero_id)
+    `);
+
     // Fix column types that may be wrong on older DB instances (CREATE TABLE IF NOT EXISTS doesn't alter existing columns)
     await p.query(`
       DO $$
@@ -4177,6 +4192,294 @@ async function getAllPlayers(seasonId = null) {
     }
   }
   return result.rows;
+}
+
+// ─── Hero Tier List & Suggestions ──────────────────────────────────────────
+
+const HERO_TIER_DEFS = [
+  { key: 'S', min: 0.58 },
+  { key: 'A', min: 0.53 },
+  { key: 'B', min: 0.48 },
+  { key: 'C', min: 0.43 },
+  { key: 'D', min: 0 },
+];
+
+function _computeHeroTier(wr) {
+  for (const t of HERO_TIER_DEFS) {
+    if (wr >= t.min) return t.key;
+  }
+  return 'D';
+}
+
+async function getHeroTierList(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
+
+  const heroResult = await p.query(`
+    SELECT
+      ps.hero_id,
+      MAX(ps.hero_name) as hero_name,
+      COUNT(*) as games,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true) OR (ps.team = 'dire' AND m.radiant_win = false) THEN 1 ELSE 0 END) as wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.hero_id > 0${sc}
+    GROUP BY ps.hero_id
+    HAVING COUNT(*) >= 2
+    ORDER BY COUNT(*) DESC
+  `, params);
+
+  const banParams = [];
+  const banSc = _sc(seasonId, banParams, 'm');
+  const banResult = await p.query(`
+    SELECT md.hero_id, COUNT(*) as bans
+    FROM match_draft md
+    JOIN matches m ON m.match_id = md.match_id
+    WHERE md.is_pick = false${banSc}
+    GROUP BY md.hero_id
+  `, banParams);
+  const banMap = {};
+  for (const r of banResult.rows) banMap[parseInt(r.hero_id)] = parseInt(r.bans);
+
+  const posParams = [];
+  const posSc = _sc(seasonId, posParams, 'm');
+  const posResult = await p.query(`
+    SELECT ps.hero_id, ps.position, COUNT(*) as cnt
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.hero_id > 0 AND ps.position > 0${posSc}
+    GROUP BY ps.hero_id, ps.position
+    ORDER BY ps.hero_id, COUNT(*) DESC
+  `, posParams);
+  const posMap = {};
+  for (const r of posResult.rows) {
+    const hid = parseInt(r.hero_id);
+    if (!posMap[hid]) posMap[hid] = parseInt(r.position);
+  }
+
+  const sid = seasonId && seasonId !== 'legacy' ? parseInt(seasonId) : null;
+  let overrideResult;
+  if (sid === null) {
+    overrideResult = await p.query(`SELECT hero_id, tier FROM hero_tier_overrides WHERE season_id IS NULL`);
+  } else {
+    overrideResult = await p.query(`SELECT hero_id, tier FROM hero_tier_overrides WHERE season_id = $1`, [sid]);
+  }
+  const overrideMap = {};
+  for (const r of overrideResult.rows) overrideMap[parseInt(r.hero_id)] = r.tier;
+
+  const tiers = { S: [], A: [], B: [], C: [], D: [] };
+  for (const r of heroResult.rows) {
+    const games = parseInt(r.games);
+    const wins = parseInt(r.wins);
+    const wr = games > 0 ? wins / games : 0;
+    const computed_tier = _computeHeroTier(wr);
+    const heroId = parseInt(r.hero_id);
+    const tier = overrideMap[heroId] || computed_tier;
+    const hero = {
+      hero_id: heroId,
+      hero_name: r.hero_name,
+      games,
+      wins,
+      bans: banMap[heroId] || 0,
+      win_rate: wr,
+      primary_position: posMap[heroId] || 0,
+      tier,
+      computed_tier,
+      is_overridden: !!overrideMap[heroId],
+    };
+    (tiers[tier] || tiers.D).push(hero);
+  }
+
+  for (const key of Object.keys(tiers)) {
+    tiers[key].sort((a, b) => b.win_rate - a.win_rate);
+  }
+
+  return { tiers };
+}
+
+async function getHeroTierOverrides(seasonId = null) {
+  const p = getPool();
+  const sid = seasonId && seasonId !== 'legacy' ? parseInt(seasonId) : null;
+  let result;
+  if (sid === null) {
+    result = await p.query(`SELECT * FROM hero_tier_overrides WHERE season_id IS NULL ORDER BY set_at DESC`);
+  } else {
+    result = await p.query(`SELECT * FROM hero_tier_overrides WHERE season_id = $1 ORDER BY set_at DESC`, [sid]);
+  }
+  return result.rows;
+}
+
+async function setHeroTierOverride(seasonId, heroId, tier, setBy = null) {
+  const p = getPool();
+  const validTiers = ['S', 'A', 'B', 'C', 'D'];
+  if (!validTiers.includes(tier)) throw new Error('Invalid tier: must be S, A, B, C, or D');
+  const sid = seasonId && seasonId !== 'legacy' ? parseInt(seasonId) : null;
+  const hid = parseInt(heroId);
+  if (sid === null) {
+    await p.query(`DELETE FROM hero_tier_overrides WHERE season_id IS NULL AND hero_id = $1`, [hid]);
+  } else {
+    await p.query(`DELETE FROM hero_tier_overrides WHERE season_id = $1 AND hero_id = $2`, [sid, hid]);
+  }
+  await p.query(
+    `INSERT INTO hero_tier_overrides (season_id, hero_id, tier, set_by) VALUES ($1, $2, $3, $4)`,
+    [sid, hid, tier, setBy]
+  );
+}
+
+async function deleteHeroTierOverride(seasonId, heroId) {
+  const p = getPool();
+  const sid = seasonId && seasonId !== 'legacy' ? parseInt(seasonId) : null;
+  const hid = parseInt(heroId);
+  if (sid === null) {
+    await p.query(`DELETE FROM hero_tier_overrides WHERE season_id IS NULL AND hero_id = $1`, [hid]);
+  } else {
+    await p.query(`DELETE FROM hero_tier_overrides WHERE season_id = $1 AND hero_id = $2`, [sid, hid]);
+  }
+}
+
+async function getPlayerHeroSuggestions(accountId, seasonId = null) {
+  const p = getPool();
+
+  // Query 1: Per-player, per-hero aggregate stats for the league.
+  // Co-success correlation P(WR≥50% on candidate | WR≥50% on ref hero) is computed in JS.
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
+  const allResult = await p.query(`
+    SELECT
+      ps.account_id,
+      ps.hero_id,
+      MAX(ps.hero_name) as hero_name,
+      COUNT(*) as games,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win = true)
+                 OR (ps.team = 'dire'    AND m.radiant_win = false)
+               THEN 1 ELSE 0 END) as wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.hero_id > 0${sc}
+    GROUP BY ps.account_id, ps.hero_id
+    HAVING COUNT(*) >= 2
+  `, params);
+
+  // Query 2: Community-wide primary position per hero (mode across all games).
+  const posParams = [];
+  const posSc = _sc(seasonId, posParams, 'm');
+  const posResult = await p.query(`
+    SELECT ps.hero_id, ps.position, COUNT(*) as cnt
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.hero_id > 0 AND ps.position > 0${posSc}
+    GROUP BY ps.hero_id, ps.position
+    ORDER BY ps.hero_id, COUNT(*) DESC
+  `, posParams);
+  const heroPrimaryPos = {};
+  for (const r of posResult.rows) {
+    const hid = parseInt(r.hero_id);
+    if (!heroPrimaryPos[hid]) heroPrimaryPos[hid] = parseInt(r.position);
+  }
+
+  // Build: account_id -> { hero_id -> { games, wins, wr, hero_name } }
+  const leagueMap = {};
+  for (const r of allResult.rows) {
+    const aid = String(r.account_id);
+    const hid = parseInt(r.hero_id);
+    const games = parseInt(r.games);
+    const wins = parseInt(r.wins);
+    if (!leagueMap[aid]) leagueMap[aid] = {};
+    leagueMap[aid][hid] = { games, wins, wr: games > 0 ? wins / games : 0, hero_name: r.hero_name };
+  }
+
+  const myStats = leagueMap[String(accountId)] || {};
+  if (Object.keys(myStats).length === 0) return { suggestions: [] };
+
+  // Player's top heroes by win rate (min 2 games), with their primary positions.
+  const myHeroList = Object.entries(myStats)
+    .map(([hid, h]) => ({ hero_id: parseInt(hid), ...h, position: heroPrimaryPos[parseInt(hid)] || 0 }))
+    .filter(h => h.games >= 2)
+    .sort((a, b) => b.wr - a.wr);
+
+  const topHeroes = myHeroList.slice(0, 3);
+  if (topHeroes.length === 0) return { suggestions: [] };
+
+  const topHeroIds = new Set(topHeroes.map(h => h.hero_id));
+  // Positions the player plays; used to restrict candidates to same role.
+  const topPositions = new Set(topHeroes.map(h => h.position).filter(p => p > 0));
+
+  // Co-success scoring: for each (ref_hero, candidate_hero) pair, count other players who
+  // have ≥50% WR on the ref hero and ≥2 games on the candidate (same role), then compute
+  // correlation_score = fraction of those players who also achieve ≥50% WR on the candidate.
+  const pairScores = {};
+
+  for (const [playerId, heroMap] of Object.entries(leagueMap)) {
+    if (String(playerId) === String(accountId)) continue;
+
+    for (const topHero of topHeroes) {
+      const refStats = heroMap[topHero.hero_id];
+      if (!refStats || refStats.wr < 0.50) continue;
+
+      for (const [hidStr, cStats] of Object.entries(heroMap)) {
+        const candidateHeroId = parseInt(hidStr);
+        if (topHeroIds.has(candidateHeroId)) continue;
+
+        // Only suggest heroes in the same position(s) as the player's top heroes.
+        const candidatePos = heroPrimaryPos[candidateHeroId] || 0;
+        if (topPositions.size > 0 && candidatePos > 0 && !topPositions.has(candidatePos)) continue;
+
+        const myGamesOnCandidate = myStats[candidateHeroId]?.games || 0;
+        if (myGamesOnCandidate >= 5) continue;
+
+        const key = `${candidateHeroId}:${topHero.hero_id}`;
+        if (!pairScores[key]) {
+          pairScores[key] = {
+            hero_id: candidateHeroId,
+            hero_name: cStats.hero_name,
+            position: candidatePos,
+            ref_hero_id: topHero.hero_id,
+            shared_players: 0,
+            good_at_candidate: 0,
+            total_wr: 0,
+          };
+        }
+        pairScores[key].shared_players++;
+        pairScores[key].total_wr += cStats.wr;
+        if (cStats.wr >= 0.50) pairScores[key].good_at_candidate++;
+      }
+    }
+  }
+
+  // Rank by correlation score; require ≥2 shared data points and ≥50% correlation.
+  const ranked = Object.values(pairScores)
+    .filter(c => c.shared_players >= 2)
+    .map(c => ({
+      ...c,
+      correlation_score: c.good_at_candidate / c.shared_players,
+      avg_wr_on_candidate: c.total_wr / c.shared_players,
+    }))
+    .filter(c => c.correlation_score >= 0.50)
+    .sort((a, b) => b.correlation_score - a.correlation_score || b.avg_wr_on_candidate - a.avg_wr_on_candidate);
+
+  const seen = new Set();
+  const suggestions = [];
+  for (const c of ranked) {
+    if (seen.has(c.hero_id)) continue;
+    seen.add(c.hero_id);
+    const refHero = topHeroes.find(h => h.hero_id === c.ref_hero_id);
+    suggestions.push({
+      hero_id: c.hero_id,
+      hero_name: c.hero_name,
+      position: c.position,
+      player_games: myStats[c.hero_id]?.games || 0,
+      community_win_rate: c.avg_wr_on_candidate,
+      correlation_score: c.correlation_score,
+      similar_players_count: c.shared_players,
+      based_on_hero_id: c.ref_hero_id,
+      based_on_hero_name: refHero?.hero_name || null,
+      based_on_hero_wr: refHero ? refHero.wr : null,
+    });
+    if (suggestions.length >= 5) break;
+  }
+
+  return { suggestions };
 }
 
 async function getHeroStats(seasonId = null) {
@@ -9601,6 +9904,11 @@ module.exports = {
   grantReferralXp,
   getLeaderboardForImage,
   getPlayerMmrWeekAgo,
+  getHeroTierList,
+  getHeroTierOverrides,
+  setHeroTierOverride,
+  deleteHeroTierOverride,
+  getPlayerHeroSuggestions,
 };
 
 const RECORD_STAT_KEYS = ['kills', 'gpm', 'assists', 'hero_damage', 'tower_damage', 'last_hits'];

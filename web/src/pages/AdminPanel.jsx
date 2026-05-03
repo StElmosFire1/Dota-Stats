@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, setMatchReplayPath, getMatchReplayStatus } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -1636,7 +1636,7 @@ function SteamBotPanel({ superuserKey }) {
 
 export default function AdminPanel() {
   const { isSuperuser, superuserKey, logout } = useSuperuser();
-  const { selectedSeason } = useSeason();
+  const { activeSeason } = useSeason();
 
   const [overview, setOverview] = useState(null);
   const [duplicates, setDuplicates] = useState(null);
@@ -1761,7 +1761,7 @@ export default function AdminPanel() {
     setV3PreviewError('');
     setV3PreviewData(null);
     try {
-      const sid = selectedSeason?.id ?? null;
+      const sid = activeSeason?.id ?? null;
       const url = `/api/admin/v3-preview${sid ? `?season_id=${sid}` : ''}`;
       const res = await fetch(url, { headers: authHeader });
       const json = await res.json();
@@ -2427,6 +2427,14 @@ export default function AdminPanel() {
       </section>
 
       <section style={{ marginBottom: 36 }}>
+        <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏆 Hero Tier Overrides</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Manually set a hero's tier to override the auto-computed tier (based on win rate). Leave blank to revert to auto-computed.
+        </p>
+        <HeroTierOverridesPanel superuserKey={superuserKey} selectedSeason={activeSeason} />
+      </section>
+
+      <section style={{ marginBottom: 36 }}>
         <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🔍 Replay Inspector</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Upload a <code>.dem</code> file to see the raw account IDs extracted by the parser — useful for verifying accounts before committing a replay.
@@ -2436,6 +2444,120 @@ export default function AdminPanel() {
 
     </div>
     </AdminErrorBoundary>
+  );
+}
+
+function HeroTierOverridesPanel({ superuserKey, selectedSeason }) {
+  const seasonId = selectedSeason ? selectedSeason.id : null;
+  const [overrides, setOverrides] = useState([]);
+  const [loadingList, setLoadingList] = useState(false);
+  const [heroId, setHeroId] = useState('');
+  const [tier, setTier] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(async () => {
+    setLoadingList(true);
+    try {
+      const d = await getAdminHeroTierOverrides(seasonId, superuserKey);
+      setOverrides(d.overrides || []);
+    } catch (e) {
+      setMsg('Error: ' + e.message);
+    } finally {
+      setLoadingList(false);
+    }
+  }, [seasonId, superuserKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSet = async (e) => {
+    e.preventDefault();
+    if (!heroId || !tier) { setMsg('Hero ID and Tier are required'); return; }
+    setSaving(true); setMsg('');
+    try {
+      await setAdminHeroTierOverride({ season_id: seasonId, hero_id: parseInt(heroId), tier }, superuserKey);
+      setHeroId(''); setTier('');
+      setMsg('Override saved.');
+      await load();
+    } catch (e) {
+      setMsg('Error: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (hid) => {
+    if (!window.confirm('Remove this tier override?')) return;
+    try {
+      await deleteAdminHeroTierOverride(hid, seasonId, superuserKey);
+      setMsg('Override removed.');
+      await load();
+    } catch (e) {
+      setMsg('Error: ' + e.message);
+    }
+  };
+
+  const TIER_COLORS = { S: '#ff6b35', A: '#f7c059', B: '#a3e635', C: '#60a5fa', D: '#f87171' };
+
+  return (
+    <div>
+      <form onSubmit={handleSet} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Hero ID</label>
+          <input
+            type="number" value={heroId} onChange={e => setHeroId(e.target.value)}
+            placeholder="e.g. 86" style={{ width: 100, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Tier</label>
+          <select value={tier} onChange={e => setTier(e.target.value)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+            <option value="">-- Select --</option>
+            {['S', 'A', 'B', 'C', 'D'].map(t => <option key={t} value={t}>{t} Tier</option>)}
+          </select>
+        </div>
+        <button type="submit" disabled={saving} style={{ padding: '7px 18px', borderRadius: 6, background: 'var(--accent-blue)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+          {saving ? 'Saving…' : 'Set Override'}
+        </button>
+      </form>
+
+      {msg && <p style={{ fontSize: 13, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)', marginBottom: 10 }}>{msg}</p>}
+
+      {loadingList ? (
+        <p style={{ color: 'var(--text-muted)' }}>Loading overrides…</p>
+      ) : overrides.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No overrides set{selectedSeason ? ` for ${selectedSeason.name}` : ' for all-time'}.</p>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Hero ID</th>
+              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Tier</th>
+              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Set By</th>
+              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Set At</th>
+              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {overrides.map(ov => (
+              <tr key={ov.hero_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '8px 10px' }}>{ov.hero_id}</td>
+                <td style={{ padding: '8px 10px' }}>
+                  <span style={{ background: TIER_COLORS[ov.tier] || '#888', color: '#111', fontWeight: 700, padding: '2px 10px', borderRadius: 5 }}>{ov.tier}</span>
+                </td>
+                <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{ov.set_by || '—'}</td>
+                <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{ov.set_at ? new Date(ov.set_at).toLocaleString() : '—'}</td>
+                <td style={{ padding: '8px 10px' }}>
+                  <button onClick={() => handleDelete(ov.hero_id)} style={{ padding: '3px 10px', borderRadius: 5, background: '#dc2626', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

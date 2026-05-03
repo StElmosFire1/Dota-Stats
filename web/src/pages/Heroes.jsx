@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups } from '../api';
+import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList } from '../api';
 import PaywallCard from '../components/PaywallCard';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -242,69 +242,120 @@ function HeroBreakdownTab() {
   );
 }
 
-function HeroTierTab({ playedHeroes, totalMatches }) {
-  const TIER_DEFS = [
-    { key: 'S', label: 'S Tier', min: 0.60, color: '#ff6b35', desc: '60%+ win rate' },
-    { key: 'A', label: 'A Tier', min: 0.55, color: '#f7c59f', desc: '55–60%' },
-    { key: 'B', label: 'B Tier', min: 0.48, color: '#efefd0', desc: '48–55%' },
-    { key: 'C', label: 'C Tier', min: 0.42, color: '#99b2dd', desc: '42–48%' },
-    { key: 'D', label: 'D Tier', min: 0,    color: '#f45b69', desc: 'Below 42%' },
-  ];
-  const qualified = playedHeroes
-    .map(h => ({
-      ...h,
-      games: parseInt(h.games) || 0,
-      wins: parseInt(h.wins) || 0,
-    }))
-    .filter(h => h.games >= 2)
-    .map(h => ({ ...h, wr: h.wins / h.games }))
-    .sort((a, b) => b.wr - a.wr);
+const TIER_DEFS = [
+  { key: 'S', label: 'S Tier', color: '#ff6b35', bg: 'rgba(255,107,53,0.12)', desc: '≥58% win rate' },
+  { key: 'A', label: 'A Tier', color: '#f7c059', bg: 'rgba(247,192,89,0.12)', desc: '53–58%' },
+  { key: 'B', label: 'B Tier', color: '#a3e635', bg: 'rgba(163,230,53,0.10)', desc: '48–53%' },
+  { key: 'C', label: 'C Tier', color: '#60a5fa', bg: 'rgba(96,165,250,0.10)', desc: '43–48%' },
+  { key: 'D', label: 'D Tier', color: '#f87171', bg: 'rgba(248,113,113,0.10)', desc: 'Below 43%' },
+];
 
-  const tiers = TIER_DEFS.map(tier => {
-    const heroes = qualified.filter(h => {
-      const idx = TIER_DEFS.indexOf(tier);
-      const nextMin = idx > 0 ? TIER_DEFS[idx - 1].min : Infinity;
-      return h.wr >= tier.min && h.wr < nextMin;
-    });
-    return { ...tier, heroes };
-  });
+const POS_LABELS = { 0: 'All', 1: 'Pos 1', 2: 'Pos 2', 3: 'Pos 3', 4: 'Pos 4', 5: 'Pos 5' };
 
-  if (qualified.length === 0) {
+function HeroTierTab() {
+  const { seasonId } = useSeason();
+  const [tiers, setTiers] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filterPos, setFilterPos] = useState(0);
+
+  useEffect(() => {
+    setLoading(true);
+    getHeroTierList(seasonId)
+      .then(d => setTiers(d.tiers || null))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [seasonId]);
+
+  const totalHeroes = tiers ? Object.values(tiers).reduce((n, arr) => n + arr.length, 0) : 0;
+
+  if (loading) return <div className="loading">Loading tier list…</div>;
+  if (!tiers || totalHeroes === 0) {
     return <p style={{ color: 'var(--text-muted)', padding: 20 }}>Not enough data yet (need at least 2 games per hero).</p>;
   }
 
   return (
     <div>
-      <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: 13 }}>
-        Heroes with 2+ picks, ranked by inhouse win rate. Left = more recent season context adjusts thresholds.
-      </p>
-      {tiers.map(tier => tier.heroes.length > 0 && (
-        <div key={tier.key} style={{ marginBottom: 28 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-            <span style={{
-              background: tier.color, color: '#111', fontWeight: 700, fontSize: 18,
-              padding: '2px 14px', borderRadius: 6, minWidth: 48, textAlign: 'center',
-            }}>{tier.key}</span>
-            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{tier.desc}</span>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {tier.heroes.map(h => (
-              <div key={h.hero_id} style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: 8, padding: '8px 12px', minWidth: 140,
-                display: 'flex', flexDirection: 'column', gap: 4,
-              }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{formatHeroName(h.hero_name)}</span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {(h.wr * 100).toFixed(1)}% ({h.wins}W–{h.games - h.wins}L)
-                </span>
-              </div>
-            ))}
-          </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0, flex: 1 }}>
+          Heroes with 2+ picks, ranked by inhouse win rate. Tier boundaries: S≥58% · A≥53% · B≥48% · C≥43% · D&lt;43%.
+        </p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[0, 1, 2, 3, 4, 5].map(pos => (
+            <button
+              key={pos}
+              onClick={() => setFilterPos(pos)}
+              style={{
+                padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+                border: '1px solid var(--border)',
+                background: filterPos === pos ? 'var(--accent-blue)' : 'var(--bg-card)',
+                color: filterPos === pos ? '#fff' : 'var(--text-muted)',
+                fontWeight: filterPos === pos ? 700 : 400,
+              }}
+            >{POS_LABELS[pos]}</button>
+          ))}
         </div>
-      ))}
+      </div>
+
+      {TIER_DEFS.map(tier => {
+        const tierHeroes = (tiers[tier.key] || []).filter(
+          h => filterPos === 0 || h.primary_position === filterPos
+        );
+        if (tierHeroes.length === 0) return null;
+        return (
+          <div key={tier.key} style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span style={{
+                background: tier.color, color: '#111', fontWeight: 800, fontSize: 17,
+                padding: '3px 14px', borderRadius: 6, minWidth: 46, textAlign: 'center',
+                letterSpacing: 1,
+              }}>{tier.key}</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{tier.desc}</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 4 }}>· {tierHeroes.length} hero{tierHeroes.length !== 1 ? 'es' : ''}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {tierHeroes.map(h => {
+                const heroImg = getHeroImageUrl(h.hero_id);
+                const wrPct = (h.win_rate * 100).toFixed(1);
+                return (
+                  <div key={h.hero_id} style={{
+                    background: tier.bg, border: `1px solid ${tier.color}44`,
+                    borderRadius: 8, padding: '8px 10px', minWidth: 150, maxWidth: 200,
+                    display: 'flex', flexDirection: 'column', gap: 4, flex: '0 0 auto',
+                    position: 'relative',
+                  }}>
+                    {h.is_overridden && (
+                      <span title="Tier manually set by admin" style={{
+                        position: 'absolute', top: 4, right: 6,
+                        fontSize: 10, color: 'var(--text-muted)',
+                      }}>✏️</span>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {heroImg && (
+                        <img src={heroImg} alt={h.hero_name} style={{ width: 32, height: 18, borderRadius: 2, flexShrink: 0 }} />
+                      )}
+                      <span style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{formatHeroName(h.hero_name)}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 3, height: 5, overflow: 'hidden' }}>
+                        <div style={{ width: `${h.win_rate * 100}%`, height: '100%', background: tier.color, borderRadius: 3 }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: tier.color, fontWeight: 700, flexShrink: 0 }}>{wrPct}%</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {h.games}G · {h.wins}W
+                      {h.bans > 0 && ` · ${h.bans} bans`}
+                      {h.primary_position > 0 && filterPos === 0 && ` · Pos${h.primary_position}`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
       <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8 }}>
-        {qualified.length} heroes with data out of {Object.keys(ALL_HEROES).length} total. Minimum 2 games required.
+        {totalHeroes} heroes with data. Minimum 2 games required. ✏️ = admin override.
       </p>
     </div>
   );
@@ -560,7 +611,7 @@ export default function Heroes({ defaultTab }) {
         ))}
       </div>
 
-      {tab === 'tier' && <HeroTierTab playedHeroes={playedHeroes} totalMatches={totalMatches} />}
+      {tab === 'tier' && <HeroTierTab />}
       {tab === 'matchups' && <HeroMatchupsTab />}
       {tab === 'meta' && <HeroMetaTab />}
       {tab === 'breakdown' && <HeroBreakdownTab />}

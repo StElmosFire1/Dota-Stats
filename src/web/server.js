@@ -958,6 +958,68 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/heroes/tier-list', async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const data = await db.getHeroTierList(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] heroes/tier-list:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero tier list' });
+    }
+  });
+
+  router.get('/player/:id/hero-suggestions', async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const accountId = req.params.id;
+      const sessionAccountId = req.session?.accountId;
+      const isPro = await _isProAccount(sessionAccountId);
+      const data = await db.getPlayerHeroSuggestions(accountId, seasonId);
+      if (!isPro) {
+        data.suggestions = data.suggestions.map(({ correlation_score, similar_players_count, based_on_hero_wr, ...rest }) => rest);
+      }
+      res.json({ ...data, is_pro: isPro });
+    } catch (err) {
+      console.error('[API] player/hero-suggestions:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero suggestions' });
+    }
+  });
+
+  router.get('/admin/heroes/tier-overrides', authMiddleware, async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      const overrides = await db.getHeroTierOverrides(seasonId);
+      res.json({ overrides });
+    } catch (err) {
+      console.error('[API] admin/heroes/tier-overrides GET:', err.message);
+      res.status(500).json({ error: 'Failed to fetch tier overrides' });
+    }
+  });
+
+  router.post('/admin/heroes/tier-overrides', authMiddleware, async (req, res) => {
+    try {
+      const { season_id, hero_id, tier } = req.body;
+      if (!hero_id || !tier) return res.status(400).json({ error: 'hero_id and tier are required' });
+      await db.setHeroTierOverride(season_id || null, hero_id, tier, 'admin');
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[API] admin/heroes/tier-overrides POST:', err.message);
+      res.status(400).json({ error: err.message || 'Failed to set tier override' });
+    }
+  });
+
+  router.delete('/admin/heroes/tier-overrides/:heroId', authMiddleware, async (req, res) => {
+    try {
+      const seasonId = req.query.season || null;
+      await db.deleteHeroTierOverride(seasonId, req.params.heroId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[API] admin/heroes/tier-overrides DELETE:', err.message);
+      res.status(500).json({ error: 'Failed to delete tier override' });
+    }
+  });
+
   router.get('/hero-meta', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

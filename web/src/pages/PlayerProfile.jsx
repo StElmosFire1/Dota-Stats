@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions } from '../api';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
@@ -427,6 +427,7 @@ export default function PlayerProfile() {
   const [loading, setLoading] = useState(true);
   const [matchStatsHistory, setMatchStatsHistory] = useState([]);
   const [trendPaywall, setTrendPaywall] = useState(null);
+  const [heroSuggestions, setHeroSuggestions] = useState(null);
 
   useEffect(() => {
     if (!showProfileChartV2 || !isOwnProfile || !accountId) {
@@ -451,6 +452,14 @@ export default function PlayerProfile() {
       })
       .catch(() => {});
   }, [accountId]);
+
+  useEffect(() => {
+    if (!accountId) return;
+    setHeroSuggestions(null);
+    getPlayerHeroSuggestions(accountId, seasonId)
+      .then(d => setHeroSuggestions(d))
+      .catch(() => setHeroSuggestions({ suggestions: [] }));
+  }, [accountId, seasonId]);
 
   useEffect(() => {
     setLoading(true);
@@ -1237,6 +1246,51 @@ export default function PlayerProfile() {
                   <div style={{ color: '#64748b', fontSize: '0.72rem', marginTop: 4 }}>
                     Avg {row.avg_kills}K · {row.avg_gpm} GPM
                   </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {heroSuggestions && heroSuggestions.suggestions && heroSuggestions.suggestions.length > 0 && (
+        <section>
+          <h2 className="section-title">Heroes to Try</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+            Based on your top heroes and community win rates — heroes you have less than 5 games on that are performing well in your role{heroSuggestions.is_pro ? '' : '. Upgrade to Pro for full breakdown'}.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {heroSuggestions.suggestions.map(s => {
+              const wrPct = (s.community_win_rate * 100).toFixed(1);
+              const TIER_COLOR = s.community_win_rate >= 0.58 ? '#ff6b35' : s.community_win_rate >= 0.53 ? '#f7c059' : '#a3e635';
+              return (
+                <div key={s.hero_id} style={{
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 10, padding: '12px 14px', minWidth: 200, maxWidth: 260, flex: '0 0 auto',
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{s.hero_name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <div style={{ flex: 1, background: 'var(--bg-secondary)', borderRadius: 4, height: 6, overflow: 'hidden' }}>
+                      <div style={{ width: `${s.community_win_rate * 100}%`, height: '100%', background: TIER_COLOR, borderRadius: 4 }} />
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: TIER_COLOR }}>{wrPct}% WR</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                    You: {s.player_games} game{s.player_games !== 1 ? 's' : ''}
+                    {s.position > 0 ? ` · Pos ${s.position}` : ''}
+                  </div>
+                  {heroSuggestions.is_pro && s.based_on_hero_name && s.correlation_score != null ? (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: 6, padding: '5px 8px', marginTop: 4 }}>
+                      {Math.round(s.correlation_score * 100)}% of players good at{' '}
+                      <strong>{s.based_on_hero_name}</strong>{' '}
+                      ({s.based_on_hero_wr != null ? `${(s.based_on_hero_wr * 100).toFixed(0)}% your WR` : 'your top hero'}){' '}
+                      also excel here · {s.similar_players_count} shared player{s.similar_players_count !== 1 ? 's' : ''}
+                    </div>
+                  ) : s.based_on_hero_name && !heroSuggestions.is_pro ? (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 4 }}>
+                      Pro: see correlation breakdown
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

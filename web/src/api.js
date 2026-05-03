@@ -220,6 +220,48 @@ export async function getHeroStats(seasonId = null) {
   return fetchJson(`/heroes?x=1${seasonParam(seasonId)}`);
 }
 
+export async function getHeroTierList(seasonId = null) {
+  const q = seasonId ? `?season=${seasonId}` : '';
+  return fetchJson(`/heroes/tier-list${q}`);
+}
+
+export async function getPlayerHeroSuggestions(accountId, seasonId = null) {
+  const q = seasonId ? `?season=${seasonId}` : '';
+  return fetchJson(`/player/${accountId}/hero-suggestions${q}`);
+}
+
+export async function getAdminHeroTierOverrides(seasonId, superuserKey) {
+  const q = seasonId ? `?season=${seasonId}` : '';
+  const res = await fetch(BASE + `/admin/heroes/tier-overrides${q}`, {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
+export async function setAdminHeroTierOverride({ season_id, hero_id, tier }, superuserKey) {
+  const res = await fetch(BASE + '/admin/heroes/tier-overrides', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ season_id, hero_id, tier }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
+export async function deleteAdminHeroTierOverride(heroId, seasonId, superuserKey) {
+  const q = seasonId ? `?season=${seasonId}` : '';
+  const res = await fetch(BASE + `/admin/heroes/tier-overrides/${heroId}${q}`, {
+    method: 'DELETE',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
 export async function getHeroPlayers(heroId, seasonId = null) {
   return fetchJson(`/heroes/${heroId}/players?x=1${seasonParam(seasonId)}`);
 }
