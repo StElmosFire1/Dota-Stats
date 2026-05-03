@@ -2344,6 +2344,128 @@ class DiscordBot {
         );
       }
     }, 6000);
+    // Check if the active season has hit its configured end condition
+    this._checkSeasonEndCondition().catch(e => console.error('[Season] End check error:', e.message));
+  }
+
+  async _checkSeasonEndCondition() {
+    try {
+      const season = await db.getActiveSeason();
+      if (!season) return;
+
+      let shouldClose = false;
+      let reason = '';
+
+      if (season.end_date && new Date() >= new Date(season.end_date)) {
+        shouldClose = true;
+        reason = `end date reached (${new Date(season.end_date).toLocaleDateString('en-AU')})`;
+      }
+
+      if (!shouldClose && season.match_count_limit) {
+        const { rows } = await db.getPool().query(
+          `SELECT COUNT(*) AS cnt FROM matches WHERE season_id = $1 AND is_legacy = false`,
+          [season.id]
+        );
+        const count = parseInt(rows[0].cnt);
+        if (count >= season.match_count_limit) {
+          shouldClose = true;
+          reason = `match limit reached (${count}/${season.match_count_limit} games)`;
+        }
+      }
+
+      if (shouldClose) {
+        console.log(`[Season] Auto-closing season "${season.name}" — ${reason}`);
+        await this._closeSeasonAndAnnounce(season);
+      }
+    } catch (err) {
+      console.error('[Season] End condition check error:', err.message);
+    }
+  }
+
+  async _closeSeasonAndAnnounce(season) {
+    try {
+      await db.archiveSeason(season.id);
+
+      const summary = await db.getSeasonSummary(season.id);
+      const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const summaryUrl = `${siteUrl}/seasons/${season.id}/summary`;
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7c6bff)
+        .setTitle(`🏆 ${season.name} — Season Complete!`)
+        .setDescription(
+          `**${summary.overview.totalMatches}** matches · **${summary.overview.totalPlayers}** players\n` +
+          `[📊 View Full Season Summary](${summaryUrl})`
+        )
+        .setTimestamp();
+
+      if (summary.topPlayers.length > 0) {
+        const medals = ['🥇', '🥈', '🥉'];
+        const topStr = summary.topPlayers
+          .map((p, i) => `${medals[i]} **${p.display_name}** — ${p.mmr ?? '?'} MMR (${p.wins ?? 0}W/${p.losses ?? 0}L)`)
+          .join('\n');
+        embed.addFields({ name: '📊 Final Top 3', value: topStr });
+      }
+
+      if (summary.longestStreak) {
+        embed.addFields({
+          name: '🔥 Longest Win Streak',
+          value: `**${summary.longestStreak.display_name}** — ${summary.longestStreak.longest_streak} wins in a row`,
+        });
+      }
+
+      if (summary.mostImproved) {
+        const delta = summary.mostImproved.delta > 0 ? `+${summary.mostImproved.delta}` : `${summary.mostImproved.delta}`;
+        embed.addFields({
+          name: '📈 Most Improved',
+          value: `**${summary.mostImproved.display_name}** — ${delta} MMR (${summary.mostImproved.first_mmr} → ${summary.mostImproved.last_mmr})`,
+        });
+      }
+
+      if (summary.heroOfSeason) {
+        embed.addFields({
+          name: '⚔️ Hero of the Season',
+          value: `**${summary.heroOfSeason.hero_name}** — ${summary.heroOfSeason.winRate}% win rate over ${summary.heroOfSeason.games} games`,
+        });
+      }
+
+      const channels = await this._resolveChannels(
+        config.discord.statsChannelIds.length > 0
+          ? config.discord.statsChannelIds
+          : (config.discord.announceChannelId ? [config.discord.announceChannelId] : [])
+      );
+      for (const ch of channels) {
+        await ch.send({ embeds: [embed] }).catch(err =>
+          console.error(`[Season] Announce error on ${ch.id}:`, err.message)
+        );
+      }
+
+      const { rows } = await db.getPool().query(
+        `SELECT * FROM seasons WHERE active = false AND is_legacy = false ORDER BY id ASC LIMIT 1`
+      );
+      const nextSeason = rows[0];
+      if (nextSeason) {
+        await db.setActiveSeason(nextSeason.id);
+        const openMsg = `🎉 **${nextSeason.name}** is now open! Good luck everyone.`;
+        for (const ch of channels) {
+          await ch.send(openMsg).catch(() => {});
+        }
+        console.log(`[Season] Auto-activated next season: ${nextSeason.name}`);
+      } else {
+        this._notifyAdminChannel(
+          `⚠️ **${season.name}** has ended but no next season is configured. ` +
+          `Create a new season in the admin panel to continue.`
+        );
+      }
+    } catch (err) {
+      console.error('[Season] Close and announce error:', err.message);
+    }
+  }
+
+  async closeSeasonManually(seasonId) {
+    const { rows } = await db.getPool().query(`SELECT * FROM seasons WHERE id = $1`, [parseInt(seasonId)]);
+    if (!rows[0]) throw new Error('Season not found');
+    await this._closeSeasonAndAnnounce(rows[0]);
   }
 
   async _checkMatchQuality(matchStats) {

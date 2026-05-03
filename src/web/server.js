@@ -1556,6 +1556,58 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  router.get('/seasons/:id/summary', async (req, res) => {
+    try {
+      const seasonId = parseInt(req.params.id);
+      if (!Number.isFinite(seasonId)) return res.status(400).json({ error: 'Invalid season id' });
+      const [seasonR, summary] = await Promise.all([
+        db.getPool().query(`SELECT * FROM seasons WHERE id = $1`, [seasonId]),
+        db.getSeasonSummary(seasonId),
+      ]);
+      if (!seasonR.rows[0]) return res.status(404).json({ error: 'Season not found' });
+      res.json({ season: seasonR.rows[0], summary });
+    } catch (err) {
+      console.error('[API] Season summary error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch season summary' });
+    }
+  });
+
+  router.put('/seasons/:id/end-conditions', authMiddleware, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
+      const { end_date, match_count_limit } = req.body;
+      const season = await db.setSeasonEndConditions(id, {
+        endDate: end_date || null,
+        matchCountLimit: match_count_limit != null ? parseInt(match_count_limit) : null,
+      });
+      if (!season) return res.status(404).json({ error: 'Season not found' });
+      res.json({ season });
+    } catch (err) {
+      console.error('[API] setSeasonEndConditions error:', err.message);
+      res.status(500).json({ error: 'Failed to update end conditions' });
+    }
+  });
+
+  router.post('/seasons/:id/close', requireSuperuser, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
+      const { rows } = await db.getPool().query(`SELECT * FROM seasons WHERE id = $1`, [id]);
+      if (!rows[0]) return res.status(404).json({ error: 'Season not found' });
+      const bot = getDiscordBot();
+      if (bot && typeof bot.closeSeasonManually === 'function') {
+        bot.closeSeasonManually(id).catch(e => console.error('[API] closeSeason bot error:', e.message));
+      } else {
+        await db.archiveSeason(id);
+      }
+      res.json({ success: true, message: `Season "${rows[0].name}" closed — summary announced on Discord.` });
+    } catch (err) {
+      console.error('[API] closeSeason error:', err.message);
+      res.status(500).json({ error: 'Failed to close season' });
+    }
+  });
+
   router.delete('/seasons/:id', requireSuperuser, async (req, res) => {
     try {
       const id = parseInt(req.params.id);

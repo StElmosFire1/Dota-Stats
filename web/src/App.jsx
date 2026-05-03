@@ -52,6 +52,7 @@ const CoachProfile = lazy(() => import('./pages/CoachProfile'));
 const CoachEdit = lazy(() => import('./pages/CoachEdit'));
 const CoachOnboarding = lazy(() => import('./pages/CoachOnboarding'));
 const MyBookings = lazy(() => import('./pages/MyBookings'));
+const SeasonSummary = lazy(() => import('./pages/SeasonSummary'));
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -351,6 +352,7 @@ export default function App() {
                 <Route path="/synergy" element={<Synergy />} />
                 <Route path="/upload" element={<Upload />} />
                 <Route path="/seasons" element={<Seasons />} />
+                <Route path="/seasons/:id/summary" element={<SeasonSummary />} />
                 <Route path="/buyin-success" element={<BuyinSuccess />} />
                 <Route path="/player-tools" element={<PlayerTools />} />
                 <Route path="/head-to-head" element={<PlayerTools />} />

@@ -1069,3 +1069,28 @@ export async function updateSignupRequest(id, { status, adminNotes }, superuserK
   if (!res.ok) throw new Error(data.error || 'Failed to update signup');
   return data;
 }
+
+export async function getSeasonSummary(seasonId) {
+  return fetchJson(`/seasons/${seasonId}/summary`);
+}
+
+export async function setSeasonEndConditions(seasonId, { end_date, match_count_limit }, uploadKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/end-conditions`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Upload-Key': uploadKey },
+    body: JSON.stringify({ end_date: end_date || null, match_count_limit: match_count_limit || null }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update end conditions');
+  return data;
+}
+
+export async function closeSeasonApi(seasonId, superuserKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/close`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to close season');
+  return data;
+}

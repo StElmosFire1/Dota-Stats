@@ -473,6 +473,8 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_predictions_match ON match_predictions(match_id)`);
 
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS buyin_amount_cents INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS end_date TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS match_count_limit INTEGER`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS season_buyins (
@@ -1363,6 +1365,160 @@ async function archiveSeason(id) {
     await p.query('ROLLBACK');
     throw err;
   }
+}
+
+async function setSeasonEndConditions(id, { endDate = null, matchCountLimit = null } = {}) {
+  const p = getPool();
+  const result = await p.query(
+    `UPDATE seasons SET end_date = $1, match_count_limit = $2 WHERE id = $3 RETURNING *`,
+    [endDate || null, matchCountLimit ? parseInt(matchCountLimit) : null, id]
+  );
+  return result.rows[0] || null;
+}
+
+async function getSeasonSummary(seasonId) {
+  const p = getPool();
+  const sid = parseInt(seasonId);
+
+  const overviewR = await p.query(
+    `SELECT COUNT(DISTINCT m.match_id) AS total_matches,
+            COUNT(DISTINCT ps.account_id) FILTER (WHERE ps.account_id != 0) AS total_players
+     FROM matches m
+     JOIN player_stats ps ON ps.match_id = m.match_id
+     WHERE m.season_id = $1 AND m.is_legacy = false`,
+    [sid]
+  );
+  const overview = overviewR.rows[0] || {};
+
+  const dateR = await p.query(
+    `SELECT MIN(m.date) AS start_date, MAX(m.date) AS end_date
+     FROM matches m WHERE m.season_id = $1 AND m.is_legacy = false`,
+    [sid]
+  );
+  const dates = dateR.rows[0] || {};
+
+  const top3R = await p.query(
+    `SELECT DISTINCT ON (ps.account_id)
+            ps.account_id,
+            COALESCE(n.nickname, ps.persona_name, r.display_name, ps.account_id::text) AS display_name,
+            r.mmr::int AS mmr, r.wins, r.losses, r.games_played
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN ratings r ON r.player_id = ps.account_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id
+     WHERE m.season_id = $1 AND m.is_legacy = false AND ps.account_id != 0
+     ORDER BY ps.account_id, r.mmr DESC NULLS LAST`,
+    [sid]
+  );
+  const topPlayers = top3R.rows
+    .sort((a, b) => (b.mmr || 0) - (a.mmr || 0))
+    .slice(0, 3);
+
+  const heroR = await p.query(
+    `SELECT ps.hero_id, ps.hero_name,
+            COUNT(*) AS games,
+            SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     WHERE m.season_id = $1 AND m.is_legacy = false
+       AND ps.hero_id IS NOT NULL AND ps.hero_id != 0
+       AND ps.hero_name IS NOT NULL AND ps.hero_name != ''
+     GROUP BY ps.hero_id, ps.hero_name
+     HAVING COUNT(*) >= 5
+     ORDER BY (SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::float / COUNT(*)) DESC
+     LIMIT 1`,
+    [sid]
+  );
+  const heroRow = heroR.rows[0] || null;
+  const heroOfSeason = heroRow
+    ? { ...heroRow, games: parseInt(heroRow.games), wins: parseInt(heroRow.wins), winRate: parseFloat(((parseInt(heroRow.wins) / parseInt(heroRow.games)) * 100).toFixed(1)) }
+    : null;
+
+  const improvedR = await p.query(
+    `WITH season_rh AS (
+       SELECT rh.player_id, rh.mmr, rh.recorded_at
+       FROM rating_history rh
+       WHERE rh.match_id IN (
+         SELECT match_id::text FROM matches WHERE season_id = $1 AND is_legacy = false
+       )
+     ),
+     ordered AS (
+       SELECT player_id, mmr, recorded_at,
+              ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY recorded_at ASC) AS rn_first,
+              ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY recorded_at DESC) AS rn_last
+       FROM season_rh
+     ),
+     deltas AS (
+       SELECT
+         MAX(CASE WHEN rn_first = 1 THEN player_id END) AS player_id,
+         MAX(CASE WHEN rn_first = 1 THEN mmr END) AS first_mmr,
+         MAX(CASE WHEN rn_last  = 1 THEN mmr END) AS last_mmr
+       FROM ordered
+       WHERE rn_first = 1 OR rn_last = 1
+       GROUP BY player_id
+     )
+     SELECT d.player_id,
+            COALESCE(n.nickname, r.display_name, d.player_id::text) AS display_name,
+            d.first_mmr::int, d.last_mmr::int,
+            (d.last_mmr - d.first_mmr)::int AS delta
+     FROM deltas d
+     LEFT JOIN ratings r ON r.player_id = d.player_id
+     LEFT JOIN nicknames n ON n.account_id = d.player_id
+     WHERE d.last_mmr > d.first_mmr
+     ORDER BY (d.last_mmr - d.first_mmr) DESC
+     LIMIT 1`,
+    [sid]
+  );
+  const mostImproved = improvedR.rows[0] || null;
+
+  const streakR = await p.query(
+    `WITH season_results AS (
+       SELECT ps.account_id, m.match_id, m.date,
+              CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END AS won
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE m.season_id = $1 AND m.is_legacy = false AND ps.account_id != 0
+     ),
+     numbered AS (
+       SELECT *,
+              ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY date) AS rn,
+              ROW_NUMBER() OVER (PARTITION BY account_id, won ORDER BY date) AS rn_grp
+       FROM season_results
+     ),
+     streaks AS (
+       SELECT account_id, won, COUNT(*) AS streak_len
+       FROM numbered
+       WHERE won = 1
+       GROUP BY account_id, won, (rn - rn_grp)
+     ),
+     best AS (
+       SELECT account_id, MAX(streak_len) AS longest_streak
+       FROM streaks
+       GROUP BY account_id
+     )
+     SELECT b.account_id,
+            COALESCE(n.nickname, r.display_name, b.account_id::text) AS display_name,
+            b.longest_streak
+     FROM best b
+     LEFT JOIN ratings r ON r.player_id = b.account_id
+     LEFT JOIN nicknames n ON n.account_id = b.account_id
+     ORDER BY b.longest_streak DESC
+     LIMIT 1`,
+    [sid]
+  );
+  const longestStreak = streakR.rows[0] || null;
+
+  return {
+    overview: {
+      totalMatches: parseInt(overview.total_matches) || 0,
+      totalPlayers: parseInt(overview.total_players) || 0,
+    },
+    dates: { startDate: dates.start_date || null, endDate: dates.end_date || null },
+    topPlayers,
+    heroOfSeason,
+    mostImproved,
+    longestStreak,
+  };
 }
 
 async function deleteSeason(id) {
@@ -8960,6 +9116,8 @@ module.exports = {
   recalculateAllRatings,
   updatePlayerPosition,
   deleteSeason,
+  setSeasonEndConditions,
+  getSeasonSummary,
   getSeasonPayouts,
   addSeasonPayout,
   deleteSeasonPayout,

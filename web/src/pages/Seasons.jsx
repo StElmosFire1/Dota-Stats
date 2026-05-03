@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -808,6 +809,14 @@ export default function Seasons() {
                               Archive
                             </button>
                           )}
+                          <Link
+                            to={`/seasons/${s.id}/summary`}
+                            className="btn btn-small"
+                            style={{ fontSize: 11, opacity: 0.85 }}
+                            title="View end-of-season summary"
+                          >
+                            Summary ↗
+                          </Link>
                           {isSuperuser && (
                             <button
                               className="btn btn-small btn-danger"

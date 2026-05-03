@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -965,6 +965,168 @@ function FeatureFlagsPanel({ superuserKey }) {
   );
 }
 
+// Season Lifecycle panel — configure end conditions (end date / match limit) and
+// manually close a season + post the Discord summary embed.
+function SeasonLifecyclePanel({ superuserKey }) {
+  const [seasons, setSeasons] = useState([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [matchLimit, setMatchLimit] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    getSeasons()
+      .then(raw => {
+        const list = raw?.seasons || (Array.isArray(raw) ? raw : []);
+        setSeasons(list);
+        const active = list.find(s => s.active) || list[0];
+        if (active) {
+          setSelectedId(String(active.id));
+          setEndDate(active.end_date ? active.end_date.slice(0, 10) : '');
+          setMatchLimit(active.match_count_limit != null ? String(active.match_count_limit) : '');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const selectedSeason = seasons.find(s => String(s.id) === selectedId);
+
+  function handleSeasonChange(e) {
+    const id = e.target.value;
+    setSelectedId(id);
+    setMsg(''); setError('');
+    const s = seasons.find(s => String(s.id) === id);
+    if (s) {
+      setEndDate(s.end_date ? s.end_date.slice(0, 10) : '');
+      setMatchLimit(s.match_count_limit != null ? String(s.match_count_limit) : '');
+    }
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setSaving(true); setMsg(''); setError('');
+    try {
+      const res = await setSeasonEndConditions(
+        selectedId,
+        { end_date: endDate || null, match_count_limit: matchLimit ? parseInt(matchLimit) : null },
+        superuserKey
+      );
+      const s = res.season;
+      setSeasons(prev => prev.map(x => String(x.id) === selectedId ? { ...x, ...s } : x));
+      setMsg('End conditions saved.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleClose() {
+    if (!selectedId) return;
+    const s = selectedSeason;
+    if (!window.confirm(
+      `Close season "${s?.name}"?\n\n` +
+      `This will archive the season, generate the end-of-season summary, post a Discord embed, ` +
+      `and automatically activate the next pending season (if one exists).\n\nThis cannot be undone.`
+    )) return;
+    setClosing(true); setMsg(''); setError('');
+    try {
+      const res = await closeSeasonApi(selectedId, superuserKey);
+      setMsg(res.message || 'Season closed and announced.');
+      const raw = await getSeasons();
+      const list = raw?.seasons || (Array.isArray(raw) ? raw : []);
+      setSeasons(list);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setClosing(false);
+    }
+  }
+
+  return (
+    <section style={{ marginBottom: 36, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
+      <h2 style={{ margin: '0 0 6px', fontSize: '1rem' }}>📅 Season Lifecycle</h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+        Configure automatic end conditions for each season, or manually close a season and post the
+        end-of-season summary to Discord. The bot checks conditions after every match is recorded.
+      </p>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ fontSize: 13, color: 'var(--text-muted)' }}>Season:&nbsp;
+          <select value={selectedId} onChange={handleSeasonChange} style={{ marginLeft: 6 }}>
+            <option value="">— Select —</option>
+            {seasons.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.name}{s.active ? ' (active)' : s.is_legacy ? ' (archived)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {selectedId && (
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 480 }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                End Date (auto-close on this date)
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                Match Count Limit (auto-close after N games)
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={matchLimit}
+                onChange={e => setMatchLimit(e.target.value)}
+                placeholder="e.g. 50"
+                style={{ width: '100%', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" type="submit" disabled={saving} style={{ fontSize: 13 }}>
+              {saving ? 'Saving…' : '💾 Save End Conditions'}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={closing || !selectedSeason}
+              onClick={handleClose}
+              style={{ fontSize: 13, color: '#f87171', borderColor: '#f87171' }}
+            >
+              {closing ? 'Closing…' : '🏁 Close Season & Post Summary'}
+            </button>
+            {selectedSeason && (
+              <a
+                href={`/seasons/${selectedId}/summary`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: 13, color: 'var(--text-muted)', textDecoration: 'underline' }}
+              >
+                View Summary Page ↗
+              </a>
+            )}
+          </div>
+          {msg && <div style={{ fontSize: 13, color: '#4ade80' }}>✓ {msg}</div>}
+          {error && <div style={{ fontSize: 13, color: '#f87171' }}>Error: {error}</div>}
+        </form>
+      )}
+    </section>
+  );
+}
+
 // 1.6 — Season Tiers admin panel.
 // Lists tiers per season with name/MMR-floor editing, plus actions to seed default
 // tiers and place all rated players into their MMR-derived tier in one shot.
@@ -1686,6 +1848,9 @@ export default function AdminPanel() {
 
       {/* Season Tiers — 8-tier ladder per season */}
       <SeasonTiersPanel superuserKey={superuserKey} />
+
+      {/* Season Lifecycle — end conditions + manual close */}
+      <SeasonLifecyclePanel superuserKey={superuserKey} />
 
       {/* Coaching Marketplace — pending KYC + open disputes + revenue (T13) */}
       <CoachingAdminPanel superuserKey={superuserKey} />
