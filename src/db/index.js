@@ -1252,6 +1252,16 @@ async function init() {
       ON CONFLICT (stat_key) DO NOTHING
     `);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS scouting_reports (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL UNIQUE,
+        report JSONB NOT NULL,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_scouting_reports_account ON scouting_reports(account_id)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -10038,6 +10048,30 @@ async function getCoachingPlatformRevenue() {
   return r.rows[0] || { total_cents: 0, completed_bookings: 0 };
 }
 
+async function getCachedScoutingReport(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT report, generated_at FROM scouting_reports
+     WHERE account_id = $1
+       AND generated_at > NOW() - INTERVAL '24 hours'`,
+    [accountId]
+  );
+  if (!r.rows.length) return null;
+  return { ...r.rows[0].report, generated_at: r.rows[0].generated_at };
+}
+
+async function upsertScoutingReport(accountId, report) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO scouting_reports (account_id, report, generated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (account_id) DO UPDATE
+       SET report = EXCLUDED.report,
+           generated_at = NOW()`,
+    [accountId, JSON.stringify(report)]
+  );
+}
+
 module.exports = {
   init,
   getPool,
@@ -10384,6 +10418,8 @@ module.exports = {
   setHeroTierOverride,
   deleteHeroTierOverride,
   getPlayerHeroSuggestions,
+  getCachedScoutingReport,
+  upsertScoutingReport,
 };
 
 const RECORD_STAT_KEYS = ['kills', 'gpm', 'assists', 'hero_damage', 'tower_damage', 'last_hits'];

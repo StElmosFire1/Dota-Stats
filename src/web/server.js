@@ -575,6 +575,121 @@ function createServer(startupStatus = {}) {
     }
   });
 
+  // ── Standalone AI Scouting Report page ────────────────────────────────────
+  // Public-read: renders cached report as a print-friendly standalone HTML page.
+  // If no cached report exists, shows a 404 prompting the viewer to generate one.
+  app.get('/scouting/:accountId', async (req, res) => {
+    const accountId = req.params.accountId;
+    if (!/^\d+$/.test(accountId)) {
+      return res.status(400).send('<h1>Invalid account ID</h1>');
+    }
+    let report = null;
+    try {
+      report = await db.getCachedScoutingReport(accountId);
+    } catch (err) {
+      console.warn('[Scouting] Cache read failed for', accountId, ':', err.message);
+    }
+
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const siteUrl = process.env.SITE_URL || '';
+
+    if (!report) {
+      return res.status(404).send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>AI Scouting Report</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+  .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:40px;max-width:480px;text-align:center}
+  h1{color:#06b6d4;margin-bottom:12px}p{color:#94a3b8;line-height:1.6}
+  a{color:#06b6d4;text-decoration:none}
+</style></head><body>
+<div class="card">
+  <h1>🔍 AI Scouting Report</h1>
+  <p>No cached report found for this player. A Pro member needs to generate the report first from the player&apos;s profile page.</p>
+  <p><a href="${esc(siteUrl)}/player/${esc(accountId)}">View player profile &rarr;</a></p>
+</div></body></html>`);
+    }
+
+    const listItems = (arr) => (Array.isArray(arr) ? arr : []).map(s => `<li>${esc(s)}</li>`).join('');
+    const tags = (arr) => (Array.isArray(arr) ? arr : []).map(s => `<span class="tag">${esc(s)}</span>`).join('');
+    const genDate = report.generated_at ? new Date(report.generated_at).toLocaleString('en-AU', { timeZone: 'Australia/Sydney' }) : '';
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>AI Scouting Report &mdash; ${esc(report.player_name)}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta property="og:title" content="AI Scouting Report &mdash; ${esc(report.player_name)}">
+<meta property="og:description" content="${esc(report.summary)}">
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:20px}
+  .page{max-width:780px;margin:0 auto}
+  header{text-align:center;margin-bottom:32px}
+  header h1{font-size:26px;font-weight:800;color:#06b6d4;margin:0 0 4px}
+  header .sub{color:#64748b;font-size:13px}
+  .summary-box{background:linear-gradient(135deg,rgba(6,182,212,0.12),rgba(30,41,59,0.8));border:1px solid rgba(6,182,212,0.35);border-radius:12px;padding:18px 22px;margin-bottom:20px}
+  .summary-box .label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#06b6d4;margin-bottom:6px}
+  .summary-box .text{font-size:17px;font-weight:700;color:#e2e8f0;line-height:1.5}
+  .overview{font-size:14px;color:#cbd5e1;line-height:1.7;margin-bottom:20px;padding:14px 18px;background:#1e293b;border-radius:10px;border:1px solid #334155}
+  .stats-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  .stat{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;text-align:center;flex:1;min-width:90px}
+  .stat .val{font-size:22px;font-weight:800}
+  .stat .lbl{font-size:11px;color:#64748b;margin-top:2px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+  @media(max-width:520px){.grid{grid-template-columns:1fr}}
+  .section{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px 18px}
+  .section-title{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px}
+  .green{color:#22c55e;border-color:rgba(34,197,94,.25);background:rgba(34,197,94,.05)}
+  .orange{color:#fb923c;border-color:rgba(251,146,60,.25);background:rgba(251,146,60,.05)}
+  .red{color:#ef4444;border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.05)}
+  .purple{color:#a855f7;border-color:rgba(168,85,247,.25);background:rgba(168,85,247,.05)}
+  .cyan{color:#06b6d4;border-color:rgba(6,182,212,.25);background:rgba(6,182,212,.05)}
+  ul{margin:0;padding-left:18px}li{font-size:13px;color:#e2e8f0;margin-bottom:4px;line-height:1.5}
+  .tags{display:flex;flex-wrap:wrap;gap:6px}
+  .tag{font-size:12px;padding:3px 10px;border-radius:6px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.25)}
+  .footer{text-align:center;margin-top:32px;color:#475569;font-size:12px}
+  .footer a{color:#06b6d4;text-decoration:none}
+  @media print{body{background:#fff;color:#000}.page{max-width:100%}.summary-box,.section,.overview{border-color:#ccc}.footer{display:none}}
+</style></head><body>
+<div class="page">
+  <header>
+    <h1>&#128269; AI Scouting Report</h1>
+    <div class="sub">
+      ${esc(report.player_name)}
+      ${genDate ? ` &middot; Generated ${genDate}` : ''}
+      &middot; <a href="${esc(siteUrl)}/player/${esc(accountId)}">View Profile &rarr;</a>
+    </div>
+  </header>
+
+  ${report.summary ? `<div class="summary-box"><div class="label">Summary</div><div class="text">${esc(report.summary)}</div></div>` : ''}
+
+  ${report.overview ? `<div class="overview">${esc(report.overview)}</div>` : ''}
+
+  ${report.stats ? `<div class="stats-row">
+    <div class="stat"><div class="val" style="color:#4ade80">${esc(report.stats.wins)}W</div><div class="lbl">Wins</div></div>
+    <div class="stat"><div class="val" style="color:#f87171">${esc(report.stats.losses)}L</div><div class="lbl">Losses</div></div>
+    <div class="stat"><div class="val">${esc(report.stats.avg_kills)}/${esc(report.stats.avg_deaths)}/${esc(report.stats.avg_assists)}</div><div class="lbl">KDA</div></div>
+    ${report.strongest_position ? `<div class="stat"><div class="val" style="font-size:14px">${esc(report.strongest_position)}</div><div class="lbl">Best Position</div></div>` : ''}
+  </div>` : ''}
+
+  <div class="grid">
+    ${report.strengths?.length ? `<div class="section green"><div class="section-title">&#10003; Strengths</div><ul>${listItems(report.strengths)}</ul></div>` : ''}
+    ${report.improvements?.length ? `<div class="section orange"><div class="section-title">&#8593; Areas to Improve</div><ul>${listItems(report.improvements)}</ul></div>` : ''}
+    ${report.hero_pool?.length ? `<div class="section cyan"><div class="section-title">&#127918; Hero Pool</div><ul>${listItems(report.hero_pool)}</ul></div>` : ''}
+    ${report.counters?.length ? `<div class="section red"><div class="section-title">&#9876; Counter Picks</div><div class="tags">${tags(report.counters)}</div></div>` : ''}
+  </div>
+
+  ${report.draft_recommendation ? `<div class="section purple" style="margin-bottom:20px"><div class="section-title">Draft Recommendation</div><p style="margin:0;font-size:13px;color:#e2e8f0;line-height:1.6">${esc(report.draft_recommendation)}</p></div>` : ''}
+
+  <div class="footer">
+    <span>Generated by Inhouse Stats &middot; AI-powered scouting &middot; <a href="${esc(siteUrl)}">inhouse.gg</a></span>
+  </div>
+</div>
+</body></html>`);
+  });
+
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
     app.use(express.static(staticPath));
@@ -5844,6 +5959,13 @@ NOTES
         return res.status(402).json({ error: 'AI Scouting Reports are a Pro feature.', paywall: true });
       }
       const subjectAccountId = req.params.id;
+
+      // Serve cached report if < 24h old
+      const cached = await db.getCachedScoutingReport(subjectAccountId).catch((err) => {
+        console.warn('[API] scouting-report cache read failed:', err.message);
+        return null;
+      });
+      if (cached) return res.json(cached);
       const p = db.getPool();
       const [statsRes, posRes, heroRes, streakRes] = await Promise.all([
         p.query(
@@ -5932,7 +6054,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       } catch (_) {
         return res.status(503).json({ error: 'AI scouting returned an unexpected response. Please try again.' });
       }
-      res.json({
+      const report = {
         player_name: playerName,
         account_id: subjectAccountId,
         stats: { wins, losses: recentGames - wins, avg_kills: avgKills, avg_deaths: avgDeaths, avg_assists: avgAssists },
@@ -5945,7 +6067,10 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         strongest_position: structured.strongest_position || (strongestPos ? `Pos ${strongestPos.position}` : ''),
         counters: Array.isArray(structured.counters) ? structured.counters : [],
         generated_at: new Date().toISOString(),
-      });
+      };
+      const upsertErr = await db.upsertScoutingReport(subjectAccountId, report).then(() => null).catch(e => e);
+      if (upsertErr) console.warn('[API] scouting-report cache write failed (share link may 404):', upsertErr.message);
+      res.json({ ...report, share_link_ready: !upsertErr });
     } catch (err) {
       console.error('[API] scouting-report:', err.message);
       res.status(500).json({ error: err.message || 'Failed to generate scouting report' });

@@ -520,6 +520,8 @@ export default function PlayerProfile() {
   const [scoutingReport, setScoutingReport] = useState(null);
   const [scoutingLoading, setScoutingLoading] = useState(false);
   const [scoutingError, setScoutingError] = useState(null);
+  const [scoutingLinkCopied, setScoutingLinkCopied] = useState(false);
+  const [scoutingAutoCopied, setScoutingAutoCopied] = useState(false);
   const [giftError, setGiftError] = useState(null);
   const [giftLoading, setGiftLoading] = useState(null);
 
@@ -821,6 +823,13 @@ export default function PlayerProfile() {
               try {
                 const data = await getScoutingReport(accountId);
                 setScoutingReport(data);
+                if (data.share_link_ready !== false) {
+                  const shareUrl = `${window.location.origin}/scouting/${accountId}`;
+                  navigator.clipboard?.writeText(shareUrl).then(() => {
+                    setScoutingAutoCopied(true);
+                    setTimeout(() => setScoutingAutoCopied(false), 4000);
+                  }).catch(() => {});
+                }
                 setTimeout(() => {
                   document.getElementById('scouting-report-anchor')?.scrollIntoView({ behavior: 'smooth' });
                 }, 100);
@@ -848,6 +857,11 @@ export default function PlayerProfile() {
       {scoutingError && (
         <div style={{ marginTop: 8, padding: '6px 12px', background: '#3a0f0f', border: '1px solid #ef4444', borderRadius: 6, fontSize: 13, color: '#ef4444' }}>
           {scoutingError}
+        </div>
+      )}
+      {scoutingAutoCopied && (
+        <div style={{ marginTop: 8, padding: '6px 12px', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.4)', borderRadius: 6, fontSize: 12, color: 'var(--accent-green)' }}>
+          ✅ Share link copied to clipboard — paste it to share this scouting report!
         </div>
       )}
 
@@ -1040,7 +1054,24 @@ export default function PlayerProfile() {
               <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>{scoutingReport.draft_recommendation}</div>
             </div>
           )}
-          <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                const shareUrl = `${window.location.origin}/scouting/${accountId}`;
+                navigator.clipboard?.writeText(shareUrl).then(() => {
+                  setScoutingLinkCopied(true);
+                  setTimeout(() => setScoutingLinkCopied(false), 2500);
+                }).catch(() => {
+                  window.prompt('Copy share link:', shareUrl);
+                });
+              }}
+              style={{
+                background: scoutingLinkCopied ? 'rgba(74,222,128,0.1)' : 'var(--bg-card)',
+                border: `1px solid ${scoutingLinkCopied ? 'var(--accent-green)' : 'rgba(6,182,212,0.4)'}`,
+                color: scoutingLinkCopied ? 'var(--accent-green)' : '#06b6d4',
+                borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              }}
+            >{scoutingLinkCopied ? '✅ Link Copied!' : '🔗 Copy Share Link'}</button>
             <button
               onClick={() => window.print()}
               style={{

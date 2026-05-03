@@ -9,6 +9,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:5000',
+      '/scouting': 'http://localhost:5000',
+      '/auth': 'http://localhost:5000',
     },
   },
 });
