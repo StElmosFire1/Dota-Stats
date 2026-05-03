@@ -1597,7 +1597,7 @@ function createApiRouter(startupStatus = {}) {
       if (!rows[0]) return res.status(404).json({ error: 'Season not found' });
       const bot = getDiscordBot();
       if (bot && typeof bot.closeSeasonManually === 'function') {
-        bot.closeSeasonManually(id).catch(e => console.error('[API] closeSeason bot error:', e.message));
+        await bot.closeSeasonManually(id);
       } else {
         await db.archiveSeason(id);
       }

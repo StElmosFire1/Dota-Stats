@@ -2384,9 +2384,11 @@ class DiscordBot {
 
   async _closeSeasonAndAnnounce(season) {
     try {
-      await db.archiveSeason(season.id);
-
+      // Compute summary BEFORE archiving — archiveSeason marks matches is_legacy=true,
+      // which would make getSeasonSummary return empty data for every query.
       const summary = await db.getSeasonSummary(season.id);
+
+      await db.archiveSeason(season.id);
       const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const summaryUrl = `${siteUrl}/seasons/${season.id}/summary`;
 
@@ -2440,8 +2442,11 @@ class DiscordBot {
         );
       }
 
+      // Only activate a season created AFTER the one that just closed — prevents
+      // accidentally re-activating an old inactive season with a lower id.
       const { rows } = await db.getPool().query(
-        `SELECT * FROM seasons WHERE active = false AND is_legacy = false ORDER BY id ASC LIMIT 1`
+        `SELECT * FROM seasons WHERE active = false AND is_legacy = false AND id > $1 ORDER BY id ASC LIMIT 1`,
+        [season.id]
       );
       const nextSeason = rows[0];
       if (nextSeason) {
