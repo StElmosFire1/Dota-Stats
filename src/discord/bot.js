@@ -2395,6 +2395,59 @@ class DiscordBot {
     }
   }
 
+  _buildSeasonCompleteEmbed(season, summary) {
+    const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const summaryUrl = `${siteUrl}/seasons/${season.id}/summary`;
+
+    const embed = new EmbedBuilder()
+      .setColor(0x7c6bff)
+      .setTitle(`🏆 ${season.name} — Season Complete!`)
+      .setDescription(
+        `**${summary.overview.totalMatches}** matches · **${summary.overview.totalPlayers}** players\n` +
+        `[📊 View Full Season Summary](${summaryUrl})`
+      )
+      .setTimestamp();
+
+    if (summary.topPlayers.length > 0) {
+      const medals = ['🥇', '🥈', '🥉'];
+      const topStr = summary.topPlayers
+        .map((p, i) => `${medals[i]} **${p.display_name}** — ${p.mmr ?? '?'} MMR (${p.wins ?? 0}W/${p.losses ?? 0}L)`)
+        .join('\n');
+      embed.addFields({ name: '📊 Final Top 3', value: topStr });
+    }
+
+    if (summary.longestStreak) {
+      embed.addFields({
+        name: '🔥 Longest Win Streak',
+        value: `**${summary.longestStreak.display_name}** — ${summary.longestStreak.longest_streak} wins in a row`,
+      });
+    }
+
+    if (summary.mostImproved) {
+      const delta = summary.mostImproved.delta > 0 ? `+${summary.mostImproved.delta}` : `${summary.mostImproved.delta}`;
+      embed.addFields({
+        name: '📈 Most Improved',
+        value: `**${summary.mostImproved.display_name}** — ${delta} MMR (${summary.mostImproved.first_mmr} → ${summary.mostImproved.last_mmr})`,
+      });
+    }
+
+    if (summary.heroOfSeason) {
+      embed.addFields({
+        name: '⚔️ Hero of the Season',
+        value: `**${summary.heroOfSeason.hero_name}** — ${summary.heroOfSeason.winRate}% win rate over ${summary.heroOfSeason.games} games`,
+      });
+    }
+
+    return embed;
+  }
+
+  _resolveAnnounceChannelIds() {
+    const announceIds = config.discord.announceChannelId
+      ? [config.discord.announceChannelId]
+      : config.discord.statsChannelIds;
+    return announceIds.length > 0 ? announceIds : config.discord.statsChannelIds;
+  }
+
   async _closeSeasonAndAnnounce(season) {
     try {
       // Idempotency guard: re-fetch the season inside the transaction to confirm it
@@ -2409,55 +2462,12 @@ class DiscordBot {
       }
 
       const summary = await db.getSeasonSummary(season.id);
+      const embed = this._buildSeasonCompleteEmbed(season, summary);
 
       await db.archiveSeason(season.id);
-      const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
-      const summaryUrl = `${siteUrl}/seasons/${season.id}/summary`;
-
-      const embed = new EmbedBuilder()
-        .setColor(0x7c6bff)
-        .setTitle(`🏆 ${season.name} — Season Complete!`)
-        .setDescription(
-          `**${summary.overview.totalMatches}** matches · **${summary.overview.totalPlayers}** players\n` +
-          `[📊 View Full Season Summary](${summaryUrl})`
-        )
-        .setTimestamp();
-
-      if (summary.topPlayers.length > 0) {
-        const medals = ['🥇', '🥈', '🥉'];
-        const topStr = summary.topPlayers
-          .map((p, i) => `${medals[i]} **${p.display_name}** — ${p.mmr ?? '?'} MMR (${p.wins ?? 0}W/${p.losses ?? 0}L)`)
-          .join('\n');
-        embed.addFields({ name: '📊 Final Top 3', value: topStr });
-      }
-
-      if (summary.longestStreak) {
-        embed.addFields({
-          name: '🔥 Longest Win Streak',
-          value: `**${summary.longestStreak.display_name}** — ${summary.longestStreak.longest_streak} wins in a row`,
-        });
-      }
-
-      if (summary.mostImproved) {
-        const delta = summary.mostImproved.delta > 0 ? `+${summary.mostImproved.delta}` : `${summary.mostImproved.delta}`;
-        embed.addFields({
-          name: '📈 Most Improved',
-          value: `**${summary.mostImproved.display_name}** — ${delta} MMR (${summary.mostImproved.first_mmr} → ${summary.mostImproved.last_mmr})`,
-        });
-      }
-
-      if (summary.heroOfSeason) {
-        embed.addFields({
-          name: '⚔️ Hero of the Season',
-          value: `**${summary.heroOfSeason.hero_name}** — ${summary.heroOfSeason.winRate}% win rate over ${summary.heroOfSeason.games} games`,
-        });
-      }
 
       // Prefer the announce channel for season closure events; fall back to stats channels.
-      const announceIds = config.discord.announceChannelId
-        ? [config.discord.announceChannelId]
-        : config.discord.statsChannelIds;
-      const channels = await this._resolveChannels(announceIds.length > 0 ? announceIds : config.discord.statsChannelIds);
+      const channels = await this._resolveChannels(this._resolveAnnounceChannelIds());
       for (const ch of channels) {
         await ch.send({ embeds: [embed] }).catch(err =>
           console.error(`[Season] Announce error on ${ch.id}:`, err.message)
@@ -2494,6 +2504,29 @@ class DiscordBot {
     const { rows } = await db.getPool().query(`SELECT * FROM seasons WHERE id = $1`, [parseInt(seasonId)]);
     if (!rows[0]) throw new Error('Season not found');
     await this._closeSeasonAndAnnounce(rows[0]);
+  }
+
+  async postSeasonAnnouncement(seasonId) {
+    const { rows } = await db.getPool().query(`SELECT * FROM seasons WHERE id = $1`, [parseInt(seasonId)]);
+    const season = rows[0];
+    if (!season) throw new Error('Season not found');
+    if (!season.is_legacy) throw new Error('Season is not archived — use Close Season to close and announce for the first time');
+
+    const summary = await db.getSeasonSummary(season.id);
+    const embed = this._buildSeasonCompleteEmbed(season, summary);
+
+    const channels = await this._resolveChannels(this._resolveAnnounceChannelIds());
+    if (!channels.length) throw new Error('No accessible announce channels found — check ANNOUNCE_CHANNEL_ID configuration');
+
+    let sent = 0;
+    for (const ch of channels) {
+      await ch.send({ embeds: [embed] }).then(() => { sent++; }).catch(err =>
+        console.error(`[Season] Re-announce error on ${ch.id}:`, err.message)
+      );
+    }
+
+    if (sent === 0) throw new Error('Announcement embed could not be delivered to any Discord channel');
+    console.log(`[Season] Re-announced end-of-season embed for "${season.name}" (${sent}/${channels.length} channel(s)).`);
   }
 
   async _checkMatchQuality(matchStats) {

@@ -1925,6 +1925,7 @@ function createApiRouter(startupStatus = {}) {
       if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
       const { rows } = await db.getPool().query(`SELECT * FROM seasons WHERE id = $1`, [id]);
       if (!rows[0]) return res.status(404).json({ error: 'Season not found' });
+      if (rows[0].is_legacy) return res.status(400).json({ error: `Season "${rows[0].name}" is already archived. Use the Repost Announcement button to resend the Discord embed.` });
       const bot = getDiscordBot();
       if (bot && typeof bot.closeSeasonManually === 'function') {
         await bot.closeSeasonManually(id);
@@ -1936,6 +1937,25 @@ function createApiRouter(startupStatus = {}) {
     } catch (err) {
       console.error('[API] closeSeason error:', err.message);
       res.status(500).json({ error: 'Failed to close season' });
+    }
+  });
+
+  router.post('/seasons/:id/announce', requireSuperuser, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
+      const { rows } = await db.getPool().query(`SELECT * FROM seasons WHERE id = $1`, [id]);
+      if (!rows[0]) return res.status(404).json({ error: 'Season not found' });
+      if (!rows[0].is_legacy) return res.status(400).json({ error: 'Season is not archived — use Close Season to close and announce for the first time' });
+      const bot = getDiscordBot();
+      if (!bot || typeof bot.postSeasonAnnouncement !== 'function') {
+        return res.status(503).json({ error: 'Discord bot is unavailable — cannot post announcement' });
+      }
+      await bot.postSeasonAnnouncement(id);
+      res.json({ success: true, message: `End-of-season announcement for "${rows[0].name}" reposted to Discord.` });
+    } catch (err) {
+      console.error('[API] reannounce season error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to repost announcement' });
     }
   });
 

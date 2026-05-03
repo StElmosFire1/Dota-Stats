@@ -1194,6 +1194,16 @@ export async function closeSeasonApi(seasonId, superuserKey) {
   return data;
 }
 
+export async function reannounceSeasonApi(seasonId, superuserKey) {
+  const res = await fetch(BASE + `/seasons/${seasonId}/announce`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to repost announcement');
+  return data;
+}
+
 // ── Gift purchasing ─────────────────────────────────────────────────────────
 export async function createGiftProCheckout(recipientAccountId) {
   const res = await fetch(BASE + '/gift/pro', {

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -1087,6 +1087,7 @@ function SeasonLifecyclePanel({ superuserKey }) {
   const [matchLimit, setMatchLimit] = useState('');
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [reannouncing, setReannouncing] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -1159,6 +1160,25 @@ function SeasonLifecyclePanel({ superuserKey }) {
     }
   }
 
+  async function handleReannounce() {
+    if (!selectedId) return;
+    const s = selectedSeason;
+    if (!window.confirm(
+      `Repost the end-of-season announcement for "${s?.name}"?\n\n` +
+      `This will re-send the season summary embed to the Discord announce channel. ` +
+      `No data will be changed — the season stays archived.`
+    )) return;
+    setReannouncing(true); setMsg(''); setError('');
+    try {
+      const res = await reannounceSeasonApi(selectedId, superuserKey);
+      setMsg(res.message || 'Announcement reposted.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setReannouncing(false);
+    }
+  }
+
   return (
     <section style={{ marginBottom: 36, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
       <h2 style={{ margin: '0 0 6px', fontSize: '1rem' }}>📅 Season Lifecycle</h2>
@@ -1215,12 +1235,24 @@ function SeasonLifecyclePanel({ superuserKey }) {
             <button
               className="btn"
               type="button"
-              disabled={closing || !selectedSeason}
+              disabled={closing || !selectedSeason || !!selectedSeason?.is_legacy}
               onClick={handleClose}
-              style={{ fontSize: 13, color: '#f87171', borderColor: '#f87171' }}
+              title={selectedSeason?.is_legacy ? 'Season already archived — use Repost Announcement instead' : undefined}
+              style={{ fontSize: 13, color: '#f87171', borderColor: '#f87171', opacity: selectedSeason?.is_legacy ? 0.4 : 1 }}
             >
               {closing ? 'Closing…' : '🏁 Close Season & Post Summary'}
             </button>
+            {selectedSeason?.is_legacy && (
+              <button
+                className="btn"
+                type="button"
+                disabled={reannouncing}
+                onClick={handleReannounce}
+                style={{ fontSize: 13, color: '#a78bfa', borderColor: '#a78bfa' }}
+              >
+                {reannouncing ? 'Reposting…' : '📢 Repost Announcement'}
+              </button>
+            )}
             {selectedSeason && (
               <a
                 href={`/seasons/${selectedId}/summary`}
