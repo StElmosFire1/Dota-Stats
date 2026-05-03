@@ -5,6 +5,7 @@ import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
 import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
+import { TierBadge } from './Leaderboard';
 import { ALL_HEROES, getHeroName } from '../heroNames';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -1293,6 +1294,35 @@ function SeasonTiersPanelInner({ superuserKey }) {
                             style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', fontSize: 12 }}
                           />
                         </div>
+                        {draftFloor != null && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 6 }}>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>Preview:</span>
+                            <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Normal</span>
+                              <TierBadge
+                                mmr={Number(draftFloor)}
+                                useV3={true}
+                                dbTiers={[{ min_mmr: Number(draftFloor), name: draftName || t.name, sponsor_name: null }]}
+                              />
+                            </span>
+                            {draftSponsor && (
+                              <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Sponsored (when active)</span>
+                                <TierBadge
+                                  mmr={Number(draftFloor)}
+                                  useV3={true}
+                                  dbTiers={[{
+                                    min_mmr: Number(draftFloor),
+                                    name: draftName || t.name,
+                                    sponsor_name: draftSponsor,
+                                    sponsor_active_from: '2000-01-01',
+                                    sponsor_active_until: '2099-01-01',
+                                  }]}
+                                />
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{counts[t.tier_number] ?? '—'}</td>

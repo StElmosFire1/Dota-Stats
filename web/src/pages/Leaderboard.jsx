@@ -49,7 +49,7 @@ function getTier(mmr, tiers = MMR_TIERS_V1) {
   return tiers[tiers.length - 1];
 }
 
-function TierBadge({ mmr, useV3 = false, dbTiers = null }) {
+export function TierBadge({ mmr, useV3 = false, dbTiers = null }) {
   const tiers = useV3 ? MMR_TIERS_V3 : MMR_TIERS_V1;
   const t = getTier(mmr, tiers);
   if (!t) return null;
