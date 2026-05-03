@@ -691,5 +691,12 @@ module.exports = [
     "published_at": "2026-05-03",
     "content": "The feature flag staging system has been completely removed. All features are now always on with no toggles.\n\n**Removed entirely:** Feature Flags admin panel section, Launch Season 10 button, On/Off toggles, and all server-side flag checks. Hero meta, draft assistant, season pass, coaching marketplace, profile customisation, pro tier, web push notifications, tournament brackets, and all other features are now unconditionally available to all visitors — no database lookup required.",
     "author": "System"
+  },
+  {
+    "version": "5.57",
+    "title": "Match PERF score rebalanced to fairly reward supports",
+    "published_at": "2026-05-03",
+    "content": "The per-match Performance score (1–10) on match scoreboards has been rebalanced to eliminate the systematic bias against support players.\n\n**What changed:**\n- Assists now count equally to kills in kill involvement (was 0.5×) — supports with high assists no longer get penalised\n- Vision control (observer wards placed + dewards) added as a dedicated component (9%) — wards and dewards are now rewarded\n- Stun/disable duration added as a component (5%) — utility and initiator heroes get credit for CC\n- Hero damage weight reduced from 20% to 14% — carries and mids still rewarded but supports are no longer structurally penalised\n- Net worth weight reduced from 15% to 11% — intentionally poor farm is no longer a big negative\n- Survival remains the second-highest weight (20%) — universal across all roles\n\n**Final weights:** Kill involvement 28%, Survival 20%, Hero damage 14%, Net worth 11%, Healing 10%, Vision/dewards 9%, Stun duration 5%, Tower damage 2%, Win bonus 1%.",
+    "author": "System"
   }
 ];
