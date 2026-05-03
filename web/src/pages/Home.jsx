@@ -6,7 +6,6 @@ import { useSeason } from '../context/SeasonContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
-import OnboardingWizard from '../components/OnboardingWizard';
 import { MmrBadge } from '../components/RankBadge';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -254,7 +253,6 @@ function MiniMmrChart({ accountId }) {
 function PersonalisedDashboard({ steamUser }) {
   const [homeData, setHomeData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showWizard, setShowWizard] = useState(false);
 
   const fetchHomeData = useCallback(async () => {
     try {
@@ -262,9 +260,6 @@ function PersonalisedDashboard({ steamUser }) {
       if (res.ok) {
         const data = await res.json();
         setHomeData(data);
-        if (data.onboarding_complete === false) {
-          setShowWizard(true);
-        }
       }
     } catch {}
     setLoading(false);
@@ -274,27 +269,11 @@ function PersonalisedDashboard({ steamUser }) {
     fetchHomeData();
   }, [fetchHomeData]);
 
-  const handleWizardComplete = useCallback(() => {
-    setShowWizard(false);
-    fetchHomeData();
-  }, [fetchHomeData]);
-
-  const handleWizardDismiss = useCallback(() => {
-    setShowWizard(false);
-  }, []);
-
   const displayName = steamUser?.displayName || `Player ${steamUser?.accountId}`;
   const accountId = steamUser?.accountId;
 
   return (
     <>
-      {showWizard && (
-        <OnboardingWizard
-          onComplete={handleWizardComplete}
-          onDismiss={handleWizardDismiss}
-        />
-      )}
-
       {/* Personal hero banner */}
       <div style={{
         background: 'linear-gradient(135deg, var(--bg-card) 0%, rgba(59,130,246,0.1) 100%)',

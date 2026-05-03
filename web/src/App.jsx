@@ -9,6 +9,7 @@ import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import WelcomeModal from './components/WelcomeModal';
+import OnboardingWizard from './components/OnboardingWizard';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
@@ -324,6 +325,17 @@ function Nav() {
   );
 }
 
+function GlobalOnboardingWizard() {
+  const { onboardingComplete, setOnboardingComplete } = useSteamAuth();
+  if (onboardingComplete !== false) return null;
+  return (
+    <OnboardingWizard
+      onComplete={() => setOnboardingComplete(true)}
+      onDismiss={() => setOnboardingComplete(true)}
+    />
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -336,6 +348,7 @@ export default function App() {
             <AdminLoginModal />
             <SuperuserLoginModal />
             <WelcomeModal />
+            <GlobalOnboardingWizard />
             <main className="container">
               <Suspense fallback={<div className="loading">Loading…</div>}>
               <Routes>
