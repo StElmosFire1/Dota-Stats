@@ -694,9 +694,9 @@ module.exports = [
   },
   {
     "version": "5.57",
-    "title": "Match PERF score rebalanced to fairly reward supports",
+    "title": "Match PERF score rebalanced to fairly reward every role",
     "published_at": "2026-05-03",
-    "content": "The per-match Performance score (1–10) on match scoreboards has been rebalanced to eliminate the systematic bias against support players.\n\n**What changed:**\n- Assists now count equally to kills in kill involvement (was 0.5×) — supports with high assists no longer get penalised\n- Vision control (observer wards placed + dewards) added as a dedicated component (9%) — wards and dewards are now rewarded\n- Stun/disable duration added as a component (5%) — utility and initiator heroes get credit for CC\n- Hero damage weight reduced from 20% to 14% — carries and mids still rewarded but supports are no longer structurally penalised\n- Net worth weight reduced from 15% to 11% — intentionally poor farm is no longer a big negative\n- Survival remains the second-highest weight (20%) — universal across all roles\n\n**Final weights:** Kill involvement 28%, Survival 20%, Hero damage 14%, Net worth 11%, Healing 10%, Vision/dewards 9%, Stun duration 5%, Tower damage 2%, Win bonus 1%.",
+    "content": "The per-match Performance score (1–10) on match scoreboards has been rebalanced to eliminate the systematic bias against support and utility players.\n\n**What changed:**\n- Vision control (observer wards placed + enemy wards dewarded) added as a dedicated 10% component — wards and dewards are now directly rewarded\n- Stun/disable duration added as a 5% component — initiators and utility heroes get credit for CC\n- Hero damage reduced from 20% to 15% — carries and mids still rewarded, but supports are no longer structurally penalised\n- Tower damage increased to 10% — objective and push contribution carries more weight\n- Net worth reduced from 15% to 10%\n- Healing reduced to 5%\n- Win bonus increased to 5%\n- Survival reduced to 15%\n\n**Final weights:** Kill involvement/assists×0.5 25%, Survival 15%, Hero damage 15%, Net worth 10%, Vision/dewards 10%, Tower damage 10%, Stun duration 5%, Healing 5%, Win bonus 5%.",
     "author": "System"
   }
 ];
