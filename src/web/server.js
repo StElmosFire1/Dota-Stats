@@ -5494,6 +5494,18 @@ NOTES
     }
   });
 
+  router.get('/me/mmr-history', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const history = await db.getPlayerRecentRatingHistory(accountId, 20);
+      res.json({ history });
+    } catch (err) {
+      console.error('[API] me/mmr-history GET:', err.message);
+      res.status(500).json({ error: 'Failed to fetch MMR history' });
+    }
+  });
+
   router.post('/me/onboarding/complete', async (req, res) => {
     try {
       const accountId = req.session?.accountId;

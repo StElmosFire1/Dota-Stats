@@ -8,6 +8,9 @@ import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import OnboardingWizard from '../components/OnboardingWizard';
 import { MmrBadge } from '../components/RankBadge';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
 
 const LAUNCH_BANNER_DISMISS_KEY = 'season10LaunchBannerDismissed_v1';
 
@@ -175,6 +178,79 @@ function StreakBadge({ streak }) {
   );
 }
 
+function MiniMmrChart({ accountId }) {
+  const [history, setHistory] = useState(null);
+
+  useEffect(() => {
+    if (!accountId) return;
+    fetch('/api/me/mmr-history', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.history) setHistory(d.history); })
+      .catch(() => {});
+  }, [accountId]);
+
+  if (!history || history.length < 2) return null;
+
+  const data = history.map((h, i) => ({
+    idx: i + 1,
+    mmr: Math.round(h.mmr),
+    date: h.recorded_at
+      ? new Date(h.recorded_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Australia/Sydney' })
+      : `#${i + 1}`,
+  }));
+
+  const mmrValues = data.map(d => d.mmr);
+  const minMmr = Math.min(...mmrValues);
+  const maxMmr = Math.max(...mmrValues);
+  const first = mmrValues[0];
+  const last = mmrValues[mmrValues.length - 1];
+  const delta = last - first;
+  const deltaColor = delta >= 0 ? 'var(--accent-green, #22c55e)' : 'var(--accent-red, #ef4444)';
+
+  return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+      padding: '18px 20px', marginBottom: 24,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+          📈 MMR History
+          <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+            last {data.length} games
+          </span>
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 700, color: deltaColor }}>
+          {delta >= 0 ? '+' : ''}{delta} MMR
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={120}>
+        <LineChart data={data} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <XAxis dataKey="idx" tick={false} stroke="var(--border)" />
+          <YAxis
+            domain={[minMmr - 50, maxMmr + 50]}
+            tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+            width={40}
+          />
+          <Tooltip
+            formatter={v => [`${v} MMR`, 'MMR']}
+            labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''}
+            contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="mmr"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, fill: '#3b82f6' }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function PersonalisedDashboard({ steamUser }) {
   const [homeData, setHomeData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -260,6 +336,8 @@ function PersonalisedDashboard({ steamUser }) {
           </Link>
         </div>
       </div>
+
+      <MiniMmrChart accountId={accountId} />
 
       {loading ? (
         <div className="loading" style={{ marginBottom: 28 }}>Loading your stats…</div>

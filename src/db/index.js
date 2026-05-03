@@ -5656,6 +5656,20 @@ async function getPlayerRatingHistory(accountId) {
   return result.rows;
 }
 
+async function getPlayerRecentRatingHistory(accountId, limit = 20) {
+  const p = getPool();
+  const ids = await getMergedAccountIds(accountId);
+  const result = await p.query(
+    `SELECT mmr, mu, sigma, match_id, recorded_at
+     FROM rating_history
+     WHERE player_id = ANY($1::bigint[])
+     ORDER BY recorded_at DESC
+     LIMIT $2`,
+    [ids, limit]
+  );
+  return result.rows.reverse();
+}
+
 async function getPlayerStreaks(seasonId = null) {
   const p = getPool();
 
@@ -10104,6 +10118,7 @@ module.exports = {
   clearMatchFileHash,
   getEnemySynergyHeatmap,
   getPlayerRatingHistory,
+  getPlayerRecentRatingHistory,
   getPlayerStreaks,
   getHeadToHead,
   getPlayerComparison,
