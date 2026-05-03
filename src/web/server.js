@@ -6210,6 +6210,15 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
       }
     }
 
+    // After ratings are updated, check season end conditions so the web upload
+    // path triggers automatic closure just like the Discord bot path does.
+    try {
+      const bot = getDiscordBot();
+      if (bot && typeof bot._checkSeasonEndCondition === 'function') {
+        bot._checkSeasonEndCondition().catch(e => console.error('[Season] Web upload end-check error:', e.message));
+      }
+    } catch (_) {}
+
     // Archive the replay file so superusers can download it later.
     try {
       const safeMatchId = matchStats.matchId.replace(/[^a-zA-Z0-9_-]/g, '_');

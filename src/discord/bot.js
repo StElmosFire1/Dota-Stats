@@ -2433,11 +2433,11 @@ class DiscordBot {
         });
       }
 
-      const channels = await this._resolveChannels(
-        config.discord.statsChannelIds.length > 0
-          ? config.discord.statsChannelIds
-          : (config.discord.announceChannelId ? [config.discord.announceChannelId] : [])
-      );
+      // Prefer the announce channel for season closure events; fall back to stats channels.
+      const announceIds = config.discord.announceChannelId
+        ? [config.discord.announceChannelId]
+        : config.discord.statsChannelIds;
+      const channels = await this._resolveChannels(announceIds.length > 0 ? announceIds : config.discord.statsChannelIds);
       for (const ch of channels) {
         await ch.send({ embeds: [embed] }).catch(err =>
           console.error(`[Season] Announce error on ${ch.id}:`, err.message)
@@ -2466,6 +2466,7 @@ class DiscordBot {
       }
     } catch (err) {
       console.error('[Season] Close and announce error:', err.message);
+      throw err;
     }
   }
 
