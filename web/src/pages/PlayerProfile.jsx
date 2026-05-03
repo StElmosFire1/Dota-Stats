@@ -368,12 +368,18 @@ function ProfileChartV2({ history }) {
 function InviteLinkCard({ accountId }) {
   const [inviteData, setInviteData] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
+  const [referralData, setReferralData] = React.useState(null);
+  const [showReferralList, setShowReferralList] = React.useState(false);
 
   React.useEffect(() => {
     if (!accountId) return;
     fetch(`/api/player/${accountId}/invite-link`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.inviteUrl) setInviteData(d); })
+      .catch(() => {});
+    fetch(`/api/player/${accountId}/referrals`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setReferralData(d); })
       .catch(() => {});
   }, [accountId]);
 
@@ -391,40 +397,106 @@ function InviteLinkCard({ accountId }) {
     });
   };
 
+  const formatDate = (iso) => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Australia/Sydney' });
+    } catch { return ''; }
+  };
+
   return (
     <div style={{
       background: 'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, var(--bg-card) 100%)',
       border: '1px solid rgba(59,130,246,0.3)', borderRadius: 12,
       padding: '14px 18px', marginTop: 12, marginBottom: 8,
-      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
     }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginBottom: 3 }}>
-          🔗 Your Invite Link
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginBottom: 3 }}>
+            🔗 Your Invite Link
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Share this link to invite friends. When they sign up and get approved, you earn <strong style={{ color: 'var(--accent-blue)' }}>{referralXp} XP</strong> toward your season pass.
+          </div>
+          <div style={{
+            fontSize: 12, color: 'var(--text-muted)',
+            background: 'var(--bg-secondary)', borderRadius: 6, padding: '4px 8px',
+            marginTop: 6, wordBreak: 'break-all', fontFamily: 'monospace',
+          }}>
+            {inviteUrl}
+          </div>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          Share this link to invite friends. When they sign up and get approved, you earn <strong style={{ color: 'var(--accent-blue)' }}>{referralXp} XP</strong> toward your season pass.
-        </div>
-        <div style={{
-          fontSize: 12, color: 'var(--text-muted)',
-          background: 'var(--bg-secondary)', borderRadius: 6, padding: '4px 8px',
-          marginTop: 6, wordBreak: 'break-all', fontFamily: 'monospace',
-        }}>
-          {inviteUrl}
-        </div>
+        <button
+          onClick={copyLink}
+          style={{
+            background: copied ? 'rgba(74,222,128,0.15)' : 'var(--bg-card)',
+            border: `1px solid ${copied ? 'var(--accent-green)' : 'rgba(59,130,246,0.4)'}`,
+            color: copied ? 'var(--accent-green)' : '#60a5fa',
+            borderRadius: 8, padding: '7px 16px', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap',
+          }}
+        >
+          {copied ? '✅ Copied!' : '📋 Copy'}
+        </button>
       </div>
-      <button
-        onClick={copyLink}
-        style={{
-          background: copied ? 'rgba(74,222,128,0.15)' : 'var(--bg-card)',
-          border: `1px solid ${copied ? 'var(--accent-green)' : 'rgba(59,130,246,0.4)'}`,
-          color: copied ? 'var(--accent-green)' : '#60a5fa',
-          borderRadius: 8, padding: '7px 16px', cursor: 'pointer',
-          fontSize: 13, fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap',
-        }}
-      >
-        {copied ? '✅ Copied!' : '📋 Copy'}
-      </button>
+
+      {referralData !== null && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(59,130,246,0.15)' }}>
+          {referralData.count === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              You haven't referred anyone yet — share your invite link to get started!
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  👥 You've referred <span style={{ color: '#60a5fa' }}>{referralData.count}</span> player{referralData.count !== 1 ? 's' : ''}
+                </span>
+                <span style={{
+                  fontSize: 12, fontWeight: 600,
+                  color: referralData.totalXp > 0 ? 'var(--accent-green)' : 'var(--text-muted)',
+                  background: referralData.totalXp > 0 ? 'rgba(74,222,128,0.1)' : 'var(--bg-secondary)',
+                  border: `1px solid ${referralData.totalXp > 0 ? 'rgba(74,222,128,0.3)' : 'var(--border)'}`,
+                  borderRadius: 6, padding: '1px 8px',
+                }}>
+                  +{referralData.totalXp} XP earned
+                </span>
+                {referralData.referrals.length > 0 && (
+                  <button
+                    onClick={() => setShowReferralList(s => !s)}
+                    style={{
+                      background: 'none', border: '1px solid var(--border)',
+                      color: 'var(--text-muted)', borderRadius: 6,
+                      padding: '2px 8px', cursor: 'pointer', fontSize: 11,
+                    }}
+                  >
+                    {showReferralList ? 'Hide ▴' : 'Show ▾'}
+                  </button>
+                )}
+              </div>
+              {showReferralList && (
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {referralData.referrals.map((r) => (
+                    <div key={r.accountId} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      fontSize: 12, color: 'var(--text-secondary)',
+                      background: 'var(--bg-secondary)', borderRadius: 6,
+                      padding: '4px 10px',
+                    }}>
+                      <span style={{ fontWeight: 600 }}>{r.displayName}</span>
+                      {r.joinedAt && (
+                        <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                          joined {formatDate(r.joinedAt)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

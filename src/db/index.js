@@ -10292,6 +10292,7 @@ module.exports = {
   getWeekendTournamentScores,
   checkAndUpdateMatchRecords,
   getPlayerMatchCount,
+  getPlayerReferrals,
   setPlayerReferredBy,
   grantReferralXp,
   getLeaderboardForImage,
@@ -10386,6 +10387,36 @@ async function getPlayerMatchCount(accountId) {
     [accountId]
   );
   return r.rows[0]?.cnt || 0;
+}
+
+async function getPlayerReferrals(accountId) {
+  if (!accountId) return { count: 0, totalXp: 0, referrals: [] };
+  const p = getPool();
+  const referred = await p.query(
+    `SELECT p.account_id_32, p.discord_name, p.registered_at,
+            COALESCE(n.nickname, p.discord_name) AS display_name
+     FROM players p
+     LEFT JOIN nicknames n ON n.account_id = p.account_id_32::bigint
+     WHERE p.referred_by = $1::bigint
+     ORDER BY p.registered_at ASC`,
+    [accountId]
+  );
+  const xpResult = await p.query(
+    `SELECT COALESCE(SUM(xp_delta), 0) AS total_xp
+     FROM season_pass_xp_events
+     WHERE account_id = $1::bigint AND source LIKE 'referral_%'`,
+    [accountId]
+  );
+  const totalXp = parseInt(xpResult.rows[0]?.total_xp) || 0;
+  return {
+    count: referred.rows.length,
+    totalXp,
+    referrals: referred.rows.map(r => ({
+      accountId: r.account_id_32,
+      displayName: r.display_name || r.discord_name || 'Unknown',
+      joinedAt: r.registered_at,
+    })),
+  };
 }
 
 async function setPlayerReferredBy(accountId, referredByAccountId) {

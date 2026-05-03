@@ -4606,6 +4606,19 @@ NOTES
     }
   });
 
+  router.get('/player/:id/referrals', async (req, res) => {
+    try {
+      const accountId = req.params.id;
+      if (!accountId || !/^\d+$/.test(accountId)) {
+        return res.status(400).json({ error: 'Invalid account ID' });
+      }
+      const data = await db.getPlayerReferrals(accountId);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/join', publicWriteLimiter, express.json(), async (req, res) => {
     try {
       const { discordUsername, steamUrl, preferredName, preferredPositions, message, mmr, referral } = req.body;
