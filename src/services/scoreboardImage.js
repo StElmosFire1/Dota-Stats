@@ -5,6 +5,13 @@ try {
   canvas = null;
 }
 
+let _getMmrTier;
+try {
+  _getMmrTier = require('../config').getMmrTier;
+} catch (_) {
+  _getMmrTier = null;
+}
+
 const BG      = '#0f172a';
 const CARD    = '#1e293b';
 const TEXT    = '#e2e8f0';
@@ -348,4 +355,145 @@ async function generateScoreboardImage(matchStats) {
   }
 }
 
-module.exports = { generateScoreboardImage };
+/**
+ * Generate a PNG leaderboard card showing the top 10 players with MMR, rank,
+ * and weekly MMR change. Returns null if canvas is unavailable.
+ *
+ * @param {Array} players  - [{ display_name, mmr, wins, losses, games_played, weeklyDelta?, rank? }]
+ * @param {string} [title] - Optional title override
+ */
+async function generateLeaderboardImage(players, title = 'Weekly Leaderboard') {
+  if (!canvas) return null;
+  if (!players || players.length === 0) return null;
+  try {
+    const { createCanvas } = canvas;
+
+    const ROWS = Math.min(players.length, 10);
+    const LB_W = 720;
+    const LB_PAD = 20;
+    const LB_HEADER = 70;
+    const LB_ROW_H = 48;
+    const LB_FOOTER = 30;
+    const LB_H = LB_HEADER + ROWS * LB_ROW_H + LB_FOOTER + LB_PAD;
+
+    const c = createCanvas(LB_W, LB_H);
+    const ctx = c.getContext('2d');
+
+    // Background
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, LB_W, LB_H);
+
+    // Header gradient
+    const grad = ctx.createLinearGradient(0, 0, LB_W, 0);
+    grad.addColorStop(0, 'rgba(96,165,250,0.22)');
+    grad.addColorStop(1, 'rgba(15,23,42,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, LB_W, LB_HEADER);
+
+    // Title
+    ctx.fillStyle = TEXT;
+    ctx.font = 'bold 24px "Arial"';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`\uD83C\uDFC6  ${title}`, LB_PAD, LB_HEADER / 2 - 6);
+
+    const dayLabel = new Date().toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    ctx.fillStyle = MUTED;
+    ctx.font = '12px "Arial"';
+    ctx.fillText(dayLabel, LB_PAD, LB_HEADER / 2 + 14);
+
+    // Column headers — rank | name | tier | mmr | W% | week
+    const colX = { rank: LB_PAD + 8, name: LB_PAD + 52, tier: LB_W - 294, mmr: LB_W - 186, wr: LB_W - 106, delta: LB_W - 32 };
+    ctx.fillStyle = MUTED;
+    ctx.font = '10px "Arial"';
+    ctx.textAlign = 'left';
+    ctx.fillText('PLAYER', colX.name, LB_HEADER - 8);
+    ctx.textAlign = 'right';
+    ctx.fillText('TIER', colX.tier, LB_HEADER - 8);
+    ctx.fillText('MMR', colX.mmr, LB_HEADER - 8);
+    ctx.fillText('W%', colX.wr, LB_HEADER - 8);
+    ctx.fillText('WEEK', colX.delta, LB_HEADER - 8);
+
+    const MEDALS = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+    const PLACE_COLORS = [GOLD, '#a78bfa', BLUE, GREEN, '#94a3b8'];
+
+    for (let i = 0; i < ROWS; i++) {
+      const pl = players[i];
+      const rowY = LB_HEADER + i * LB_ROW_H;
+
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        ctx.fillRect(0, rowY, LB_W, LB_ROW_H);
+      }
+
+      if (i < 3) {
+        ctx.fillStyle = i === 0
+          ? 'rgba(251,191,36,0.06)'
+          : i === 1 ? 'rgba(167,139,250,0.05)' : 'rgba(96,165,250,0.04)';
+        ctx.fillRect(0, rowY, LB_W, LB_ROW_H);
+      }
+
+      const midY = rowY + LB_ROW_H / 2;
+
+      // Placement medal / number
+      ctx.textAlign = 'center';
+      ctx.font = i < 3 ? '18px "Arial"' : 'bold 13px "Arial"';
+      ctx.fillStyle = PLACE_COLORS[Math.min(i, PLACE_COLORS.length - 1)];
+      ctx.fillText(i < 3 ? MEDALS[i] : `${i + 1}`, colX.rank + 14, midY);
+
+      // Name
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 14px "Arial"';
+      ctx.fillStyle = i < 3 ? TEXT : '#cbd5e1';
+      ctx.fillText(clamp(pl.display_name || `Player ${pl.account_id}`, 18), colX.name, midY);
+
+      // Tier badge — emoji + short name from config tiers
+      const tier = _getMmrTier ? _getMmrTier(pl.mmr || 0) : null;
+      if (tier) {
+        const badge = `${tier.emoji} ${tier.name}`;
+        ctx.textAlign = 'right';
+        ctx.font = '12px "Arial"';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(badge, colX.tier, midY);
+      }
+
+      // MMR
+      ctx.textAlign = 'right';
+      ctx.font = 'bold 14px "Arial"';
+      ctx.fillStyle = GOLD;
+      ctx.fillText(Math.round(pl.mmr || 0).toString(), colX.mmr, midY);
+
+      // Win rate
+      const gp = parseInt(pl.games_played) || 0;
+      const wr = gp > 0 ? Math.round((parseInt(pl.wins) / gp) * 100) : 0;
+      ctx.font = '13px "Arial"';
+      ctx.fillStyle = wr >= 55 ? GREEN : wr >= 45 ? '#94a3b8' : RED;
+      ctx.fillText(`${wr}%`, colX.wr, midY);
+
+      // Weekly delta
+      const delta = pl.weeklyDelta != null ? Math.round(pl.weeklyDelta) : null;
+      ctx.font = 'bold 13px "Arial"';
+      if (delta != null) {
+        ctx.fillStyle = delta > 0 ? GREEN : delta < 0 ? RED : MUTED;
+        ctx.fillText(delta > 0 ? `+${delta}` : String(delta), colX.delta, midY);
+      } else {
+        ctx.fillStyle = MUTED;
+        ctx.fillText('\u2014', colX.delta, midY);
+      }
+    }
+
+    // Footer
+    ctx.fillStyle = MUTED;
+    ctx.font = '11px "Arial"';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Dota Inhouse Bot  \u00B7  TrueSkill MMR  \u00B7  Week = change vs 7 days ago', LB_W / 2, LB_H - LB_FOOTER / 2);
+
+    return c.toBuffer('image/png');
+  } catch (err) {
+    console.error('[LeaderboardImage] Failed to generate:', err.message);
+    return null;
+  }
+}
+
+module.exports = { generateScoreboardImage, generateLeaderboardImage };

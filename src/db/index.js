@@ -1111,6 +1111,61 @@ async function init() {
       )
     `);
 
+    // Invite / referral: track which account referred each player
+    await p.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS referred_by BIGINT DEFAULT NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_players_referred_by ON players (referred_by)`);
+
+    // All-time per-match records table. One row per stat_key; holds the record
+    // value, who set it, and which match it was set in.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS match_records (
+        stat_key TEXT PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        value REAL NOT NULL,
+        match_id VARCHAR(50),
+        player_name TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Backfill match_records from all historical player_stats so that the
+    // first post-deploy check compares against actual existing bests rather
+    // than treating an empty table as "no records yet".
+    await p.query(`
+      INSERT INTO match_records (stat_key, account_id, value, match_id, player_name, updated_at)
+      SELECT v.stat_key, ps.account_id, v.best_val::real,
+             ps.match_id,
+             COALESCE(n.nickname, ps.persona_name),
+             NOW()
+        FROM (
+          VALUES
+            ('kills',        (SELECT MAX(kills)        FROM player_stats WHERE account_id > 0)),
+            ('gpm',          (SELECT MAX(gpm)          FROM player_stats WHERE account_id > 0)),
+            ('assists',      (SELECT MAX(assists)      FROM player_stats WHERE account_id > 0)),
+            ('hero_damage',  (SELECT MAX(hero_damage)  FROM player_stats WHERE account_id > 0)),
+            ('tower_damage', (SELECT MAX(tower_damage) FROM player_stats WHERE account_id > 0)),
+            ('last_hits',    (SELECT MAX(last_hits)    FROM player_stats WHERE account_id > 0))
+        ) AS v(stat_key, best_val)
+        JOIN LATERAL (
+          SELECT ps2.account_id, ps2.match_id, ps2.persona_name
+            FROM player_stats ps2
+           WHERE ps2.account_id > 0
+             AND CASE v.stat_key
+                   WHEN 'kills'        THEN ps2.kills::real
+                   WHEN 'gpm'          THEN ps2.gpm::real
+                   WHEN 'assists'      THEN ps2.assists::real
+                   WHEN 'hero_damage'  THEN ps2.hero_damage::real
+                   WHEN 'tower_damage' THEN ps2.tower_damage::real
+                   WHEN 'last_hits'    THEN ps2.last_hits::real
+                 END = v.best_val
+           ORDER BY ps2.match_id
+           LIMIT 1
+        ) ps ON true
+        LEFT JOIN nicknames n ON n.account_id = ps.account_id
+       WHERE v.best_val IS NOT NULL
+      ON CONFLICT (stat_key) DO NOTHING
+    `);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -9383,7 +9438,172 @@ module.exports = {
   getWeekendTournamentById,
   updateWeekendTournament,
   getWeekendTournamentScores,
+  checkAndUpdateMatchRecords,
+  getPlayerMatchCount,
+  setPlayerReferredBy,
+  grantReferralXp,
+  getLeaderboardForImage,
+  getPlayerMmrWeekAgo,
 };
+
+const RECORD_STAT_KEYS = ['kills', 'gpm', 'assists', 'hero_damage', 'tower_damage', 'last_hits'];
+
+/**
+ * Check per-match player stats against all-time records.
+ * Returns an array of broken records:
+ *   { statKey, newValue, oldValue, oldHolder, newHolder, newHolderName, matchId }
+ * Also persists any broken records to the match_records table.
+ */
+async function checkAndUpdateMatchRecords(matchId) {
+  if (!matchId) return [];
+  const p = getPool();
+
+  // Fetch all players in this match with the stats we care about
+  const psRes = await p.query(`
+    SELECT ps.account_id, ps.kills, ps.gpm, ps.assists, ps.hero_damage,
+           ps.tower_damage, ps.last_hits,
+           COALESCE(n.nickname, ps.persona_name) AS display_name
+      FROM player_stats ps
+      LEFT JOIN nicknames n ON n.account_id = ps.account_id
+     WHERE ps.match_id = $1 AND ps.account_id > 0
+  `, [matchId]);
+
+  if (psRes.rows.length === 0) return [];
+
+  const broken = [];
+  for (const statKey of RECORD_STAT_KEYS) {
+    // Find the best value in this match for this stat
+    const best = psRes.rows.reduce((top, row) => {
+      const val = parseFloat(row[statKey]) || 0;
+      return val > (top ? top.val : -1) ? { val, row } : top;
+    }, null);
+    if (!best || best.val <= 0) continue;
+
+    // Load current all-time record
+    const recRes = await p.query(
+      `SELECT account_id, value, player_name FROM match_records WHERE stat_key = $1`,
+      [statKey]
+    );
+    const current = recRes.rows[0];
+
+    if (!current || best.val > parseFloat(current.value)) {
+      // Conditional upsert — only update when the incoming value is strictly
+      // higher than the stored one, so concurrent match processing cannot
+      // overwrite a higher record with a lower one.
+      const upsertRes = await p.query(`
+        INSERT INTO match_records (stat_key, account_id, value, match_id, player_name, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        ON CONFLICT (stat_key) DO UPDATE
+          SET account_id  = EXCLUDED.account_id,
+              value       = EXCLUDED.value,
+              match_id    = EXCLUDED.match_id,
+              player_name = EXCLUDED.player_name,
+              updated_at  = NOW()
+          WHERE match_records.value < EXCLUDED.value
+        RETURNING value
+      `, [statKey, best.row.account_id, best.val, matchId, best.row.display_name || null]);
+      if (upsertRes.rowCount === 0) continue;
+
+      broken.push({
+        statKey,
+        newValue: best.val,
+        oldValue: current ? parseFloat(current.value) : null,
+        oldHolderName: current ? current.player_name : null,
+        newHolderAccountId: best.row.account_id,
+        newHolderName: best.row.display_name,
+        matchId,
+      });
+    }
+  }
+  return broken;
+}
+
+/**
+ * Get the total number of matches a player has played (all-time).
+ */
+async function getPlayerMatchCount(accountId) {
+  if (!accountId) return 0;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT COUNT(*)::int AS cnt FROM player_stats WHERE account_id = $1`,
+    [accountId]
+  );
+  return r.rows[0]?.cnt || 0;
+}
+
+async function setPlayerReferredBy(accountId, referredByAccountId) {
+  if (!accountId || !referredByAccountId) return false;
+  if (String(accountId) === String(referredByAccountId)) return false;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE players SET referred_by = $1
+      WHERE account_id_32 = $2
+        AND referred_by IS NULL
+        AND EXISTS (SELECT 1 FROM players WHERE account_id_32 = $1::text)`,
+    [referredByAccountId, accountId]
+  );
+  return r.rowCount > 0;
+}
+
+async function grantReferralXp(referrerAccountId, referredAccountId, seasonId, xpAmount = 50) {
+  if (!referrerAccountId || !seasonId) return false;
+  const p = getPool();
+  const source = `referral_${referredAccountId}`;
+  // ON CONFLICT DO NOTHING does not deduplicate NULL match_id rows under the
+  // standard multi-column unique constraint, so we check for an existing row
+  // before inserting.
+  const existing = await p.query(
+    `SELECT id FROM season_pass_xp_events
+      WHERE account_id = $1 AND season_number = $2 AND match_id IS NULL AND source = $3
+      LIMIT 1`,
+    [referrerAccountId, seasonId, source]
+  );
+  if (existing.rows.length > 0) return false;
+  const r = await p.query(
+    `INSERT INTO season_pass_xp_events (account_id, season_number, match_id, source, xp_delta, notes)
+     VALUES ($1, $2, NULL, $3, $4, $5)
+     RETURNING id`,
+    [referrerAccountId, seasonId, source, xpAmount, `Referral bonus for inviting account ${referredAccountId}`]
+  );
+  return r.rowCount > 0;
+}
+
+/**
+ * Get the current MMR leaderboard (top N) — used for the weekly leaderboard image.
+ */
+async function getLeaderboardForImage(limit = 10) {
+  const p = getPool();
+  const res = await p.query(`
+    SELECT r.player_id AS account_id,
+           COALESCE(n.nickname, r.display_name) AS display_name,
+           r.mmr,
+           r.wins,
+           r.losses,
+           r.games_played
+      FROM ratings r
+      LEFT JOIN nicknames n ON n.account_id = r.player_id
+     WHERE r.games_played >= 1
+     ORDER BY r.mmr DESC
+     LIMIT $1
+  `, [limit]);
+  return res.rows;
+}
+
+/**
+ * Get the MMR for a player 7 days ago (used for weekly delta in leaderboard image).
+ * Falls back to null if no history exists.
+ */
+async function getPlayerMmrWeekAgo(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(`
+    SELECT mmr FROM rating_history
+     WHERE player_id = $1 AND recorded_at <= NOW() - INTERVAL '7 days'
+     ORDER BY recorded_at DESC
+     LIMIT 1
+  `, [accountId]);
+  return r.rows[0]?.mmr ?? null;
+}
 
 async function getPudgeStats(seasonId = null) {
   const p = getPool();

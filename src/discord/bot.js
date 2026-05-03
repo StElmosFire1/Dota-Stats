@@ -7,7 +7,7 @@ const { getReplayParser } = require('../replay/replayParser');
 const { getOpenDota } = require('../api/opendota');
 const db = require('../db');
 const { generateWeeklyRecapBlurb, generatePlayerAnalysis, generatePlayerRoast, generateMatchMvpBlurb, generateMatchNarrative } = require('../services/groqService');
-const { generateScoreboardImage } = require('../services/scoreboardImage');
+const { generateScoreboardImage, generateLeaderboardImage } = require('../services/scoreboardImage');
 
 const OWNER_DISCORD_ID = '135991380760592384';
 
@@ -2336,6 +2336,9 @@ class DiscordBot {
     }
     setTimeout(() => this._initiateRatingSession(matchStats).catch(e => console.error('[Ratings] DM error:', e.message)), 3000);
     setTimeout(() => this._sendReportCardDMs(matchStats).catch(e => console.error('[ReportCard] DM error:', e.message)), 5000);
+    // Engagement checks — milestone announcements and record-breaking detection
+    setTimeout(() => this._checkMatchMilestones(matchStats).catch(e => console.error('[Milestone] Error:', e.message)), 8000);
+    setTimeout(() => this._checkAndAnnounceRecords(matchStats).catch(e => console.error('[Records] Error:', e.message)), 9000);
     // If queue has enough players for the next game, auto-launch immediately after
     // match recording so the continuous pipeline needs zero admin intervention
     setTimeout(() => {
@@ -2592,10 +2595,21 @@ class DiscordBot {
         if (sheetsStore.initialized) {
           await sheetsStore.updateRating(r.id, '', displayName, r.mu, r.sigma, r.mmr, won);
         }
+        // Capture old MMR before updating so we can detect tier changes.
+        let oldMmr = null;
+        try {
+          const oldRating = await db.getPlayerRating(r.id);
+          oldMmr = oldRating ? oldRating.mmr : null;
+        } catch (_) {}
         try {
           await db.updateRating(r.id, '', displayName, r.mu, r.sigma, r.mmr, won, matchStats.matchId || null);
         } catch (err) {
           console.error('[DB] Rating update error:', err.message);
+        }
+        // Rank-up announcement — fire-and-forget, must not block rating loop
+        if (oldMmr !== null) {
+          this._postRankUpAnnouncement(r.id, oldMmr, r.mmr, displayName)
+            .catch(e => console.error('[RankUp] Error:', e.message));
         }
       }
 
@@ -3679,6 +3693,27 @@ class DiscordBot {
       embed.setFooter({ text: 'Use !top for full leaderboard' }).setTimestamp();
 
       await channel.send({ embeds: [embed] });
+
+      // Weekly leaderboard image — top 10 with weekly MMR delta
+      try {
+        const top10 = await db.getLeaderboardForImage(10);
+        if (top10 && top10.length > 0) {
+          const withDeltas = await Promise.all(top10.map(async pl => {
+            const weekAgoMmr = await db.getPlayerMmrWeekAgo(pl.account_id).catch(() => null);
+            return {
+              ...pl,
+              weeklyDelta: weekAgoMmr != null ? Math.round(pl.mmr - weekAgoMmr) : null,
+            };
+          }));
+          const imgBuf = await generateLeaderboardImage(withDeltas, 'Weekly Leaderboard — Top 10');
+          if (imgBuf) {
+            const attachment = new AttachmentBuilder(imgBuf, { name: 'leaderboard.png' });
+            await channel.send({ files: [attachment] });
+          }
+        }
+      } catch (lbErr) {
+        console.error('[Discord] Weekly leaderboard image error:', lbErr.message);
+      }
     } catch (err) {
       console.error('[Discord] Weekly recap post error:', err.message);
     }
@@ -4682,6 +4717,141 @@ class DiscordBot {
         // Unmark so we can retry
         await db.getPool().query('UPDATE scheduled_games SET lobby_created = FALSE WHERE id = $1', [game.id]).catch(() => {});
       }
+    }
+  }
+
+  /**
+   * Post a rank-up announcement when a player crosses a tier boundary upward.
+   */
+  async _postRankUpAnnouncement(accountId, oldMmr, newMmr, displayName) {
+    try {
+      const oldTier = getMmrTier(oldMmr);
+      const newTier = getMmrTier(newMmr);
+      if (!oldTier || !newTier) return;
+      if (oldTier.name === newTier.name) return;
+      // Only announce promotions (not demotions)
+      if (newMmr <= oldMmr) return;
+      // Verify the tier actually changed (new tier must be higher min)
+      if (newTier.min <= oldTier.min) return;
+
+      const channelId = config.discord.announceChannelId
+        || (config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds[0] : null);
+      if (!channelId) return;
+
+      const channel = this.client.channels.cache.get(channelId)
+        || await this.client.channels.fetch(channelId).catch(() => null);
+      if (!channel) return;
+
+      const embed = new EmbedBuilder()
+        .setColor(0xffd700)
+        .setTitle(`${newTier.emoji} Rank Up!`)
+        .setDescription(
+          `**${displayName}** has ranked up to **${newTier.emoji} ${newTier.name}**!\n` +
+          `*${newTier.description}*`
+        )
+        .addFields(
+          { name: 'Previous Tier', value: `${oldTier.emoji} ${oldTier.name}`, inline: true },
+          { name: 'New Tier',      value: `${newTier.emoji} ${newTier.name}`, inline: true },
+          { name: 'MMR',           value: `${Math.round(newMmr)}`,            inline: true },
+        )
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+      console.log(`[RankUp] ${displayName} ranked up from ${oldTier.name} → ${newTier.name}`);
+    } catch (err) {
+      console.error('[RankUp] Announce error:', err.message);
+    }
+  }
+
+  /**
+   * Check if any player in this match just hit a game-count milestone (50, 100, 150, …).
+   * Posts a milestone embed to the announce channel for each hit.
+   */
+  async _checkMatchMilestones(matchStats) {
+    const players = matchStats.players || [];
+    if (players.length === 0) return;
+
+    const channelId = config.discord.announceChannelId
+      || (config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds[0] : null);
+    if (!channelId) return;
+
+    for (const pl of players) {
+      const accountId = pl.accountId || pl.account_id;
+      if (!accountId || accountId === 0 || accountId === '0') continue;
+      try {
+        const count = await db.getPlayerMatchCount(accountId);
+        if (count < 50 || count % 50 !== 0) continue;
+        const milestone = count;
+
+        const channel = this.client.channels.cache.get(channelId)
+          || await this.client.channels.fetch(channelId).catch(() => null);
+        if (!channel) continue;
+
+        const name = pl.personaname || pl.persona_name || `Player ${accountId}`;
+        const embed = new EmbedBuilder()
+          .setColor(0x3b82f6)
+          .setTitle('\uD83C\uDF89 Match Milestone!')
+          .setDescription(`**${name}** has played their **${milestone}th inhouse match!** Impressive commitment.`)
+          .setTimestamp();
+
+        await channel.send({ embeds: [embed] });
+        console.log(`[Milestone] ${name} reached ${milestone} matches`);
+      } catch (err) {
+        console.error('[Milestone] Error:', err.message);
+      }
+    }
+  }
+
+  /**
+   * Check all-time per-match records and post an embed for each broken record.
+   */
+  async _checkAndAnnounceRecords(matchStats) {
+    try {
+      const matchId = matchStats.matchId || matchStats.match_id;
+      if (!matchId) return;
+
+      const broken = await db.checkAndUpdateMatchRecords(matchId);
+      if (!broken || broken.length === 0) return;
+
+      const channelId = config.discord.announceChannelId
+        || (config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds[0] : null);
+      if (!channelId) return;
+
+      const channel = this.client.channels.cache.get(channelId)
+        || await this.client.channels.fetch(channelId).catch(() => null);
+      if (!channel) return;
+
+      const STAT_LABELS = {
+        kills:        { label: 'Most Kills',         emoji: '\u2694\uFE0F', format: v => Math.round(v) },
+        gpm:          { label: 'Highest GPM',         emoji: '\uD83D\uDCB0', format: v => Math.round(v) + ' GPM' },
+        assists:      { label: 'Most Assists',        emoji: '\uD83E\uDD1D', format: v => Math.round(v) },
+        hero_damage:  { label: 'Most Hero Damage',    emoji: '\uD83D\uDCA5', format: v => Math.round(v).toLocaleString() },
+        tower_damage: { label: 'Most Tower Damage',   emoji: '\uD83C\uDFF0', format: v => Math.round(v).toLocaleString() },
+        last_hits:    { label: 'Most Last Hits',      emoji: '\u2694\uFE0F', format: v => Math.round(v) },
+      };
+
+      for (const rec of broken) {
+        const meta = STAT_LABELS[rec.statKey] || { label: rec.statKey, emoji: '\uD83C\uDFC6', format: v => v };
+        const newValStr = meta.format(rec.newValue);
+        let desc = `**${rec.newHolderName || 'Unknown'}** set a new all-time record for **${meta.label}**: **${newValStr}**`;
+        if (rec.oldHolderName && rec.oldValue != null) {
+          desc += `\n*Previous record: ${meta.format(rec.oldValue)} by ${rec.oldHolderName}*`;
+        } else {
+          desc += '\n*This is the first time this record has been set!*';
+        }
+
+        const embed = new EmbedBuilder()
+          .setColor(0xff9900)
+          .setTitle(`${meta.emoji} All-Time Record Broken!`)
+          .setDescription(desc)
+          .setFooter({ text: `Match #${rec.matchId}` })
+          .setTimestamp();
+
+        await channel.send({ embeds: [embed] });
+        console.log(`[Record] ${rec.statKey} broken by ${rec.newHolderName} with ${rec.newValue}`);
+      }
+    } catch (err) {
+      console.error('[Records] Announce error:', err.message);
     }
   }
 

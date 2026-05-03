@@ -4181,6 +4181,22 @@ NOTES
     }
   });
 
+  router.get('/player/:id/invite-link', async (req, res) => {
+    try {
+      const accountId = req.params.id;
+      if (!accountId || !/^\d+$/.test(accountId)) {
+        return res.status(400).json({ error: 'Invalid account ID' });
+      }
+      const origin = process.env.SITE_URL
+        || `${req.protocol}://${req.get('host')}`;
+      const inviteUrl = `${origin}/join?ref=${accountId}`;
+      const referralXp = parseInt(process.env.REFERRAL_XP || '50', 10);
+      res.json({ inviteUrl, accountId, referralXp });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/join', publicWriteLimiter, express.json(), async (req, res) => {
     try {
       const { discordUsername, steamUrl, preferredName, preferredPositions, message, mmr, referral } = req.body;
@@ -4242,6 +4258,26 @@ NOTES
             if (steamId64) {
               await db.registerPlayer(discordId, displayName, steamId64);
               sideEffects.registered = true;
+
+              const referralStr = (signup.referral || '').trim();
+              if (referralStr && /^\d+$/.test(referralStr)) {
+                try {
+                  const activeSeason = await db.getActiveSeason().catch(() => null);
+                  const newAccountId32 = (BigInt(steamId64) - 76561197960265728n).toString();
+                  if (activeSeason) {
+                    const referralRecorded = await db.setPlayerReferredBy(newAccountId32, referralStr);
+                    if (referralRecorded) {
+                      const referralXpAmount = parseInt(process.env.REFERRAL_XP || '50', 10);
+                      const granted = await db.grantReferralXp(referralStr, newAccountId32, activeSeason.id, referralXpAmount);
+                      if (granted) {
+                        console.log(`[Referral] Granted ${referralXpAmount} XP to account ${referralStr} for referring ${newAccountId32}`);
+                      }
+                    }
+                  }
+                } catch (refErr) {
+                  console.error('[Referral] XP grant failed:', refErr.message);
+                }
+              }
             } else {
               sideEffects.registerError = 'Could not resolve a Steam64 ID from the provided URL — register manually.';
             }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const POS_OPTIONS = [
   { value: 1, label: 'Pos 1', sublabel: 'Safe Lane (Carry)' },
@@ -11,15 +11,24 @@ const POS_OPTIONS = [
 const ORDINAL = ['1st', '2nd', '3rd', '4th', '5th'];
 
 export default function Join() {
+  // Pre-populate referral from ?ref=<accountId> invite links
+  const refParam = new URLSearchParams(window.location.search).get('ref') || '';
+
   const [form, setForm] = useState({
     discordUsername: '',
     steamUrl: '',
     preferredName: '',
     mmr: '',
     preferredPositions: [],
-    referral: '',
+    referral: refParam,
     message: '',
   });
+
+  useEffect(() => {
+    if (refParam && !form.referral) {
+      setForm(f => ({ ...f, referral: refParam }));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);

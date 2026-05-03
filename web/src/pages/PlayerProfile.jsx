@@ -305,6 +305,70 @@ function ProfileChartV2({ history }) {
   );
 }
 
+function InviteLinkCard({ accountId }) {
+  const [inviteData, setInviteData] = React.useState(null);
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!accountId) return;
+    fetch(`/api/player/${accountId}/invite-link`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.inviteUrl) setInviteData(d); })
+      .catch(() => {});
+  }, [accountId]);
+
+  const inviteUrl = inviteData?.inviteUrl;
+  const referralXp = inviteData?.referralXp ?? 50;
+
+  if (!inviteUrl) return null;
+
+  const copyLink = () => {
+    navigator.clipboard?.writeText(inviteUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      window.prompt('Copy your invite link:', inviteUrl);
+    });
+  };
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, var(--bg-card) 100%)',
+      border: '1px solid rgba(59,130,246,0.3)', borderRadius: 12,
+      padding: '14px 18px', marginTop: 12, marginBottom: 8,
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginBottom: 3 }}>
+          🔗 Your Invite Link
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          Share this link to invite friends. When they sign up and get approved, you earn <strong style={{ color: 'var(--accent-blue)' }}>{referralXp} XP</strong> toward your season pass.
+        </div>
+        <div style={{
+          fontSize: 12, color: 'var(--text-muted)',
+          background: 'var(--bg-secondary)', borderRadius: 6, padding: '4px 8px',
+          marginTop: 6, wordBreak: 'break-all', fontFamily: 'monospace',
+        }}>
+          {inviteUrl}
+        </div>
+      </div>
+      <button
+        onClick={copyLink}
+        style={{
+          background: copied ? 'rgba(74,222,128,0.15)' : 'var(--bg-card)',
+          border: `1px solid ${copied ? 'var(--accent-green)' : 'rgba(59,130,246,0.4)'}`,
+          color: copied ? 'var(--accent-green)' : '#60a5fa',
+          borderRadius: 8, padding: '7px 16px', cursor: 'pointer',
+          fontSize: 13, fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap',
+        }}
+      >
+        {copied ? '✅ Copied!' : '📋 Copy'}
+      </button>
+    </div>
+  );
+}
+
 export default function PlayerProfile() {
   const { accountId } = useParams();
   const { seasonId } = useSeason();
@@ -544,6 +608,9 @@ export default function PlayerProfile() {
             `coaching_marketplace` flag is off (eligibility endpoint 404s). */}
         {isOwnProfile && <CoachingApplyCta />}
       </div>
+
+      {/* Invite link — shown only on own profile */}
+      {isOwnProfile && <InviteLinkCard accountId={accountId} />}
 
       {/* Profile customization (`profile_customization`) — title + bio under the
           page header, plus pinned hero / pinned match cards. Theme accent is
