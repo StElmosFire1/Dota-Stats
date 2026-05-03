@@ -1,0 +1,96 @@
+root@Dota-Stats:~# cd /root/Dota-Stats-Full && npm install && cd web && npm install && npm run build && cd ..
+npm warn deprecated crypto@1.0.1: This package is no longer supported. It's now a built-in Node module. If you've depended on crypto, you should switch to the one that's built-in.
+
+added 241 packages, and audited 242 packages in 11s
+
+47 packages are looking for funding
+  run `npm fund` for details
+
+9 vulnerabilities (3 moderate, 2 high, 4 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+
+added 112 packages, and audited 113 packages in 3s
+
+9 packages are looking for funding
+  run `npm fund` for details
+
+3 moderate severity vulnerabilities
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 801 modules transformed.
+dist/index.html                                  0.47 kB │ gzip:   0.31 kB
+dist/assets/index-q7HmBhMZ.css                  19.06 kB │ gzip:   4.55 kB
+dist/assets/useProMembers-D-_OyTcU.js            0.35 kB │ gzip:   0.27 kB
+dist/assets/ProBadge-BjGFQkOs.js                 0.53 kB │ gzip:   0.41 kB
+dist/assets/useProStatus-C-9h3iHq.js             0.61 kB │ gzip:   0.38 kB
+dist/assets/PlayerInsights-CYjXU2Ls.js           1.28 kB │ gzip:   0.73 kB
+dist/assets/ImpactBadge-CtD-QOWA.js              1.37 kB │ gzip:   0.68 kB
+dist/assets/heroes-B4IkSDsk.js                   1.55 kB │ gzip:   0.88 kB
+dist/assets/PaywallCard-DTrXd18Y.js              1.78 kB │ gzip:   0.98 kB
+dist/assets/BuyinSuccess-CBAqWryA.js             1.85 kB │ gzip:   0.86 kB
+dist/assets/CoachOnboarding-aQF7KOmz.js          2.67 kB │ gzip:   1.31 kB
+dist/assets/RankBadge-B_a80Kxa.js                2.87 kB │ gzip:   1.34 kB
+dist/assets/SettingsBilling-DrZjLoOG.js          3.57 kB │ gzip:   1.42 kB
+dist/assets/PlayerBenchmarks-CVbZAdIY.js         3.94 kB │ gzip:   1.73 kB
+dist/assets/Synergy-NN5RLiXn.js                  4.18 kB │ gzip:   1.70 kB
+dist/assets/MultiKills-DJ_XcGiM.js               4.74 kB │ gzip:   1.70 kB
+dist/assets/Pro-Dwwggkvc.js                      4.81 kB │ gzip:   2.01 kB
+dist/assets/OverallStats-DtSJhCzA.js             4.91 kB │ gzip:   1.73 kB
+dist/assets/HallOfFame-DaySAmlV.js               5.22 kB │ gzip:   2.12 kB
+dist/assets/Coaches-BrIVXjV9.js                  5.39 kB │ gzip:   2.01 kB
+dist/assets/SettingsNotifications-gqT-ahNc.js    6.18 kB │ gzip:   2.34 kB
+dist/assets/PatchNotes-C-mN-02l.js               6.43 kB │ gzip:   2.37 kB
+dist/assets/Join-Db43-vxW.js                     6.54 kB │ gzip:   2.42 kB
+dist/assets/MyBookings-C6EYQKbO.js               6.81 kB │ gzip:   2.25 kB
+dist/assets/heroNames-DWJuq7ae.js                7.14 kB │ gzip:   3.40 kB
+dist/assets/MatchList-Qy3AsP0K.js                7.14 kB │ gzip:   2.62 kB
+dist/assets/Players-C_diCvZT.js                  7.46 kB │ gzip:   2.50 kB
+dist/assets/RecordMatch-BqPBZDop.js              7.77 kB │ gzip:   2.79 kB
+dist/assets/Social-CKfWk7r0.js                   8.05 kB │ gzip:   2.57 kB
+dist/assets/CoachEdit-CvzKkTcg.js                9.28 kB │ gzip:   2.79 kB
+dist/assets/CoachProfile-COX1XoU6.js             9.77 kB │ gzip:   3.50 kB
+dist/assets/WardMap-Dv977Slo.js                 10.07 kB │ gzip:   3.38 kB
+dist/assets/SettingsProfile-Bz7AZgtM.js         10.42 kB │ gzip:   3.45 kB
+dist/assets/Schedule-B7h_FcYd.js                10.81 kB │ gzip:   3.59 kB
+dist/assets/PudgeStats-BtQM3zGj.js              10.90 kB │ gzip:   3.38 kB
+dist/assets/PositionStats-CLqT2Z7F.js           10.94 kB │ gzip:   2.75 kB
+dist/assets/Upload-Cw6oh6pF.js                  11.14 kB │ gzip:   3.91 kB
+dist/assets/Home-BMBjd0gY.js                    11.18 kB │ gzip:   3.66 kB
+dist/assets/PlayerTools-DPsoQ85R.js             11.98 kB │ gzip:   3.48 kB
+dist/assets/Predictions-BHdH7b2L.js             12.62 kB │ gzip:   3.96 kB
+dist/assets/StatsEditor-CFkoefs_.js             13.30 kB │ gzip:   4.05 kB
+dist/assets/WeekendTournament-DFbGzFef.js       13.74 kB │ gzip:   4.65 kB
+dist/assets/Records-DD4yQP2N.js                 15.14 kB │ gzip:   4.49 kB
+dist/assets/Inhouse-euf3AQBT.js                 17.48 kB │ gzip:   4.86 kB
+dist/assets/Leaderboard-C9l0uHAx.js             17.66 kB │ gzip:   4.64 kB
+dist/assets/Draft-BJ50Dq56.js                   19.84 kB │ gzip:   5.01 kB
+dist/assets/Tournaments-DdS0YCjh.js             21.78 kB │ gzip:   5.91 kB
+dist/assets/Seasons-DgkZNuzf.js                 25.03 kB │ gzip:   6.39 kB
+dist/assets/Heroes-Dmeq30C5.js                  25.77 kB │ gzip:   7.68 kB
+dist/assets/PlayerProfile-s1cx1ViS.js           43.49 kB │ gzip:  10.28 kB
+dist/assets/AdminPanel-C7uducm9.js              75.17 kB │ gzip:  19.02 kB
+dist/assets/MatchDetail-BoG_dbhq.js            104.38 kB │ gzip:  28.93 kB
+dist/assets/index-DUrjY1ou.js                  209.25 kB │ gzip:  65.14 kB
+dist/assets/LineChart-J7BkagVs.js              350.83 kB │ gzip: 104.50 kB
+✓ built in 6.39s
