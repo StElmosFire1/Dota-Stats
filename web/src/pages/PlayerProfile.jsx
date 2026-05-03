@@ -169,18 +169,41 @@ function ModifierHistoryChart({ history }) {
   );
 }
 
+const ACHIEVEMENT_GROUP_ORDER = [
+  'Milestones', 'Win Rate', 'Streaks', 'Survivability', 'Roles',
+  'Hero Pool', 'Hero Mastery', 'Multi-kills', 'First Blood',
+  'Totals', 'Economy', 'Damage', 'Healing', 'Vision', 'KDA',
+  'Community', 'Secret',
+];
+
 function AchievementBadges({ achievements }) {
   const [showLocked, setShowLocked] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState(false);
+  const [activeGroup, setActiveGroup] = React.useState('All');
+
   if (!achievements || achievements.length === 0) return null;
   const earned = achievements.filter(a => a.earned);
-  if (earned.length === 0) return null;
 
-  const visible = showLocked ? achievements : earned;
+  const groups = ['All', ...ACHIEVEMENT_GROUP_ORDER.filter(g =>
+    achievements.some(a => a.group === g)
+  )];
+
+  const filtered = achievements.filter(a => {
+    if (!showLocked && !a.earned) return false;
+    if (activeGroup !== 'All' && a.group !== activeGroup) return false;
+    return true;
+  });
+
+  const formatDate = (iso) => {
+    if (!iso) return null;
+    try {
+      return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch { return null; }
+  };
 
   return (
     <section style={{ marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: collapsed ? 0 : 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: collapsed ? 0 : 12, flexWrap: 'wrap' }}>
         <h2 className="section-title" style={{ marginBottom: 0 }}>🏅 Achievements</h2>
         <span style={{ fontSize: 11, background: 'var(--accent-blue)', color: '#fff', borderRadius: 10, padding: '1px 8px', fontWeight: 700 }}>
           {earned.length}/{achievements.length}
@@ -191,7 +214,7 @@ function AchievementBadges({ achievements }) {
               onClick={() => setShowLocked(s => !s)}
               style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 11 }}
             >
-              {showLocked ? 'Hide locked' : 'Show locked'}
+              {showLocked ? 'Hide locked' : 'Show all'}
             </button>
           )}
           <button
@@ -202,29 +225,65 @@ function AchievementBadges({ achievements }) {
           </button>
         </div>
       </div>
+
       {!collapsed && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {visible.map(a => (
-            <div
-              key={a.key}
-              title={a.desc}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                padding: '5px 10px', borderRadius: 20,
-                background: a.earned ? 'var(--bg-card)' : 'var(--bg-secondary)',
-                border: `1px solid ${a.earned ? 'var(--accent-blue)' : 'var(--border)'}`,
-                opacity: a.earned ? 1 : 0.4,
-                boxShadow: a.earned ? '0 0 6px rgba(59,130,246,0.15)' : 'none',
-                cursor: 'default',
-              }}
-            >
-              <span style={{ fontSize: 18 }}>{a.icon}</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: a.earned ? 'var(--text-primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                {a.label}
-              </span>
-            </div>
-          ))}
-        </div>
+        <>
+          {/* Category filter tabs */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+            {groups.map(g => (
+              <button
+                key={g}
+                onClick={() => setActiveGroup(g)}
+                style={{
+                  background: activeGroup === g ? 'var(--accent-blue)' : 'var(--bg-secondary)',
+                  color: activeGroup === g ? '#fff' : 'var(--text-muted)',
+                  border: `1px solid ${activeGroup === g ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  borderRadius: 12, padding: '2px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                }}
+              >{g}</button>
+            ))}
+          </div>
+
+          {/* Badge grid */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {filtered.map(a => {
+              const isSecret = a.secret && !a.earned;
+              const displayLabel = isSecret ? '???' : a.label;
+              const displayDesc = isSecret ? 'Hidden achievement — keep playing to discover!' : a.desc;
+              const unlockDate = a.earned && a.achieved_at ? formatDate(a.achieved_at) : null;
+              return (
+                <div
+                  key={a.key}
+                  title={displayDesc + (unlockDate ? `\nUnlocked: ${unlockDate}` : '')}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                    padding: '10px 12px', borderRadius: 10, minWidth: 80, maxWidth: 110, textAlign: 'center',
+                    background: a.earned ? 'var(--bg-card)' : 'var(--bg-secondary)',
+                    border: `1px solid ${a.earned ? (a.secret ? '#f59e0b' : 'var(--accent-blue)') : 'var(--border)'}`,
+                    opacity: a.earned ? 1 : 0.4,
+                    boxShadow: a.earned ? `0 0 8px ${a.secret ? 'rgba(245,158,11,0.25)' : 'rgba(59,130,246,0.15)'}` : 'none',
+                    cursor: 'default',
+                    position: 'relative',
+                  }}
+                >
+                  <span style={{ fontSize: 22 }}>{a.icon}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: a.earned ? (a.secret ? '#f59e0b' : 'var(--text-primary)') : 'var(--text-muted)', lineHeight: 1.2 }}>
+                    {displayLabel}
+                  </span>
+                  {unlockDate && (
+                    <span style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.1 }}>{unlockDate}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {filtered.length === 0 && (
+            <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+              {showLocked ? 'No achievements in this category yet.' : 'No achievements earned here yet. Keep playing!'}
+            </p>
+          )}
+        </>
       )}
     </section>
   );

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -2445,8 +2445,64 @@ export default function AdminPanel() {
         <ReplayInspectorPanel superuserKey={superuserKey} />
       </section>
 
+      <section style={{ marginBottom: 36 }}>
+        <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏅 Achievement System</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Achievements are automatically checked after each match. Use this to backfill achievements for all existing matches in the database.
+        </p>
+        <RecomputeAchievementsPanel superuserKey={superuserKey} />
+      </section>
+
     </div>
     </AdminErrorBoundary>
+  );
+}
+
+function RecomputeAchievementsPanel({ superuserKey }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  const handleRecompute = async () => {
+    if (!window.confirm('This will scan all players and grant any achievements they have earned but not yet been awarded. This may take a moment. Continue?')) return;
+    setLoading(true);
+    setResult(null);
+    setError('');
+    try {
+      const data = await recomputeAchievements(superuserKey);
+      setResult(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <button
+        onClick={handleRecompute}
+        disabled={loading}
+        style={{
+          background: loading ? 'var(--bg-secondary)' : 'var(--accent-blue)',
+          color: loading ? 'var(--text-muted)' : '#fff',
+          border: 'none', borderRadius: 8, padding: '10px 22px',
+          cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14,
+        }}
+      >
+        {loading ? '⏳ Recomputing…' : '🔄 Recompute All Achievements'}
+      </button>
+      {result && (
+        <div style={{ marginTop: 12, padding: '10px 16px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--radiant-color)', color: 'var(--radiant-color)', fontSize: 14 }}>
+          ✅ Done! Processed <strong>{result.players}</strong> players and granted <strong>{result.granted}</strong> new achievements.
+        </div>
+      )}
+      {error && (
+        <div style={{ marginTop: 12, padding: '10px 16px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--dire-color)', color: 'var(--dire-color)', fontSize: 14 }}>
+          ❌ Error: {error}
+        </div>
+      )}
+    </div>
   );
 }
 

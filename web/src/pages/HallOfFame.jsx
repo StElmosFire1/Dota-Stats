@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getHallOfFame } from '../api';
+import { getHallOfFame, getAchievementLeaderboard } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import HeroIcon from '../components/HeroIcon';
 import { formatHeroName as formatHero } from '../utils/heroes';
@@ -52,13 +52,20 @@ const RECORD_META = [
 export default function HallOfFame() {
   const { seasonId } = useSeason();
   const [data, setData] = useState(null);
+  const [hunters, setHunters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('records');
 
   useEffect(() => {
     setLoading(true);
-    getHallOfFame(seasonId)
-      .then(setData)
+    Promise.all([
+      getHallOfFame(seasonId),
+      getAchievementLeaderboard(10).catch(() => ({ hunters: [] })),
+    ])
+      .then(([hof, ach]) => {
+        setData(hof);
+        setHunters(hof.achievementHunters || ach.hunters || []);
+      })
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, [seasonId]);
@@ -70,13 +77,14 @@ export default function HallOfFame() {
   const tabs = [
     { id: 'records', label: '🏅 Match Records' },
     { id: 'career', label: '📊 Career Rankings' },
+    { id: 'hunters', label: '🎖️ Achievement Hunters' },
   ];
 
   return (
     <div>
       <h1 className="page-title">🏆 Hall of Fame</h1>
       <p style={{ color: 'var(--text-muted)', marginBottom: 24, fontSize: 14 }}>
-        All-time single-match records and career achievements for the OCE Inhouse community.
+        All-time single-match records, career achievements, and the top achievement hunters.
       </p>
 
       <div className="tabs" style={{ marginBottom: 24 }}>
@@ -113,12 +121,14 @@ export default function HallOfFame() {
                   <th>Avg GPM</th>
                   <th>Total Kills</th>
                   <th title="Overall Impact Score 1–10 (win rate, kill involvement, K/D/A, games played)">Impact</th>
+                  <th title="Total achievements unlocked">🏅</th>
                 </tr>
               </thead>
               <tbody>
                 {career.map((p, i) => {
                   const wr = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(0) : 0;
                   const medal = ['🥇', '🥈', '🥉'][i] || `${i + 1}`;
+                  const achCount = parseInt(p.achievement_count) || 0;
                   return (
                     <tr key={p.account_id}>
                       <td style={{ textAlign: 'center', fontWeight: 700 }}>{medal}</td>
@@ -138,12 +148,68 @@ export default function HallOfFame() {
                       <td className="col-stat">{p.avg_gpm}</td>
                       <td className="col-stat">{parseInt(p.total_kills).toLocaleString()}</td>
                       <td className="col-stat"><ImpactBadge score={p.impact_score ?? null} /></td>
+                      <td className="col-stat" style={{ color: achCount > 0 ? 'var(--accent-blue)' : 'var(--text-muted)', fontWeight: achCount > 0 ? 600 : 400 }}>
+                        {achCount > 0 ? achCount : '–'}
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {tab === 'hunters' && (
+        <div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+            Top players ranked by total achievements unlocked. Keep playing to climb the ranks!
+          </p>
+          {hunters.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>No achievement data yet. Achievements are granted automatically after matches.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="scoreboard" style={{ width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th style={{ textAlign: 'left' }}>Player</th>
+                    <th>Achievements</th>
+                    <th style={{ textAlign: 'left' }}>Progress</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hunters.map((h, i) => {
+                    const medal = ['🥇', '🥈', '🥉'][i] || `${i + 1}`;
+                    const pct = Math.min(100, Math.round((parseInt(h.achievement_count) / 80) * 100));
+                    return (
+                      <tr key={h.player_id}>
+                        <td style={{ textAlign: 'center', fontWeight: 700 }}>{medal}</td>
+                        <td>
+                          <Link to={`/player/${h.player_id}`} style={{ fontWeight: 600 }}>
+                            {h.display_name}
+                          </Link>
+                        </td>
+                        <td className="col-stat" style={{ color: 'var(--gold)', fontWeight: 700 }}>
+                          🏅 {h.achievement_count}
+                        </td>
+                        <td style={{ minWidth: 140 }}>
+                          <div style={{ background: 'var(--bg-secondary)', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${pct}%`, height: '100%',
+                              background: pct >= 80 ? 'var(--gold)' : pct >= 50 ? 'var(--accent-blue)' : 'var(--text-muted)',
+                              borderRadius: 4, transition: 'width 0.3s',
+                            }} />
+                          </div>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{pct}% of catalogue</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

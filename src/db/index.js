@@ -2004,12 +2004,28 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
       }
     }
 
-    return matchStats.matchId;
+    // Grant achievements for every player — best-effort, non-blocking, happens after commit.
+    const achievementGrants = [];
+    try {
+      for (const player of matchStats.players) {
+        const accountId = player.accountId ? parseInt(player.accountId) : 0;
+        if (!accountId || accountId === 0) continue;
+        const newOnes = await checkAndGrantAchievements([accountId], matchStats.matchId);
+        if (newOnes.length > 0) achievementGrants.push({ player, newOnes });
+      }
+      if (achievementGrants.length > 0) {
+        console.log(`[Achievements] match ${matchStats.matchId}: ${achievementGrants.reduce((s, g) => s + g.newOnes.length, 0)} achievements granted`);
+      }
+    } catch (e) {
+      console.warn(`[Achievements] grant failed for match ${matchStats.matchId}: ${e.message}`);
+    }
+
+    return { matchId: matchStats.matchId, achievementGrants };
   } catch (err) {
     await client.query('ROLLBACK');
     if (err.code === '23505') {
       console.log(`[DB] Match ${matchStats.matchId} already recorded (duplicate).`);
-      return null;
+      return { matchId: null, achievementGrants: [] };
     }
     throw err;
   } finally {
@@ -5699,14 +5715,21 @@ async function getPlayerComparison(playerA, playerB, seasonId = null) {
   return { a, b };
 }
 
-async function getPlayerAchievements(accountId) {
+const { ACHIEVEMENTS_CATALOGUE } = require('../data/achievements');
+
+/**
+ * Queries all aggregate stats required by the achievement catalogue check functions.
+ * Returns a flat stats object.  Heavy but idempotent — only called by the grant engine.
+ */
+async function _getPlayerAggregateStats(accountIds) {
   const p = getPool();
-  const pid = Array.isArray(accountId) ? accountId : [parseInt(accountId)];
-  const [gamesRes, heroesRes, captainRes, positionsRes] = await Promise.all([
+  const pid = Array.isArray(accountIds) ? accountIds.map(Number) : [Number(accountIds)];
+
+  const [gamesRes, heroesRes, captainRes, positionsRes, gameHistoryRes] = await Promise.all([
     p.query(
       `SELECT COUNT(*) as games,
               SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins,
-              SUM(CASE WHEN ps.deaths = 0 THEN 1 ELSE 0 END) as deathless_games
+              SUM(CASE WHEN ps.deaths = 0 AND ((ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win)) THEN 1 ELSE 0 END) as deathless_wins
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
@@ -5729,36 +5752,50 @@ async function getPlayerAchievements(accountId) {
       [pid]
     ),
     p.query(
-      `SELECT COUNT(DISTINCT ps.position) as positions_played FROM player_stats ps
-       JOIN matches m ON m.match_id = ps.match_id
+      `SELECT COUNT(DISTINCT ps.position) as positions_played,
+              COUNT(*) FILTER (WHERE ps.position = 1) as carry_games,
+              COUNT(*) FILTER (WHERE ps.position IN (4,5)) as support_games
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = ANY($1::bigint[]) AND ps.position > 0 AND m.is_legacy = false`,
       [pid]
     ),
+    p.query(
+      `SELECT ps.team, ps.firstblood_claimed, m.radiant_win, m.date FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false ORDER BY m.date ASC`,
+      [pid]
+    ),
   ]);
+
   const games = parseInt(gamesRes.rows[0]?.games) || 0;
-  const deathlessGames = parseInt(gamesRes.rows[0]?.deathless_games) || 0;
+  const totalWins = parseInt(gamesRes.rows[0]?.wins) || 0;
+  const deathlessWins = parseInt(gamesRes.rows[0]?.deathless_wins) || 0;
   const uniqueHeroes = parseInt(heroesRes.rows[0]?.unique_heroes) || 0;
   const maxOnOneHero = parseInt(heroesRes.rows[0]?.max_on_one_hero) || 0;
   const captainGames = parseInt(captainRes.rows[0]?.captain_games) || 0;
   const positionsPlayed = parseInt(positionsRes.rows[0]?.positions_played) || 0;
+  const carryGames = parseInt(positionsRes.rows[0]?.carry_games) || 0;
+  const supportGames = parseInt(positionsRes.rows[0]?.support_games) || 0;
+  const winRate = games >= 20 ? totalWins / games : 0;
 
-  const maxStreakRes = await p.query(
-    `SELECT ps.team, m.radiant_win, m.date FROM player_stats ps
-     JOIN matches m ON m.match_id = ps.match_id
-     WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false ORDER BY m.date ASC`,
-    [pid]
-  );
-  let maxStreak = 0, cur = 0;
-  for (const r of maxStreakRes.rows) {
+  let maxWinStreak = 0, maxLossStreak = 0, curWin = 0, curLoss = 0;
+  let maxConsecFb = 0, curConsecFb = 0;
+  for (const r of gameHistoryRes.rows) {
     const won = (r.team === 'radiant' && r.radiant_win) || (r.team === 'dire' && !r.radiant_win);
-    cur = won ? cur + 1 : 0;
-    if (cur > maxStreak) maxStreak = cur;
+    if (won) { curWin++; curLoss = 0; } else { curLoss++; curWin = 0; }
+    if (curWin > maxWinStreak) maxWinStreak = curWin;
+    if (curLoss > maxLossStreak) maxLossStreak = curLoss;
+    const gotFb = parseInt(r.firstblood_claimed) > 0;
+    if (gotFb) { curConsecFb++; } else { curConsecFb = 0; }
+    if (curConsecFb > maxConsecFb) maxConsecFb = curConsecFb;
   }
 
-  const [mkRes, fbRes, wardRes, singleGameRes, posRes, totalsRes, kdaRes, healRes, towerRes, winRateRes] = await Promise.all([
+  const [mkRes, fbRes, wardRes, singleGameRes, totalsRes, kdaRes, healRes, towerRes,
+         heroWrRes, heroMasteryWinsRes, mvpRecvRes, mvpSentRes, attitudeRes, secretRes] = await Promise.all([
     p.query(
-      `SELECT SUM(rampages) AS rampages, SUM(ultra_kills) AS ultra_kills, SUM(triple_kills) AS triple_kills,
-              SUM(double_kills) AS double_kills, MAX(kills) AS max_kills
+      `SELECT SUM(rampages) AS rampages, SUM(ultra_kills) AS ultra_kills,
+              SUM(triple_kills) AS triple_kills, SUM(double_kills) AS double_kills,
+              MAX(kills) AS max_kills
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
@@ -5784,26 +5821,19 @@ async function getPlayerAchievements(accountId) {
       [pid]
     ),
     p.query(
-      `SELECT position, COUNT(*) AS cnt FROM player_stats ps
-       JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.account_id = ANY($1::bigint[]) AND ps.position > 0 AND m.is_legacy = false
-       GROUP BY position`,
-      [pid]
-    ),
-    p.query(
       `SELECT SUM(kills) AS total_kills, SUM(assists) AS total_assists, SUM(last_hits) AS total_lh
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
-      `SELECT AVG(CASE WHEN deaths > 0 THEN (kills + assists)::float / deaths ELSE (kills + assists)::float END) AS avg_kda
+      `SELECT AVG(CASE WHEN deaths > 0 THEN (kills + assists)::float / deaths ELSE kills + assists END) AS avg_kda
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
     ),
     p.query(
-      `SELECT SUM(hero_healing) AS total_healing, MAX(hero_healing) AS max_game_healing
+      `SELECT SUM(hero_healing) AS total_healing, MAX(hero_healing) AS max_healing
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
@@ -5815,116 +5845,247 @@ async function getPlayerAchievements(accountId) {
       [pid]
     ),
     p.query(
+      `SELECT ps.hero_id, COUNT(*) AS hero_games,
+              SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS hero_wins
+       FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false AND ps.hero_id > 0
+       GROUP BY ps.hero_id
+       HAVING COUNT(*) >= 10`,
+      [pid]
+    ),
+    p.query(
+      `SELECT MAX(hero_wins) AS max_hero_wins FROM (
+         SELECT SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS hero_wins
+         FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
+         WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false AND ps.hero_id > 0
+         GROUP BY ps.hero_id
+       ) sub`,
+      [pid]
+    ).catch(() => ({ rows: [{ max_hero_wins: 0 }] })),
+    // Count matches where the player received the MOST mvp votes (i.e. actually won MVP)
+    p.query(
+      `WITH per_match_winner AS (
+         SELECT match_id, rated_account_id AS winner_id
+         FROM (
+           SELECT match_id, rated_account_id,
+                  RANK() OVER (PARTITION BY match_id ORDER BY COUNT(*) DESC, rated_account_id ASC) AS rk
+           FROM match_ratings
+           WHERE is_mvp_vote = TRUE AND rated_account_id IS NOT NULL
+           GROUP BY match_id, rated_account_id
+         ) sub
+         WHERE rk = 1
+       )
+       SELECT COUNT(*) AS mvp_wins
+       FROM per_match_winner
+       WHERE winner_id = ANY($1::bigint[])`,
+      [pid]
+    ).catch(() => ({ rows: [{ mvp_wins: 0 }] })),
+    p.query(
+      `SELECT COUNT(*) AS votes_sent FROM match_ratings
+       WHERE is_mvp_vote = TRUE AND rater_account_id = ANY($1::bigint[])`,
+      [pid]
+    ).catch(() => ({ rows: [{ votes_sent: 0 }] })),
+    p.query(
+      `SELECT ROUND(AVG(attitude_score) FILTER (WHERE attitude_score IS NOT NULL), 2) AS avg_attitude,
+              COUNT(attitude_score) FILTER (WHERE attitude_score IS NOT NULL) AS attitude_count
+       FROM match_ratings WHERE rated_account_id = ANY($1::bigint[])`,
+      [pid]
+    ).catch(() => ({ rows: [{ avg_attitude: null, attitude_count: 0 }] })),
+    p.query(
       `SELECT
-         COUNT(*) AS g,
-         SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS w
+         MAX(CASE WHEN kills=0 AND deaths=0 AND assists>=10 AND ((ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win)) THEN 1 ELSE 0 END) AS has_perfect_support,
+         MAX(CASE WHEN m.duration < 1500 AND ((ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win)) THEN 1 ELSE 0 END) AS has_early_bird,
+         MAX(CASE WHEN m.duration > 4200 AND ((ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win)) THEN 1 ELSE 0 END) AS has_marathon,
+         MAX(CASE WHEN kills >= 20 AND deaths = 0 THEN 1 ELSE 0 END) AS has_ghost_rampage,
+         MAX(CASE WHEN ps.position IN (4,5) AND kills > deaths AND kills >= 5 THEN 1 ELSE 0 END) AS has_support_carry
        FROM player_stats ps JOIN matches m ON m.match_id = ps.match_id
        WHERE ps.account_id = ANY($1::bigint[]) AND m.is_legacy = false`,
       [pid]
-    ),
+    ).catch(() => ({ rows: [{}] })),
   ]);
 
-  const rampages = parseInt(mkRes.rows[0]?.rampages) || 0;
-  const ultraKills = parseInt(mkRes.rows[0]?.ultra_kills) || 0;
-  const tripleKills = parseInt(mkRes.rows[0]?.triple_kills) || 0;
-  const doubleKills = parseInt(mkRes.rows[0]?.double_kills) || 0;
-  const maxKills = parseInt(mkRes.rows[0]?.max_kills) || 0;
-  const firstBloods = parseInt(fbRes.rows[0]?.fbs) || 0;
-  const wardsPlaced = parseInt(wardRes.rows[0]?.wards_placed) || 0;
-  const wardsKilled = parseInt(wardRes.rows[0]?.wards_killed) || 0;
-  const maxDamage = parseInt(singleGameRes.rows[0]?.max_damage) || 0;
-  const maxGpm = parseInt(singleGameRes.rows[0]?.max_gpm) || 0;
-  const maxHealing = parseInt(singleGameRes.rows[0]?.max_healing) || 0;
-  const maxTowerDamage = parseInt(singleGameRes.rows[0]?.max_tower_damage) || 0;
-  const maxLastHits = parseInt(singleGameRes.rows[0]?.max_last_hits) || 0;
-  const totalCourierKills = parseInt(singleGameRes.rows[0]?.total_courier_kills) || 0;
-  const posCounts = {};
-  for (const r of posRes.rows) posCounts[r.position] = parseInt(r.cnt) || 0;
-  const carryGames = posCounts[1] || 0;
-  const supportGames = (posCounts[4] || 0) + (posCounts[5] || 0);
-  const totalKills = parseInt(totalsRes.rows[0]?.total_kills) || 0;
-  const totalAssists = parseInt(totalsRes.rows[0]?.total_assists) || 0;
-  const totalLh = parseInt(totalsRes.rows[0]?.total_lh) || 0;
-  const avgKda = parseFloat(kdaRes.rows[0]?.avg_kda) || 0;
-  const totalHealing = parseInt(healRes.rows[0]?.total_healing) || 0;
-  const totalTowerDamage = parseInt(towerRes.rows[0]?.total_tower_damage) || 0;
-  const totalG = parseInt(winRateRes.rows[0]?.g) || 0;
-  const totalW = parseInt(winRateRes.rows[0]?.w) || 0;
-  const winRate = totalG >= 20 ? totalW / totalG : 0;
+  let bestHeroWr = 0;
+  for (const r of heroWrRes.rows) {
+    const wr = parseInt(r.hero_wins) / parseInt(r.hero_games);
+    if (wr > bestHeroWr) bestHeroWr = wr;
+  }
 
-  const ACHIEVEMENTS = [
-    // Milestones
-    { key: 'veteran_10',      label: 'Rookie',             desc: '10 games played',                    icon: '🎮',  earned: games >= 10,  group: 'Milestones' },
-    { key: 'veteran_25',      label: 'Veteran',            desc: '25 games played',                    icon: '🎖️',  earned: games >= 25,  group: 'Milestones' },
-    { key: 'veteran_50',      label: 'Battle-Hardened',    desc: '50 games played',                    icon: '⚔️',  earned: games >= 50,  group: 'Milestones' },
-    { key: 'veteran_100',     label: 'Centurion',          desc: '100 games played',                   icon: '🏆',  earned: games >= 100, group: 'Milestones' },
-    { key: 'veteran_200',     label: 'Elder',              desc: '200 games played',                   icon: '🌟',  earned: games >= 200, group: 'Milestones' },
-    // Win rate
-    { key: 'wr_55',           label: 'Above Average',      desc: '55%+ win rate (20+ games)',          icon: '📈',  earned: winRate >= 0.55, group: 'Win Rate' },
-    { key: 'wr_60',           label: 'Dominant',           desc: '60%+ win rate (20+ games)',          icon: '🔝',  earned: winRate >= 0.60, group: 'Win Rate' },
-    { key: 'wr_65',           label: 'Unstoppable Force',  desc: '65%+ win rate (20+ games)',          icon: '👑',  earned: winRate >= 0.65, group: 'Win Rate' },
-    // Streaks
-    { key: 'streak_3',        label: 'Hot',                desc: '3-game win streak',                  icon: '🌶️',  earned: maxStreak >= 3,  group: 'Streaks' },
-    { key: 'streak_5',        label: 'On Fire',            desc: '5-game win streak',                  icon: '🔥',  earned: maxStreak >= 5,  group: 'Streaks' },
-    { key: 'streak_10',       label: 'Unstoppable',        desc: '10-game win streak',                 icon: '💥',  earned: maxStreak >= 10, group: 'Streaks' },
-    // Survivability
-    { key: 'deathless',       label: 'Untouchable',        desc: 'Won a game with 0 deaths',           icon: '🛡️',  earned: deathlessGames > 0,   group: 'Survivability' },
-    { key: 'deathless_5',     label: 'Ghost',              desc: '5+ deathless game wins',             icon: '👻',  earned: deathlessGames >= 5,  group: 'Survivability' },
-    { key: 'deathless_10',    label: 'Phantom',            desc: '10+ deathless game wins',            icon: '💀',  earned: deathlessGames >= 10, group: 'Survivability' },
-    // Leadership / roles
-    { key: 'captain_5',       label: 'Born Leader',        desc: 'Captained 5+ matches',               icon: '👑',  earned: captainGames >= 5,   group: 'Roles' },
-    { key: 'captain_15',      label: 'Commander',          desc: 'Captained 15+ matches',              icon: '⚜️',  earned: captainGames >= 15,  group: 'Roles' },
-    { key: 'all_positions',   label: 'Versatile',          desc: 'Played all 5 positions',             icon: '🎭',  earned: positionsPlayed >= 5,  group: 'Roles' },
-    { key: 'carry_king',      label: 'Carry King',         desc: '20+ games as Safe Lane (Pos 1)',     icon: '🗡️',  earned: carryGames >= 20,     group: 'Roles' },
-    { key: 'support_master',  label: 'Support Master',     desc: '20+ games as Support (Pos 4/5)',     icon: '🩺',  earned: supportGames >= 20,   group: 'Roles' },
-    // Hero variety
-    { key: 'hero_5',          label: 'Experimenter',       desc: '5+ different heroes',                icon: '🎲',  earned: uniqueHeroes >= 5,   group: 'Hero Pool' },
-    { key: 'hero_diversity',  label: 'Jack of All Trades', desc: '15+ different heroes',               icon: '🃏',  earned: uniqueHeroes >= 15,  group: 'Hero Pool' },
-    { key: 'hero_diversity_25', label: 'Hero Collector',   desc: '25+ different heroes',               icon: '📚',  earned: uniqueHeroes >= 25,  group: 'Hero Pool' },
-    { key: 'specialist',      label: 'Specialist',         desc: '10+ games on one hero',              icon: '🎯',  earned: maxOnOneHero >= 10,  group: 'Hero Pool' },
-    { key: 'specialist_20',   label: 'One-Trick',          desc: '20+ games on one hero',              icon: '🔒',  earned: maxOnOneHero >= 20,  group: 'Hero Pool' },
-    // Multi-kills
-    { key: 'rampage',         label: 'RAMPAGE',            desc: 'Achieved at least one rampage',      icon: '☠️',  earned: rampages > 0,  group: 'Multi-kills' },
-    { key: 'rampage_3',       label: 'Slaughterer',        desc: '3+ rampages',                        icon: '🩸',  earned: rampages >= 3,  group: 'Multi-kills' },
-    { key: 'ultra_kill',      label: 'Ultra Kill',         desc: 'Got an Ultra Kill',                  icon: '⚡',  earned: ultraKills > 0,  group: 'Multi-kills' },
-    { key: 'multikill_10',    label: 'Kill Artist',        desc: '10+ multi-kills (combined)',         icon: '🔪',  earned: (doubleKills + tripleKills + ultraKills + rampages) >= 10, group: 'Multi-kills' },
-    { key: 'massacre',        label: 'Massacre',           desc: '20+ kills in a single game',         icon: '💣',  earned: maxKills >= 20,  group: 'Multi-kills' },
-    // First blood
-    { key: 'first_blood',     label: 'First Blood',        desc: 'Claimed first blood',                icon: '💉',  earned: firstBloods > 0,     group: 'First Blood' },
-    { key: 'bloodthirsty',    label: 'Bloodthirsty',       desc: '10+ first bloods overall',           icon: '🩸',  earned: firstBloods >= 10,   group: 'First Blood' },
-    { key: 'serial_killer',   label: 'Serial Killer',      desc: '25+ first bloods overall',           icon: '🎯',  earned: firstBloods >= 25,   group: 'First Blood' },
-    // Kills/assists totals
-    { key: 'kills_100',       label: 'Centurion Killer',   desc: '100 total kills',                    icon: '⚔️',  earned: totalKills >= 100,   group: 'Totals' },
-    { key: 'kills_500',       label: 'Warlord',            desc: '500 total kills',                    icon: '⚔️',  earned: totalKills >= 500,   group: 'Totals' },
-    { key: 'assists_250',     label: 'Team Player',        desc: '250 total assists',                  icon: '🤝',  earned: totalAssists >= 250, group: 'Totals' },
-    { key: 'lh_5000',         label: 'Farmer',             desc: '5,000 total last hits',              icon: '🌾',  earned: totalLh >= 5000,     group: 'Totals' },
-    { key: 'lh_20000',        label: 'Harvest King',       desc: '20,000 total last hits',             icon: '🌾',  earned: totalLh >= 20000,    group: 'Totals' },
-    // Economy
-    { key: 'efficient',       label: 'Gold Factory',       desc: '600+ GPM in a single game',          icon: '💰',  earned: maxGpm >= 600,       group: 'Economy' },
-    { key: 'gpm_700',         label: 'Mint',               desc: '700+ GPM in a single game',          icon: '💸',  earned: maxGpm >= 700,       group: 'Economy' },
-    { key: 'lh_record',       label: 'CS Monster',         desc: '300+ last hits in a single game',    icon: '🧲',  earned: maxLastHits >= 300,  group: 'Economy' },
-    // Damage
-    { key: 'big_damage',      label: 'Demolisher',         desc: '30,000+ hero damage in one game',    icon: '💥',  earned: maxDamage >= 30000,   group: 'Damage' },
-    { key: 'big_damage_50k',  label: 'Nuke',               desc: '50,000+ hero damage in one game',    icon: '☢️',  earned: maxDamage >= 50000,   group: 'Damage' },
-    { key: 'tower_destroyer', label: 'Tower Buster',       desc: '5,000+ tower damage in one game',    icon: '🏯',  earned: maxTowerDamage >= 5000,  group: 'Damage' },
-    { key: 'tower_5_total',   label: 'Siege Master',       desc: '50,000+ total tower damage',         icon: '🏰',  earned: totalTowerDamage >= 50000, group: 'Damage' },
-    // Healing
-    { key: 'healer',          label: 'Field Medic',        desc: '5,000+ healing in one game',         icon: '💚',  earned: maxHealing >= 5000,      group: 'Healing' },
-    { key: 'great_healer',    label: 'Lifesaver',          desc: '15,000+ healing in one game',        icon: '❤️',  earned: maxHealing >= 15000,     group: 'Healing' },
-    { key: 'total_healer',    label: 'Angel',              desc: '100,000+ total healing',             icon: '🕊️',  earned: totalHealing >= 100000,  group: 'Healing' },
-    // Support / vision
-    { key: 'ward_lord',       label: 'Ward Lord',          desc: '200+ wards placed',                  icon: '👁️',  earned: wardsPlaced >= 200,   group: 'Vision' },
-    { key: 'ward_500',        label: 'All-Seeing Eye',     desc: '500+ wards placed',                  icon: '🔭',  earned: wardsPlaced >= 500,   group: 'Vision' },
-    { key: 'ward_breaker',    label: 'Ward Breaker',       desc: '50+ enemy wards killed',             icon: '🔍',  earned: wardsKilled >= 50,    group: 'Vision' },
-    { key: 'ward_breaker_150',label: 'Dewarder',           desc: '150+ enemy wards killed',            icon: '🚫',  earned: wardsKilled >= 150,   group: 'Vision' },
-    // KDA
-    { key: 'kda_3',           label: 'Efficient',          desc: '3.0+ average KDA (all games)',       icon: '📊',  earned: avgKda >= 3.0 && games >= 10, group: 'KDA' },
-    { key: 'kda_5',           label: 'Flawless',           desc: '5.0+ average KDA (all games)',       icon: '✨',  earned: avgKda >= 5.0 && games >= 10, group: 'KDA' },
-    // Courier Killer
-    { key: 'chicken_killer',  label: 'Chicken Killer',     desc: '20+ total courier kills',            icon: '🐔',  earned: totalCourierKills >= 20,  group: 'Totals' },
-    { key: 'chicken_slayer',  label: 'Courier Slayer',     desc: '50+ total courier kills',            icon: '🍗',  earned: totalCourierKills >= 50,  group: 'Totals' },
-  ];
-  return ACHIEVEMENTS;
+  const secRow = secretRes.rows[0] || {};
+  return {
+    games,
+    totalWins,
+    deathlessWins,
+    uniqueHeroes,
+    maxOnOneHero,
+    captainGames,
+    positionsPlayed,
+    carryGames,
+    supportGames,
+    winRate,
+    maxWinStreak,
+    maxLossStreak,
+    maxConsecFb,
+    rampages:   parseInt(mkRes.rows[0]?.rampages) || 0,
+    ultraKills: parseInt(mkRes.rows[0]?.ultra_kills) || 0,
+    tripleKills:parseInt(mkRes.rows[0]?.triple_kills) || 0,
+    doubleKills:parseInt(mkRes.rows[0]?.double_kills) || 0,
+    maxKills:   parseInt(mkRes.rows[0]?.max_kills) || 0,
+    firstBloods:parseInt(fbRes.rows[0]?.fbs) || 0,
+    wardsPlaced:parseInt(wardRes.rows[0]?.wards_placed) || 0,
+    wardsKilled:parseInt(wardRes.rows[0]?.wards_killed) || 0,
+    maxDamage:      parseInt(singleGameRes.rows[0]?.max_damage) || 0,
+    maxGpm:         parseInt(singleGameRes.rows[0]?.max_gpm) || 0,
+    maxHealing:     parseInt(singleGameRes.rows[0]?.max_healing) || 0,
+    maxTowerDamage: parseInt(singleGameRes.rows[0]?.max_tower_damage) || 0,
+    maxLastHits:    parseInt(singleGameRes.rows[0]?.max_last_hits) || 0,
+    totalCourierKills: parseInt(singleGameRes.rows[0]?.total_courier_kills) || 0,
+    totalKills:   parseInt(totalsRes.rows[0]?.total_kills) || 0,
+    totalAssists: parseInt(totalsRes.rows[0]?.total_assists) || 0,
+    totalLh:      parseInt(totalsRes.rows[0]?.total_lh) || 0,
+    avgKda:       parseFloat(kdaRes.rows[0]?.avg_kda) || 0,
+    totalHealing:     parseInt(healRes.rows[0]?.total_healing) || 0,
+    totalTowerDamage: parseInt(towerRes.rows[0]?.total_tower_damage) || 0,
+    bestHeroWr,
+    maxHeroWins: parseInt(heroMasteryWinsRes.rows[0]?.max_hero_wins) || 0,
+    mvpWins:       parseInt(mvpRecvRes.rows[0]?.mvp_wins) || 0,
+    votesSent:     parseInt(mvpSentRes.rows[0]?.votes_sent) || 0,
+    avgAttitude:   parseFloat(attitudeRes.rows[0]?.avg_attitude) || 0,
+    attitudeCount: parseInt(attitudeRes.rows[0]?.attitude_count) || 0,
+    hasPerfectSupport: parseInt(secRow.has_perfect_support) > 0,
+    hasEarlyBird:      parseInt(secRow.has_early_bird) > 0,
+    hasMarathon:       parseInt(secRow.has_marathon) > 0,
+    hasGhostRampage:   parseInt(secRow.has_ghost_rampage) > 0,
+    hasSupportCarry:   parseInt(secRow.has_support_carry) > 0,
+    referrals: await (async () => {
+      try {
+        const r = await p.query(
+          `SELECT COUNT(DISTINCT source) AS cnt FROM season_pass_xp_events
+           WHERE account_id = ANY($1::bigint[]) AND source LIKE 'referral_%'`,
+          [pid]
+        );
+        return parseInt(r.rows[0]?.cnt) || 0;
+      } catch (_) { return 0; }
+    })(),
+  };
+}
+
+/**
+ * Returns the full achievement list for a player, with earned/unlock_date
+ * derived from the persisted `achievements` table rows.
+ * Secret achievements reveal their real label/desc once earned.
+ */
+async function getPlayerAchievements(accountId) {
+  const p = getPool();
+  const pid = Array.isArray(accountId) ? accountId.map(Number) : [parseInt(accountId)];
+
+  let earnedMap = {};
+  try {
+    const rows = await p.query(
+      `SELECT achievement_key, achieved_at FROM achievements WHERE player_id = ANY($1::bigint[])`,
+      [pid]
+    );
+    for (const r of rows.rows) earnedMap[r.achievement_key] = r.achieved_at;
+  } catch (_) {}
+
+  return ACHIEVEMENTS_CATALOGUE.map(a => {
+    const earned = Object.prototype.hasOwnProperty.call(earnedMap, a.key);
+    return {
+      key: a.key,
+      label: (a.secret && !earned) ? '???' : a.label,
+      desc:  (a.secret && !earned) ? 'Secret achievement' : a.desc,
+      icon:  a.icon,
+      group: a.group,
+      secret: a.secret,
+      earned,
+      achieved_at: earnedMap[a.key] || null,
+    };
+  });
+}
+
+async function checkAndGrantAchievements(accountIds, matchId) {
+  const p = getPool();
+  const pid = Array.isArray(accountIds) ? accountIds.map(Number) : [Number(accountIds)];
+  if (!pid.length || pid[0] === 0) return [];
+  const primaryId = pid[0];
+
+  try {
+    const [existingRes, stats] = await Promise.all([
+      p.query(
+        `SELECT achievement_key FROM achievements WHERE player_id = ANY($1::bigint[])`,
+        [pid]
+      ),
+      _getPlayerAggregateStats(pid),
+    ]);
+    const existingKeys = new Set(existingRes.rows.map(r => r.achievement_key));
+
+    const newlyEarned = [];
+    for (const entry of ACHIEVEMENTS_CATALOGUE) {
+      if (existingKeys.has(entry.key)) continue;
+      let qualifies = false;
+      try { qualifies = entry.check(stats); } catch (_) {}
+      if (!qualifies) continue;
+
+      await p.query(
+        `INSERT INTO achievements (player_id, achievement_key, achieved_at, match_id)
+         VALUES ($1, $2, NOW(), $3)
+         ON CONFLICT (player_id, achievement_key) DO NOTHING`,
+        [primaryId, entry.key, matchId || null]
+      );
+      newlyEarned.push({ ...entry, achieved_at: new Date().toISOString(), earned: true });
+    }
+    return newlyEarned;
+  } catch (err) {
+    console.warn(`[Achievements] checkAndGrant failed for player ${primaryId}: ${err.message}`);
+    return [];
+  }
+}
+
+async function getAchievementLeaderboard(limit = 10) {
+  const p = getPool();
+  try {
+    const result = await p.query(
+      `SELECT
+         a.player_id,
+         COALESCE(n.nickname, ps_name.persona_name, a.player_id::text) AS display_name,
+         COUNT(*) AS achievement_count
+       FROM achievements a
+       LEFT JOIN nicknames n ON n.account_id = a.player_id
+       LEFT JOIN LATERAL (
+         SELECT persona_name FROM player_stats
+         WHERE account_id = a.player_id
+         ORDER BY match_id DESC LIMIT 1
+       ) ps_name ON TRUE
+       GROUP BY a.player_id, n.nickname, ps_name.persona_name
+       ORDER BY achievement_count DESC
+       LIMIT $1`,
+      [limit]
+    );
+    return result.rows;
+  } catch (err) {
+    console.warn(`[Achievements] getLeaderboard failed: ${err.message}`);
+    return [];
+  }
+}
+
+async function recomputeAllAchievements() {
+  const p = getPool();
+  const players = await p.query(
+    `SELECT DISTINCT account_id FROM player_stats WHERE account_id > 0`
+  );
+  let granted = 0;
+  let processed = 0;
+  for (const row of players.rows) {
+    try {
+      const ids = [parseInt(row.account_id)];
+      const newOnes = await checkAndGrantAchievements(ids, null);
+      granted += newOnes.length;
+      processed++;
+    } catch (e) {
+      console.warn(`[Achievements] recompute failed for ${row.account_id}: ${e.message}`);
+    }
+  }
+  console.log(`[Achievements] Recompute complete: ${processed} players, ${granted} new achievements granted`);
+  return { players: processed, granted };
 }
 
 async function getPredictions(seasonId) {
@@ -9699,6 +9860,9 @@ module.exports = {
   getHeadToHead,
   getPlayerComparison,
   getPlayerAchievements,
+  checkAndGrantAchievements,
+  getAchievementLeaderboard,
+  recomputeAllAchievements,
   getPredictions,
   savePrediction,
   getWeeklyRecap,
@@ -10682,7 +10846,8 @@ async function getHallOfFameCareerStats(seasonId = null) {
       SUM(CASE WHEN (ps.team = 'radiant' AND NOT m.radiant_win) OR (ps.team = 'dire' AND m.radiant_win) THEN 1 ELSE 0 END) AS losses,
       ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE (ps.kills + ps.assists)::float END), 2) AS avg_kda,
       ROUND(AVG(ps.gpm)) AS avg_gpm,
-      SUM(ps.kills) AS total_kills
+      SUM(ps.kills) AS total_kills,
+      (SELECT COUNT(*) FROM achievements a WHERE a.player_id = ps.account_id) AS achievement_count
     FROM player_stats ps
     JOIN matches m ON m.match_id::text = ps.match_id::text
     LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text

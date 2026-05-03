@@ -2328,9 +2328,15 @@ class DiscordBot {
       // recordMatch() accepts seasonId as its 6th argument (after fileHash and patch).
       const activeSeason = await db.getActiveSeason().catch(() => null);
       const activeSeasonId = activeSeason ? activeSeason.id : null;
-      await db.recordMatch(matchStats, lobbyName, recordedBy, null, null, activeSeasonId);
+      const recordResult = await db.recordMatch(matchStats, lobbyName, recordedBy, null, null, activeSeasonId);
       await this._checkMatchQuality(matchStats).catch(e => console.error('[QualityCheck] Error:', e.message));
       this._rconResetServer().catch(e => console.log('[RCON] Post-match reset skipped:', e.message));
+      // Notify Discord about achievements granted inside recordMatch()
+      if (recordResult && recordResult.achievementGrants && recordResult.achievementGrants.length > 0) {
+        this._notifyAchievementsUnlocked(recordResult.achievementGrants).catch(e =>
+          console.error('[Achievements] Notify error:', e.message)
+        );
+      }
     } catch (err) {
       console.error('[DB] Record match error:', err.message);
     }
@@ -4340,6 +4346,19 @@ class DiscordBot {
           const mvpPlayer = session.teammates[num - 1];
           if (!session.isTest) {
             await db.saveMatchRating(session.matchId, session.raterAccountId, mvpPlayer.account_id, null, true);
+            // Check achievements for both the voter (votes_sent) and MVP recipient (mvp_wins)
+            const raterAccountId = session.raterAccountId ? parseInt(session.raterAccountId) : 0;
+            const mvpAccountId = mvpPlayer.account_id ? parseInt(mvpPlayer.account_id) : 0;
+            const ratingGrants = [];
+            if (raterAccountId) {
+              const raterNew = await db.checkAndGrantAchievements([raterAccountId], session.matchId).catch(() => []);
+              if (raterNew.length) ratingGrants.push({ player: { accountId: raterAccountId, personaname: '' }, newOnes: raterNew });
+            }
+            if (mvpAccountId) {
+              const mvpNew = await db.checkAndGrantAchievements([mvpAccountId], session.matchId).catch(() => []);
+              if (mvpNew.length) ratingGrants.push({ player: { accountId: mvpAccountId, personaname: mvpPlayer.display_name }, newOnes: mvpNew });
+            }
+            if (ratingGrants.length) this._notifyAchievementsUnlocked(ratingGrants).catch(() => {});
           }
           await msg.reply(`✅ MVP vote recorded for **${mvpPlayer.display_name}**!${session.isTest ? ' *(test — not saved)*' : ''}`);
         } else {
@@ -4388,6 +4407,15 @@ class DiscordBot {
           for (let i = 0; i < attitudePlayers.length; i++) {
             await db.saveMatchRating(session.matchId, session.raterAccountId, attitudePlayers[i].account_id, scores[i], false);
           }
+          // Check achievements for all attitude recipients (well_rated)
+          const attitudeGrants = [];
+          for (const p of attitudePlayers) {
+            const aid = p.account_id ? parseInt(p.account_id) : 0;
+            if (!aid) continue;
+            const newOnes = await db.checkAndGrantAchievements([aid], session.matchId).catch(() => []);
+            if (newOnes.length) attitudeGrants.push({ player: { accountId: aid, personaname: p.display_name }, newOnes });
+          }
+          if (attitudeGrants.length) this._notifyAchievementsUnlocked(attitudeGrants).catch(() => {});
         }
         await msg.reply(`✅ Attitude ratings saved! Thanks for the feedback.${session.isTest ? ' *(test — not saved)*' : ''}`);
       } else {
@@ -5387,6 +5415,33 @@ class DiscordBot {
     };
     this._coachingAutoReleaseTimer = setInterval(tick, 30 * 60 * 1000); // 30min
     setTimeout(tick, 60 * 1000); // first run after 60s
+  }
+
+  async _notifyAchievementsUnlocked(allGrants) {
+    const channels = await this._resolveChannels(
+      config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds : (this.lobbyChannelId ? [this.lobbyChannelId] : [])
+    );
+    if (!channels.length) return;
+
+    for (const { player, newOnes } of allGrants) {
+      const name = player.name || player.personaname || `Player ${player.accountId}`;
+      const lines = newOnes.map(a => {
+        const label = a.secret && !a.earned ? '???' : a.label;
+        return `${a.icon}  **${label}** — ${a.desc}`;
+      });
+      const embed = {
+        color: 0xf59e0b,
+        title: `🏅 Achievement Unlocked!`,
+        description: `**${name}** just earned ${newOnes.length === 1 ? 'a new achievement' : `${newOnes.length} new achievements`}!\n\n${lines.join('\n')}`,
+        timestamp: new Date().toISOString(),
+        footer: { text: 'Achievement Hunters' },
+      };
+      for (const ch of channels) {
+        await ch.send({ embeds: [embed] }).catch(e =>
+          console.error(`[Achievements] Discord send error (${ch.id}):`, e.message)
+        );
+      }
+    }
   }
 
   async shutdown() {

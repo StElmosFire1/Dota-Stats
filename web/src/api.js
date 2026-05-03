@@ -517,6 +517,20 @@ export async function getPlayerAchievements(accountId) {
   return fetchJson(`/players/${accountId}/achievements`);
 }
 
+export async function getAchievementLeaderboard(limit = 25) {
+  return fetchJson(`/achievement-leaderboard?limit=${limit}`);
+}
+
+export async function recomputeAchievements(superuserKey) {
+  const res = await fetch(BASE + '/admin/recompute-achievements', {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to recompute achievements');
+  return data;
+}
+
 export async function getHeadToHead(a, b, seasonId = null) {
   const sp = seasonId ? `&season_id=${encodeURIComponent(seasonId)}` : '';
   return fetchJson(`/head-to-head?a=${a}&b=${b}${sp}`);

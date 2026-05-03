@@ -3092,19 +3092,42 @@ NOTES
   router.get('/hall-of-fame', async (req, res) => {
     try {
       const seasonId = req.query.season || null;
-      const [records, career, impactMap] = await Promise.all([
+      const [records, career, impactMap, achievementHunters] = await Promise.all([
         db.getPersonalRecords(seasonId),
         db.getHallOfFameCareerStats(seasonId),
         db.getImpactScores(seasonId),
+        db.getAchievementLeaderboard(10).catch(() => []),
       ]);
       for (const p of career) {
         const pid = p.account_id?.toString();
         if (pid && impactMap[pid] != null) p.impact_score = impactMap[pid].score;
       }
-      res.json({ records, career });
+      res.json({ records, career, achievementHunters });
     } catch (err) {
       console.error('[API] hall-of-fame error:', err.message);
       res.status(500).json({ error: 'Failed to fetch hall of fame data' });
+    }
+  });
+
+  router.get('/achievement-leaderboard', async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit) || 25, 100);
+      const hunters = await db.getAchievementLeaderboard(limit);
+      res.json({ hunters });
+    } catch (err) {
+      console.error('[API] achievement-leaderboard error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch achievement leaderboard' });
+    }
+  });
+
+  router.post('/admin/recompute-achievements', requireSuperuser, async (req, res) => {
+    try {
+      console.log('[Admin] Recomputing all achievements...');
+      const result = await db.recomputeAllAchievements();
+      res.json({ success: true, ...result });
+    } catch (err) {
+      console.error('[Admin] recompute-achievements error:', err.message);
+      res.status(500).json({ error: 'Failed to recompute achievements' });
     }
   });
 
@@ -4489,6 +4512,18 @@ NOTES
                       const granted = await db.grantReferralXp(referralStr, newAccountId32, activeSeason.id, referralXpAmount);
                       if (granted) {
                         console.log(`[Referral] Granted ${referralXpAmount} XP to account ${referralStr} for referring ${newAccountId32}`);
+                        // Check referral achievements for the referrer (best-effort)
+                        const referrerId = parseInt(referralStr) || 0;
+                        if (referrerId) {
+                          db.checkAndGrantAchievements([referrerId], null).then(newOnes => {
+                            if (newOnes.length) {
+                              try {
+                                getDiscordBot()._notifyAchievementsUnlocked([{ player: { accountId: referrerId, personaname: '' }, newOnes }])
+                                  .catch(() => {});
+                              } catch (_) {}
+                            }
+                          }).catch(() => {});
+                        }
                       }
                     }
                   }
@@ -6465,13 +6500,22 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
 
     const activeSeason = await db.getActiveSeason();
     const seasonId = activeSeason ? activeSeason.id : null;
-    await db.recordMatch(matchStats, '', `web:${ip}`, fileHash, patch, seasonId);
+    const recordResult = await db.recordMatch(matchStats, '', `web:${ip}`, fileHash, patch, seasonId);
 
     // Data quality check + RCON server reset — same pipeline as bot._recordMatchData
     try {
       getDiscordBot()._checkMatchQuality(matchStats).catch(e => console.error('[QualityCheck] Replay job error:', e.message));
       getDiscordBot()._rconResetServer().catch(e => console.log('[RCON] Post-replay reset skipped:', e.message));
     } catch (_) {}
+
+    // Notify Discord about achievements granted inside recordMatch()
+    if (recordResult && recordResult.achievementGrants && recordResult.achievementGrants.length > 0) {
+      try {
+        getDiscordBot()._notifyAchievementsUnlocked(recordResult.achievementGrants).catch(e =>
+          console.error('[Achievements] Web upload notify error:', e.message)
+        );
+      } catch (_) {}
+    }
 
     updateJobStep(jobId, 'Updating ratings...');
 
