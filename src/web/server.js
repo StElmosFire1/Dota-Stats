@@ -3614,10 +3614,8 @@ NOTES
       && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
     );
   }
-  async function _selfSignupVisible(req) {
-    if (_isSelfSignupSuperuser(req)) return true;
-    const flag = await db.getFeatureFlag('tournament_self_signup').catch(() => null);
-    return !!flag && flag.state === 'on';
+  async function _selfSignupVisible(_req) {
+    return true;
   }
   // SECURITY: strip payment session ids and other internal identifiers before
   // returning a tournament_entries row to a non-superuser caller. Superusers
@@ -3682,11 +3680,6 @@ NOTES
       const isSuperuser = Boolean(
         req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
       );
-      if (!isSuperuser) {
-        const flag = await db.getFeatureFlag('tournament_self_signup').catch(() => null);
-        if (!flag || flag.state !== 'on') return res.status(404).json({ error: 'Not found' });
-      }
-
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: 'Payments not configured' });
       }
@@ -3771,10 +3764,6 @@ NOTES
       const isSuperuser = Boolean(
         req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
       );
-      if (!isSuperuser) {
-        const flag = await db.getFeatureFlag('tournament_self_signup').catch(() => null);
-        if (!flag || flag.state !== 'on') return res.status(404).json({ error: 'Not found' });
-      }
       const tournamentId = parseInt(req.params.id);
       const { accountId } = req.body || {};
       const sessionAccountId = req.session?.accountId;
@@ -5130,12 +5119,8 @@ NOTES
   function _isSu(req) {
     return Boolean(req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD);
   }
-  async function _flagOn(key, req) {
-    const flag = await db.getFeatureFlag(key).catch(() => null);
-    if (!flag) return false;
-    if (flag.state === 'on') return true;
-    if (flag.state === 'preview' && _isSu(req)) return true;
-    return false;
+  async function _flagOn(_key, _req) {
+    return true;
   }
 
   // ---------- Pro Tier gating ----------
@@ -5553,16 +5538,13 @@ NOTES
   router.get('/pro/status', async (req, res) => {
     try {
       const accountId = req.session?.accountId || null;
-      const flag = await db.getFeatureFlag('pro_tier').catch(() => null);
-      const flagState = flag?.state || 'off';
-      const gateOn = flagState === 'on' || (flagState === 'preview' && _isSu(req));
       const isPro = accountId ? await _isProAccount(accountId) : false;
       const sub = (accountId && isPro) ? await db.getProSubscription(accountId).catch(() => null) : null;
       res.json({
         signed_in: Boolean(accountId),
         is_pro: isPro,
-        gate_on: gateOn,
-        flag_state: flagState,
+        gate_on: true,
+        flag_state: 'on',
         subscription: sub
           ? {
               plan_type: sub.plan_type,

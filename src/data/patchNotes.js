@@ -687,9 +687,9 @@ module.exports = [
   },
   {
     "version": "5.56",
-    "title": "Admin panel cleanup — all features fully live",
+    "title": "All features permanently enabled — flag system removed",
     "published_at": "2026-05-03",
-    "content": "All features are now fully enabled — the Season 10 preview/launch staging system has been removed from the admin panel.\n\n**Removed:** Launch Season 10 button, Preview state option on feature flags, and all associated preview-gating UI.\n\n**Feature flags** now have a simple On/Off toggle only. All flags on the oceinhouse.gg deployment have been set to On, making hero meta, draft assistant, season pass, coaching marketplace, profile customisation, pro tier, notifications, tournament brackets, and all other Wave 2/3 features available to all players.",
+    "content": "The feature flag staging system has been completely removed. All features are now always on with no toggles.\n\n**Removed entirely:** Feature Flags admin panel section, Launch Season 10 button, On/Off toggles, and all server-side flag checks. Hero meta, draft assistant, season pass, coaching marketplace, profile customisation, pro tier, web push notifications, tournament brackets, and all other features are now unconditionally available to all visitors — no database lookup required.",
     "author": "System"
   }
 ];

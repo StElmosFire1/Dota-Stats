@@ -1,39 +1,10 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { useSuperuser } from './SuperuserContext';
-import { useAdmin } from './AdminContext';
+import React, { createContext, useContext } from 'react';
 
-const FeatureFlagsContext = createContext({ flags: {}, loading: true, refresh: () => {} });
+const FeatureFlagsContext = createContext({ flags: {}, loading: false, refresh: () => {} });
 
 export function FeatureFlagsProvider({ children }) {
-  const { superuserKey } = useSuperuser() || {};
-  const { adminKey } = useAdmin() || {};
-  const [flags, setFlags] = useState({});
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    try {
-      const headers = {};
-      if (superuserKey) headers['x-superuser-key'] = superuserKey;
-      if (adminKey) headers['x-admin-key'] = adminKey;
-      const res = await fetch('/api/feature-flags', { headers });
-      if (!res.ok) throw new Error('failed');
-      const data = await res.json();
-      setFlags(data.flags || {});
-    } catch {
-      // Silent fail — features default to disabled. Don't break the page.
-    } finally {
-      setLoading(false);
-    }
-  }, [superuserKey, adminKey]);
-
-  useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 60_000);
-    return () => clearInterval(interval);
-  }, [refresh]);
-
   return (
-    <FeatureFlagsContext.Provider value={{ flags, loading, refresh }}>
+    <FeatureFlagsContext.Provider value={{ flags: {}, loading: false, refresh: () => {} }}>
       {children}
     </FeatureFlagsContext.Provider>
   );
@@ -43,8 +14,7 @@ export function useFeatureFlags() {
   return useContext(FeatureFlagsContext);
 }
 
-// Convenience: returns boolean for a single flag. Defaults to false while loading.
-export function useFeatureFlag(key) {
-  const { flags } = useContext(FeatureFlagsContext);
-  return Boolean(flags?.[key]);
+// All features are permanently enabled.
+export function useFeatureFlag(_key) {
+  return true;
 }
