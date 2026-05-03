@@ -1949,6 +1949,9 @@ export default function AdminPanel() {
       {/* Season Lifecycle — end conditions + manual close */}
       <SeasonLifecyclePanel superuserKey={superuserKey} />
 
+      {/* Gift Purchases — audit all sent/received gifts */}
+      <GiftPurchasesPanel superuserKey={superuserKey} />
+
       {/* Coaching Marketplace — pending KYC + open disputes + revenue */}
       <CoachingAdminPanel superuserKey={superuserKey} />
 
@@ -2765,6 +2768,98 @@ function ReplayInspectorPanel({ superuserKey }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ───────── Gift Purchases audit panel ─────────
+function GiftPurchasesPanel({ superuserKey }) {
+  const [gifts, setGifts] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const load = React.useCallback(async () => {
+    if (!superuserKey) return;
+    setLoading(true);
+    setError('');
+    try {
+      const r = await fetch('/api/admin/gifts?limit=100', {
+        credentials: 'include',
+        headers: { 'X-Superuser-Key': superuserKey },
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed');
+      setGifts(d.gifts || []);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [superuserKey]);
+
+  function formatGiftType(t) {
+    if (!t) return '—';
+    if (t === 'pro') return 'Pro Membership';
+    if (t === 'season_pass') return 'Season Pass';
+    return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function formatMoney(cents, currency) {
+    if (cents == null) return '—';
+    return `${(currency || 'AUD').toUpperCase()} $${(cents / 100).toFixed(2)}`;
+  }
+
+  function formatDate(s) {
+    if (!s) return '—';
+    try { return new Date(s).toLocaleString(); } catch (_) { return s; }
+  }
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10 }}>
+        <h2 style={{ margin: 0 }}>🎁 Gift Purchases</h2>
+        <button className="btn" onClick={load} disabled={loading} style={{ fontSize: 12 }}>
+          {loading ? 'Loading…' : gifts ? 'Refresh' : 'Load'}
+        </button>
+      </div>
+      {error && <p style={{ color: '#ef4444', fontSize: 13 }}>{error}</p>}
+      {gifts && gifts.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No gift purchases recorded yet.</p>
+      )}
+      {gifts && gifts.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '4px 10px 8px 0', fontWeight: 600 }}>Date</th>
+                <th style={{ padding: '4px 10px 8px 0', fontWeight: 600 }}>Type</th>
+                <th style={{ padding: '4px 10px 8px 0', fontWeight: 600 }}>Gifter</th>
+                <th style={{ padding: '4px 10px 8px 0', fontWeight: 600 }}>Recipient</th>
+                <th style={{ padding: '4px 10px 8px 0', fontWeight: 600 }}>Amount</th>
+                <th style={{ padding: '4px 10px 8px 0', fontWeight: 600 }}>Status</th>
+                <th style={{ padding: '4px 10px 8px 0', fontWeight: 600 }}>Completed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gifts.map(g => (
+                <tr key={g.id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>{formatDate(g.created_at)}</td>
+                  <td style={{ padding: '5px 10px 5px 0' }}>{formatGiftType(g.gift_type)}</td>
+                  <td style={{ padding: '5px 10px 5px 0' }}>{g.gifter_name || g.gifter_account_id}</td>
+                  <td style={{ padding: '5px 10px 5px 0' }}>{g.recipient_name || g.recipient_account_id}</td>
+                  <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>{formatMoney(g.amount_cents, g.currency)}</td>
+                  <td style={{ padding: '5px 10px 5px 0' }}>
+                    <span style={{ color: g.status === 'completed' ? 'var(--accent-green)' : 'var(--text-muted)', fontWeight: g.status === 'completed' ? 600 : 400 }}>
+                      {g.status || '—'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>{formatDate(g.completed_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 

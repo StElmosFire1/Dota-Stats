@@ -138,6 +138,9 @@ async function fetchJson(url) {
 export async function getProStatus() {
   return fetchJson('/pro/status');
 }
+export async function getGiftHistory() {
+  return fetchJson('/me/gifts');
+}
 export async function getProPricing() {
   return fetchJson('/pro/pricing');
 }

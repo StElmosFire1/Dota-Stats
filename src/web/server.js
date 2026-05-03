@@ -5617,6 +5617,41 @@ NOTES
     }
   });
 
+  // GET /api/me/gifts — sent and received gift history for the current user
+  router.get('/me/gifts', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const history = await db.getGiftHistory(accountId);
+      res.json(history);
+    } catch (err) {
+      console.error('[API] me/gifts GET:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/gifts — audit list of all gift purchases (admin only)
+  router.get('/admin/gifts', requireSuperuser, async (req, res) => {
+    try {
+      const p = db.getPool();
+      const limit = Math.min(Math.max(parseInt(req.query.limit) || 100, 1), 500);
+      const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+      const r = await p.query(
+        `SELECT gp.*, ng.nickname AS gifter_name, nr.nickname AS recipient_name
+           FROM gift_purchases gp
+           LEFT JOIN nicknames ng ON ng.account_id = gp.gifter_account_id
+           LEFT JOIN nicknames nr ON nr.account_id = gp.recipient_account_id
+          ORDER BY gp.created_at DESC
+          LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+      res.json({ gifts: r.rows, limit, offset });
+    } catch (err) {
+      console.error('[API] admin/gifts GET:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // POST /api/frames/:frameId/checkout — create a Stripe checkout for a premium frame
   router.post('/frames/:frameId/checkout', express.json(), async (req, res) => {
     try {

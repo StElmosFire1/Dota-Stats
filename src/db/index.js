@@ -9007,6 +9007,34 @@ async function confirmGiftCheckout(stripeSessionId) {
   return r.rows[0] || null;
 }
 
+async function getGiftHistory(accountId) {
+  const p = getPool();
+  const id = parseInt(accountId, 10);
+  const [sentRes, receivedRes] = await Promise.all([
+    p.query(
+      `SELECT gp.id, gp.gift_type, gp.amount_cents, gp.currency, gp.status,
+              gp.created_at, gp.completed_at,
+              n.nickname AS recipient_name, gp.recipient_account_id
+         FROM gift_purchases gp
+         LEFT JOIN nicknames n ON n.account_id = gp.recipient_account_id
+        WHERE gp.gifter_account_id = $1
+        ORDER BY gp.created_at DESC`,
+      [id]
+    ),
+    p.query(
+      `SELECT gp.id, gp.gift_type, gp.amount_cents, gp.currency, gp.status,
+              gp.created_at, gp.completed_at,
+              n.nickname AS gifter_name, gp.gifter_account_id
+         FROM gift_purchases gp
+         LEFT JOIN nicknames n ON n.account_id = gp.gifter_account_id
+        WHERE gp.recipient_account_id = $1
+        ORDER BY gp.created_at DESC`,
+      [id]
+    ),
+  ]);
+  return { sent: sentRes.rows, received: receivedRes.rows };
+}
+
 // ---------- Frame purchases ----------
 async function createFrameCheckout({ accountId, frameId, stripeSessionId, amountCents, currency }) {
   const p = getPool();
@@ -10159,6 +10187,7 @@ module.exports = {
   getPlayerProfileCard,
   createGiftCheckout,
   confirmGiftCheckout,
+  getGiftHistory,
   grantSeasonPassXpGift,
   createFrameCheckout,
   confirmFramePurchase,

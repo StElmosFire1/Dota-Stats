@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import useProStatus from '../hooks/useProStatus';
 import ProBadge from '../components/ProBadge';
+import { getGiftHistory } from '../api';
 
 function formatMoney(cents, currency = 'aud') {
   if (cents == null) return '—';
@@ -13,13 +14,66 @@ function formatDate(s) {
   try { return new Date(s).toLocaleString(); } catch (_) { return s; }
 }
 
+function formatGiftType(t) {
+  if (!t) return '—';
+  if (t === 'pro') return 'Pro Membership';
+  if (t === 'season_pass') return 'Season Pass';
+  return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function GiftTable({ rows, direction }) {
+  if (!rows || rows.length === 0) {
+    return (
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '8px 0 0' }}>
+        No {direction === 'sent' ? 'gifts sent' : 'gifts received'} yet.
+      </p>
+    );
+  }
+  const nameKey = direction === 'sent' ? 'recipient_name' : 'gifter_name';
+  const nameLabel = direction === 'sent' ? 'Recipient' : 'From';
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+            <th style={{ padding: '4px 8px 8px 0', fontWeight: 600 }}>Date</th>
+            <th style={{ padding: '4px 8px 8px 0', fontWeight: 600 }}>Type</th>
+            <th style={{ padding: '4px 8px 8px 0', fontWeight: 600 }}>{nameLabel}</th>
+            <th style={{ padding: '4px 8px 8px 0', fontWeight: 600 }}>Amount</th>
+            <th style={{ padding: '4px 8px 8px 0', fontWeight: 600 }}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(g => (
+            <tr key={g.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '6px 8px 6px 0', whiteSpace: 'nowrap' }}>{formatDate(g.created_at)}</td>
+              <td style={{ padding: '6px 8px 6px 0' }}>{formatGiftType(g.gift_type)}</td>
+              <td style={{ padding: '6px 8px 6px 0' }}>{g[nameKey] || '—'}</td>
+              <td style={{ padding: '6px 8px 6px 0', whiteSpace: 'nowrap' }}>{formatMoney(g.amount_cents, g.currency)}</td>
+              <td style={{ padding: '6px 8px 6px 0' }}>
+                <span style={{
+                  color: g.status === 'completed' ? 'var(--accent-green)' : 'var(--text-muted)',
+                  fontWeight: g.status === 'completed' ? 600 : 400,
+                }}>
+                  {g.status || '—'}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function SettingsBilling() {
   const { status, loading, reload } = useProStatus();
   const [searchParams] = useSearchParams();
   const justPurchased = searchParams.get('checkout') === 'success';
 
-  // Refresh once on mount and again 2s later if we just came back from checkout
-  // — gives the Stripe webhook a chance to land before we render is_pro:false.
+  const [gifts, setGifts] = useState(null);
+  const [giftsLoading, setGiftsLoading] = useState(false);
+
   useEffect(() => {
     reload();
     if (justPurchased) {
@@ -27,6 +81,15 @@ export default function SettingsBilling() {
       return () => clearTimeout(t);
     }
   }, [justPurchased]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!status?.signed_in) return;
+    setGiftsLoading(true);
+    getGiftHistory()
+      .then(data => setGifts(data))
+      .catch(() => setGifts(null))
+      .finally(() => setGiftsLoading(false));
+  }, [status?.signed_in]);
 
   if (loading && !status) return <div className="loading">Loading billing…</div>;
 
@@ -115,6 +178,28 @@ export default function SettingsBilling() {
                   </p>
                 )}
               </div>
+            )}
+          </div>
+
+          <div style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 10, padding: '20px 24px', marginBottom: 20,
+          }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 16 }}>Gifts</div>
+
+            {giftsLoading ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Loading gift history…</p>
+            ) : (
+              <>
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Gifts Sent</div>
+                  <GiftTable rows={gifts?.sent} direction="sent" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Gifts Received</div>
+                  <GiftTable rows={gifts?.received} direction="received" />
+                </div>
+              </>
             )}
           </div>
 
