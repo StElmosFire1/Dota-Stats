@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
 import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
+import { ALL_HEROES, getHeroName } from '../heroNames';
 
 // Catches render-phase errors in any child component and shows a helpful
 // message instead of a blank screen.
@@ -2489,11 +2490,88 @@ function RecomputeAchievementsPanel({ superuserKey }) {
   );
 }
 
+function HeroTypeahead({ value, onChange }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const selectedHero = value ? ALL_HEROES.find(h => h.id === value) : null;
+
+  const filtered = query.trim()
+    ? ALL_HEROES.filter(h => h.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : ALL_HEROES;
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+        setQuery(selectedHero ? selectedHero.name : '');
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [selectedHero]);
+
+  const handleFocus = () => {
+    if (selectedHero && !query) setQuery(selectedHero.name);
+    setOpen(true);
+  };
+
+  const handleInputChange = (e) => {
+    setQuery(e.target.value);
+    setOpen(true);
+    onChange(null);
+  };
+
+  const handleSelect = (hero) => {
+    onChange(hero.id);
+    setQuery(hero.name);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: 220 }}>
+      <input
+        type="text"
+        value={query}
+        onChange={handleInputChange}
+        onFocus={handleFocus}
+        placeholder="Search hero name…"
+        autoComplete="off"
+        style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+      />
+      {open && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
+          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+          maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}>
+          {filtered.map(hero => (
+            <div
+              key={hero.id}
+              onMouseDown={() => handleSelect(hero)}
+              style={{
+                padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                color: value === hero.id ? 'var(--accent-blue)' : 'var(--text-primary)',
+                background: value === hero.id ? 'rgba(59,130,246,0.1)' : 'transparent',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+              onMouseLeave={e => e.currentTarget.style.background = value === hero.id ? 'rgba(59,130,246,0.1)' : 'transparent'}
+            >
+              {hero.name} <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>#{hero.id}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HeroTierOverridesPanel({ superuserKey, selectedSeason }) {
   const seasonId = selectedSeason ? selectedSeason.id : null;
   const [overrides, setOverrides] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
-  const [heroId, setHeroId] = useState('');
+  const [heroId, setHeroId] = useState(null);
   const [tier, setTier] = useState('');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -2514,11 +2592,11 @@ function HeroTierOverridesPanel({ superuserKey, selectedSeason }) {
 
   const handleSet = async (e) => {
     e.preventDefault();
-    if (!heroId || !tier) { setMsg('Hero ID and Tier are required'); return; }
+    if (!heroId || !tier) { setMsg('Hero name and Tier are required'); return; }
     setSaving(true); setMsg('');
     try {
-      await setAdminHeroTierOverride({ season_id: seasonId, hero_id: parseInt(heroId), tier }, superuserKey);
-      setHeroId(''); setTier('');
+      await setAdminHeroTierOverride({ season_id: seasonId, hero_id: heroId, tier }, superuserKey);
+      setHeroId(null); setTier('');
       setMsg('Override saved.');
       await load();
     } catch (e) {
@@ -2545,11 +2623,8 @@ function HeroTierOverridesPanel({ superuserKey, selectedSeason }) {
     <div>
       <form onSubmit={handleSet} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Hero ID</label>
-          <input
-            type="number" value={heroId} onChange={e => setHeroId(e.target.value)}
-            placeholder="e.g. 86" style={{ width: 100, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
-          />
+          <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Hero</label>
+          <HeroTypeahead value={heroId} onChange={setHeroId} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Tier</label>
@@ -2573,7 +2648,7 @@ function HeroTierOverridesPanel({ superuserKey, selectedSeason }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Hero ID</th>
+              <th style={{ textAlign: 'left', padding: '6px 10px' }}>Hero</th>
               <th style={{ textAlign: 'left', padding: '6px 10px' }}>Tier</th>
               <th style={{ textAlign: 'left', padding: '6px 10px' }}>Set By</th>
               <th style={{ textAlign: 'left', padding: '6px 10px' }}>Set At</th>
@@ -2583,7 +2658,10 @@ function HeroTierOverridesPanel({ superuserKey, selectedSeason }) {
           <tbody>
             {overrides.map(ov => (
               <tr key={ov.hero_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '8px 10px' }}>{ov.hero_id}</td>
+                <td style={{ padding: '8px 10px' }}>
+                  <span style={{ fontWeight: 600 }}>{getHeroName(ov.hero_id)}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 6 }}>#{ov.hero_id}</span>
+                </td>
                 <td style={{ padding: '8px 10px' }}>
                   <span style={{ background: TIER_COLORS[ov.tier] || '#888', color: '#111', fontWeight: 700, padding: '2px 10px', borderRadius: 5 }}>{ov.tier}</span>
                 </td>
