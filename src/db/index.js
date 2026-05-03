@@ -1152,12 +1152,26 @@ async function getActiveSeason() {
 
 async function createSeason(name) {
   const p = getPool();
-  await p.query(`UPDATE seasons SET active = false`);
-  const result = await p.query(
-    `INSERT INTO seasons (name, active) VALUES ($1, true) RETURNING *`,
-    [name]
-  );
-  return result.rows[0];
+  const activeR = await p.query(`SELECT id FROM seasons WHERE active = true LIMIT 1`);
+  const hasActive = activeR.rows.length > 0;
+  if (!hasActive) {
+    // No current active season — create this one as the active season.
+    await p.query(`UPDATE seasons SET active = false, season_status = 'archived' WHERE active = true`);
+    const result = await p.query(
+      `INSERT INTO seasons (name, active, season_status) VALUES ($1, true, 'active') RETURNING *`,
+      [name]
+    );
+    return result.rows[0];
+  } else {
+    // A season is already running — create the new one as pending so it doesn't
+    // disturb the current season. Auto-activation will pick it up when the
+    // current season closes.
+    const result = await p.query(
+      `INSERT INTO seasons (name, active, season_status) VALUES ($1, false, 'pending') RETURNING *`,
+      [name]
+    );
+    return result.rows[0];
+  }
 }
 
 // Multi-tier seasons (1.6) helpers ────────────────────────────────────────────
@@ -1400,22 +1414,45 @@ async function getSeasonSummary(seasonId) {
   );
   const dates = dateR.rows[0] || {};
 
+  // Top 3: use each player's last rating_history entry during this season so the
+  // snapshot reflects season-final MMR, not the current global (post-season) value.
+  // W/L/games are scoped to this season's matches only.
   const top3R = await p.query(
-    `SELECT DISTINCT ON (ps.account_id)
-            ps.account_id,
-            COALESCE(n.nickname, ps.persona_name, r.display_name, ps.account_id::text) AS display_name,
-            r.mmr::int AS mmr, r.wins, r.losses, r.games_played
-     FROM player_stats ps
-     JOIN matches m ON m.match_id = ps.match_id
-     LEFT JOIN ratings r ON r.player_id = ps.account_id
-     LEFT JOIN nicknames n ON n.account_id = ps.account_id
-     WHERE m.season_id = $1 AND ps.account_id != 0
-     ORDER BY ps.account_id, r.mmr DESC NULLS LAST`,
+    `WITH season_match_ids AS (
+       SELECT match_id::text AS mid FROM matches WHERE season_id = $1
+     ),
+     last_season_mmr AS (
+       SELECT DISTINCT ON (rh.player_id)
+              rh.player_id, rh.mmr
+       FROM rating_history rh
+       WHERE rh.match_id IN (SELECT mid FROM season_match_ids)
+       ORDER BY rh.player_id, rh.recorded_at DESC
+     ),
+     season_wl AS (
+       SELECT ps.account_id,
+              SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins,
+              SUM(CASE WHEN NOT ((ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win)) THEN 1 ELSE 0 END)::int AS losses,
+              COUNT(*)::int AS games_played
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE m.season_id = $1 AND ps.account_id != 0
+       GROUP BY ps.account_id
+     )
+     SELECT lm.player_id AS account_id,
+            COALESCE(n.nickname, r.display_name, lm.player_id::text) AS display_name,
+            lm.mmr::int AS mmr,
+            COALESCE(sw.wins, 0) AS wins,
+            COALESCE(sw.losses, 0) AS losses,
+            COALESCE(sw.games_played, 0) AS games_played
+     FROM last_season_mmr lm
+     LEFT JOIN ratings r ON r.player_id = lm.player_id
+     LEFT JOIN nicknames n ON n.account_id = lm.player_id
+     LEFT JOIN season_wl sw ON sw.account_id = lm.player_id
+     ORDER BY lm.mmr DESC NULLS LAST
+     LIMIT 3`,
     [sid]
   );
-  const topPlayers = top3R.rows
-    .sort((a, b) => (b.mmr || 0) - (a.mmr || 0))
-    .slice(0, 3);
+  const topPlayers = top3R.rows;
 
   const heroR = await p.query(
     `SELECT ps.hero_id, ps.hero_name,

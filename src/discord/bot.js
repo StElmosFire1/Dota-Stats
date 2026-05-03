@@ -2388,8 +2388,6 @@ class DiscordBot {
 
   async _closeSeasonAndAnnounce(season) {
     try {
-      // Compute summary BEFORE archiving — archiveSeason marks matches is_legacy=true,
-      // which would make getSeasonSummary return empty data for every query.
       const summary = await db.getSeasonSummary(season.id);
 
       await db.archiveSeason(season.id);
@@ -2583,7 +2581,7 @@ class DiscordBot {
           await sheetsStore.updateRating(r.id, '', displayName, r.mu, r.sigma, r.mmr, won);
         }
         try {
-          await db.updateRating(r.id, '', displayName, r.mu, r.sigma, r.mmr, won);
+          await db.updateRating(r.id, '', displayName, r.mu, r.sigma, r.mmr, won, matchStats.matchId || null);
         } catch (err) {
           console.error('[DB] Rating update error:', err.message);
         }

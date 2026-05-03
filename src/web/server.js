@@ -1598,10 +1598,11 @@ function createApiRouter(startupStatus = {}) {
       const bot = getDiscordBot();
       if (bot && typeof bot.closeSeasonManually === 'function') {
         await bot.closeSeasonManually(id);
+        res.json({ success: true, message: `Season "${rows[0].name}" closed — summary announced on Discord.` });
       } else {
         await db.archiveSeason(id);
+        res.json({ success: true, archived_only: true, message: `Season "${rows[0].name}" archived. Discord bot is unavailable — no announcement was posted and next-season activation did not run. Restart the bot and use the re-announce feature.` });
       }
-      res.json({ success: true, message: `Season "${rows[0].name}" closed — summary announced on Discord.` });
     } catch (err) {
       console.error('[API] closeSeason error:', err.message);
       res.status(500).json({ error: 'Failed to close season' });
