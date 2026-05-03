@@ -2324,7 +2324,11 @@ class DiscordBot {
       await sheetsStore.recordMatch(matchStats, lobbyName, recordedBy);
     }
     try {
-      await db.recordMatch(matchStats, lobbyName, recordedBy);
+      // Resolve the active season so every match is correctly tagged to it in the DB.
+      // recordMatch() accepts seasonId as its 6th argument (after fileHash and patch).
+      const activeSeason = await db.getActiveSeason().catch(() => null);
+      const activeSeasonId = activeSeason ? activeSeason.id : null;
+      await db.recordMatch(matchStats, lobbyName, recordedBy, null, null, activeSeasonId);
       await this._checkMatchQuality(matchStats).catch(e => console.error('[QualityCheck] Error:', e.message));
       this._rconResetServer().catch(e => console.log('[RCON] Post-match reset skipped:', e.message));
     } catch (err) {
@@ -2344,8 +2348,8 @@ class DiscordBot {
         );
       }
     }, 6000);
-    // Check if the active season has hit its configured end condition
-    this._checkSeasonEndCondition().catch(e => console.error('[Season] End check error:', e.message));
+    // Season end check is triggered from _processRatings() (after ratings are updated)
+    // so the final match's MMR changes are reflected in the summary.
   }
 
   async _checkSeasonEndCondition() {
@@ -2442,10 +2446,10 @@ class DiscordBot {
         );
       }
 
-      // Only activate a season created AFTER the one that just closed — prevents
-      // accidentally re-activating an old inactive season with a lower id.
+      // Activate the next explicitly-pending season. Using season_status='pending'
+      // is precise — it won't accidentally activate an old inactive/deactivated season.
       const { rows } = await db.getPool().query(
-        `SELECT * FROM seasons WHERE active = false AND is_legacy = false AND id > $1 ORDER BY id ASC LIMIT 1`,
+        `SELECT * FROM seasons WHERE season_status = 'pending' AND id > $1 ORDER BY id ASC LIMIT 1`,
         [season.id]
       );
       const nextSeason = rows[0];
@@ -2589,6 +2593,9 @@ class DiscordBot {
     } catch (err) {
       console.error('[Ratings] Update error:', err.message);
     }
+    // Check season end condition AFTER ratings are updated so the final
+    // match's MMR changes are included in any summary that gets generated.
+    this._checkSeasonEndCondition().catch(e => console.error('[Season] End check error:', e.message));
   }
 
   async _cmdTop(msg, args) {

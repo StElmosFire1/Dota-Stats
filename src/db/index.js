@@ -475,6 +475,9 @@ async function init() {
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS buyin_amount_cents INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS end_date TIMESTAMPTZ`);
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS match_count_limit INTEGER`);
+    await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS season_status TEXT NOT NULL DEFAULT 'pending'`);
+    await p.query(`UPDATE seasons SET season_status = 'active' WHERE active = true AND season_status = 'pending'`);
+    await p.query(`UPDATE seasons SET season_status = 'archived' WHERE is_legacy = true AND season_status = 'pending'`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS season_buyins (
@@ -1338,9 +1341,9 @@ async function getSeasonTierPlayers(seasonId, tierNumber) {
 
 async function setActiveSeason(id) {
   const p = getPool();
-  await p.query(`UPDATE seasons SET active = false`);
+  await p.query(`UPDATE seasons SET active = false, season_status = 'archived' WHERE active = true`);
   const result = await p.query(
-    `UPDATE seasons SET active = true WHERE id = $1 RETURNING *`,
+    `UPDATE seasons SET active = true, season_status = 'active' WHERE id = $1 RETURNING *`,
     [id]
   );
   return result.rows[0];
@@ -1351,7 +1354,7 @@ async function archiveSeason(id) {
   await p.query('BEGIN');
   try {
     await p.query(
-      `UPDATE seasons SET active = false, is_legacy = true WHERE id = $1`,
+      `UPDATE seasons SET active = false, is_legacy = true, season_status = 'archived' WHERE id = $1`,
       [id]
     );
     await p.query(
@@ -1385,14 +1388,14 @@ async function getSeasonSummary(seasonId) {
             COUNT(DISTINCT ps.account_id) FILTER (WHERE ps.account_id != 0) AS total_players
      FROM matches m
      JOIN player_stats ps ON ps.match_id = m.match_id
-     WHERE m.season_id = $1 AND m.is_legacy = false`,
+     WHERE m.season_id = $1`,
     [sid]
   );
   const overview = overviewR.rows[0] || {};
 
   const dateR = await p.query(
     `SELECT MIN(m.date) AS start_date, MAX(m.date) AS end_date
-     FROM matches m WHERE m.season_id = $1 AND m.is_legacy = false`,
+     FROM matches m WHERE m.season_id = $1`,
     [sid]
   );
   const dates = dateR.rows[0] || {};
@@ -1406,7 +1409,7 @@ async function getSeasonSummary(seasonId) {
      JOIN matches m ON m.match_id = ps.match_id
      LEFT JOIN ratings r ON r.player_id = ps.account_id
      LEFT JOIN nicknames n ON n.account_id = ps.account_id
-     WHERE m.season_id = $1 AND m.is_legacy = false AND ps.account_id != 0
+     WHERE m.season_id = $1 AND ps.account_id != 0
      ORDER BY ps.account_id, r.mmr DESC NULLS LAST`,
     [sid]
   );
@@ -1420,7 +1423,7 @@ async function getSeasonSummary(seasonId) {
             SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
      FROM player_stats ps
      JOIN matches m ON m.match_id = ps.match_id
-     WHERE m.season_id = $1 AND m.is_legacy = false
+     WHERE m.season_id = $1
        AND ps.hero_id IS NOT NULL AND ps.hero_id != 0
        AND ps.hero_name IS NOT NULL AND ps.hero_name != ''
      GROUP BY ps.hero_id, ps.hero_name
@@ -1439,7 +1442,7 @@ async function getSeasonSummary(seasonId) {
        SELECT rh.player_id, rh.mmr, rh.recorded_at
        FROM rating_history rh
        WHERE rh.match_id IN (
-         SELECT match_id::text FROM matches WHERE season_id = $1 AND is_legacy = false
+         SELECT match_id::text FROM matches WHERE season_id = $1
        )
      ),
      ordered AS (
@@ -1477,7 +1480,7 @@ async function getSeasonSummary(seasonId) {
               CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END AS won
        FROM player_stats ps
        JOIN matches m ON m.match_id = ps.match_id
-       WHERE m.season_id = $1 AND m.is_legacy = false AND ps.account_id != 0
+       WHERE m.season_id = $1 AND ps.account_id != 0
      ),
      numbered AS (
        SELECT *,
