@@ -1273,7 +1273,18 @@ function _scNoAlias(seasonId, params) {
 
 async function getSeasons() {
   const p = getPool();
-  const result = await p.query(`SELECT * FROM seasons ORDER BY start_date DESC`);
+  const result = await p.query(`
+    SELECT s.*,
+           COALESCE(mc.match_count, 0)::integer AS match_count
+    FROM seasons s
+    LEFT JOIN (
+      SELECT season_id, COUNT(*) AS match_count
+      FROM matches
+      WHERE season_id IS NOT NULL
+      GROUP BY season_id
+    ) mc ON mc.season_id = s.id
+    ORDER BY s.start_date DESC
+  `);
   return result.rows;
 }
 

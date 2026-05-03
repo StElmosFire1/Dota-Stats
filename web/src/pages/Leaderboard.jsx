@@ -340,6 +340,58 @@ function FormDots({ results }) {
   );
 }
 
+function SeasonEndBanner({ season }) {
+  if (!season || (!season.end_date && !season.match_count_limit)) return null;
+
+  const now = new Date();
+  const parts = [];
+
+  if (season.end_date) {
+    const end = new Date(season.end_date);
+    const diffMs = end - now;
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays > 0) {
+      parts.push({ icon: '📅', text: `Ends in ${diffDays} day${diffDays !== 1 ? 's' : ''}`, sub: end.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) });
+    } else {
+      parts.push({ icon: '📅', text: 'Season ending soon', sub: end.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) });
+    }
+  }
+
+  if (season.match_count_limit) {
+    const played = season.match_count ?? 0;
+    const remaining = Math.max(0, season.match_count_limit - played);
+    parts.push({ icon: '🎮', text: `${remaining} match${remaining !== 1 ? 'es' : ''} remaining`, sub: `${played} of ${season.match_count_limit} played` });
+  }
+
+  if (parts.length === 0) return null;
+
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20,
+      padding: '12px 16px',
+      background: 'linear-gradient(135deg, rgba(124,107,255,0.08) 0%, var(--bg-card) 100%)',
+      border: '1px solid rgba(124,107,255,0.3)', borderRadius: 10,
+      alignItems: 'center',
+    }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent, #7c6bff)', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 4 }}>
+        Season closes
+      </span>
+      {parts.map((p, i) => (
+        <span key={i} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          background: 'var(--bg-hover)', border: '1px solid var(--border)',
+          borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600,
+          color: 'var(--text-primary)',
+        }}>
+          <span>{p.icon}</span>
+          <span>{p.text}</span>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>({p.sub})</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function Leaderboard() {
   const { seasonId, seasons } = useSeason();
   const showSeasonPass = useFeatureFlag('season_pass_s10');
@@ -412,6 +464,12 @@ export default function Leaderboard() {
   return (
     <div>
       <h1 className="page-title">Leaderboard</h1>
+
+      {/* Season end conditions banner */}
+      {(() => {
+        const season = seasons.find(s => String(s.id) === String(seasonId));
+        return season?.active ? <SeasonEndBanner season={season} /> : null;
+      })()}
 
       {/* Most Improved Widget */}
       {(() => {

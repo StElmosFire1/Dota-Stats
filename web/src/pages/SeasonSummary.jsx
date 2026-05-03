@@ -58,6 +58,8 @@ export default function SeasonSummary() {
 
   const fmtDate = d => d ? new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
 
+  const hasEndConditions = season?.end_date || season?.match_count_limit;
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
       <div style={{ marginBottom: 8 }}>
@@ -80,7 +82,7 @@ export default function SeasonSummary() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 32 }}>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: hasEndConditions ? 16 : 32 }}>
         <StatCard label="Total Matches" value={summary.overview.totalMatches} accent="var(--accent, #7c6bff)" />
         <StatCard label="Players" value={summary.overview.totalPlayers} />
         {summary.heroOfSeason && (
@@ -92,6 +94,46 @@ export default function SeasonSummary() {
           />
         )}
       </div>
+
+      {hasEndConditions && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 32,
+          padding: '12px 16px',
+          background: 'linear-gradient(135deg, rgba(124,107,255,0.08) 0%, var(--bg-card) 100%)',
+          border: '1px solid rgba(124,107,255,0.3)', borderRadius: 10,
+          alignItems: 'center',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent, #7c6bff)', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 4 }}>
+            Season end conditions
+          </span>
+          {season.end_date && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'var(--bg-hover)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600,
+              color: 'var(--text-primary)',
+            }}>
+              <span>📅</span>
+              <span>End date</span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>{fmtDate(season.end_date)}</span>
+            </span>
+          )}
+          {season.match_count_limit && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'var(--bg-hover)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600,
+              color: 'var(--text-primary)',
+            }}>
+              <span>🎮</span>
+              <span>Match limit</span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>
+                {summary.overview.totalMatches} of {season.match_count_limit} played
+              </span>
+            </span>
+          )}
+        </div>
+      )}
 
       {summary.topPlayers?.length > 0 && (
         <section style={{ marginBottom: 32 }}>
