@@ -2388,6 +2388,17 @@ class DiscordBot {
 
   async _closeSeasonAndAnnounce(season) {
     try {
+      // Idempotency guard: re-fetch the season inside the transaction to confirm it
+      // is still active. If a concurrent call already closed it, bail out silently.
+      const { rows: check } = await db.getPool().query(
+        `SELECT id FROM seasons WHERE id = $1 AND active = true AND season_status = 'active'`,
+        [season.id]
+      );
+      if (!check.length) {
+        console.log(`[Season] ${season.name} already closed by a concurrent call — skipping.`);
+        return;
+      }
+
       const summary = await db.getSeasonSummary(season.id);
 
       await db.archiveSeason(season.id);

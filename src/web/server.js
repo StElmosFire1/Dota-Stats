@@ -1577,9 +1577,19 @@ function createApiRouter(startupStatus = {}) {
       const id = parseInt(req.params.id);
       if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
       const { end_date, match_count_limit } = req.body;
+
+      if (end_date != null && end_date !== '') {
+        const d = new Date(end_date);
+        if (isNaN(d.getTime())) return res.status(400).json({ error: 'Invalid end_date — must be an ISO 8601 date string' });
+      }
+      if (match_count_limit != null && match_count_limit !== '') {
+        const n = parseInt(match_count_limit);
+        if (!Number.isFinite(n) || n < 1) return res.status(400).json({ error: 'Invalid match_count_limit — must be a positive integer' });
+      }
+
       const season = await db.setSeasonEndConditions(id, {
         endDate: end_date || null,
-        matchCountLimit: match_count_limit != null ? parseInt(match_count_limit) : null,
+        matchCountLimit: match_count_limit != null && match_count_limit !== '' ? parseInt(match_count_limit) : null,
       });
       if (!season) return res.status(404).json({ error: 'Season not found' });
       res.json({ season });
