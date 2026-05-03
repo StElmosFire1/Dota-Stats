@@ -1,0 +1,278 @@
+root@Dota-Stats:~/Dota-Stats-Full# grep "CHANNEL" /root/Dota-Stats/.env
+ANNOUNCE_CHANNEL_ID=1380084621676646453
+ANNOUNCE_CHANNEL_ID=1380084577028014120
+SCHEDULE_CHANNEL_IDS=1380084577028014120,1491698748966043769
+STATS_CHANNEL_IDS=1380084621676646453,1491698774425211030
+PATCH_CHANNEL_IDS=1380084621676646453,1491698840959582229
+root@Dota-Stats:~/Dota-Stats-Full# pm2 logs oi-bot --lines 30
+[TAILING] Tailing last 30 lines for [oi-bot] process (change the value with --lines option)
+/root/.pm2/logs/oi-bot-out.log last 30 lines:
+1|oi-bot   | [Steam] Friend lively crowd detected in Dota 2 lobby: 29822498707547620
+1|oi-bot   | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: lively crowd)
+1|oi-bot   | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot   | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot   | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot   | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot   | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot   | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: LT!)
+1|oi-bot   | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot   | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot   | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot   | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot   | 
+1|oi-bot   | [Startup] Bot is running! Use !help in Discord.
+1|oi-bot   | [Startup] Active features:
+1|oi-bot   |   - Discord:        YES
+1|oi-bot   |   - Database:       YES
+1|oi-bot   |   - Steam:          YES (connected)
+1|oi-bot   |   - Replay parser:  NO (header-only)
+1|oi-bot   |   - TrueSkill MMR:  YES
+1|oi-bot   |   - Google Sheets:  DORMANT
+1|oi-bot   |   - Match poller:   DORMANT
+1|oi-bot   |   - Lobby/monitor:  YES
+1|oi-bot   | [Web] Dashboard running on port 3001
+1|oi-bot   | [Startup] All systems ready.
+1|oi-bot   | 
+1|oi-bot   | [Discord] Bot online as Dota Bot 2#6555
+1|oi-bot   | [Discord] Weekly recap scheduled (Mondays 9am AEST).
+1|oi-bot   | [Discord] Season 10 launch is manual-only (Admin Panel button).
+1|oi-bot   | [Discord] Coaching reminder + auto-release crons scheduled.
+
+/root/.pm2/logs/oi-bot-error.log last 30 lines:
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | (node:3498) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+1|oi-bot   | (Use `node --trace-deprecation ...` to show where the warning was created)
+
+1|oi-bot  | [PatchNotes] 95 unannounced note(s): v0.1, v0.2, v0.3, v0.4, v0.5, v0.6, v1.5, v1.2, v1.0, v1.6, v0.7, v1.1, v1.3, v1.4, v0.8, v1.8, v0.9, v1.7, v2.7, v2.8, v2.3, v2.6, v2.9, v2.1, v2.2, v2.0, v3.0, v2.5, v2.4, v3.1, v3.2, v3.3, v4.0, v4.1, v4.3, v4.2, v4.4, v4.5, v4.6, v4.7, v4.8, v4.9, v5.0, v5.2, v5.1, v5.5, v5.4, v5.3, v5.7, v5.17, v5.13, v5.16, v5.12, v5.11, v5.9, v5.8, v5.6, v5.15, v5.14, v5.18, v5.10, v5.22, v5.20, v5.21, v5.24, v5.19, v5.23, v5.25, v5.26, v5.27, v5.28, v5.29, v5.30, v5.32, v5.31, v5.33, v5.34, v5.35, v5.36, v5.37, v5.38, v5.39, v5.41, v5.40, v5.43, v5.42, v5.47, v5.45, v5.44, v5.48, v5.46, v5.49, v5.50, v5.52, v5.51
+1|oi-bot  | [PatchNotes] Posting to 1 channel(s)...
+1|oi-bot  | [PatchNotes] Announced v0.1 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.1 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v0.2 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.2 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v0.3 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.3 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v0.4 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.4 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v0.5 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.5 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v0.6 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.6 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.5 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.5 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.2 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.2 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.0 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.0 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.6 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.6 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v0.7 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.7 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.1 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.1 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.3 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.3 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.4 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.4 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v0.8 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.8 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.8 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.8 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v0.9 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v0.9 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v1.7 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v1.7 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.7 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.7 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.8 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.8 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.3 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.3 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.6 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.6 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.9 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.9 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.1 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.1 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.2 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.2 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.0 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.0 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v3.0 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v3.0 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.5 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.5 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v2.4 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v2.4 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v3.1 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v3.1 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v3.2 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v3.2 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v3.3 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v3.3 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.0 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.0 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.1 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.1 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.3 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.3 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.2 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.2 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.4 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.4 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.5 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.5 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.6 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.6 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.7 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.7 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.8 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.8 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v4.9 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v4.9 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.0 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.0 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.2 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.2 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.1 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.1 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.5 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.5 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.4 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.4 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.3 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.3 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.7 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.7 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.17 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.17 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.13 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.13 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.16 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.16 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.12 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.12 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.11 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.11 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.9 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.9 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.8 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.8 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.6 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.6 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.15 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.15 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.14 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.14 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.18 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.18 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.10 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.10 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.22 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.22 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.20 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.20 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.21 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.21 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.24 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.24 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.19 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.19 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.23 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.23 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.25 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.25 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.26 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.26 marked as announced.
+1|oi-bot  | [Steam] Friend lively crowd detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: lively crowd)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [PatchNotes] Announced v5.27 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.27 marked as announced.
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [PatchNotes] Announced v5.28 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.28 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.29 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.29 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.30 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.30 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.32 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.32 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.31 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.31 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.33 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.33 marked as announced.
+1|oi-bot  | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: LT!)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [PatchNotes] Announced v5.34 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.34 marked as announced.
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [PatchNotes] Announced v5.35 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.35 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.36 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.36 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.37 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.37 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.38 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.38 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.39 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.39 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.41 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.41 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.40 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.40 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.43 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.43 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.42 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.42 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.47 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.47 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.45 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.45 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.44 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.44 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.48 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.48 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.46 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.46 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.49 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.49 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.50 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.50 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.52 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.52 marked as announced.
+1|oi-bot  | [PatchNotes] Announced v5.51 in channel 1491698840959582229.
+1|oi-bot  | [PatchNotes] v5.51 marked as announced.

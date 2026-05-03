@@ -1,0 +1,462 @@
+root@Dota-Stats:~# cd /root/Dota-Stats-Full && pm2 start src/index.js --name "oi-bot" && pm2 save
+[PM2] Starting /root/Dota-Stats-Full/src/index.js in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ inhouse-bot        │ fork     │ 0    │ online    │ 0%       │ 222.3mb  │
+│ 1  │ oi-bot             │ fork     │ 0    │ online    │ 0%       │ 18.4mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /root/.pm2/dump.pm2
+root@Dota-Stats:~/Dota-Stats-Full# pm2 logs oi-bot --lines 30
+[TAILING] Tailing last 30 lines for [oi-bot] process (change the value with --lines option)
+/root/.pm2/logs/oi-bot-error.log last 30 lines:
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+
+/root/.pm2/logs/oi-bot-out.log last 30 lines:
+1|oi-bot   | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+1|oi-bot   | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot   | Starting up...
+1|oi-bot   | 
+1|oi-bot   | [DB] PostgreSQL connected.
+1|oi-bot   | [DB] Schema migrations applied.
+1|oi-bot   | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot   | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot   | [Steam] Logging in...
+1|oi-bot   | [Steam] Logged in successfully.
+
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: LT!)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Steam] Friend lively crowd detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: lively crowd)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: LT!)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: LT!)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  override existing env vars with { override: true }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Steam] Friend lively crowd detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: lively crowd)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Already in a lobby (CREATING), skipping
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Steam] Friend lively crowd detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: lively crowd)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Already in a lobby (CREATING), skipping
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Steam] Friend lively crowd detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: lively crowd)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Already in a lobby (CREATING), skipping
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.
+1|oi-bot  | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot  | [Steam] Dota 2 GC is ready!
+1|oi-bot  | [Dota2 GC] GC version from welcome: 6781
+1|oi-bot  | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot  | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot  | [Startup] Steam connected.
+1|oi-bot  | [Startup] Initialising lobby manager...
+1|oi-bot  | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot  | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot  | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot  | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot  | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot  | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot  | [Steam] Friend LT! detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: LT!)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Steam] Friend lively crowd detected in Dota 2 lobby: 29822498707547620
+1|oi-bot  | [FriendMonitor] Auto-joining lobby 29822498707547620 (friend: lively crowd)
+1|oi-bot  | [Dota2 GC] Join buffer (9 bytes): 09e425c79167f36900
+1|oi-bot  | [Dota2 GC] Sending k_EMsgGCPracticeLobbyJoin (7044) for lobby: 29822498707547620
+1|oi-bot  | [Dota2 GC] Lobby join request sent successfully
+1|oi-bot  | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot  | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot  | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot  | [dotenv@17.3.1] injecting env (19) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+1|oi-bot  | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot  | Starting up...
+1|oi-bot  | [DB] PostgreSQL connected.
+1|oi-bot  | [DB] Schema migrations applied.
+1|oi-bot  | [DB] Patch notes seeded/updated (95 entries).
+1|oi-bot  | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot  | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot  | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot  | [Steam] Logging in...
+1|oi-bot  | [Steam] Logged in successfully.

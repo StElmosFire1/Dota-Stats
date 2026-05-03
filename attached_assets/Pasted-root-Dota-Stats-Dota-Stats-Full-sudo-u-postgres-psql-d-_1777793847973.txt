@@ -1,0 +1,116 @@
+root@Dota-Stats:~/Dota-Stats-Full# sudo -u postgres psql -d dota_inhouse_full -c "\d patch_notes"
+                                        Table "public.patch_notes"
+    Column    |           Type           | Collation | Nullable |                 Default                 
+--------------+--------------------------+-----------+----------+-----------------------------------------
+ id           | integer                  |           | not null | nextval('patch_notes_id_seq'::regclass)
+ version      | character varying(20)    |           | not null | 
+ title        | character varying(200)   |           | not null | 
+ content      | text                     |           | not null | 
+ author       | character varying(100)   |           |          | 
+ published_at | timestamp with time zone |           | not null | now()
+ created_at   | timestamp with time zone |           | not null | now()
+ announced_at | timestamp with time zone |           |          | now()
+Indexes:
+    "patch_notes_pkey" PRIMARY KEY, btree (id)
+    "idx_patch_notes_version" UNIQUE, btree (version)
+
+root@Dota-Stats:~/Dota-Stats-Full# sudo -u postgres psql -d dota_inhouse_full -c "UPDATE patch_notes SET announced_at = now() WHERE announced_at IS NULL;"
+UPDATE 0
+root@Dota-Stats:~/Dota-Stats-Full# pm2 logs oi-bot --lines 20 --nostream
+[TAILING] Tailing last 20 lines for [oi-bot] process (change the value with --lines option)
+/root/.pm2/logs/oi-bot-error.log last 20 lines:
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Discord bot failed to start: Used disallowed intents
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | (node:3498) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+1|oi-bot   | (Use `node --trace-deprecation ...` to show where the warning was created)
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Replay] Parser JAR not found. Full replay parsing disabled.
+1|oi-bot   | [Replay] Run: cd odota-parser && mvn install -DskipTests
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | (node:3654) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+1|oi-bot   | (Use `node --trace-deprecation ...` to show where the warning was created)
+
+/root/.pm2/logs/oi-bot-out.log last 20 lines:
+1|oi-bot   | [Dota2 GC] Lobby join response received (raw): result=2
+1|oi-bot   | 
+1|oi-bot   | [Startup] Bot is running! Use !help in Discord.
+1|oi-bot   | [Startup] Active features:
+1|oi-bot   |   - Discord:        YES
+1|oi-bot   |   - Database:       YES
+1|oi-bot   |   - Steam:          YES (connected)
+1|oi-bot   |   - Replay parser:  NO (header-only)
+1|oi-bot   |   - TrueSkill MMR:  YES
+1|oi-bot   |   - Google Sheets:  DORMANT
+1|oi-bot   |   - Match poller:   DORMANT
+1|oi-bot   |   - Lobby/monitor:  YES
+1|oi-bot   | [Web] Dashboard running on port 3001
+1|oi-bot   | [Startup] All systems ready.
+1|oi-bot   | 
+1|oi-bot   | [Discord] Bot online as Dota Bot 2#6555
+1|oi-bot   | [Discord] Weekly recap scheduled (Mondays 9am AEST).
+1|oi-bot   | [Discord] Season 10 launch is manual-only (Admin Panel button).
+1|oi-bot   | [Discord] Coaching reminder + auto-release crons scheduled.
+1|oi-bot   | [PatchNotes] No new patch notes to announce.
+
+root@Dota-Stats:~/Dota-Stats-Full# pm2 logs inhouse-bot --lines 20 --nostream
+[TAILING] Tailing last 20 lines for [inhouse-bot] process (change the value with --lines option)
+/root/.pm2/logs/inhouse-bot-out.log last 20 lines:
+0|inhouse- | [Dota2 GC] Lobby join response received (raw): result=2
+0|inhouse- | 
+0|inhouse- | [Startup] Bot is running! Use !help in Discord.
+0|inhouse- | [Startup] Active features:
+0|inhouse- |   - Discord:        YES
+0|inhouse- |   - Database:       YES
+0|inhouse- |   - Steam:          YES (connected)
+0|inhouse- |   - Replay parser:  YES (full stats)
+0|inhouse- |   - TrueSkill MMR:  YES
+0|inhouse- |   - Google Sheets:  DORMANT
+0|inhouse- |   - Match poller:   DORMANT
+0|inhouse- |   - Lobby/monitor:  YES
+0|inhouse- | [Web] Dashboard running on port 5000
+0|inhouse- | [Startup] All systems ready.
+0|inhouse- | 
+0|inhouse- | [Discord] Bot online as Dota Bot#5597
+0|inhouse- | [Discord] Weekly recap scheduled (Mondays 9am AEST).
+0|inhouse- | [Discord] Season 10 launch is manual-only (Admin Panel button).
+0|inhouse- | [Discord] Coaching reminder + auto-release crons scheduled.
+0|inhouse- | [PatchNotes] No new patch notes to announce.
+
+/root/.pm2/logs/inhouse-bot-error.log last 20 lines:
+0|inhouse- | - /root/Dota-Stats/src/web/server.js
+0|inhouse- | - /root/Dota-Stats/src/index.js
+0|inhouse- | [Steam] addFriend 76561197990518588 failed: Ignored
+0|inhouse- | [FriendMonitor] Failed to auto-join lobby 29822498707547620: Failed to join lobby: Lobby join failed with result: 2
+0|inhouse- | [Steam] addFriend 76561198290102820 failed: DuplicateName
+0|inhouse- | (node:3607) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+0|inhouse- | (Use `node --trace-deprecation ...` to show where the warning was created)
+0|inhouse- | [Steam] Session replaced by another login — Steam disconnected. Bot continues running without Steam.
+0|inhouse- | [Steam] Marked offline in health status (reason: LogonSessionReplaced)
+0|inhouse- | [Dota2 GC] Disconnected from GC: 2
+0|inhouse- | [Steam] addFriend 76561198963126416 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198007156770 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198020190745 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198240294876 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561199159701780 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198112868440 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198162281058 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198232809760 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198028725211 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561197995001272 failed: Request timed out
+
+root@Dota-Stats:~/Dota-Stats-Full# pm2 logs inhouse-bot --lines 5 --nostream | grep Steam
+0|inhouse- | [Steam] addFriend 76561198162281058 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198232809760 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198028725211 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561197995001272 failed: Request timed out
+0|inhouse- | [Steam] addFriend 76561198027499703 failed: Request timed out
