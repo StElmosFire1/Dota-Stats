@@ -1633,6 +1633,126 @@ function SteamBotPanel({ superuserKey }) {
   );
 }
 
+function EngagementSettingsPanel({ superuserKey, siteSettings, onSaved }) {
+  const [milestones, setMilestones] = React.useState('');
+  const [referralXp, setReferralXp] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  React.useEffect(() => {
+    if (siteSettings.engagement_milestone_thresholds !== undefined) {
+      setMilestones(siteSettings.engagement_milestone_thresholds ?? '50,100,150,200');
+    }
+    if (siteSettings.engagement_referral_xp !== undefined) {
+      setReferralXp(siteSettings.engagement_referral_xp ?? '50');
+    }
+  }, [siteSettings.engagement_milestone_thresholds, siteSettings.engagement_referral_xp]);
+
+  const saveSetting = async (key, value) => {
+    const r = await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+      body: JSON.stringify({ key, value }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed');
+  };
+
+  const handleSave = async () => {
+    const thresholdNums = milestones.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+    if (thresholdNums.length === 0) {
+      setMsg('Error: Enter at least one valid milestone number.');
+      return;
+    }
+    const xpNum = parseInt(referralXp, 10);
+    if (isNaN(xpNum) || xpNum < 0) {
+      setMsg('Error: Referral XP must be a non-negative number.');
+      return;
+    }
+    setSaving(true);
+    setMsg('');
+    try {
+      await Promise.all([
+        saveSetting('engagement_milestone_thresholds', thresholdNums.join(',')),
+        saveSetting('engagement_referral_xp', String(xpNum)),
+      ]);
+      setMsg('Saved.');
+      if (onSaved) onSaved();
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section style={{ marginTop: 32 }}>
+      <h2 style={{ marginBottom: 6 }}>🎯 Engagement</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Configure milestone thresholds and referral XP. Changes take effect immediately — no redeploy required.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 480 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+            Milestone thresholds (comma-separated match counts)
+          </label>
+          <input
+            type="text"
+            value={milestones}
+            onChange={e => setMilestones(e.target.value)}
+            placeholder="50,100,150,200"
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '7px 10px', borderRadius: 6,
+              border: '1px solid var(--border)',
+              background: 'var(--bg-card)', color: 'var(--text-primary)',
+              fontSize: 14,
+            }}
+          />
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+            A Discord announcement is posted when a player's total match count hits any of these values.
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+            Referral XP amount
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={referralXp}
+            onChange={e => setReferralXp(e.target.value)}
+            placeholder="50"
+            style={{
+              width: 120,
+              padding: '7px 10px', borderRadius: 6,
+              border: '1px solid var(--border)',
+              background: 'var(--bg-card)', color: 'var(--text-primary)',
+              fontSize: 14,
+            }}
+          />
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+            XP granted to the referrer when a player they invited completes registration.
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn btn-primary" disabled={saving} onClick={handleSave}>
+            {saving ? 'Saving…' : 'Save Engagement Settings'}
+          </button>
+          {msg && (
+            <span style={{ fontSize: 13, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)' }}>
+              {msg}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function AdminPanel() {
   const { isSuperuser, superuserKey, logout } = useSuperuser();
   const { activeSeason } = useSeason();
@@ -2100,6 +2220,9 @@ export default function AdminPanel() {
           </div>
         )}
       </section>
+
+      {/* ── Engagement Settings ──────────────────────────────────────── */}
+      <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
 
       {/* ── Dota Rank Management ─────────────────────────────────────── */}
       <section className="admin-section" style={{ marginTop: 32 }}>

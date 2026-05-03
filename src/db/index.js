@@ -846,6 +846,14 @@ async function init() {
       `INSERT INTO site_settings (key, value) VALUES ('use_v3_trueskill', 'false')
        ON CONFLICT (key) DO NOTHING`
     );
+    await p.query(
+      `INSERT INTO site_settings (key, value) VALUES ('engagement_milestone_thresholds', '50,100,150,200')
+       ON CONFLICT (key) DO NOTHING`
+    );
+    await p.query(
+      `INSERT INTO site_settings (key, value) VALUES ('engagement_referral_xp', '50')
+       ON CONFLICT (key) DO NOTHING`
+    );
 
     // Feature flags — three-state toggle (off / preview / on) used to stage
     // new features behind a superuser-only "preview" gate before launching to

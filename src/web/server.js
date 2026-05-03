@@ -3987,7 +3987,7 @@ NOTES
 
   // Allowlist of settings keys writable via this endpoint — prevents the
   // generic key/value store from being abused as a free-form admin scratchpad.
-  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill']);
+  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill', 'engagement_milestone_thresholds', 'engagement_referral_xp']);
 
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.
@@ -4089,6 +4089,18 @@ NOTES
       }
       if (!ALLOWED_SETTING_KEYS.has(key)) {
         return res.status(400).json({ error: `setting key "${key}" is not writable` });
+      }
+      if (key === 'engagement_milestone_thresholds') {
+        const nums = String(value || '').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+        if (nums.length === 0) {
+          return res.status(400).json({ error: 'engagement_milestone_thresholds must be a comma-separated list of positive integers' });
+        }
+      }
+      if (key === 'engagement_referral_xp') {
+        const xp = parseInt(value, 10);
+        if (isNaN(xp) || xp < 0) {
+          return res.status(400).json({ error: 'engagement_referral_xp must be a non-negative integer' });
+        }
       }
       const stored = await db.setSetting(key, value);
       res.json({ setting: stored });
@@ -4599,7 +4611,8 @@ NOTES
       const origin = process.env.SITE_URL
         || `${req.protocol}://${req.get('host')}`;
       const inviteUrl = `${origin}/join?ref=${accountId}`;
-      const referralXp = parseInt(process.env.REFERRAL_XP || '50', 10);
+      const storedReferralXp = await db.getSetting('engagement_referral_xp').catch(() => null);
+      const referralXp = parseInt(storedReferralXp || process.env.REFERRAL_XP || '50', 10);
       res.json({ inviteUrl, accountId, referralXp });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -4689,7 +4702,8 @@ NOTES
                   if (activeSeason) {
                     const referralRecorded = await db.setPlayerReferredBy(newAccountId32, referralStr);
                     if (referralRecorded) {
-                      const referralXpAmount = parseInt(process.env.REFERRAL_XP || '50', 10);
+                      const storedXp = await db.getSetting('engagement_referral_xp').catch(() => null);
+                      const referralXpAmount = parseInt(storedXp || process.env.REFERRAL_XP || '50', 10);
                       const granted = await db.grantReferralXp(referralStr, newAccountId32, activeSeason.id, referralXpAmount);
                       if (granted) {
                         console.log(`[Referral] Granted ${referralXpAmount} XP to account ${referralStr} for referring ${newAccountId32}`);

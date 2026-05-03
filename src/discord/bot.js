@@ -4836,12 +4836,25 @@ class DiscordBot {
       || (config.discord.statsChannelIds.length > 0 ? config.discord.statsChannelIds[0] : null);
     if (!channelId) return;
 
+    const DEFAULT_MILESTONES = [50, 100, 150, 200];
+    let milestoneThresholds = DEFAULT_MILESTONES;
+    try {
+      const stored = await db.getSetting('engagement_milestone_thresholds');
+      if (stored) {
+        const parsed = stored.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+        if (parsed.length > 0) milestoneThresholds = parsed;
+      }
+    } catch (e) {
+      console.warn('[Milestone] Could not load thresholds from settings, using defaults:', e.message);
+    }
+    const milestoneSet = new Set(milestoneThresholds);
+
     for (const pl of players) {
       const accountId = pl.accountId || pl.account_id;
       if (!accountId || accountId === 0 || accountId === '0') continue;
       try {
         const count = await db.getPlayerMatchCount(accountId);
-        if (count < 50 || count % 50 !== 0) continue;
+        if (!milestoneSet.has(count)) continue;
         const milestone = count;
 
         const channel = this.client.channels.cache.get(channelId)
