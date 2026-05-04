@@ -11,9 +11,11 @@ After completing a meaningful batch of changes, add a single grouped entry to `s
 After completing any set of changes and rebuilding, the latest commit is pushed to GitHub automatically by the post-merge hook (`scripts/post-merge.sh`), which runs after the platform's auto-commit and uses the `GITHUB_PERSONAL_ACCESS_TOKEN` secret with this credential-helper one-liner:
 `git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin HEAD:main`
 
-The bot runs under PM2. Standard deploy command:
-`cd ~/Dota-Stats && bash deploy.sh`
-This script: pulls latest code (`git reset --hard origin/main`), runs `npm install` in the `web/` dir, builds the frontend (`npm run build`), then restarts PM2 process 2.
+The bot runs under PM2. The prod host has **two separate checkouts** side-by-side:
+- `~/Dota-Stats-Full/` — **full edition** (OCE Inhouse, `oceinhouse.gg`). Standard deploy: `cd ~/Dota-Stats-Full && bash deploy.sh`
+- `~/Dota-Stats/` — **community edition**. Standard deploy: `cd ~/Dota-Stats && bash deploy.sh`
+
+Each `deploy.sh`: pulls latest code (`git reset --hard origin/main`), runs `npm install` in the `web/` dir, builds the frontend (`npm run build`), then restarts the matching PM2 process. Always confirm you're in the correct directory before deploying — running the wrong one will swap a site to the wrong edition.
 The Java replay parser jar (`odota-parser/target/stats-0.1.0.jar`) is rebuilt automatically on each deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and `scripts/post-merge.sh`). The script only re-runs `mvn install -DskipTests` when the jar is missing or older than any file under `odota-parser/src/` or `odota-parser/pom.xml`, so normal restarts are no-ops. To force a manual rebuild, run `npm run build:parser`.
 
 Both `deploy.sh` and `scripts/post-merge.sh` run `bash scripts/build-parser.sh --check` (also exposed as `npm run check:parser`) as a hard gate **before** any local rebuild. The check exits non-zero if the committed jar is older than any file under `odota-parser/src/` (whole tree, not just `src/main/java`) or `odota-parser/pom.xml`, so a deploy/post-merge with a stale committed jar fails fast and cannot be silently self-healed by a rebuild on the deploy host. The check never invokes Maven, so it is also safe to wire into CI runners without a JDK.
