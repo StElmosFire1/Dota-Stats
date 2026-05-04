@@ -1,0 +1,98 @@
+Replit, you built the entire Dota stats site (dota.stats.corvidaeinc.com) and know the full codebase, database schema, match parsing pipeline, models, routes, frontend templates, and how we currently parse and store matches.
+
+Because these are private practice lobbies, we cannot use STRATZ IMP. Instead, implement a fully custom "PERF" (Positive Impact Score) out of 10 using ONLY our own parsed replay data and historical database.
+
+PERF Philosophy (exactly what we want):
+- Measures true positive impact toward winning the game across the full duration.
+- 5.0 = exactly average performance for that position in our inhouses.
+- 9.0+ = exceptional positive impact (top ~1% historically in that position).
+- 10.0 is achievable for historically god-tier performances.
+- Fully role/position-aware (Pos 1–5 normalized separately).
+- Strongly credits early game (minutes 0–5 and 0–10) for lane dominance.
+- Penalizes AFK/passive play (e.g. long jungle farming with low fight/objective contribution in the middle of the game).
+
+Implementation Requirements:
+
+1. Database Changes
+   - Add a new decimal field `perf` (nullable, default null, indexed) to the player-match / participant table.
+   - Enhance the existing match data model to better support per-minute time series (add or expand tables/JSON fields for gold_t, lh_t, xp_t, net_worth_t, wards_placed_up_to_t, etc. if not already fully present).
+
+2. Improve the Replay Parser (Critical Upgrade)
+   - Update / extend the existing parser so that EVERY match stores rich per-minute data.
+   - Specifically extract and store time series for:
+     - gold_per_min_at_t, lh_at_t, xp_at_t, net_worth_at_t (for t = 0 to game length, or at least every 60 seconds)
+     - wards_placed_up_to_t, dewards_up_to_t
+     - hero_damage_up_to_t, tower_damage_up_to_t
+     - kills/deaths/assists cumulative at each minute
+     - fight participation / teamfight damage (if available from combat log)
+     - APM or actions at each minute
+     - Any other timeline data the current parser (Clarity, Smoke, or whatever we use) can provide
+   - Make this the default behavior for all new and backfilled matches. Do not fall back to end-game only — always build proper per-minute extraction.
+
+3. PERF Calculation Algorithm (Detailed & Replicable)
+   Use a high-fidelity, time-aware Performance-Index-style system:
+
+   a. Historical Baselines
+      - Build and maintain percentile tables / histograms from ALL past matches in our DB, keyed by position (1–5) and game minute.
+      - Refresh these baselines incrementally when new matches are added.
+
+   b. Key Stats (using per-minute data we will now store):
+      - Economy: gold_per_min_at_t, lh_at_t, net worth advantage curve
+      - Combat: cumulative kills/deaths/assists, hero damage, kill participation
+      - Objectives: tower damage cumulative, roshan timing, teamfight contribution
+      - Support/Utility: wards_placed_up_to_t, healing/shields, disables/stuns duration
+      - Efficiency: deaths (strongly negative), APM/activity
+      - Early game specific: stats at minute 5 and 10 (lane advantage, level advantage, rune control, first blood)
+
+   c. Per-Match Calculation (Step-by-Step – Fully Time-Aware)
+      For each player in a match:
+      1. Confirm position (1–5).
+      2. For each minute t (from 0 or 5 to game length):
+         - Convert every available stat at time t to a percentile (0–100) vs. historical same-position data at that same minute.
+         - Compute a raw PI_t using position-specific weights.
+      3. Final raw score = time-weighted rolling average of all PI_t values (give slightly higher weight to minutes 0–15 to reward early impact).
+      4. Apply a small mid-game penalty multiplier if activity/fight participation is very low during a long stretch while the team is behind.
+
+   d. Position-specific example weights (make these easily tunable in a config file):
+      - Pos 1/2: Net worth curve 0.25, Tower dmg 0.20, GPM/XPM 0.15, KDA 0.12, Hero dmg 0.10, Deaths negative 0.10, Early lane (0-10) 0.08
+      - Pos 3: Tower dmg 0.25, Kill participation 0.20, Net worth 0.15, Deaths negative 0.15, Objective control 0.15, Early game 0.10
+      - Pos 4/5: Wards/dewards 0.30, Healing/shields 0.20, Low deaths 0.15, Teamfight contrib 0.15, Early vision 0.10, Utility items 0.10
+
+   e. Final Scaling to 0–10
+      PERF = 5 + 5 * ((raw_weighted_percentile_score - 50) / 50)
+      Clip to [0, 10].
+      Use our own historical distribution so 5.0 is the true mean per position.
+
+4. Integration
+   - Hook PERF calculation into the match parsing / ingestion flow so every new match automatically gets full per-minute data + PERF.
+   - Make the function idempotent for re-processing.
+
+5. Background Job
+   - Create a background / cron / queue task to:
+     - Backfill per-minute data for all historical matches (update the parser and re-parse where needed).
+     - Then calculate and save PERF for every historical match (in safe batches of 50 with logging).
+
+6. Frontend Changes
+   - Match detail page: New prominent section/table with all 10 players' PERF, sorted descending. Label "PERF (Positive Impact Score)".
+     - Color coding: 9.0+ gold/yellow, 8.0–8.9 green, below 5 red tint.
+     - Tooltip: "PERF measures true positive impact on win probability using our inhouse data. Role-normalized, fully time-aware with per-minute stats, credits early dominance, and penalizes passive play. 9.0+ = exceptional game-swinging performance."
+   - Leaderboards: New sortable column/tab for average PERF (overall + per-position).
+   - Player profiles: Overall average PERF + recent matches with individual scores and trend.
+
+7. Code Quality & Future-Proofing
+   - Heavy commenting on every part of the algorithm.
+   - Config file for weights, stat lists, and time weights.
+   - Logging for "Calculated PERF 9.4 for player X (Pos 4)".
+   - Note in code for future upgrade path (Random Forest / LightGBM trained on our win/loss data for automatic weights).
+   - Performance: Cache historical percentiles and update them efficiently.
+
+Provide:
+- All code for parser upgrades (per-minute extraction)
+- PERF calculation service
+- DB migrations
+- Background job(s)
+- Frontend changes
+- Hook points in the existing parsing flow
+- Any new admin commands for manual backfill
+
+Make everything clean, efficient, well-commented, and production-ready. Prioritize building rich per-minute data into the parser as the foundation — this will make PERF significantly more accurate and closer to real IMP behavior.
