@@ -141,4 +141,9 @@ replays/
 *.dem.bz2
 
 # odota parser - keep source and pom, exclude build output
-odota-parser/target/
+# Keep the built parser jar tracked so prod deploys can verify it without
+# requiring Maven/JDK on the deploy host (see scripts/build-parser.sh --check).
+# Git can't re-include a file inside an ignored directory, so we ignore the
+# directory's contents instead of the directory itself, then un-ignore the jar.
+odota-parser/target/*
+!odota-parser/target/stats-0.1.0.jar

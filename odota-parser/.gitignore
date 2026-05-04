@@ -1,4 +1,5 @@
-target
+target/*
+!target/stats-0.1.0.jar
 dependency-reduced-pom.xml
 .settings
 .classpath
