@@ -1,0 +1,80 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats-Full && bash deploy.sh
+==> Pulling latest code...
+remote: Enumerating objects: 502, done.
+remote: Counting objects: 100% (502/502), done.
+remote: Compressing objects: 100% (219/219), done.
+remote: Total 448 (delta 236), reused 399 (delta 187), pack-reused 0 (from 0)
+Receiving objects: 100% (448/448), 2.95 MiB | 38.68 MiB/s, done.
+Resolving deltas: 100% (236/236), completed with 39 local objects.
+From https://github.com/StElmosFire1/Dota-Stats
+   80a532f..f53821e  main       -> origin/main
+HEAD is now at f53821e Update website branding and remove old feature flags
+==> Installing frontend dependencies...
+==> Building frontend...
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 804 modules transformed.
+dist/index.html                                  0.82 kB │ gzip:   0.44 kB
+dist/assets/index-DYvIa9FW.css                  19.68 kB │ gzip:   4.73 kB
+dist/assets/useProMembers-BK5LSXrZ.js            0.35 kB │ gzip:   0.27 kB
+dist/assets/ProBadge-Cu2htK6y.js                 0.53 kB │ gzip:   0.41 kB
+dist/assets/useProStatus-OQNt41lf.js             0.61 kB │ gzip:   0.39 kB
+dist/assets/profileCosmetics-B6IADAMj.js         1.22 kB │ gzip:   0.60 kB
+dist/assets/PlayerInsights-DFmrfSB0.js           1.28 kB │ gzip:   0.73 kB
+dist/assets/ImpactBadge-C_vYP_GS.js              1.37 kB │ gzip:   0.68 kB
+dist/assets/heroes-B4IkSDsk.js                   1.55 kB │ gzip:   0.88 kB
+dist/assets/PaywallCard-wa-QdxFK.js              1.78 kB │ gzip:   0.98 kB
+dist/assets/BuyinSuccess-CMhQMgdy.js             1.85 kB │ gzip:   0.86 kB
+dist/assets/CoachOnboarding-iD5T-J26.js          2.67 kB │ gzip:   1.31 kB
+dist/assets/RankBadge-BwDWUiSv.js                2.87 kB │ gzip:   1.34 kB
+dist/assets/PlayerBenchmarks-JI9LkmKG.js         3.94 kB │ gzip:   1.73 kB
+dist/assets/Synergy-DamhtTci.js                  4.18 kB │ gzip:   1.70 kB
+dist/assets/MultiKills-D0GdQgef.js               4.74 kB │ gzip:   1.70 kB
+dist/assets/Pro-8174v9Bi.js                      4.81 kB │ gzip:   2.01 kB
+dist/assets/OverallStats-CEY5U1fw.js             4.91 kB │ gzip:   1.73 kB
+dist/assets/Coaches-QTTRmmOM.js                  5.39 kB │ gzip:   2.01 kB
+dist/assets/SettingsNotifications-D6NahwcT.js    5.94 kB │ gzip:   2.30 kB
+dist/assets/SettingsBilling-KAMUBp9M.js          6.21 kB │ gzip:   2.03 kB
+dist/assets/PatchNotes-jsdcjyjx.js               6.43 kB │ gzip:   2.37 kB
+dist/assets/Join-BFhVDsyQ.js                     6.67 kB │ gzip:   2.49 kB
+dist/assets/MyBookings-D9m_RQWM.js               6.81 kB │ gzip:   2.25 kB
+dist/assets/SeasonSummary-B_YGOHDB.js            6.89 kB │ gzip:   2.13 kB
+dist/assets/DraftAssistant-CgIVGxCZ.js           6.99 kB │ gzip:   2.29 kB
+dist/assets/heroNames-DWJuq7ae.js                7.14 kB │ gzip:   3.40 kB
+dist/assets/MatchList-DcqMJM3X.js                7.14 kB │ gzip:   2.62 kB
+dist/assets/Players-DScM4WWU.js                  7.46 kB │ gzip:   2.50 kB
+dist/assets/RecordMatch-B5be1WYa.js              7.77 kB │ gzip:   2.79 kB
+dist/assets/Social-DKrHYJKp.js                   8.04 kB │ gzip:   2.57 kB
+dist/assets/HallOfFame-pMfO3BKX.js               8.51 kB │ gzip:   2.80 kB
+dist/assets/CoachEdit-BpYJK97y.js                9.28 kB │ gzip:   2.79 kB
+dist/assets/CoachProfile-tl0n8WC3.js             9.77 kB │ gzip:   3.50 kB
+dist/assets/WardMap-CWeZ6_c_.js                 10.07 kB │ gzip:   3.38 kB
+dist/assets/Schedule-Ca5Shlpl.js                10.81 kB │ gzip:   3.59 kB
+dist/assets/PudgeStats-CjIngEqB.js              10.90 kB │ gzip:   3.38 kB
+dist/assets/PositionStats-CF1rLSSx.js           10.94 kB │ gzip:   2.74 kB
+dist/assets/Upload-CqB8dvai.js                  11.14 kB │ gzip:   3.91 kB
+dist/assets/PlayerTools-BoDlQUv-.js             11.98 kB │ gzip:   3.48 kB
+dist/assets/Predictions-CeoJmbVF.js             12.62 kB │ gzip:   3.96 kB
+dist/assets/SettingsProfile-CGYHCnWS.js         13.20 kB │ gzip:   4.04 kB
+dist/assets/StatsEditor-CnhR6nVO.js             13.30 kB │ gzip:   4.04 kB
+dist/assets/WeekendTournament-CxpqkKwl.js       13.74 kB │ gzip:   4.65 kB
+dist/assets/Records-HazJhspN.js                 15.14 kB │ gzip:   4.48 kB
+dist/assets/Inhouse-BrydkHlq.js                 17.48 kB │ gzip:   4.86 kB
+dist/assets/Draft-DXWqmn6i.js                   19.84 kB │ gzip:   5.01 kB
+dist/assets/Leaderboard-c-MbscD3.js             20.83 kB │ gzip:   5.66 kB
+dist/assets/Home-DyF6A-DE.js                    22.04 kB │ gzip:   5.84 kB
+dist/assets/Seasons-CvJw-Y68.js                 25.20 kB │ gzip:   6.44 kB
+dist/assets/Heroes-D1hDfA5B.js                  27.85 kB │ gzip:   8.20 kB
+dist/assets/Tournaments-CE0hMhuB.js             28.01 kB │ gzip:   7.37 kB
+dist/assets/PlayerProfile-CQd3CzAl.js           60.67 kB │ gzip:  13.97 kB
+dist/assets/AdminPanel-Cad4a07P.js              96.17 kB │ gzip:  23.32 kB
+dist/assets/MatchDetail-BZWYudQO.js            110.39 kB │ gzip:  30.82 kB
+dist/assets/index-B4ee1J8g.js                  221.06 kB │ gzip:  67.69 kB
+dist/assets/LineChart-8oXjU31g.js              350.83 kB │ gzip: 104.50 kB
+✓ built in 8.35s
+==> Restarting bot...
+[PM2] Applying action restartProcessId on app [2](ids: [ '2' ])
+[PM2][ERROR] Process 2 not found
