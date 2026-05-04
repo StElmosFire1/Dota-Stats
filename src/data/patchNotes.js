@@ -707,6 +707,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "5.62",
+    "title": "Court & Pitch Home Landing + Editable Ticker + Marketplace Nav",
+    "published_at": "2026-05-04",
+    "content": "Closes the gap between the canvas Court & Pitch mockup and the live anonymous home page, makes the broadcast ticker editor-controlled, and surfaces previously orphaned destinations in the global nav.\n\n**Anonymous home page now matches the Court & Pitch mockup:**\n- Replaced the legacy 'OCE Dota 2 Inhouse' blurb hero, the four 0-stat cards, the Weekly Recap and the Recent Matches block with the editorial layout from `HybridCourtPitch.tsx`.\n- New **stats strip** (Matches Played / Active Players / Hours of Dota / Most Played Hero) using brass numerals and condensed eyebrow labels.\n- New **Latest Matches** table with Radiant/Dire pill tags, condensed score column, brass-italic MVP cell and View All link to `/matches`.\n- New **Top 5 Players** sidebar fed from the live leaderboard endpoint, with `oa-rank-numeral` filled brass for top-3 and a Full Leaderboard CTA.\n- Editorial Season-10 launch banner and the Weekend Tournament banner are preserved at the top.\n\n**Broadcast ticker is now admin-editable (CMS):**\n- New `broadcast_ticker` row in `site_settings` with shape `{ enabled, items[] }`, seeded by `initDb()`.\n- New public endpoint `GET /api/settings/broadcast-ticker`; admin writes go through the existing `POST /api/admin/settings` allowlist (extended with a JSON validator that requires at least one non-empty item).\n- `BroadcastTicker` in `App.jsx` fetches the setting on mount, falls back to the bundled defaults if the request fails, and hides the bar entirely when `enabled = false`.\n- New **📢 Broadcast Ticker (CMS)** panel under Admin → Site Settings exposes an enabled toggle and a one-per-line textarea; Save pushes the new payload site-wide.\n\n**Navigation reachability sweep:**\n- The Tools dropdown gained four entries that previously had no nav surface: **Coaching Marketplace** (`/coaches`), **Hall of Fame** (`/hall-of-fame`), **Multi-Kills** (`/multikills`) and **Pro Membership** (`/pro`). Every previously flagged-out destination is now reachable from the global nav.\n\n**Footer cleanup:** the GitHub link is gone from the editorial footer; only Discord and the live patch-notes deep link remain. Footer version chip bumped to **v5.62**.",
+    "author": "System"
+  },
+  {
     "version": "5.61",
     "title": "Admin Panel left-sidebar restructure",
     "published_at": "2026-05-04",

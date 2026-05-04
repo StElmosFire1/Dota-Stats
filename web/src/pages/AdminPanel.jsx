@@ -1648,6 +1648,111 @@ function EngagementSettingsPanel({ superuserKey, siteSettings, onSaved }) {
   );
 }
 
+function BroadcastTickerPanel({ superuserKey }) {
+  const [cfg, setCfg] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+  const [text, setText] = React.useState('');
+
+  React.useEffect(() => {
+    fetch('/api/settings/broadcast-ticker')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        let parsed = { enabled: true, items: [] };
+        if (d?.value) {
+          try { parsed = { ...parsed, ...(typeof d.value === 'string' ? JSON.parse(d.value) : d.value) }; } catch {}
+        }
+        setCfg(parsed);
+        setText((parsed.items || []).join('\n'));
+      })
+      .catch(() => { setCfg({ enabled: true, items: [] }); setText(''); });
+  }, []);
+
+  if (!cfg) return null;
+
+  const save = async () => {
+    setSaving(true); setMsg('');
+    try {
+      const items = text.split('\n').map(s => s.trim()).filter(Boolean);
+      if (items.length === 0) {
+        setMsg('Error: at least one ticker item is required.');
+        setSaving(false);
+        return;
+      }
+      const r = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+        body: JSON.stringify({ key: 'broadcast_ticker', value: JSON.stringify({ enabled: !!cfg.enabled, items }) }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed');
+      try {
+        const parsed = JSON.parse(d.setting.value);
+        setCfg(parsed);
+        setText((parsed.items || []).join('\n'));
+      } catch {}
+      setMsg('Saved.');
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    padding: '7px 10px', borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: 'var(--bg-card)', color: 'var(--text-primary)',
+    fontSize: 14, fontFamily: 'inherit',
+  };
+
+  return (
+    <section style={{ marginTop: 32 }}>
+      <h2 style={{ marginBottom: 6 }}>📢 Broadcast Ticker (CMS)</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Editor-controlled scrolling ticker that runs across the very top of every page.
+        One headline per line. Disable to hide the bar entirely.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 580 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
+          <input
+            type="checkbox"
+            checked={!!cfg.enabled}
+            onChange={e => setCfg(c => ({ ...c, enabled: e.target.checked }))}
+          />
+          Ticker enabled
+        </label>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+            Items (one per line)
+          </label>
+          <textarea
+            rows={8}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder={'Season 10 ladder live\nInhouse lobby open · /inhouse\nCoaching marketplace beta'}
+            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: 13 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" disabled={saving} onClick={save}>
+            {saving ? 'Saving…' : 'Save ticker'}
+          </button>
+          {msg && (
+            <span style={{ fontSize: 13, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)' }}>
+              {msg}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function WelcomeModalPanel({ superuserKey }) {
   const [cfg, setCfg] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -2302,6 +2407,7 @@ export default function AdminPanel() {
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
       <WelcomeModalPanel superuserKey={superuserKey} />
+      <BroadcastTickerPanel superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'users' && (<>

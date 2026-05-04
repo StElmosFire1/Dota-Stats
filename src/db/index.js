@@ -892,6 +892,21 @@ async function init() {
         ctaHref: '/patch-notes',
       })]
     );
+    await p.query(
+      `INSERT INTO site_settings (key, value) VALUES ('broadcast_ticker', $1)
+       ON CONFLICT (key) DO NOTHING`,
+      [JSON.stringify({
+        enabled: true,
+        items: [
+          'Season 10 ladder live',
+          'New Court & Pitch design',
+          'Inhouse lobby open · /inhouse',
+          'Coaching marketplace beta',
+          'Draft Assistant V2 — try it',
+          'Patch notes updated',
+        ],
+      })]
+    );
 
     // Feature flags — three-state toggle (off / preview / on) used to stage
     // new features behind a superuser-only "preview" gate before launching to

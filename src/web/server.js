@@ -4102,7 +4102,7 @@ NOTES
 
   // Allowlist of settings keys writable via this endpoint — prevents the
   // generic key/value store from being abused as a free-form admin scratchpad.
-  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill', 'engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal']);
+  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill', 'engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker']);
 
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.
@@ -4116,6 +4116,17 @@ NOTES
     } catch (err) {
       console.error('[API] settings/welcome-modal GET error:', err.message);
       res.status(500).json({ error: 'Failed to fetch welcome modal' });
+    }
+  });
+
+  // Public — broadcast ticker CMS payload (rendered by App.jsx <BroadcastTicker/>)
+  router.get('/settings/broadcast-ticker', async (req, res) => {
+    try {
+      const value = await db.getSetting('broadcast_ticker').catch(() => null);
+      res.json({ value: value || null });
+    } catch (err) {
+      console.error('[API] settings/broadcast-ticker GET error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch broadcast ticker' });
     }
   });
 
@@ -4251,7 +4262,25 @@ NOTES
           return res.status(400).json({ error: 'welcome_modal must be a JSON object with at least { title }' });
         }
       }
-      const stored = await db.setSetting(key, key === 'welcome_modal' ? req.body.value : value);
+      if (key === 'broadcast_ticker') {
+        try {
+          const obj = typeof value === 'string' ? JSON.parse(value) : value;
+          if (!obj || typeof obj !== 'object') throw new Error('not an object');
+          const items = Array.isArray(obj.items)
+            ? obj.items.map(s => String(s || '').trim()).filter(Boolean)
+            : [];
+          if (items.length === 0) {
+            return res.status(400).json({ error: 'broadcast_ticker.items must be a non-empty array of strings' });
+          }
+          req.body.value = JSON.stringify({
+            enabled: !!obj.enabled,
+            items,
+          });
+        } catch {
+          return res.status(400).json({ error: 'broadcast_ticker must be a JSON object with { enabled, items[] }' });
+        }
+      }
+      const stored = await db.setSetting(key, (key === 'welcome_modal' || key === 'broadcast_ticker') ? req.body.value : value);
       res.json({ setting: stored });
     } catch (err) {
       console.error('[API] admin/settings POST error:', err.message);

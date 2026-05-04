@@ -323,6 +323,10 @@ function Nav() {
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
           <DropdownItem to="/insights">Player Insights</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
+          <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
+          <DropdownItem to="/hall-of-fame">Hall of Fame</DropdownItem>
+          <DropdownItem to="/multikills">Multi-Kills</DropdownItem>
+          <DropdownItem to="/pro">Pro Membership</DropdownItem>
           <DropdownItem to="/join">Join the League</DropdownItem>
         </DropdownMenu>
       </div>
@@ -336,16 +340,39 @@ function Nav() {
   );
 }
 
+const TICKER_DEFAULT_ITEMS = [
+  'Season 10 ladder live',
+  'New Court & Pitch design',
+  'Inhouse lobby open · /inhouse',
+  'Coaching marketplace beta',
+  'Draft Assistant V2 — try it',
+  'Patch notes updated',
+];
+
 function BroadcastTicker() {
-  const items = [
-    'Season 10 ladder live',
-    'New Court & Pitch design — v5.60',
-    'Inhouse lobby open · /inhouse',
-    'Coaching marketplace beta',
-    'Draft Assistant V2 — try it',
-    'Patch notes updated',
-  ];
-  const loop = [...items, ...items];
+  const [cfg, setCfg] = React.useState({ enabled: true, items: TICKER_DEFAULT_ITEMS });
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/settings/broadcast-ticker')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled || !d?.value) return;
+        try {
+          const v = typeof d.value === 'string' ? JSON.parse(d.value) : d.value;
+          if (v && typeof v === 'object') {
+            const items = Array.isArray(v.items) && v.items.length > 0
+              ? v.items.map(s => String(s || '').trim()).filter(Boolean)
+              : TICKER_DEFAULT_ITEMS;
+            setCfg({ enabled: v.enabled !== false, items });
+          }
+        } catch {}
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!cfg.enabled || cfg.items.length === 0) return null;
+  const loop = [...cfg.items, ...cfg.items];
   return (
     <div className="oa-ticker" aria-hidden="true">
       <div className="oa-ticker-track">
@@ -370,10 +397,9 @@ function EditorialFooter() {
         </div>
         <div className="oa-footer-links">
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
-          <a href="https://github.com/StElmosFire1" target="_blank" rel="noreferrer">GitHub</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.60 — <Link to="/patch-notes">Patch notes</Link>
+            v5.62 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>

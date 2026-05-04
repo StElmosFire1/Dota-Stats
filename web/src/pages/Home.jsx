@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getHomeStats, getLatestRecap, getSeasons, getPredictions, getWeekendTournaments } from '../api';
+import { getHomeStats, getLatestRecap, getSeasons, getPredictions, getWeekendTournaments, getLeaderboard } from '../api';
 import { fmtDate } from '../utils/dates';
 import { useSeason } from '../context/SeasonContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
@@ -517,6 +517,14 @@ export default function Home() {
 
   const totals = stats?.totals || {};
   const recentMatches = stats?.recentMatches || [];
+  const [top5, setTop5] = useState([]);
+
+  useEffect(() => {
+    if (authLoading || steamUser) return;
+    getLeaderboard(5, seasonId)
+      .then(d => setTop5((d?.leaderboard || []).slice(0, 5)))
+      .catch(() => {});
+  }, [authLoading, steamUser, seasonId]);
 
   if (!authLoading && steamUser) {
     return (
@@ -548,34 +556,9 @@ export default function Home() {
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
       <Season10LaunchBanner />
-
-      {/* Hero banner */}
-      <div style={{
-        background: 'linear-gradient(135deg, var(--bg-card) 0%, rgba(59,130,246,0.08) 100%)',
-        border: '1px solid var(--border)', borderRadius: 16, padding: '32px 36px',
-        marginBottom: 28, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20,
-      }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 30, fontWeight: 800, color: 'var(--text-primary)' }}>
-            ⚔️ OCE Dota 2 Inhouse
-          </h1>
-          <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--text-secondary)', maxWidth: 480 }}>
-            A private stats tracker for the OCE inhouse community. Track matches, MMR, hero performance, and more.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Link to="/leaderboard" className="btn btn-primary" style={{ fontSize: 13 }}>
-            🏆 Leaderboard
-          </Link>
-          <Link to="/matches" className="btn" style={{ fontSize: 13 }}>
-            🎮 Matches
-          </Link>
-          <JoinTheLeagueButton />
-        </div>
-      </div>
 
       {/* Weekend Tournament Banner */}
       {activeTournament && (
@@ -614,112 +597,248 @@ export default function Home() {
         </div>
       )}
 
-      {/* Server stats */}
-      {loading ? (
-        <div className="loading" style={{ marginBottom: 28 }}>Loading stats…</div>
-      ) : (
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 28, justifyContent: 'center' }}>
-          <StatCard icon="🎮" label="Total Matches" value={totals.total_matches} />
-          <StatCard icon="👥" label="Players" value={totals.total_players} />
-          <StatCard icon="📅" label="This Week" value={totals.matches_this_week} sub="matches played" />
-          <StatCard icon="🦸" label="Most Played Hero" value={formatHeroName(totals.most_played_hero)} />
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
-
-        {/* Weekly AI Recap */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 22, gridColumn: recap?.ai_blurb ? 'span 2' : 'span 1' }}>
-          <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            📊 Weekly Recap
-            {recap?.generated_at && (
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
-                generated {fmtDate(recap.generated_at)}
-              </span>
-            )}
-          </h2>
-          {recap?.ai_blurb ? (
-            <div>
-              <p style={{ margin: '0 0 14px', fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.7, fontStyle: 'italic' }}>
-                "{recap.ai_blurb}"
-              </p>
-              {recap.matches_count > 0 && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {recap.matches_count} match{recap.matches_count !== 1 ? 'es' : ''} played last week
-                  {recap.period_start && ` · ${fmtDate(recap.period_start)} – ${fmtDate(recap.period_end)}`}
-                </div>
-              )}
-              {recap.top_performers && recap.top_performers.length > 0 && (
-                <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {recap.top_performers.slice(0, 3).map((p, i) => {
-                    const medal = ['🥇', '🥈', '🥉'][i];
-                    return (
-                      <span key={p.account_id} style={{
-                        background: 'var(--bg-hover)', border: '1px solid var(--border)',
-                        borderRadius: 8, padding: '4px 10px', fontSize: 12, color: 'var(--text-primary)',
-                      }}>
-                        {medal} {p.player_name} · {parseFloat(p.avg_kda).toFixed(2)} KDA
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-              No weekly recap yet — one is auto-generated every Monday, or use <code>!recap</code> in Discord.
-            </div>
-          )}
-        </div>
-
-        {/* Recent matches */}
-        {!recap?.ai_blurb && (
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 22 }}>
-            <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-              🕐 Recent Matches
-            </h2>
-            {recentMatches.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No matches recorded yet.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {recentMatches.map(m => <MatchRow key={m.match_id} m={m} />)}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Predictions widget */}
-      {predInfo && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 22px', marginBottom: 28, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-              🎯 Season Predictions — {predInfo.season.name}
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              {predInfo.count > 0
-                ? <>{predInfo.count} prediction{predInfo.count !== 1 ? 's' : ''} submitted — predict who ends up top 5!</>
-                : 'No predictions yet — be the first to predict the top 5!'}
-            </div>
-          </div>
-          <Link to="/predictions" className="btn btn-primary" style={{ fontSize: 13, flexShrink: 0 }}>
-            {predInfo.count > 0 ? 'View Predictions' : 'Make a Prediction'}
-          </Link>
-        </div>
-      )}
-
-      {/* Recent matches (shown below when recap is present) */}
-      {recap?.ai_blurb && recentMatches.length > 0 && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 22, marginBottom: 28 }}>
-          <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-            🕐 Recent Matches
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {recentMatches.map(m => <MatchRow key={m.match_id} m={m} />)}
-          </div>
-        </div>
-      )}
+      <CourtPitchHomeLanding
+        loading={loading}
+        totals={totals}
+        recentMatches={recentMatches}
+        top5={top5}
+      />
 
     </div>
+  );
+}
+
+function fmtAgo(dateStr) {
+  if (!dateStr) return '—';
+  const t = new Date(dateStr).getTime();
+  if (!t) return '—';
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return `${days}d ago`;
+}
+
+function fmtDurMmSs(s) {
+  if (!s) return '—';
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
+  const stats = [
+    { label: 'Matches Played', value: totals.total_matches != null ? Number(totals.total_matches).toLocaleString() : '—' },
+    { label: 'Active Players', value: totals.total_players != null ? Number(totals.total_players).toLocaleString() : '—' },
+    { label: 'This Week', value: totals.matches_this_week != null ? Number(totals.matches_this_week).toLocaleString() : '—' },
+    { label: 'Most Played Hero', value: formatHeroName(totals.most_played_hero) || '—' },
+  ];
+
+  return (
+    <>
+      {/* Stats Strip */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: 1, background: 'var(--border)', border: '1px solid var(--border)',
+        borderRadius: 12, overflow: 'hidden', marginBottom: 32,
+      }}>
+        {stats.map((s, i) => (
+          <div key={i} style={{
+            background: 'var(--bg-card)', padding: '22px 18px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+          }}>
+            <div className="font-serif" style={{
+              fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.1,
+              fontFamily: 'var(--font-serif, serif)',
+            }}>{loading ? '—' : s.value}</div>
+            <div className="uppercase-wide" style={{
+              fontSize: 11, fontFamily: 'var(--font-condensed, inherit)',
+              color: 'var(--text-muted)', textTransform: 'uppercase',
+              letterSpacing: '0.15em', textAlign: 'center',
+            }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Two-column main grid */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)',
+        gap: 28, marginBottom: 32,
+      }} className="oa-home-twocol">
+
+        {/* Latest Matches */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div>
+              <h2 className="font-serif" style={{
+                margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)',
+                fontFamily: 'var(--font-serif, serif)',
+              }}>Latest Matches</h2>
+              <p className="font-serif" style={{
+                margin: '2px 0 0', fontSize: 13, fontStyle: 'italic',
+                color: 'var(--text-muted)', fontFamily: 'var(--font-serif, serif)',
+              }}>From the past 48 hours</p>
+            </div>
+            <Link to="/matches" className="uppercase-wide" style={{
+              fontSize: 12, color: 'var(--brass, var(--accent))', textDecoration: 'none',
+              fontFamily: 'var(--font-condensed, inherit)', textTransform: 'uppercase',
+              letterSpacing: '0.12em', fontWeight: 600,
+            }}>View all →</Link>
+          </div>
+          <div className="oa-rule-double" style={{ marginBottom: 14 }} />
+
+          <div className="oa-card" style={{ overflow: 'hidden' }}>
+            {recentMatches.length === 0 ? (
+              <div style={{ padding: '24px 18px', color: 'var(--text-muted)', fontSize: 13 }}>
+                No matches recorded yet.
+              </div>
+            ) : (
+              <>
+                <div className="uppercase-wide" style={{
+                  display: 'grid', gridTemplateColumns: '110px 1fr 80px 110px 80px',
+                  alignItems: 'center', gap: 10,
+                  padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                  background: 'var(--bg-primary, var(--bg-base))',
+                  fontSize: 11, color: 'var(--text-muted)',
+                  fontFamily: 'var(--font-condensed, inherit)',
+                  textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 600,
+                }}>
+                  <span>Winner</span>
+                  <span>Score</span>
+                  <span style={{ textAlign: 'center' }}>Duration</span>
+                  <span style={{ textAlign: 'center' }}>MVP</span>
+                  <span style={{ textAlign: 'right' }}>Time</span>
+                </div>
+                {recentMatches.slice(0, 5).map((m, i, arr) => {
+                  const radWin = m.radiant_win;
+                  const score = (m.radiant_score != null && m.dire_score != null)
+                    ? `${m.radiant_score} - ${m.dire_score}` : '—';
+                  return (
+                    <Link
+                      key={m.match_id}
+                      to={`/match/${m.match_id}`}
+                      style={{
+                        display: 'grid', gridTemplateColumns: '110px 1fr 80px 110px 80px',
+                        alignItems: 'center', gap: 10,
+                        padding: '14px 16px', textDecoration: 'none',
+                        borderBottom: i === arr.length - 1 ? 'none' : '1px solid var(--border)',
+                      }}
+                    >
+                      <span>
+                        <span className={`oa-tag ${radWin ? 'oa-tag-radiant' : 'oa-tag-dire'}`}>
+                          {radWin ? 'Radiant' : 'Dire'}
+                        </span>
+                      </span>
+                      <span style={{
+                        fontSize: 18, fontWeight: 700, color: 'var(--text-primary)',
+                        fontFamily: 'var(--font-condensed, inherit)', letterSpacing: '0.02em',
+                      }}>{score}</span>
+                      <span style={{
+                        textAlign: 'center', fontSize: 13, color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-condensed, inherit)',
+                      }}>{fmtDurMmSs(m.duration)}</span>
+                      <span className="font-serif" style={{
+                        textAlign: 'center', fontStyle: 'italic', fontWeight: 700,
+                        color: 'var(--brass, var(--accent))',
+                        fontFamily: 'var(--font-serif, serif)',
+                      }}>{m.top_killer || '—'}</span>
+                      <span style={{
+                        textAlign: 'right', fontSize: 12, color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-condensed, inherit)',
+                      }}>{fmtAgo(m.date)}</span>
+                    </Link>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Top 5 Players sidebar */}
+        <aside>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div>
+              <h2 className="font-serif" style={{
+                margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)',
+                fontFamily: 'var(--font-serif, serif)',
+              }}>Top 5 Players</h2>
+              <p className="font-serif" style={{
+                margin: '2px 0 0', fontSize: 13, fontStyle: 'italic',
+                color: 'var(--text-muted)', fontFamily: 'var(--font-serif, serif)',
+              }}>Season standings</p>
+            </div>
+            <span className="uppercase-wide" style={{
+              fontSize: 10, color: 'var(--amber, #f59e0b)',
+              border: '1px solid var(--amber, #f59e0b)', borderRadius: 999,
+              padding: '2px 9px', fontFamily: 'var(--font-condensed, inherit)',
+              textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 600,
+            }}>Live</span>
+          </div>
+          <div className="oa-rule-double" style={{ marginBottom: 14 }} />
+
+          {top5.length === 0 ? (
+            <div className="oa-card" style={{ padding: '20px 16px', color: 'var(--text-muted)', fontSize: 13 }}>
+              No leaderboard data yet.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {top5.map((p, i) => {
+                const rank = i + 1;
+                const name = p.player_name || p.nickname || p.persona_name || `Player ${p.account_id}`;
+                return (
+                  <Link
+                    key={p.account_id}
+                    to={`/player/${p.account_id}`}
+                    className="oa-card oa-card-rule"
+                    style={{
+                      display: 'flex', alignItems: 'center',
+                      padding: '12px 14px 12px 18px',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <div className={`oa-rank-numeral ${rank <= 3 ? 'is-top' : ''}`} style={{
+                      width: 38, textAlign: 'center', marginRight: 14, flexShrink: 0,
+                    }}>{rank}</div>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', minWidth: 0 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="font-serif" style={{
+                          fontSize: 16, fontWeight: 700, color: 'var(--text-primary)',
+                          lineHeight: 1.1, marginBottom: 3,
+                          fontFamily: 'var(--font-serif, serif)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{name}</div>
+                        <div className="uppercase-wide" style={{
+                          fontSize: 10, color: 'var(--text-muted)',
+                          fontFamily: 'var(--font-condensed, inherit)',
+                          textTransform: 'uppercase', letterSpacing: '0.14em',
+                        }}>{p.wins || 0}W – {p.losses || 0}L</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 10 }}>
+                        <div style={{
+                          fontSize: 18, fontWeight: 700, color: 'var(--brass, var(--accent))',
+                          lineHeight: 1.1, marginBottom: 2,
+                          fontFamily: 'var(--font-condensed, inherit)',
+                        }}>{Math.round(p.mmr || 0)}</div>
+                        <div style={{
+                          fontSize: 10, color: 'var(--text-muted)',
+                          fontFamily: 'var(--font-condensed, inherit)',
+                          letterSpacing: '0.06em',
+                        }}>MMR</div>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+
+          <Link to="/leaderboard" className="oa-cta-ghost uppercase-wide" style={{
+            display: 'block', textAlign: 'center', marginTop: 14,
+            fontSize: 12, fontFamily: 'var(--font-condensed, inherit)',
+            textTransform: 'uppercase', letterSpacing: '0.16em', fontWeight: 600,
+            textDecoration: 'none',
+          }}>Full leaderboard →</Link>
+        </aside>
+      </div>
+    </>
   );
 }
