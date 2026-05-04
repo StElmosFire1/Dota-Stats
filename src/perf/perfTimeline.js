@@ -283,4 +283,9 @@ module.exports = {
   computeTimelinePerf,
   baselinesAreUsable,
   STAT_DEFS,
+  // Internals exposed for unit tests.
+  _percentile,
+  _resampleByMinute,
+  _mapToPi,
+  _statWeightsForPosition,
 };
