@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap');
+
+.editorial-navy {
+  --background: #0b1733;
+  --foreground: #e6edf8;
+  --card: #122144;
+  --card-foreground: #e6edf8;
+  --popover: #122144;
+  --popover-foreground: #e6edf8;
+  --primary: #d4af37; /* Brass / Gold */
+  --primary-foreground: #000000;
+  --secondary: #1a2a52;
+  --secondary-foreground: #e6edf8;
+  --muted: #1a2a52;
+  --muted-foreground: #94a6cb;
+  --accent: #d4af37;
+  --accent-foreground: #000000;
+  --destructive: #7f1d1d;
+  --destructive-foreground: #f87171;
+  --border: #1f315a;
+  --input: #1f315a;
+  --ring: #d4af37;
+  --radius: 0.125rem;
+
+  font-family: 'Inter', sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.editorial-navy .font-serif {
+  font-family: 'Playfair Display', serif;
+}
+
+/* Hairline dividers */
+.editorial-navy .divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border) 20%, var(--border) 80%, transparent);
+  margin: 2rem 0;
+}
+
+.editorial-navy .divider-vertical {
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, var(--border) 20%, var(--border) 80%, transparent);
+}
+
+.editorial-navy-hero-bg {
+  position: relative;
+}
+
+.editorial-navy-hero-bg::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: radial-gradient(circle at center, rgba(212, 175, 55, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+}

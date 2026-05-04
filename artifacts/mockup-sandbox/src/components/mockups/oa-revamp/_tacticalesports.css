@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Share+Tech+Mono&display=swap');
+
+.tactical-esports {
+  --background: 240 10% 4%;
+  --foreground: 240 5% 96%;
+  --card: 240 10% 6%;
+  --card-foreground: 240 5% 96%;
+  --popover: 240 10% 6%;
+  --popover-foreground: 240 5% 96%;
+  --primary: 142 71% 45%; /* Radiant Green */
+  --primary-foreground: 144 100% 11%;
+  --secondary: 240 10% 12%;
+  --secondary-foreground: 240 5% 96%;
+  --muted: 240 10% 12%;
+  --muted-foreground: 240 5% 65%;
+  --accent: 240 10% 12%;
+  --accent-foreground: 240 5% 96%;
+  --destructive: 0 84% 60%; /* Dire Red */
+  --destructive-foreground: 240 5% 96%;
+  --border: 240 10% 16%;
+  --input: 240 10% 16%;
+  --ring: 142 71% 45%;
+  --radius: 0;
+  
+  --radiant: 142 71% 45%;
+  --dire: 0 84% 60%;
+
+  font-family: 'Outfit', sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.tactical-esports .font-mono {
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.tactical-esports .clip-angled {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+}
+
+.tactical-esports .clip-angled-br {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
+}
+
+.tactical-esports .clip-angled-tl {
+  clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%, 0 16px);
+}
+
+.tactical-esports .scanline {
+  position: relative;
+}
+.tactical-esports .scanline::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0),
+    rgba(255,255,255,0) 50%,
+    rgba(0,0,0,0.1) 50%,
+    rgba(0,0,0,0.1)
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0.5;
+}
+
+.tactical-esports .bg-grid {
+  background-image: 
+    linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
