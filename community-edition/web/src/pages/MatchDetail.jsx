@@ -761,6 +761,98 @@ function getDisplayName(player, index) {
   return player.nickname || player.persona_name || `Player ${index + 1}`;
 }
 
+function PerfPanel({ allPlayers, perfRanks = {} }) {
+  if (!allPlayers || allPlayers.length === 0) return null;
+
+  const rows = allPlayers.map(p => {
+    const persisted = p.perf != null ? Number(p.perf) : null;
+    const score = persisted != null && !Number.isNaN(persisted)
+      ? persisted
+      : (perfRanks[p.slot] != null ? Number(perfRanks[p.slot]) : null);
+    return { p, score, source: persisted != null ? (p.perf_source || 'endgame_v1') : 'legacy' };
+  }).filter(r => r.score != null).sort((a, b) => b.score - a.score);
+
+  if (rows.length === 0) return null;
+
+  const bucketColor = (s) => {
+    if (s >= 9.0) return { color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', border: 'rgba(251,191,36,0.45)', label: 'Top 1%' };
+    if (s >= 7.5) return { color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', border: 'rgba(167,139,250,0.4)',  label: 'Excellent' };
+    if (s >= 6.0) return { color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.4)',   label: 'Very Good' };
+    if (s >= 4.5) return { color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.3)',  label: 'Average' };
+    if (s >= 3.0) return { color: '#fb923c', bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.4)',   label: 'Below Avg' };
+    return            { color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.4)',     label: 'Poor' };
+  };
+
+  const breakdownTip = (p, source, score) => {
+    const bd = p.perf_breakdown || null;
+    const lines = [`PERF ${score.toFixed(1)}/10  •  source=${source}`];
+    if (bd?.position) lines.push(`Position ${bd.position}`);
+    if (bd?.cap_applied) lines.push(`Cap applied at ${bd.cap_applied} (no rich timeline data — endgame_v1 fallback)`);
+    if (bd?.subscores && typeof bd.subscores === 'object') {
+      for (const [k, v] of Object.entries(bd.subscores)) {
+        lines.push(`  • ${k}: ${typeof v === 'number' ? v.toFixed(2) : v}`);
+      }
+    } else if (bd?.parts && typeof bd.parts === 'object') {
+      for (const [k, v] of Object.entries(bd.parts)) {
+        lines.push(`  • ${k}: ${typeof v === 'number' ? v.toFixed(2) : v}`);
+      }
+    }
+    lines.push('5.0 = average for the role  •  9.0+ = top 1%');
+    return lines.join('\n');
+  };
+
+  return (
+    <div className="expanded-stats-section" style={{ marginTop: '1.5rem' }}>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        ⭐ PERF — Positive Impact Score
+        <span style={{ fontSize: 11, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+          position-aware, duration-normalised, 1.0–10.0 — hover a card for the breakdown
+        </span>
+      </h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginTop: 10 }}>
+        {rows.map(({ p, score, source }, i) => {
+          const b = bucketColor(score);
+          const isRadiant = p.team === 'radiant';
+          return (
+            <div
+              key={p.slot}
+              title={breakdownTip(p, source, score)}
+              style={{
+                background: b.bg,
+                border: `1px solid ${b.border}`,
+                borderRadius: 6,
+                padding: '8px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                cursor: 'help',
+              }}
+            >
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, width: 18 }}>#{i + 1}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 12,
+                  color: isRadiant ? '#4ade80' : '#f87171',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  <PlayerLink player={p} index={i} />
+                </div>
+                <div style={{ fontSize: 10, color: '#94a3b8' }}>{b.label}{source === 'legacy' ? ' (legacy)' : ''}</div>
+              </div>
+              <div style={{ fontSize: 22, color: b.color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                {score.toFixed(1)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PlayerLink({ player, index }) {
   const name = getDisplayName(player, index);
   if (player.account_id > 0) {
@@ -2971,6 +3063,8 @@ function MatchDetailInner() {
       </div>
 
       <DraftDisplay draft={match.draft} />
+
+      <PerfPanel allPlayers={allPlayers} perfRanks={perfRanks} />
 
       <TeamTable players={radiant} allPlayers={allPlayers} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} match={match} showMvpBadges={showMvpBadges} />
       <TeamTable players={dire} allPlayers={allPlayers} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} match={match} showMvpBadges={showMvpBadges} />

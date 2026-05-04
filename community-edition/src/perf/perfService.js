@@ -142,6 +142,21 @@ async function computeAndSavePerfForMatch(getPool, matchId, opts = {}) {
       else if (p.team === 'dire') dirK += (p.kills || 0);
     }
 
+    // Determine perf_source. The richer per-minute timeline path is reserved
+    // for `timeline_v1`. When the match has no rich timeline data we use the
+    // `endgame_v1` path and clamp the maximum at 8.5 — this prevents inflating
+    // a player to 9.5+ from a stat-line that was never weighed against true
+    // per-minute baselines. (Future: detect game_timeline.players[].samples[]
+    // having hd_cum/td_cum/wards_killed_cum and switch to timeline path.)
+    const tlRes = await pool.query(
+      `SELECT (game_timeline->'players'->0->'samples'->0 ? 'hd_cum') AS has_timeline
+         FROM matches WHERE match_id = $1`,
+      [matchId]
+    );
+    const hasTimeline = !!tlRes.rows[0]?.has_timeline;
+    const source = hasTimeline ? 'timeline_v1' : 'endgame_v1';
+    const fallbackCap = hasTimeline ? 10.0 : 8.5;
+
     const updates = [];
     for (const p of playersRes.rows) {
       const won = (p.team === 'radiant' && m.radiant_win) || (p.team === 'dire' && !m.radiant_win);
@@ -149,7 +164,9 @@ async function computeAndSavePerfForMatch(getPool, matchId, opts = {}) {
       const { perf, breakdown } = computePerfForPlayer(p, {
         durationSec: m.duration, teamKills, won,
       });
-      updates.push({ slot: p.slot, perf, breakdown });
+      const cappedPerf = Math.round(Math.min(perf, fallbackCap) * 10) / 10;
+      breakdown.cap_applied = cappedPerf < perf ? fallbackCap : null;
+      updates.push({ slot: p.slot, perf: cappedPerf, breakdown });
     }
 
     for (const u of updates) {
@@ -157,7 +174,7 @@ async function computeAndSavePerfForMatch(getPool, matchId, opts = {}) {
         `UPDATE player_stats
             SET perf = $1, perf_breakdown = $2, perf_source = $3
           WHERE match_id = $4 AND slot = $5`,
-        [u.perf, JSON.stringify(u.breakdown), 'endgame_v1', matchId, u.slot]
+        [u.perf, JSON.stringify(u.breakdown), source, matchId, u.slot]
       );
     }
     return { ok: true, count: updates.length };
@@ -168,19 +185,28 @@ async function computeAndSavePerfForMatch(getPool, matchId, opts = {}) {
 }
 
 // Backfill PERF across the full match history. Processes oldest-missing first
-// so that recent matches stay current and progress is observable.
-async function backfillPerf(getPool, { limit = 1000, batchSize = 50, sleepMs = 100 } = {}) {
+// so that recent matches stay current and progress is observable. Defaults
+// process ALL pending matches in batches of 50 with a 250ms inter-batch sleep
+// to keep DB load reasonable. Emits per-batch progress logs to stdout.
+async function backfillPerf(getPool, { limit = null, batchSize = 50, sleepMs = 250, onProgress = null } = {}) {
   const pool = getPool();
+  const queryParams = [];
+  let limitClause = '';
+  if (limit && limit > 0) {
+    queryParams.push(limit);
+    limitClause = ` LIMIT $${queryParams.length}`;
+  }
   const res = await pool.query(
     `SELECT DISTINCT m.match_id
        FROM matches m
        JOIN player_stats ps ON ps.match_id = m.match_id
       WHERE ps.perf IS NULL
-      ORDER BY m.match_id ASC
-      LIMIT $1`,
-    [limit]
+      ORDER BY m.match_id ASC${limitClause}`,
+    queryParams
   );
   const matchIds = res.rows.map(r => r.match_id);
+  const total = matchIds.length;
+  console.log(`[PERF backfill] ${total} matches pending — starting (batchSize=${batchSize}, sleepMs=${sleepMs})`);
   let done = 0, ok = 0, failed = 0;
   for (let i = 0; i < matchIds.length; i += batchSize) {
     const batch = matchIds.slice(i, i + batchSize);
@@ -189,9 +215,16 @@ async function backfillPerf(getPool, { limit = 1000, batchSize = 50, sleepMs = 1
       if (r.ok) ok++; else failed++;
       done++;
     }
-    if (sleepMs > 0) await new Promise(res => setTimeout(res, sleepMs));
+    console.log(`[PERF backfill] progress ${done}/${total} (ok=${ok} failed=${failed})`);
+    if (typeof onProgress === 'function') {
+      try { await onProgress({ done, total, ok, failed }); } catch (_) {}
+    }
+    if (sleepMs > 0 && i + batchSize < matchIds.length) {
+      await new Promise(res => setTimeout(res, sleepMs));
+    }
   }
-  return { total: matchIds.length, processed: done, ok, failed };
+  console.log(`[PERF backfill] done: total=${total} processed=${done} ok=${ok} failed=${failed}`);
+  return { total, processed: done, ok, failed };
 }
 
 module.exports = {

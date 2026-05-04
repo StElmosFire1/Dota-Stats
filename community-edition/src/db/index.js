@@ -199,6 +199,22 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS perf_source TEXT DEFAULT NULL`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_stats_perf ON player_stats(account_id, perf) WHERE perf IS NOT NULL`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_stats_perf_null ON player_stats(match_id) WHERE perf IS NULL`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS position_baselines (
+        position SMALLINT NOT NULL,
+        minute_bucket SMALLINT NOT NULL,
+        stat_key TEXT NOT NULL,
+        p10 REAL,
+        p25 REAL,
+        p50 REAL,
+        p75 REAL,
+        p90 REAL,
+        p99 REAL,
+        sample_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (position, minute_bucket, stat_key)
+      );
+    `);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_path TEXT DEFAULT NULL`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_expires_at TIMESTAMPTZ DEFAULT NULL`);
 
@@ -1212,7 +1228,11 @@ async function deleteMatch(matchId, deletedBy, reason) {
 async function getLeaderboard(limit = 50) {
   const p = getPool();
   const result = await p.query(
-    `SELECT
+    `WITH perf_avg AS (
+       SELECT account_id, ROUND(AVG(perf)::numeric, 1)::float AS avg_perf, COUNT(*) AS perf_games
+         FROM player_stats WHERE perf IS NOT NULL GROUP BY account_id
+     )
+     SELECT
        COALESCE(n.nickname, r.player_id::text) as group_key,
        MAX(r.mmr) as mmr,
        MAX(r.mu) as mu,
@@ -1223,9 +1243,12 @@ async function getLeaderboard(limit = 50) {
        MAX(r.display_name) as display_name,
        MAX(r.player_id) as player_id,
        MAX(n.nickname) as nickname,
-       MAX(r.last_updated) as last_updated
+       MAX(r.last_updated) as last_updated,
+       ROUND(AVG(pa.avg_perf)::numeric, 1)::float AS avg_perf,
+       SUM(COALESCE(pa.perf_games, 0))::int AS perf_games
      FROM ratings r
      LEFT JOIN nicknames n ON n.account_id::text = r.player_id::text
+     LEFT JOIN perf_avg pa ON pa.account_id::text = r.player_id::text
      GROUP BY COALESCE(n.nickname, r.player_id::text)
      ORDER BY mmr DESC LIMIT $1`,
     [limit]
@@ -2525,6 +2548,9 @@ async function getPlayerStats(accountId, seasonId = null) {
        ROUND(AVG(obs_placed), 2) as avg_obs_placed,
        ROUND(AVG(sen_placed), 2) as avg_sen_placed,
        ROUND(AVG(camps_stacked), 2) as avg_camps_stacked,
+       ROUND(AVG(perf), 1) as avg_perf,
+       MAX(perf) as best_perf,
+       COUNT(perf) as perf_games,
        SUM(kills) as total_kills,
        SUM(deaths) as total_deaths,
        SUM(assists) as total_assists,

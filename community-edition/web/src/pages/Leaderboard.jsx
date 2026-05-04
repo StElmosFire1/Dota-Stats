@@ -399,6 +399,7 @@ export default function Leaderboard() {
                 <th className="col-stat" title="Total games played">Games</th>
                 <th className="col-stat" title="Win percentage">Win %</th>
                 <th className="col-stat" title="Impact Score 1–10: ranked by K/D/A, win rate and games played">Impact</th>
+                <th className="col-stat" title="Average PERF — position-aware Positive Impact Score (1.0–10.0) across all rated games. 5.0 = average, 9.0+ = top 1%.">Avg PERF</th>
                 <th className="col-stat" title="Current win or loss streak">Streak</th>
                 <th className="col-stat" title="Last 10 games — green=win, red=loss, left=most recent">Form</th>
               </tr>
@@ -429,6 +430,17 @@ export default function Leaderboard() {
                     <td className="col-stat">{p.games_played}</td>
                     <td className="col-stat">{winRate}%</td>
                     <td className="col-stat"><ImpactBadge score={p.impact_score} /></td>
+                    <td className="col-stat" title={p.avg_perf != null ? `Avg PERF ${Number(p.avg_perf).toFixed(1)}/10 across ${p.perf_games || 0} rated games` : 'No PERF data yet'}>
+                      {p.avg_perf != null ? (
+                        <span style={{
+                          fontWeight: 700,
+                          color: Number(p.avg_perf) >= 7.0 ? '#a78bfa'
+                               : Number(p.avg_perf) >= 6.0 ? '#4ade80'
+                               : Number(p.avg_perf) >= 4.5 ? 'var(--text-secondary)'
+                               : '#fb923c',
+                        }}>{Number(p.avg_perf).toFixed(1)}</span>
+                      ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    </td>
                     <td className="col-stat">
                       {p.streak
                         ? <StreakBadge streak={p.streak} />

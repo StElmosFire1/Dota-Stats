@@ -486,7 +486,7 @@ export default function PlayerProfile() {
 
 
       {rating && (
-        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
           {/* Row 1 */}
           <div className="stat-card">
             <div className="stat-value mmr">{seasonMmr != null ? seasonMmr : rating.mmr}</div>
@@ -513,6 +513,22 @@ export default function PlayerProfile() {
           <div className="stat-card">
             <div className="stat-value">{totalKDA || '—'}</div>
             <div className="stat-label">KDA</div>
+          </div>
+          <div
+            className="stat-card"
+            title={averages?.avg_perf != null ? `Avg PERF ${Number(averages.avg_perf).toFixed(1)}/10 across ${averages.perf_games || 0} rated games. Best: ${averages.best_perf != null ? Number(averages.best_perf).toFixed(1) : '—'}.` : 'PERF not yet computed for this player\'s matches'}
+          >
+            <div className="stat-value" style={{
+              color: averages?.avg_perf != null
+                ? (Number(averages.avg_perf) >= 7.0 ? '#a78bfa'
+                  : Number(averages.avg_perf) >= 6.0 ? '#4ade80'
+                  : Number(averages.avg_perf) >= 4.5 ? undefined
+                  : '#fb923c')
+                : undefined,
+            }}>
+              {averages?.avg_perf != null ? Number(averages.avg_perf).toFixed(1) : '—'}
+            </div>
+            <div className="stat-label">Avg PERF</div>
           </div>
           <div className="stat-card" style={{
             borderColor: streak ? (streak > 0 ? 'var(--accent-green)' : 'var(--accent-red)') : undefined,
