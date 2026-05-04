@@ -520,10 +520,10 @@ export default function PlayerProfile() {
           >
             <div className="stat-value" style={{
               color: averages?.avg_perf != null
-                ? (Number(averages.avg_perf) >= 7.0 ? '#a78bfa'
-                  : Number(averages.avg_perf) >= 6.0 ? '#4ade80'
-                  : Number(averages.avg_perf) >= 4.5 ? undefined
-                  : '#fb923c')
+                ? (Number(averages.avg_perf) >= 9.0 ? '#fbbf24'
+                  : Number(averages.avg_perf) >= 8.0 ? '#4ade80'
+                  : Number(averages.avg_perf) >= 5.0 ? undefined
+                  : '#f87171')
                 : undefined,
             }}>
               {averages?.avg_perf != null ? Number(averages.avg_perf).toFixed(1) : '—'}

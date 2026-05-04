@@ -434,10 +434,10 @@ export default function Leaderboard() {
                       {p.avg_perf != null ? (
                         <span style={{
                           fontWeight: 700,
-                          color: Number(p.avg_perf) >= 7.0 ? '#a78bfa'
-                               : Number(p.avg_perf) >= 6.0 ? '#4ade80'
-                               : Number(p.avg_perf) >= 4.5 ? 'var(--text-secondary)'
-                               : '#fb923c',
+                          color: Number(p.avg_perf) >= 9.0 ? '#fbbf24'
+                               : Number(p.avg_perf) >= 8.0 ? '#4ade80'
+                               : Number(p.avg_perf) >= 5.0 ? 'var(--text-secondary)'
+                               : '#f87171',
                         }}>{Number(p.avg_perf).toFixed(1)}</span>
                       ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>

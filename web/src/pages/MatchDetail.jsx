@@ -779,13 +779,21 @@ function PerfPanel({ allPlayers, perfRanks = {} }) {
 
   if (rows.length === 0) return null;
 
+  // Spec bands: gold >=9 (Elite), green 8.0–8.9 (Great), neutral 5.0–7.9 (Solid),
+  // red <5.0 (Below).
   const bucketColor = (s) => {
-    if (s >= 9.0) return { color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', border: 'rgba(251,191,36,0.45)', label: 'Top 1%' };
-    if (s >= 7.5) return { color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', border: 'rgba(167,139,250,0.4)',  label: 'Excellent' };
-    if (s >= 6.0) return { color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.4)',   label: 'Very Good' };
-    if (s >= 4.5) return { color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.3)',  label: 'Average' };
-    if (s >= 3.0) return { color: '#fb923c', bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.4)',   label: 'Below Avg' };
-    return            { color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.4)',     label: 'Poor' };
+    if (s >= 9.0) return { color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', border: 'rgba(251,191,36,0.45)', label: 'Elite' };
+    if (s >= 8.0) return { color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)',   label: 'Great' };
+    if (s >= 5.0) return { color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.3)', label: 'Solid' };
+    return            { color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.4)',    label: 'Below' };
+  };
+
+  // Friendly labels for each contribution key persisted by perfService.
+  const PILLAR_LABELS = {
+    kp: 'Kill participation', surv: 'Survival', gpm: 'GPM', xpm: 'XPM',
+    lh: 'Last hits', hd: 'Hero damage', td: 'Tower damage',
+    vis: 'Vision', deward: 'Dewards', stun: 'Stun duration',
+    heal: 'Healing', win: 'Win bonus',
   };
 
   const breakdownTip = (p, source, score) => {
@@ -793,13 +801,23 @@ function PerfPanel({ allPlayers, perfRanks = {} }) {
     const lines = [`PERF ${score.toFixed(1)}/10  •  source=${source}`];
     if (bd?.position) lines.push(`Position ${bd.position}`);
     if (bd?.cap_applied) lines.push(`Cap applied at ${bd.cap_applied} (no rich timeline data — endgame_v1 fallback)`);
-    if (bd?.subscores && typeof bd.subscores === 'object') {
-      for (const [k, v] of Object.entries(bd.subscores)) {
-        lines.push(`  • ${k}: ${typeof v === 'number' ? v.toFixed(2) : v}`);
-      }
-    } else if (bd?.parts && typeof bd.parts === 'object') {
-      for (const [k, v] of Object.entries(bd.parts)) {
-        lines.push(`  • ${k}: ${typeof v === 'number' ? v.toFixed(2) : v}`);
+
+    // Show top-3 contributors from persisted breakdown.contributions
+    // (each entry = sub-score × weight, summed they form the raw input
+    // mapped to the 1–10 PERF scale).
+    const contribs = bd?.contributions || bd?.subscores || bd?.parts || null;
+    if (contribs && typeof contribs === 'object') {
+      const sorted = Object.entries(contribs)
+        .filter(([, v]) => typeof v === 'number')
+        .sort((a, b) => b[1] - a[1]);
+      const top3 = sorted.slice(0, 3);
+      if (top3.length) {
+        lines.push('Top contributors:');
+        for (const [k, v] of top3) {
+          const label = PILLAR_LABELS[k] || k;
+          const score01 = bd?.scores && typeof bd.scores[k] === 'number' ? ` (raw ${bd.scores[k].toFixed(2)})` : '';
+          lines.push(`  • ${label}: +${v.toFixed(2)}${score01}`);
+        }
       }
     }
     lines.push('5.0 = average for the role  •  9.0+ = top 1%');
