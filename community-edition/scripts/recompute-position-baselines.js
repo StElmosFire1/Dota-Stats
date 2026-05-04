@@ -13,6 +13,9 @@
 //   node scripts/recompute-position-baselines.js [--season=N] [--max-buckets=120]
 //
 // Idempotent — UPSERTs by (position, minute_bucket, stat_key).
+//
+// Also exports `runRecompute(opts)` so the Discord bot can call it on a schedule
+// or via an admin command (see src/discord/bot.js).
 
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
@@ -41,13 +44,8 @@ function _percentile(sortedArr, p) {
   return sortedArr[idx];
 }
 
-(async () => {
-  const seasonArg = process.argv.find(a => a.startsWith('--season='));
-  const maxBucketArg = process.argv.find(a => a.startsWith('--max-buckets='));
-  const seasonId = seasonArg ? parseInt(seasonArg.split('=')[1], 10) : null;
-  const maxBuckets = maxBucketArg ? parseInt(maxBucketArg.split('=')[1], 10) : 120;
-
-  console.log(`[baselines] starting (season=${seasonId || 'all'}, maxBuckets=${maxBuckets})`);
+async function runRecompute({ seasonId = null, maxBuckets = 120, log = console.log } = {}) {
+  log(`[baselines] starting (season=${seasonId || 'all'}, maxBuckets=${maxBuckets})`);
   await db.initSchema();
   const pool = db.getPool();
 
@@ -68,7 +66,7 @@ function _percentile(sortedArr, p) {
       ORDER BY m.match_id ASC`,
     params
   );
-  console.log(`[baselines] scanning ${matchesRes.rows.length} matches with timelines`);
+  log(`[baselines] scanning ${matchesRes.rows.length} matches with timelines`);
 
   // Buckets: position → minute → stat_key → number[]
   const buckets = {};
@@ -131,11 +129,11 @@ function _percentile(sortedArr, p) {
     }
     matchesScanned++;
     if (matchesScanned % 100 === 0) {
-      console.log(`[baselines] scanned ${matchesScanned}/${matchesRes.rows.length} matches (samples=${samplesScored})`);
+      log(`[baselines] scanned ${matchesScanned}/${matchesRes.rows.length} matches (samples=${samplesScored})`);
     }
   }
 
-  console.log(`[baselines] aggregation done: ${matchesScanned} matches, ${samplesScored} samples — writing percentiles`);
+  log(`[baselines] aggregation done: ${matchesScanned} matches, ${samplesScored} samples — writing percentiles`);
 
   // Compute and UPSERT.
   let written = 0, skipped = 0;
@@ -167,9 +165,22 @@ function _percentile(sortedArr, p) {
     }
   }
 
-  console.log(`[baselines] done: wrote=${written} rows, skipped=${skipped} sparse buckets`);
-  process.exit(0);
-})().catch(err => {
-  console.error('[baselines] failed:', err);
-  process.exit(2);
-});
+  log(`[baselines] done: wrote=${written} rows, skipped=${skipped} sparse buckets`);
+  return { matchesScanned, samplesScored, written, skipped };
+}
+
+module.exports = { runRecompute };
+
+if (require.main === module) {
+  const seasonArg = process.argv.find(a => a.startsWith('--season='));
+  const maxBucketArg = process.argv.find(a => a.startsWith('--max-buckets='));
+  const seasonId = seasonArg ? parseInt(seasonArg.split('=')[1], 10) : null;
+  const maxBuckets = maxBucketArg ? parseInt(maxBucketArg.split('=')[1], 10) : 120;
+
+  runRecompute({ seasonId, maxBuckets })
+    .then(() => process.exit(0))
+    .catch(err => {
+      console.error('[baselines] failed:', err);
+      process.exit(2);
+    });
+}

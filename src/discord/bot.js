@@ -586,6 +586,7 @@ class DiscordBot {
         switch (command) {
           case 'help': await this._cmdHelp(msg); break;
           case 'perf-backfill': case 'perfbackfill': await this._cmdPerfBackfill(msg, args); break;
+          case 'recompute-baselines': case 'recomputebaselines': await this._cmdRecomputeBaselines(msg, args); break;
           case 'top': await this._cmdTop(msg, args); break;
           case 'stats': await this._cmdStats(msg, args); break;
           case 'analyze': case 'analyse': await this._cmdAnalyze(msg, args); break;
@@ -1962,6 +1963,56 @@ class DiscordBot {
     } catch (err) {
       await msg.reply(`PERF backfill failed: ${err.message}`);
     }
+  }
+
+  async _cmdRecomputeBaselines(msg, args) {
+    if (msg.author.id !== OWNER_DISCORD_ID) {
+      return msg.reply('You don\'t have permission to use this command.');
+    }
+    const seasonArg = args.find(a => /^--season=\d+$/.test(a));
+    const maxArg = args.find(a => /^--max-buckets=\d+$/.test(a));
+    const seasonId = seasonArg ? parseInt(seasonArg.split('=')[1], 10) : null;
+    const maxBuckets = maxArg ? parseInt(maxArg.split('=')[1], 10) : 120;
+    if (this._baselinesRecomputeInFlight) {
+      return msg.reply('A position baselines recompute is already running — wait for it to finish before starting another.');
+    }
+    await msg.reply(`Position baselines recompute starting (season=${seasonId || 'all'}, maxBuckets=${maxBuckets}). See bot logs for progress.`);
+    this._baselinesRecomputeInFlight = (async () => {
+      try {
+        const { runRecompute } = require('../../scripts/recompute-position-baselines');
+        const r = await runRecompute({ seasonId, maxBuckets });
+        await msg.reply(
+          `Position baselines recompute done. Matches scanned: ${r.matchesScanned}, samples: ${r.samplesScored}, rows written: ${r.written}, sparse buckets skipped: ${r.skipped}.`
+        );
+      } catch (err) {
+        console.error('[Baselines] Manual recompute failed:', err);
+        await msg.reply(`Position baselines recompute failed: ${err.message}`).catch(() => {});
+      } finally {
+        this._baselinesRecomputeInFlight = null;
+      }
+    })();
+  }
+
+  async _runPositionBaselinesRecompute(reason = 'scheduled') {
+    // Single-flight: UPSERT is idempotent so concurrent runs are safe in terms
+    // of correctness, but they're wasteful. Skip if one is already in progress.
+    if (this._baselinesRecomputeInFlight) {
+      console.log(`[Baselines] Skipping ${reason} recompute — another run is already in progress.`);
+      return;
+    }
+    this._baselinesRecomputeInFlight = (async () => {
+      try {
+        console.log(`[Baselines] Starting ${reason} position-baselines recompute...`);
+        const { runRecompute } = require('../../scripts/recompute-position-baselines');
+        const r = await runRecompute({});
+        console.log(`[Baselines] ${reason} recompute complete: matches=${r.matchesScanned}, samples=${r.samplesScored}, written=${r.written}, skipped=${r.skipped}.`);
+      } catch (err) {
+        console.error(`[Baselines] ${reason} recompute failed:`, err.message);
+      } finally {
+        this._baselinesRecomputeInFlight = null;
+      }
+    })();
+    return this._baselinesRecomputeInFlight;
   }
 
   async _cmdAdminRegister(msg, args) {
@@ -4976,6 +5027,40 @@ class DiscordBot {
 
       // Auto-create lobby at game time: check every minute
       setInterval(() => this._autoCreateScheduledLobbies().catch(err => console.error('[LobbyAuto] Error:', err.message)), 60 * 1000);
+
+      // Position baselines recompute — weekly (Mondays 3am UTC) so PERF
+      // timeline_v1 baselines stay current as the patch meta evolves. Owner can
+      // also trigger it on demand via `!recompute-baselines`.
+      cron.schedule('0 3 * * 1', () => {
+        this._runPositionBaselinesRecompute('weekly').catch(() => {});
+      }, { timezone: 'UTC' });
+      console.log('[Discord] Position baselines recompute scheduled (Mondays 03:00 UTC).');
+
+      // Startup catch-up: run once shortly after boot if the table is empty or
+      // older than ~10 days, so a freshly redeployed bot does not have to wait
+      // a full week before timeline_v1 becomes usable.
+      setTimeout(() => {
+        (async () => {
+          try {
+            const pool = db.getPool();
+            const r = await pool.query(
+              `SELECT COUNT(*)::int AS n, MAX(updated_at) AS last
+                 FROM position_baselines`
+            );
+            const n = r.rows[0]?.n || 0;
+            const last = r.rows[0]?.last ? new Date(r.rows[0].last) : null;
+            const ageDays = last ? (Date.now() - last.getTime()) / 86400000 : Infinity;
+            if (n < 200 || ageDays > 10) {
+              console.log(`[Baselines] Startup recompute (rows=${n}, ageDays=${ageDays.toFixed(1)}).`);
+              await this._runPositionBaselinesRecompute('startup');
+            } else {
+              console.log(`[Baselines] Startup check OK (rows=${n}, ageDays=${ageDays.toFixed(1)}) — skipping recompute.`);
+            }
+          } catch (err) {
+            console.error('[Baselines] Startup check failed:', err.message);
+          }
+        })();
+      }, 60_000);
 
       // Coaching marketplace reminders (T13) — hourly cron, no-ops while flag is off
       this.startCoachingReminderCron();
