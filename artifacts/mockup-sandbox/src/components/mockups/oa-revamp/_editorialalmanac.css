@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap');
+
+.editorial-almanac {
+  --background: #f4f1ea; /* warm paper cream */
+  --foreground: #1c1914; /* very dark brown/charcoal */
+  --card: #ece9df; /* slightly darker paper */
+  --card-foreground: #1c1914;
+  --popover: #ece9df;
+  --popover-foreground: #1c1914;
+  --primary: #8b7355; /* tarnished brass/gold */
+  --primary-foreground: #f4f1ea;
+  --secondary: #3a322c; /* leather brown */
+  --secondary-foreground: #f4f1ea;
+  --muted: #e2dbcd;
+  --muted-foreground: #665f58;
+  --accent: #8b7355;
+  --accent-foreground: #f4f1ea;
+  --destructive: #8b2b2b;
+  --destructive-foreground: #f4f1ea;
+  --border: #3a322c; /* sharp dark rules */
+  --input: #3a322c;
+  --ring: #8b7355;
+  --radius: 0; /* completely square corners for print feel */
+
+  font-family: 'Lora', serif;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.editorial-almanac .font-serif-display {
+  font-family: 'Cinzel', serif;
+}
+
+.editorial-almanac .paper-texture {
+  position: relative;
+}
+
+.editorial-almanac .paper-texture::before {
+  content: "";
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+  z-index: 50;
+  opacity: 0.6;
+}
+
+/* Fine engraved dividers */
+.editorial-almanac .engraved-rule {
+  border-top: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  height: 6px;
+  box-sizing: border-box;
+}
+
+.editorial-almanac .engraved-rule-light {
+  border-top: 1px solid rgba(58, 50, 44, 0.3);
+  border-bottom: 2px solid rgba(58, 50, 44, 0.3);
+  height: 5px;
+  box-sizing: border-box;
+}
+
+.editorial-almanac .ornate-border {
+  border: 1px solid var(--border);
+  padding: 4px;
+  position: relative;
+}
+.editorial-almanac .ornate-border::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px; right: 2px; bottom: 2px;
+  border: 1px solid rgba(58, 50, 44, 0.4);
+  pointer-events: none;
+}
+
+/* Portrait slots */
+.editorial-almanac .portrait-slot {
+  filter: sepia(0.8) contrast(1.2) grayscale(0.8);
+  mix-blend-mode: multiply;
+}
+
+.editorial-almanac .brass-text {
+  background: linear-gradient(to bottom, #a38c65, #6d583c);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #8b7355; /* fallback */
+}

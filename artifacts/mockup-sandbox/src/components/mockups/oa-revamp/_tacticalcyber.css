@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=VT323&display=swap');
+
+.tactical-cyber {
+  --background: #020202;
+  --foreground: #39FF14;
+  --card: #050505;
+  --card-foreground: #39FF14;
+  --popover: #050505;
+  --popover-foreground: #39FF14;
+  --primary: #39FF14;
+  --primary-foreground: #000000;
+  --secondary: #0a0a0a;
+  --secondary-foreground: #39FF14;
+  --muted: #0a0a0a;
+  --muted-foreground: #1c7a0a;
+  --accent: #39FF14;
+  --accent-foreground: #000000;
+  --destructive: #ff003c;
+  --destructive-foreground: #000000;
+  --border: #39FF14;
+  --input: #0a0a0a;
+  --ring: #39FF14;
+  --radius: 0;
+
+  font-family: 'Fira Code', monospace;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.tactical-cyber .font-display {
+  font-family: 'VT323', monospace;
+}
+
+.tactical-cyber .scanlines::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.15) 50%, rgba(0,0,0,0.15));
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.tactical-cyber .vignette::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle, transparent 60%, rgba(0,0,0,0.9) 150%);
+  pointer-events: none;
+  z-index: 51;
+}
+
+.tactical-cyber .crt {
+  animation: flicker 0.15s infinite;
+}
+
+@keyframes flicker {
+  0% { opacity: 0.97; }
+  50% { opacity: 1; }
+  100% { opacity: 0.98; }
+}
+
+.tactical-cyber .glitch-hover:hover {
+  text-shadow: 2px 0 #ff003c, -2px 0 #00e1ff;
+  animation: glitch-anim 0.3s infinite;
+}
+
+@keyframes glitch-anim {
+  0% { clip-path: inset(10% 0 30% 0); }
+  20% { clip-path: inset(80% 0 5% 0); }
+  40% { clip-path: inset(40% 0 40% 0); }
+  60% { clip-path: inset(10% 0 80% 0); }
+  80% { clip-path: inset(50% 0 20% 0); }
+  100% { clip-path: inset(30% 0 50% 0); }
+}
+
+.tactical-cyber .terminal-border {
+  border: 1px solid var(--border);
+  box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.05), 0 0 5px rgba(57, 255, 20, 0.2);
+}
+
+.tactical-cyber .terminal-border-t {
+  border-top: 1px solid var(--border);
+}
+
+.tactical-cyber .terminal-border-b {
+  border-bottom: 1px solid var(--border);
+}
+
+.tactical-cyber .terminal-header {
+  background: var(--border);
+  color: var(--primary-foreground);
+  font-weight: bold;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.tactical-cyber .blink {
+  animation: blink-anim 1s step-end infinite;
+}
+
+@keyframes blink-anim {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.tactical-cyber ::selection {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}

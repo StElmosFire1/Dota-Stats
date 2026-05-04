@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Oswald:wght@300;400;500;600;700&family=PT+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+.editorial-broadsheet {
+  --background: 42 33% 96%; /* #f7f5f0 - newsprint off-white */
+  --foreground: 0 0% 10%; /* #1a1a1a */
+  --card: 42 33% 96%;
+  --card-foreground: 0 0% 10%;
+  --popover: 42 33% 96%;
+  --popover-foreground: 0 0% 10%;
+  --primary: 358 67% 45%; /* Sports red */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 40 20% 90%;
+  --secondary-foreground: 0 0% 10%;
+  --muted: 40 20% 90%;
+  --muted-foreground: 0 0% 40%;
+  --accent: 358 67% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 358 67% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 15%;
+  --input: 0 0% 80%;
+  --ring: 358 67% 45%;
+  --radius: 0;
+
+  font-family: 'PT Serif', serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.editorial-broadsheet .font-headline {
+  font-family: 'Playfair Display', serif;
+}
+
+.editorial-broadsheet .font-condensed {
+  font-family: 'Oswald', sans-serif;
+  text-transform: uppercase;
+}
+
+/* Hairline dividers for columns */
+.editorial-broadsheet .column-rule {
+  border-right: 1px solid hsl(var(--border));
+}
+
+.editorial-broadsheet .thick-rule {
+  border-top: 4px solid hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--foreground));
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+.editorial-broadsheet .thick-rule-bottom {
+  border-bottom: 4px solid hsl(var(--foreground));
+}
+
+.editorial-broadsheet .double-rule {
+  border-top: 3px double hsl(var(--foreground));
+}
+
+/* Ink bleed effect on text */
+.editorial-broadsheet .ink-bleed {
+  text-shadow: 0px 0px 1px rgba(0,0,0,0.3);
+}
+
+.editorial-broadsheet .news-texture {
+  position: relative;
+}
+.editorial-broadsheet .news-texture::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.8;
+}
+
+/* Form overrides */
+.editorial-broadsheet input, 
+.editorial-broadsheet textarea {
+  font-family: 'PT Serif', serif;
+  border: 1px solid hsl(var(--border));
+  background: transparent;
+}
+.editorial-broadsheet input:focus, 
+.editorial-broadsheet textarea:focus {
+  outline: none;
+  border-color: hsl(var(--primary));
+  box-shadow: none;
+}

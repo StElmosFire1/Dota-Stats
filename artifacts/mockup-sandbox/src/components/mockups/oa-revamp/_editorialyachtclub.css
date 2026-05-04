@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Montserrat:wght@300;400;500;600&display=swap');
+
+.editorial-yacht-club {
+  --background: #F8F7F2;
+  --foreground: #0A192F;
+  --card: #FFFFFF;
+  --card-foreground: #0A192F;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A192F;
+  --primary: #C5A059; /* Gold Foil */
+  --primary-foreground: #FFFFFF;
+  --secondary: #0A192F; /* Navy */
+  --secondary-foreground: #FFFFFF;
+  --muted: #EBE8E0;
+  --muted-foreground: #6B7280;
+  --accent: #EBE8E0;
+  --accent-foreground: #0A192F;
+  --destructive: #8B0000;
+  --destructive-foreground: #FFFFFF;
+  --border: #E0DCD0;
+  --input: #E0DCD0;
+  --ring: #C5A059;
+  --radius: 0px;
+
+  font-family: 'Montserrat', sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.editorial-yacht-club .font-serif {
+  font-family: 'Cormorant Garamond', serif;
+}
+
+.editorial-yacht-club .deckled-card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 20px rgba(10, 25, 47, 0.03), inset 0 0 0 1px rgba(197, 160, 89, 0.1);
+}
+
+.editorial-yacht-club-hero {
+  position: relative;
+}
+
+.editorial-yacht-club-hero::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  height: 800px;
+  background-image: url('/__mockup/images/oa-logo.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.02;
+  pointer-events: none;
+  filter: grayscale(100%);
+}
+
+.editorial-yacht-club .stat-ribbon {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to right, transparent, rgba(197, 160, 89, 0.05), transparent);
+}
+
+.editorial-yacht-club table {
+  border-collapse: collapse;
+}
+
+.editorial-yacht-club th {
+  border-bottom: 2px solid var(--secondary);
+}
+
+.editorial-yacht-club td {
+  border-bottom: 1px solid var(--border);
+}
+
+.editorial-yacht-club tr:last-child td {
+  border-bottom: none;
+}

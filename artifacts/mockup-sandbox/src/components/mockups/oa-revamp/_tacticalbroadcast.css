@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap');
+
+.tactical-broadcast {
+  --background: #111318;
+  --foreground: #f1f5f9;
+  --card: #181a20;
+  --card-foreground: #f1f5f9;
+  --popover: #181a20;
+  --popover-foreground: #f1f5f9;
+  --primary: #f59e0b; /* Amber */
+  --primary-foreground: #0f172a;
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: #334155;
+  --accent-foreground: #f8fafc;
+  --destructive: #ef4444;
+  --destructive-foreground: #f8fafc;
+  --border: #334155;
+  --input: #334155;
+  --ring: #f59e0b;
+  --radius: 0;
+
+  font-family: 'Inter', sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.tactical-broadcast .font-display {
+  font-family: 'Rajdhani', sans-serif;
+}
+
+.tactical-broadcast .font-mono {
+  font-family: 'Share Tech Mono', monospace;
+}
+
+/* Lower third / broadcast corner cuts */
+.tactical-broadcast .clip-corner {
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+}
+
+.tactical-broadcast .clip-corner-tr {
+  clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+}
+
+.tactical-broadcast .clip-corner-bl {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 24px 100%, 0 calc(100% - 24px));
+}
+
+.tactical-broadcast .clip-tab {
+  clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
+}
+
+.tactical-broadcast .scanlines {
+  position: relative;
+}
+
+.tactical-broadcast .scanlines::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 50;
+  background-size: 100% 2px, 3px 100%;
+  pointer-events: none;
+}
+
+/* Marquee animation */
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.tactical-broadcast .animate-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee 20s linear infinite;
+}
+
+.tactical-broadcast-hero-bg {
+  background: radial-gradient(circle at 70% 30%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
+              radial-gradient(circle at 30% 70%, rgba(51, 65, 85, 0.3) 0%, transparent 50%);
+}
