@@ -1794,6 +1794,13 @@ export default function AdminPanel() {
   const [unregistered, setUnregistered] = useState(null);
   const [unregLoading, setUnregLoading] = useState(false);
 
+  const [activeTab, setActiveTab] = useState(() => {
+    try { return localStorage.getItem('admin_active_tab') || 'overview'; } catch { return 'overview'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('admin_active_tab', activeTab); } catch {}
+  }, [activeTab]);
+
   const loadRanks = useCallback(() => {
     if (!isSuperuser) return;
     getPlayerRanks().then(setRanks).catch(() => {});
@@ -1937,15 +1944,60 @@ export default function AdminPanel() {
     );
   }
 
+  const ADMIN_NAV = [
+    { label: 'Dashboard', items: [
+      { id: 'overview', icon: '📊', label: 'Overview' },
+    ]},
+    { label: 'Match Data', items: [
+      { id: 'matches', icon: '🎮', label: 'Matches & Replays' },
+    ]},
+    { label: 'Bot Tools', items: [
+      { id: 'steambot', icon: '🤖', label: 'Steam Bot & Test DMs' },
+    ]},
+    { label: 'Config', items: [
+      { id: 'seasons', icon: '🏆', label: 'Seasons & Ratings' },
+      { id: 'config', icon: '⚙️', label: 'Site Settings' },
+    ]},
+    { label: 'Users', items: [
+      { id: 'users', icon: '👥', label: 'Players & Sign-Ups', badge: pendingSignupCount > 0 ? pendingSignupCount : null },
+    ]},
+    { label: 'Marketplace', items: [
+      { id: 'marketplace', icon: '💰', label: 'Gifts, Coaching & Tournaments' },
+    ]},
+  ];
+
   return (
     <AdminErrorBoundary>
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px 60px' }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 16px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <h1 style={{ margin: 0 }}>🔒 Admin Panel</h1>
         <button className="btn" onClick={logout} style={{ fontSize: '0.85rem' }}>Log out</button>
       </div>
-      <p style={{ color: 'var(--text-muted)', marginBottom: 28 }}>Manage matches, ratings, and data.</p>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 20 }}>Manage matches, ratings, and data.</p>
 
+      <div className="ap-grid">
+        <aside className="ap-sidebar">
+          {ADMIN_NAV.map(group => (
+            <div key={group.label} className="ap-nav-group">
+              <div className="ap-nav-group-label">{group.label}</div>
+              {group.items.map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`ap-nav-item ${activeTab === item.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(item.id)}
+                >
+                  <span className="ap-nav-icon" aria-hidden>{item.icon}</span>
+                  <span className="ap-nav-label">{item.label}</span>
+                  {item.badge ? <span className="ap-nav-badge">{item.badge}</span> : null}
+                </button>
+              ))}
+            </div>
+          ))}
+        </aside>
+        <div className="ap-main">
+
+      {activeTab === 'overview' && (<>
       {/* Quick Links */}
       <section style={{ marginBottom: 28 }}>
         <h2 style={{ marginBottom: 14 }}>Quick Links</h2>
@@ -1998,6 +2050,9 @@ export default function AdminPanel() {
         </div>
       </section>
 
+      </>)}
+
+      {activeTab === 'matches' && (<>
       {/* Manual Match Entry — moved to its own page */}
       <section style={{ marginBottom: 36 }}>
         <h2 style={{ marginBottom: 10 }}>Record a Match</h2>
@@ -2064,9 +2119,14 @@ export default function AdminPanel() {
         </div>
       </section>
 
+      </>)}
+
+      {activeTab === 'steambot' && (<>
       {/* Steam Bot Controls */}
       <SteamBotPanel superuserKey={superuserKey} />
+      </>)}
 
+      {activeTab === 'matches' && (<>
       {/* Database Backups */}
       <DbBackupManager superuserKey={superuserKey} />
 
@@ -2075,7 +2135,9 @@ export default function AdminPanel() {
 
       {/* Replay Archive (dedicated server) */}
       <ReplayArchiveManager superuserKey={superuserKey} />
+      </>)}
 
+      {activeTab === 'steambot' && (<>
       {/* Test Post-Match DM */}
       <TestDmPanel superuserKey={superuserKey} />
 
@@ -2084,13 +2146,17 @@ export default function AdminPanel() {
 
       {/* Server Error Log */}
       <ErrorLogViewer superuserKey={superuserKey} />
+      </>)}
 
+      {activeTab === 'seasons' && (<>
       {/* Season Tiers — 8-tier ladder per season */}
       <SeasonTiersPanel superuserKey={superuserKey} />
 
       {/* Season Lifecycle — end conditions + manual close */}
       <SeasonLifecyclePanel superuserKey={superuserKey} />
+      </>)}
 
+      {activeTab === 'marketplace' && (<>
       {/* Gift Purchases — audit all sent/received gifts */}
       <GiftPurchasesPanel superuserKey={superuserKey} />
 
@@ -2099,7 +2165,9 @@ export default function AdminPanel() {
 
       {/* Tournament Brackets — active tournaments and bracket management */}
       <TournamentBracketPanel />
+      </>)}
 
+      {activeTab === 'seasons' && (<>
       {/* Rating System — V1 vs V3 toggle + preview */}
       <section>
         <h2 style={{ marginBottom: 6 }}>⚖️ Rating System</h2>
@@ -2228,10 +2296,15 @@ export default function AdminPanel() {
         )}
       </section>
 
+      </>)}
+
+      {activeTab === 'config' && (<>
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
       <WelcomeModalPanel superuserKey={superuserKey} />
+      </>)}
 
+      {activeTab === 'users' && (<>
       {/* ── Dota Rank Management ─────────────────────────────────────── */}
       <section className="admin-section" style={{ marginTop: 32 }}>
         <h2 className="section-title" style={{ marginBottom: 12 }}>🎖️ Dota 2 Rank Management</h2>
@@ -2559,6 +2632,9 @@ export default function AdminPanel() {
         )}
       </section>
 
+      </>)}
+
+      {activeTab === 'seasons' && (<>
       <section style={{ marginBottom: 36 }}>
         <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏆 Hero Tier Overrides</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
@@ -2567,6 +2643,9 @@ export default function AdminPanel() {
         <HeroTierOverridesPanel superuserKey={superuserKey} selectedSeason={activeSeason} />
       </section>
 
+      </>)}
+
+      {activeTab === 'matches' && (<>
       <section style={{ marginBottom: 36 }}>
         <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🔍 Replay Inspector</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
@@ -2575,6 +2654,9 @@ export default function AdminPanel() {
         <ReplayInspectorPanel superuserKey={superuserKey} />
       </section>
 
+      </>)}
+
+      {activeTab === 'seasons' && (<>
       <section style={{ marginBottom: 36 }}>
         <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏅 Achievement System</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
@@ -2582,7 +2664,10 @@ export default function AdminPanel() {
         </p>
         <RecomputeAchievementsPanel superuserKey={superuserKey} />
       </section>
+      </>)}
 
+        </div>
+      </div>
     </div>
     </AdminErrorBoundary>
   );

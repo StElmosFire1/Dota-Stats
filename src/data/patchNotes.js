@@ -707,6 +707,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "5.61",
+    "title": "Admin Panel left-sidebar restructure",
+    "published_at": "2026-05-04",
+    "content": "Closes the loop on the v5.60 Court & Pitch graduation by replacing the long single-column scroll of the Admin Panel with a sticky **left-sidebar shell** that mirrors the mockup.\n\n**What changed:**\n- `web/src/pages/AdminPanel.jsx` is now a two-column shell: a 240px sticky sidebar on the left, the existing section content on the right. Sections were not rewritten — every panel, table and form is byte-identical to v5.60.\n- The sidebar groups every admin surface into six tabs across five labelled groups: **Dashboard → Overview**, **Match Data → Matches & Replays**, **Bot Tools → Steam Bot & Test DMs**, **Config → Seasons & Ratings / Site Settings**, **Users → Players & Sign-Ups**, and **Marketplace → Gifts, Coaching & Tournaments**.\n- The **Players & Sign-Ups** item carries the same red badge for pending applications that used to live on the Quick Links button.\n- The active tab is persisted to `localStorage` (`admin_active_tab`) so deep-linked admin work survives a refresh.\n- New CSS primitives in `styles.css` (`.ap-grid`, `.ap-sidebar`, `.ap-nav-group`, `.ap-nav-item`, `.ap-nav-badge`) honour the brass left-rule on the active item and collapse to a wrapping horizontal nav under 900px wide.\n\n**Migration notes:** the old single-scroll layout is gone; superusers should bookmark sidebar items rather than relying on scroll position. Every existing admin action is still reachable — only the chrome moved.",
+    "author": "System"
+  },
+  {
     "version": "5.60",
     "title": "Court & Pitch graduation — global primitives, ticker, footer, Welcome Modal CMS",
     "published_at": "2026-05-04",
