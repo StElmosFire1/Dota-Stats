@@ -1095,7 +1095,11 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
                     if (persisted != null && !Number.isNaN(persisted)) {
                       const bd = p.perf_breakdown || null;
                       const tip = `PERF ${persisted.toFixed(1)}/10 — position-aware Positive Impact${bd?.position ? ` (pos ${bd.position})` : ''}. 5.0 = average, 7.0+ = very good, 9.0+ = top 1%.`;
-                      return <ImpactBadge score={Math.round(persisted)} title={tip} />;
+                      const color = persisted >= 9.0 ? '#fbbf24'
+                                  : persisted >= 8.0 ? '#4ade80'
+                                  : persisted >= 5.0 ? 'var(--text-secondary)'
+                                  : '#f87171';
+                      return <span title={tip} style={{ color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{persisted.toFixed(1)}</span>;
                     }
                     return <ImpactBadge score={perfRanks[p.slot] ?? null} title={perfRanks[p.slot] != null ? `Match Performance ${perfRanks[p.slot]}/10 (legacy)` : undefined} />;
                   })()}</td>

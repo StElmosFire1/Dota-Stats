@@ -188,7 +188,7 @@ async function computeAndSavePerfForMatch(getPool, matchId, opts = {}) {
 // so that recent matches stay current and progress is observable. Defaults
 // process ALL pending matches in batches of 50 with a 250ms inter-batch sleep
 // to keep DB load reasonable. Emits per-batch progress logs to stdout.
-async function backfillPerf(getPool, { limit = null, batchSize = 50, sleepMs = 250, onProgress = null } = {}) {
+async function backfillPerf(getPool, { limit = null, batchSize = 50, sleepMs = 250, onProgress = null, all = false } = {}) {
   const pool = getPool();
   const queryParams = [];
   let limitClause = '';
@@ -196,11 +196,16 @@ async function backfillPerf(getPool, { limit = null, batchSize = 50, sleepMs = 2
     queryParams.push(limit);
     limitClause = ` LIMIT $${queryParams.length}`;
   }
+  // Default: only matches with at least one NULL perf row (faster, idempotent
+  // top-up). When `all: true`, recompute every match in history — useful when
+  // weights/baselines change and existing scores need recalibrating.
+  const whereClause = all
+    ? '1=1'
+    : 'EXISTS (SELECT 1 FROM player_stats ps WHERE ps.match_id = m.match_id AND ps.perf IS NULL)';
   const res = await pool.query(
-    `SELECT DISTINCT m.match_id
+    `SELECT m.match_id
        FROM matches m
-       JOIN player_stats ps ON ps.match_id = m.match_id
-      WHERE ps.perf IS NULL
+      WHERE ${whereClause}
       ORDER BY m.match_id ASC${limitClause}`,
     queryParams
   );

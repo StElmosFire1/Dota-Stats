@@ -838,11 +838,13 @@ class DiscordBot {
     if (msg.author.id !== OWNER_DISCORD_ID) {
       return msg.reply('You don\'t have permission to use this command.');
     }
-    const limit = args[0] ? parseInt(args[0], 10) : null;
-    await msg.reply(`PERF backfill starting (limit: ${limit ? limit + ' matches' : 'ALL pending matches'}). See bot logs for per-batch progress.`);
+    const all = args.some(a => a && a.toLowerCase() === 'all');
+    const limit = args.find(a => /^\d+$/.test(a));
+    const limitNum = limit ? parseInt(limit, 10) : null;
+    await msg.reply(`PERF backfill starting (mode: ${all ? 'ALL historical matches (recompute)' : 'pending only'}, limit: ${limitNum || 'none'}). See bot logs for per-batch progress.`);
     try {
       const { backfillPerf } = require('../perf/perfService');
-      const r = await backfillPerf(db.getPool, { limit, batchSize: 50, sleepMs: 250 });
+      const r = await backfillPerf(db.getPool, { limit: limitNum, batchSize: 50, sleepMs: 250, all });
       await msg.reply(`PERF backfill complete. Total: ${r.total}, processed: ${r.processed}, ok: ${r.ok}, failed: ${r.failed}.`);
     } catch (err) {
       await msg.reply(`PERF backfill failed: ${err.message}`);
