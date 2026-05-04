@@ -7,6 +7,8 @@ export default defineConfig({
     outDir: 'dist',
   },
   server: {
+    host: '0.0.0.0',
+    allowedHosts: true,
     proxy: {
       '/api': 'http://localhost:5000',
       '/scouting': 'http://localhost:5000',
