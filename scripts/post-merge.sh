@@ -4,6 +4,11 @@ set -e
 echo "[post-merge] Installing root dependencies..."
 npm install --no-audit --no-fund
 
+if [ -f scripts/build-parser.sh ]; then
+  echo "[post-merge] Rebuilding Java replay parser jar if needed..."
+  bash scripts/build-parser.sh
+fi
+
 if [ -f web/package.json ]; then
   echo "[post-merge] Installing web/ dependencies..."
   (cd web && npm install --no-audit --no-fund)

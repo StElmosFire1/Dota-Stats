@@ -9,6 +9,9 @@ echo "==> Pulling latest code..."
 git fetch origin
 git reset --hard origin/main
 
+echo "==> Rebuilding Java replay parser jar (if sources changed)..."
+bash scripts/build-parser.sh
+
 echo "==> Installing frontend dependencies..."
 cd web
 npm install --silent

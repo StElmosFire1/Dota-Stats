@@ -14,7 +14,7 @@ After completing any set of changes and rebuilding, the latest commit is pushed 
 The bot runs under PM2. Standard deploy command:
 `cd ~/Dota-Stats && bash deploy.sh`
 This script: pulls latest code (`git reset --hard origin/main`), runs `npm install` in the `web/` dir, builds the frontend (`npm run build`), then restarts PM2 process 2.
-After rebuilding the Java JAR (`cd odota-parser && mvn package -q -DskipTests`), run the deploy script to pick it up.
+The Java replay parser jar (`odota-parser/target/stats-0.1.0.jar`) is rebuilt automatically on each deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and `scripts/post-merge.sh`). The script only re-runs `mvn install -DskipTests` when the jar is missing or older than any file under `odota-parser/src/` or `odota-parser/pom.xml`, so normal restarts are no-ops. To force a manual rebuild, run `npm run build:parser`.
 
 ## System Architecture
 The system is built on Node.js, integrating with Discord and Steam for game interactions. Data persistence is managed using PostgreSQL.

@@ -10,7 +10,7 @@ channel = "stable-24_11"
 packages = ["jdk", "maven"]
 
 [deployment]
-run = ["node", "src/index.js"]
+run = ["sh", "-c", "bash scripts/build-parser.sh && node src/index.js"]
 deploymentTarget = "vm"
 ignorePorts = false
 
