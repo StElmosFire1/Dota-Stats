@@ -5,8 +5,19 @@ echo "[post-merge] Installing root dependencies..."
 npm install --no-audit --no-fund
 
 if [ -f scripts/build-parser.sh ]; then
-  echo "[post-merge] Rebuilding Java replay parser jar if needed..."
+  # Auto-rebuild path: post-merge runs in our automation environment (which
+  # has Maven + a JDK), so when parser sources change we regenerate the jar
+  # here and the refreshed jar is pushed to origin/main alongside the merge.
+  # This is the mechanism that satisfies "auto-rebuild when source changes".
+  echo "[post-merge] Rebuilding Java replay parser jar if sources changed..."
   bash scripts/build-parser.sh
+
+  # Hard verification gate: after the rebuild attempt, the jar must be
+  # newer than every source file. If --check fails here, post-merge aborts
+  # BEFORE the git push step, so a stale parser jar can never reach
+  # origin/main even if the rebuild silently no-op'd.
+  echo "[post-merge] Verifying replay parser jar is in sync with sources..."
+  bash scripts/build-parser.sh --check
 fi
 
 if [ -f web/package.json ]; then

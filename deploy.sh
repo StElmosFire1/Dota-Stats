@@ -9,8 +9,11 @@ echo "==> Pulling latest code..."
 git fetch origin
 git reset --hard origin/main
 
-echo "==> Rebuilding Java replay parser jar (if sources changed)..."
-bash scripts/build-parser.sh
+echo "==> Verifying committed replay parser jar is in sync with sources..."
+# Hard gate: refuse to deploy if the jar checked into the repo is older
+# than any Java/pom file. This runs BEFORE any local rebuild so a stale
+# committed artifact cannot be silently self-healed by the deploy host.
+bash scripts/build-parser.sh --check
 
 echo "==> Installing frontend dependencies..."
 cd web

@@ -16,6 +16,8 @@ The bot runs under PM2. Standard deploy command:
 This script: pulls latest code (`git reset --hard origin/main`), runs `npm install` in the `web/` dir, builds the frontend (`npm run build`), then restarts PM2 process 2.
 The Java replay parser jar (`odota-parser/target/stats-0.1.0.jar`) is rebuilt automatically on each deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and `scripts/post-merge.sh`). The script only re-runs `mvn install -DskipTests` when the jar is missing or older than any file under `odota-parser/src/` or `odota-parser/pom.xml`, so normal restarts are no-ops. To force a manual rebuild, run `npm run build:parser`.
 
+Both `deploy.sh` and `scripts/post-merge.sh` run `bash scripts/build-parser.sh --check` (also exposed as `npm run check:parser`) as a hard gate **before** any local rebuild. The check exits non-zero if the committed jar is older than any file under `odota-parser/src/` (whole tree, not just `src/main/java`) or `odota-parser/pom.xml`, so a deploy/post-merge with a stale committed jar fails fast and cannot be silently self-healed by a rebuild on the deploy host. The check never invokes Maven, so it is also safe to wire into CI runners without a JDK.
+
 ## System Architecture
 The system is built on Node.js, integrating with Discord and Steam for game interactions. Data persistence is managed using PostgreSQL.
 
