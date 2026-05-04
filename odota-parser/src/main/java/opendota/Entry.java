@@ -90,6 +90,11 @@ public class Entry implements Cloneable {
     public Integer draft_extime1;
     public Integer networth;
     public Integer stage;
+    // Cumulative-since-game-start counters attached to interval entries (timeline_v1 PERF source).
+    // Driven by onCombatLogEntry accumulators in Parse.java; null on non-interval entries.
+    public Integer hero_damage_cumulative;
+    public Integer tower_damage_cumulative;
+    public Integer wards_killed_cumulative;
     public Boolean posData;
     public Boolean max;
     public Boolean interval;

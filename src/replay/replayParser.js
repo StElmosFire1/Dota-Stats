@@ -685,6 +685,19 @@ class ReplayParser {
             level: e.level || 0,
             cs: e.lh || 0,
             hd: e.heroDamage || 0,
+            // Per-minute timeline_v1 PERF inputs. Cumulative-since-game-start fields
+            // (hd_cum/td_cum/wk_cum) prefer values emitted by the Java parser when
+            // present; back-filled below from combat-log accumulators otherwise.
+            gold: e.gold || 0,
+            k: e.kills || 0,
+            d: e.deaths || 0,
+            a: e.assists || 0,
+            denies: e.denies || 0,
+            obs: e.obs_placed || 0,
+            sen: e.sen_placed || 0,
+            hd_cum: e.hero_damage_cumulative != null ? e.hero_damage_cumulative : null,
+            td_cum: e.tower_damage_cumulative != null ? e.tower_damage_cumulative : null,
+            wk_cum: e.wards_killed_cumulative != null ? e.wards_killed_cumulative : null,
           });
         }
       }
@@ -717,6 +730,8 @@ class ReplayParser {
     const damageTaken = {};
     const damageByType = {};  // slot → { physical, magical, pure } — from damage_type bitmask (1=phys, 2=magic, 4=pure)
     const hdPoints = {};   // slot → [{t, cumHd}] — cumulative hero damage snapshots for timeline back-fill
+    const tdPoints = {};   // slot → [{t, cumTd}] — cumulative tower damage snapshots (timeline_v1 fallback)
+    const wkPoints = {};   // slot → [{t, cumWk}] — cumulative wards-killed snapshots (timeline_v1 fallback)
     const wardKills = {};
     const wardKillSeen = new Set(); // dedup: obs_left + obs_left_log can both fire for the same kill
     const obsPurchased = {};
@@ -877,6 +892,8 @@ class ReplayParser {
             if (!wardKillSeen.has(dedupKey)) {
               wardKillSeen.add(dedupKey);
               wardKills[killerSlot] = (wardKills[killerSlot] || 0) + 1;
+              if (!wkPoints[killerSlot]) wkPoints[killerSlot] = [];
+              wkPoints[killerSlot].push({ t: e.time || 0, cumWk: wardKills[killerSlot] });
             }
           }
         }
@@ -1174,6 +1191,8 @@ class ReplayParser {
           }
           if (victimName && (victimName.includes('tower') || victimName.includes('fort') || victimName.includes('barracks') || victimName.includes('rax'))) {
             towerDamage[attackerSlot] = (towerDamage[attackerSlot] || 0) + e.value;
+            if (!tdPoints[attackerSlot]) tdPoints[attackerSlot] = [];
+            tdPoints[attackerSlot].push({ t: e.time || 0, cumTd: towerDamage[attackerSlot] });
           }
         }
         // Damage taken (both streaming and blob "damage" event — victim is targetname)
@@ -1485,14 +1504,39 @@ class ReplayParser {
       }
     }
 
-    // Back-fill timeline sample hd values with cumulative hero damage from hdPoints
-    for (const [slotStr, samples] of Object.entries(timelineSamples)) {
-      const pts = hdPoints[parseInt(slotStr)] || [];
-      if (pts.length === 0) continue;
+    // Back-fill timeline sample cumulative fields (hd / td / wk) from combat-log
+    // accumulators. The Java parser already emits hero_damage_cumulative,
+    // tower_damage_cumulative, wards_killed_cumulative on each interval entry —
+    // we only fill from JS-side hdPoints/tdPoints/wkPoints when the parser
+    // values are missing (older replays parsed by an older parser jar).
+    function _backfillCum(samples, pts, srcKey, dstKey) {
+      if (pts.length === 0) return;
       let pIdx = 0;
       for (const sample of samples) {
         while (pIdx + 1 < pts.length && pts[pIdx + 1].t <= sample.t) pIdx++;
-        sample.hd = pts[pIdx].t <= sample.t ? pts[pIdx].cumHd : 0;
+        const v = pts[pIdx].t <= sample.t ? pts[pIdx][srcKey] : 0;
+        if (sample[dstKey] == null) sample[dstKey] = v;
+      }
+    }
+    for (const [slotStr, samples] of Object.entries(timelineSamples)) {
+      const slot = parseInt(slotStr);
+      // Legacy `hd` field — kept for back-compat with consumers that read it directly.
+      const hdPts = hdPoints[slot] || [];
+      if (hdPts.length > 0) {
+        let pIdx = 0;
+        for (const sample of samples) {
+          while (pIdx + 1 < hdPts.length && hdPts[pIdx + 1].t <= sample.t) pIdx++;
+          sample.hd = hdPts[pIdx].t <= sample.t ? hdPts[pIdx].cumHd : 0;
+        }
+      }
+      _backfillCum(samples, hdPoints[slot] || [], 'cumHd', 'hd_cum');
+      _backfillCum(samples, tdPoints[slot] || [], 'cumTd', 'td_cum');
+      _backfillCum(samples, wkPoints[slot] || [], 'cumWk', 'wk_cum');
+      // Final default for any slot/sample with no events at all.
+      for (const sample of samples) {
+        if (sample.hd_cum == null) sample.hd_cum = 0;
+        if (sample.td_cum == null) sample.td_cum = 0;
+        if (sample.wk_cum == null) sample.wk_cum = 0;
       }
     }
 

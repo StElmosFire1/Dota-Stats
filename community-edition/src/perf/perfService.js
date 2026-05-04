@@ -18,6 +18,7 @@
 // regressor trained on MVP votes and win contribution.
 
 const { targetsForPosition, normTarget } = require('./perfWeights.config');
+const { loadBaselines, computeTimelinePerf, baselinesAreUsable } = require('./perfTimeline');
 
 // Map a weighted-sum score (0 = all-avg, 1 = all-elite) to a 1–10 PI.
 // Calibrated so PI(0) = 5.0, PI(1) = 9.0, with linear extension above 1
@@ -142,42 +143,110 @@ async function computeAndSavePerfForMatch(getPool, matchId, opts = {}) {
       else if (p.team === 'dire') dirK += (p.kills || 0);
     }
 
-    // Determine perf_source. The richer per-minute timeline path is reserved
-    // for `timeline_v1`. When the match has no rich timeline data we use the
-    // `endgame_v1` path and clamp the maximum at 8.5 — this prevents inflating
-    // a player to 9.5+ from a stat-line that was never weighed against true
-    // per-minute baselines. (Future: detect game_timeline.players[].samples[]
-    // having hd_cum/td_cum/wards_killed_cum and switch to timeline path.)
+    // Determine perf_source. The richer per-minute timeline path
+    // (`timeline_v1`) requires BOTH (a) replay samples carrying hd_cum/td_cum/
+    // wk_cum and (b) `position_baselines` populated with enough rows to score
+    // against. When either is missing we fall back to the `endgame_v1` path and
+    // clamp the max at 8.5 — this prevents inflating a player from a stat-line
+    // that was never weighed against true per-minute baselines.
     const tlRes = await pool.query(
-      `SELECT (game_timeline->'players'->0->'samples'->0 ? 'hd_cum') AS has_timeline
+      `SELECT (game_timeline->'players'->0->'samples'->0 ? 'hd_cum') AS has_timeline,
+              game_timeline
          FROM matches WHERE match_id = $1`,
       [matchId]
     );
-    const hasTimeline = !!tlRes.rows[0]?.has_timeline;
-    const source = hasTimeline ? 'timeline_v1' : 'endgame_v1';
-    const fallbackCap = hasTimeline ? 10.0 : 8.5;
+    const hasTimelineSamples = !!tlRes.rows[0]?.has_timeline;
+    const baselinesReady = hasTimelineSamples ? await baselinesAreUsable(pool) : false;
+    const useTimeline = hasTimelineSamples && baselinesReady;
+    const fallbackCap = useTimeline ? 10.0 : 8.5;
+
+    // When the timeline path is active we compute per player against per-position
+    // baselines. Each player needs the teammate sample list for the passive-penalty
+    // network-worth comparison, so we group players by team here.
+    const timelinePlayers = useTimeline
+      ? (tlRes.rows[0]?.game_timeline?.players || [])
+      : [];
+    const samplesByTeamSlot = {}; // 'radiant'|'dire' → { [slot]: samples }
+    if (useTimeline) {
+      for (const tp of timelinePlayers) {
+        if (tp?.team && tp?.slot != null) {
+          if (!samplesByTeamSlot[tp.team]) samplesByTeamSlot[tp.team] = {};
+          samplesByTeamSlot[tp.team][tp.slot] = tp.samples || [];
+        }
+      }
+    }
+
+    // Cache per-position baseline lookups so we only hit the DB ≤5 times.
+    const baselineCache = {};
+    async function _baselinesFor(pos) {
+      const key = (pos >= 1 && pos <= 5) ? pos : 3;
+      if (!baselineCache[key]) baselineCache[key] = await loadBaselines(pool, key);
+      return baselineCache[key];
+    }
 
     const updates = [];
+    let timelineUsedCount = 0, timelineFallbackCount = 0;
     for (const p of playersRes.rows) {
       const won = (p.team === 'radiant' && m.radiant_win) || (p.team === 'dire' && !m.radiant_win);
       const teamKills = p.team === 'radiant' ? radK : dirK;
-      const { perf, breakdown } = computePerfForPlayer(p, {
-        durationSec: m.duration, teamKills, won,
-      });
-      const cappedPerf = Math.round(Math.min(perf, fallbackCap) * 10) / 10;
-      breakdown.cap_applied = cappedPerf < perf ? fallbackCap : null;
-      updates.push({ slot: p.slot, perf: cappedPerf, breakdown });
+
+      let result = null;
+      let usedSource = 'endgame_v1';
+      if (useTimeline) {
+        const tlPlayer = timelinePlayers.find(tp => tp?.slot === p.slot);
+        if (tlPlayer && Array.isArray(tlPlayer.samples) && tlPlayer.samples.length > 0) {
+          const baselines = await _baselinesFor(p.position);
+          const teammates = Object.entries(samplesByTeamSlot[p.team] || {})
+            .filter(([s]) => parseInt(s) !== p.slot)
+            .map(([, samples]) => samples);
+          const tlResult = computeTimelinePerf(tlPlayer, {
+            position: p.position,
+            durationSec: m.duration,
+            baselines,
+            teammateSamples: teammates,
+            teamKills,
+            won,
+          });
+          if (tlResult) {
+            result = tlResult;
+            usedSource = 'timeline_v1';
+            timelineUsedCount++;
+          } else {
+            timelineFallbackCount++;
+          }
+        }
+      }
+
+      if (!result) {
+        result = computePerfForPlayer(p, {
+          durationSec: m.duration, teamKills, won,
+        });
+      }
+
+      const perCap = usedSource === 'timeline_v1' ? 10.0 : fallbackCap;
+      const cappedPerf = Math.round(Math.min(result.perf, perCap) * 10) / 10;
+      result.breakdown.cap_applied = cappedPerf < result.perf ? perCap : null;
+      result.breakdown.source = usedSource;
+      updates.push({ slot: p.slot, perf: cappedPerf, breakdown: result.breakdown, source: usedSource });
     }
+    // The match-level `perf_source` reported on each row reflects the path that
+    // actually scored that player. Keeps `breakdown.source` and stored column
+    // in sync even when timeline scoring fell back for some players in a match.
 
     for (const u of updates) {
       await pool.query(
         `UPDATE player_stats
             SET perf = $1, perf_breakdown = $2, perf_source = $3
           WHERE match_id = $4 AND slot = $5`,
-        [u.perf, JSON.stringify(u.breakdown), source, matchId, u.slot]
+        [u.perf, JSON.stringify(u.breakdown), u.source, matchId, u.slot]
       );
     }
-    return { ok: true, count: updates.length };
+    return {
+      ok: true,
+      count: updates.length,
+      timeline_used: timelineUsedCount,
+      timeline_fallback: timelineFallbackCount,
+    };
   } catch (err) {
     if (!opts.silent) console.warn(`[PERF] match ${matchId} failed:`, err.message);
     return { ok: false, reason: err.message };

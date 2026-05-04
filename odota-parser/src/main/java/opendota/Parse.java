@@ -86,6 +86,11 @@ public class Parse {
     HashMap<Integer, Integer> cosmeticsMap = new HashMap<Integer, Integer>();
     HashMap<Integer, Integer> dotaplusxpMap = new HashMap<Integer, Integer>(); // playerslot, xp
     HashMap<Integer, Integer> ward_ehandle_to_slot = new HashMap<Integer, Integer>();
+    // Per-player cumulative counters used to populate timeline_v1 PERF interval fields.
+    // Updated in onCombatLogEntry; sampled in the interval-emission loop.
+    HashMap<Integer, Integer> heroDamageCum = new HashMap<Integer, Integer>();
+    HashMap<Integer, Integer> towerDamageCum = new HashMap<Integer, Integer>();
+    HashMap<Integer, Integer> wardsKilledCum = new HashMap<Integer, Integer>();
     InputStream is = null;
     OutputStream os = null;
     private GreevilsGreedVisitor greevilsGreedVisitor;
@@ -435,6 +440,40 @@ public class Parse {
             if (cle.getType().ordinal() <= 19) {
                 output(combatLogEntry);
             }
+
+            // ── Accumulators feeding interval hero_damage_cumulative / tower_damage_cumulative
+            //    / wards_killed_cumulative (timeline_v1 PERF source). Mirrors the JS-side
+            //    aggregation so consumers see cumulative counters directly on interval entries.
+            if ("DOTA_COMBATLOG_DAMAGE".equals(combatLogEntry.type)
+                    && combatLogEntry.value != null && combatLogEntry.value > 0
+                    && Boolean.TRUE.equals(combatLogEntry.attackerhero)
+                    && !Boolean.TRUE.equals(combatLogEntry.attackerillusion)
+                    && combatLogEntry.attackername != null) {
+                Integer aSlot = name_to_slot.get(combatLogEntry.attackername);
+                if (aSlot != null) {
+                    if (Boolean.TRUE.equals(combatLogEntry.targethero)
+                            && !Boolean.TRUE.equals(combatLogEntry.targetillusion)) {
+                        heroDamageCum.merge(aSlot, combatLogEntry.value, Integer::sum);
+                    } else if (combatLogEntry.targetname != null
+                            && (combatLogEntry.targetname.contains("_tower")
+                                || combatLogEntry.targetname.contains("npc_dota_goodguys_tower")
+                                || combatLogEntry.targetname.contains("npc_dota_badguys_tower"))) {
+                        towerDamageCum.merge(aSlot, combatLogEntry.value, Integer::sum);
+                    }
+                }
+            }
+            if ("DOTA_COMBATLOG_DEATH".equals(combatLogEntry.type)
+                    && combatLogEntry.targetname != null
+                    && (combatLogEntry.targetname.startsWith("npc_dota_observer_wards")
+                        || combatLogEntry.targetname.startsWith("npc_dota_sentry_wards"))
+                    && Boolean.TRUE.equals(combatLogEntry.attackerhero)
+                    && !Boolean.TRUE.equals(combatLogEntry.attackerillusion)
+                    && combatLogEntry.attackername != null) {
+                Integer aSlot = name_to_slot.get(combatLogEntry.attackername);
+                if (aSlot != null) {
+                    wardsKilledCum.merge(aSlot, 1, Integer::sum);
+                }
+            }
             // Emit team_ability entry for glyph and scan (works in both streaming and blob modes)
             if ("DOTA_COMBATLOG_ABILITY".equals(combatLogEntry.type) && combatLogEntry.inflictor != null
                     && (combatLogEntry.inflictor.equals("dota_glyph_of_fortification")
@@ -753,6 +792,10 @@ public class Parse {
                             teamSlot);
                     entry.networth = getEntityProperty(dataTeam, "m_vecDataTeam.%i.m_iNetWorth", teamSlot);
                     entry.stage = draftStage;
+                    // Cumulative counters for timeline_v1 PERF — sampled at each interval emit.
+                    entry.hero_damage_cumulative = heroDamageCum.getOrDefault(i, 0);
+                    entry.tower_damage_cumulative = towerDamageCum.getOrDefault(i, 0);
+                    entry.wards_killed_cumulative = wardsKilledCum.getOrDefault(i, 0);
 
                     if (teamSlot >= 0) {
                         entry.gold = getEntityProperty(dataTeam, "m_vecDataTeam.%i.m_iTotalEarnedGold", teamSlot);
