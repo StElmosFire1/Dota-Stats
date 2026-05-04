@@ -1,0 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap');
+
+.hybrid-pressbox {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.theme-dark {
+  --background: #0a1120;
+  --foreground: #e2e8f0;
+  --card: #131b2f;
+  --card-border: #2a3b5c;
+  --primary: #d4af37; /* Brass */
+  --primary-foreground: #000000;
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  --muted: #1e293b;
+  --muted-foreground: #8193b2;
+  --border: #2a3b5c;
+  --ring: #d4af37;
+  --ticker-bg: #d4af37;
+  --ticker-text: #0a1120;
+  --accent-light: rgba(212, 175, 55, 0.1);
+  --header-bg: rgba(10, 17, 32, 0.9);
+}
+
+.theme-light {
+  --background: #f5efe2; /* Parchment */
+  --foreground: #2d261e; /* Ink brown */
+  --card: #efe7d5;
+  --card-border: #d5c8af;
+  --primary: #8c2a1c; /* Crimson/brick accent for broadcast light mode */
+  --primary-foreground: #ffffff;
+  --secondary: #e2d6c1;
+  --secondary-foreground: #2d261e;
+  --muted: #e2d6c1;
+  --muted-foreground: #6b5c4b;
+  --border: #d5c8af;
+  --ring: #8c2a1c;
+  --ticker-bg: #8c2a1c;
+  --ticker-text: #ffffff;
+  --accent-light: rgba(140, 42, 28, 0.1);
+  --header-bg: rgba(245, 239, 226, 0.9);
+}
+
+.hybrid-pressbox .font-serif {
+  font-family: 'Playfair Display', serif;
+}
+
+/* Hairline dividers */
+.hybrid-pressbox .hairline-b {
+  border-bottom: 1px solid var(--border);
+}
+.hybrid-pressbox .hairline-t {
+  border-top: 1px solid var(--border);
+}
+.hybrid-pressbox .hairline-l {
+  border-left: 1px solid var(--border);
+}
+.hybrid-pressbox .hairline-r {
+  border-right: 1px solid var(--border);
+}
+
+/* Marquee animation */
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-100%); }
+}
+.hybrid-pressbox .animate-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee 25s linear infinite;
+}
+
+/* Almanac Frame */
+.hybrid-pressbox .almanac-frame {
+  position: relative;
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
+  padding: 2px;
+}
+.hybrid-pressbox .almanac-frame-inner {
+  border: 1px solid var(--card-border);
+  padding: 1.5rem;
+}
+
+.hybrid-pressbox-hero-bg {
+  background-image: 
+    linear-gradient(to right, var(--card-border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--card-border) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: center center;
+}
+.theme-dark .hybrid-pressbox-hero-bg {
+  background-image: 
+    linear-gradient(to right, rgba(42, 59, 92, 0.3) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(42, 59, 92, 0.3) 1px, transparent 1px);
+}
+.theme-light .hybrid-pressbox-hero-bg {
+  background-image: 
+    linear-gradient(to right, rgba(213, 200, 175, 0.4) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(213, 200, 175, 0.4) 1px, transparent 1px);
+}
