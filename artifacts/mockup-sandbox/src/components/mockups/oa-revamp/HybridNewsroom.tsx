@@ -39,9 +39,7 @@ export function HybridNewsroom() {
         <div className="max-w-[1280px] mx-auto h-16 flex items-center justify-between px-6">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
-              <div className="bg-[var(--primary)] p-1.5 clip-corner-tr">
-                <img src="/__mockup/images/oa-logo.png" alt="OA" className="w-6 h-6 invert" />
-              </div>
+              <img src="/__mockup/images/oa-logo.png" alt="OA" className="h-9 w-auto" />
               <div className="flex flex-col leading-none font-serif">
                 <span className="font-bold text-lg text-[var(--foreground)] tracking-wide">OCE</span>
                 <span className="text-[var(--primary)] font-semibold italic text-sm">Inhouse</span>
@@ -368,7 +366,7 @@ export function HybridNewsroom() {
       <footer className="border-t border-[var(--border)] bg-[var(--card)] py-8 mt-auto">
         <div className="max-w-[1280px] mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3 text-sm font-serif text-[var(--muted-foreground)]">
-            <img src="/__mockup/images/oa-logo.png" alt="OA" className="w-5 h-5 opacity-50 grayscale invert" />
+            <img src="/__mockup/images/oa-logo.png" alt="OA" className="h-5 w-auto opacity-70" />
             <span>© {new Date().getFullYear()} OCE Inhouse. All rights reserved.</span>
           </div>
           <div className="flex items-center gap-6 font-display font-bold uppercase tracking-widest text-xs text-[var(--muted-foreground)]">
