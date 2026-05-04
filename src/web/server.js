@@ -4102,12 +4102,23 @@ NOTES
 
   // Allowlist of settings keys writable via this endpoint — prevents the
   // generic key/value store from being abused as a free-form admin scratchpad.
-  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill', 'engagement_milestone_thresholds', 'engagement_referral_xp']);
+  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill', 'engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal']);
 
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.
   // Optional x-superuser-key header lets a superuser see preview-state flags
   // as enabled. Non-superusers only see flags whose state is 'on'.
+  // Public — welcome modal CMS payload (rendered by web/src/components/WelcomeModal.jsx)
+  router.get('/settings/welcome-modal', async (req, res) => {
+    try {
+      const value = await db.getSetting('welcome_modal').catch(() => null);
+      res.json({ value: value || null });
+    } catch (err) {
+      console.error('[API] settings/welcome-modal GET error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch welcome modal' });
+    }
+  });
+
   router.get('/feature-flags', async (req, res) => {
     try {
       const providedKey = req.headers['x-superuser-key'] || req.headers['x-admin-key'];
@@ -4217,7 +4228,30 @@ NOTES
           return res.status(400).json({ error: 'engagement_referral_xp must be a non-negative integer' });
         }
       }
-      const stored = await db.setSetting(key, value);
+      if (key === 'welcome_modal') {
+        try {
+          const obj = typeof value === 'string' ? JSON.parse(value) : value;
+          if (!obj || typeof obj !== 'object') throw new Error('not an object');
+          if (!obj.title || typeof obj.title !== 'string') {
+            return res.status(400).json({ error: 'welcome_modal.title is required' });
+          }
+          obj.enabled = !!obj.enabled;
+          obj.version = parseInt(obj.version, 10) || 1;
+          // Re-serialise canonical form
+          req.body.value = JSON.stringify({
+            enabled: obj.enabled,
+            version: obj.version,
+            eyebrow: String(obj.eyebrow || ''),
+            title: String(obj.title),
+            body: String(obj.body || ''),
+            ctaText: String(obj.ctaText || ''),
+            ctaHref: String(obj.ctaHref || ''),
+          });
+        } catch {
+          return res.status(400).json({ error: 'welcome_modal must be a JSON object with at least { title }' });
+        }
+      }
+      const stored = await db.setSetting(key, key === 'welcome_modal' ? req.body.value : value);
       res.json({ setting: stored });
     } catch (err) {
       console.error('[API] admin/settings POST error:', err.message);

@@ -255,10 +255,12 @@ function ThemeToggle() {
 
   React.useEffect(() => {
     if (isDark) {
-      document.body.classList.remove('light-theme');
+      document.body.classList.remove('light-theme', 'theme-light');
+      document.body.classList.add('theme-dark');
       localStorage.setItem('theme', 'dark');
     } else {
-      document.body.classList.add('light-theme');
+      document.body.classList.add('light-theme', 'theme-light');
+      document.body.classList.remove('theme-dark');
       localStorage.setItem('theme', 'light');
     }
   }, [isDark]);
@@ -266,8 +268,11 @@ function ThemeToggle() {
   React.useEffect(() => {
     const stored = localStorage.getItem('theme');
     if (stored === 'light') {
-      document.body.classList.add('light-theme');
+      document.body.classList.add('light-theme', 'theme-light');
+      document.body.classList.remove('theme-dark');
       setIsDark(false);
+    } else {
+      document.body.classList.add('theme-dark');
     }
   }, []);
 
@@ -331,6 +336,51 @@ function Nav() {
   );
 }
 
+function BroadcastTicker() {
+  const items = [
+    'Season 10 ladder live',
+    'New Court & Pitch design — v5.60',
+    'Inhouse lobby open · /inhouse',
+    'Coaching marketplace beta',
+    'Draft Assistant V2 — try it',
+    'Patch notes updated',
+  ];
+  const loop = [...items, ...items];
+  return (
+    <div className="oa-ticker" aria-hidden="true">
+      <div className="oa-ticker-track">
+        {loop.map((t, i) => (
+          <React.Fragment key={i}>
+            <span>{t}</span>
+            <span className="oa-ticker-dot">•</span>
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EditorialFooter() {
+  return (
+    <footer className="oa-footer">
+      <div className="oa-footer-inner">
+        <div className="oa-footer-brand">
+          <img src="/oa-logo.png" alt="OA" />
+          <span>© {new Date().getFullYear()} OCE Inhouse</span>
+        </div>
+        <div className="oa-footer-links">
+          <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
+          <a href="https://github.com/StElmosFire1" target="_blank" rel="noreferrer">GitHub</a>
+          <span className="oa-footer-sep">|</span>
+          <span className="oa-footer-version">
+            v5.60 — <Link to="/patch-notes">Patch notes</Link>
+          </span>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
 function GlobalOnboardingWizard() {
   const { onboardingComplete, setOnboardingComplete } = useSteamAuth();
   if (onboardingComplete !== false) return null;
@@ -350,6 +400,7 @@ export default function App() {
         <SuperuserProvider>
           <FeatureFlagsProvider>
           <SeasonProvider>
+            <BroadcastTicker />
             <Nav />
             <AdminLoginModal />
             <SuperuserLoginModal />
@@ -412,6 +463,7 @@ export default function App() {
               </Routes>
               </Suspense>
             </main>
+            <EditorialFooter />
           </SeasonProvider>
           </FeatureFlagsProvider>
         </SuperuserProvider>

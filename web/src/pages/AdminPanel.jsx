@@ -1648,6 +1648,118 @@ function EngagementSettingsPanel({ superuserKey, siteSettings, onSaved }) {
   );
 }
 
+function WelcomeModalPanel({ superuserKey }) {
+  const [cfg, setCfg] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  React.useEffect(() => {
+    fetch('/api/settings/welcome-modal')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        let parsed = { enabled: false, version: 1, eyebrow: '', title: '', body: '', ctaText: '', ctaHref: '' };
+        if (d?.value) {
+          try { parsed = { ...parsed, ...(typeof d.value === 'string' ? JSON.parse(d.value) : d.value) }; } catch {}
+        }
+        setCfg(parsed);
+      })
+      .catch(() => setCfg({ enabled: false, version: 1, eyebrow: '', title: '', body: '', ctaText: '', ctaHref: '' }));
+  }, []);
+
+  if (!cfg) return null;
+  const upd = (k, v) => setCfg(c => ({ ...c, [k]: v }));
+
+  const save = async (bumpVersion) => {
+    setSaving(true); setMsg('');
+    try {
+      const payload = { ...cfg };
+      if (bumpVersion) payload.version = (parseInt(cfg.version, 10) || 1) + 1;
+      const r = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+        body: JSON.stringify({ key: 'welcome_modal', value: JSON.stringify(payload) }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed');
+      try { setCfg(JSON.parse(d.setting.value)); } catch {}
+      setMsg(bumpVersion ? 'Saved & re-shown to all users.' : 'Saved.');
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    padding: '7px 10px', borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: 'var(--bg-card)', color: 'var(--text-primary)',
+    fontSize: 14, fontFamily: 'inherit',
+  };
+
+  return (
+    <section style={{ marginTop: 32 }}>
+      <h2 style={{ marginBottom: 6 }}>📣 Welcome Modal (CMS)</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Editor-controlled welcome modal shown to all visitors. Bump the version to re-show it to users
+        who already dismissed the previous one.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 580 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!cfg.enabled} onChange={e => upd('enabled', e.target.checked)} />
+          Modal enabled
+        </label>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Eyebrow</label>
+          <input type="text" value={cfg.eyebrow || ''} onChange={e => upd('eyebrow', e.target.value)} style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Title *</label>
+          <input type="text" value={cfg.title || ''} onChange={e => upd('title', e.target.value)} style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Body</label>
+          <textarea rows={4} value={cfg.body || ''} onChange={e => upd('body', e.target.value)} style={{ ...inputStyle, resize: 'vertical' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>CTA text</label>
+            <input type="text" value={cfg.ctaText || ''} onChange={e => upd('ctaText', e.target.value)} style={inputStyle} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>CTA href</label>
+            <input type="text" value={cfg.ctaHref || ''} onChange={e => upd('ctaHref', e.target.value)} placeholder="/patch-notes" style={inputStyle} />
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          Current version: <strong>v{cfg.version || 1}</strong> · dismiss key: <code>welcome_modal_dismissed_v{cfg.version || 1}</code>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn" disabled={saving} onClick={() => save(false)}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button className="btn btn-primary" disabled={saving} onClick={() => save(true)}>
+            Save & re-show to everyone (bump version)
+          </button>
+          {msg && (
+            <span style={{ fontSize: 13, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)' }}>
+              {msg}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function AdminPanel() {
   const { isSuperuser, superuserKey, logout } = useSuperuser();
   const { activeSeason } = useSeason();
@@ -2118,6 +2230,7 @@ export default function AdminPanel() {
 
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
+      <WelcomeModalPanel superuserKey={superuserKey} />
 
       {/* ── Dota Rank Management ─────────────────────────────────────── */}
       <section className="admin-section" style={{ marginTop: 32 }}>

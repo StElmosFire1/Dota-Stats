@@ -11,7 +11,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 
-const LAUNCH_BANNER_DISMISS_KEY = 'season10LaunchBannerDismissed_v1';
+const LAUNCH_BANNER_DISMISS_KEY = 'season10LaunchBannerDismissed_v2';
 
 function Season10LaunchBanner() {
   const enabled = useFeatureFlag('home_launch_banner');
@@ -24,35 +24,26 @@ function Season10LaunchBanner() {
     setDismissed(true);
   };
   return (
-    <div style={{
-      position: 'relative',
-      background: 'linear-gradient(135deg, #1a0033 0%, #0d0019 60%, #2a0040 100%)',
-      border: '1px solid rgba(168, 85, 247, 0.5)',
-      borderRadius: 14,
-      padding: '20px 28px',
-      marginBottom: 20,
-      boxShadow: '0 0 24px rgba(168, 85, 247, 0.18)',
-      color: '#f5f3ff',
-    }}>
+    <div className="oa-card oa-card-rule oa-hero-glow oa-home-hero" style={{ paddingRight: '3rem' }}>
       <button
         onClick={handleDismiss}
         aria-label="Dismiss"
         style={{
-          position: 'absolute', top: 10, right: 12,
-          background: 'transparent', border: 'none', color: '#c4b5fd',
-          cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4,
+          position: 'absolute', top: 12, right: 14,
+          background: 'transparent', border: 'none', color: 'var(--text-muted)',
+          cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 4, zIndex: 2,
         }}
       >×</button>
-      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: '#c4b5fd', marginBottom: 6 }}>
-        ⚡ NEW SEASON
-      </div>
-      <h2 style={{ margin: '0 0 6px', fontSize: 24, fontWeight: 800, color: '#f5f3ff' }}>
-        Season 10 is live
-      </h2>
-      <p style={{ margin: 0, fontSize: 13, color: '#ddd6fe', maxWidth: 620 }}>
-        Fresh leaderboard, new rank ladder, and a wave of features unlocking across the site.
-        Check the patch notes for the full rundown — and good luck on the climb.
+      <div className="oa-eyebrow">Season 10 · Court &amp; Pitch</div>
+      <h1>The new season <em>is in session.</em></h1>
+      <p>
+        Fresh ladder, refined design, and the full Court &amp; Pitch experience across every page.
+        Read the patch notes for the rundown — and good luck on the climb.
       </p>
+      <div className="oa-home-hero-cta">
+        <Link to="/leaderboard" className="oa-cta-primary">Open the ladder</Link>
+        <Link to="/patch-notes" className="oa-cta-ghost">Patch notes</Link>
+      </div>
     </div>
   );
 }

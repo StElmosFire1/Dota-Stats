@@ -879,6 +879,19 @@ async function init() {
       `INSERT INTO site_settings (key, value) VALUES ('engagement_referral_xp', '50')
        ON CONFLICT (key) DO NOTHING`
     );
+    await p.query(
+      `INSERT INTO site_settings (key, value) VALUES ('welcome_modal', $1)
+       ON CONFLICT (key) DO NOTHING`,
+      [JSON.stringify({
+        enabled: false,
+        version: 1,
+        eyebrow: 'Season 10 · Court & Pitch',
+        title: 'Welcome to the new OCE Inhouse',
+        body: 'Fresh ladder, refined design, and the full Court & Pitch experience across every page. Read the patch notes for the full rundown.',
+        ctaText: 'Read patch notes',
+        ctaHref: '/patch-notes',
+      })]
+    );
 
     // Feature flags — three-state toggle (off / preview / on) used to stage
     // new features behind a superuser-only "preview" gate before launching to
