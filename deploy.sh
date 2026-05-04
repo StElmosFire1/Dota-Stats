@@ -25,8 +25,11 @@ npm run build
 cd ..
 
 echo "==> Restarting bot..."
-pm2 restart 2 --update-env
+# Target by PM2 process name so the deploy isn't fragile to id renumbering.
+# Override at call-site with: PM2_APP=other-name bash deploy.sh
+PM2_APP="${PM2_APP:-oi-bot}"
+pm2 restart "${PM2_APP}" --update-env
 
 echo ""
 echo "✓ Deploy complete."
-pm2 status 2
+pm2 status "${PM2_APP}"
