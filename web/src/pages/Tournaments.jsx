@@ -836,7 +836,7 @@ function TournamentList() {
 }
 
 function TournamentLivePanel({ tournamentId }) {
-  const enabled = useFeatureFlag('tournament_live_v2');
+  const enabled = true;
   const [data, setData] = useState(null);
 
   useEffect(() => {

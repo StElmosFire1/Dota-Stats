@@ -21,6 +21,9 @@ Both `deploy.sh` and `scripts/post-merge.sh` run `bash scripts/build-parser.sh -
 ## System Architecture
 The system is built on Node.js, integrating with Discord and Steam for game interactions. Data persistence is managed using PostgreSQL.
 
+**Branding:**
+As of v5.59 the site is rebranded to **OCE Inhouse** under the OA logo (`web/public/oa-logo.png` + `web/public/favicon.png`). The global palette is the **Hybrid · Court & Pitch** system — ink-navy `#0d1424` backgrounds, brass `#c5a975` accent, amber `#f59e0b` highlights, parchment `#f5efe2` light theme — driven by the existing CSS token names in `web/src/styles.css` (`--bg-primary`, `--accent`, `--gold`, `--brass`, `--amber`, `--parchment`, `--ink-navy`). Fonts: Inter (sans, `--font`), Oswald (condensed, `--font-condensed`), Playfair Display (serif, `--font-serif`).
+
 **UI/UX Decisions:**
 The web dashboard is a React-based frontend with an Express backend, offering extensive features such as match history, TrueSkill MMR leaderboards, player profiles with detailed breakdowns, and synergy matrices. Key UI elements include multi-kill leaderboards, player comparison tools, enhanced gold lead displays, hero meta analysis, and expandable stats tables. Recent additions include a Hero Breakdown tab, a merged Draft page, a Predictions page, and "Most Improved" and "Form Guide" widgets. Further planned enhancements include a Hero Tier List, Hero Matchups, Player Benchmarks, an expanded achievement system, a Player Network page, a Hall of Fame, and Tournament Brackets. Player profiles feature shareable links, best allies, and rolling win rate charts.
 

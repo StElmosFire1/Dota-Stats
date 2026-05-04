@@ -394,7 +394,7 @@ function SeasonEndBanner({ season }) {
 
 export default function Leaderboard() {
   const { seasonId, seasons } = useSeason();
-  const showSeasonPass = useFeatureFlag('season_pass_s10');
+  const showSeasonPass = true;
   const proMembers = useProMembers();
   const [data, setData] = useState({ leaderboard: [], useV3: false });
   const [loading, setLoading] = useState(true);

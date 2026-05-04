@@ -1,46 +1,55 @@
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-card: #1e2a47;
-  --bg-hover: #253559;
-  --text-primary: #e0e0e0;
-  --text-secondary: #8899aa;
-  --text-muted: #556677;
-  --radiant-color: #92d04e;
-  --radiant-bg: rgba(146, 208, 78, 0.1);
-  --dire-color: #e05050;
-  --dire-bg: rgba(224, 80, 80, 0.1);
-  --accent: #5b9bd5;
-  --accent-hover: #4a8cc4;
-  --gold: #daa520;
-  --border: #2a3a5c;
-  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --accent-green: #4ade80;
+  /* OCE Inhouse — Court & Pitch palette (dark default) */
+  --bg-primary: #0d1424;
+  --bg-secondary: #152036;
+  --bg-card: #152036;
+  --bg-hover: #1a2744;
+  --text-primary: #e6edf8;
+  --text-secondary: #94a6cb;
+  --text-muted: #6c7e9c;
+  --radiant-color: #34d399;
+  --radiant-bg: rgba(52, 211, 153, 0.12);
+  --dire-color: #f87171;
+  --dire-bg: rgba(248, 113, 113, 0.12);
+  --accent: #c5a975;
+  --accent-hover: #d4bb87;
+  --gold: #c5a975;
+  --brass: #c5a975;
+  --amber: #f59e0b;
+  --ink-navy: #0d1424;
+  --parchment: #f5efe2;
+  --border: #2a3b5c;
+  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-condensed: 'Oswald', 'Inter', sans-serif;
+  --accent-green: #34d399;
   --accent-red: #f87171;
   --shadow-card: 0 2px 8px rgba(0,0,0,0.3);
 }
 
-/* Light theme */
+/* Light theme — aged parchment */
 body.light-theme {
-  --bg-primary: #eef1f6;
-  --bg-secondary: #e0e5ee;
-  --bg-card: #f5f7fa;
-  --bg-tertiary: #e8ecf2;
-  --bg-hover: #dde3ec;
-  --text-primary: #1a202c;
-  --text-secondary: #4a5568;
-  --text-muted: #718096;
-  --radiant-color: #38a169;
-  --radiant-bg: rgba(56, 161, 105, 0.1);
-  --dire-color: #c53030;
-  --dire-bg: rgba(197, 48, 48, 0.1);
-  --accent: #3182ce;
-  --accent-hover: #2b6cb0;
-  --gold: #b7791f;
-  --border: #c0c9d8;
-  --accent-green: #38a169;
-  --accent-red: #c53030;
-  --shadow-card: 0 2px 8px rgba(0,0,0,0.1);
+  --bg-primary: #f5efe2;
+  --bg-secondary: #ece5d3;
+  --bg-card: #ece5d3;
+  --bg-tertiary: #e8e0c9;
+  --bg-hover: #e3dabc;
+  --text-primary: #2c2825;
+  --text-secondary: #6b635e;
+  --text-muted: #8a807a;
+  --radiant-color: #047857;
+  --radiant-bg: rgba(4, 120, 87, 0.12);
+  --dire-color: #b91c1c;
+  --dire-bg: rgba(185, 28, 28, 0.12);
+  --accent: #8f743c;
+  --accent-hover: #a68b53;
+  --gold: #8f743c;
+  --brass: #8f743c;
+  --amber: #b45309;
+  --border: #d4ccb9;
+  --accent-green: #047857;
+  --accent-red: #b91c1c;
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.08);
 }
 
 body.light-theme .season-selector {
@@ -224,14 +233,44 @@ a:hover {
 }
 
 .nav-brand {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-family: var(--font-serif);
   color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   flex-shrink: 0;
   white-space: nowrap;
+  text-decoration: none;
+}
+
+.brand-logo {
+  height: 34px;
+  width: auto;
+  display: block;
+}
+
+.brand-lockup {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1;
+  gap: 1px;
+}
+
+.brand-lockup-top {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+}
+
+.brand-lockup-bot {
+  font-family: var(--font-condensed);
+  font-weight: 500;
+  font-size: 0.65rem;
+  letter-spacing: 0.22em;
+  color: var(--amber);
+  text-transform: uppercase;
 }
 
 .season-selector {
@@ -251,9 +290,6 @@ a:hover {
   border-color: var(--accent);
 }
 
-.brand-icon {
-  font-size: 1.4rem;
-}
 
 .nav-links {
   display: flex;

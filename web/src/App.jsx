@@ -17,6 +17,7 @@ const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
 const Heroes = lazy(() => import('./pages/Heroes'));
 const Draft = lazy(() => import('./pages/Draft'));
+const DraftAssistant = lazy(() => import('./pages/DraftAssistant'));
 const Players = lazy(() => import('./pages/Players'));
 const OverallStats = lazy(() => import('./pages/OverallStats'));
 const PositionStats = lazy(() => import('./pages/PositionStats'));
@@ -289,7 +290,11 @@ function Nav() {
   return (
     <nav className="navbar">
       <Link to="/" className="nav-brand">
-        <span className="brand-icon">&#9876;</span> Inhouse Stats
+        <img src="/oa-logo.png" alt="OA" className="brand-logo" />
+        <span className="brand-lockup">
+          <span className="brand-lockup-top">OCE</span>
+          <span className="brand-lockup-bot">INHOUSE</span>
+        </span>
       </Link>
       <div className="nav-links">
         <Link to="/" className={isActive('/')}>Home</Link>
@@ -302,7 +307,8 @@ function Nav() {
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/player-tools">Head to Head / Compare</DropdownItem>
-          <DropdownItem to="/draft">Draft Assistant &amp; Stats</DropdownItem>
+          <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
+          <DropdownItem to="/draft">Draft Stats</DropdownItem>
           <DropdownItem to="/ward-map">Ward Heatmap</DropdownItem>
           <DropdownItem to="/records">Records &amp; Comebacks</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
@@ -371,7 +377,7 @@ export default function App() {
                 <Route path="/head-to-head" element={<PlayerTools />} />
                 <Route path="/compare" element={<PlayerTools />} />
                 <Route path="/draft" element={<Draft />} />
-                <Route path="/draft-assistant" element={<Draft />} />
+                <Route path="/draft-assistant" element={<DraftAssistant />} />
                 <Route path="/draft-stats" element={<Draft />} />
                 <Route path="/hero-breakdown" element={<Heroes defaultTab="breakdown" />} />
                 <Route path="/predictions" element={<Predictions />} />

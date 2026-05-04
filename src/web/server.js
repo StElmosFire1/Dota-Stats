@@ -5300,7 +5300,6 @@ NOTES
   // ---------- F3: Season Pass ----------
   router.get('/player/:id/season-pass', async (req, res) => {
     try {
-      if (!(await _flagOn('season_pass_s10', req))) return res.status(404).json({ error: 'Not found' });
       const season = req.query.season ? parseInt(req.query.season) : null;
       const progress = await db.getSeasonPassProgress(req.params.id, season);
       if (!progress) return res.status(404).json({ error: 'No active season' });
@@ -5314,7 +5313,6 @@ NOTES
 
   router.get('/season-pass/leaderboard', async (req, res) => {
     try {
-      if (!(await _flagOn('season_pass_s10', req))) return res.status(404).json({ error: 'Not found' });
       const season = req.query.season ? parseInt(req.query.season) : null;
       const limit = Math.min(parseInt(req.query.limit) || 50, 200);
       const rows = await db.getSeasonPassLeaderboard(season, limit);
@@ -5339,7 +5337,6 @@ NOTES
   // ---------- F4: Notification preferences ----------
   router.get('/me/notifications', async (req, res) => {
     try {
-      if (!(await _flagOn('notification_prefs', req))) return res.status(404).json({ error: 'Not found' });
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       const prefs = await db.getNotificationPrefs(accountId);
@@ -5352,7 +5349,6 @@ NOTES
 
   router.post('/me/notifications', express.json(), async (req, res) => {
     try {
-      if (!(await _flagOn('notification_prefs', req))) return res.status(404).json({ error: 'Not found' });
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       const updates = req.body?.updates;
@@ -5374,7 +5370,6 @@ NOTES
   // ---------- F5: Tournament live ----------
   router.get('/tournaments/:id/live', async (req, res) => {
     try {
-      if (!(await _flagOn('tournament_live_v2', req))) return res.status(404).json({ error: 'Not found' });
       const data = await db.getTournamentLive(req.params.id);
       if (!data) return res.status(404).json({ error: 'Tournament not found' });
       res.json(data);
@@ -5489,7 +5484,6 @@ NOTES
 
   router.get('/me/profile', async (req, res) => {
     try {
-      if (!(await _flagOn('profile_customization', req))) return res.status(404).json({ error: 'Not found' });
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       const customization = await db.getPlayerProfileCustomization(accountId);
@@ -5503,7 +5497,6 @@ NOTES
 
   router.post('/me/profile', express.json(), async (req, res) => {
     try {
-      if (!(await _flagOn('profile_customization', req))) return res.status(404).json({ error: 'Not found' });
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
 
@@ -5647,7 +5640,6 @@ NOTES
 
   router.get('/player/:id/profile-card', async (req, res) => {
     try {
-      if (!(await _flagOn('profile_customization', req))) return res.status(404).json({ error: 'Not found' });
       const card = await db.getPlayerProfileCard(req.params.id);
       res.json({ customization: card });
     } catch (err) {

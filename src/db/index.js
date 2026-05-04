@@ -905,12 +905,8 @@ async function init() {
          ('welcome_modal_s10', 'off', 'One-shot Season 10 welcome modal shown post-launch'),
          ('hero_meta_v2', 'off', 'Wave 2: Hero analytics overhaul — position-specific WR, pick frequency by tier, best counters'),
          ('draft_assistant_v2', 'off', 'Wave 2: Live counter-pick + synergy suggestions during the captain draft phase'),
-         ('season_pass_s10', 'off', 'Wave 2: Season Pass — XP from games (win/loss/MVP/streak), tier rewards, progression bar'),
-         ('notification_prefs', 'off', 'Wave 2: Per-user opt-in for each notification category (post-match DMs, hot streaks, schedule reminders, etc.)'),
-         ('tournament_live_v2', 'off', 'Wave 3: Tournament bracket live view — match-day scoreboard + auto-updating standings + prize distribution'),
          ('mvp_attitude_analytics', 'off', 'Wave 3: MVP rate + attitude trend analytics on player profiles'),
          ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions'),
-         ('profile_customization', 'off', 'Player-editable profile bio, custom title, theme accent, pinned hero + pinned match (free tier; premium cosmetics gated by Pro tier later)'),
          ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on'),
          ('coaching_marketplace', 'off', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.')
        ON CONFLICT (key) DO NOTHING`

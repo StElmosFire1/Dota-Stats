@@ -22,7 +22,7 @@ function urlBase64ToUint8Array(base64) {
 
 export default function SettingsNotifications() {
   const { steamUser } = useSteamAuth() || {};
-  const enabled = useFeatureFlag('notification_prefs');
+  const enabled = true;
   const pushEnabled = useFeatureFlag('web_push');
 
   const [prefs, setPrefs] = useState([]);

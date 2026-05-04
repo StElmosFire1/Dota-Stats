@@ -97,7 +97,7 @@ function PreviewCard({ displayName, customization }) {
 
 export default function SettingsProfile() {
   const { steamUser } = useSteamAuth() || {};
-  const enabled = useFeatureFlag('profile_customization');
+  const enabled = true;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

@@ -511,9 +511,9 @@ export default function PlayerProfile() {
   const newRankTheme  = useFeatureFlag('new_rank_theme');
   const showProfileChartV2 = useFeatureFlag('profile_chart_v2');
   // Wave 2 / 3 flags
-  const showSeasonPass = useFeatureFlag('season_pass_s10');
+  const showSeasonPass = true;
   const showMvpAttitude = useFeatureFlag('mvp_attitude_analytics');
-  const showProfileCustomization = useFeatureFlag('profile_customization');
+  const showProfileCustomization = true;
   const [seasonPass, setSeasonPass] = useState(null);
   const [mvpTrends, setMvpTrends] = useState(null);
   const [profileCard, setProfileCard] = useState(null);
