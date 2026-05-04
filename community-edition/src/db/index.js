@@ -194,6 +194,11 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_cast_times JSONB DEFAULT NULL`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS hook_cast_log JSONB DEFAULT NULL`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS dieback_count INTEGER DEFAULT 0`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS perf NUMERIC(3,1) DEFAULT NULL`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS perf_breakdown JSONB DEFAULT NULL`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS perf_source TEXT DEFAULT NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_player_stats_perf ON player_stats(account_id, perf) WHERE perf IS NOT NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_player_stats_perf_null ON player_stats(match_id) WHERE perf IS NULL`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_path TEXT DEFAULT NULL`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_expires_at TIMESTAMPTZ DEFAULT NULL`);
 
@@ -1017,6 +1022,15 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
 
     await client.query('COMMIT');
     console.log(`[DB] Recorded match ${matchStats.matchId}`);
+
+    // PERF — compute and persist Positive Impact Scores (best-effort, post-commit)
+    try {
+      const { computeAndSavePerfForMatch } = require('../perf/perfService');
+      const r = await computeAndSavePerfForMatch(getPool, matchStats.matchId, { silent: true });
+      if (r.ok) console.log(`[PERF] match ${matchStats.matchId}: ${r.count} players scored`);
+    } catch (e) {
+      console.warn(`[PERF] match ${matchStats.matchId} failed: ${e.message}`);
+    }
 
     return matchStats.matchId;
   } catch (err) {

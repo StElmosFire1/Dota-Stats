@@ -585,6 +585,7 @@ class DiscordBot {
       try {
         switch (command) {
           case 'help': await this._cmdHelp(msg); break;
+          case 'perf-backfill': case 'perfbackfill': await this._cmdPerfBackfill(msg, args); break;
           case 'top': await this._cmdTop(msg, args); break;
           case 'stats': await this._cmdStats(msg, args); break;
           case 'analyze': case 'analyse': await this._cmdAnalyze(msg, args); break;
@@ -1939,6 +1940,23 @@ class DiscordBot {
       );
     } catch (err) {
       await msg.reply(`Registration failed: ${err.message}`);
+    }
+  }
+
+  async _cmdPerfBackfill(msg, args) {
+    if (msg.author.id !== OWNER_DISCORD_ID) {
+      return msg.reply('You don\'t have permission to use this command.');
+    }
+    const limit = parseInt(args[0], 10) || 1000;
+    await msg.reply(`PERF backfill starting (limit: ${limit} matches). This may take a while...`);
+    try {
+      const { backfillPerf } = require('../perf/perfService');
+      const r = await backfillPerf(db.getPool, { limit, batchSize: 50, sleepMs: 100 });
+      await msg.reply(
+        `PERF backfill complete. Total candidates: ${r.total}, processed: ${r.processed}, ok: ${r.ok}, failed: ${r.failed}.`
+      );
+    } catch (err) {
+      await msg.reply(`PERF backfill failed: ${err.message}`);
     }
   }
 

@@ -698,5 +698,12 @@ module.exports = [
     "published_at": "2026-05-03",
     "content": "The per-match Performance score (1–10) on match scoreboards has been rebalanced to eliminate the systematic bias against support and utility players.\n\n**What changed:**\n- Vision control (observer wards placed + enemy wards dewarded) added as a dedicated 10% component — wards and dewards are now directly rewarded\n- Stun/disable duration added as a 5% component — initiators and utility heroes get credit for CC\n- Hero damage reduced from 20% to 15% — carries and mids still rewarded, but supports are no longer structurally penalised\n- Tower damage increased to 10% — objective and push contribution carries more weight\n- Net worth reduced from 15% to 10%\n- Healing reduced to 5%\n- Win bonus increased to 5%\n- Survival reduced to 15%\n\n**Final weights:** Kill involvement/assists×0.5 25%, Survival 15%, Hero damage 15%, Net worth 10%, Vision/dewards 10%, Tower damage 10%, Stun duration 5%, Healing 5%, Win bonus 5%.",
     "author": "System"
+  },
+  {
+    "version": "5.58",
+    "title": "PERF Positive Impact Revamp — Position-Aware, 10 Achievable for Every Role",
+    "published_at": "2026-05-04",
+    "content": "The per-match Performance score has been rebuilt from the ground up as a **position-aware Positive Impact Score** that is now persisted in the database and computed against per-role baselines.\n\n**What changed:**\n- Each player is scored against the average and elite per-minute targets for their assigned position (1–5), not against the rest of the lobby. A support is no longer compared against a carry's farm.\n- All stats are normalised per game-minute, so duration no longer skews the result.\n- Calibration: 5.0 = average for that position, 7.0 = very good, 9.0+ = top ~1%, and 10.0 is now genuinely achievable for any role with elite play.\n- Per-position weights properly value vision, dewards, stun duration, and healing for supports — a perfect support game can now score 10.\n- PERF is computed automatically on every new match record and stored in `player_stats.perf` (with full per-stat breakdown in `perf_breakdown`). Match scoreboards prefer the persisted score when present.\n- New owner-only Discord command `!perf-backfill [limit]` populates PERF for historical matches in batches.\n\n**Future:** the design includes hooks for per-minute timeline scoring (time-weighted, with passive penalties for falling behind) and a position_baselines table once richer per-minute data is available from the replay parser.",
+    "author": "System"
   }
 ];

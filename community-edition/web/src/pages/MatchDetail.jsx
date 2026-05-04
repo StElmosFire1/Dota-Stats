@@ -987,7 +987,15 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
                   <td className="col-stat kills">{p.kills}</td>
                   <td className="col-stat deaths">{p.deaths}</td>
                   <td className="col-stat assists">{p.assists}</td>
-                  <td className="col-stat"><ImpactBadge score={perfRanks[p.slot] ?? null} title={perfRanks[p.slot] != null ? `Match Performance ${perfRanks[p.slot]}/10 — kill involvement, KDA efficiency, win result${allPlayers.some(x => (x.gpm||0)>0) ? ', GPM' : ''}` : undefined} /></td>
+                  <td className="col-stat">{(() => {
+                    const persisted = p.perf != null ? Number(p.perf) : null;
+                    if (persisted != null && !Number.isNaN(persisted)) {
+                      const bd = p.perf_breakdown || null;
+                      const tip = `PERF ${persisted.toFixed(1)}/10 — position-aware Positive Impact${bd?.position ? ` (pos ${bd.position})` : ''}. 5.0 = average, 7.0+ = very good, 9.0+ = top 1%.`;
+                      return <ImpactBadge score={Math.round(persisted)} title={tip} />;
+                    }
+                    return <ImpactBadge score={perfRanks[p.slot] ?? null} title={perfRanks[p.slot] != null ? `Match Performance ${perfRanks[p.slot]}/10 (legacy)` : undefined} />;
+                  })()}</td>
                   <td className="col-stat"><ModifierBadge entry={v3Modifiers[String(p.account_id)]} /></td>
                   {hasDetailedStats && (
                     <>
