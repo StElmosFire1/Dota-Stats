@@ -469,6 +469,7 @@ export default function ProfileSandbox() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 6 }}>
         <h1 style={{ margin: 0 }}>👤 Profile Sandbox</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Link to="/admin/profile-demo" className="btn btn-sm">👁️ View as public profile</Link>
           <button className="btn btn-sm" onClick={reset}>↺ Reset to defaults</button>
           <Link to="/admin" className="btn btn-sm">← Back to Admin Panel</Link>
         </div>

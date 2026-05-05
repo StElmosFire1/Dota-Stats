@@ -36,6 +36,7 @@ const Records = lazy(() => import('./pages/Records'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const DraftSandbox = lazy(() => import('./pages/DraftSandbox'));
 const ProfileSandbox = lazy(() => import('./pages/ProfileSandbox'));
+const ProfileDemo = lazy(() => import('./pages/ProfileDemo'));
 const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
 const Social = lazy(() => import('./pages/Social'));
@@ -481,6 +482,7 @@ export default function App() {
                 <Route path="/admin" element={<AdminPanel />} />
                 <Route path="/admin/draft-sandbox" element={<DraftSandbox />} />
                 <Route path="/admin/profile-sandbox" element={<ProfileSandbox />} />
+                <Route path="/admin/profile-demo" element={<ProfileDemo />} />
                 <Route path="/pudge-stats" element={<PudgeStats />} />
                 <Route path="/schedule" element={<Schedule />} />
                 <Route path="/inhouse" element={<Inhouse />} />
