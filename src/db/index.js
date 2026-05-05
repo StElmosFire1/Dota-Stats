@@ -893,6 +893,20 @@ async function init() {
       })]
     );
     await p.query(
+      `INSERT INTO site_settings (key, value) VALUES ('home_banner', $1)
+       ON CONFLICT (key) DO NOTHING`,
+      [JSON.stringify({
+        enabled: true,
+        version: 1,
+        eyebrow: 'Season 10 · Court & Pitch',
+        title: 'The new season is in session.',
+        body: 'Fresh ladder, refined design, and the full Court & Pitch experience across every page. Read the patch notes for the rundown — and good luck on the climb.',
+        ctaText: 'Open the ladder',
+        ctaHref: '/leaderboard',
+      })]
+    );
+
+    await p.query(
       `INSERT INTO site_settings (key, value) VALUES ('broadcast_ticker', $1)
        ON CONFLICT (key) DO NOTHING`,
       [JSON.stringify({

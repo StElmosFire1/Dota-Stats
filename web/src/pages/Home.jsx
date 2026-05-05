@@ -7,46 +7,13 @@ import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { MmrBadge } from '../components/RankBadge';
+import HomeBanner from '../components/HomeBanner';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 
-const LAUNCH_BANNER_DISMISS_KEY = 'season10LaunchBannerDismissed_v2';
-
-function Season10LaunchBanner() {
-  const enabled = useFeatureFlag('home_launch_banner');
-  const [dismissed, setDismissed] = useState(() => {
-    try { return localStorage.getItem(LAUNCH_BANNER_DISMISS_KEY) === '1'; } catch { return false; }
-  });
-  if (!enabled || dismissed) return null;
-  const handleDismiss = () => {
-    try { localStorage.setItem(LAUNCH_BANNER_DISMISS_KEY, '1'); } catch {}
-    setDismissed(true);
-  };
-  return (
-    <div className="oa-card oa-card-rule oa-hero-glow oa-home-hero" style={{ paddingRight: '3rem' }}>
-      <button
-        onClick={handleDismiss}
-        aria-label="Dismiss"
-        style={{
-          position: 'absolute', top: 12, right: 14,
-          background: 'transparent', border: 'none', color: 'var(--text-muted)',
-          cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 4, zIndex: 2,
-        }}
-      >×</button>
-      <div className="oa-eyebrow">Season 10 · Court &amp; Pitch</div>
-      <h1>The new season <em>is in session.</em></h1>
-      <p>
-        Fresh ladder, refined design, and the full Court &amp; Pitch experience across every page.
-        Read the patch notes for the rundown — and good luck on the climb.
-      </p>
-      <div className="oa-home-hero-cta">
-        <Link to="/leaderboard" className="oa-cta-primary">Open the ladder</Link>
-        <Link to="/patch-notes" className="oa-cta-ghost">Patch notes</Link>
-      </div>
-    </div>
-  );
-}
+// Season10LaunchBanner is now CMS-driven via web/src/components/HomeBanner.jsx
+// (settings key `home_banner`). The legacy hard-coded banner was removed in v5.76.
 
 function JoinTheLeagueButton() {
   const enabled = useFeatureFlag('home_join_button');
@@ -529,7 +496,7 @@ export default function Home() {
   if (!authLoading && steamUser) {
     return (
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-        <Season10LaunchBanner />
+        <HomeBanner />
         <PersonalisedDashboard steamUser={steamUser} />
 
         {/* Community stats section below personalized view */}
@@ -558,7 +525,7 @@ export default function Home() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
-      <Season10LaunchBanner />
+      <HomeBanner />
 
       {/* Weekend Tournament Banner */}
       {activeTournament && (

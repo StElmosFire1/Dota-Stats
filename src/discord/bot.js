@@ -334,6 +334,36 @@ class DiscordBot {
   }
 
   // Called on matchStarted — moves each lobby player to their team's voice channel.
+  // Move all known players in `accountIds` (32-bit ids) into the configured
+  // lobby voice channel — used after a match completes / before the next draft
+  // so everyone ends up back in the same room.
+  async _movePlayersToLobbyChannel(accountIds) {
+    const lobbyChId = config.discord.lobbyVoiceChannelId;
+    if (!lobbyChId || !Array.isArray(accountIds) || accountIds.length === 0) return;
+    const guilds = [...this.client.guilds.cache.values()];
+    let moved = 0, skipped = 0;
+    for (const accountId32 of accountIds) {
+      const discordId = await db.getDiscordIdByAccountId(String(accountId32)).catch(() => null);
+      if (!discordId) { skipped++; continue; }
+      for (const guild of guilds) {
+        try {
+          const member = await guild.members.fetch(discordId).catch(() => null);
+          if (!member?.voice?.channel) continue;
+          if (member.voice.channelId === lobbyChId) { break; }
+          await member.voice.setChannel(lobbyChId);
+          moved++;
+          break;
+        } catch (e) {
+          console.warn(`[Discord] Lobby voice move failed for ${discordId}:`, e.message);
+        }
+      }
+    }
+    console.log(`[Discord] Lobby voice move: ${moved} moved, ${skipped} skipped.`);
+    if (moved > 0) {
+      this._notifyChannel(`🎙️ Moved **${moved}** player(s) back to the lobby voice channel.`);
+    }
+  }
+
   async _movePlayersToVoiceChannels(lobby) {
     const direChId = config.discord.direVoiceChannelId;
     const radChId = config.discord.radiantVoiceChannelId;

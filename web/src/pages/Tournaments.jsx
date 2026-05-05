@@ -357,10 +357,15 @@ function TournamentDetail() {
     <div className="error-state">
       <p style={{ marginBottom: 8 }}>Tournament not found.</p>
       <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-        Looked up id <code>{String(id)}</code>. If you expected this tournament to exist, please report this in Discord with the URL.
+        Looked up id <code>{String(id)}</code> in both the bracket tournaments and weekend tournaments tables — neither matched.
+        If the listing on <Link to="/tournaments">/tournaments</Link> still shows it, the page may be cached — try a hard refresh (Ctrl/Cmd-Shift-R).
       </p>
-      <p style={{ marginTop: 12 }}>
-        <Link to="/tournaments" style={{ color: 'var(--accent-blue)' }}>← Back to all tournaments</Link>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+        Manual escapes in case this is a routing mismatch:
+      </p>
+      <p style={{ marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Link to={`/weekend-tournament/${id}`} className="btn">Try as weekend tournament →</Link>
+        <Link to="/tournaments" className="btn btn-primary">← Back to all tournaments</Link>
       </p>
     </div>
   );

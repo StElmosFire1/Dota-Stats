@@ -20,8 +20,12 @@ const config = {
     queueTimeoutMinutes: parseInt(process.env.QUEUE_TIMEOUT_MINUTES || '10', 10),
     serverInvite: process.env.DISCORD_INVITE || null,
     // Voice channels to move players into when a game starts.
-    direVoiceChannelId: process.env.DIRE_VOICE_CHANNEL_ID || '1380084433239015527',
-    radiantVoiceChannelId: process.env.RADIANT_VOICE_CHANNEL_ID || '1380084465665183754',
+    // Defaults are the live oceinhouse.gg Discord; override via env in other servers.
+    direVoiceChannelId: process.env.DIRE_VOICE_CHANNEL_ID || '1491698949868752936',
+    radiantVoiceChannelId: process.env.RADIANT_VOICE_CHANNEL_ID || '1491698923172007966',
+    // Lobby/staging channel — players are moved here after a match completes
+    // (or anytime we need to put everyone back together before the next draft).
+    lobbyVoiceChannelId: process.env.LOBBY_VOICE_CHANNEL_ID || '1491698696306425930',
     mmrRoles: {
       // Role IDs assigned based on MMR thresholds (set via env vars in Discord server)
       // Tiers ordered highest to lowest — first match wins

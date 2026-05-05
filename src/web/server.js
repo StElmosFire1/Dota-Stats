@@ -4182,7 +4182,7 @@ NOTES
 
   // Allowlist of settings keys writable via this endpoint — prevents the
   // generic key/value store from being abused as a free-form admin scratchpad.
-  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill', 'engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker']);
+  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill', 'engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker', 'home_banner']);
 
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.
@@ -4207,6 +4207,18 @@ NOTES
     } catch (err) {
       console.error('[API] settings/broadcast-ticker GET error:', err.message);
       res.status(500).json({ error: 'Failed to fetch broadcast ticker' });
+    }
+  });
+
+  // Public — home banner CMS payload (rendered by Home.jsx <HomeBanner/>).
+  // Dismissable per-version on the client via localStorage `home_banner_dismissed_v<version>`.
+  router.get('/settings/home-banner', async (req, res) => {
+    try {
+      const value = await db.getSetting('home_banner').catch(() => null);
+      res.json({ value: value || null });
+    } catch (err) {
+      console.error('[API] settings/home-banner GET error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch home banner' });
     }
   });
 
@@ -4360,7 +4372,28 @@ NOTES
           return res.status(400).json({ error: 'broadcast_ticker must be a JSON object with { enabled, items[] }' });
         }
       }
-      const stored = await db.setSetting(key, (key === 'welcome_modal' || key === 'broadcast_ticker') ? req.body.value : value);
+      if (key === 'home_banner') {
+        try {
+          const obj = typeof value === 'string' ? JSON.parse(value) : value;
+          if (!obj || typeof obj !== 'object') throw new Error('not an object');
+          const title = String(obj.title || '').trim();
+          if (!title) {
+            return res.status(400).json({ error: 'home_banner.title is required' });
+          }
+          req.body.value = JSON.stringify({
+            enabled: !!obj.enabled,
+            version: parseInt(obj.version, 10) || 1,
+            eyebrow: String(obj.eyebrow || '').trim(),
+            title,
+            body: String(obj.body || '').trim(),
+            ctaText: String(obj.ctaText || '').trim(),
+            ctaHref: String(obj.ctaHref || '').trim(),
+          });
+        } catch {
+          return res.status(400).json({ error: 'home_banner must be a JSON object with at least { title }' });
+        }
+      }
+      const stored = await db.setSetting(key, (key === 'welcome_modal' || key === 'broadcast_ticker' || key === 'home_banner') ? req.body.value : value);
       res.json({ setting: stored });
     } catch (err) {
       console.error('[API] admin/settings POST error:', err.message);
@@ -5479,6 +5512,22 @@ NOTES
         }
       } catch (e) {
         console.warn('[Inhouse] Re-queue failed (non-fatal):', e.message);
+      }
+
+      // v5.76: move every player from the completed session back into the
+      // configured lobby voice channel so the next draft starts in one room.
+      try {
+        const players = await db.getInhouseSessionPlayers(req.params.id);
+        const accountIds = players.map(p => p.account_id).filter(Boolean);
+        const { getDiscordBot } = require('../discord/bot');
+        const bot = getDiscordBot();
+        if (bot && typeof bot._movePlayersToLobbyChannel === 'function' && accountIds.length > 0) {
+          bot._movePlayersToLobbyChannel(accountIds).catch(e =>
+            console.warn('[Inhouse] Lobby voice move failed:', e.message)
+          );
+        }
+      } catch (e) {
+        console.warn('[Inhouse] Lobby voice move setup failed (non-fatal):', e.message);
       }
 
       res.json({ session });
