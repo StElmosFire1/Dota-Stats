@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getPositionStats, getPlayerPositionProfiles } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import PaywallBlur from '../components/PaywallBlur';
 
 const POSITION_NAMES = {
   1: 'Safe Lane (Pos 1)',
@@ -299,7 +300,13 @@ export default function PositionStats() {
           Player Profiles
         </button>
       </div>
-      {view === 'stats' ? <PositionStatsView /> : <PlayerProfilesView />}
+      {view === 'stats' ? (
+        <PositionStatsView />
+      ) : (
+        <PaywallBlur feature="player_profiles" minHeight={520}>
+          <PlayerProfilesView />
+        </PaywallBlur>
+      )}
     </div>
   );
 }

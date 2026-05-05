@@ -11344,12 +11344,20 @@ async function getTournaments(seasonId = null) {
 
 async function getTournamentById(id) {
   const p = getPool();
+  const parsed = parseInt(id);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(`[db.getTournamentById] non-numeric id received: ${JSON.stringify(id)}`);
+    return null;
+  }
   const result = await p.query(`
     SELECT t.*, s.name AS season_name
     FROM tournaments t
     LEFT JOIN seasons s ON s.id = t.season_id
     WHERE t.id = $1
-  `, [parseInt(id)]);
+  `, [parsed]);
+  if (!result.rows[0]) {
+    console.warn(`[db.getTournamentById] no tournament with id=${parsed}`);
+  }
   return result.rows[0] || null;
 }
 

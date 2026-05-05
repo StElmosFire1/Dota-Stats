@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { getPlayerComparison, getHeadToHead, getAllPlayers } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
-import PaywallCard from '../components/PaywallCard';
+import PaywallBlur from '../components/PaywallBlur';
 
 function formatDuration(s) {
   if (!s) return '--';
@@ -166,7 +166,6 @@ function CompareTab({ players, seasonId }) {
         onSearch={search} loading={loading} buttonLabel="Compare Stats"
       />
       {error && <div className="error-state" style={{ marginTop: '1rem' }}>{error}</div>}
-      {paywall && <PaywallCard feature={paywall.feature || 'compare_players'} signedIn={paywall.signedIn} />}
 
       {data && (
         <div style={{ marginTop: '1.5rem' }}>
@@ -252,7 +251,6 @@ function HeadToHeadTab({ players, seasonId }) {
         onSearch={search} loading={loading} buttonLabel="Find Matches"
       />
       {error && <div className="error-state" style={{ marginTop: '1rem' }}>{error}</div>}
-      {paywall && <PaywallCard feature={paywall.feature || 'head_to_head'} signedIn={paywall.signedIn} />}
 
       {data && (
         <div style={{ marginTop: '1.5rem' }}>
@@ -390,10 +388,12 @@ export default function PlayerTools() {
         {TABS.find(t => t.key === activeTab)?.desc}
       </p>
 
-      {activeTab === 'h2h'
-        ? <HeadToHeadTab players={players} seasonId={seasonId} />
-        : <CompareTab players={players} seasonId={seasonId} />
-      }
+      <PaywallBlur feature={activeTab === 'h2h' ? 'head_to_head' : 'compare_players'} minHeight={520}>
+        {activeTab === 'h2h'
+          ? <HeadToHeadTab players={players} seasonId={seasonId} />
+          : <CompareTab players={players} seasonId={seasonId} />
+        }
+      </PaywallBlur>
     </div>
   );
 }

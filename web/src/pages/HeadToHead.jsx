@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { getHeadToHead, getAllPlayers } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
+import PaywallBlur from '../components/PaywallBlur';
 
 function formatDuration(s) {
   if (!s) return '--';
@@ -47,6 +48,7 @@ export default function HeadToHead() {
   return (
     <div>
       <h1 className="page-title">Head to Head</h1>
+      <PaywallBlur feature="head_to_head" minHeight={520}>
       <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
         <div className="stat-card">
           <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Player A</label>
@@ -169,6 +171,7 @@ export default function HeadToHead() {
           )}
         </div>
       )}
+      </PaywallBlur>
     </div>
   );
 }

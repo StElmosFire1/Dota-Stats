@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Social from './Social';
 import PlayerBenchmarks from './PlayerBenchmarks';
+import PaywallBlur from '../components/PaywallBlur';
 
 const TABS = [
   { id: 'network', label: '🕸️ Player Network', desc: 'Top duos, synergy, and player connections' },
@@ -42,8 +43,10 @@ export default function PlayerInsights({ defaultTab = 'network' }) {
         ))}
       </div>
 
-      {tab === 'network' && <Social />}
-      {tab === 'benchmarks' && <PlayerBenchmarks />}
+      <PaywallBlur feature="player_insights" minHeight={520}>
+        {tab === 'network' && <Social />}
+        {tab === 'benchmarks' && <PlayerBenchmarks />}
+      </PaywallBlur>
     </div>
   );
 }

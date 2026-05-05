@@ -327,7 +327,17 @@ function TournamentDetail() {
   }, [id]);
 
   if (loading) return <div className="loading">Loading tournament…</div>;
-  if (!data) return <div className="error-state">Tournament not found.</div>;
+  if (!data) return (
+    <div className="error-state">
+      <p style={{ marginBottom: 8 }}>Tournament not found.</p>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+        Looked up id <code>{String(id)}</code>. If you expected this tournament to exist, please report this in Discord with the URL.
+      </p>
+      <p style={{ marginTop: 12 }}>
+        <Link to="/tournaments" style={{ color: 'var(--accent-blue)' }}>← Back to all tournaments</Link>
+      </p>
+    </div>
+  );
 
   const { tournament, participants, matches } = data;
   const participantIds = new Set(participants.map(p => String(p.account_id)));

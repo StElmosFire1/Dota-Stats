@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList } from '../api';
 import PaywallCard from '../components/PaywallCard';
+import PaywallBlur from '../components/PaywallBlur';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { Link } from 'react-router-dom';
@@ -156,10 +157,10 @@ function HeroBreakdownTab() {
   return (
     <div>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        <button onClick={expandAll} style={{ background: '#1e293b', color: '#e0e0e0', border: '1px solid #334155', borderRadius: '6px', padding: '0.4rem 0.8rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+        <button onClick={expandAll} className="btn btn-sm">
           Expand All
         </button>
-        <button onClick={collapseAll} style={{ background: '#1e293b', color: '#e0e0e0', border: '1px solid #334155', borderRadius: '6px', padding: '0.4rem 0.8rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+        <button onClick={collapseAll} className="btn btn-sm">
           Collapse All
         </button>
       </div>
@@ -635,8 +636,16 @@ export default function Heroes({ defaultTab }) {
 
       {tab === 'tier' && <HeroTierTab />}
       {tab === 'matchups' && <HeroMatchupsTab />}
-      {tab === 'meta' && <HeroMetaTab />}
-      {tab === 'breakdown' && <HeroBreakdownTab />}
+      {tab === 'meta' && (
+        <PaywallBlur feature="hero_position_meta" minHeight={520}>
+          <HeroMetaTab />
+        </PaywallBlur>
+      )}
+      {tab === 'breakdown' && (
+        <PaywallBlur feature="hero_breakdown" minHeight={520}>
+          <HeroBreakdownTab />
+        </PaywallBlur>
+      )}
 
       {tab === 'stats' && !loading && (
         <>

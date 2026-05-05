@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getAllWardPlacements, getPlayerWardPlacements } from '../api';
 import { useSeason } from '../context/SeasonContext';
+import PaywallBlur from '../components/PaywallBlur';
 
 const PLAYER_COLORS = [
   '#4ade80','#60a5fa','#f59e0b','#f87171','#a78bfa',
@@ -295,13 +296,14 @@ export default function WardMap() {
 
   return (
     <div style={{ padding: '24px 16px', maxWidth: 960, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 26, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
+      <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
         🗺️ Ward Map
       </h1>
       <p style={{ color: '#94a3b8', marginBottom: 24 }}>
         Observer and sentry ward placement patterns across all tracked replays.
       </p>
 
+      <PaywallBlur feature="ward_heatmap" minHeight={620}>
       {loading ? (
         <div style={{ color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading ward data…</div>
       ) : totalObs + totalSen === 0 ? (
@@ -436,6 +438,7 @@ export default function WardMap() {
           </div>
         </div>
       )}
+      </PaywallBlur>
     </div>
   );
 }
