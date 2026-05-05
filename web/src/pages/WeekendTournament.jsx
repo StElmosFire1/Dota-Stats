@@ -208,7 +208,15 @@ export default function WeekendTournament() {
     setLoading(true);
     getWeekendTournament(id)
       .then(setData)
-      .catch(e => setError(e.message))
+      .catch(e => {
+        // Cross-table redirect: backend returns 404 with { redirect, kind }
+        // when the id actually lives in the bracket tournaments table.
+        if (e && e.redirect) {
+          window.location.replace(e.redirect);
+          return;
+        }
+        setError(e.message);
+      })
       .finally(() => setLoading(false));
   }, [id]);
 

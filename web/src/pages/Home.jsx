@@ -8,6 +8,7 @@ import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
+import { LiveInhousePulse, PlayerOfTheWeek, HotHeroes } from '../components/HomeWidgets';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -497,6 +498,7 @@ export default function Home() {
     return (
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
         <HomeBanner />
+        <LiveInhousePulse />
         <PersonalisedDashboard steamUser={steamUser} />
 
         {/* Community stats section below personalized view */}
@@ -563,6 +565,15 @@ export default function Home() {
           </Link>
         </div>
       )}
+
+      <LiveInhousePulse />
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
+        marginBottom: 8,
+      }} className="oa-home-pulse-row">
+        <PlayerOfTheWeek />
+        <HotHeroes />
+      </div>
 
       <CourtPitchHomeLanding
         loading={loading}
