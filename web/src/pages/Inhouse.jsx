@@ -109,7 +109,10 @@ export default function Inhouse() {
   const [creating, setCreating] = useState(false);
   const [captainMode, setCaptainMode] = useState('highest_rank');
   const [acceptSeconds, setAcceptSeconds] = useState(60);
+  const [minPlayers, setMinPlayers] = useState(10);
+  const [lobbyFillSeconds, setLobbyFillSeconds] = useState(30);
   const [myPositions, setMyPositions] = useState([]);
+  const [draftStatus, setDraftStatus] = useState(null);
   const isAdmin = !!superuserKey;
   const myAccountId = steamUser?.steamAccountId ? Number(steamUser.steamAccountId) : null;
   const pollRef = useRef(null);
@@ -149,13 +152,32 @@ export default function Inhouse() {
     return () => clearInterval(pollRef.current);
   }, [refresh, refreshPast, refreshServer]);
 
+  // v5.75: when a session is in drafting, poll /draft-status so we know
+  // whose turn it is and can render the captain pick UI accordingly.
+  useEffect(() => {
+    if (!session || session.status !== 'drafting') {
+      setDraftStatus(null);
+      return;
+    }
+    let alive = true;
+    const fetchStatus = async () => {
+      try {
+        const s = await api(`/inhouse/${session.id}/draft-status`);
+        if (alive) setDraftStatus(s);
+      } catch (_) {}
+    };
+    fetchStatus();
+    const t = setInterval(fetchStatus, 2000);
+    return () => { alive = false; clearInterval(t); };
+  }, [session?.id, session?.status]);
+
   const adminHeaders = isAdmin ? { 'x-superuser-key': superuserKey } : {};
 
   async function createSession() {
     if (!isAdmin) return;
     setCreating(true);
     try {
-      await api('/inhouse', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ captainMode, acceptPhaseSeconds: acceptSeconds }) });
+      await api('/inhouse', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ captainMode, acceptPhaseSeconds: acceptSeconds, minPlayers, lobbyFillSeconds }) });
       await refresh();
     } catch (e) { alert(e.message); }
     finally { setCreating(false); }
@@ -210,10 +232,17 @@ export default function Inhouse() {
   }
 
   async function draftPick(accountId, team) {
-    if (!isAdmin || !session) return;
+    if (!session) return;
+    // v5.75: captains can pick directly. Send admin header only if signed-in
+    // user has a superuser key — the backend will fall back to session-auth
+    // and verify it's the right captain's turn.
     const teamPlayers = players.filter(p => p.team === team);
     try {
-      await api(`/inhouse/${session.id}/draft-pick`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ accountId, team, pickOrder: teamPlayers.length }) });
+      await api(`/inhouse/${session.id}/draft-pick`, {
+        method: 'POST',
+        headers: isAdmin ? adminHeaders : {},
+        body: JSON.stringify({ accountId, team, pickOrder: teamPlayers.length }),
+      });
       await refresh();
     } catch (e) { alert(e.message); }
   }
@@ -308,6 +337,14 @@ export default function Inhouse() {
                 Accept timer:&nbsp;
                 <input type="number" min={15} max={300} value={acceptSeconds} onChange={e => setAcceptSeconds(parseInt(e.target.value || '60', 10))} style={{ padding: 4, width: 70 }} /> sec
               </label>
+              <label style={{ fontSize: 13 }}>
+                Min players to auto-start:&nbsp;
+                <input type="number" min={2} max={10} value={minPlayers} onChange={e => setMinPlayers(parseInt(e.target.value || '10', 10))} style={{ padding: 4, width: 60 }} />
+              </label>
+              <label style={{ fontSize: 13 }}>
+                Lobby fill grace period:&nbsp;
+                <input type="number" min={0} max={300} value={lobbyFillSeconds} onChange={e => setLobbyFillSeconds(parseInt(e.target.value || '30', 10))} style={{ padding: 4, width: 60 }} /> sec
+              </label>
               <button onClick={createSession} disabled={creating} style={{ padding: '8px 16px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>
                 {creating ? 'Creating…' : 'Open Session'}
               </button>
@@ -352,6 +389,16 @@ export default function Inhouse() {
 
           {session.status === 'accepting' && session.accept_phase_starts_at && (
             <Countdown startsAt={session.accept_phase_starts_at} seconds={session.accept_phase_seconds || 60} />
+          )}
+
+          {/* v5.75: auto-start countdown — visible to everyone once min_players is reached. */}
+          {session.status === 'open' && session.auto_start_at && (
+            <div style={{ marginTop: 12, padding: '10px 14px', background: 'color-mix(in srgb, var(--brass) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--brass) 35%, transparent)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontWeight: 600, color: 'var(--brass)' }}>
+                ✓ Lobby is full ({players.length}/{session.min_players || 10}) — accept phase auto-starts soon
+              </div>
+              <Countdown startsAt={new Date(new Date(session.auto_start_at).getTime() - (session.lobby_fill_seconds || 30) * 1000).toISOString()} seconds={session.lobby_fill_seconds || 30} />
+            </div>
           )}
 
           {/* Player accept/decline panel */}
@@ -428,15 +475,43 @@ export default function Inhouse() {
                 ))}
                 {team2.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No picks yet</div>}
               </div>
-              {session.status === 'drafting' && undrafted.length > 0 && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <h3>Unpicked Players</h3>
-                  {undrafted.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
-                    <PlayerRow key={p.account_id} player={p} session={session} isCurrentUser={Number(p.account_id) === myAccountId}
-                      canDraft={isAdmin} onDraftPick={draftPick} />
-                  ))}
-                </div>
-              )}
+              {session.status === 'drafting' && undrafted.length > 0 && (() => {
+                // v5.75: figure out whether the signed-in user is one of the
+                // two captains and whether it's their turn to pick.
+                const cap1Id = Number(session.captain1_account_id);
+                const cap2Id = Number(session.captain2_account_id);
+                const myCaptainTeam = myAccountId === cap1Id ? 1 : myAccountId === cap2Id ? 2 : null;
+                const turn = draftStatus?.currentPickerTeam ?? null;
+                const isMyTurn = myCaptainTeam !== null && turn === myCaptainTeam;
+                const canDraft = isAdmin || isMyTurn;
+                const cap1Name = players.find(p => Number(p.account_id) === cap1Id)?.nickname || 'Captain 1';
+                const cap2Name = players.find(p => Number(p.account_id) === cap2Id)?.nickname || 'Captain 2';
+                const turnName = turn === 1 ? cap1Name : turn === 2 ? cap2Name : null;
+                return (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                      <h3 style={{ margin: 0 }}>Unpicked Players</h3>
+                      {turn && (
+                        <div style={{ padding: '6px 12px', borderRadius: 4, fontWeight: 700, fontSize: 13,
+                          background: isMyTurn ? 'color-mix(in srgb, var(--amber) 18%, transparent)' : 'var(--bg-elevated)',
+                          color: isMyTurn ? 'var(--amber)' : 'var(--text-muted)',
+                          border: `1px solid ${isMyTurn ? 'var(--amber)' : 'var(--border)'}` }}>
+                          {isMyTurn ? '⚡ Your pick!' : `Waiting for ${turnName} (Team ${turn})…`}
+                        </div>
+                      )}
+                    </div>
+                    {isMyTurn && !isAdmin && (
+                      <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                        Click → T{myCaptainTeam} on the player you want to pick onto your team.
+                      </div>
+                    )}
+                    {undrafted.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
+                      <PlayerRow key={p.account_id} player={p} session={session} isCurrentUser={Number(p.account_id) === myAccountId}
+                        canDraft={canDraft} onDraftPick={draftPick} />
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <div style={{ marginTop: 20 }}>

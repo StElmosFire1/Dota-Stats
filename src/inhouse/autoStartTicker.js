@@ -30,15 +30,21 @@ function warn(...args) { _logger.warn('[InhouseAutoStart]', ...args); }
 
 async function tick(db, basePort) {
   const fetch = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
-  let active;
+  // Only fetch sessions that could need advancing — keeps the poll cheap
+  // even as the inhouse_sessions table grows.
+  const pool = db.getPool();
+  let openRows, acceptingRows;
   try {
-    active = await db.listInhouseSessions({ status: null, limit: 20 });
+    [openRows, acceptingRows] = await Promise.all([
+      pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'open' ORDER BY id DESC LIMIT 20`),
+      pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'accepting' ORDER BY id DESC LIMIT 20`),
+    ]);
   } catch (e) {
     warn('listInhouseSessions failed:', e.message);
     return;
   }
-  const open = active.filter(s => s.status === 'open');
-  const accepting = active.filter(s => s.status === 'accepting');
+  const open = openRows.rows;
+  const accepting = acceptingRows.rows;
 
   for (const s of open) {
     try {
@@ -52,14 +58,19 @@ async function tick(db, basePort) {
           await db.updateInhouseSession(s.id, { auto_start_at: new Date(Date.now() + fillSec * 1000) });
           log(`Session #${s.id}: ${players.length}/${min} reached, auto-start in ${fillSec}s`);
         } else if (new Date(s.auto_start_at).getTime() <= Date.now()) {
-          // Timer expired — flip to accepting.
-          const upd = await db.updateInhouseSession(s.id, {
-            status: 'accepting',
-            accept_phase_starts_at: new Date(),
-            accept_phase_seconds: s.accept_phase_seconds || 60,
-            auto_start_at: null,
-          });
-          if (upd && upd.status === 'accepting') {
+          // Timer expired — flip to accepting. Use a status-guarded UPDATE so
+          // we never race with a manual admin transition.
+          const guard = await pool.query(
+            `UPDATE inhouse_sessions
+                SET status = 'accepting',
+                    accept_phase_starts_at = NOW(),
+                    accept_phase_seconds = COALESCE(accept_phase_seconds, $2),
+                    auto_start_at = NULL
+              WHERE id = $1 AND status = 'open'
+            RETURNING id`,
+            [s.id, s.accept_phase_seconds || 60]
+          );
+          if (guard.rowCount > 0) {
             log(`Session #${s.id}: auto-flipped to accepting (${players.length} players)`);
           }
         }
@@ -106,19 +117,22 @@ async function tick(db, basePort) {
         }
       } else {
         // Not enough accepts — drop back to open so the lobby can refill.
-        await db.updateInhouseSession(s.id, {
-          status: 'open',
-          accept_phase_starts_at: null,
-          auto_start_at: null,
-        });
-        // Reset declined statuses so they can rejoin the queue cleanly.
-        const pool = db.getPool();
-        await pool.query(
-          `UPDATE inhouse_session_players SET status = 'registered', accepted_at = NULL
-             WHERE session_id = $1 AND status IN ('accepted','declined')`,
+        // Status-guarded so we don't trample a concurrent admin transition.
+        const guard = await pool.query(
+          `UPDATE inhouse_sessions
+              SET status = 'open', accept_phase_starts_at = NULL, auto_start_at = NULL
+            WHERE id = $1 AND status = 'accepting'
+          RETURNING id`,
           [s.id]
         );
-        log(`Session #${s.id}: only ${accepted.length}/${min} accepted, dropped back to open`);
+        if (guard.rowCount > 0) {
+          await pool.query(
+            `UPDATE inhouse_session_players SET status = 'registered', accepted_at = NULL
+               WHERE session_id = $1 AND status IN ('accepted','declined')`,
+            [s.id]
+          );
+          log(`Session #${s.id}: only ${accepted.length}/${min} accepted, dropped back to open`);
+        }
       }
     } catch (e) {
       warn(`Session #${s.id} (accepting) tick failed:`, e.message);

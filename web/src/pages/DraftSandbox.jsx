@@ -381,7 +381,12 @@ export default function DraftSandbox() {
             Draft Sandbox
           </h1>
         </div>
-        <Link to="/admin" style={btn({ textDecoration: 'none', display: 'inline-block' })}>← Admin Panel</Link>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Link to="/inhouse" style={btn({ textDecoration: 'none', display: 'inline-block', borderColor: CP.amber, color: CP.amber })}>
+            Try the live flow →
+          </Link>
+          <Link to="/admin" style={btn({ textDecoration: 'none', display: 'inline-block' })}>← Admin Panel</Link>
+        </div>
       </div>
 
       <p style={{ color: `${CP.parchment}99`, fontSize: 14, marginTop: 14, marginBottom: 22, maxWidth: 760 }}>

@@ -5272,8 +5272,15 @@ NOTES
   // gets one back-to-back at the very end so it's roughly even on tempo.
   const DRAFT_PICK_SEQUENCE = [1, 2, 2, 1, 1, 2, 2, 1];
 
-  function _currentPickerTeam(players) {
-    const drafted = players.filter(p => p.team !== 0 && p.pick_order > 0).length;
+  function _currentPickerTeam(players, session) {
+    // Count drafted players, excluding the two captains by account_id (more
+    // robust than relying on pick_order > 0, since admin-override picks may
+    // arrive without a pick_order set).
+    const cap1 = session ? Number(session.captain1_account_id) : null;
+    const cap2 = session ? Number(session.captain2_account_id) : null;
+    const drafted = players.filter(p =>
+      p.team !== 0 && Number(p.account_id) !== cap1 && Number(p.account_id) !== cap2
+    ).length;
     if (drafted >= DRAFT_PICK_SEQUENCE.length) return null; // draft complete
     return DRAFT_PICK_SEQUENCE[drafted];
   }
@@ -5301,7 +5308,7 @@ NOTES
         if (!myTeam) return res.status(403).json({ error: 'Only the captains can pick.' });
         if (myTeam !== team) return res.status(403).json({ error: 'You can only pick onto your own team.' });
         const allPlayers = await db.getInhouseSessionPlayers(cur.id);
-        const turn = _currentPickerTeam(allPlayers);
+        const turn = _currentPickerTeam(allPlayers, cur);
         if (turn === null) return res.status(400).json({ error: 'Draft is complete.' });
         if (turn !== myTeam) return res.status(409).json({ error: "It's not your turn to pick." });
       }
@@ -5331,7 +5338,11 @@ NOTES
       const cur = await db.getInhouseSession(req.params.id);
       if (!cur) return res.status(404).json({ error: 'Session not found' });
       const players = await db.getInhouseSessionPlayers(cur.id);
-      const drafted = players.filter(p => p.team !== 0 && p.pick_order > 0).length;
+      const cap1 = Number(cur.captain1_account_id);
+      const cap2 = Number(cur.captain2_account_id);
+      const drafted = players.filter(p =>
+        p.team !== 0 && Number(p.account_id) !== cap1 && Number(p.account_id) !== cap2
+      ).length;
       const seq = DRAFT_PICK_SEQUENCE;
       res.json({
         sequence: seq,

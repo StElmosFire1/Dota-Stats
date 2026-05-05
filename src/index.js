@@ -215,6 +215,17 @@ async function main() {
   webApp.listen(webPort, '0.0.0.0', () => {
     console.log(`[Web] Dashboard running on port ${webPort}`);
     console.log(`[Startup] All systems ready.\n`);
+
+    // v5.75: kick off the inhouse auto-start ticker once the API is up so
+    // its internal /select-captains call can hit the live server.
+    if (startupStatus.database) {
+      try {
+        const ticker = require('./inhouse/autoStartTicker');
+        ticker.start(db, { basePort: webPort });
+      } catch (err) {
+        console.warn('[Startup] Inhouse auto-start ticker failed to start:', err.message);
+      }
+    }
   });
 }
 
