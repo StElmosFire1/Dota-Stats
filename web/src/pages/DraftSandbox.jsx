@@ -19,97 +19,171 @@ const PLACEHOLDER_PLAYERS = [
 // Index: 0..7 — value: which captain picks (1 or 2).
 const PICK_SEQUENCE = [1, 2, 2, 1, 1, 2, 2, 1];
 
+// Court & Pitch palette anchors (kept here as constants so colour decisions
+// match the global brand without depending on the theme being loaded yet).
+const CP = {
+  inkNavy: '#0d1424',
+  cardSurface: '#152036',
+  brass: '#c5a975',
+  amber: '#f59e0b',
+  parchment: '#f5efe2',
+  radiant: '#22c55e',
+  dire: '#ef4444',
+};
+const FONT_DISPLAY = '"Playfair Display", Georgia, serif';
+const FONT_CONDENSED = '"Oswald", "Inter", sans-serif';
+
 const POS_COLOR = {
-  '1': '#f59e0b',
-  '2': '#22c55e',
-  '3': '#ef4444',
+  '1': CP.amber,
+  '2': CP.radiant,
+  '3': CP.dire,
   '4': '#60a5fa',
   '5': '#a78bfa',
 };
 
 function PlayerCard({ p, onPick, disabled, picked, team }) {
-  const teamColor = team === 1 ? 'var(--radiant-color, #22c55e)'
-                  : team === 2 ? 'var(--dire-color, #ef4444)'
-                  : 'var(--border)';
+  const teamColor = team === 1 ? CP.radiant
+                  : team === 2 ? CP.dire
+                  : `${CP.brass}55`;
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '10px 12px', borderRadius: 8,
-      background: 'var(--bg-card)',
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '12px 14px', borderRadius: 6,
+      background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
       border: `1px solid ${teamColor}`,
+      borderLeft: `3px solid ${teamColor}`,
       opacity: picked && !team ? 0.4 : 1,
+      transition: 'transform 100ms, border-color 100ms',
     }}>
       <div style={{
-        width: 28, height: 28, borderRadius: '50%',
+        width: 32, height: 32, borderRadius: '50%',
         background: POS_COLOR[p.pos] || '#888',
-        color: '#000', fontWeight: 800, fontSize: 13,
+        color: CP.inkNavy, fontWeight: 800, fontSize: 14, fontFamily: FONT_CONDENSED,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: `0 0 0 2px ${CP.cardSurface}, 0 0 0 3px ${POS_COLOR[p.pos] || '#888'}66`,
       }}>{p.pos}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{p.name}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          {p.mmr} MMR · {p.flair}
+        <div style={{ fontWeight: 700, color: CP.parchment, letterSpacing: 0.3 }}>{p.name}</div>
+        <div style={{ fontSize: 12, color: `${CP.brass}cc`, fontFamily: FONT_CONDENSED, letterSpacing: 0.5 }}>
+          <span style={{ color: CP.amber, fontWeight: 700 }}>{p.mmr}</span>
+          <span style={{ opacity: 0.5 }}> MMR · </span>
+          <span style={{ fontFamily: 'inherit' }}>{p.flair}</span>
         </div>
       </div>
       {team ? (
         <span style={{
-          fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 4,
-          background: teamColor, color: '#000',
+          fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 3,
+          background: teamColor, color: CP.inkNavy, fontFamily: FONT_CONDENSED, letterSpacing: 1.5,
         }}>
           TEAM {team}
         </span>
       ) : (
-        <button className="btn btn-sm" disabled={disabled} onClick={() => onPick(p.id)}>
-          Pick →
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(p.id)}
+          style={{
+            padding: '6px 14px', borderRadius: 4, border: `1px solid ${CP.brass}`,
+            background: disabled ? 'transparent' : `linear-gradient(180deg, ${CP.brass} 0%, #a08858 100%)`,
+            color: disabled ? `${CP.brass}66` : CP.inkNavy,
+            fontWeight: 800, fontSize: 12, letterSpacing: 1, fontFamily: FONT_CONDENSED,
+            cursor: disabled ? 'not-allowed' : 'pointer', textTransform: 'uppercase',
+          }}
+        >
+          PICK →
         </button>
       )}
     </div>
   );
 }
 
-function TeamColumn({ label, color, captain, players }) {
+function TeamColumn({ label, color, captain, players, totalMmr }) {
   return (
     <div style={{
-      flex: 1, minWidth: 240, background: 'var(--bg-card)',
-      borderRadius: 10, padding: 14, border: `2px solid ${color}`,
+      flex: 1, minWidth: 260,
+      background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
+      borderRadius: 8, padding: 0, border: `1px solid ${color}`,
+      boxShadow: `inset 0 1px 0 ${CP.brass}33`,
+      overflow: 'hidden',
     }}>
+      {/* Heraldic header band */}
       <div style={{
-        fontSize: 13, fontWeight: 800, color, letterSpacing: 1,
-        marginBottom: 10, textAlign: 'center',
+        background: `linear-gradient(90deg, ${color}33 0%, transparent 100%)`,
+        borderBottom: `1px solid ${color}66`,
+        padding: '10px 14px',
       }}>
-        {label} ({players.length}/5)
+        <div style={{
+          fontSize: 11, fontWeight: 800, color, letterSpacing: 2.5,
+          textAlign: 'center', fontFamily: FONT_CONDENSED, textTransform: 'uppercase',
+        }}>
+          ━ {label} ━
+        </div>
+        <div style={{
+          marginTop: 4, fontSize: 22, fontWeight: 800, color: CP.parchment,
+          textAlign: 'center', fontFamily: FONT_CONDENSED, letterSpacing: 1,
+        }}>
+          {players.length}<span style={{ color: `${CP.brass}88`, fontSize: 16 }}> / 5</span>
+        </div>
       </div>
+
+      {/* Captain row */}
       <div style={{
-        padding: '6px 8px', marginBottom: 8, borderRadius: 6,
-        background: 'rgba(255,255,255,0.04)', fontSize: 12,
+        padding: '8px 14px', borderBottom: `1px solid ${CP.brass}22`,
+        background: `${CP.inkNavy}88`,
       }}>
-        <strong>Captain:</strong> {captain ? captain.name : '—'}
+        <div style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5, fontFamily: FONT_CONDENSED }}>
+          ⚜ CAPTAIN
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: CP.parchment }}>
+          {captain ? captain.name : '—'}
+          {captain && (
+            <span style={{ marginLeft: 8, fontSize: 11, color: `${CP.brass}aa`, fontFamily: FONT_CONDENSED }}>
+              {captain.mmr} MMR
+            </span>
+          )}
+        </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+
+      {/* Roster */}
+      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 5 }}>
         {players.map(p => (
           <div key={p.id} style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 8px', borderRadius: 6,
-            background: 'rgba(255,255,255,0.03)', fontSize: 13,
+            padding: '7px 10px', borderRadius: 4,
+            background: `${CP.cardSurface}cc`,
+            borderLeft: `2px solid ${POS_COLOR[p.pos] || '#888'}`,
+            fontSize: 13,
           }}>
             <span style={{
-              width: 20, height: 20, borderRadius: '50%',
-              background: POS_COLOR[p.pos] || '#888', color: '#000',
-              fontSize: 11, fontWeight: 800,
+              width: 22, height: 22, borderRadius: '50%',
+              background: POS_COLOR[p.pos] || '#888', color: CP.inkNavy,
+              fontSize: 11, fontWeight: 800, fontFamily: FONT_CONDENSED,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>{p.pos}</span>
-            <span style={{ flex: 1 }}>{p.name}</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.mmr}</span>
+            <span style={{ flex: 1, color: CP.parchment }}>{p.name}</span>
+            <span style={{ fontSize: 12, color: CP.amber, fontFamily: FONT_CONDENSED, fontWeight: 700 }}>{p.mmr}</span>
           </div>
         ))}
         {Array.from({ length: 5 - players.length }).map((_, i) => (
           <div key={`slot-${i}`} style={{
-            padding: '6px 8px', borderRadius: 6, fontSize: 12,
-            color: 'var(--text-muted)', fontStyle: 'italic',
-            background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--border)',
-          }}>empty slot</div>
+            padding: '7px 10px', borderRadius: 4, fontSize: 11,
+            color: `${CP.brass}55`, fontStyle: 'italic', textAlign: 'center',
+            border: `1px dashed ${CP.brass}33`, fontFamily: FONT_CONDENSED, letterSpacing: 1,
+          }}>· EMPTY SLOT ·</div>
         ))}
       </div>
+
+      {/* MMR footer */}
+      {players.length > 0 && (
+        <div style={{
+          padding: '8px 14px', borderTop: `1px solid ${CP.brass}22`,
+          background: `${CP.inkNavy}cc`, textAlign: 'center',
+          fontFamily: FONT_CONDENSED, letterSpacing: 2,
+        }}>
+          <span style={{ fontSize: 10, color: CP.brass }}>TOTAL MMR </span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: CP.amber }}>{totalMmr}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -197,106 +271,185 @@ export default function DraftSandbox() {
   const t1Mmr = team1.reduce((s, p) => s + p.mmr, 0);
   const t2Mmr = team2.reduce((s, p) => s + p.mmr, 0);
 
+  const mmrDelta = Math.abs(t1Mmr - t2Mmr);
+  const balanced = mmrDelta < 1500;
+
+  const btn = (extra = {}) => ({
+    padding: '8px 14px', borderRadius: 4, border: `1px solid ${CP.brass}`,
+    background: 'transparent', color: CP.brass,
+    fontFamily: FONT_CONDENSED, fontWeight: 700, fontSize: 12,
+    letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
+    ...extra,
+  });
+
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 6 }}>
-        <h1 style={{ margin: 0 }}>🎮 Draft Sandbox</h1>
-        <Link to="/admin" className="btn btn-sm">← Back to Admin Panel</Link>
+    <div style={{
+      maxWidth: 1280, margin: '0 auto', padding: '28px 16px 40px',
+      background: CP.inkNavy, minHeight: '100vh', color: CP.parchment,
+    }}>
+      {/* Header band — heraldic */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: 12, marginBottom: 8,
+        paddingBottom: 14, borderBottom: `1px solid ${CP.brass}55`,
+      }}>
+        <div>
+          <div style={{
+            fontSize: 11, color: CP.brass, letterSpacing: 4,
+            fontFamily: FONT_CONDENSED, fontWeight: 700,
+          }}>
+            ⚔ OCE INHOUSE · ADMIN TOOLING
+          </div>
+          <h1 style={{
+            margin: '4px 0 0', fontSize: 36, fontFamily: FONT_DISPLAY,
+            color: CP.parchment, letterSpacing: 0.5, fontWeight: 700,
+          }}>
+            Draft Sandbox
+          </h1>
+        </div>
+        <Link to="/admin" style={btn({ textDecoration: 'none', display: 'inline-block' })}>← Admin Panel</Link>
       </div>
-      <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 0, marginBottom: 18 }}>
-        Self-contained client-side simulator of the inhouse captain-pick draft. Uses 10 placeholder
-        players (modeled on real Dota 2 pros) and the standard <strong>1-2-2-2-1</strong> alternating
-        pick order. <strong>No backend writes</strong>: nothing here touches the live lobby, database,
-        or Steam bot — purely for verifying the UX, the pick-order logic, and what an in-progress
-        draft looks like end-to-end.
+
+      <p style={{ color: `${CP.parchment}99`, fontSize: 14, marginTop: 14, marginBottom: 22, maxWidth: 760 }}>
+        Self-contained client-side simulator of the inhouse captain-pick draft. Ten placeholder players
+        (modeled on real Dota 2 pros) walk through the standard <strong style={{ color: CP.amber }}>1-2-2-2-1</strong> alternating
+        pick order. <strong style={{ color: CP.brass }}>Zero backend writes</strong> — nothing here touches the live lobby, database, or Steam bot.
       </p>
 
       {/* Status bar */}
       <div style={{
-        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12,
-        padding: '12px 14px', marginBottom: 18, borderRadius: 8,
-        background: 'var(--bg-card)', border: '1px solid var(--border)',
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14,
+        padding: '14px 18px', marginBottom: 22, borderRadius: 6,
+        background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
+        border: `1px solid ${CP.brass}55`, borderLeft: `4px solid ${CP.amber}`,
       }}>
-        <div>
-          <strong>Pick #{Math.min(pickIdx + 1, PICK_SEQUENCE.length)}</strong> of {PICK_SEQUENCE.length}
+        <div style={{ fontFamily: FONT_CONDENSED }}>
+          <div style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5 }}>ON THE CLOCK</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: CP.parchment, letterSpacing: 1 }}>
+            PICK <span style={{ color: CP.amber }}>#{Math.min(pickIdx + 1, PICK_SEQUENCE.length)}</span>
+            <span style={{ color: `${CP.brass}66`, fontSize: 16 }}> / {PICK_SEQUENCE.length}</span>
+          </div>
         </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
+        <div style={{ flex: 1, minWidth: 200, paddingLeft: 14, borderLeft: `1px solid ${CP.brass}33` }}>
           {draftDone ? (
-            <span style={{ color: '#22c55e', fontWeight: 700 }}>✓ Draft complete</span>
+            <div>
+              <div style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5, fontFamily: FONT_CONDENSED }}>STATUS</div>
+              <div style={{ fontSize: 18, color: CP.radiant, fontWeight: 700, fontFamily: FONT_CONDENSED, letterSpacing: 1 }}>
+                ✓ DRAFT COMPLETE
+              </div>
+            </div>
           ) : (
-            <span>
-              <strong style={{ color: onClock === 1 ? 'var(--radiant-color, #22c55e)' : 'var(--dire-color, #ef4444)' }}>
-                Captain {onClock} on the clock
-              </strong>
-              {' — '}
-              {onClock === 1 ? c1?.name : c2?.name}
-            </span>
+            <div>
+              <div style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5, fontFamily: FONT_CONDENSED }}>NEXT TO PICK</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: onClock === 1 ? CP.radiant : CP.dire, fontFamily: FONT_CONDENSED, letterSpacing: 1 }}>
+                CAPTAIN {onClock} — {onClock === 1 ? c1?.name : c2?.name}
+              </div>
+            </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button className="btn btn-sm" onClick={autoPickNext} disabled={draftDone}>🤖 Auto-pick next</button>
-          <button className="btn btn-sm" onClick={autoCompleteAll} disabled={draftDone}>⏩ Simulate to end</button>
-          <button className="btn btn-sm" onClick={reroll}>🎲 Reroll captains</button>
-          <button className="btn btn-sm" onClick={reset} disabled={pickHistory.length === 0}>↺ Reset picks</button>
+          <button onClick={autoPickNext} disabled={draftDone} style={btn({ opacity: draftDone ? 0.4 : 1, cursor: draftDone ? 'not-allowed' : 'pointer' })}>🤖 Auto-pick</button>
+          <button onClick={autoCompleteAll} disabled={draftDone} style={btn({ opacity: draftDone ? 0.4 : 1, cursor: draftDone ? 'not-allowed' : 'pointer' })}>⏩ Simulate</button>
+          <button onClick={reroll} style={btn()}>🎲 Reroll</button>
+          <button onClick={reset} disabled={pickHistory.length === 0} style={btn({ opacity: pickHistory.length === 0 ? 0.4 : 1, cursor: pickHistory.length === 0 ? 'not-allowed' : 'pointer' })}>↺ Reset</button>
         </div>
       </div>
 
       {/* Teams */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
-        <TeamColumn label="TEAM 1 (Radiant)" color="var(--radiant-color, #22c55e)" captain={c1} players={team1} />
-        <TeamColumn label="TEAM 2 (Dire)"    color="var(--dire-color, #ef4444)"    captain={c2} players={team2} />
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 18 }}>
+        <TeamColumn label="TEAM 1 · RADIANT" color={CP.radiant} captain={c1} players={team1} totalMmr={t1Mmr} />
+        <TeamColumn label="TEAM 2 · DIRE"    color={CP.dire}    captain={c2} players={team2} totalMmr={t2Mmr} />
       </div>
 
       {/* MMR balance summary */}
       {(team1.length > 0 || team2.length > 0) && (
         <div style={{
-          padding: '10px 14px', marginBottom: 18, borderRadius: 8,
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13,
+          padding: '12px 18px', marginBottom: 22, borderRadius: 6,
+          background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
+          border: `1px solid ${balanced ? CP.brass : CP.amber}66`,
+          display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center',
+          fontFamily: FONT_CONDENSED,
         }}>
-          <span><strong>Team 1 total MMR:</strong> {t1Mmr}</span>
-          <span><strong>Team 2 total MMR:</strong> {t2Mmr}</span>
-          <span style={{ color: Math.abs(t1Mmr - t2Mmr) < 1500 ? '#22c55e' : '#f59e0b' }}>
-            <strong>Δ:</strong> {Math.abs(t1Mmr - t2Mmr)} MMR
-            {Math.abs(t1Mmr - t2Mmr) < 1500 ? ' (balanced)' : ' (skewed)'}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5 }}>TEAM 1</span>
+            <span style={{ fontSize: 20, color: CP.radiant, fontWeight: 800 }}>{t1Mmr}</span>
+          </div>
+          <div style={{ fontSize: 26, color: `${CP.brass}66`, fontWeight: 300 }}>vs</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5 }}>TEAM 2</span>
+            <span style={{ fontSize: 20, color: CP.dire, fontWeight: 800 }}>{t2Mmr}</span>
+          </div>
+          <div style={{ flex: 1, paddingLeft: 18, borderLeft: `1px solid ${CP.brass}33` }}>
+            <span style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5 }}>DIFFERENCE</span>
+            <div style={{ fontSize: 22, fontWeight: 800, color: balanced ? CP.radiant : CP.amber, letterSpacing: 1 }}>
+              Δ {mmrDelta} MMR
+              <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 600, letterSpacing: 2, opacity: 0.8 }}>
+                {balanced ? '· BALANCED' : '· SKEWED'}
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Pool */}
-      <h2 style={{ fontSize: 16, marginBottom: 8 }}>Available pool ({pool.length})</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8 }}>
+      <div style={{
+        marginBottom: 10, paddingBottom: 8, borderBottom: `1px solid ${CP.brass}33`,
+        display: 'flex', alignItems: 'baseline', gap: 12, justifyContent: 'space-between',
+      }}>
+        <h2 style={{
+          margin: 0, fontSize: 14, color: CP.brass, letterSpacing: 3,
+          fontFamily: FONT_CONDENSED, fontWeight: 700,
+        }}>
+          ━ AVAILABLE POOL ━
+        </h2>
+        <span style={{ fontSize: 18, color: CP.amber, fontWeight: 800, fontFamily: FONT_CONDENSED }}>
+          {pool.length}<span style={{ color: `${CP.brass}66`, fontSize: 14 }}> remaining</span>
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 }}>
         {pool.map(p => (
-          <PlayerCard
-            key={p.id}
-            p={p}
-            picked={false}
-            team={null}
-            disabled={draftDone}
-            onPick={(id) => pick(id)}
-          />
+          <PlayerCard key={p.id} p={p} picked={false} team={null}
+            disabled={draftDone} onPick={(id) => pick(id)} />
         ))}
         {pool.length === 0 && (
-          <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            Pool is empty.
-          </div>
+          <div style={{
+            padding: 18, textAlign: 'center', color: `${CP.brass}88`,
+            fontStyle: 'italic', fontFamily: FONT_CONDENSED, letterSpacing: 1.5,
+          }}>· POOL IS EMPTY ·</div>
         )}
       </div>
 
       {/* Pick order reference */}
-      <div style={{ marginTop: 24, padding: 12, borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
-        <strong>Pick order:</strong>{' '}
-        {PICK_SEQUENCE.map((c, i) => (
-          <span key={i} style={{
-            display: 'inline-block', padding: '2px 6px', margin: '0 3px', borderRadius: 4,
-            background: i < pickIdx ? 'rgba(255,255,255,0.06)' : (i === pickIdx ? 'var(--accent)' : 'transparent'),
-            color: i === pickIdx ? '#000' : (c === 1 ? 'var(--radiant-color, #22c55e)' : 'var(--dire-color, #ef4444)'),
-            fontWeight: i === pickIdx ? 800 : 600,
-            border: '1px solid var(--border)',
-          }}>
-            #{i + 1} → C{c}
-          </span>
-        ))}
+      <div style={{
+        marginTop: 28, padding: '14px 18px', borderRadius: 6,
+        background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
+        border: `1px solid ${CP.brass}55`,
+      }}>
+        <div style={{
+          fontSize: 10, color: CP.brass, letterSpacing: 2.5, fontFamily: FONT_CONDENSED,
+          fontWeight: 700, marginBottom: 8,
+        }}>
+          ━ PICK ORDER (1-2-2-2-1) ━
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {PICK_SEQUENCE.map((c, i) => {
+            const past = i < pickIdx;
+            const current = i === pickIdx;
+            return (
+              <span key={i} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '6px 12px', borderRadius: 4, fontFamily: FONT_CONDENSED,
+                background: current ? CP.amber : (past ? `${CP.cardSurface}` : 'transparent'),
+                color: current ? CP.inkNavy : (past ? `${CP.parchment}55` : (c === 1 ? CP.radiant : CP.dire)),
+                fontWeight: current ? 800 : 700, fontSize: 12, letterSpacing: 1,
+                border: `1px solid ${current ? CP.amber : (c === 1 ? CP.radiant : CP.dire)}66`,
+                opacity: past ? 0.5 : 1,
+              }}>
+                #{i + 1} · C{c}
+              </span>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

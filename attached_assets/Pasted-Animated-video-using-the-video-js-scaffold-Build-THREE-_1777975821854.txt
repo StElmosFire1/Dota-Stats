@@ -1,0 +1,69 @@
+Animated video using the video-js scaffold
+
+Build THREE related auto-playing videos for OCE Inhouse (oceinhouse.gg),
+the home of competitive inhouse Dota 2 in Oceania.
+
+Video A — Main promo, 25 seconds, 16:9, 1920×1080
+Video B — Pro tier variant, 15 seconds, 16:9, 1920×1080
+Video C — Teaser, 5 seconds, 16:9 + 9:16 (square crop also acceptable)
+
+Tagline (must appear in A and C, paraphrased OK in B):
+"OCE's home for inhouse Dota. Track every game. Climb the ladder. Win the prize pool."
+
+Discord CTA at the end of A and C: discord.gg/jDN7d8Vz
+
+Brand: "OCE Inhouse" under the attached OA shield logo.
+Palette — Court & Pitch system, use these EXACT hex:
+  Ink-navy bg     #0d1424
+  Card surface    #152036
+  Brass accent    #c5a975
+  Amber highlight #f59e0b
+  Parchment light #f5efe2
+  Radiant green   #22c55e   (sparingly)
+  Dire red        #ef4444   (sparingly)
+
+Typography: Inter (sans), Oswald (condensed display, for stats/ranks),
+Playfair Display (serif, for the wordmark and key headlines).
+
+Direction: editorial broadcast / sports network — think a hybrid of
+ESPN's college-football opens and an esports stat package. NOT generic
+gaming neon. Brass + ink-navy + parchment, heraldic, restrained.
+
+Visual content rules:
+- NO real Dota 2 gameplay footage — Valve's IP. Use AI-generated
+  atmospheric clips only: brass particles drifting over ink-navy,
+  parchment-on-navy stat sheets unfolding, heraldic shield silhouettes,
+  abstract map-line wireframes, slow camera pushes through dark
+  cathedral-like geometry.
+- Use AI-generated mock UI captures showing the leaderboard, the
+  draft assistant, and the medieval tier badges (King / Warlord /
+  Paladin / Templar / Knight / Footman / Squire / Apprentice). The
+  feel should match the attached OA shield logo.
+- Heraldic shield motifs, brass rule-lines, Oswald-condensed numbers
+  ticking up (MMR, win rates, prize pool dollars).
+
+Video A — Main promo (25s) beat sheet:
+  0–4s   Cold open: brass particles assembling into the OA shield
+         on ink-navy, audio-less but with implied broadcast-stinger feel
+  4–9s   "Track every game" — fake match scoreboard wipes across
+         (use the Court & Pitch palette, Oswald numbers)
+  9–14s  "Climb the ladder" — heraldic tier badges stack vertically,
+         camera pushes up through Apprentice → King
+  14–20s "Win the prize pool" — parchment unfurls revealing a
+         dollar figure ticking up; brass coin/seal flourish
+  20–25s Tagline lockup + OA shield + "discord.gg/jDN7d8Vz" CTA on
+         parchment band
+
+Video B — Pro tier variant (15s):
+  Same brand language. Focus on what Pro unlocks: ward heatmap,
+  player insights, hero-meta deep-dive, head-to-head, benchmarks.
+  End on a gold "★ PRO" lockup. No Discord CTA needed.
+
+Video C — Teaser (5s):
+  Brass-particle assembly into shield → tagline flash → discord CTA.
+  Designed to loop in a Discord/Twitter feed.
+
+Deliverables: three exported MP4s.
+Pacing: motion-graphics, NOT a slideshow. Persistent background
+layers, choreographed multi-element scenes, transitions that morph
+between beats (no cross-dissolves).

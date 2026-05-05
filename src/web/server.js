@@ -216,11 +216,29 @@ function createServer(startupStatus = {}) {
   // Steam to redirect to the bare host:port, which dropped the user back at
   // a domain Steam never authed against.
   function steamBaseUrl(req) {
-    const env = process.env.SITE_URL && process.env.SITE_URL.trim();
-    if (env) return env.replace(/\/$/, '');
     const proto = req.protocol; // honoured via app.set('trust proxy', 1)
     const host = req.get('host');
-    return `${proto}://${host}`;
+    const requestUrl = `${proto}://${host}`;
+    const env = process.env.SITE_URL && process.env.SITE_URL.trim();
+    if (env) {
+      const cleaned = env.replace(/\/$/, '');
+      // If SITE_URL is set but disagrees with the live request host, log a
+      // loud warning and prefer the live request — a stale SITE_URL pointing
+      // at the bare server IP was the v5.69 root cause for "sign-in returns
+      // me to the site signed-out" because Steam rejects realm/return mismatches.
+      try {
+        const envHost = new URL(cleaned).host;
+        if (envHost && envHost !== host) {
+          console.warn(`[Steam Auth] SITE_URL=${cleaned} disagrees with request host ${host}; preferring request host. Unset SITE_URL or align it with the canonical domain.`);
+          return requestUrl;
+        }
+      } catch (_) {
+        console.warn(`[Steam Auth] SITE_URL=${cleaned} is not a valid URL; ignoring and using request host ${requestUrl}.`);
+        return requestUrl;
+      }
+      return cleaned;
+    }
+    return requestUrl;
   }
 
   app.get('/auth/steam', authLimiter, (req, res) => {
@@ -256,6 +274,7 @@ function createServer(startupStatus = {}) {
         body: verifyParams.toString(),
       });
       const text = await verifyRes.text();
+      console.log(`[Steam Auth] /auth/steam/return — host=${req.get('host')} proto=${req.protocol} verify=${text.includes('is_valid:true') ? 'OK' : 'INVALID'} cookie-len=${(req.headers.cookie || '').length}`);
       if (!text.includes('is_valid:true')) {
         return res.redirect('/?auth=invalid');
       }

@@ -1823,36 +1823,6 @@ function TierLadderPreview() {
   );
 }
 
-// Tiny helper used by the "Profile Preview (sample)" admin section. Lets
-// an admin punch in any account_id (or paste a /player/<id> URL) and jump
-// straight to that player's public profile in a new tab.
-function ProfilePreviewPicker() {
-  const [val, setVal] = React.useState('');
-  const open = () => {
-    const m = String(val).trim().match(/(\d{3,})/);
-    if (!m) return;
-    window.open(`/player/${m[1]}`, '_blank', 'noreferrer');
-  };
-  return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-      <input
-        type="text"
-        placeholder="account_id (e.g. 123456789) or /player/123456789"
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
-        style={{ minWidth: 320, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input, var(--bg-card))', color: 'var(--text-primary)' }}
-      />
-      <button className="btn btn-primary" type="button" onClick={open} disabled={!val.trim()}>
-        👁️ Open profile in new tab
-      </button>
-      <Link to="/leaderboard" className="btn" target="_blank" rel="noreferrer">
-        🏆 Browse leaderboard to pick a player
-      </Link>
-    </div>
-  );
-}
-
 function WelcomeModalPanel({ superuserKey }) {
   const [cfg, setCfg] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -2231,7 +2201,7 @@ export default function AdminPanel() {
     { label: 'Draft Sandbox', tab: 'steambot', anchor: 'ap-anchor-draft-sandbox', icon: '🎮', kw: 'draft pick captain test simulator placeholder dummy lobby inhouse' },
     { label: 'Dota 2 Rank Management', tab: 'users', anchor: 'ap-anchor-rank-management', icon: '🎖️', kw: 'rank tier players' },
     { label: 'Manage Nicknames (Players page)', tab: 'users', anchor: 'ap-anchor-nicknames', icon: '✏️', kw: 'nickname rename alias display name' },
-    { label: 'Profile Preview (sample)', tab: 'users', anchor: 'ap-anchor-profile-preview', icon: '👁️', kw: 'profile customization edit bio title accent pin sample dummy' },
+    { label: 'Profile Sandbox', tab: 'users', anchor: 'ap-anchor-profile-preview', icon: '👤', kw: 'profile customization edit bio title accent pin sample dummy sandbox test frame premium pro theme' },
     { label: 'Unregistered Players', tab: 'users', anchor: 'ap-anchor-unregistered-players', icon: '👤', kw: 'orphan link account' },
     { label: 'Sign-Up Requests', tab: 'users', anchor: 'signup-requests', icon: '📋', kw: 'applications join approve reject pending' },
     { label: 'Gift Purchases', tab: 'marketplace', anchor: 'ap-anchor-gifts', icon: '🎁', kw: 'pro gift stripe' },
@@ -2842,16 +2812,22 @@ export default function AdminPanel() {
         </div>
       </section>
 
-      {/* ── Profile Preview (sample player) ──────────────────────────── */}
+      {/* ── Profile Sandbox (fully editable test profile) ────────────── */}
       <section className="admin-section" style={{ marginTop: 32 }}>
-        <h2 id="ap-anchor-profile-preview" className="section-title" style={{ marginBottom: 6 }}>👁️ Profile Preview (sample)</h2>
+        <h2 id="ap-anchor-profile-preview" className="section-title" style={{ marginBottom: 6 }}>👤 Profile Sandbox</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
-          Quick way to see a real player profile with all the customization features (bio, custom title,
-          accent colour, pinned heroes, pinned matches, achievement showcase, rolling win-rate chart).
-          Use this to verify how edits to <code>SettingsProfile.jsx</code> render in the live profile view.
-          Pick any player from the dropdown below.
+          Fully interactive test profile with every customization control wired up — bio, custom title,
+          theme accent, profile frame (free + premium), pinned hero with caption, pinned match. The live
+          preview updates as you edit. Toggle the <strong>Pro mode</strong> switch to verify the locked
+          state vs. the unlocked premium state. Nothing is persisted — pure client-side simulator of
+          <code>/settings/profile</code> for previewing changes before they go live to real users.
+          (If you instead want to peek at a real player's profile, paste their <code>account_id</code>
+          into the URL: <code>/player/&lt;id&gt;</code>.)
         </p>
-        <ProfilePreviewPicker />
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Link to="/admin/profile-sandbox" className="btn btn-primary">▶ Launch Profile Sandbox</Link>
+          <Link to="/admin/profile-sandbox" className="btn" target="_blank" rel="noreferrer">↗ Open in new tab</Link>
+        </div>
       </section>
 
       {/* ── Unregistered Players ──────────────────────────────────────── */}

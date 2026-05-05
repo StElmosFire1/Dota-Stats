@@ -819,12 +819,44 @@ function TournamentList() {
             if (now >= new Date(t.end_date) && t.status !== 'completed') effectiveStatus = 'completed';
             else if (t.start_date && now >= new Date(t.start_date) && now < new Date(t.end_date) && t.status === 'upcoming') effectiveStatus = 'active';
           }
+          // Use a programmatic-navigation div instead of <Link>. The previous
+          // <Link>-wraps-<div> shape was being rendered as an inline <a>
+          // somewhere in the visited grid because of legacy `a { display:inline; }`
+          // overrides bleeding in via .container/.page CSS, leaving most of
+          // the card surface unhittable. A plain div with onClick + role/tabIndex
+          // sidesteps the issue entirely and gives us keyboard support too.
           return (
-            <Link key={`${t._type}-${t.id}`} to={href} style={{ textDecoration: 'none', display: 'block', color: 'inherit' }}>
+            <div
+              key={`${t._type}-${t.id}`}
+              role="link"
+              tabIndex={0}
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.button === 1) {
+                  window.open(href, '_blank', 'noreferrer');
+                } else {
+                  navigate(href);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (e.metaKey || e.ctrlKey) {
+                    window.open(href, '_blank', 'noreferrer');
+                  } else {
+                    navigate(href);
+                  }
+                }
+              }}
+              style={{ textDecoration: 'none', display: 'block', color: 'inherit', outline: 'none' }}
+            >
               <div style={{
                 background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
                 padding: 20, height: '100%', boxSizing: 'border-box', cursor: 'pointer',
-              }}>
+                transition: 'border-color 120ms, transform 120ms',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent, #f59e0b)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>{t.name}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_COLORS[effectiveStatus] || 'var(--text-muted)', whiteSpace: 'nowrap' }}>
@@ -853,7 +885,7 @@ function TournamentList() {
                   )}
                 </div>
               </div>
-            </Link>
+            </div>
           );
         })}
       </div>
