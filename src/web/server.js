@@ -288,7 +288,7 @@ function createServer(startupStatus = {}) {
          FROM player_stats ps
          LEFT JOIN nicknames n ON n.account_id = ps.account_id
          WHERE ps.account_id = $1
-         ORDER BY ps.date DESC LIMIT 1`,
+         ORDER BY ps.created_at DESC LIMIT 1`,
         [accountId]
       );
 
@@ -434,7 +434,7 @@ function createServer(startupStatus = {}) {
                   `SELECT COALESCE(n.nickname, ps.persona_name) AS name
                    FROM player_stats ps
                    LEFT JOIN nicknames n ON n.account_id = ps.account_id
-                   WHERE ps.account_id = $1 ORDER BY ps.date DESC LIMIT 1`,
+                   WHERE ps.account_id = $1 ORDER BY ps.created_at DESC LIMIT 1`,
                   [gift.gifter_account_id]
                 );
                 const gifterName = r.rows[0]?.name || null;
@@ -495,7 +495,7 @@ function createServer(startupStatus = {}) {
                   `SELECT COALESCE(n.nickname, ps.persona_name) AS name
                    FROM player_stats ps
                    LEFT JOIN nicknames n ON n.account_id = ps.account_id
-                   WHERE ps.account_id = $1 ORDER BY ps.date DESC LIMIT 1`,
+                   WHERE ps.account_id = $1 ORDER BY ps.created_at DESC LIMIT 1`,
                   [gift.gifter_account_id]
                 );
                 const gifterName = r.rows[0]?.name || null;
