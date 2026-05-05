@@ -747,5 +747,12 @@ module.exports = [
       "published_at": "2026-05-05",
       "content": "Continues the v5.63 bug-fix and brings the long-promised Pro-tier paywall to the advanced analytics surfaces.\n\n**New Pro paywall — blur-overlay style:**\n- New shared component `PaywallBlur` (`web/src/components/PaywallBlur.jsx`) wraps a feature in a soft 6px blur with a centered ★ Upgrade-to-Pro card on top. Cards stay visible in the background so visitors can see exactly what they would unlock.\n- Honours the existing `useProStatus` hook for paid users and falls back to the superuser context so admins/superusers always see the underlying content.\n- Now applied to: **Player Insights** (`/player-insights` — both Network and Benchmarks tabs), **Ward Heatmap** (`/ward-map`), **Head-to-Head** (`/head-to-head`), **Position Stats → Player Profiles** tab, and the **Hero Position Meta** + **Hero Breakdown** tabs on the Heroes page.\n\n**Tournament 'not found' diagnostics:**\n- The 404 page on `/tournaments/:id` now shows the looked-up id and a Back-to-tournaments link instead of a bare error string, so users can DM the broken URL when reporting.\n- Server-side `db.getTournamentById` now logs a warning when the id is non-numeric or no row matches, surfacing the real cause in PM2 logs instead of silently returning null.\n\n**Light-mode polish:**\n- The Heroes → Hero Breakdown tab's Expand All / Collapse All buttons hardcoded a slate-900 background and now use the shared `.btn .btn-sm` primitives, matching the rest of the v5.63 sweep.\n- The Ward Map page title used a hardcoded `#e2e8f0` colour and now reads from `var(--text-primary)` so it stays legible on parchment.\n\n**Patch notes file order:** Repaired the v5.59→v5.63 entries which had been written in descending order, breaking the strictly-ascending validator in `db/seedPatchNotes` and preventing the bot from booting.",
       "author": "System"
-    }
+    },
+  {
+    "version": "5.65",
+    "title": "Admin Panel search bar",
+    "published_at": "2026-05-05",
+    "content": "The Admin Panel left sidebar now has a **Search admin…** box at the top. Type any feature name or keyword (e.g. *backup*, *replay*, *welcome modal*, *coaching*, *tournament*, *applications*) and a result list appears with the section name and the parent tab. Clicking a result switches to that tab and smooth-scrolls straight to the relevant heading.\n\nUnder the hood every major admin section (24 of them across Match Data, Bot Tools, Config, Users and Marketplace) now has a stable `id=ap-anchor-…` for deep-linking, which we'll reuse later for shareable admin URLs.",
+    "author": "System"
+  }
 ];

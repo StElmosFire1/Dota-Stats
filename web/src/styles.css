@@ -1813,6 +1813,53 @@ body.light-theme .oa-ticker-track .oa-ticker-dot { color: rgba(245,239,226,0.5);
   font-weight: 700;
 }
 .ap-main { min-width: 0; }
+.ap-search-wrap { position: relative; padding: 0 4px 6px; }
+.ap-search-input {
+  width: 100%;
+  background: var(--bg-input, var(--bg-card));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+.ap-search-input:focus {
+  outline: none;
+  border-color: var(--brass, var(--accent, #c5a975));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brass, #c5a975) 25%, transparent);
+}
+.ap-search-results {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--card-bg, var(--bg-card));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.ap-search-result {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent; border: 0;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 0;
+}
+.ap-search-result + .ap-search-result { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.ap-search-result:hover { background: color-mix(in srgb, var(--accent, #c5a975) 12%, transparent); }
+.ap-search-empty {
+  margin-top: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
 @media (max-width: 900px) {
   .ap-grid { grid-template-columns: 1fr; }
   .ap-sidebar {

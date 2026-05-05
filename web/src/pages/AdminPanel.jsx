@@ -203,7 +203,7 @@ function DbBackupManager({ superuserKey }) {
   return (
     <section style={{ marginBottom: 36, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>Database Backups</h3>
+        <h3 id="ap-anchor-db-backups" style={{ margin: 0, fontSize: '1rem' }}>Database Backups</h3>
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Snapshots of player_stats, ratings &amp; rating_history</span>
         <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px' }} onClick={loadBackups} disabled={backups !== null && backupLoading}>
           {backups === null ? 'Load' : 'Refresh'}
@@ -393,7 +393,7 @@ function ReplayManager({ superuserKey }) {
   return (
     <section style={{ marginBottom: 36 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0 }}>Stored Replays</h2>
+        <h2 id="ap-anchor-stored-replays" style={{ margin: 0 }}>Stored Replays</h2>
         <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px' }} onClick={load} disabled={loading}>
           {loading ? 'Loading…' : replays === null ? 'Load' : 'Refresh'}
         </button>
@@ -559,7 +559,7 @@ function ReplayArchiveManager({ superuserKey }) {
 
   return (
     <section className="admin-section">
-      <h2>Replay Archive (Dedicated Server)</h2>
+      <h2 id="ap-anchor-replay-archive">Replay Archive (Dedicated Server)</h2>
       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
         Matches archived from the dedicated server via SSH. Pro members and admins can download these. Use the path field to manually link a .dem file.
       </p>
@@ -666,7 +666,7 @@ function TestDmPanel({ superuserKey }) {
   return (
     <section style={{ marginBottom: 36 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        <h2 style={{ margin: 0 }}>Test Post-Match DM</h2>
+        <h2 id="ap-anchor-test-dm" style={{ margin: 0 }}>Test Post-Match DM</h2>
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
         Sends a mock MVP + attitude rating DM to verify the post-match DM system is working for a player.
@@ -743,7 +743,7 @@ function TestRsvpDmPanel({ superuserKey }) {
   return (
     <section style={{ marginBottom: 36 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        <h2 style={{ margin: 0 }}>Test RSVP Registration DM</h2>
+        <h2 id="ap-anchor-test-rsvp-dm" style={{ margin: 0 }}>Test RSVP Registration DM</h2>
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
         Sends the unregistered-player RSVP prompt DM. The reply handler is fully live — you can test
@@ -820,7 +820,7 @@ function ErrorLogViewer({ superuserKey }) {
   return (
     <section style={{ marginBottom: 36 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0 }}>Server Error Log</h2>
+        <h2 id="ap-anchor-error-log" style={{ margin: 0 }}>Server Error Log</h2>
         <select value={level} onChange={e => setLevel(e.target.value)} style={{ fontSize: '0.82rem', padding: '2px 6px' }}>
           <option value="">All levels</option>
           <option value="error">Errors only</option>
@@ -976,7 +976,7 @@ function SeasonLifecyclePanel({ superuserKey }) {
 
   return (
     <section style={{ marginBottom: 36, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
-      <h2 style={{ margin: '0 0 6px', fontSize: '1rem' }}>📅 Season Lifecycle</h2>
+      <h2 id="ap-anchor-season-lifecycle" style={{ margin: '0 0 6px', fontSize: '1rem' }}>📅 Season Lifecycle</h2>
       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
         Configure automatic end conditions for each season, or manually close a season and post the
         end-of-season summary to Discord. The bot checks conditions after every match is recorded.
@@ -1188,7 +1188,7 @@ function SeasonTiersPanelInner({ superuserKey }) {
 
   return (
     <section style={{ marginBottom: 36 }}>
-      <h2 style={{ marginBottom: 6 }}>🏆 Season Tiers</h2>
+      <h2 id="ap-anchor-season-tiers" style={{ marginBottom: 6 }}>🏆 Season Tiers</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
         Manage the 8-tier MMR ladder for each season. Players are auto-placed by their TrueSkill MMR
         (display MMR = round((μ − 3σ) × 100) + 5000). Default Tier V floor is <strong>5000</strong>.
@@ -1418,7 +1418,7 @@ function SteamBotPanel({ superuserKey }) {
   return (
     <section style={{ marginBottom: 36 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        <h2 style={{ margin: 0 }}>🤖 Steam Bot Controls</h2>
+        <h2 id="ap-anchor-steam-bot" style={{ margin: 0 }}>🤖 Steam Bot Controls</h2>
         <button className="btn" style={{ fontSize: 12, padding: '3px 10px' }} onClick={loadStatus} disabled={statusLoading}>
           {statusLoading ? '...' : '↺ Refresh'}
         </button>
@@ -1582,7 +1582,7 @@ function EngagementSettingsPanel({ superuserKey, siteSettings, onSaved }) {
 
   return (
     <section style={{ marginTop: 32 }}>
-      <h2 style={{ marginBottom: 6 }}>🎯 Engagement</h2>
+      <h2 id="ap-anchor-engagement" style={{ marginBottom: 6 }}>🎯 Engagement</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
         Configure milestone thresholds and referral XP. Changes take effect immediately — no redeploy required.
       </p>
@@ -1709,7 +1709,7 @@ function BroadcastTickerPanel({ superuserKey }) {
 
   return (
     <section style={{ marginTop: 32 }}>
-      <h2 style={{ marginBottom: 6 }}>📢 Broadcast Ticker (CMS)</h2>
+      <h2 id="ap-anchor-broadcast-ticker" style={{ marginBottom: 6 }}>📢 Broadcast Ticker (CMS)</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
         Editor-controlled scrolling ticker that runs across the very top of every page.
         One headline per line. Disable to hide the bar entirely.
@@ -1807,7 +1807,7 @@ function WelcomeModalPanel({ superuserKey }) {
 
   return (
     <section style={{ marginTop: 32 }}>
-      <h2 style={{ marginBottom: 6 }}>📣 Welcome Modal (CMS)</h2>
+      <h2 id="ap-anchor-welcome-modal" style={{ marginBottom: 6 }}>📣 Welcome Modal (CMS)</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
         Editor-controlled welcome modal shown to all visitors. Bump the version to re-show it to users
         who already dismissed the previous one.
@@ -1907,6 +1907,7 @@ export default function AdminPanel() {
   useEffect(() => {
     try { localStorage.setItem('admin_active_tab', activeTab); } catch {}
   }, [activeTab]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadRanks = useCallback(() => {
     if (!isSuperuser) return;
@@ -2073,6 +2074,58 @@ export default function AdminPanel() {
     ]},
   ];
 
+  // Searchable index of admin features. Each entry deep-links to a tab and
+  // optionally scrolls to a specific section anchor within that tab.
+  const SEARCH_INDEX = [
+    { label: 'Overview', tab: 'overview', icon: '📊', kw: 'dashboard stats home' },
+    { label: 'Quick Links', tab: 'overview', anchor: 'ap-anchor-quick-links', icon: '🔗', kw: 'shortcuts' },
+    { label: 'Record a Match', tab: 'matches', anchor: 'ap-anchor-record-match', icon: '📝', kw: 'manual entry add game' },
+    { label: 'Maintenance', tab: 'matches', anchor: 'ap-anchor-maintenance', icon: '🛠️', kw: 'recompute rebuild' },
+    { label: 'Stored Replays', tab: 'matches', anchor: 'ap-anchor-stored-replays', icon: '🎞️', kw: 'replay file download reparse expire' },
+    { label: 'Replay Archive (Dedicated Server)', tab: 'matches', anchor: 'ap-anchor-replay-archive', icon: '🗂️', kw: 'dedicated server path' },
+    { label: 'Replay Inspector', tab: 'matches', anchor: 'ap-anchor-replay-inspector', icon: '🔍', kw: 'parse debug' },
+    { label: 'Database Backups', tab: 'matches', anchor: 'ap-anchor-db-backups', icon: '💾', kw: 'restore snapshot pg_dump nicknames' },
+    { label: 'Steam Bot Controls', tab: 'steambot', anchor: 'ap-anchor-steam-bot', icon: '🤖', kw: 'lobby login reconnect status' },
+    { label: 'Test Post-Match DM', tab: 'steambot', anchor: 'ap-anchor-test-dm', icon: '✉️', kw: 'discord direct message debug' },
+    { label: 'Test RSVP Registration DM', tab: 'steambot', anchor: 'ap-anchor-test-rsvp-dm', icon: '✉️', kw: 'discord rsvp invite' },
+    { label: 'Server Error Log', tab: 'steambot', anchor: 'ap-anchor-error-log', icon: '🚨', kw: 'errors crashes log' },
+    { label: 'Season Lifecycle', tab: 'seasons', anchor: 'ap-anchor-season-lifecycle', icon: '📅', kw: 'start end activate launch' },
+    { label: 'Season Tiers', tab: 'seasons', anchor: 'ap-anchor-season-tiers', icon: '🏆', kw: 'rank divisions ladder' },
+    { label: 'Rating System', tab: 'seasons', anchor: 'ap-anchor-rating-system', icon: '⚖️', kw: 'trueskill mmr recompute' },
+    { label: 'Hero Tier Overrides', tab: 'seasons', anchor: 'ap-anchor-hero-tier', icon: '🏆', kw: 'meta heroes' },
+    { label: 'Achievement System', tab: 'seasons', anchor: 'ap-anchor-achievements', icon: '🏅', kw: 'badges unlock' },
+    { label: 'Engagement', tab: 'config', anchor: 'ap-anchor-engagement', icon: '🎯', kw: 'pinned highlights showcase' },
+    { label: 'Broadcast Ticker (CMS)', tab: 'config', anchor: 'ap-anchor-broadcast-ticker', icon: '📢', kw: 'announcement banner' },
+    { label: 'Welcome Modal (CMS)', tab: 'config', anchor: 'ap-anchor-welcome-modal', icon: '📣', kw: 'popup intro onboarding cta' },
+    { label: 'Dota 2 Rank Management', tab: 'users', anchor: 'ap-anchor-rank-management', icon: '🎖️', kw: 'rank tier players' },
+    { label: 'Unregistered Players', tab: 'users', anchor: 'ap-anchor-unregistered-players', icon: '👤', kw: 'orphan link account' },
+    { label: 'Sign-Up Requests', tab: 'users', anchor: 'signup-requests', icon: '📋', kw: 'applications join approve reject pending' },
+    { label: 'Gift Purchases', tab: 'marketplace', anchor: 'ap-anchor-gifts', icon: '🎁', kw: 'pro gift stripe' },
+    { label: 'Coaching Marketplace', tab: 'marketplace', anchor: 'ap-anchor-coaching', icon: '🎓', kw: 'coach payout connect bookings' },
+    { label: 'Tournament Brackets', tab: 'marketplace', anchor: 'ap-anchor-tournaments', icon: '🏆', kw: 'tournament prize pool buy-in' },
+  ];
+
+  const q = searchQuery.trim().toLowerCase();
+  const searchResults = q
+    ? SEARCH_INDEX.filter(s =>
+        s.label.toLowerCase().includes(q) ||
+        (s.kw && s.kw.includes(q)) ||
+        s.tab.includes(q)
+      ).slice(0, 12)
+    : [];
+
+  const goToResult = (r) => {
+    setActiveTab(r.tab);
+    setSearchQuery('');
+    if (r.anchor) {
+      // wait a tick for the tab to render, then scroll
+      setTimeout(() => {
+        const el = document.getElementById(r.anchor);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    }
+  };
+
   return (
     <AdminErrorBoundary>
     <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 16px 60px' }}>
@@ -2084,6 +2137,37 @@ export default function AdminPanel() {
 
       <div className="ap-grid">
         <aside className="ap-sidebar">
+          <div className="ap-search-wrap">
+            <input
+              type="search"
+              className="ap-search-input"
+              placeholder="🔍  Search admin…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              aria-label="Search admin features"
+            />
+            {searchResults.length > 0 && (
+              <div className="ap-search-results" role="listbox">
+                {searchResults.map((r, i) => (
+                  <button
+                    key={`${r.tab}-${r.anchor || i}`}
+                    type="button"
+                    className="ap-search-result"
+                    onClick={() => goToResult(r)}
+                  >
+                    <span className="ap-nav-icon" aria-hidden>{r.icon || '•'}</span>
+                    <span style={{ flex: 1, textAlign: 'left' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{r.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{r.tab}</div>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {q && searchResults.length === 0 && (
+              <div className="ap-search-empty">No matches.</div>
+            )}
+          </div>
           {ADMIN_NAV.map(group => (
             <div key={group.label} className="ap-nav-group">
               <div className="ap-nav-group-label">{group.label}</div>
@@ -2106,7 +2190,7 @@ export default function AdminPanel() {
 
       {activeTab === 'overview' && (<>
       {/* Quick Links */}
-      <section style={{ marginBottom: 28 }}>
+      <section id="ap-anchor-quick-links" style={{ marginBottom: 28 }}>
         <h2 style={{ marginBottom: 14 }}>Quick Links</h2>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {[
@@ -2161,7 +2245,7 @@ export default function AdminPanel() {
 
       {activeTab === 'matches' && (<>
       {/* Manual Match Entry — moved to its own page */}
-      <section style={{ marginBottom: 36 }}>
+      <section id="ap-anchor-record-match" style={{ marginBottom: 36 }}>
         <h2 style={{ marginBottom: 10 }}>Record a Match</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
           Manually record a match result when no replay is available.
@@ -2172,7 +2256,7 @@ export default function AdminPanel() {
       </section>
 
       {/* Maintenance */}
-      <section style={{ marginBottom: 36 }}>
+      <section id="ap-anchor-maintenance" style={{ marginBottom: 36 }}>
         <h2 style={{ marginBottom: 14 }}>Maintenance</h2>
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <div className="card" style={{ padding: 20, flex: '1 1 280px' }}>
@@ -2277,7 +2361,7 @@ export default function AdminPanel() {
       {activeTab === 'seasons' && (<>
       {/* Rating System — V1 vs V3 toggle + preview */}
       <section>
-        <h2 style={{ marginBottom: 6 }}>⚖️ Rating System</h2>
+        <h2 id="ap-anchor-rating-system" style={{ marginBottom: 6 }}>⚖️ Rating System</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
           Controls which TrueSkill engine powers the public leaderboard and player profiles.
           Switching rating systems takes effect immediately — only flip this at the start of a season.
@@ -2415,7 +2499,7 @@ export default function AdminPanel() {
       {activeTab === 'users' && (<>
       {/* ── Dota Rank Management ─────────────────────────────────────── */}
       <section className="admin-section" style={{ marginTop: 32 }}>
-        <h2 className="section-title" style={{ marginBottom: 12 }}>🎖️ Dota 2 Rank Management</h2>
+        <h2 id="ap-anchor-rank-management" className="section-title" style={{ marginBottom: 12 }}>🎖️ Dota 2 Rank Management</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
           Sync Dota 2 rank medals from OpenDota (public profiles) and Steam GC (friends). Manual entries are never overwritten by sync.
           Ranks appear on the Leaderboard and Player Profiles.
@@ -2593,7 +2677,7 @@ export default function AdminPanel() {
 
       {/* ── Unregistered Players ──────────────────────────────────────── */}
       <section className="admin-section" style={{ marginTop: 32 }}>
-        <h2 className="section-title" style={{ marginBottom: 12 }}>👤 Unregistered Players</h2>
+        <h2 id="ap-anchor-unregistered-players" className="section-title" style={{ marginBottom: 12 }}>👤 Unregistered Players</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
           Players with match history but no registered nickname. Highlighted rows share a persona name with another account — possible duplicates or alternate accounts.
           Register via <code>!adminregister &lt;account_id&gt; &lt;nickname&gt;</code> in Discord.
@@ -2744,7 +2828,7 @@ export default function AdminPanel() {
 
       {activeTab === 'seasons' && (<>
       <section style={{ marginBottom: 36 }}>
-        <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏆 Hero Tier Overrides</h2>
+        <h2 id="ap-anchor-hero-tier" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏆 Hero Tier Overrides</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Manually set a hero's tier to override the auto-computed tier (based on win rate). Leave blank to revert to auto-computed.
         </p>
@@ -2755,7 +2839,7 @@ export default function AdminPanel() {
 
       {activeTab === 'matches' && (<>
       <section style={{ marginBottom: 36 }}>
-        <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🔍 Replay Inspector</h2>
+        <h2 id="ap-anchor-replay-inspector" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🔍 Replay Inspector</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Upload a <code>.dem</code> file to see the raw account IDs extracted by the parser — useful for verifying accounts before committing a replay.
         </p>
@@ -2766,7 +2850,7 @@ export default function AdminPanel() {
 
       {activeTab === 'seasons' && (<>
       <section style={{ marginBottom: 36 }}>
-        <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏅 Achievement System</h2>
+        <h2 id="ap-anchor-achievements" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏅 Achievement System</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Achievements are automatically checked after each match. Use this to backfill achievements for all existing matches in the database.
         </p>
@@ -3152,7 +3236,7 @@ function GiftPurchasesPanel({ superuserKey }) {
   return (
     <section style={{ marginBottom: 36 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10 }}>
-        <h2 style={{ margin: 0 }}>🎁 Gift Purchases</h2>
+        <h2 id="ap-anchor-gifts" style={{ margin: 0 }}>🎁 Gift Purchases</h2>
         <button className="btn" onClick={load} disabled={loading} style={{ fontSize: 12 }}>
           {loading ? 'Loading…' : gifts ? 'Refresh' : 'Load'}
         </button>
@@ -3253,14 +3337,14 @@ function CoachingAdminPanel({ superuserKey }) {
 
   if (hidden) return null;
   if (!data) return (
-    <section><h2>🎓 Coaching Marketplace</h2>
+    <section><h2 id="ap-anchor-coaching">🎓 Coaching Marketplace</h2>
       <p style={{ color: 'var(--text-muted)' }}>{msg || 'Loading…'}</p>
     </section>
   );
 
   return (
     <section>
-      <h2 style={{ marginBottom: 6 }}>🎓 Coaching Marketplace</h2>
+      <h2 id="ap-anchor-coaching" style={{ marginBottom: 6 }}>🎓 Coaching Marketplace</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
         Operational dashboard. Revenue figures show the gross 10% platform fee on completed bookings (excluding Stripe processor fees, which are deducted from the coach's split).
         Sanctions are immediate; dispute resolutions trigger refunds/releases.
@@ -3392,7 +3476,7 @@ function TournamentBracketPanel() {
 
   return (
     <section>
-      <h2 style={{ marginBottom: 6 }}>🏆 Tournament Brackets</h2>
+      <h2 id="ap-anchor-tournaments" style={{ marginBottom: 6 }}>🏆 Tournament Brackets</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
         Manage bracket configuration, seeding, and match results from each tournament's detail page.
       </p>
