@@ -154,15 +154,29 @@ function SteamButton() {
   const { steamUser, loading, signIn, logout } = useSteamAuth();
   if (loading) return null;
   if (steamUser) {
+    // Make the signed-in state unmistakable: filled green pill with a
+    // checkmark + persona name + "(Sign out)" hint. Multiple users have
+    // asked "how do I tell if I'm signed in?" because the previous styling
+    // looked nearly identical to the Sign-in button.
     return (
       <button
-        className="btn btn-small"
+        className="btn btn-small steam-signed-in"
         onClick={logout}
         title={`Signed in as ${steamUser.displayName || steamUser.accountId} — click to sign out`}
-        style={{ marginLeft: 4, background: '#1b2838', borderColor: '#4c6b22', color: '#a4d007', fontSize: 11 }}
+        style={{
+          marginLeft: 4,
+          background: 'linear-gradient(180deg,#2a4d12,#1b3008)',
+          borderColor: '#a4d007',
+          color: '#d6ff7a',
+          fontSize: 11,
+          fontWeight: 600,
+          boxShadow: '0 0 0 1px rgba(164,208,7,0.35)',
+        }}
       >
+        <span style={{ marginRight: 4 }}>✓</span>
         <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 12, height: 12, verticalAlign: 'middle', marginRight: 4 }} />
-        {steamUser.displayName || 'Steam'}
+        {steamUser.displayName || 'Signed in'}
+        <span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 400 }}>(Sign out)</span>
       </button>
     );
   }
@@ -434,7 +448,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.78 — <Link to="/patch-notes">Patch notes</Link>
+            v5.79 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>

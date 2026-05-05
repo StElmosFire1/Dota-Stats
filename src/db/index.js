@@ -11868,17 +11868,35 @@ async function generateDoubleElimBracket(tournamentId, pairs, size) {
 
 async function getTournamentMatches(tournamentId) {
   const p = getPool();
+  // ⚠️  v5.79 — DO NOT join the `players` table here. `players` has no
+  // `account_id` column (it stores the 32-bit id under `account_id_32` as
+  // a varchar) and no `persona_name` column. The previous joins threw
+  // `column pl1.account_id does not exist` on every detail-page hit, which
+  // bubbled up as HTTP 500 from /api/tournaments/:id and rendered the
+  // user-facing "Tournament not found" page for *every* tournament.
+  // Persona names live in `player_stats`; resolve them via a correlated
+  // subquery (same trick as getTournamentParticipants), with the nickname
+  // table as the preferred override.
   const result = await p.query(`
     SELECT tm.*,
-      COALESCE(n1.nickname, pl1.persona_name, tm.p1_id::text) AS p1_name,
-      COALESCE(n2.nickname, pl2.persona_name, tm.p2_id::text) AS p2_name,
-      COALESCE(nw.nickname, plw.persona_name, tm.winner_id::text) AS winner_name
+      COALESCE(
+        n1.nickname,
+        (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tm.p1_id ORDER BY ps.id DESC LIMIT 1),
+        tm.p1_id::text
+      ) AS p1_name,
+      COALESCE(
+        n2.nickname,
+        (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tm.p2_id ORDER BY ps.id DESC LIMIT 1),
+        tm.p2_id::text
+      ) AS p2_name,
+      COALESCE(
+        nw.nickname,
+        (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tm.winner_id ORDER BY ps.id DESC LIMIT 1),
+        tm.winner_id::text
+      ) AS winner_name
     FROM tournament_matches tm
-    LEFT JOIN players pl1 ON pl1.account_id = tm.p1_id
     LEFT JOIN nicknames n1 ON n1.account_id = tm.p1_id
-    LEFT JOIN players pl2 ON pl2.account_id = tm.p2_id
     LEFT JOIN nicknames n2 ON n2.account_id = tm.p2_id
-    LEFT JOIN players plw ON plw.account_id = tm.winner_id
     LEFT JOIN nicknames nw ON nw.account_id = tm.winner_id
     WHERE tm.tournament_id = $1
     ORDER BY tm.round ASC, tm.slot ASC
