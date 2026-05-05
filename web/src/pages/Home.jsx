@@ -499,6 +499,13 @@ export default function Home() {
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
         <HomeBanner />
         <LiveInhousePulse />
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
+          marginBottom: 8,
+        }} className="oa-home-pulse-row">
+          <PlayerOfTheWeek />
+          <HotHeroes />
+        </div>
         <PersonalisedDashboard steamUser={steamUser} />
 
         {/* Community stats section below personalized view */}

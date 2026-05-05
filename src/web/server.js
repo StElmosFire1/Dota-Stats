@@ -3311,6 +3311,103 @@ NOTES
     }
   });
 
+  // Player-of-the-Week PERF spotlight: highest persisted PERF score across
+  // matches in the past 7 days. Used by the Home page widget.
+  router.get('/home/perf-spotlight', async (req, res) => {
+    try {
+      const pool = db.getPool();
+      const r = await pool.query(`
+        SELECT
+          ps.account_id,
+          ps.match_id,
+          ps.hero_name,
+          ps.position,
+          ps.kills, ps.deaths, ps.assists,
+          ps.perf,
+          COALESCE(n.nickname, ps.persona_name, 'Player ' || ps.account_id::text) AS display_name
+        FROM player_stats ps
+        JOIN matches m ON m.match_id = ps.match_id
+        LEFT JOIN LATERAL (
+          SELECT nickname FROM nicknames WHERE account_id = ps.account_id
+          ORDER BY updated_at DESC LIMIT 1
+        ) n ON true
+        WHERE ps.perf IS NOT NULL
+          AND m.date > NOW() - INTERVAL '7 days'
+        ORDER BY ps.perf DESC NULLS LAST, m.date DESC
+        LIMIT 1
+      `);
+      res.set('Cache-Control', 'public, max-age=120');
+      res.json({ player: r.rows[0] || null });
+    } catch (err) {
+      console.error('[API] home/perf-spotlight error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch perf spotlight' });
+    }
+  });
+
+  // Hot heroes — top picks past 7 days with WR delta vs prior 7 days.
+  router.get('/home/hot-heroes', async (req, res) => {
+    try {
+      const pool = db.getPool();
+      const r = await pool.query(`
+        WITH recent AS (
+          SELECT
+            ps.hero_name,
+            COUNT(*) AS picks,
+            SUM(CASE
+              WHEN (ps.team = 'radiant' AND m.radiant_win)
+                OR (ps.team = 'dire'    AND NOT m.radiant_win)
+              THEN 1 ELSE 0
+            END) AS wins
+          FROM player_stats ps
+          JOIN matches m ON m.match_id = ps.match_id
+          WHERE m.date > NOW() - INTERVAL '7 days'
+            AND ps.hero_name IS NOT NULL AND ps.hero_name <> ''
+          GROUP BY ps.hero_name
+        ),
+        prev AS (
+          SELECT
+            ps.hero_name,
+            COUNT(*) AS picks,
+            SUM(CASE
+              WHEN (ps.team = 'radiant' AND m.radiant_win)
+                OR (ps.team = 'dire'    AND NOT m.radiant_win)
+              THEN 1 ELSE 0
+            END) AS wins
+          FROM player_stats ps
+          JOIN matches m ON m.match_id = ps.match_id
+          WHERE m.date > NOW() - INTERVAL '14 days'
+            AND m.date <= NOW() - INTERVAL '7 days'
+            AND ps.hero_name IS NOT NULL AND ps.hero_name <> ''
+          GROUP BY ps.hero_name
+        )
+        SELECT
+          r.hero_name,
+          r.picks::int AS picks,
+          (r.wins::float / NULLIF(r.picks, 0)) AS win_rate,
+          CASE WHEN p.picks > 0
+            THEN (r.wins::float / NULLIF(r.picks, 0)) - (p.wins::float / NULLIF(p.picks, 0))
+            ELSE NULL
+          END AS win_rate_delta
+        FROM recent r
+        LEFT JOIN prev p ON p.hero_name = r.hero_name
+        WHERE r.picks >= 2
+        ORDER BY r.picks DESC, r.hero_name ASC
+        LIMIT 4
+      `);
+      const heroes = r.rows.map(h => ({
+        hero_name: h.hero_name,
+        picks: h.picks,
+        win_rate: h.win_rate == null ? null : Number(h.win_rate),
+        win_rate_delta_pp: h.win_rate_delta == null ? null : Number(h.win_rate_delta) * 100,
+      }));
+      res.set('Cache-Control', 'public, max-age=120');
+      res.json({ heroes });
+    } catch (err) {
+      console.error('[API] home/hot-heroes error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hot heroes' });
+    }
+  });
+
   router.get('/home-stats', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
@@ -3507,6 +3604,10 @@ NOTES
     try {
       const seasonId = req.query.season || null;
       const data = await db.getTournaments(seasonId);
+      // Disable HTTP caching: stale CDN/browser caches were the root cause of
+      // listings showing tournaments that the detail endpoint could no longer
+      // resolve after admin edits/deletes. Force fresh on every request.
+      res.set('Cache-Control', 'no-store, must-revalidate');
       res.json({ tournaments: data });
     } catch (err) {
       console.error('[API] tournaments error:', err.message);
@@ -4086,6 +4187,7 @@ NOTES
       const tournaments = await db.getWeekendTournaments();
       // Auto-transition any tournaments whose status doesn't match their dates
       const transitioned = await Promise.all(tournaments.map(t => _autoTransitionWeekendTournament(t).catch(() => t)));
+      res.set('Cache-Control', 'no-store, must-revalidate');
       res.json({ tournaments: transitioned });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -4095,7 +4197,23 @@ NOTES
   router.get('/weekend-tournaments/:id', async (req, res) => {
     try {
       let tournament = await db.getWeekendTournamentById(req.params.id);
-      if (!tournament) return res.status(404).json({ error: 'Not found' });
+      if (!tournament) {
+        // Reverse cross-table fallback: id may belong to a bracket tournament.
+        // Mirror the /tournaments/:id behaviour so users hitting either URL
+        // can be transparently redirected to the correct one.
+        try {
+          const bracket = await db.getTournamentById(req.params.id);
+          if (bracket) {
+            return res.status(404).json({
+              error: 'Weekend tournament not found',
+              redirect: `/tournaments/${req.params.id}`,
+              kind: 'bracket',
+            });
+          }
+        } catch (_) { /* fall through to plain 404 */ }
+        console.warn(`[API] weekend tournament not found id=${req.params.id}`);
+        return res.status(404).json({ error: 'Not found' });
+      }
       tournament = await _autoTransitionWeekendTournament(tournament).catch(() => tournament);
       const leaderboard = await db.getWeekendTournamentScores(
         tournament.start_date, tournament.end_date, tournament.games_to_count
