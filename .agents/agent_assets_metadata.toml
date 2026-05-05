@@ -48,3 +48,27 @@ id = "3bZ8rdNdwFWdeImCYQ91c"
 uri = "file://web/public/badges/tier-8-king.png"
 type = "image"
 title = "tier 8 king badge"
+
+[[generated]]
+id = "lzxxSxkBA-RwUh_DXDLRx"
+uri = "file://attached_assets/generated_images/generated_image.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "tjW4_6I5QtA48h4q3dr-s"
+uri = "file://web/public/badges/tier-sub-3-peasant.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "ueURgC4dw1lI0a3-YtorV"
+uri = "file://web/public/badges/tier-sub-2-vagabond.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "ly-HiA9qCCZd-KRG6lSDl"
+uri = "file://web/public/badges/tier-sub-1-outlaw.png"
+type = "image"
+title = "generated_image"

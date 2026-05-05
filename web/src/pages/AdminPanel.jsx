@@ -1774,9 +1774,9 @@ function TierLadderPreview() {
     { name: 'Footman',    mmr: 2700 },
     { name: 'Squire',     mmr: 2400 },
     { name: 'Apprentice', mmr: 2100 },
-    { name: 'Peasant',    mmr: 1800 },
+    { name: 'Outlaw',     mmr: 1800 },
     { name: 'Vagabond',   mmr: 1500 },
-    { name: 'Outlaw',     mmr: 800 },
+    { name: 'Peasant',    mmr: 800 },
   ];
   const V3_SAMPLES = V1_SAMPLES.map(t => ({ ...t, mmr: t.mmr + 2400 }));
   const Cell = ({ mmr, useV3 }) => (
