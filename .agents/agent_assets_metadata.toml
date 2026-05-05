@@ -1,0 +1,50 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "ne56Ac_o8qgb1hQzL_0Kh"
+uri = "file://web/public/badges/tier-1-apprentice.png"
+type = "image"
+title = "tier 1 apprentice v3"
+
+[[generated]]
+id = "Lu9KeUjlnrHxPrCvMqDVv"
+uri = "file://web/public/badges/tier-2-squire.png"
+type = "image"
+title = "tier 2 squire v3"
+
+[[generated]]
+id = "kdWEWUsBgRHuNs46LpPGZ"
+uri = "file://web/public/badges/tier-3-footman.png"
+type = "image"
+title = "tier 3 footman badge"
+
+[[generated]]
+id = "SRlhfefdZ2tnN7aXNnV3b"
+uri = "file://web/public/badges/tier-4-knight.png"
+type = "image"
+title = "tier 4 knight badge"
+
+[[generated]]
+id = "I189m_fwEO6Ab9wm5DWlx"
+uri = "file://web/public/badges/tier-5-templar.png"
+type = "image"
+title = "tier 5 templar badge"
+
+[[generated]]
+id = "sZdCH80mjmD0xSH19H2qX"
+uri = "file://web/public/badges/tier-6-paladin.png"
+type = "image"
+title = "tier 6 paladin v3"
+
+[[generated]]
+id = "8v0xq_BUsC2cRmD7fdbWS"
+uri = "file://web/public/badges/tier-7-warlord.png"
+type = "image"
+title = "tier 7 warlord badge"
+
+[[generated]]
+id = "3bZ8rdNdwFWdeImCYQ91c"
+uri = "file://web/public/badges/tier-8-king.png"
+type = "image"
+title = "tier 8 king badge"

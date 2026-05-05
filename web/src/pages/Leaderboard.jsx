@@ -9,16 +9,18 @@ import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 import { FRAME_META } from '../profileCosmetics';
 
+// Medieval tier ladder — top 8 are the heraldic ranks (with /badges/tier-N-name.png art),
+// bottom 3 are the meme fallback tiers retained for sub-Apprentice MMR.
 // V1 thresholds — fresh player starts at ~2600 MMR
 const MMR_TIERS_V1 = [
-  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100, color: '#FFD700',   bg: 'rgba(255,215,0,0.12)',   border: 'rgba(255,215,0,0.45)'    },
-  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 3800, color: '#CE93D8',   bg: 'rgba(156,39,176,0.15)',  border: 'rgba(156,39,176,0.45)'   },
-  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 3500, color: '#90CAF9',   bg: 'rgba(33,150,243,0.12)',  border: 'rgba(33,150,243,0.4)'    },
-  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 3200, color: '#80DEEA',   bg: 'rgba(0,188,212,0.12)',   border: 'rgba(0,188,212,0.4)'     },
-  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 2900, color: '#A5D6A7',   bg: 'rgba(76,175,80,0.12)',   border: 'rgba(76,175,80,0.4)'     },
-  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 2600, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 2300, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 2000, color: '#FFCC80',   bg: 'rgba(255,152,0,0.12)',   border: 'rgba(255,152,0,0.4)'     },
+  { name: 'King',          tierNum: 8, badge: '/badges/tier-8-king.png',       emoji: '👑', description: "Ruler of the realm. Bow before greatness.",                                      min: 4100, color: '#f5d97a',   bg: 'rgba(245,158,11,0.14)',  border: 'rgba(245,158,11,0.55)'    },
+  { name: 'Warlord',       tierNum: 7, badge: '/badges/tier-7-warlord.png',    emoji: '🪓', description: "Battle-hardened commander. Banners follow you.",                                  min: 3800, color: '#e0b56b',   bg: 'rgba(197,169,117,0.14)', border: 'rgba(197,169,117,0.55)'   },
+  { name: 'Paladin',       tierNum: 6, badge: '/badges/tier-6-paladin.png',    emoji: '✨', description: "Righteous champion. The light is on your side.",                                  min: 3500, color: '#d4b878',   bg: 'rgba(197,169,117,0.12)', border: 'rgba(197,169,117,0.45)'   },
+  { name: 'Templar',       tierNum: 5, badge: '/badges/tier-5-templar.png',    emoji: '⚔️', description: "Sworn to the order. Disciplined and feared.",                                    min: 3200, color: '#c9c9d9',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
+  { name: 'Knight',        tierNum: 4, badge: '/badges/tier-4-knight.png',     emoji: '🛡️', description: "Chivalrous and dependable. The kingdom counts on you.",                          min: 2900, color: '#b8b8c8',   bg: 'rgba(184,184,200,0.10)', border: 'rgba(184,184,200,0.4)'    },
+  { name: 'Footman',       tierNum: 3, badge: '/badges/tier-3-footman.png',    emoji: '🗡️', description: "Honest soldier. Holds the line, takes the field.",                               min: 2600, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'Squire',        tierNum: 2, badge: '/badges/tier-2-squire.png',     emoji: '🐎', description: "In training. One day you may be knighted.",                                       min: 2300, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'Apprentice',    tierNum: 1, badge: '/badges/tier-1-apprentice.png', emoji: '📜', description: "Just beginning the climb. Read the scrolls, hold the line.",                     min: 2000, color: '#c5a975',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
   { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 1700, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
   { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 1400, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
   { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
@@ -26,14 +28,14 @@ const MMR_TIERS_V1 = [
 
 // V3 thresholds — fresh player starts at exactly 5000 MMR (+2400 offset from V1)
 const MMR_TIERS_V3 = [
-  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 6500, color: '#FFD700',   bg: 'rgba(255,215,0,0.12)',   border: 'rgba(255,215,0,0.45)'    },
-  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 6200, color: '#CE93D8',   bg: 'rgba(156,39,176,0.15)',  border: 'rgba(156,39,176,0.45)'   },
-  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 5900, color: '#90CAF9',   bg: 'rgba(33,150,243,0.12)',  border: 'rgba(33,150,243,0.4)'    },
-  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 5600, color: '#80DEEA',   bg: 'rgba(0,188,212,0.12)',   border: 'rgba(0,188,212,0.4)'     },
-  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 5300, color: '#A5D6A7',   bg: 'rgba(76,175,80,0.12)',   border: 'rgba(76,175,80,0.4)'     },
-  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 5000, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 4700, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 4400, color: '#FFCC80',   bg: 'rgba(255,152,0,0.12)',   border: 'rgba(255,152,0,0.4)'     },
+  { name: 'King',          tierNum: 8, badge: '/badges/tier-8-king.png',       emoji: '👑', description: "Ruler of the realm. Bow before greatness.",                                      min: 6500, color: '#f5d97a',   bg: 'rgba(245,158,11,0.14)',  border: 'rgba(245,158,11,0.55)'    },
+  { name: 'Warlord',       tierNum: 7, badge: '/badges/tier-7-warlord.png',    emoji: '🪓', description: "Battle-hardened commander. Banners follow you.",                                  min: 6200, color: '#e0b56b',   bg: 'rgba(197,169,117,0.14)', border: 'rgba(197,169,117,0.55)'   },
+  { name: 'Paladin',       tierNum: 6, badge: '/badges/tier-6-paladin.png',    emoji: '✨', description: "Righteous champion. The light is on your side.",                                  min: 5900, color: '#d4b878',   bg: 'rgba(197,169,117,0.12)', border: 'rgba(197,169,117,0.45)'   },
+  { name: 'Templar',       tierNum: 5, badge: '/badges/tier-5-templar.png',    emoji: '⚔️', description: "Sworn to the order. Disciplined and feared.",                                    min: 5600, color: '#c9c9d9',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
+  { name: 'Knight',        tierNum: 4, badge: '/badges/tier-4-knight.png',     emoji: '🛡️', description: "Chivalrous and dependable. The kingdom counts on you.",                          min: 5300, color: '#b8b8c8',   bg: 'rgba(184,184,200,0.10)', border: 'rgba(184,184,200,0.4)'    },
+  { name: 'Footman',       tierNum: 3, badge: '/badges/tier-3-footman.png',    emoji: '🗡️', description: "Honest soldier. Holds the line, takes the field.",                               min: 5000, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'Squire',        tierNum: 2, badge: '/badges/tier-2-squire.png',     emoji: '🐎', description: "In training. One day you may be knighted.",                                       min: 4700, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'Apprentice',    tierNum: 1, badge: '/badges/tier-1-apprentice.png', emoji: '📜', description: "Just beginning the climb. Read the scrolls, hold the line.",                     min: 4400, color: '#c5a975',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
   { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 4100, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
   { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 3800, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
   { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
@@ -81,14 +83,34 @@ export function TierBadge({ mmr, useV3 = false, dbTiers = null }) {
       title={tooltipText}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        gap: 4, minWidth: 118, flexShrink: 0,
+        gap: 6, minWidth: 118, flexShrink: 0,
         background: t.bg, border: `1px solid ${sponsorName ? '#f59e0b' : t.border}`,
-        borderRadius: 8, padding: '3px 6px', fontSize: 11, fontWeight: 600,
+        borderRadius: 8, padding: '3px 6px 3px 4px', fontSize: 11, fontWeight: 600,
         color: t.color, whiteSpace: 'nowrap', cursor: 'default',
         letterSpacing: 0.2,
       }}
     >
-      {sponsorName ? '🤝' : t.emoji} {label}
+      {sponsorName ? (
+        <span style={{ fontSize: 13, lineHeight: 1 }}>🤝</span>
+      ) : t.badge ? (
+        <img
+          src={t.badge}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          style={{ width: 22, height: 22, objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))' }}
+          onError={(e) => {
+            // Fall back to the emoji glyph if the badge PNG fails to load.
+            const span = document.createElement('span');
+            span.style.cssText = 'font-size:13px;line-height:1';
+            span.textContent = t.emoji || '🛡️';
+            e.target.replaceWith(span);
+          }}
+        />
+      ) : (
+        <span style={{ fontSize: 13, lineHeight: 1 }}>{t.emoji}</span>
+      )}
+      <span>{label}</span>
     </span>
   );
 }
