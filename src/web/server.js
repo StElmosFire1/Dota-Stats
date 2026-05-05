@@ -3521,7 +3521,24 @@ NOTES
         db.getTournamentParticipants(req.params.id),
         db.getTournamentMatches(req.params.id),
       ]);
-      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (!tournament) {
+        // Cross-table fallback: this id may belong to a weekend tournament.
+        // Return a 404 with a redirect hint so the frontend can navigate
+        // to /weekend-tournament/:id without an extra round-trip. This
+        // rescues stale or shared `/tournaments/:id` links for events that
+        // actually live in the weekend_tournaments table.
+        try {
+          const weekend = await db.getWeekendTournamentById(req.params.id);
+          if (weekend) {
+            return res.status(404).json({
+              error: 'Tournament not found',
+              redirect: `/weekend-tournament/${req.params.id}`,
+              kind: 'weekend',
+            });
+          }
+        } catch (_) { /* fall through to plain 404 */ }
+        return res.status(404).json({ error: 'Tournament not found' });
+      }
       res.json({ tournament, participants, matches });
     } catch (err) {
       console.error('[API] tournament detail error:', err.message);

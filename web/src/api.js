@@ -128,6 +128,13 @@ async function fetchJson(url) {
       err.feature = data.feature || null;
       err.signedIn = Boolean(data.signed_in);
     }
+    // Cross-table tournament redirect hint (bracket → weekend, etc.).
+    // Backend returns 404 with { redirect, kind } when the id exists in a
+    // sibling table; pages can catch and navigate without an extra round-trip.
+    if (data && data.redirect) {
+      err.redirect = data.redirect;
+      err.kind = data.kind || null;
+    }
     throw err;
   }
   return res.json();

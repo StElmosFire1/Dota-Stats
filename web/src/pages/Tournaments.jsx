@@ -310,14 +310,24 @@ function TournamentDetail() {
 
   const load = useCallback(() => {
     setLoading(true);
+    let redirectTarget = null;
     Promise.all([
-      getTournamentById(id).catch(() => null),
+      getTournamentById(id).catch(err => {
+        // Backend now returns a `redirect` hint on 404 when the id belongs
+        // to a sibling table (e.g. weekend_tournaments). Honour it here so
+        // we navigate in a single round-trip without needing the extra
+        // /weekend-tournaments lookup.
+        if (err && err.redirect) redirectTarget = err.redirect;
+        return null;
+      }),
       getAllPlayers(null),
     ]).then(async ([d, ap]) => {
-      // Fallback: if there's no bracket tournament with this id, check the
-      // weekend-tournaments table and redirect there. This rescues users who
-      // hit a stale `/tournaments/:id` link for what is actually a weekend
-      // tournament (or any cross-table id collision).
+      if (redirectTarget) {
+        navigate(redirectTarget, { replace: true });
+        return;
+      }
+      // Legacy client-side fallback: older backends without the redirect
+      // hint will just return a plain 404, so still try the weekend table.
       if (!d) {
         try {
           const weekend = await getWeekendTournament(id);

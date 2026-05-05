@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "5.74.1",
+    "title": "Profile Demo Page + Tournament Cross-Table Redirect",
+    "published_at": "2026-05-05",
+    "content": "**Profile Demo page added.** New superuser-only preview at `/admin/profile-demo` renders a fully-decorated dummy player profile (\"StElmosFire\") with every v5.74 customization applied — hero border colour, pinned achievement, animated frame, heraldic background pattern, custom title, flair override, win-streak chip, linked socials, top-3 heroes strip, mock recent matches table. Lets you see exactly what a fully-tricked-out public profile will look like to a visitor clicking from `/leaderboard` once the v5.75 backend ships, without needing to seed test data. Linked from the Profile Sandbox header (\"View as public profile\"). Edit the `FAKE` object at the top of `web/src/pages/ProfileDemo.jsx` to preview different configurations.\n\n**Tournament not-found bug fixed.** Stale or shared `/tournaments/:id` links for events that actually live in the `weekend_tournaments` table no longer return a dead-end 404 page. The backend `/api/tournaments/:id` endpoint now peeks into both tables and, when the id belongs to a weekend tournament, returns a `redirect` hint that the frontend honours in a single round-trip — navigating straight to `/weekend-tournament/:id`. The legacy client-side fallback is kept as a safety net for any older clients still in flight.",
+    "author": "System"
+  },
+  {
     "version": "0.1",
     "title": "Bot Foundation & Steam Lobby Creation",
     "published_at": "2026-02-17",
