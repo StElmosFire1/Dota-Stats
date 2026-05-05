@@ -1778,7 +1778,9 @@ function WelcomeModalPanel({ superuserKey }) {
     setSaving(true); setMsg('');
     try {
       const payload = { ...cfg };
-      if (bumpVersion) payload.version = (parseInt(cfg.version, 10) || 1) + 1;
+      // Always bump version on save so previously-dismissed users see the update.
+      // The "Save without re-show" button (bumpVersion=false) is preserved for rare edits.
+      if (bumpVersion !== false) payload.version = (parseInt(cfg.version, 10) || 1) + 1;
       const r = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
@@ -1848,11 +1850,11 @@ function WelcomeModalPanel({ superuserKey }) {
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn" disabled={saving} onClick={() => save(false)}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
           <button className="btn btn-primary" disabled={saving} onClick={() => save(true)}>
-            Save & re-show to everyone (bump version)
+            {saving ? 'Saving…' : 'Save & re-show to everyone'}
+          </button>
+          <button className="btn" disabled={saving} onClick={() => save(false)} title="Edit content without re-prompting users who already dismissed">
+            Save quietly (no re-show)
           </button>
           {msg && (
             <span style={{ fontSize: 13, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)' }}>

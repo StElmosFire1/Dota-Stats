@@ -288,7 +288,7 @@ export default function PudgeStats() {
   });
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
+    <div style={{ maxWidth: 1480, margin: '0 auto', padding: '0 16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24, flexWrap: 'wrap' }}>
         <img src={PUDGE_IMG} alt="Pudge"
           style={{ height: 80, borderRadius: 8, objectFit: 'cover', border: '2px solid #a78bfa' }}

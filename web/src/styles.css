@@ -319,9 +319,9 @@ a:hover {
 }
 
 .container {
-  max-width: 1200px;
+  max-width: 1480px;
   margin: 0 auto;
-  padding: 2rem 1.5rem;
+  padding: 2rem 1.75rem;
 }
 
 .page-title {

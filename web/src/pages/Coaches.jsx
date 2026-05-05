@@ -55,7 +55,7 @@ export default function Coaches() {
     <div style={{ maxWidth: 1100, margin: '24px auto', padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <h1 style={{ margin: 0 }}>🎓 Coaching Marketplace</h1>
-        {eligibility?.signed_in && eligibility?.eligible && (
+        {eligibility?.signed_in && eligibility?.eligible ? (
           <Link
             to={eligibility.has_coach_row ? '/coach/edit' : '/coach/onboarding'}
             style={{
@@ -64,11 +64,24 @@ export default function Coaches() {
             }}>
             {eligibility.has_coach_row ? '⚙️ Manage Coach Profile' : '✨ Apply to coach'}
           </Link>
+        ) : (
+          <Link
+            to="/coach/onboarding"
+            style={{
+              background: 'transparent', color: 'var(--accent)',
+              padding: '8px 14px', borderRadius: 8, fontWeight: 700, textDecoration: 'none',
+              border: '1px solid var(--accent)',
+            }}>
+            How do I become a coach? →
+          </Link>
         )}
       </div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 20 }}>
         Book a 1:1 session with a vetted coach (top-5 leaderboard or Immortal+ rank).
-        Sessions run in your Discord voice — bring your own replay.
+        Sessions run in your Discord voice — bring your own replay.{' '}
+        <Link to="/coach/onboarding" style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+          Want to coach? Apply here →
+        </Link>
       </p>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>

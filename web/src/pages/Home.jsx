@@ -556,7 +556,7 @@ export default function Home() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1480, margin: '0 auto' }}>
 
       <Season10LaunchBanner />
 

@@ -7921,15 +7921,15 @@ async function getInhouseSessionPlayers(sessionId) {
   const p = getPool();
   const r = await p.query(
     `SELECT isp.*,
-            pn.nickname AS nickname,
-            ps.steam_account_id AS steam_account_id,
-            COALESCE(ps.mu, 25.0) AS mu,
-            COALESCE(ps.sigma, 8.333) AS sigma,
-            (COALESCE(ps.mu, 25.0) - 3*COALESCE(ps.sigma, 8.333)) AS trueskill_mmr,
-            ps.discord_id AS discord_id
+            n.nickname AS nickname,
+            isp.account_id AS steam_account_id,
+            COALESCE(r.mu, 25.0) AS mu,
+            COALESCE(r.sigma, 8.333) AS sigma,
+            (COALESCE(r.mu, 25.0) - 3*COALESCE(r.sigma, 8.333)) AS trueskill_mmr,
+            r.discord_id AS discord_id
        FROM inhouse_session_players isp
-       LEFT JOIN player_stats ps ON ps.steam_account_id = isp.account_id
-       LEFT JOIN player_nicknames pn ON pn.steam_account_id = isp.account_id
+       LEFT JOIN ratings r ON r.player_id = isp.account_id
+       LEFT JOIN nicknames n ON n.account_id = isp.account_id
       WHERE isp.session_id = $1
       ORDER BY isp.registered_at ASC`,
     [sessionId]

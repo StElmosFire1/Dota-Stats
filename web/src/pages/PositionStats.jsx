@@ -71,15 +71,7 @@ function PositionStatsView() {
           <button
             key={p}
             onClick={() => setPosition(p)}
-            style={{
-              padding: '0.5rem 1rem',
-              background: position === p ? '#3b82f6' : '#1e293b',
-              color: '#fff',
-              border: position === p ? '1px solid #60a5fa' : '1px solid #334155',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-            }}
+            className={position === p ? 'btn btn-primary' : 'btn'}
           >
             Pos {p}
           </button>
@@ -202,12 +194,8 @@ function PlayerProfilesView() {
   return (
     <div>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        <button onClick={expandAll} className="view-toggle-btn" style={{ background: '#1e293b', color: '#e0e0e0', border: '1px solid #334155', borderRadius: '6px', padding: '0.4rem 0.8rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-          Expand All
-        </button>
-        <button onClick={collapseAll} className="view-toggle-btn" style={{ background: '#1e293b', color: '#e0e0e0', border: '1px solid #334155', borderRadius: '6px', padding: '0.4rem 0.8rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-          Collapse All
-        </button>
+        <button onClick={expandAll} className="btn btn-sm">Expand All</button>
+        <button onClick={collapseAll} className="btn btn-sm">Collapse All</button>
       </div>
       <p style={{ color: '#888', marginBottom: '1rem' }}>{players.length} players — click a player to see their position breakdown</p>
       <div className="scoreboard-wrapper">
@@ -300,29 +288,13 @@ export default function PositionStats() {
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <button
           onClick={() => setView('stats')}
-          style={{
-            padding: '0.5rem 1rem',
-            background: view === 'stats' ? '#3b82f6' : '#1e293b',
-            color: '#fff',
-            border: view === 'stats' ? '1px solid #60a5fa' : '1px solid #334155',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-          }}
+          className={view === 'stats' ? 'btn btn-primary' : 'btn'}
         >
           Position Rankings
         </button>
         <button
           onClick={() => setView('profiles')}
-          style={{
-            padding: '0.5rem 1rem',
-            background: view === 'profiles' ? '#3b82f6' : '#1e293b',
-            color: '#fff',
-            border: view === 'profiles' ? '1px solid #60a5fa' : '1px solid #334155',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-          }}
+          className={view === 'profiles' ? 'btn btn-primary' : 'btn'}
         >
           Player Profiles
         </button>
