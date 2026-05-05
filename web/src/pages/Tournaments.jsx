@@ -4,7 +4,7 @@ import {
   getTournaments, getTournamentById, createTournament, addTournamentParticipant,
   removeTournamentParticipant, generateTournamentBracket, setTournamentMatchWinner,
   clearTournamentMatchWinner, deleteTournament, getAllPlayers,
-  getWeekendTournaments, createWeekendTournament,
+  getWeekendTournaments, getWeekendTournament, createWeekendTournament,
   linkTournamentMatch, reseedTournamentParticipants,
 } from '../api';
 import { useSeason } from '../context/SeasonContext';
@@ -310,11 +310,27 @@ function TournamentDetail() {
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([getTournamentById(id), getAllPlayers(null)]).then(([d, ap]) => {
+    Promise.all([
+      getTournamentById(id).catch(() => null),
+      getAllPlayers(null),
+    ]).then(async ([d, ap]) => {
+      // Fallback: if there's no bracket tournament with this id, check the
+      // weekend-tournaments table and redirect there. This rescues users who
+      // hit a stale `/tournaments/:id` link for what is actually a weekend
+      // tournament (or any cross-table id collision).
+      if (!d) {
+        try {
+          const weekend = await getWeekendTournament(id);
+          if (weekend && weekend.tournament) {
+            navigate(`/weekend-tournament/${id}`, { replace: true });
+            return;
+          }
+        } catch (_) { /* fall through to "not found" UI */ }
+      }
       setData(d);
       setAllPlayers(ap?.players || []);
     }).catch(() => {}).finally(() => setLoading(false));
-  }, [id]);
+  }, [id, navigate]);
 
   useEffect(() => { load(); }, [load]);
 

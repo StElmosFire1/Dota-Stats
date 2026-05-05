@@ -311,24 +311,36 @@ function Nav() {
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
-          <DropdownItem to="/player-tools">Head to Head / Compare</DropdownItem>
           <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
           <DropdownItem to="/draft">Draft Stats</DropdownItem>
-          <DropdownItem to="/ward-map">Ward Heatmap</DropdownItem>
           <DropdownItem to="/records">Records &amp; Comebacks</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
-          <DropdownItem to="/insights">Player Insights</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
           <DropdownItem to="/hall-of-fame">Hall of Fame</DropdownItem>
           <DropdownItem to="/multikills">Multi-Kills</DropdownItem>
-          <DropdownItem to="/pro">Pro Membership</DropdownItem>
           <DropdownItem to="/join">Join the League</DropdownItem>
         </DropdownMenu>
+        <Link
+          to="/pro"
+          className={isActive('/pro')}
+          style={{
+            background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+            color: '#1a1a1a',
+            fontWeight: 700,
+            padding: '6px 14px',
+            borderRadius: 6,
+            letterSpacing: 0.3,
+            boxShadow: '0 2px 8px rgba(245,158,11,0.25)',
+          }}
+          title="Pro Membership — unlocks all advanced analytics"
+        >
+          ★ Pro
+        </Link>
       </div>
       <SeasonSelector />
       <ThemeToggle />
@@ -399,7 +411,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.62 — <Link to="/patch-notes">Patch notes</Link>
+            v5.67 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>
@@ -457,6 +469,8 @@ export default function App() {
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
                 <Route path="/draft-stats" element={<Draft />} />
                 <Route path="/hero-breakdown" element={<Heroes defaultTab="breakdown" />} />
+                <Route path="/hero-position-meta" element={<Heroes defaultTab="meta" />} />
+                <Route path="/position-player-profiles" element={<PositionStats defaultTab="profiles" />} />
                 <Route path="/predictions" element={<Predictions />} />
                 <Route path="/patch-notes" element={<PatchNotes />} />
                 <Route path="/multikills" element={<MultiKills />} />

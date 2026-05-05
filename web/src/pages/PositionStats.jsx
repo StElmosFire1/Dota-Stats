@@ -280,8 +280,9 @@ function PlayerProfilesView() {
   );
 }
 
-export default function PositionStats() {
-  const [view, setView] = useState('stats');
+export default function PositionStats({ defaultTab = 'stats' }) {
+  // `defaultTab` accepts 'stats' (Position Rankings) or 'profiles' (Pro-gated Player Profiles).
+  const [view, setView] = useState(defaultTab === 'players' || defaultTab === 'profiles' ? 'profiles' : 'stats');
 
   return (
     <div>

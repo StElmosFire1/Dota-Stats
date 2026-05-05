@@ -611,8 +611,8 @@ export default function Heroes({ defaultTab }) {
     { key: 'stats', label: 'Hero Stats' },
     { key: 'tier', label: '🏅 Tier List' },
     { key: 'matchups', label: '⚔️ Matchups' },
-    { key: 'meta', label: '📍 Position Meta' },
-    { key: 'breakdown', label: '🏛️ Hero Breakdown' },
+    { key: 'meta', label: '★ Position Meta', pro: true },
+    { key: 'breakdown', label: '★ Hero Breakdown', pro: true },
   ];
 
   return (
@@ -620,18 +620,27 @@ export default function Heroes({ defaultTab }) {
       <h1 className="page-title">Heroes</h1>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: '8px 18px', cursor: 'pointer', fontSize: 14, fontWeight: tab === t.key ? 700 : 400,
-              background: 'none', border: 'none', borderBottom: tab === t.key ? '2px solid var(--accent-blue)' : '2px solid transparent',
-              color: tab === t.key ? 'var(--accent-blue)' : 'var(--text-muted)',
-              borderRadius: 0, marginBottom: -1,
-            }}
-          >{t.label}</button>
-        ))}
+        {TABS.map(t => {
+          const isActive = tab === t.key;
+          // Gold-tint Pro tabs so members see at-a-glance which features are part of their subscription.
+          const proColor = '#fbbf24';
+          const activeColor = t.pro ? proColor : 'var(--accent-blue)';
+          const restColor = t.pro ? 'rgba(251,191,36,0.65)' : 'var(--text-muted)';
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              title={t.pro ? 'Pro feature' : undefined}
+              style={{
+                padding: '8px 18px', cursor: 'pointer', fontSize: 14, fontWeight: isActive || t.pro ? 700 : 400,
+                background: 'none', border: 'none',
+                borderBottom: isActive ? `2px solid ${activeColor}` : '2px solid transparent',
+                color: isActive ? activeColor : restColor,
+                borderRadius: 0, marginBottom: -1,
+              }}
+            >{t.label}</button>
+          );
+        })}
       </div>
 
       {tab === 'tier' && <HeroTierTab />}
