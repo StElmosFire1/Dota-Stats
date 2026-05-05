@@ -1170,6 +1170,11 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_session_players_session ON inhouse_session_players (session_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_sessions_status ON inhouse_sessions (status)`);
+    // v5.75: auto-start gating once min_players is reached, plus lobby_fill_seconds
+    // grace timer so stragglers can register before we flip into accept phase.
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS min_players INTEGER DEFAULT 10`);
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS lobby_fill_seconds INTEGER DEFAULT 30`);
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS auto_start_at TIMESTAMPTZ`);
 
     // ===== Wave 2 / 3 schema =====
     // F3 — Season Pass: per-event XP ledger. account_id + season_number +
@@ -7848,12 +7853,12 @@ async function updateSignupRequest(id, { status, adminNotes, reviewedBy }) {
 // Inhouse Sessions (FACEIT-style match accept + draft + DS flow)
 // ============================================================
 
-async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60 } = {}) {
+async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60, minPlayers = 10, lobbyFillSeconds = 30 } = {}) {
   const p = getPool();
   const r = await p.query(
-    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [captainMode, createdBy, notes, acceptPhaseSeconds]
+    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds, min_players, lobby_fill_seconds)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [captainMode, createdBy, notes, acceptPhaseSeconds, minPlayers, lobbyFillSeconds]
   );
   return r.rows[0];
 }
@@ -7884,7 +7889,7 @@ async function getActiveInhouseSession() {
 
 async function updateInhouseSession(id, fields) {
   const p = getPool();
-  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes'];
+  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at'];
   const sets = [];
   const vals = [];
   for (const k of Object.keys(fields)) {
@@ -7930,6 +7935,9 @@ async function getInhouseSessionPlayers(sessionId) {
             COALESCE(r.mu, 25.0) AS mu,
             COALESCE(r.sigma, 8.333) AS sigma,
             (COALESCE(r.mu, 25.0) - 3*COALESCE(r.sigma, 8.333)) AS trueskill_mmr,
+            COALESCE(r.games_played, 0) AS games_played,
+            n.dota_rank_tier AS dota_rank_tier,
+            n.dota_leaderboard_rank AS dota_leaderboard_rank,
             r.discord_id AS discord_id
        FROM inhouse_session_players isp
        LEFT JOIN ratings r ON r.player_id = isp.account_id

@@ -5081,10 +5081,12 @@ NOTES
 
   router.post('/inhouse', requireSuperuser, express.json(), async (req, res) => {
     try {
-      const { captainMode, acceptPhaseSeconds, notes } = req.body || {};
+      const { captainMode, acceptPhaseSeconds, notes, minPlayers, lobbyFillSeconds } = req.body || {};
       const session = await db.createInhouseSession({
         captainMode: captainMode || 'highest_rank',
         acceptPhaseSeconds: parseInt(acceptPhaseSeconds || '60', 10),
+        minPlayers: parseInt(minPlayers || '10', 10),
+        lobbyFillSeconds: parseInt(lobbyFillSeconds || '30', 10),
         notes: notes || null,
         createdBy: req.session?.displayName || 'admin',
       });
@@ -5195,9 +5197,42 @@ NOTES
       let cap1, cap2;
 
       if (mode === 'highest_rank') {
-        const sorted = [...accepted].sort((a, b) => Number(b.trueskill_mmr) - Number(a.trueskill_mmr));
-        cap1 = sorted[0];
-        cap2 = sorted[1];
+        // v5.75 hybrid: prefer in-house TrueSkill MMR for players with ≥20
+        // recorded games (real signal of skill in this lobby), otherwise fall
+        // back to their Dota MMR / leaderboard rank so newcomers aren't ranked
+        // off a near-default TS rating. Leaderboard rank (where present) trumps
+        // rank tier; rank tier is normalised onto a coarse MMR scale so it
+        // sorts comparably against TrueSkill.
+        const RANK_TIER_TO_MMR = {
+          11: 200, 12: 400, 13: 600, 14: 800, 15: 1000,
+          21: 1200, 22: 1400, 23: 1600, 24: 1800, 25: 2000,
+          31: 2200, 32: 2400, 33: 2600, 34: 2800, 35: 3000,
+          41: 3200, 42: 3400, 43: 3600, 44: 3800, 45: 4000,
+          51: 4200, 52: 4400, 53: 4600, 54: 4800, 55: 5000,
+          61: 5300, 62: 5600, 63: 5900, 64: 6200, 65: 6500,
+          71: 6800, 72: 7200, 73: 7600, 74: 8000, 75: 8500,
+          80: 9500,
+        };
+        function effectiveRank(p) {
+          const games = Number(p.games_played) || 0;
+          if (games >= 20) {
+            // TS MMR is in the ~5–50 range; scale it up so it's comparable.
+            return { score: Number(p.trueskill_mmr || 0) * 100, basis: 'inhouse' };
+          }
+          if (p.dota_leaderboard_rank && Number(p.dota_leaderboard_rank) > 0) {
+            // Top 1 = best; map rank 1 → 12000, rank 1000 → 9500ish.
+            return { score: 12000 - Math.min(2500, Math.log2(Number(p.dota_leaderboard_rank)) * 250), basis: 'dota_lb' };
+          }
+          if (p.dota_rank_tier && RANK_TIER_TO_MMR[p.dota_rank_tier]) {
+            return { score: RANK_TIER_TO_MMR[p.dota_rank_tier], basis: 'dota_rank' };
+          }
+          // No Dota signal — fall back to TS even with few games, but penalised.
+          return { score: Number(p.trueskill_mmr || 0) * 100 - 1000, basis: 'fallback' };
+        }
+        const scored = accepted.map(p => ({ p, ...effectiveRank(p) }));
+        scored.sort((a, b) => b.score - a.score);
+        cap1 = scored[0].p;
+        cap2 = scored[1].p;
       } else if (mode === 'random') {
         const shuffled = [...accepted].sort(() => Math.random() - 0.5);
         cap1 = shuffled[0];
@@ -5232,13 +5267,45 @@ NOTES
     }
   });
 
-  router.post('/inhouse/:id/draft-pick', requireSuperuser, express.json(), async (req, res) => {
+  // Snake-draft pick sequence for the 8 non-captain slots (4 each side).
+  // Order: T1, T2, T2, T1, T1, T2, T2, T1 — the captain who picks first only
+  // gets one back-to-back at the very end so it's roughly even on tempo.
+  const DRAFT_PICK_SEQUENCE = [1, 2, 2, 1, 1, 2, 2, 1];
+
+  function _currentPickerTeam(players) {
+    const drafted = players.filter(p => p.team !== 0 && p.pick_order > 0).length;
+    if (drafted >= DRAFT_PICK_SEQUENCE.length) return null; // draft complete
+    return DRAFT_PICK_SEQUENCE[drafted];
+  }
+
+  router.post('/inhouse/:id/draft-pick', express.json(), async (req, res) => {
     try {
       const { accountId, team, pickOrder } = req.body || {};
       if (!accountId || ![1,2].includes(team)) return res.status(400).json({ error: 'accountId and team (1|2) required' });
       const cur = await db.getInhouseSession(req.params.id);
       if (!cur) return res.status(404).json({ error: 'Session not found' });
       if (cur.status !== 'drafting') return res.status(400).json({ error: 'Not in drafting phase' });
+
+      // v5.75: captains can pick directly (no admin required), but only the
+      // captain whose turn it is, and only for their own team. Admins can
+      // override at any time.
+      const adminKey = process.env.SUPERUSER_PASSWORD;
+      const isAdmin = !!(adminKey && req.headers['x-superuser-key'] === adminKey);
+      const myAccountId = req.session?.accountId ? Number(req.session.accountId) : null;
+
+      if (!isAdmin) {
+        if (!myAccountId) return res.status(401).json({ error: 'Sign in with Steam to pick.' });
+        const cap1 = Number(cur.captain1_account_id);
+        const cap2 = Number(cur.captain2_account_id);
+        const myTeam = myAccountId === cap1 ? 1 : myAccountId === cap2 ? 2 : null;
+        if (!myTeam) return res.status(403).json({ error: 'Only the captains can pick.' });
+        if (myTeam !== team) return res.status(403).json({ error: 'You can only pick onto your own team.' });
+        const allPlayers = await db.getInhouseSessionPlayers(cur.id);
+        const turn = _currentPickerTeam(allPlayers);
+        if (turn === null) return res.status(400).json({ error: 'Draft is complete.' });
+        if (turn !== myTeam) return res.status(409).json({ error: "It's not your turn to pick." });
+      }
+
       // Atomic conditional pick: only succeeds if player is still unpicked AND not declined
       const pool = db.getPool();
       const guard = await pool.query(
@@ -5252,6 +5319,26 @@ NOTES
         return res.status(409).json({ error: 'Player already picked or no longer eligible' });
       }
       res.json({ player: guard.rows[0] });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Lightweight read endpoint so the frontend can show whose turn it is
+  // without having to import the pick-sequence constant.
+  router.get('/inhouse/:id/draft-status', async (req, res) => {
+    try {
+      const cur = await db.getInhouseSession(req.params.id);
+      if (!cur) return res.status(404).json({ error: 'Session not found' });
+      const players = await db.getInhouseSessionPlayers(cur.id);
+      const drafted = players.filter(p => p.team !== 0 && p.pick_order > 0).length;
+      const seq = DRAFT_PICK_SEQUENCE;
+      res.json({
+        sequence: seq,
+        pickIdx: drafted,
+        currentPickerTeam: drafted < seq.length ? seq[drafted] : null,
+        complete: drafted >= seq.length,
+      });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -5291,7 +5378,7 @@ NOTES
       });
       res.json({ session, rcon: rconResult });
 
-      // Notify Discord with one-click connect link
+      // Notify Discord with one-click connect link + auto-move team voice channels.
       try {
         const { getDiscordBot } = require('../discord/bot');
         const bot = getDiscordBot();
@@ -5301,6 +5388,27 @@ NOTES
             `🖥️ **Inhouse server provisioned — game is live!**\n` +
             `Server: \`${ip}:${port}\` · Password: \`${safePwd}\`\n` +
             `**One-click connect:** <${connectLink}>`
+          );
+        }
+        // v5.75: shuffle drafted players into the right team voice channel.
+        // The existing _movePlayersToVoiceChannels expects a lobby-shaped
+        // object with players[].steamId + players[].team (0=Radiant, 1=Dire).
+        // We synthesize that from the inhouse session players + the
+        // session.team1_is_radiant flag.
+        if (bot && typeof bot._movePlayersToVoiceChannels === 'function') {
+          const players = await db.getInhouseSessionPlayers(req.params.id);
+          const STEAM64_OFFSET = 76561197960265728n;
+          const t1IsRad = session.team1_is_radiant !== false;
+          const synthLobby = {
+            players: players
+              .filter(p => p.team === 1 || p.team === 2)
+              .map(p => ({
+                steamId: (BigInt(p.account_id) + STEAM64_OFFSET).toString(),
+                team: (p.team === 1 ? (t1IsRad ? 0 : 1) : (t1IsRad ? 1 : 0)),
+              })),
+          };
+          bot._movePlayersToVoiceChannels(synthLobby).catch(e =>
+            console.warn('[Inhouse] Voice-move failed:', e.message)
           );
         }
       } catch (e) {
@@ -5331,6 +5439,37 @@ NOTES
         match_id: matchId,
         completed_at: new Date(),
       });
+
+      // v5.75: re-queue any players who were in the lobby but not picked /
+      // not in the active match (team = 0 OR declined). They get auto-rolled
+      // into the next open session so they don't lose their spot when the
+      // captains skipped them.
+      try {
+        const players = await db.getInhouseSessionPlayers(req.params.id);
+        const leftovers = players.filter(p =>
+          p.team === 0 || p.status === 'declined'
+        );
+        if (leftovers.length > 0) {
+          let next = await db.getActiveInhouseSession();
+          if (!next || next.id === Number(req.params.id) || ['drafting','in_progress'].includes(next.status)) {
+            next = await db.createInhouseSession({
+              captainMode: session.captain_mode || 'highest_rank',
+              acceptPhaseSeconds: session.accept_phase_seconds || 60,
+              minPlayers: session.min_players || 10,
+              lobbyFillSeconds: session.lobby_fill_seconds || 30,
+              notes: 'Auto-created from leftover players',
+              createdBy: 'system',
+            });
+          }
+          for (const p of leftovers) {
+            await db.joinInhouseSession(next.id, p.account_id, p.preferred_positions).catch(() => {});
+          }
+          console.log(`[Inhouse] Re-queued ${leftovers.length} leftover players into session #${next.id}`);
+        }
+      } catch (e) {
+        console.warn('[Inhouse] Re-queue failed (non-fatal):', e.message);
+      }
+
       res.json({ session });
     } catch (err) {
       res.status(500).json({ error: err.message });
