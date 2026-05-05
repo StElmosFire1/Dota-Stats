@@ -209,8 +209,22 @@ function createServer(startupStatus = {}) {
   const STEAM_OPEN_ID = 'https://steamcommunity.com/openid/login';
   const STEAM_ID_REGEX = /^https?:\/\/steamcommunity\.com\/openid\/id\/(\d+)$/;
 
+  // Build the canonical site URL for Steam OpenID. We prefer the live request
+  // host so the user is always returned to the same origin they signed in
+  // from (e.g. https://oceinhouse.gg). SITE_URL acts as an override for
+  // unusual deployment setups. The previous hardcoded IP fallback caused
+  // Steam to redirect to the bare host:port, which dropped the user back at
+  // a domain Steam never authed against.
+  function steamBaseUrl(req) {
+    const env = process.env.SITE_URL && process.env.SITE_URL.trim();
+    if (env) return env.replace(/\/$/, '');
+    const proto = req.protocol; // honoured via app.set('trust proxy', 1)
+    const host = req.get('host');
+    return `${proto}://${host}`;
+  }
+
   app.get('/auth/steam', authLimiter, (req, res) => {
-    const baseUrl = process.env.SITE_URL || 'http://170.64.182.110:5000';
+    const baseUrl = steamBaseUrl(req);
     const returnUrl = `${baseUrl}/auth/steam/return`;
     const params = new URLSearchParams({
       'openid.mode': 'checkid_setup',
@@ -220,6 +234,7 @@ function createServer(startupStatus = {}) {
       'openid.return_to': returnUrl,
       'openid.realm': baseUrl,
     });
+    console.log('[Steam Auth] /auth/steam redirect — realm:', baseUrl);
     res.redirect(`${STEAM_OPEN_ID}?${params}`);
   });
 
@@ -262,7 +277,16 @@ function createServer(startupStatus = {}) {
       req.session.accountId = accountId;
       req.session.displayName = lookup.rows[0]?.display_name || null;
 
-      res.redirect('/?auth=success');
+      // Force the session row to be persisted to the store before we redirect.
+      // Without this, the express-session "save on response end" hook can race
+      // with the 302 redirect — the browser may follow the redirect and hit
+      // /api/auth/me before the new session has actually been written, leaving
+      // the user in a "signed in nowhere" state.
+      req.session.save((err) => {
+        if (err) console.error('[Steam Auth] session.save failed:', err);
+        console.log('[Steam Auth] success — accountId:', accountId);
+        res.redirect('/?auth=success');
+      });
     } catch (err) {
       // SECURITY: log full error server-side, redirect with a generic flag so
       // we never echo upstream Steam OpenID failure details (which can include

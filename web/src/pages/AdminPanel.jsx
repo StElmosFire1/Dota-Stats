@@ -1753,6 +1753,106 @@ function BroadcastTickerPanel({ superuserKey }) {
   );
 }
 
+// Read-only visual reference of the full IH ladder (V1 + V3 thresholds).
+// Lives in the admin Config tab so admins can confirm at a glance how
+// every rank is named, what its symbol is, and what MMR cutoff it uses
+// — without leaving the panel.
+function TierLadderPreview() {
+  // We reach into Leaderboard.jsx's exported tier arrays via TierBadge.
+  // Rather than re-export the raw arrays, render two columns of badges
+  // by sweeping MMR across the bands.
+  const V1_SAMPLES = [
+    { name: 'Gaben',      mmr: 4500 },
+    { name: 'Smurf',      mmr: 4100 },
+    { name: 'Tryhard',    mmr: 3800 },
+    { name: 'Try Less',   mmr: 3500 },
+    { name: 'King',       mmr: 3500 },
+    { name: 'Warlord',    mmr: 3300 },
+    { name: 'Paladin',    mmr: 3200 },
+    { name: 'Templar',    mmr: 3100 },
+    { name: 'Knight',     mmr: 3000 },
+    { name: 'Footman',    mmr: 2700 },
+    { name: 'Squire',     mmr: 2400 },
+    { name: 'Apprentice', mmr: 2100 },
+    { name: 'Peasant',    mmr: 1800 },
+    { name: 'Vagabond',   mmr: 1500 },
+    { name: 'Outlaw',     mmr: 800 },
+  ];
+  const V3_SAMPLES = V1_SAMPLES.map(t => ({ ...t, mmr: t.mmr + 2400 }));
+  const Cell = ({ mmr, useV3 }) => (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '8px 10px', borderRadius: 8,
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+    }}>
+      <TierBadge mmr={mmr} useV3={useV3} dbTiers={null} />
+      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+        ≥ {mmr} MMR
+      </span>
+    </div>
+  );
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-tier-ladder" className="section-title" style={{ marginBottom: 6 }}>
+        🎖️ Tier Ladder Preview
+      </h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+        Read-only reference of every IH rank (name, symbol, MMR cutoff) in both the V1 and V3
+        rating systems. Use this to verify how a rank renders without hunting through the
+        leaderboard. Edit thresholds in <code>web/src/pages/Leaderboard.jsx</code>.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 8, letterSpacing: 0.5 }}>
+            V1 LADDER (legacy / pre-S10)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {V1_SAMPLES.map((s, i) => <Cell key={`v1-${i}`} mmr={s.mmr} useV3={false} />)}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 8, letterSpacing: 0.5 }}>
+            V3 LADDER (current / Season 10+)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {V3_SAMPLES.map((s, i) => <Cell key={`v3-${i}`} mmr={s.mmr} useV3={true} />)}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Tiny helper used by the "Profile Preview (sample)" admin section. Lets
+// an admin punch in any account_id (or paste a /player/<id> URL) and jump
+// straight to that player's public profile in a new tab.
+function ProfilePreviewPicker() {
+  const [val, setVal] = React.useState('');
+  const open = () => {
+    const m = String(val).trim().match(/(\d{3,})/);
+    if (!m) return;
+    window.open(`/player/${m[1]}`, '_blank', 'noreferrer');
+  };
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <input
+        type="text"
+        placeholder="account_id (e.g. 123456789) or /player/123456789"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
+        style={{ minWidth: 320, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input, var(--bg-card))', color: 'var(--text-primary)' }}
+      />
+      <button className="btn btn-primary" type="button" onClick={open} disabled={!val.trim()}>
+        👁️ Open profile in new tab
+      </button>
+      <Link to="/leaderboard" className="btn" target="_blank" rel="noreferrer">
+        🏆 Browse leaderboard to pick a player
+      </Link>
+    </div>
+  );
+}
+
 function WelcomeModalPanel({ superuserKey }) {
   const [cfg, setCfg] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -1814,6 +1914,17 @@ function WelcomeModalPanel({ superuserKey }) {
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 580 }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+          alignSelf: 'flex-start',
+          background: cfg.enabled ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+          color: cfg.enabled ? '#22c55e' : '#ef4444',
+          border: `1px solid ${cfg.enabled ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.4)'}`,
+        }}>
+          {cfg.enabled ? '✓ Currently ENABLED — visitors will see the modal' : '✗ Currently DISABLED — modal will not show'}
+        </div>
+
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
           <input type="checkbox" checked={!!cfg.enabled} onChange={e => upd('enabled', e.target.checked)} />
           Modal enabled
@@ -1855,6 +1966,25 @@ function WelcomeModalPanel({ superuserKey }) {
           </button>
           <button className="btn" disabled={saving} onClick={() => save(false)} title="Edit content without re-prompting users who already dismissed">
             Save quietly (no re-show)
+          </button>
+          <button
+            className="btn"
+            type="button"
+            title="Clears your local dismiss flag for every modal version and reloads the home page so you can verify the modal renders."
+            onClick={() => {
+              try {
+                for (let i = 0; i < localStorage.length; i++) {
+                  const k = localStorage.key(i);
+                  if (k && k.startsWith('welcome_modal_dismissed_v')) {
+                    localStorage.removeItem(k);
+                    i--;
+                  }
+                }
+              } catch {}
+              window.open('/', '_blank');
+            }}
+          >
+            🔍 Preview on home (new tab)
           </button>
           {msg && (
             <span style={{ fontSize: 13, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)' }}>
@@ -2097,7 +2227,10 @@ export default function AdminPanel() {
     { label: 'Engagement', tab: 'config', anchor: 'ap-anchor-engagement', icon: '🎯', kw: 'pinned highlights showcase' },
     { label: 'Broadcast Ticker (CMS)', tab: 'config', anchor: 'ap-anchor-broadcast-ticker', icon: '📢', kw: 'announcement banner' },
     { label: 'Welcome Modal (CMS)', tab: 'config', anchor: 'ap-anchor-welcome-modal', icon: '📣', kw: 'popup intro onboarding cta' },
+    { label: 'Tier Ladder Preview', tab: 'config', anchor: 'ap-anchor-tier-ladder', icon: '🎖️', kw: 'rank tier symbol badge ladder reference' },
     { label: 'Dota 2 Rank Management', tab: 'users', anchor: 'ap-anchor-rank-management', icon: '🎖️', kw: 'rank tier players' },
+    { label: 'Manage Nicknames (Players page)', tab: 'users', anchor: 'ap-anchor-nicknames', icon: '✏️', kw: 'nickname rename alias display name' },
+    { label: 'Profile Preview (sample)', tab: 'users', anchor: 'ap-anchor-profile-preview', icon: '👁️', kw: 'profile customization edit bio title accent pin sample dummy' },
     { label: 'Unregistered Players', tab: 'users', anchor: 'ap-anchor-unregistered-players', icon: '👤', kw: 'orphan link account' },
     { label: 'Sign-Up Requests', tab: 'users', anchor: 'signup-requests', icon: '📋', kw: 'applications join approve reject pending' },
     { label: 'Gift Purchases', tab: 'marketplace', anchor: 'ap-anchor-gifts', icon: '🎁', kw: 'pro gift stripe' },
@@ -2490,6 +2623,8 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'config' && (<>
+      {/* ── Tier Ladder Preview ──────────────────────────────────────── */}
+      <TierLadderPreview />
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
       <WelcomeModalPanel superuserKey={superuserKey} />
@@ -2673,6 +2808,32 @@ export default function AdminPanel() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      {/* ── Manage Nicknames (link to /players) ──────────────────────── */}
+      <section className="admin-section" style={{ marginTop: 32 }}>
+        <h2 id="ap-anchor-nicknames" className="section-title" style={{ marginBottom: 6 }}>✏️ Manage Nicknames</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+          The full nickname editor lives on the <strong>Players</strong> page. Set, edit, or clear a nickname,
+          link a Discord ID to a registered nickname, and search/sort the full roster from there.
+          Discord shortcut: <code>!adminregister &lt;account_id&gt; &lt;nickname&gt;</code>.
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Link to="/players" className="btn btn-primary">👥 Open Players & Nicknames editor</Link>
+          <Link to="/players" className="btn" target="_blank" rel="noreferrer">↗ Open in new tab</Link>
+        </div>
+      </section>
+
+      {/* ── Profile Preview (sample player) ──────────────────────────── */}
+      <section className="admin-section" style={{ marginTop: 32 }}>
+        <h2 id="ap-anchor-profile-preview" className="section-title" style={{ marginBottom: 6 }}>👁️ Profile Preview (sample)</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+          Quick way to see a real player profile with all the customization features (bio, custom title,
+          accent colour, pinned heroes, pinned matches, achievement showcase, rolling win-rate chart).
+          Use this to verify how edits to <code>SettingsProfile.jsx</code> render in the live profile view.
+          Pick any player from the dropdown below.
+        </p>
+        <ProfilePreviewPicker />
       </section>
 
       {/* ── Unregistered Players ──────────────────────────────────────── */}
