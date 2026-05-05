@@ -164,18 +164,35 @@ function createServer(startupStatus = {}) {
     credentials: true,
   }));
 
-  const sessionSecret = process.env.SESSION_SECRET || (() => {
-    console.warn('[Session] SESSION_SECRET not set — using insecure default. Add it as an environment secret.');
-    return 'dota2-inhouse-default-secret-please-change';
-  })();
+  // SECURITY (v5.66): SESSION_SECRET is mandatory in production. Without a
+  // strong, secret, env-supplied value the session cookie can be forged by an
+  // attacker who knows the default — letting them impersonate any logged-in
+  // Steam user. We hard-fail at startup in prod so a missing/short secret
+  // can never silently fall back to a known string. In dev we still allow a
+  // generated ephemeral secret so local boots work without configuration.
+  const inProd = process.env.NODE_ENV === 'production';
+  let sessionSecret = process.env.SESSION_SECRET;
+  if (inProd) {
+    if (!sessionSecret || sessionSecret.length < 32) {
+      console.error('[Session] FATAL: SESSION_SECRET is missing or shorter than 32 chars in production. Refusing to start.');
+      process.exit(1);
+    }
+  } else if (!sessionSecret) {
+    sessionSecret = require('crypto').randomBytes(48).toString('hex');
+    console.warn('[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.');
+  }
 
   // Session cookie hardening: in production we serve over HTTPS (deploy.sh +
   // PM2 → reverse proxy), so we mark the cookie Secure to prevent it being
   // sent over plain HTTP. Locally (NODE_ENV !== 'production') we keep
   // `secure: false` so dev over plain HTTP still works.
-  const inProd = process.env.NODE_ENV === 'production';
+  // sameSite=lax is our primary CSRF defence: it prevents the session cookie
+  // from being sent on cross-site POST/PUT/DELETE requests. Combined with
+  // strict CORS origin allow-listing above, this blocks the standard CSRF
+  // vector without requiring per-request CSRF tokens.
   if (inProd) app.set('trust proxy', 1); // honour X-Forwarded-Proto from reverse proxy
   app.use(session({
+    name: 'oi.sid',
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
@@ -247,7 +264,10 @@ function createServer(startupStatus = {}) {
 
       res.redirect('/?auth=success');
     } catch (err) {
-      console.error('[Steam Auth] Error:', err.message);
+      // SECURITY: log full error server-side, redirect with a generic flag so
+      // we never echo upstream Steam OpenID failure details (which can include
+      // network/host info) back to the visitor's URL bar.
+      console.error('[Steam Auth] Error:', err);
       res.redirect('/?auth=error');
     }
   });
