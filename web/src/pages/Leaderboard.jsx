@@ -21,9 +21,9 @@ const MMR_TIERS_V1 = [
   { name: 'Footman',       tierNum: 3, badge: '/badges/tier-3-footman.png',    emoji: '🗡️', description: "Honest soldier. Holds the line, takes the field.",                               min: 2600, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
   { name: 'Squire',        tierNum: 2, badge: '/badges/tier-2-squire.png',     emoji: '🐎', description: "In training. One day you may be knighted.",                                       min: 2300, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
   { name: 'Apprentice',    tierNum: 1, badge: '/badges/tier-1-apprentice.png', emoji: '📜', description: "Just beginning the climb. Read the scrolls, hold the line.",                     min: 2000, color: '#c5a975',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
-  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 1700, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
-  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 1400, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
-  { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
+  { name: 'Peasant',       emoji: '🌾', description: "Tilling the fields. Tomorrow may bring the call to arms.",                   min: 1700, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
+  { name: 'Vagabond',      emoji: '🥾', description: "Wandering the realm. No banner, no oath, no glory yet.",                     min: 1400, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
+  { name: 'Outlaw',        emoji: '🏴', description: "Branded and exiled. The kingdom does not speak your name.",                  min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
 ];
 
 // V3 thresholds — fresh player starts at exactly 5000 MMR (+2400 offset from V1)
@@ -36,9 +36,9 @@ const MMR_TIERS_V3 = [
   { name: 'Footman',       tierNum: 3, badge: '/badges/tier-3-footman.png',    emoji: '🗡️', description: "Honest soldier. Holds the line, takes the field.",                               min: 5000, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
   { name: 'Squire',        tierNum: 2, badge: '/badges/tier-2-squire.png',     emoji: '🐎', description: "In training. One day you may be knighted.",                                       min: 4700, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
   { name: 'Apprentice',    tierNum: 1, badge: '/badges/tier-1-apprentice.png', emoji: '📜', description: "Just beginning the climb. Read the scrolls, hold the line.",                     min: 4400, color: '#c5a975',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
-  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 4100, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
-  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 3800, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
-  { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
+  { name: 'Peasant',       emoji: '🌾', description: "Tilling the fields. Tomorrow may bring the call to arms.",                   min: 4100, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
+  { name: 'Vagabond',      emoji: '🥾', description: "Wandering the realm. No banner, no oath, no glory yet.",                     min: 3800, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
+  { name: 'Outlaw',        emoji: '🏴', description: "Branded and exiled. The kingdom does not speak your name.",                  min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
 ];
 
 // Back-compat alias — components that don't know about V3 yet default to V1

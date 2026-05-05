@@ -159,7 +159,10 @@ export default function Pro() {
     return <div className="loading">Loading…</div>;
   }
 
-  const isPro = !!status?.is_pro;
+  // Superusers get full Pro feature access for testing/admin previews without
+  // needing a Stripe purchase against their account.
+  const suKey = (() => { try { return sessionStorage.getItem('superuserKey'); } catch { return null; } })();
+  const isPro = !!status?.is_pro || !!suKey;
 
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto' }}>

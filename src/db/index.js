@@ -6721,6 +6721,10 @@ async function getHomeStats(seasonId = null) {
       SELECT
         m.match_id, m.date, m.radiant_win, m.duration, m.lobby_name,
         (SELECT SUM(ps2.kills) FROM player_stats ps2 WHERE ps2.match_id = m.match_id)::int AS total_kills,
+        (SELECT COALESCE(SUM(psr.kills), 0) FROM player_stats psr
+          WHERE psr.match_id = m.match_id AND psr.team = 'radiant')::int AS radiant_score,
+        (SELECT COALESCE(SUM(psd.kills), 0) FROM player_stats psd
+          WHERE psd.match_id = m.match_id AND psd.team = 'dire')::int AS dire_score,
         (SELECT ps3.persona_name FROM player_stats ps3
           WHERE ps3.match_id = m.match_id AND ps3.kills IS NOT NULL
           ORDER BY ps3.kills DESC LIMIT 1) AS top_killer,

@@ -411,7 +411,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.68 — <Link to="/patch-notes">Patch notes</Link>
+            v5.69 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>

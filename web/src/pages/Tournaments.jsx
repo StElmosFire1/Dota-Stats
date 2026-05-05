@@ -820,10 +820,10 @@ function TournamentList() {
             else if (t.start_date && now >= new Date(t.start_date) && now < new Date(t.end_date) && t.status === 'upcoming') effectiveStatus = 'active';
           }
           return (
-            <Link key={`${t._type}-${t.id}`} to={href} style={{ textDecoration: 'none' }}>
+            <Link key={`${t._type}-${t.id}`} to={href} style={{ textDecoration: 'none', display: 'block', color: 'inherit' }}>
               <div style={{
                 background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-                padding: 20, height: '100%', boxSizing: 'border-box',
+                padding: 20, height: '100%', boxSizing: 'border-box', cursor: 'pointer',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>{t.name}</span>

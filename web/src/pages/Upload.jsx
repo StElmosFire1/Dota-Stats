@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { uploadReplayChunked, getUploadStatus, getDuplicateMatches } from '../api';
 import { useAdmin } from '../context/AdminContext';
+import { useSuperuser } from '../context/SuperuserContext';
 
 const MAX_POLL_RETRIES = 10;
 const STORAGE_KEY = 'uploadQueue';
@@ -84,14 +85,19 @@ function FileQueueItem({ item }) {
 }
 
 export default function Upload() {
-  const { isAdmin, adminKey, setShowModal } = useAdmin();
+  const { isAdmin: isAdminUser, adminKey, setShowModal } = useAdmin();
+  const { isSuperuser, superuserKey, setShowModal: setShowSuperuserModal } = useSuperuser();
+  // Superuser sessions get the same upload privileges as the legacy admin key.
+  const isAdmin = isAdminUser || isSuperuser;
+  const effectiveAdminKey = adminKey || superuserKey;
+  const promptLogin = () => (isSuperuser || isAdminUser ? null : (setShowSuperuserModal || setShowModal)(true));
   const [queue, setQueue] = useState(() => loadPersistedQueue());
   const [patch, setPatch] = useState(() => localStorage.getItem('uploadPatch') || '');
   const [dupScanState, setDupScanState] = useState('idle');
   const [dupResults, setDupResults] = useState(null);
   const fileRef = useRef(null);
-  const adminKeyRef = useRef(adminKey);
-  useEffect(() => { adminKeyRef.current = adminKey; }, [adminKey]);
+  const adminKeyRef = useRef(effectiveAdminKey);
+  useEffect(() => { adminKeyRef.current = effectiveAdminKey; }, [effectiveAdminKey]);
   const pollingJobsRef = useRef(new Set());
   const uploadingRef = useRef(new Set());
   const unmountedRef = useRef(false);
@@ -219,13 +225,13 @@ export default function Upload() {
   }, []);
 
   useEffect(() => {
-    if (!adminKey) return;
+    if (!effectiveAdminKey) return;
 
     const pendingWithFiles = queue.filter(i => i.status === 'pending' && i.file && !uploadingRef.current.has(i.id));
     for (const item of pendingWithFiles) {
       uploadSingleFile(item);
     }
-  }, [queue, adminKey, uploadSingleFile]);
+  }, [queue, effectiveAdminKey, uploadSingleFile]);
 
   const addFiles = useCallback((fileList) => {
     const validFiles = Array.from(fileList).filter(
@@ -263,7 +269,7 @@ export default function Upload() {
     setDupScanState('scanning');
     setDupResults(null);
     try {
-      const results = await getDuplicateMatches(adminKey);
+      const results = await getDuplicateMatches(effectiveAdminKey);
       setDupResults(results);
       setDupScanState('done');
     } catch (err) {
@@ -288,7 +294,7 @@ export default function Upload() {
 
       {!isAdmin && (
         <div className="status-message" style={{ marginBottom: 16 }}>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>Login as admin</button>
+          <button className="btn btn-primary" onClick={promptLogin}>Login as admin</button>
           {' '}to upload replays.
         </div>
       )}
@@ -370,7 +376,7 @@ export default function Upload() {
 
       {!isAdmin && queue.length > 0 && pendingCount > 0 && (
         <div className="status-message error">
-          <p><button className="btn btn-small" onClick={() => setShowModal(true)}>Login as admin</button> to start uploading.</p>
+          <p><button className="btn btn-small" onClick={promptLogin}>Login as admin</button> to start uploading.</p>
         </div>
       )}
 
