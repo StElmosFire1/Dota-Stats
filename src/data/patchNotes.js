@@ -777,6 +777,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "5.73",
+    "title": "Draft Sandbox — player hover tooltip with KDA, win rate, preferred positions",
+    "published_at": "2026-05-05",
+    "content": "Hovering any player card in the **`/admin/draft-sandbox`** captain-pick simulator now pops a Court & Pitch tooltip showing the player's **KDA ratio**, **win rate** (colour-coded green/amber/red), **games played**, **MMR**, **preferred positions** as coloured pos-pips, and a **top-3 hero** list.\n\nThe sandbox player pool is fully fabricated demo data (10 placeholder players modeled on Dota pros — Miracle, Topson, Ceb, JerAx, N0tail, Arteezy, SumaiL, Universe, Cr1t-, Fly), so the per-player flair labels (\"Carry GOAT\", \"Mid lord\", \"Off-lane bruiser\", etc.) and the new stat numbers are also demo values — nothing is pulled from the live database. The tooltip layout is what matters; the values exist purely so admins can preview the populated state. Hovered card also gets an amber border highlight so it's obvious which row the tooltip belongs to.\n\nFooter version bump: v5.72 → v5.73.",
+    "author": "System"
+  },
+  {
     "version": "5.72",
     "title": "Tournament card click fix · Steam SITE_URL warning · interactive Profile Sandbox · Draft Sandbox redesign · community→full nickname sync script",
     "published_at": "2026-05-05",

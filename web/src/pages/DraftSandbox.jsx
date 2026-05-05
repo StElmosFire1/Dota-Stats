@@ -2,17 +2,21 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 
+// Placeholder players for the sandbox. `kda` / `winRate` / `games` /
+// `prefPos` / `topHeroes` are all fabricated demo numbers — nothing here is
+// pulled from the live database. They exist purely to populate the hover
+// tooltip in the captain-pick UI so admins can preview the layout.
 const PLACEHOLDER_PLAYERS = [
-  { id: 1001, name: 'Miracle-',     mmr: 8200, pos: '1', flair: 'Carry GOAT' },
-  { id: 1002, name: 'Topson',       mmr: 7950, pos: '2', flair: 'Mid lord' },
-  { id: 1003, name: 'Ceb',          mmr: 7100, pos: '3', flair: 'Off-lane bruiser' },
-  { id: 1004, name: 'JerAx',        mmr: 6900, pos: '4', flair: 'Roamer' },
-  { id: 1005, name: 'N0tail',       mmr: 7400, pos: '5', flair: 'Captain' },
-  { id: 1006, name: 'Arteezy',      mmr: 8050, pos: '1', flair: 'Mr. Farm' },
-  { id: 1007, name: 'SumaiL',       mmr: 7800, pos: '2', flair: 'King of Mid' },
-  { id: 1008, name: 'Universe',     mmr: 6800, pos: '3', flair: '6m Echo' },
-  { id: 1009, name: 'Cr1t-',        mmr: 6700, pos: '4', flair: 'Vision king' },
-  { id: 1010, name: 'Fly',          mmr: 7000, pos: '5', flair: 'Captain' },
+  { id: 1001, name: 'Miracle-',  mmr: 8200, pos: '1', flair: 'Carry GOAT',       kda: 4.8, winRate: 64, games: 412, prefPos: ['1', '2'], topHeroes: ['Anti-Mage', 'Invoker', 'Phantom Lancer'] },
+  { id: 1002, name: 'Topson',    mmr: 7950, pos: '2', flair: 'Mid lord',         kda: 3.9, winRate: 61, games: 388, prefPos: ['2', '3'], topHeroes: ['Monkey King', 'Magnus', 'Tiny'] },
+  { id: 1003, name: 'Ceb',       mmr: 7100, pos: '3', flair: 'Off-lane bruiser', kda: 3.2, winRate: 58, games: 356, prefPos: ['3', '4'], topHeroes: ['Mars', 'Centaur', 'Beastmaster'] },
+  { id: 1004, name: 'JerAx',     mmr: 6900, pos: '4', flair: 'Roamer',           kda: 4.1, winRate: 60, games: 340, prefPos: ['4', '5'], topHeroes: ['Earth Spirit', 'Tusk', 'Pudge'] },
+  { id: 1005, name: 'N0tail',    mmr: 7400, pos: '5', flair: 'Captain',          kda: 3.6, winRate: 63, games: 401, prefPos: ['5', '4'], topHeroes: ['IO', 'Treant', 'Grimstroke'] },
+  { id: 1006, name: 'Arteezy',   mmr: 8050, pos: '1', flair: 'Mr. Farm',         kda: 4.5, winRate: 59, games: 470, prefPos: ['1', '2'], topHeroes: ['Spectre', 'Naga Siren', 'Terrorblade'] },
+  { id: 1007, name: 'SumaiL',    mmr: 7800, pos: '2', flair: 'King of Mid',      kda: 4.2, winRate: 60, games: 433, prefPos: ['2', '1'], topHeroes: ['Storm Spirit', 'Ember', 'Lina'] },
+  { id: 1008, name: 'Universe',  mmr: 6800, pos: '3', flair: '6m Echo',          kda: 2.9, winRate: 56, games: 318, prefPos: ['3'],      topHeroes: ['Earthshaker', 'Tidehunter', 'Dark Seer'] },
+  { id: 1009, name: 'Cr1t-',     mmr: 6700, pos: '4', flair: 'Vision king',      kda: 3.4, winRate: 57, games: 295, prefPos: ['4', '5'], topHeroes: ['Rubick', 'Mirana', 'Snapfire'] },
+  { id: 1010, name: 'Fly',       mmr: 7000, pos: '5', flair: 'Captain',          kda: 3.1, winRate: 62, games: 367, prefPos: ['5'],      topHeroes: ['Disruptor', 'Hoodwink', 'Ogre Magi'] },
 ];
 
 // Captain pick order for a 1-2-2-2-1 alternating format (8 picks total).
@@ -41,17 +45,86 @@ const POS_COLOR = {
   '5': '#a78bfa',
 };
 
+// Floating tooltip card shown on player hover. Renders absolutely positioned
+// over the card itself so it appears next to whatever was hovered without
+// needing portal mechanics. Uses pointerEvents:'none' so it doesn't steal
+// hover state from the underlying card.
+function PlayerHoverCard({ p }) {
+  const winColor = p.winRate >= 60 ? CP.radiant : p.winRate >= 50 ? CP.amber : CP.dire;
+  return (
+    <div style={{
+      position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 50,
+      width: 280, padding: '12px 14px', borderRadius: 6,
+      background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
+      border: `1px solid ${CP.brass}`, borderLeft: `3px solid ${CP.amber}`,
+      boxShadow: `0 8px 24px ${CP.inkNavy}cc, 0 0 0 1px ${CP.brass}33`,
+      pointerEvents: 'none', fontFamily: FONT_CONDENSED, color: CP.parchment,
+    }}>
+      <div style={{
+        fontSize: 10, color: CP.brass, letterSpacing: 2,
+        borderBottom: `1px solid ${CP.brass}33`, paddingBottom: 6, marginBottom: 8,
+      }}>
+        ━ PLAYER STATS ━
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 14px', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2 }}>KDA RATIO</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: CP.amber }}>{p.kda.toFixed(2)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2 }}>WIN RATE</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: winColor }}>{p.winRate}%</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2 }}>GAMES</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: CP.parchment }}>{p.games}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2 }}>MMR</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: CP.parchment }}>{p.mmr}</div>
+        </div>
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2, marginBottom: 4 }}>PREFERRED POSITIONS</div>
+        <div style={{ display: 'flex', gap: 5 }}>
+          {(p.prefPos || []).map(pos => (
+            <span key={pos} style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 22, height: 22, borderRadius: '50%',
+              background: POS_COLOR[pos] || '#888', color: CP.inkNavy,
+              fontSize: 11, fontWeight: 800,
+            }}>{pos}</span>
+          ))}
+        </div>
+      </div>
+      {p.topHeroes && p.topHeroes.length > 0 && (
+        <div>
+          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2, marginBottom: 3 }}>TOP HEROES</div>
+          <div style={{ fontSize: 12, color: CP.parchment, fontFamily: '"Inter", sans-serif', lineHeight: 1.4 }}>
+            {p.topHeroes.join(' · ')}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlayerCard({ p, onPick, disabled, picked, team }) {
+  const [hover, setHover] = useState(false);
   const teamColor = team === 1 ? CP.radiant
                   : team === 2 ? CP.dire
                   : `${CP.brass}55`;
   return (
-    <div style={{
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+      position: 'relative',
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '12px 14px', borderRadius: 6,
       background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
-      border: `1px solid ${teamColor}`,
-      borderLeft: `3px solid ${teamColor}`,
+      border: `1px solid ${hover ? CP.amber : teamColor}`,
+      borderLeft: `3px solid ${hover ? CP.amber : teamColor}`,
       opacity: picked && !team ? 0.4 : 1,
       transition: 'transform 100ms, border-color 100ms',
     }}>
@@ -93,6 +166,7 @@ function PlayerCard({ p, onPick, disabled, picked, team }) {
           PICK →
         </button>
       )}
+      {hover && <PlayerHoverCard p={p} />}
     </div>
   );
 }
