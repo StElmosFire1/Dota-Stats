@@ -34,6 +34,7 @@ const MultiKills = lazy(() => import('./pages/MultiKills'));
 const WardMap = lazy(() => import('./pages/WardMap'));
 const Records = lazy(() => import('./pages/Records'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const DraftSandbox = lazy(() => import('./pages/DraftSandbox'));
 const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
 const Social = lazy(() => import('./pages/Social'));
@@ -411,7 +412,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.70 — <Link to="/patch-notes">Patch notes</Link>
+            v5.71 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>
@@ -477,6 +478,7 @@ export default function App() {
                 <Route path="/ward-map" element={<WardMap />} />
                 <Route path="/records" element={<Records />} />
                 <Route path="/admin" element={<AdminPanel />} />
+                <Route path="/admin/draft-sandbox" element={<DraftSandbox />} />
                 <Route path="/pudge-stats" element={<PudgeStats />} />
                 <Route path="/schedule" element={<Schedule />} />
                 <Route path="/inhouse" element={<Inhouse />} />

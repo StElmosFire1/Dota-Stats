@@ -2228,6 +2228,7 @@ export default function AdminPanel() {
     { label: 'Broadcast Ticker (CMS)', tab: 'config', anchor: 'ap-anchor-broadcast-ticker', icon: '📢', kw: 'announcement banner' },
     { label: 'Welcome Modal (CMS)', tab: 'config', anchor: 'ap-anchor-welcome-modal', icon: '📣', kw: 'popup intro onboarding cta' },
     { label: 'Tier Ladder Preview', tab: 'config', anchor: 'ap-anchor-tier-ladder', icon: '🎖️', kw: 'rank tier symbol badge ladder reference' },
+    { label: 'Draft Sandbox', tab: 'steambot', anchor: 'ap-anchor-draft-sandbox', icon: '🎮', kw: 'draft pick captain test simulator placeholder dummy lobby inhouse' },
     { label: 'Dota 2 Rank Management', tab: 'users', anchor: 'ap-anchor-rank-management', icon: '🎖️', kw: 'rank tier players' },
     { label: 'Manage Nicknames (Players page)', tab: 'users', anchor: 'ap-anchor-nicknames', icon: '✏️', kw: 'nickname rename alias display name' },
     { label: 'Profile Preview (sample)', tab: 'users', anchor: 'ap-anchor-profile-preview', icon: '👁️', kw: 'profile customization edit bio title accent pin sample dummy' },
@@ -2448,6 +2449,23 @@ export default function AdminPanel() {
       {activeTab === 'steambot' && (<>
       {/* Steam Bot Controls */}
       <SteamBotPanel superuserKey={superuserKey} />
+
+      {/* Draft Sandbox launcher */}
+      <section className="admin-section" style={{ marginTop: 32 }}>
+        <h2 id="ap-anchor-draft-sandbox" className="section-title" style={{ marginBottom: 6 }}>
+          🎮 Draft Sandbox
+        </h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+          Self-contained client-side simulator of the inhouse captain-pick draft using 10 placeholder
+          players. Lets you walk through the full 8-pick sequence (manual or auto), see the team panels
+          and MMR-balance readout, and verify the draft UX without touching the live lobby, the database,
+          or the Steam bot. Picks made here have <strong>zero side effects</strong>.
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Link to="/admin/draft-sandbox" className="btn btn-primary">▶ Launch Draft Sandbox</Link>
+          <Link to="/admin/draft-sandbox" className="btn" target="_blank" rel="noreferrer">↗ Open in new tab</Link>
+        </div>
+      </section>
       </>)}
 
       {activeTab === 'matches' && (<>

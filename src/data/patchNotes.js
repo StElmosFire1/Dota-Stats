@@ -777,6 +777,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "5.71",
+    "title": "Admin Draft Sandbox — test-run the captain pick flow with placeholder players",
+    "published_at": "2026-05-05",
+    "content": "New admin-only page at **`/admin/draft-sandbox`** (also linked from Admin Panel → Bot Tools → 🎮 Draft Sandbox) that lets you walk through the full inhouse captain-pick draft against 10 placeholder players modeled on real Dota 2 pros (Miracle, Topson, Ceb, JerAx, N0tail, Arteezy, SumaiL, Universe, Cr1t-, Fly).\n\n**What it does:**\n- Uses the standard **1-2-2-2-1** alternating captain pick order (8 picks total) with two captains drawn from the placeholder pool.\n- Renders both team panels with their captain, position-coloured player chips, slot placeholders, and a running MMR-balance readout (green when |Δ| < 1500, amber otherwise).\n- Manual pick mode: while a captain is on the clock, the **Pick →** button on any pool player assigns them.\n- 🤖 **Auto-pick next** uses a greedy heuristic — highest-MMR pool player whose position the picking team is still missing.\n- ⏩ **Simulate to end** auto-resolves the entire remaining draft for visualising the finished state.\n- 🎲 **Reroll captains** picks two new captains at random and resets the board; ↺ **Reset picks** clears the history but keeps the captains.\n- A pick-order strip across the bottom highlights the current pick number and whose turn each upcoming slot is.\n\n**What it does NOT do:** zero backend writes. Nothing here touches the live `inhouse_session_*` tables, the Steam bot, RCON, or the database. It's a pure client-side simulator for verifying the UX, the pick-order logic, and what a partly-drafted team looks like before standing the real flow up.\n\nIndexed in the admin search (`Cmd-K` for *draft / pick / captain / simulator / placeholder*).\n\n**Footer version bump:** v5.70 → v5.71.",
+    "author": "System"
+  },
+  {
     "version": "5.70",
     "title": "Steam sign-in fix, Welcome Modal preview tooling, admin Tier Ladder + Nicknames + Profile Preview",
     "published_at": "2026-05-05",
