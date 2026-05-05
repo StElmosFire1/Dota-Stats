@@ -116,7 +116,15 @@ export async function deletePatchNote(id, superuserKey) {
 }
 
 async function fetchJson(url) {
-  const res = await fetch(BASE + url);
+  // For tournament endpoints we explicitly opt out of the HTTP cache because
+  // service workers / CDNs that pre-cached a listing before v5.77's
+  // server-side `Cache-Control: no-store` shipped will otherwise keep
+  // serving deleted rows, leading to "click → Tournament not found"
+  // mismatches between the listing and the detail page.
+  const init = /\/(tournaments|weekend-tournaments)(\b|\/)/.test(url)
+    ? { cache: 'no-store' }
+    : undefined;
+  const res = await fetch(BASE + url, init);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     const err = new Error(data.error || `Request failed: ${res.status}`);

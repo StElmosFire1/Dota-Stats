@@ -366,25 +366,45 @@ const TICKER_DEFAULT_ITEMS = [
 
 function BroadcastTicker() {
   const [cfg, setCfg] = React.useState({ enabled: true, items: TICKER_DEFAULT_ITEMS });
+
+  const applyValue = React.useCallback((raw) => {
+    try {
+      const v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (v && typeof v === 'object') {
+        const items = Array.isArray(v.items) && v.items.length > 0
+          ? v.items.map(s => String(s || '').trim()).filter(Boolean)
+          : TICKER_DEFAULT_ITEMS;
+        setCfg({ enabled: v.enabled !== false, items });
+      }
+    } catch {}
+  }, []);
+
+  const refetch = React.useCallback(() => {
+    return fetch('/api/settings/broadcast-ticker', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.value) applyValue(d.value); })
+      .catch(() => {});
+  }, [applyValue]);
+
   React.useEffect(() => {
     let cancelled = false;
-    fetch('/api/settings/broadcast-ticker')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled || !d?.value) return;
-        try {
-          const v = typeof d.value === 'string' ? JSON.parse(d.value) : d.value;
-          if (v && typeof v === 'object') {
-            const items = Array.isArray(v.items) && v.items.length > 0
-              ? v.items.map(s => String(s || '').trim()).filter(Boolean)
-              : TICKER_DEFAULT_ITEMS;
-            setCfg({ enabled: v.enabled !== false, items });
-          }
-        } catch {}
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+    refetch();
+    // Same-tab fast path: AdminPanel dispatches this after a successful save
+    // so the live bar at the top of the page reflects the change without a
+    // full reload (the previous behaviour — fetch-once-on-mount — was the
+    // root cause of "ticker not updating after saving").
+    const onUpdated = (e) => { if (!cancelled && e?.detail) applyValue(e.detail); };
+    // Cross-tab safety net: if another admin saves in another tab, refetch
+    // when this tab regains focus.
+    const onVisible = () => { if (!cancelled && document.visibilityState === 'visible') refetch(); };
+    window.addEventListener('broadcast-ticker-updated', onUpdated);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('broadcast-ticker-updated', onUpdated);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refetch, applyValue]);
 
   if (!cfg.enabled || cfg.items.length === 0) return null;
   const loop = [...cfg.items, ...cfg.items];
@@ -414,7 +434,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.77 — <Link to="/patch-notes">Patch notes</Link>
+            v5.78 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>

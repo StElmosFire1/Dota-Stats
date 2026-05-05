@@ -190,7 +190,16 @@ function createServer(startupStatus = {}) {
   // from being sent on cross-site POST/PUT/DELETE requests. Combined with
   // strict CORS origin allow-listing above, this blocks the standard CSRF
   // vector without requiring per-request CSRF tokens.
-  if (inProd) app.set('trust proxy', 1); // honour X-Forwarded-Proto from reverse proxy
+  // Trust the first hop reverse proxy in EVERY environment so req.protocol /
+  // req.get('host') reflect what the *browser* connected to (https + canonical
+  // domain) — not the bot↔nginx hop which is plain http on localhost.
+  // Previously this was gated on NODE_ENV==='production'; if PM2 booted the
+  // bot without NODE_ENV set, trust-proxy was OFF and steamBaseUrl() handed
+  // Steam an http:// realm while the user's browser was on https://, so
+  // OpenID rejected the verify and the visitor landed back signed-out.
+  // It is safe in dev too: with no proxy in front, the X-Forwarded-* headers
+  // simply aren't set and req.protocol falls back to the connection scheme.
+  app.set('trust proxy', 1);
   app.use(session({
     name: 'oi.sid',
     secret: sessionSecret,

@@ -1686,10 +1686,19 @@ function BroadcastTickerPanel({ superuserKey }) {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Failed');
+      let parsedValue = null;
       try {
-        const parsed = JSON.parse(d.setting.value);
-        setCfg(parsed);
-        setText((parsed.items || []).join('\n'));
+        parsedValue = JSON.parse(d.setting.value);
+        setCfg(parsedValue);
+        setText((parsedValue.items || []).join('\n'));
+      } catch {}
+      // Notify the live <BroadcastTicker/> mounted in App.jsx so the bar
+      // updates without a full page reload (and without waiting for the
+      // visibilitychange refetch).
+      try {
+        window.dispatchEvent(new CustomEvent('broadcast-ticker-updated', {
+          detail: parsedValue || { enabled: !!cfg.enabled, items },
+        }));
       } catch {}
       setMsg('Saved.');
     } catch (e) {
