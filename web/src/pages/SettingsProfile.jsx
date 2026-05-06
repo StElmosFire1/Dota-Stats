@@ -148,8 +148,15 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
     }
     setSaving(true);
     try {
+      // PUT (re-link) when the user already has a Discord ID on file — the
+      // server's POST path 409s on a different existing link to protect the
+      // first-login modal from silently overwriting. PUT runs the same
+      // verify-and-DM round-trip but allows replacing the existing ID
+      // atomically. POST is still used for the initial link so a brand-new
+      // signup goes through the canonical onboarding path.
+      const isRelink = Boolean(initial);
       const res = await fetch('/api/me/link-discord', {
-        method: 'POST', credentials: 'include',
+        method: isRelink ? 'PUT' : 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ discord_id: cleaned }),
       });
@@ -157,9 +164,13 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
       if (!res.ok) {
         setError(body.error || 'Could not save your Discord ID.');
       } else {
-        setMsg('Discord ID saved.');
+        setMsg(
+          isRelink
+            ? 'Discord account updated. Check your DMs for confirmation.'
+            : 'Discord ID saved. Check your DMs for confirmation.'
+        );
         if (typeof refreshMe === 'function') refreshMe().catch(() => {});
-        setTimeout(() => setMsg(null), 2500);
+        setTimeout(() => setMsg(null), 3500);
       }
     } catch (e) {
       setError(e.message || 'Network error.');

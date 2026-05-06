@@ -485,9 +485,15 @@ function createServer(startupStatus = {}) {
     const accountId = req.session.accountId;
 
     // Idempotency / collision guard — same rules as POST /api/me/link-discord.
+    // Task 102: when the OAuth round-trip was started from /settings/profile
+    // (returnKey === 'settings', i.e. the user clicked *Reconnect with
+    // Discord*), allow replacing an existing different Discord ID — they
+    // explicitly asked to re-link. The home/modal entry point still 409s so
+    // a stale first-login modal can never silently overwrite.
+    const allowRelink = returnKey === 'settings';
     try {
       const existing = await db.getDiscordIdByAccountId(accountId);
-      if (existing && existing !== discordId) {
+      if (existing && existing !== discordId && !allowRelink) {
         return back({ discord_link: 'error', reason: 'already_linked_other' });
       }
       if (existing === discordId) {
@@ -1093,6 +1099,66 @@ function createApiRouter(startupStatus = {}) {
       res.json({ ok: true, discord_id: saved, verified_username: verification.username || null });
     } catch (err) {
       console.error('[me/link-discord] failed for account', accountId, ':', err.message);
+      res.status(500).json({ error: 'Could not save your Discord ID. Try again in a moment.' });
+    }
+  });
+
+  // PUT /api/me/link-discord — self-service *re-link* path (task 102).
+  //
+  // POST above intentionally 409s if the caller already has a different
+  // Discord ID linked, so the first-login modal can never silently overwrite
+  // an existing link on a stale page. But a real user who lost access to
+  // their old Discord account, or made a new one, needs a way to update
+  // themselves without bugging an admin to run the superuser setDiscordId.
+  //
+  // PUT runs the *same* verify-and-DM round-trip the POST does — the bot
+  // must be able to fetch the new Discord user AND DM them — and only then
+  // overwrites the existing nicknames.discord_id row in place. The DB write
+  // itself is a single UPDATE so the previous ID is replaced atomically with
+  // no orphaned half-linked state.
+  router.put('/me/link-discord', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam first.' });
+    const raw = (req.body?.discord_id || '').toString().trim();
+    if (!/^\d{17,19}$/.test(raw)) {
+      return res.status(400).json({ error: 'That doesn\'t look like a Discord User ID. It should be 17–19 digits.' });
+    }
+
+    // No-op short-circuit: if the user re-saves the same ID we already have,
+    // skip the verify/DM round-trip so they aren't spammed with confirmation
+    // DMs every time they hit Save.
+    try {
+      const existing = await db.getDiscordIdByAccountId(accountId);
+      if (existing === raw) {
+        return res.json({ ok: true, discord_id: existing, alreadyLinked: true });
+      }
+    } catch (err) {
+      console.error('[me/link-discord PUT] existing-link check failed:', err.message);
+      return res.status(503).json({ error: 'Could not check your existing link right now. Try again in a moment.' });
+    }
+
+    let verification;
+    try {
+      const bot = getDiscordBot();
+      verification = await bot.verifyAndConfirmDiscordId(raw);
+    } catch (err) {
+      console.error('[me/link-discord PUT] verify threw for account', accountId, ':', err.message);
+      return res.status(503).json({ error: 'Discord verification is unavailable right now. Try again in a moment.' });
+    }
+    if (!verification?.ok) {
+      const transient = verification?.code === 'not_ready' || verification?.code === 'unknown';
+      const status = transient ? 503 : 400;
+      return res.status(status).json({
+        error: verification?.error || 'Could not verify that Discord ID.',
+        code: verification?.code || 'unknown',
+      });
+    }
+
+    try {
+      const saved = await db.linkOwnDiscordId(accountId, raw);
+      res.json({ ok: true, discord_id: saved, verified_username: verification.username || null, relinked: true });
+    } catch (err) {
+      console.error('[me/link-discord PUT] failed for account', accountId, ':', err.message);
       res.status(500).json({ error: 'Could not save your Discord ID. Try again in a moment.' });
     }
   });
