@@ -4941,6 +4941,28 @@ NOTES
     }
   });
 
+  // Superuser-only — Stripe configuration status (Task #113).
+  // Returns whether STRIPE_SECRET_KEY is set so the admin panel can warn the
+  // operator when payments are silently disabled, instead of waiting for a
+  // user report of "Payments are not configured."
+  router.get('/admin/stripe-status', requireSuperuser, async (req, res) => {
+    try {
+      let coachingFlagState = 'off';
+      try {
+        const flag = await db.getFeatureFlag('coaching_marketplace');
+        coachingFlagState = flag?.state || 'off';
+      } catch (_) { /* table may be missing — treat as off */ }
+      res.json({
+        configured: Boolean(process.env.STRIPE_SECRET_KEY),
+        webhook_configured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+        coaching_marketplace_state: coachingFlagState,
+      });
+    } catch (err) {
+      console.error('[API] admin/stripe-status error:', err.message);
+      res.status(500).json({ error: 'Failed to read Stripe status' });
+    }
+  });
+
   // Superuser-only — full state for the admin panel.
   router.get('/admin/feature-flags', requireSuperuser, async (req, res) => {
     try {

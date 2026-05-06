@@ -1854,6 +1854,64 @@ function TierLadderPreview() {
   );
 }
 
+// Task #113 — Stripe configuration banner.
+// Sits at the top of the Site Settings tab so an admin notices immediately
+// when STRIPE_SECRET_KEY is missing in the current environment, rather than
+// finding out via a user report of "Payments are not configured" on the
+// coaching apply CTA. Reads /api/admin/stripe-status (superuser-only).
+function StripeStatusBanner({ superuserKey }) {
+  const [status, setStatus] = React.useState(null);
+  const [err, setErr] = React.useState('');
+
+  React.useEffect(() => {
+    if (!superuserKey) return;
+    superuserFetch('/api/admin/stripe-status', { headers: { 'x-superuser-key': superuserKey } })
+      .then(r => r.json())
+      .then(d => { if (d.error) setErr(d.error); else setStatus(d); })
+      .catch(e => setErr(e.message));
+  }, [superuserKey]);
+
+  if (err) {
+    return (
+      <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)', fontSize: 13, color: '#fca5a5' }}>
+        Stripe status check failed: {err}
+      </div>
+    );
+  }
+  if (!status) return null;
+
+  const flagOn = status.coaching_marketplace_state === 'on' || status.coaching_marketplace_state === 'preview';
+  if (!status.configured && flagOn) {
+    return (
+      <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.5)', fontSize: 13, color: '#fecaca' }}>
+        <div style={{ fontWeight: 700, color: '#ef4444', marginBottom: 4 }}>⚠️ Stripe not configured</div>
+        <code>STRIPE_SECRET_KEY</code> is missing on this environment, but the
+        coaching marketplace flag is <code>{status.coaching_marketplace_state}</code>.
+        Every coaching checkout / "Continue with Stripe" call will return
+        <em> "Payments are not configured"</em> until the secret is set on the
+        prod host (e.g. <code>~/Dota-Stats-Full/.env</code>) and PM2 is
+        restarted.
+      </div>
+    );
+  }
+  if (!status.configured) {
+    return (
+      <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', fontSize: 12, color: 'var(--text-muted)' }}>
+        ℹ️ <code>STRIPE_SECRET_KEY</code> is not set. Payments are disabled.
+        The coaching marketplace flag is currently <code>off</code>, so no
+        user-facing 503s will fire — but enabling the flag without setting the
+        secret will break the apply / booking flow.
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 8, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.3)', fontSize: 12, color: 'var(--text-muted)' }}>
+      ✓ Stripe configured ({status.webhook_configured ? 'webhook secret set' : 'webhook secret missing'}).
+      Coaching marketplace flag: <code>{status.coaching_marketplace_state}</code>.
+    </div>
+  );
+}
+
 // v5.93 — Coaching Marketplace launch kill-switch.
 // Surfaces the `coaching_marketplace` feature flag in the admin Config tab so
 // it can be flipped between 'on' / 'preview' / 'off' without a DB shell if
@@ -2711,6 +2769,8 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'config' && (<>
+      {/* ── Stripe configuration banner (Task #113) ─────────────────── */}
+      <StripeStatusBanner superuserKey={superuserKey} />
       {/* ── Tier Ladder Preview ──────────────────────────────────────── */}
       <TierLadderPreview />
       {/* ── Coaching Marketplace flag (v5.93 launch kill-switch) ─────── */}

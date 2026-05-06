@@ -209,6 +209,29 @@ async function main() {
     process.exit(1);
   }
 
+  // --- Stripe configuration diagnostic (Task #113) ---
+  // Coaching marketplace returns a generic "Payments are not configured" error
+  // when STRIPE_SECRET_KEY is unset, which is hard to spot in PM2 logs after
+  // the fact. Surface the configuration state at boot, and shout loudly when
+  // the marketplace flag is on (or in preview) but the key is missing.
+  try {
+    const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY);
+    let coachingFlagState = 'off';
+    try {
+      const flag = await db.getFeatureFlag('coaching_marketplace');
+      coachingFlagState = flag?.state || 'off';
+    } catch (_) { /* table may not exist yet on first boot — fall through */ }
+    if (stripeConfigured) {
+      console.log('[Stripe] STRIPE_SECRET_KEY present — payments enabled.');
+    } else if (coachingFlagState === 'on' || coachingFlagState === 'preview') {
+      console.error(`[Stripe] coaching marketplace ${coachingFlagState.toUpperCase()} but STRIPE_SECRET_KEY missing — payouts will 503`);
+    } else {
+      console.log('[Stripe] STRIPE_SECRET_KEY missing — payments disabled (coaching marketplace flag is off).');
+    }
+  } catch (err) {
+    console.warn('[Stripe] startup diagnostic failed:', err.message);
+  }
+
   // --- Web server ---
   const webApp = createServer(startupStatus);
   const webPort = parseInt(process.env.PORT) || 5000;
