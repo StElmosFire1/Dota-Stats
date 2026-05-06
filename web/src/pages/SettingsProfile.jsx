@@ -8,6 +8,7 @@ import {
   FREE_THEMES, PREMIUM_THEMES,
   FREE_FRAMES, PREMIUM_FRAMES,
   BIO_MAX, PINNED_HERO_CAPTION_MAX, DEFAULT_THEME, DEFAULT_FRAME, FRAME_META,
+  HERO_BORDER_COLORS, FREE_FLAIRS, PREMIUM_FLAIRS, SOCIAL_URL_MAX, DEFAULT_EXTRAS,
 } from '../profileCosmetics';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
 
@@ -119,6 +120,11 @@ export default function SettingsProfile() {
   const [framePurchaseLoading, setFramePurchaseLoading] = useState(null);
   const [framePurchaseError, setFramePurchaseError] = useState(null);
 
+  // v5.81 — extras (mockup-graduated knobs). One JSON column on the server.
+  const [extras, setExtras] = useState(DEFAULT_EXTRAS);
+  const setExtra = (k, v) => setExtras(prev => ({ ...prev, [k]: v }));
+  const [achievementsList, setAchievementsList] = useState([]);
+
   const [ownMatches, setOwnMatches] = useState([]);
 
   const accountId = steamUser?.accountId;
@@ -141,6 +147,7 @@ export default function SettingsProfile() {
       setPinnedHeroCaption(c.pinned_hero_caption || '');
       setPinnedMatchId(c.pinned_match_id ? String(c.pinned_match_id) : '');
       setProfileFrame(c.profile_frame || DEFAULT_FRAME);
+      setExtras({ ...DEFAULT_EXTRAS, ...(c.extras || {}) });
       if (c.pinned_hero_id) {
         setPinnedHeroSearch(getHeroName(c.pinned_hero_id) || '');
       }
@@ -164,6 +171,18 @@ export default function SettingsProfile() {
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.recentMatches) setOwnMatches(d.recentMatches);
+      })
+      .catch(() => {});
+  }, [accountId]);
+
+  // Pull the player's earned achievements for the pinned-achievement picker.
+  useEffect(() => {
+    if (!accountId) return;
+    fetch(`/api/players/${accountId}/achievements`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const earned = (d?.achievements || []).filter(a => a.earned && !a.secret);
+        setAchievementsList(earned);
       })
       .catch(() => {});
   }, [accountId]);
@@ -200,6 +219,7 @@ export default function SettingsProfile() {
         pinned_hero_caption: pinnedHeroCaption || null,
         pinned_match_id: pinnedMatchId || null,
         profile_frame: profileFrame || null,
+        extras,
       };
       const res = await fetch('/api/me/profile', {
         method: 'POST', credentials: 'include',
@@ -542,6 +562,118 @@ export default function SettingsProfile() {
                 })}
               </select>
             )}
+          </section>
+
+          {/* v5.81 — Profile extras (mockup-graduated knobs) */}
+          <section style={{ marginTop: 28 }}>
+            <h2 style={{ marginBottom: 4 }}>Profile extras</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0, marginBottom: 12 }}>
+              Toggles and pins from the v5.74 sandbox. Changes show on your public profile after saving.
+            </p>
+
+            {/* Toggles row */}
+            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginBottom: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!extras.show_top_heroes} onChange={(e) => setExtra('show_top_heroes', e.target.checked)} />
+                <span style={{ fontSize: 14 }}>Show most-played heroes strip</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!extras.show_streak} onChange={(e) => setExtra('show_streak', e.target.checked)} />
+                <span style={{ fontSize: 14 }}>Show win/loss streak badge</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isPro ? 'pointer' : 'not-allowed', opacity: isPro ? 1 : 0.55 }}>
+                <input type="checkbox" disabled={!isPro} checked={!!extras.frame_animated} onChange={(e) => setExtra('frame_animated', e.target.checked)} />
+                <span style={{ fontSize: 14 }}>Animated frame shimmer</span>
+                <LockedPill />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isPro ? 'pointer' : 'not-allowed', opacity: isPro ? 1 : 0.55 }}>
+                <input type="checkbox" disabled={!isPro} checked={!!extras.bg_pattern} onChange={(e) => setExtra('bg_pattern', e.target.checked)} />
+                <span style={{ fontSize: 14 }}>Heraldic background pattern</span>
+                <LockedPill />
+              </label>
+            </div>
+
+            {/* Pinned hero border colour */}
+            {pinnedHeroId && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>Pinned-hero border colour</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {HERO_BORDER_COLORS.map(c => {
+                    const selected = (extras.pinned_hero_border || '') === c.value;
+                    return (
+                      <button key={c.label} type="button"
+                        onClick={() => setExtra('pinned_hero_border', c.value || null)}
+                        title={c.label}
+                        style={{
+                          width: 30, height: 30, borderRadius: 8, cursor: 'pointer',
+                          background: c.value || 'transparent',
+                          border: selected ? '3px solid #fff' : '1px solid var(--border)',
+                          backgroundImage: c.value ? undefined : 'linear-gradient(45deg, transparent 45%, var(--text-muted) 45% 55%, transparent 55%)',
+                        }} />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Pinned achievement */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>Pinned achievement</div>
+              {achievementsList.length === 0 ? (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>You haven't earned any pinnable achievements yet.</p>
+              ) : (
+                <select value={extras.pinned_achievement_id || ''}
+                  onChange={(e) => setExtra('pinned_achievement_id', e.target.value || null)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 14 }}>
+                  <option value="">— No pinned achievement —</option>
+                  {achievementsList.map(a => (
+                    <option key={a.key || a.id} value={a.key || a.id}>{a.label || a.title || a.key}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Flair override */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isPro ? 'pointer' : 'not-allowed', opacity: isPro ? 1 : 0.55, marginBottom: 6 }}>
+                <input type="checkbox" disabled={!isPro} checked={!!extras.flair_unlocked} onChange={(e) => setExtra('flair_unlocked', e.target.checked)} />
+                <span style={{ fontSize: 14 }}>Override auto-flair (otherwise we pick one based on your stats)</span>
+                <LockedPill />
+              </label>
+              {extras.flair_unlocked && (
+                <select value={extras.flair_override || ''}
+                  onChange={(e) => setExtra('flair_override', e.target.value || null)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 14 }}>
+                  <option value="">— Auto —</option>
+                  <optgroup label="Free">
+                    {FREE_FLAIRS.filter(f => f).map(f => <option key={f} value={f}>{f}</option>)}
+                  </optgroup>
+                  <optgroup label="Pro">
+                    {PREMIUM_FLAIRS.map(f => <option key={f} value={f} disabled={!isPro}>{f}{isPro ? '' : ' 🔒'}</option>)}
+                  </optgroup>
+                </select>
+              )}
+            </div>
+
+            {/* Social URLs */}
+            <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+              {[
+                { key: 'social_twitch',  label: 'Twitch URL',   placeholder: 'https://twitch.tv/your-name' },
+                { key: 'social_youtube', label: 'YouTube URL',  placeholder: 'https://youtube.com/@you' },
+                { key: 'social_steam',   label: 'Steam profile', placeholder: 'https://steamcommunity.com/id/you' },
+              ].map(s => (
+                <div key={s.key}>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>{s.label}</div>
+                  <input type="url" value={extras[s.key] || ''}
+                    onChange={(e) => setExtra(s.key, e.target.value.slice(0, SOCIAL_URL_MAX) || null)}
+                    placeholder={s.placeholder}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13 }} />
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+              Only https URLs on the official Twitch / YouTube / Steam domains are accepted.
+            </p>
           </section>
 
           <div style={{ marginTop: 28, display: 'flex', gap: 10 }}>

@@ -874,17 +874,58 @@ export default function PlayerProfile() {
           rest of the page. */}
       </div>{/* end profile card frame wrapper */}
 
-      {showProfileCustomization && profileCard && (profileCard.custom_title || profileCard.bio || profileCard.pinned_hero_id || profileCard.pinned_match) && (
-        <div style={{ marginTop: 12, marginBottom: 16 }}>
+      {showProfileCustomization && profileCard && (profileCard.custom_title || profileCard.bio || profileCard.pinned_hero_id || profileCard.pinned_match || profileCard.extras) && (() => {
+        // v5.81 — extras (mockup-graduated knobs). Default empty so the
+        // ?? chain below is safe regardless of whether the row was created
+        // before extras existed.
+        const ex = profileCard.extras || {};
+        const accent = profileCard.theme_accent || '#3b82f6';
+        const flairToShow = (ex.flair_unlocked && ex.flair_override) ? ex.flair_override : null;
+        const pinnedAch = ex.pinned_achievement_id
+          ? (achievements || []).find(a => (a.key || a.id) === ex.pinned_achievement_id) : null;
+        const topHeroes = (data?.heroes || data?.heroStats || []).slice(0, 5);
+        return (
+        <div style={{
+          marginTop: 12, marginBottom: 16,
+          ...(ex.bg_pattern ? {
+            padding: 14, borderRadius: 10,
+            background: `repeating-linear-gradient(45deg, ${accent}10 0 6px, transparent 6px 14px), linear-gradient(180deg, ${accent}18 0%, var(--bg-card) 80%)`,
+          } : {}),
+        }}>
+          {/* Flair + streak chip row */}
+          {(flairToShow || (ex.show_streak !== false && streak && Math.abs(streak) >= 3)) && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              {flairToShow && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                  background: `${accent}22`, color: accent, border: `1px solid ${accent}66`,
+                  letterSpacing: 0.5,
+                }}>✦ {flairToShow}</span>
+              )}
+              {ex.show_streak !== false && streak && Math.abs(streak) >= 3 && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                  background: streak > 0 ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)',
+                  color: streak > 0 ? '#22c55e' : '#ef4444',
+                  border: `1px solid ${streak > 0 ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'}`,
+                }}>
+                  {streak > 0 ? '🔥' : '❄️'} {Math.abs(streak)}-game {streak > 0 ? 'win' : 'loss'} streak
+                </span>
+              )}
+            </div>
+          )}
+
           {(profileCard.custom_title || profileCard.bio) && (
             <div style={{
-              borderLeft: `3px solid ${profileCard.theme_accent || '#3b82f6'}`,
+              borderLeft: `3px solid ${accent}`,
               paddingLeft: 12, marginBottom: 12,
             }}>
               {profileCard.custom_title && (
                 <div style={{
                   fontSize: 14, fontWeight: 700, letterSpacing: 0.5,
-                  color: profileCard.theme_accent || '#3b82f6', textTransform: 'uppercase',
+                  color: accent, textTransform: 'uppercase',
                 }}>{profileCard.custom_title}</div>
               )}
               {profileCard.bio && (
@@ -894,19 +935,24 @@ export default function PlayerProfile() {
               )}
             </div>
           )}
-          {(profileCard.pinned_hero_id || profileCard.pinned_match) && (
+          {(profileCard.pinned_hero_id || profileCard.pinned_match || pinnedAch) && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {profileCard.pinned_hero_id && (
                 <div style={{
                   display: 'flex', gap: 10, alignItems: 'center',
                   padding: '6px 12px', borderRadius: 8,
                   background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderLeft: `3px solid ${profileCard.theme_accent || '#3b82f6'}`,
+                  borderLeft: `3px solid ${accent}`,
                 }}>
                   <img
                     src={getHeroImageUrl(profileCard.pinned_hero_id)}
                     alt=""
-                    style={{ width: 48, height: 27, borderRadius: 3, objectFit: 'cover' }}
+                    style={{
+                      width: 48, height: 27, borderRadius: 3, objectFit: 'cover',
+                      ...(ex.pinned_hero_border
+                        ? { border: `3px solid ${ex.pinned_hero_border}`, boxShadow: `0 0 8px ${ex.pinned_hero_border}66` }
+                        : {}),
+                    }}
                     onError={(e) => { e.target.style.display = 'none'; }}
                   />
                   <div>
@@ -914,6 +960,23 @@ export default function PlayerProfile() {
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{getHeroName(profileCard.pinned_hero_id) || `Hero #${profileCard.pinned_hero_id}`}</div>
                     {profileCard.pinned_hero_caption && (
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{profileCard.pinned_hero_caption}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {pinnedAch && (
+                <div style={{
+                  display: 'flex', gap: 10, alignItems: 'center',
+                  padding: '6px 12px', borderRadius: 8,
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderLeft: `3px solid ${accent}`,
+                }}>
+                  <span style={{ fontSize: 24 }}>{pinnedAch.emoji || pinnedAch.icon || '🏆'}</span>
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📌 Pinned achievement</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{pinnedAch.label || pinnedAch.title || pinnedAch.key}</div>
+                    {(pinnedAch.description || pinnedAch.sub) && (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{pinnedAch.description || pinnedAch.sub}</div>
                     )}
                   </div>
                 </div>
@@ -951,8 +1014,65 @@ export default function PlayerProfile() {
               )}
             </div>
           )}
+
+          {/* v5.81 — Top heroes auto strip */}
+          {ex.show_top_heroes !== false && topHeroes.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
+                Most-played heroes
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {topHeroes.map(h => {
+                  const games = h.games || h.matches || 0;
+                  const wins = h.wins || 0;
+                  const wr = games ? Math.round((wins / games) * 100) : 0;
+                  const heroId = h.hero_id || h.heroId;
+                  return (
+                    <div key={heroId} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '4px 10px', borderRadius: 6,
+                      background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    }}>
+                      <img src={getHeroImageUrl(heroId)} alt="" style={{ width: 32, height: 18, borderRadius: 2 }} />
+                      <div style={{ fontSize: 12 }}>
+                        <div style={{ fontWeight: 700 }}>{getHeroName(heroId) || `#${heroId}`}</div>
+                        <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                          {games}g · <span style={{ color: wr >= 55 ? '#22c55e' : '#f59e0b' }}>{wr}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* v5.81 — Social chips */}
+          {(ex.social_twitch || ex.social_youtube || ex.social_steam) && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {ex.social_twitch && (
+                <a href={ex.social_twitch} target="_blank" rel="noreferrer noopener"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#9146FF', color: '#fff', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}>
+                  📺 Twitch
+                </a>
+              )}
+              {ex.social_youtube && (
+                <a href={ex.social_youtube} target="_blank" rel="noreferrer noopener"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#FF0000', color: '#fff', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}>
+                  ▶️ YouTube
+                </a>
+              )}
+              {ex.social_steam && (
+                <a href={ex.social_steam} target="_blank" rel="noreferrer noopener"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#1b2838', color: '#fff', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}>
+                  🎮 Steam
+                </a>
+              )}
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {/* AI Scouting Report (Pro feature) */}
       {scoutingReport && (

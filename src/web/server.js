@@ -6055,6 +6055,29 @@ NOTES
         }
       }
 
+      // v5.81 — extras (8 mockup-graduated knobs). Validated + Pro-gated.
+      const extrasResult = cosm.validateExtras(body.extras);
+      if (!extrasResult.ok) return res.status(400).json({ error: extrasResult.error });
+      const extras = extrasResult.extras;
+      // Pro-gating on the premium extras
+      if (!isPro && extras.frame_animated) {
+        return res.status(403).json({ error: 'Animated frame is reserved for Pro members' });
+      }
+      if (!isPro && extras.bg_pattern) {
+        return res.status(403).json({ error: 'Heraldic background is reserved for Pro members' });
+      }
+      // If override is off, drop the override string FIRST so an expired Pro
+      // user with a stale premium flair can still save bio/etc edits without
+      // hitting the Pro-gate below. Only enforce Pro on values they're
+      // actively trying to keep using.
+      if (!extras.flair_unlocked) extras.flair_override = null;
+      if (!isPro && extras.flair_unlocked) {
+        return res.status(403).json({ error: 'Custom flair override is reserved for Pro members' });
+      }
+      if (!isPro && cosm.isPremiumFlair(extras.flair_override)) {
+        return res.status(403).json({ error: 'That flair is reserved for Pro members' });
+      }
+
       const saved = await db.setPlayerProfileCustomization(accountId, {
         bio,
         custom_title: customTitle,
@@ -6063,6 +6086,7 @@ NOTES
         pinned_hero_caption: pinnedHeroCaption,
         pinned_match_id: pinnedMatchId,
         profile_frame: profileFrameRaw,
+        extras,
       });
       res.json({ ok: true, customization: saved, is_pro: isPro });
     } catch (err) {

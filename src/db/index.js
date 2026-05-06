@@ -977,6 +977,13 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_profiles_account ON player_profiles (account_id)`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS onboarding_complete BOOLEAN NOT NULL DEFAULT false`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS profile_frame TEXT`);
+    // v5.81 — `extras` JSONB holds the eight new mockup-graduated fields
+    // (pinned_hero_border, pinned_achievement_id, flair_unlocked,
+    // flair_override, show_top_heroes, show_streak, frame_animated,
+    // bg_pattern, social_twitch, social_youtube, social_steam). Stored as
+    // one JSONB so adding/removing knobs in the future doesn't need a
+    // migration. See src/profileCosmetics.js for validation + defaults.
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS extras JSONB NOT NULL DEFAULT '{}'::jsonb`);
 
     // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
     // status: 'pending' (checkout created), 'active' (paid via webhook),
@@ -8835,7 +8842,7 @@ async function getPlayerProfileCustomization(accountId) {
   const r = await p.query(
     `SELECT id, account_id, bio, custom_title, theme_accent,
             pinned_hero_id, pinned_hero_caption, pinned_match_id,
-            profile_frame, created_at, updated_at
+            profile_frame, extras, created_at, updated_at
        FROM player_profiles
       WHERE account_id = $1`,
     [accountId]
@@ -8856,12 +8863,13 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
     pinned_hero_caption = null,
     pinned_match_id = null,
     profile_frame = null,
+    extras = null,
   } = fields;
   const r = await p.query(
     `INSERT INTO player_profiles
        (account_id, bio, custom_title, theme_accent,
-        pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, extras, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::jsonb, '{}'::jsonb), NOW())
      ON CONFLICT (account_id) DO UPDATE
        SET bio = EXCLUDED.bio,
            custom_title = EXCLUDED.custom_title,
@@ -8870,11 +8878,12 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
            pinned_hero_caption = EXCLUDED.pinned_hero_caption,
            pinned_match_id = EXCLUDED.pinned_match_id,
            profile_frame = EXCLUDED.profile_frame,
+           extras = EXCLUDED.extras,
            updated_at = NOW()
      RETURNING id, account_id, bio, custom_title, theme_accent,
                pinned_hero_id, pinned_hero_caption, pinned_match_id,
-               profile_frame, created_at, updated_at`,
-    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame]
+               profile_frame, extras, created_at, updated_at`,
+    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, extras ? JSON.stringify(extras) : null]
   );
   return r.rows[0];
 }

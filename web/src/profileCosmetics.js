@@ -80,3 +80,40 @@ export function isPremiumFrame(f) { return PREMIUM_FRAMES.includes(f); }
 
 export const DEFAULT_THEME = FREE_THEMES[0];
 export const DEFAULT_FRAME = 'none';
+
+// ---------- v5.81 extras (mockup-graduated knobs) ----------
+export const HERO_BORDER_COLORS = [
+  { value: '',        label: 'None' },
+  { value: '#c5a975', label: 'Brass' },
+  { value: '#f59e0b', label: 'Amber' },
+  { value: '#22c55e', label: 'Radiant' },
+  { value: '#ef4444', label: 'Dire' },
+  { value: '#a855f7', label: 'Royal Purple' },
+  { value: '#3b82f6', label: 'Steel Blue' },
+  { value: '#f5efe2', label: 'Parchment' },
+];
+export const FREE_FLAIRS = [
+  '', 'Inhouse Regular', 'Hard Carry', 'Mid Threat', 'Off-Lane Bruiser',
+  'Roaming Support', 'Captain Material', 'Late Night Grinder',
+];
+export const PREMIUM_FLAIRS = [
+  'GOAT', 'Mid Lord', 'Hook Wizard', 'Vision King', 'Comeback King',
+  'First Blood King', 'MVP Magnet', 'Server MVP',
+];
+export const SOCIAL_URL_MAX = 200;
+export function isPremiumFlair(f) { return PREMIUM_FLAIRS.includes(f); }
+
+// Default extras shape — used when the API returns null/undefined.
+export const DEFAULT_EXTRAS = {
+  pinned_hero_border: null,
+  pinned_achievement_id: null,
+  flair_unlocked: false,
+  flair_override: null,
+  show_top_heroes: true,
+  show_streak: true,
+  frame_animated: false,
+  bg_pattern: false,
+  social_twitch: null,
+  social_youtube: null,
+  social_steam: null,
+};
