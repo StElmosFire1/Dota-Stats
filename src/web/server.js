@@ -405,7 +405,7 @@ function createServer(startupStatus = {}) {
     const params = new URLSearchParams({
       client_id: clientId,
       response_type: 'code',
-      scope: 'identify',
+      scope: 'identify guilds.join',
       state,
       redirect_uri: discordOAuthRedirectUri(req),
     });
@@ -537,6 +537,23 @@ function createServer(startupStatus = {}) {
       }
       console.error('[discord-oauth] save failed for account', accountId, ':', err.message);
       return back({ discord_link: 'error', reason: 'save_failed' });
+    }
+
+    // Task 104 — close the last gap in onboarding: also pull the user into the
+    // OCE Inhouse Discord server (if they aren't already in it) and assign the
+    // standard league-member role. Requires the `guilds.join` scope on the
+    // OAuth grant (set above) plus `DISCORD_GUILD_ID` (and optionally
+    // `DISCORD_LEAGUE_MEMBER_ROLE_ID`) configured on the host. Best-effort:
+    // any failure here is logged but does NOT fail the link — the Steam ↔
+    // Discord binding has already been saved and the DM has already gone out,
+    // so the user is in a usable state regardless.
+    try {
+      const bot = getDiscordBot();
+      if (typeof bot.addUserToLeagueGuild === 'function') {
+        await bot.addUserToLeagueGuild(discordId, accessToken);
+      }
+    } catch (err) {
+      console.warn('[discord-oauth] guild add failed for', discordId, ':', err.message);
     }
 
     return back({ discord_link: 'success', username: verification.username || discordUser.username || '' });

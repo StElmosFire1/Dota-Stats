@@ -5728,6 +5728,103 @@ class DiscordBot {
     return { ok: true, username: user.username };
   }
 
+  // Task 104 — pull a freshly-OAuth-linked user into the league's Discord
+  // server and assign them the standard "League Member" role, so brand-new
+  // signups don't have to find and join the server manually.
+  //
+  // Requires:
+  //   • DISCORD_TOKEN              — the bot token (already required for the
+  //                                  rest of the bot)
+  //   • DISCORD_GUILD_ID           — the snowflake of the OCE Inhouse server
+  //   • DISCORD_LEAGUE_MEMBER_ROLE_ID (optional) — the role to attach at join
+  //
+  // The bot account also needs the **CREATE_INSTANT_INVITE** permission in
+  // the target guild for `PUT /guilds/{guild.id}/members/{user.id}` to
+  // succeed, plus **MANAGE_ROLES** if a role is being assigned. The OAuth
+  // grant must include the `guilds.join` scope (the web /auth/discord route
+  // requests it).
+  //
+  // Returns one of:
+  //   { ok: true,  added: true }    — user was newly joined to the guild
+  //   { ok: true,  added: false }   — user was already a member (204 from
+  //                                   Discord); role assignment was still
+  //                                   attempted if configured
+  //   { ok: false, code, error }    — config missing or Discord API rejected
+  //
+  // Never throws — every failure path returns a result object so callers
+  // can log without taking down the surrounding link flow.
+  async addUserToLeagueGuild(discordId, accessToken) {
+    const guildId = process.env.DISCORD_GUILD_ID;
+    const botToken = process.env.DISCORD_TOKEN;
+    const roleId = process.env.DISCORD_LEAGUE_MEMBER_ROLE_ID || null;
+    if (!guildId) {
+      return { ok: false, code: 'guild_not_configured', error: 'DISCORD_GUILD_ID is not set; skipping guild auto-join.' };
+    }
+    if (!botToken) {
+      return { ok: false, code: 'bot_token_missing', error: 'DISCORD_TOKEN is not set; cannot call /guilds/.../members.' };
+    }
+    if (!/^\d{17,19}$/.test(String(discordId))) {
+      return { ok: false, code: 'bad_discord_id', error: 'Invalid Discord user id.' };
+    }
+    if (!accessToken || typeof accessToken !== 'string') {
+      return { ok: false, code: 'no_access_token', error: 'Missing OAuth access token from caller.' };
+    }
+
+    const url = `https://discord.com/api/v10/guilds/${guildId}/members/${discordId}`;
+    const body = { access_token: accessToken };
+    if (roleId && /^\d{17,19}$/.test(roleId)) body.roles = [roleId];
+
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bot ${botToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      console.warn(`[Discord] guild auto-join fetch failed for ${discordId}:`, err.message);
+      return { ok: false, code: 'network', error: err.message };
+    }
+
+    // 201 Created = newly added. 204 No Content = already in the guild
+    // (Discord returns 204 with no body in that case). Both are success.
+    if (res.status === 201) {
+      console.log(`[Discord] guild auto-join: added ${discordId} to guild ${guildId}${roleId ? ` with role ${roleId}` : ''}.`);
+      return { ok: true, added: true };
+    }
+    if (res.status === 204) {
+      console.log(`[Discord] guild auto-join: ${discordId} already in guild ${guildId}; attempting role top-up.`);
+      // The PUT does NOT (re-)assign roles when the member already exists, so
+      // explicitly add the league role via the role-add endpoint. Best-effort.
+      if (roleId && /^\d{17,19}$/.test(roleId)) {
+        try {
+          const roleRes = await fetch(
+            `https://discord.com/api/v10/guilds/${guildId}/members/${discordId}/roles/${roleId}`,
+            { method: 'PUT', headers: { Authorization: `Bot ${botToken}` } },
+          );
+          if (!roleRes.ok && roleRes.status !== 204) {
+            const text = await roleRes.text().catch(() => '');
+            console.warn(`[Discord] guild role-add failed for ${discordId}: ${roleRes.status} ${text.slice(0, 200)}`);
+          }
+        } catch (err) {
+          console.warn(`[Discord] guild role-add threw for ${discordId}:`, err.message);
+        }
+      }
+      return { ok: true, added: false };
+    }
+
+    // Any other status is a real failure — log enough context for ops to
+    // diagnose (missing perms, invalid token, user banned, etc.) but don't
+    // throw, so the caller can degrade gracefully.
+    let detail = '';
+    try { detail = (await res.text()).slice(0, 300); } catch { /* ignore */ }
+    console.warn(`[Discord] guild auto-join failed for ${discordId}: ${res.status} ${detail}`);
+    return { ok: false, code: `http_${res.status}`, error: detail || `HTTP ${res.status}` };
+  }
+
   async shutdown() {
     if (this._coachingReminderTimer) clearInterval(this._coachingReminderTimer);
     if (this._coachingAutoReleaseTimer) clearInterval(this._coachingAutoReleaseTimer);
