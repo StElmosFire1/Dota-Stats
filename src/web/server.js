@@ -375,8 +375,9 @@ function createServer(startupStatus = {}) {
         const session = event.data.object;
         const purpose = session.metadata?.purpose;
         if (purpose === 'tournament_entry') {
-          // 1.7 — per-tournament Stripe self-signup
-          const entry = await db.markTournamentEntryPaid(session.id);
+          // 1.7 — per-tournament Stripe self-signup. v5.92 also stashes the
+          // PaymentIntent so the withdraw/refund flow can issue a refund.
+          const entry = await db.markTournamentEntryPaid(session.id, session.payment_intent || null);
           if (entry) {
             await db.recomputeTournamentPrizePool(entry.tournament_id).catch(() => {});
             console.log('[Stripe] Confirmed tournament entry', entry.id, 'session', session.id);
@@ -3733,12 +3734,14 @@ NOTES
       const {
         name, description, seasonId, format, bracketSize,
         tierNumber, entryFeeCents, signupOpenAt, signupCloseAt,
+        maxParticipants, prizeSplit,
       } = req.body;
       if (!name) return res.status(400).json({ error: 'Name required' });
       const tournament = await db.createTournament({
         name, description, seasonId, format, bracketSize,
         tierNumber, entryFeeCents,
         signupOpenAt, signupCloseAt,
+        maxParticipants, prizeSplit,
         createdBy: req.session?.username,
       });
       res.json({ tournament });
@@ -4174,9 +4177,11 @@ NOTES
         steamId: req.session?.steamId || null,
         stripeSessionId: synthetic, amountCents: 0,
       });
-      // Promote to paid immediately for free events.
-      await db.markTournamentEntryPaid(synthetic).catch(() => {});
-      await db.recomputeTournamentPrizePool(tournamentId).catch(() => {});
+      // Promote to paid immediately for free events. Errors here are
+      // payment-critical (entry without participant mirror), so let them
+      // bubble up to the outer 500 handler instead of swallowing them.
+      await db.markTournamentEntryPaid(synthetic);
+      await db.recomputeTournamentPrizePool(tournamentId);
       res.json({ ok: true, entry });
     } catch (err) {
       console.error('[API] tournament free signup error:', err.message);
@@ -4197,13 +4202,82 @@ NOTES
       if (session.payment_status !== 'paid') {
         return res.status(402).json({ error: 'Payment not completed', status: session.payment_status });
       }
-      const entry = await db.markTournamentEntryPaid(session_id);
+      const entry = await db.markTournamentEntryPaid(session_id, session.payment_intent || null);
       if (entry) await db.recomputeTournamentPrizePool(entry.tournament_id).catch(() => {});
       // SECURITY: scrub stripe_session_id / steam_id from the public response.
       res.json({ entry: _publicEntryFields(entry, isSu), ok: !!entry });
     } catch (err) {
       console.error('[API] tournament entry confirm error:', err.message);
       res.status(500).json({ error: err.message || 'Failed to confirm entry' });
+    }
+  });
+
+  // v5.92 — Unified `/register` endpoint. Dispatches to Stripe checkout for paid
+  // tournaments or a synthetic `paid` entry for free events. Returns either
+  // { url } (redirect to Stripe) or { ok: true, entry } (free signup done).
+  router.post('/tournaments/:id/register', express.json(), async (req, res) => {
+    try {
+      if (!(await _selfSignupVisible(req))) return res.status(404).json({ error: 'Not found' });
+      const t = await db.getTournamentById(req.params.id);
+      if (!t) return res.status(404).json({ error: 'Tournament not found' });
+      // Internally rewrite to /checkout or /free-signup so we keep one set of
+      // auth/eligibility/window/capacity checks rather than duplicating them.
+      const target = (t.entry_fee_cents && t.entry_fee_cents > 0) ? 'checkout' : 'free-signup';
+      req.url = `/tournaments/${req.params.id}/${target}`;
+      return router.handle(req, res);
+    } catch (err) {
+      console.error('[API] tournament register error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to register' });
+    }
+  });
+
+  // v5.92 — Withdraw + refund. Players may withdraw before the tournament
+  // starts (status === 'upcoming'); paid entries get a Stripe refund against
+  // the stored PaymentIntent. Bound to the authenticated Steam session.
+  router.post('/tournaments/:id/withdraw', express.json(), async (req, res) => {
+    try {
+      if (!(await _selfSignupVisible(req))) return res.status(404).json({ error: 'Not found' });
+      const isSu = _isSelfSignupSuperuser(req);
+      const tournamentId = parseInt(req.params.id);
+      const { accountId } = req.body || {};
+      const sessionAccountId = req.session?.accountId;
+      let finalAccountId = sessionAccountId;
+      if (accountId && String(accountId) !== String(sessionAccountId || '')) {
+        if (!isSu) return res.status(403).json({ error: 'You can only withdraw yourself.' });
+        finalAccountId = accountId;
+      }
+      if (!finalAccountId) return res.status(401).json({ error: 'Sign in with Steam to withdraw.' });
+
+      const t = await db.getTournamentById(tournamentId);
+      if (!t) return res.status(404).json({ error: 'Tournament not found' });
+      if (t.status !== 'upcoming') {
+        return res.status(400).json({ error: 'Withdrawals are closed once the tournament has started.' });
+      }
+      const entry = await db.getTournamentEntry(tournamentId, finalAccountId);
+      if (!entry) return res.status(404).json({ error: 'No entry found to withdraw.' });
+      if (entry.status === 'refunded') return res.status(400).json({ error: 'Entry already refunded.' });
+
+      // Issue Stripe refund first; only flip DB state if Stripe accepts it so
+      // we don't end up with a refunded entry the player was never refunded for.
+      if (entry.status === 'paid' && entry.amount_cents > 0) {
+        if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
+        const pi = entry.stripe_payment_intent_id;
+        if (!pi) return res.status(409).json({ error: 'No payment record on file — contact an admin to refund manually.' });
+        try {
+          const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+          await stripe.refunds.create({ payment_intent: pi });
+        } catch (e) {
+          console.error('[API] tournament withdraw refund failed:', e.message);
+          return res.status(502).json({ error: `Refund failed: ${e.message}` });
+        }
+      }
+
+      const updated = await db.markTournamentEntryRefunded(tournamentId, finalAccountId);
+      await db.recomputeTournamentPrizePool(tournamentId).catch(() => {});
+      res.json({ ok: true, entry: _publicEntryFields(updated, isSu) });
+    } catch (err) {
+      console.error('[API] tournament withdraw error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to withdraw' });
     }
   });
 

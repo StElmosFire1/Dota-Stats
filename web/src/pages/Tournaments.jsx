@@ -6,10 +6,13 @@ import {
   clearTournamentMatchWinner, deleteTournament, getAllPlayers,
   getWeekendTournaments, getWeekendTournament, createWeekendTournament,
   linkTournamentMatch, reseedTournamentParticipants,
+  getTournamentEligibility, registerForTournament, withdrawFromTournament,
+  confirmTournamentEntry, getTournamentEntries,
 } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
+import { useSteamAuth } from '../context/SteamAuthContext';
 
 const STATUS_LABELS = { upcoming: '⏳ Upcoming', active: '🏆 Active', completed: '✅ Completed' };
 const STATUS_COLORS = { upcoming: 'var(--text-muted)', active: 'var(--accent-gold, #f59e0b)', completed: 'var(--radiant-color)' };
@@ -299,6 +302,20 @@ function TournamentDetail() {
   const [data, setData] = useState(null);
   const [allPlayers, setAllPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
+  // v5.92 — entries indexed by account_id for Paid/Free/Refunded badges in
+  // the participants list. Fetched lazily; 404 (feature flag off) leaves
+  // the map empty, so the participants list renders unchanged.
+  const [entriesByAccount, setEntriesByAccount] = useState({});
+  const reloadEntries = useCallback(() => {
+    getTournamentEntries(id)
+      .then((res) => {
+        const map = {};
+        for (const e of res?.entries || []) map[String(e.account_id)] = e;
+        setEntriesByAccount(map);
+      })
+      .catch(() => { /* flag off / unauthorized — no badges */ });
+  }, [id]);
+  useEffect(() => { reloadEntries(); }, [reloadEntries]);
   const { isSuperuser, superuserKey } = useSuperuser();
   const isAdmin = isSuperuser;
   const [addSearch, setAddSearch] = useState('');
@@ -486,6 +503,8 @@ function TournamentDetail() {
 
       <TournamentLivePanel tournamentId={id} />
 
+      <TournamentSelfSignupPanel tournament={tournament} onChange={() => { load(); reloadEntries(); }} />
+
       {isAdmin && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button onClick={handleGenerate} style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
@@ -507,7 +526,18 @@ function TournamentDetail() {
             )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {participants.map((p, i) => (
+            {participants.map((p, i) => {
+              // v5.92 — entry badge derived from tournament_entries (Paid/Free/Refunded).
+              // Manually-added participants (no entry row) render no badge.
+              const e = entriesByAccount[String(p.account_id)];
+              let badge = null;
+              if (e) {
+                if (e.status === 'refunded') badge = { text: 'Refunded', bg: 'rgba(239,68,68,0.18)', color: '#fca5a5' };
+                else if (e.status === 'paid' && (e.amount_cents || 0) > 0) badge = { text: 'Paid', bg: 'rgba(34,197,94,0.2)', color: '#4ade80' };
+                else if (e.status === 'paid') badge = { text: 'Free', bg: 'rgba(99,102,241,0.2)', color: '#a5b4fc' };
+                else if (e.status === 'pending') badge = { text: 'Pending', bg: 'rgba(245,158,11,0.18)', color: '#fbbf24' };
+              }
+              return (
               <div
                 key={p.account_id}
                 draggable={isAdmin && tournament.status === 'upcoming'}
@@ -544,12 +574,19 @@ function TournamentDetail() {
                   </span>
                 )}
                 {p.eliminated && <span style={{ fontSize: 11, color: 'var(--accent-red)' }}>OUT</span>}
+                {badge && (
+                  <span title={e.amount_cents ? `$${(e.amount_cents / 100).toFixed(2)}` : undefined}
+                    style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: badge.bg, color: badge.color, letterSpacing: 0.3 }}>
+                    {badge.text}
+                  </span>
+                )}
                 {isAdmin && (
                   <button onClick={() => handleRemoveParticipant(p.account_id)}
                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, padding: 0 }}>✕</button>
                 )}
               </div>
-            ))}
+            );
+            })}
             {participants.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No participants yet.</p>}
           </div>
 
@@ -689,6 +726,9 @@ function TournamentList() {
   const [form, setForm] = useState({
     name: '', description: '', format: 'single_elim', bracketSize: '',
     startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '',
+    // v5.92 — self-signup admin fields.
+    entryFee: '', maxParticipants: '', prizeSplit: '50,30,20',
+    signupOpenAt: '', signupCloseAt: '',
   });
   const [creating, setCreating] = useState(false);
 
@@ -723,9 +763,25 @@ function TournamentList() {
         setShowCreate(false);
         navigate(`/weekend-tournament/${result.tournament.id}`);
       } else {
-        await createTournament({ ...formWithUtcDates, seasonId }, superuserKey);
+        // v5.92 — translate the self-signup admin fields into the API shape.
+        const entryFeeCents = form.entryFee === '' ? 0 : Math.round(Number(form.entryFee) * 100);
+        const maxParticipants = form.maxParticipants === '' ? null : parseInt(form.maxParticipants);
+        let prizeSplit = null;
+        if (form.prizeSplit && form.prizeSplit.trim()) {
+          const parts = form.prizeSplit.split(',').map(s => Number(s.trim())).filter(n => !Number.isNaN(n));
+          if (parts.length > 0) prizeSplit = parts;
+        }
+        await createTournament({
+          ...formWithUtcDates,
+          seasonId,
+          entryFeeCents,
+          maxParticipants,
+          prizeSplit,
+          signupOpenAt: toUtcIso(form.signupOpenAt),
+          signupCloseAt: toUtcIso(form.signupCloseAt),
+        }, superuserKey);
         loadAll();
-        setForm({ name: '', description: '', format: 'single_elim', bracketSize: '', startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '' });
+        setForm({ name: '', description: '', format: 'single_elim', bracketSize: '', startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '', entryFee: '', maxParticipants: '', prizeSplit: '50,30,20', signupOpenAt: '', signupCloseAt: '' });
         setShowCreate(false);
       }
     } catch (e) { alert(e.message); }
@@ -798,6 +854,33 @@ function TournamentList() {
             <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
               Players earn points from every game played during the window. Only their top <strong>{form.gamesToCount}</strong> game scores count toward the final total.
             </div>
+          )}
+          {!isPoints && (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, marginTop: 4 }}>Self sign-up</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Entry fee (AUD, blank = free)</label>
+                  <input type="number" min="0" step="0.01" value={form.entryFee} onChange={e => setForm(f => ({ ...f, entryFee: e.target.value }))} placeholder="0.00" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Prize split (% comma-sep, sums to 100)</label>
+                  <input value={form.prizeSplit} onChange={e => setForm(f => ({ ...f, prizeSplit: e.target.value }))} placeholder="50,30,20" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Max participants (blank = no cap)</label>
+                  <input type="number" min="2" value={form.maxParticipants} onChange={e => setForm(f => ({ ...f, maxParticipants: e.target.value }))} placeholder="16" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Signup opens (optional)</label>
+                  <input type="datetime-local" value={form.signupOpenAt} onChange={e => setForm(f => ({ ...f, signupOpenAt: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Signup closes (optional)</label>
+                  <input type="datetime-local" value={form.signupCloseAt} onChange={e => setForm(f => ({ ...f, signupCloseAt: e.target.value }))} style={inputStyle} />
+                </div>
+              </div>
+            </>
           )}
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Description (optional)</label>
@@ -905,6 +988,164 @@ function TournamentList() {
         })}
       </div>
     </div>
+  );
+}
+
+// v5.92 — Self-signup Register/Withdraw widget that sits between the live
+// prize-pool ticker and the admin tools on the tournament detail page. Only
+// renders when the `tournament_self_signup` flag is on (server returns 404
+// from /eligibility otherwise, which we treat as "feature off → hide UI").
+function TournamentSelfSignupPanel({ tournament, onChange }) {
+  const { steamUser } = useSteamAuth();
+  const accountId = steamUser?.accountId;
+  const [eligibility, setEligibility] = useState(null);
+  const [hidden, setHidden] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  // Confirm a Stripe redirect-back (?signup=success&session_id=...) so the
+  // entry flips to paid even if the webhook is delayed.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('signup');
+    const sid = params.get('session_id');
+    if (status === 'success' && sid) {
+      confirmTournamentEntry(tournament.id, sid).catch(() => {}).finally(() => {
+        // Strip the query so a refresh doesn't re-confirm.
+        const url = new URL(window.location.href);
+        url.searchParams.delete('signup');
+        url.searchParams.delete('session_id');
+        window.history.replaceState({}, '', url.toString());
+        if (typeof onChange === 'function') onChange();
+      });
+      setMsg({ kind: 'ok', text: 'Payment confirmed — you are entered!' });
+    } else if (status === 'cancelled') {
+      setMsg({ kind: 'warn', text: 'Checkout cancelled — you have not been charged.' });
+    }
+  }, [tournament.id, onChange]);
+
+  // Flag probe — runs regardless of login status. /entries is gated by
+  // _selfSignupVisible on the server and 404s when the flag is off, so a
+  // failed fetch with status 404 = feature off → hide the panel entirely.
+  // This must NOT depend on `accountId` or signed-out users would see the
+  // signup CTA when the feature is disabled.
+  useEffect(() => {
+    let cancelled = false;
+    getTournamentEntries(tournament.id).catch((e) => {
+      if (!cancelled && e?.status === 404) setHidden(true);
+    });
+    return () => { cancelled = true; };
+  }, [tournament.id]);
+
+  const reload = useCallback(() => {
+    if (!accountId) { setEligibility(null); return; }
+    getTournamentEligibility(tournament.id, accountId)
+      .then(setEligibility)
+      .catch((e) => {
+        if (e?.status === 404) setHidden(true);
+        else setEligibility({ eligible: false, reason: e.message });
+      });
+  }, [tournament.id, accountId]);
+  useEffect(() => { reload(); }, [reload]);
+
+  if (hidden) return null;
+  // Only show on tournaments that haven't started — withdraw + register both
+  // require status === 'upcoming' on the server; no point teasing them later.
+  if (tournament.status !== 'upcoming') return null;
+
+  const fee = Number(tournament.entry_fee_cents || 0);
+  const feeLabel = fee > 0 ? `$${(fee / 100).toFixed(2)} AUD` : 'Free';
+  const cap = tournament.max_participants;
+  const window_open  = !tournament.signup_open_at  || new Date() >= new Date(tournament.signup_open_at);
+  const window_close = !tournament.signup_close_at || new Date() <= new Date(tournament.signup_close_at);
+  const inWindow = window_open && window_close;
+  // Derive state from the structured `existingEntry` returned by /eligibility
+  // (added in v5.92) — never from `reason` string parsing.
+  const entry = eligibility?.existingEntry || null;
+  const alreadyEntered = entry?.status === 'paid';
+
+  const handleRegister = async () => {
+    if (!accountId) {
+      setMsg({ kind: 'warn', text: 'Sign in with Steam first.' });
+      return;
+    }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await registerForTournament(tournament.id, accountId, steamUser?.personaname);
+      if (res?.url) {
+        window.location.href = res.url;
+        return;
+      }
+      setMsg({ kind: 'ok', text: 'Registered! You are entered.' });
+      reload();
+      if (typeof onChange === 'function') onChange();
+    } catch (e) {
+      setMsg({ kind: 'err', text: e.message });
+    } finally { setBusy(false); }
+  };
+
+  const handleWithdraw = async () => {
+    const confirmText = fee > 0
+      ? 'Withdraw and request a refund? This cannot be undone.'
+      : 'Withdraw from this tournament?';
+    if (!window.confirm(confirmText)) return;
+    setBusy(true); setMsg(null);
+    try {
+      await withdrawFromTournament(tournament.id, accountId);
+      setMsg({ kind: 'ok', text: fee > 0 ? 'Withdrawn — refund issued.' : 'Withdrawn.' });
+      reload();
+      if (typeof onChange === 'function') onChange();
+    } catch (e) {
+      setMsg({ kind: 'err', text: e.message });
+    } finally { setBusy(false); }
+  };
+
+  const blockReason = !accountId
+    ? 'Sign in with Steam to register.'
+    : !inWindow
+    ? (window_open ? 'Signup window has closed.' : 'Signup is not open yet.')
+    : eligibility && !eligibility.eligible && !alreadyEntered
+    ? eligibility.reason
+    : null;
+
+  return (
+    <section style={{ marginBottom: 20, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+        <h2 className="section-title" style={{ margin: 0 }}>🎟️ Sign-ups</h2>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <span><strong style={{ color: 'var(--text-primary)' }}>Entry:</strong> {feeLabel}</span>
+          {cap ? <span><strong style={{ color: 'var(--text-primary)' }}>Cap:</strong> {cap} players</span> : null}
+          {tournament.signup_close_at && (
+            <span><strong style={{ color: 'var(--text-primary)' }}>Closes:</strong> {new Date(tournament.signup_close_at).toLocaleString()}</span>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        {alreadyEntered ? (
+          <>
+            <span style={{ fontSize: 13, color: '#4ade80', fontWeight: 600 }}>✓ You are entered.</span>
+            <button onClick={handleWithdraw} disabled={busy}
+              style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)', borderRadius: 7, padding: '7px 14px', cursor: busy ? 'wait' : 'pointer', fontSize: 13 }}>
+              {busy ? '…' : (fee > 0 ? 'Withdraw & refund' : 'Withdraw')}
+            </button>
+          </>
+        ) : (
+          <button onClick={handleRegister} disabled={busy || !!blockReason}
+            style={{ background: blockReason ? 'var(--bg-secondary)' : 'var(--accent-blue)', color: blockReason ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 7, padding: '8px 18px', cursor: busy || blockReason ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600 }}>
+            {busy ? '…' : fee > 0 ? `Register (${feeLabel})` : 'Register (free)'}
+          </button>
+        )}
+        {blockReason && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{blockReason}</span>}
+      </div>
+      {msg && (
+        <div style={{
+          marginTop: 10, padding: '8px 12px', borderRadius: 7, fontSize: 13,
+          background: msg.kind === 'ok' ? 'rgba(34,197,94,0.12)' : msg.kind === 'err' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+          color: msg.kind === 'ok' ? '#4ade80' : msg.kind === 'err' ? '#f87171' : '#f59e0b',
+          border: `1px solid ${msg.kind === 'ok' ? 'rgba(34,197,94,0.4)' : msg.kind === 'err' ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)'}`,
+        }}>{msg.text}</div>
+      )}
+    </section>
   );
 }
 

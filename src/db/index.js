@@ -800,6 +800,8 @@ async function init() {
     await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS entry_fee_cents INTEGER NOT NULL DEFAULT 0`);
     await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS signup_open_at TIMESTAMPTZ`);
     await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS signup_close_at TIMESTAMPTZ`);
+    // v5.92 — capacity gate for self-signup.
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS max_participants INTEGER`);
     await p.query(`
       CREATE TABLE IF NOT EXISTS tournament_entries (
         id SERIAL PRIMARY KEY,
@@ -816,6 +818,8 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_tournament_entries_tournament ON tournament_entries(tournament_id, status)`);
+    // v5.92 — stash PaymentIntent for the withdraw/refund flow.
+    await p.query(`ALTER TABLE tournament_entries ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT`);
 
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_tier INTEGER DEFAULT NULL`);
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_leaderboard_rank INTEGER DEFAULT NULL`);
@@ -10540,6 +10544,8 @@ module.exports = {
   getTournamentEntry,
   createTournamentEntry,
   markTournamentEntryPaid,
+  markTournamentEntryRefunded,
+  getTournamentPaidEntryCount,
   isPlayerEligibleForTournament,
   recomputeTournamentPrizePool,
   updateTournamentStatus,
@@ -11450,13 +11456,32 @@ async function createTournament({
   tierNumber = null, entryFeeCents = 0,
   signupOpenAt = null, signupCloseAt = null,
   bracketSize = null,
+  maxParticipants = null, prizeSplit = null,
 }) {
   const p = getPool();
   const fmt = format || 'single_elim';
+  // Validate prize split server-side: array of positive numbers that sum to 100.
+  let splitJson = null;
+  if (prizeSplit != null) {
+    if (!Array.isArray(prizeSplit) || prizeSplit.length === 0) {
+      throw new Error('prizeSplit must be a non-empty array of percentages');
+    }
+    const nums = prizeSplit.map(v => Number(v));
+    if (nums.some(n => !Number.isFinite(n) || n < 0)) {
+      throw new Error('prizeSplit entries must be non-negative numbers');
+    }
+    const sum = nums.reduce((a, b) => a + b, 0);
+    if (Math.round(sum) !== 100) {
+      throw new Error(`prizeSplit must sum to 100 (got ${sum})`);
+    }
+    splitJson = JSON.stringify(nums);
+  }
   const result = await p.query(
     `INSERT INTO tournaments (name, description, season_id, format, bracket_type, bracket_size, status, created_by,
-       tier_number, entry_fee_cents, signup_open_at, signup_close_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 'upcoming', $7, $8, $9, $10, $11) RETURNING *`,
+       tier_number, entry_fee_cents, signup_open_at, signup_close_at, max_participants, prize_split)
+     VALUES ($1, $2, $3, $4, $5, $6, 'upcoming', $7, $8, $9, $10, $11, $12,
+             COALESCE($13::jsonb, '[50,30,20]'::jsonb))
+     RETURNING *`,
     [
       name,
       description || null,
@@ -11469,9 +11494,22 @@ async function createTournament({
       parseInt(entryFeeCents) || 0,
       signupOpenAt ? new Date(signupOpenAt) : null,
       signupCloseAt ? new Date(signupCloseAt) : null,
+      maxParticipants != null && maxParticipants !== '' ? parseInt(maxParticipants) : null,
+      splitJson,
     ]
   );
   return result.rows[0];
+}
+
+// v5.92 — paid-entry counter for capacity gate.
+async function getTournamentPaidEntryCount(tournamentId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT COUNT(*)::int AS n FROM tournament_entries
+     WHERE tournament_id = $1 AND status = 'paid'`,
+    [parseInt(tournamentId)]
+  );
+  return r.rows[0]?.n || 0;
 }
 
 // Tournament self-signup helpers (1.7) ────────────────────────────────────────
@@ -11520,44 +11558,100 @@ async function createTournamentEntry({
   return r.rows[0];
 }
 
-async function markTournamentEntryPaid(stripeSessionId) {
+async function markTournamentEntryPaid(stripeSessionId, paymentIntentId = null) {
   const p = getPool();
   const r = await p.query(
     `UPDATE tournament_entries
-     SET status = 'paid', paid_at = COALESCE(paid_at, NOW())
+     SET status = 'paid',
+         paid_at = COALESCE(paid_at, NOW()),
+         stripe_payment_intent_id = COALESCE($2, stripe_payment_intent_id)
      WHERE stripe_session_id = $1
      RETURNING *`,
-    [String(stripeSessionId)]
+    [String(stripeSessionId), paymentIntentId || null]
   );
-  return r.rows[0] || null;
+  const entry = r.rows[0] || null;
+  // v5.92 — auto-mirror paid entry into tournament_participants so the
+  // bracket UI / admin participant list reflects self-signups immediately.
+  // This is payment-critical: a paid entry that doesn't appear in the
+  // participants list is a user-visible regression, so we let DB errors
+  // bubble up to the caller (Stripe webhook will retry; /entry/confirm
+  // surfaces the error so the user can re-confirm).
+  if (entry) {
+    await p.query(
+      `INSERT INTO tournament_participants (tournament_id, account_id)
+       VALUES ($1, $2) ON CONFLICT (tournament_id, account_id) DO NOTHING`,
+      [entry.tournament_id, BigInt(entry.account_id)]
+    );
+  }
+  return entry;
+}
+
+// v5.92 — refund + withdraw helper. Marks an entry refunded and removes the
+// player from tournament_participants. Caller is responsible for issuing the
+// Stripe refund (so the API layer can short-circuit on Stripe errors).
+async function markTournamentEntryRefunded(tournamentId, accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE tournament_entries
+     SET status = 'refunded', refunded_at = NOW()
+     WHERE tournament_id = $1 AND account_id = $2
+     RETURNING *`,
+    [parseInt(tournamentId), String(accountId)]
+  );
+  const entry = r.rows[0] || null;
+  if (entry) {
+    try {
+      await p.query(
+        `DELETE FROM tournament_participants WHERE tournament_id = $1 AND account_id = $2`,
+        [parseInt(tournamentId), BigInt(accountId)]
+      );
+    } catch (_) { /* best-effort */ }
+  }
+  return entry;
 }
 
 // Eligibility check — returns { eligible: bool, reason: string|null, tier: int|null }
 async function isPlayerEligibleForTournament(tournamentId, accountId) {
-  const p = getPool();
   const t = await getTournamentById(tournamentId);
   if (!t) return { eligible: false, reason: 'Tournament not found', tier: null };
-  if (!t.tier_number || !t.season_id) {
-    // Cross-tier / no-season tournament — anyone may enter.
-    return { eligible: true, reason: null, tier: null };
+
+  // Tier check (only applies to tournaments tagged to a season + tier — cross-
+  // tier / no-season events are open to everyone). Earlier versions returned
+  // immediately here, which bypassed the duplicate-entry and capacity gates
+  // for non-tier tournaments. v5.92 keeps tier as an optional gate but always
+  // falls through to the shared duplicate/capacity checks below.
+  let tier = null;
+  if (t.tier_number && t.season_id) {
+    const placement = await getPlayerSeasonTier(t.season_id, accountId);
+    if (!placement) {
+      return { eligible: false, reason: 'You have not been placed in a season tier yet', tier: null };
+    }
+    if (placement.tier_number !== t.tier_number) {
+      return {
+        eligible: false,
+        reason: `This tournament is for Tier ${t.tier_number}; you are placed in Tier ${placement.tier_number}`,
+        tier: placement.tier_number,
+      };
+    }
+    tier = placement.tier_number;
   }
-  const placement = await getPlayerSeasonTier(t.season_id, accountId);
-  if (!placement) {
-    return { eligible: false, reason: 'You have not been placed in a season tier yet', tier: null };
-  }
-  if (placement.tier_number !== t.tier_number) {
-    return {
-      eligible: false,
-      reason: `This tournament is for Tier ${t.tier_number}; you are placed in Tier ${placement.tier_number}`,
-      tier: placement.tier_number,
-    };
-  }
-  // Block double-entry across paid/pending statuses.
+
+  // Block double-entry across paid/pending statuses (applies to ALL tournaments).
   const existing = await getTournamentEntry(tournamentId, accountId);
   if (existing && existing.status === 'paid') {
-    return { eligible: false, reason: 'Already entered', tier: placement.tier_number };
+    return { eligible: false, reason: 'Already entered', tier };
   }
-  return { eligible: true, reason: null, tier: placement.tier_number };
+  // v5.92 — capacity gate. If max_participants is set, block new sign-ups
+  // once the paid-entry count reaches that cap. Existing pending row from
+  // *this* player is allowed (so a checkout retry doesn't get locked out).
+  if (t.max_participants && t.max_participants > 0) {
+    const paidCount = await getTournamentPaidEntryCount(tournamentId);
+    const isOwnPending = existing && existing.status !== 'paid';
+    if (paidCount >= t.max_participants && !isOwnPending) {
+      return { eligible: false, reason: 'Tournament is full', tier };
+    }
+  }
+  return { eligible: true, reason: null, tier };
 }
 
 // Recompute and persist the prize pool from paid entries (sum of amount_cents)
@@ -11565,7 +11659,7 @@ async function isPlayerEligibleForTournament(tournamentId, accountId) {
 async function recomputeTournamentPrizePool(tournamentId) {
   const p = getPool();
   const t = await getTournamentById(tournamentId);
-  if (!t || !t.season_id || !t.tier_number) return null;
+  if (!t) return null;
   const r = await p.query(
     `SELECT COALESCE(SUM(amount_cents), 0)::int AS total_cents
      FROM tournament_entries
@@ -11573,11 +11667,22 @@ async function recomputeTournamentPrizePool(tournamentId) {
     [parseInt(tournamentId)]
   );
   const total = r.rows[0]?.total_cents || 0;
+  // v5.92 — also update the tournament-level pool so getTournamentLive() (which
+  // reads tournaments.prize_pool, NUMERIC dollars) reflects paid entries
+  // without a season/tier link. season_tiers stays in sync for tier-tagged
+  // events because tournaments.prize_pool is the source of truth for the
+  // detail-page live panel and dist calculation.
   await p.query(
-    `UPDATE season_tiers SET prize_pool_cents = $1
-     WHERE season_id = $2 AND tier_number = $3`,
-    [total, t.season_id, t.tier_number]
+    `UPDATE tournaments SET prize_pool = $1 WHERE id = $2`,
+    [total / 100, parseInt(tournamentId)]
   );
+  if (t.season_id && t.tier_number) {
+    await p.query(
+      `UPDATE season_tiers SET prize_pool_cents = $1
+       WHERE season_id = $2 AND tier_number = $3`,
+      [total, t.season_id, t.tier_number]
+    );
+  }
   return total;
 }
 

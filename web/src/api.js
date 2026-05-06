@@ -1188,6 +1188,33 @@ export async function createTournamentCheckout(tournamentId, accountId, displayN
 export async function confirmTournamentEntry(tournamentId, sessionId) {
   return fetchJson(`/tournaments/${tournamentId}/entry/confirm?session_id=${encodeURIComponent(sessionId)}`);
 }
+// v5.92 — unified self-register endpoint. Server dispatches to free-signup or
+// Stripe checkout based on the tournament's entry_fee_cents. Returns
+// { url } (redirect to Stripe) for paid events or { ok, entry } for free.
+export async function registerForTournament(tournamentId, accountId, displayName) {
+  const res = await fetch(BASE + `/tournaments/${tournamentId}/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ accountId, displayName }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to register');
+  return d;
+}
+// v5.92 — withdraw from a tournament that hasn't started. Issues a Stripe
+// refund for paid entries.
+export async function withdrawFromTournament(tournamentId, accountId) {
+  const res = await fetch(BASE + `/tournaments/${tournamentId}/withdraw`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ accountId }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to withdraw');
+  return d;
+}
 
 export async function updateSignupRequest(id, { status, adminNotes }, superuserKey) {
   const res = await fetch(BASE + `/admin/signups/${id}`, {
