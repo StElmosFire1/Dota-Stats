@@ -14,25 +14,12 @@ import { FRAME_META } from '../profileCosmetics';
 // v5.82 — King is reserved (`leaderOnly: true`) for the #1 leaderboard player.
 // MMR-only callers cannot land on King; they max out at Warlord. The badge
 // table still includes King so leader-aware callers can resolve it by name.
-// V1 thresholds — fresh player starts at ~2600 MMR
-const MMR_TIERS_V1 = [
-  { name: 'King',          tierNum: 8, badge: '/badges/tier-8-king.png',       emoji: '👑', description: "Ruler of the realm. Bow before greatness.",                                      min: Infinity, leaderOnly: true, color: '#f5d97a',   bg: 'rgba(245,158,11,0.14)',  border: 'rgba(245,158,11,0.55)'    },
-  { name: 'Warlord',       tierNum: 7, badge: '/badges/tier-7-warlord.png',    emoji: '🪓', description: "Battle-hardened commander. Banners follow you.",                                  min: 3800, color: '#e0b56b',   bg: 'rgba(197,169,117,0.14)', border: 'rgba(197,169,117,0.55)'   },
-  { name: 'Paladin',       tierNum: 6, badge: '/badges/tier-6-paladin.png',    emoji: '✨', description: "Righteous champion. The light is on your side.",                                  min: 3500, color: '#d4b878',   bg: 'rgba(197,169,117,0.12)', border: 'rgba(197,169,117,0.45)'   },
-  { name: 'Templar',       tierNum: 5, badge: '/badges/tier-5-templar.png',    emoji: '⚔️', description: "Sworn to the order. Disciplined and feared.",                                    min: 3200, color: '#c9c9d9',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
-  { name: 'Knight',        tierNum: 4, badge: '/badges/tier-4-knight.png',     emoji: '🛡️', description: "Chivalrous and dependable. The kingdom counts on you.",                          min: 2900, color: '#b8b8c8',   bg: 'rgba(184,184,200,0.10)', border: 'rgba(184,184,200,0.4)'    },
-  { name: 'Footman',       tierNum: 3, badge: '/badges/tier-3-footman.png',    emoji: '🗡️', description: "Honest soldier. Holds the line, takes the field.",                               min: 2600, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'Squire',        tierNum: 2, badge: '/badges/tier-2-squire.png',     emoji: '🐎', description: "In training. One day you may be knighted.",                                       min: 2300, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'Apprentice',    tierNum: 1, badge: '/badges/tier-1-apprentice.png', emoji: '📜', description: "Just beginning the climb. Read the scrolls, hold the line.",                     min: 2000, color: '#c5a975',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
-  { name: 'Outlaw',        badge: '/badges/tier-sub-1-outlaw.png',   emoji: '🏴', description: "Branded and exiled — feared by the kingdom. One step from being knighted… or hanged.", min: 1700, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
-  { name: 'Vagabond',      badge: '/badges/tier-sub-2-vagabond.png', emoji: '🥾', description: "Wandering the realm with staff and bindle. No banner yet, but the road teaches you.",  min: 1400, color: '#FFAB91',   bg: 'rgba(255,87,34,0.10)',   border: 'rgba(255,87,34,0.35)'    },
-  { name: 'Peasant',       badge: '/badges/tier-sub-3-peasant.png',  emoji: '🌾', description: "Tilling the fields. Pick up a sword — every Knight begins here.",                       min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
-];
-
-// V3 thresholds — fresh player starts at exactly 5000 MMR (+2400 offset from V1).
-// v5.82 — King is reserved for #1 leaderboard player. Other tiers spread wider
-// so the entire active player base doesn't pile into the top band.
-const MMR_TIERS_V3 = [
+// v5.83 — V1 ladder removed (full edition uses V3 only). The single
+// `MMR_TIERS` export below is the canonical ladder for every display.
+// Fresh players start at exactly 5000 MMR. King is reserved for the #1
+// leaderboard player. Other tiers are spread wide so the active player
+// base doesn't pile into the top band.
+export const MMR_TIERS = [
   { name: 'King',          tierNum: 8, badge: '/badges/tier-8-king.png',       emoji: '👑', description: "Ruler of the realm. Reserved for the #1 player on the leaderboard.",              min: Infinity, leaderOnly: true, color: '#f5d97a',   bg: 'rgba(245,158,11,0.14)',  border: 'rgba(245,158,11,0.55)'    },
   { name: 'Warlord',       tierNum: 7, badge: '/badges/tier-7-warlord.png',    emoji: '🪓', description: "Battle-hardened commander. Banners follow you.",                                  min: 7000, color: '#e0b56b',   bg: 'rgba(197,169,117,0.14)', border: 'rgba(197,169,117,0.55)'   },
   { name: 'Paladin',       tierNum: 6, badge: '/badges/tier-6-paladin.png',    emoji: '✨', description: "Righteous champion. The light is on your side.",                                  min: 6500, color: '#d4b878',   bg: 'rgba(197,169,117,0.12)', border: 'rgba(197,169,117,0.45)'   },
@@ -46,24 +33,20 @@ const MMR_TIERS_V3 = [
   { name: 'Peasant',       badge: '/badges/tier-sub-3-peasant.png',  emoji: '🌾', description: "Tilling the fields. Pick up a sword — every Knight begins here.",                       min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
 ];
 
-// Back-compat alias — components that don't know about V3 yet default to V1
-const MMR_TIERS = MMR_TIERS_V1;
-
-function getTier(mmr, tiers = MMR_TIERS_V1, { isLeader = false } = {}) {
+function getTier(mmr, { isLeader = false } = {}) {
   if (isLeader) {
-    const king = tiers.find(t => t.leaderOnly);
+    const king = MMR_TIERS.find(t => t.leaderOnly);
     if (king) return king;
   }
-  for (const t of tiers) {
+  for (const t of MMR_TIERS) {
     if (t.leaderOnly) continue;
     if (mmr >= t.min) return t;
   }
-  return tiers[tiers.length - 1];
+  return MMR_TIERS[MMR_TIERS.length - 1];
 }
 
-export function TierBadge({ mmr, useV3 = false, dbTiers = null, isLeader = false }) {
-  const tiers = useV3 ? MMR_TIERS_V3 : MMR_TIERS_V1;
-  const t = getTier(mmr, tiers, { isLeader });
+export function TierBadge({ mmr, dbTiers = null, isLeader = false }) {
+  const t = getTier(mmr, { isLeader });
   if (!t) return null;
 
   const now = Date.now();
@@ -428,7 +411,7 @@ export default function Leaderboard() {
   const { seasonId, seasons } = useSeason();
   const showSeasonPass = true;
   const proMembers = useProMembers();
-  const [data, setData] = useState({ leaderboard: [], useV3: false });
+  const [data, setData] = useState({ leaderboard: [] });
   const [loading, setLoading] = useState(true);
   const [improved, setImproved] = useState([]);
   const [improvedLoading, setImprovedLoading] = useState(true);
@@ -525,18 +508,35 @@ export default function Leaderboard() {
         alignItems: 'center',
       }}>
         <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4, whiteSpace: 'nowrap' }}>worst →</span>
-        {[...(data.useV3 ? MMR_TIERS_V3 : MMR_TIERS_V1)].reverse().map((t, i) => (
+        {[...MMR_TIERS].reverse().map((t) => (
           <span
             key={t.name}
             title={t.description}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
+              display: 'inline-flex', alignItems: 'center', gap: 5,
               background: 'var(--bg-hover)', border: '1px solid var(--border)',
-              borderRadius: 8, padding: '3px 9px', fontSize: 11, fontWeight: 600,
+              borderRadius: 8, padding: '3px 9px 3px 5px', fontSize: 11, fontWeight: 600,
               color: 'var(--text-secondary)', cursor: 'default', whiteSpace: 'nowrap',
             }}
           >
-            {t.emoji} {t.name}
+            {t.badge ? (
+              <img
+                src={t.badge}
+                alt=""
+                aria-hidden="true"
+                loading="lazy"
+                style={{ width: 18, height: 18, objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))' }}
+                onError={(e) => {
+                  const span = document.createElement('span');
+                  span.style.cssText = 'font-size:13px;line-height:1';
+                  span.textContent = t.emoji || '🛡️';
+                  e.target.replaceWith(span);
+                }}
+              />
+            ) : (
+              <span style={{ fontSize: 13, lineHeight: 1 }}>{t.emoji}</span>
+            )}
+            {t.name}
           </span>
         ))}
         <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4, whiteSpace: 'nowrap' }}>→ best</span>
@@ -611,7 +611,7 @@ export default function Leaderboard() {
                         leaderboardRank={p.dota_leaderboard_rank}
                       />
                     </td>
-                    <td className="col-stat"><TierBadge mmr={p.mmr} useV3={data.useV3} dbTiers={dbTiers} isLeader={i === 0} /></td>
+                    <td className="col-stat"><TierBadge mmr={p.mmr} dbTiers={dbTiers} isLeader={i === 0} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>

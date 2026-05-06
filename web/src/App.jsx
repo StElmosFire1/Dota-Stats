@@ -328,8 +328,7 @@ function Nav() {
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
-          <DropdownItem to="/draft-assistant">Draft Assistant</DropdownItem>
-          <DropdownItem to="/draft">Draft Stats</DropdownItem>
+          <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
           <DropdownItem to="/records">Records &amp; Comebacks</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
@@ -448,7 +447,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.82 — <Link to="/patch-notes">Patch notes</Link>
+            v5.83 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>

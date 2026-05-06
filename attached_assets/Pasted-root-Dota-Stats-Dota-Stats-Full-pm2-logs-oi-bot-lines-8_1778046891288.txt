@@ -1,0 +1,165 @@
+root@Dota-Stats:~/Dota-Stats-Full# pm2 logs oi-bot --lines 80
+[TAILING] Tailing last 80 lines for [oi-bot] process (change the value with --lines option)
+/root/.pm2/logs/oi-bot-out.log last 80 lines:
+1|oi-bot   | [Startup] Steam connected.
+1|oi-bot   | 
+1|oi-bot   | [Startup] Initialising lobby manager...
+1|oi-bot   | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot   | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot   | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot   | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot   | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot   | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot   | 
+1|oi-bot   | [Startup] Bot is running! Use !help in Discord.
+1|oi-bot   | [Startup] Active features:
+1|oi-bot   |   - Discord:        YES
+1|oi-bot   |   - Database:       YES
+1|oi-bot   |   - Steam:          YES (connected)
+1|oi-bot   |   - Replay parser:  YES (full stats)
+1|oi-bot   |   - TrueSkill MMR:  YES
+1|oi-bot   |   - Google Sheets:  DORMANT
+1|oi-bot   |   - Match poller:   DORMANT
+1|oi-bot   |   - Lobby/monitor:  YES
+1|oi-bot   | [Web] Dashboard running on port 3001
+1|oi-bot   | [Startup] All systems ready.
+1|oi-bot   | 
+1|oi-bot   | [InhouseAutoStart] Started (every 5000ms)
+1|oi-bot   | [Discord] Bot online as Dota Bot 2#6555
+1|oi-bot   | [Discord] Weekly recap scheduled (Mondays 9am AEST).
+1|oi-bot   | [Discord] Season 10 launch is manual-only (Admin Panel button).
+1|oi-bot   | [Discord] Position baselines recompute scheduled (Mondays 03:00 UTC).
+1|oi-bot   | [Discord] Coaching reminder + auto-release crons scheduled.
+1|oi-bot   | [Discord] Daily season end-condition check scheduled (midnight Australia/Sydney time).
+1|oi-bot   | [PatchNotes] No new patch notes to announce.
+1|oi-bot   | [Season] Running startup end-condition check...
+1|oi-bot   | 
+1|oi-bot   | [Shutdown] Graceful shutdown...
+1|oi-bot   | [Discord] Bot shut down.
+1|oi-bot   | [Dota2 GC] Left practice lobby.
+1|oi-bot   | [Steam] Shut down.
+1|oi-bot   | [dotenv@17.3.1] injecting env (19) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+1|oi-bot   | === Dota 2 Inhouse Stats Bot ===
+1|oi-bot   | Starting up...
+1|oi-bot   | 
+1|oi-bot   | [DB] PostgreSQL connected.
+1|oi-bot   | [DB] Schema migrations applied.
+1|oi-bot   | [Startup] Google Sheets: disabled (config.features.sheets = false)
+1|oi-bot   | [Replay] Adopted existing parser service on port 5600
+1|oi-bot   | [Steam] Logging in...
+1|oi-bot   | [Steam] Logged in successfully.
+1|oi-bot   | [Dota2 GC] Connected to Game Coordinator.
+1|oi-bot   | [Steam] Dota 2 GC is ready!
+1|oi-bot   | [Dota2 GC] GC version from welcome: 6783
+1|oi-bot   | [Dota2 GC] ClientWelcome: 1 CSO cache(s) in startup payload
+1|oi-bot   | [Dota2 GC] SO CacheSubscribed object: typeId=1
+1|oi-bot   | [Dota2 GC] SO CacheSubscribed object: typeId=7
+1|oi-bot   | [Startup] Steam connected.
+1|oi-bot   | 
+1|oi-bot   | [Startup] Initialising lobby manager...
+1|oi-bot   | [Startup] getLobbyManager() succeeded, calling initListeners...
+1|oi-bot   | [Lobby] GC listeners initialized (auto-accept invites enabled).
+1|oi-bot   | [Startup] initListeners() done, starting friend monitor...
+1|oi-bot   | [Steam] Friend lobby monitor enabled - watching for friends in Dota 2 lobbies.
+1|oi-bot   | [Startup] Lobby manager + friend monitor enabled.
+1|oi-bot   | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+1|oi-bot   | [Discord] Bot online as Dota Bot 2#6555
+1|oi-bot   | 
+1|oi-bot   | [Startup] Bot is running! Use !help in Discord.
+1|oi-bot   | [Startup] Active features:
+1|oi-bot   |   - Discord:        YES
+1|oi-bot   |   - Database:       YES
+1|oi-bot   |   - Steam:          YES (connected)
+1|oi-bot   |   - Replay parser:  YES (full stats)
+1|oi-bot   |   - TrueSkill MMR:  YES
+1|oi-bot   |   - Google Sheets:  DORMANT
+1|oi-bot   |   - Match poller:   DORMANT
+1|oi-bot   |   - Lobby/monitor:  YES
+1|oi-bot   | [Web] Dashboard running on port 3001
+1|oi-bot   | [Startup] All systems ready.
+1|oi-bot   | 
+1|oi-bot   | [InhouseAutoStart] Started (every 5000ms)
+1|oi-bot   | [Steam Auth] /auth/steam redirect — realm: https://oceinhouse.gg
+1|oi-bot   | [Steam Auth] /auth/steam/return — host=oceinhouse.gg proto=http verify=OK cookie-len=0 body-len=646
+
+/root/.pm2/logs/oi-bot-error.log last 80 lines:
+1|oi-bot   |   length: 112,
+1|oi-bot   |   severity: 'ERROR',
+1|oi-bot   |   code: '42703',
+1|oi-bot   |   detail: undefined,
+1|oi-bot   |   hint: undefined,
+1|oi-bot   |   position: '207',
+1|oi-bot   |   internalPosition: undefined,
+1|oi-bot   |   internalQuery: undefined,
+1|oi-bot   |   where: undefined,
+1|oi-bot   |   schema: undefined,
+1|oi-bot   |   table: undefined,
+1|oi-bot   |   column: undefined,
+1|oi-bot   |   dataType: undefined,
+1|oi-bot   |   constraint: undefined,
+1|oi-bot   |   file: 'parse_relation.c',
+1|oi-bot   |   line: '3722',
+1|oi-bot   |   routine: 'errorMissingColumn'
+1|oi-bot   | }
+1|oi-bot   | [API] mvp-attitude-trends: column m.start_time does not exist
+1|oi-bot   | [Steam Auth] Error: error: column ps.created_at does not exist
+1|oi-bot   |     at /root/Dota-Stats-Full/node_modules/pg-pool/index.js:45:11
+1|oi-bot   |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|oi-bot   |     at async /root/Dota-Stats-Full/src/web/server.js:295:22 {
+1|oi-bot   |   length: 112,
+1|oi-bot   |   severity: 'ERROR',
+1|oi-bot   |   code: '42703',
+1|oi-bot   |   detail: undefined,
+1|oi-bot   |   hint: undefined,
+1|oi-bot   |   position: '207',
+1|oi-bot   |   internalPosition: undefined,
+1|oi-bot   |   internalQuery: undefined,
+1|oi-bot   |   where: undefined,
+1|oi-bot   |   schema: undefined,
+1|oi-bot   |   table: undefined,
+1|oi-bot   |   column: undefined,
+1|oi-bot   |   dataType: undefined,
+1|oi-bot   |   constraint: undefined,
+1|oi-bot   |   file: 'parse_relation.c',
+1|oi-bot   |   line: '3722',
+1|oi-bot   |   routine: 'errorMissingColumn'
+1|oi-bot   | }
+1|oi-bot   | [Startup] Patch note seed failed: [DB] patchNotes.js is out of order: v5.74.1 appears before v0.1. Fix the order in src/data/patchNotes.js before starting the bot.
+1|oi-bot   | (node:69952) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+1|oi-bot   | (Use `node --trace-deprecation ...` to show where the warning was created)
+1|oi-bot   | [API] mvp-attitude-trends: column m.start_time does not exist
+1|oi-bot   | [Steam Auth] Error: error: column ps.created_at does not exist
+1|oi-bot   |     at /root/Dota-Stats-Full/node_modules/pg-pool/index.js:45:11
+1|oi-bot   |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|oi-bot   |     at async /root/Dota-Stats-Full/src/web/server.js:311:22 {
+1|oi-bot   |   length: 112,
+1|oi-bot   |   severity: 'ERROR',
+1|oi-bot   |   code: '42703',
+1|oi-bot   |   detail: undefined,
+1|oi-bot   |   hint: undefined,
+1|oi-bot   |   position: '207',
+1|oi-bot   |   internalPosition: undefined,
+1|oi-bot   |   internalQuery: undefined,
+1|oi-bot   |   where: undefined,
+1|oi-bot   |   schema: undefined,
+1|oi-bot   |   table: undefined,
+1|oi-bot   |   column: undefined,
+1|oi-bot   |   dataType: undefined,
+1|oi-bot   |   constraint: undefined,
+1|oi-bot   |   file: 'parse_relation.c',
+1|oi-bot   |   line: '3722',
+1|oi-bot   |   routine: 'errorMissingColumn'
+1|oi-bot   | }
+1|oi-bot   | [FriendMonitor] Failed to auto-join lobby 29830199202111211: Failed to join lobby: Lobby join failed with result: 2
+1|oi-bot   | [Startup] Patch note seed failed: [DB] patchNotes.js is out of order: v5.74.1 appears before v0.1. Fix the order in src/data/patchNotes.js before starting the bot.
+1|oi-bot   | (node:70260) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+1|oi-bot   | (Use `node --trace-deprecation ...` to show where the warning was created)
+1|oi-bot   | [Startup] Patch note seed failed: [DB] patchNotes.js is out of order: v5.74.1 appears before v0.1. Fix the order in src/data/patchNotes.js before starting the bot.
+1|oi-bot   | (node:70363) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+1|oi-bot   | (Use `node --trace-deprecation ...` to show where the warning was created)
+1|oi-bot   | [Steam Auth] catch hit — error name: error | message: column ps.created_at does not exist
+1|oi-bot   | [Steam Auth] error code: 42703
+1|oi-bot   | [Steam Auth] stack: error: column ps.created_at does not exist
+1|oi-bot   |     at /root/Dota-Stats-Full/node_modules/pg-pool/index.js:45:11
+1|oi-bot   |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|oi-bot   |     at async /root/Dota-Stats-Full/src/web/server.js:311:22

@@ -5,7 +5,7 @@ import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
 import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
-import { TierBadge } from './Leaderboard';
+import { TierBadge, MMR_TIERS } from './Leaderboard';
 import { ALL_HEROES, getHeroName } from '../heroNames';
 
 // Catches render-phase errors in any child component and shows a helpful
@@ -1301,7 +1301,6 @@ function SeasonTiersPanelInner({ superuserKey }) {
                               <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Normal</span>
                               <TierBadge
                                 mmr={Number(draftFloor)}
-                                useV3={true}
                                 dbTiers={[{ min_mmr: Number(draftFloor), name: draftName || t.name, sponsor_name: null }]}
                               />
                             </span>
@@ -1310,7 +1309,6 @@ function SeasonTiersPanelInner({ superuserKey }) {
                                 <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Sponsored (when active)</span>
                                 <TierBadge
                                   mmr={Number(draftFloor)}
-                                  useV3={true}
                                   dbTiers={[{
                                     min_mmr: Number(draftFloor),
                                     name: draftName || t.name,
@@ -1767,66 +1765,38 @@ function BroadcastTickerPanel({ superuserKey }) {
 // every rank is named, what its symbol is, and what MMR cutoff it uses
 // — without leaving the panel.
 function TierLadderPreview() {
-  // We reach into Leaderboard.jsx's exported tier arrays via TierBadge.
-  // Rather than re-export the raw arrays, render two columns of badges
-  // by sweeping MMR across the bands.
-  const V1_SAMPLES = [
-    { name: 'Gaben',      mmr: 4500 },
-    { name: 'Smurf',      mmr: 4100 },
-    { name: 'Tryhard',    mmr: 3800 },
-    { name: 'Try Less',   mmr: 3500 },
-    { name: 'King',       mmr: 3500 },
-    { name: 'Warlord',    mmr: 3300 },
-    { name: 'Paladin',    mmr: 3200 },
-    { name: 'Templar',    mmr: 3100 },
-    { name: 'Knight',     mmr: 3000 },
-    { name: 'Footman',    mmr: 2700 },
-    { name: 'Squire',     mmr: 2400 },
-    { name: 'Apprentice', mmr: 2100 },
-    { name: 'Outlaw',     mmr: 1800 },
-    { name: 'Vagabond',   mmr: 1500 },
-    { name: 'Peasant',    mmr: 800 },
-  ];
-  const V3_SAMPLES = V1_SAMPLES.map(t => ({ ...t, mmr: t.mmr + 2400 }));
-  const Cell = ({ mmr, useV3 }) => (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '8px 10px', borderRadius: 8,
-      background: 'var(--bg-card)', border: '1px solid var(--border)',
-    }}>
-      <TierBadge mmr={mmr} useV3={useV3} dbTiers={null} />
-      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-        ≥ {mmr} MMR
-      </span>
-    </div>
-  );
+  // v5.83 — single canonical ladder. Iterate the actual MMR_TIERS export
+  // from Leaderboard.jsx (top tier first → bottom tier last) so the preview
+  // is always in lockstep with what the leaderboard renders.
+  // King is the leaderOnly tier; pass `isLeader` so it actually renders.
   return (
     <section className="admin-section" style={{ marginTop: 32 }}>
       <h2 id="ap-anchor-tier-ladder" className="section-title" style={{ marginBottom: 6 }}>
         🎖️ Tier Ladder Preview
       </h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
-        Read-only reference of every IH rank (name, symbol, MMR cutoff) in both the V1 and V3
-        rating systems. Use this to verify how a rank renders without hunting through the
-        leaderboard. Edit thresholds in <code>web/src/pages/Leaderboard.jsx</code>.
+        Read-only reference of every IH rank (name, symbol, MMR cutoff) in the
+        current ladder. Edit thresholds in <code>web/src/pages/Leaderboard.jsx</code>.
+        <strong style={{ color: 'var(--accent)', marginLeft: 6 }}>King</strong> is reserved
+        for the #1 leaderboard player only — every other player tops out at Warlord.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 8, letterSpacing: 0.5 }}>
-            V1 LADDER (legacy / pre-S10)
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {V1_SAMPLES.map((s, i) => <Cell key={`v1-${i}`} mmr={s.mmr} useV3={false} />)}
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 8, letterSpacing: 0.5 }}>
-            V3 LADDER (current / Season 10+)
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {V3_SAMPLES.map((s, i) => <Cell key={`v3-${i}`} mmr={s.mmr} useV3={true} />)}
-          </div>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 460 }}>
+        {MMR_TIERS.map((t) => {
+          const isKing = t.leaderOnly;
+          const previewMmr = isKing ? 9999 : t.min;
+          return (
+            <div key={t.name} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 10px', borderRadius: 8,
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+            }}>
+              <TierBadge mmr={previewMmr} dbTiers={null} isLeader={isKing} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                {isKing ? '#1 leaderboard only' : `≥ ${t.min} MMR`}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
