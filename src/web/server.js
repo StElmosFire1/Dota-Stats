@@ -288,7 +288,7 @@ function createServer(startupStatus = {}) {
       // `openid.mode=id_res` for `check_authentication`. Same approach as
       // the canonical `passport-steam` library.
       const rawQuery = req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : '';
-      const verifyBody = rawQuery.replace(/(^|&)openid\.mode=id_res(&|$)/, '$1openid.mode=check_authentication$2');
+      const verifyBody = rawQuery.replace(/(^|&)openid\.mode=id_res(&|$)/g, '$1openid.mode=check_authentication$2');
       const verifyRes = await fetch(STEAM_OPEN_ID, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
