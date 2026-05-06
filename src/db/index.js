@@ -863,7 +863,8 @@ async function init() {
     await p.query(`ALTER TABLE signup_requests ADD COLUMN IF NOT EXISTS mmr TEXT`);
     await p.query(`ALTER TABLE signup_requests ADD COLUMN IF NOT EXISTS referral TEXT`);
 
-    // Generic key/value site settings (e.g. feature flags like use_v3_trueskill)
+    // Generic key/value site settings (e.g. CMS payloads like welcome_modal,
+    // engagement_milestone_thresholds).
     await p.query(`
       CREATE TABLE IF NOT EXISTS site_settings (
         key TEXT PRIMARY KEY,
@@ -871,14 +872,11 @@ async function init() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
-    await p.query(
-      // v5.90 — seed default flipped to 'true' (V3-only) so fresh installs
-      // never start on the deprecated V1 engine. The setting itself is
-      // ignored at runtime now; the row is kept for historical-script
-      // compatibility only.
-      `INSERT INTO site_settings (key, value) VALUES ('use_v3_trueskill', 'true')
-       ON CONFLICT (key) DO UPDATE SET value = 'true'`
-    );
+    // v5.95 — drop the unused `use_v3_trueskill` row left over from the
+    // V1/V3 toggle era. The setting was ignored at runtime since v5.90 and
+    // is now physically removed so it stops appearing in admin tooling /
+    // backups. Idempotent — no-op once cleared.
+    await p.query(`DELETE FROM site_settings WHERE key = 'use_v3_trueskill'`);
     await p.query(
       `INSERT INTO site_settings (key, value) VALUES ('engagement_milestone_thresholds', '50,100,150,200')
        ON CONFLICT (key) DO NOTHING`
@@ -2436,114 +2434,6 @@ async function getLeaderboard(limit = 50) {
   return result.rows;
 }
 
-/**
- * Compute TrueSkill ratings from scratch using only the matches in the
- * specified season. Returns a plain object keyed by player_id (string).
- * This is the single source of truth for season-scoped MMR used by both
- * the leaderboard and player profile pages.
- */
-async function computeSeasonTrueSkill(seasonId = null) {
-  const p = getPool();
-  const { getStatsService } = require('../stats/statsService');
-  const statsService = getStatsService();
-
-  // Build canonical ID map so accounts sharing a nickname are treated as one player.
-  // e.g. if account 111 and account 222 are both nicknamed "Burtle", all their
-  // matches feed into a single TrueSkill rating slot keyed by the lower account ID.
-  const nickRes = await p.query('SELECT account_id, nickname FROM nicknames');
-  const nicknameToIds = {};
-  for (const row of nickRes.rows) {
-    const aid = row.account_id.toString();
-    const nick = row.nickname.toLowerCase();
-    if (!nicknameToIds[nick]) nicknameToIds[nick] = [];
-    nicknameToIds[nick].push(aid);
-  }
-  const accountToCanonical = {};
-  for (const ids of Object.values(nicknameToIds)) {
-    if (ids.length < 2) continue; // no merge needed
-    ids.sort();
-    const canonical = ids[0];
-    for (const id of ids) accountToCanonical[id] = canonical;
-  }
-  const getCanonical = (id) => accountToCanonical[id] || id;
-
-  const params = [];
-  let matchWhere;
-  if (seasonId === 'legacy') {
-    matchWhere = 'WHERE m.is_legacy = true';
-  } else if (seasonId !== null && seasonId !== undefined) {
-    params.push(parseInt(seasonId));
-    matchWhere = `WHERE m.season_id = $${params.length}`;
-  } else {
-    matchWhere = 'WHERE m.is_legacy = false';
-  }
-
-  const rows = await p.query(
-    `SELECT m.match_id, m.date, m.radiant_win,
-            ps.account_id, ps.persona_name, ps.team
-     FROM matches m
-     JOIN player_stats ps ON ps.match_id = m.match_id
-     ${matchWhere}
-     ORDER BY m.date ASC, m.match_id ASC`,
-    params
-  );
-
-  const matchMap = new Map();
-  for (const row of rows.rows) {
-    if (!matchMap.has(row.match_id)) {
-      matchMap.set(row.match_id, { radiantWin: row.radiant_win, radiant: [], dire: [] });
-    }
-    const rawId = row.account_id > 0 ? row.account_id.toString() : null;
-    if (!rawId) continue;
-    const id = getCanonical(rawId);
-    const entry = { id, persona_name: row.persona_name };
-    if (row.team === 'radiant') matchMap.get(row.match_id).radiant.push(entry);
-    else matchMap.get(row.match_id).dire.push(entry);
-  }
-
-  const DEFAULT_MU = 25, DEFAULT_SIGMA = 8.333;
-  const ratings = {};
-
-  for (const [, match] of matchMap) {
-    if (match.radiant.length === 0 || match.dire.length === 0) continue;
-
-    // De-duplicate within a team in case two merged accounts played the same match
-    const dedup = (team) => {
-      const seen = new Set();
-      return team.filter(pl => seen.has(pl.id) ? false : seen.add(pl.id));
-    };
-    const radiant = dedup(match.radiant).map(pl => ({
-      id: pl.id,
-      mu: ratings[pl.id]?.mu ?? DEFAULT_MU,
-      sigma: ratings[pl.id]?.sigma ?? DEFAULT_SIGMA,
-    }));
-    const dire = dedup(match.dire).map(pl => ({
-      id: pl.id,
-      mu: ratings[pl.id]?.mu ?? DEFAULT_MU,
-      sigma: ratings[pl.id]?.sigma ?? DEFAULT_SIGMA,
-    }));
-
-    const newRatings = statsService.calculateNewRatings(radiant, dire, match.radiantWin);
-
-    for (const r of newRatings) {
-      const isRadiant = radiant.some(pl => pl.id === r.id);
-      const won = isRadiant ? match.radiantWin : !match.radiantWin;
-      const playerInfo = [...match.radiant, ...match.dire].find(pl => pl.id === r.id);
-      if (!ratings[r.id]) {
-        ratings[r.id] = { mu: DEFAULT_MU, sigma: DEFAULT_SIGMA, wins: 0, losses: 0, display_name: playerInfo?.persona_name || r.id };
-      }
-      ratings[r.id].mu = r.mu;
-      ratings[r.id].sigma = r.sigma;
-      ratings[r.id].mmr = r.mmr;
-      if (won) ratings[r.id].wins++;
-      else ratings[r.id].losses++;
-      if (playerInfo?.persona_name) ratings[r.id].display_name = playerInfo.persona_name;
-    }
-  }
-
-  return { ratings, accountToCanonical };
-}
-
 // ── Site settings (key/value) ───────────────────────────────────────────────
 async function getSetting(key) {
   const p = getPool();
@@ -2701,11 +2591,12 @@ async function executeSeason10Launch() {
 }
 
 // ── TrueSkill V3 ────────────────────────────────────────────────────────────
-// Mirrors computeSeasonTrueSkill but uses the V3 environment and a per-match,
-// per-player performance modifier derived from the same scoring formula used by
-// the weekend tournament. Modifier is z-scored within each match (ddof=0),
-// clamped to ±2σ, then mapped to [0.80, 1.20]. Lobby-only matches (no stats)
-// fall back to modifier = 1.0 for everyone.
+// Computes per-season TrueSkill ratings using the V3 environment and a
+// per-match, per-player performance modifier derived from the same scoring
+// formula used by the weekend tournament. Modifier is z-scored within each
+// match (ddof=0), clamped to ±2σ, then mapped to [0.80, 1.20]. Lobby-only
+// matches (no stats) fall back to modifier = 1.0 for everyone. Sole rating
+// engine since v5.90; the legacy V1 implementation was removed in v5.95.
 function _v3PerfScore(s, won) {
   const winBonus = won ? 25 : 0;
   // Deward scoring: small tiebreaker weights — obs kills (1.5 pts), sentry kills (0.5 pts), no cap.
@@ -3181,7 +3072,7 @@ async function computeTS2Leaderboard(seasonId = null) {
   const { getStatsService } = require('../stats/statsService');
   const statsService = getStatsService();
 
-  // ── Canonical ID map (nickname merging, same as computeSeasonTrueSkill) ──
+  // ── Canonical ID map (nickname merging) ──────────────────────────────────
   const nickRes = await p.query('SELECT account_id, nickname FROM nicknames');
   const nicknameToIds = {};
   for (const row of nickRes.rows) {
@@ -3437,12 +3328,10 @@ function _computeImpactTier(rawScore, allRawScores) {
 async function getComputedLeaderboard(seasonId = null) {
   const p = getPool();
 
-  // v5.90 — TrueSkill V3 is now the only supported production engine. The
-  // legacy `use_v3_trueskill` site setting is ignored; V1 is no longer
-  // reachable from the public leaderboard or any consumer of this helper.
+  // TrueSkill V3 is the sole production rating engine (V1 removed in v5.95).
   const { ratings } = await computeSeasonTrueSkillV3(seasonId);
 
-  // Fetch nicknames and build canonical-account mapping (same logic as computeSeasonTrueSkill)
+  // Fetch nicknames and build canonical-account mapping
   const nicknamesRes = await p.query(
     'SELECT account_id, nickname, dota_rank_tier, dota_leaderboard_rank, dota_rank_source FROM nicknames'
   );
@@ -10303,7 +10192,6 @@ module.exports = {
   getComputedLeaderboard,
   getImpactScores,
   computeTS2Leaderboard,
-  computeSeasonTrueSkill,
   computeSeasonTrueSkillV3,
   getMatchV3Modifiers,
   getPlayerV3ModifierHistory,

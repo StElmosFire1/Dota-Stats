@@ -2234,11 +2234,8 @@ export default function AdminPanel() {
   const [recalcLoading, setRecalcLoading] = useState(false);
   const [recalcMsg, setRecalcMsg] = useState('');
   const [siteSettings, setSiteSettings] = useState({});
-  // v5.90 — V1/V3 rating-engine toggle and the V3-vs-V1 preview have been
-  // removed from the Admin Panel; V3 is the sole production engine going
-  // forward. The corresponding state (ratingToggleSaving / v3Preview*) and
-  // handlers (handleToggleRatingSystem / handleRunV3Preview) were dropped
-  // along with the UI block in the Seasons tab.
+  // TrueSkill V3 is the sole production rating engine; the legacy V1
+  // implementation and the V3-vs-V1 admin preview were removed in v5.95.
   const [ranks, setRanks] = useState([]);
   const [rankSyncing, setRankSyncing] = useState(false);
   const [rankSyncMsg, setRankSyncMsg] = useState('');
