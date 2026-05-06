@@ -865,8 +865,13 @@ function createApiRouter(startupStatus = {}) {
 
   // POST /api/me/link-discord — first-login Discord ID onboarding (task 89).
   // Signed-in only. Accepts a 17–19 digit Discord snowflake and writes it
-  // into nicknames.discord_id for the caller's account. We do NOT verify the
-  // ID points at a real Discord user (out of scope per the task).
+  // into nicknames.discord_id for the caller's account.
+  //
+  // Task 97: before saving, ask the bot to verify the ID actually points at
+  // a real Discord user AND that we can DM them — by fetching the user via
+  // the Discord REST API and sending a confirmation DM. If either step fails
+  // we return a specific 400 and do NOT persist anything, so a typo or a
+  // someone-else's-ID never silently breaks future bot DMs.
   router.post('/me/link-discord', async (req, res) => {
     const accountId = req.session?.accountId;
     if (!accountId) return res.status(401).json({ error: 'Sign in with Steam first.' });
@@ -874,9 +879,47 @@ function createApiRouter(startupStatus = {}) {
     if (!/^\d{17,19}$/.test(raw)) {
       return res.status(400).json({ error: 'That doesn\'t look like a Discord User ID. It should be 17–19 digits.' });
     }
+
+    // Don't let the same player re-bind to a different Discord ID via this
+    // self-service path — the modal only fires for users with no link yet,
+    // but be defensive. Fail closed if the precheck itself errors so we
+    // can never accidentally overwrite an existing link on a flaky DB read.
+    try {
+      const existing = await db.getDiscordIdByAccountId(accountId);
+      if (existing && existing !== raw) {
+        return res.status(409).json({ error: 'Your account is already linked to a different Discord ID. Update it from Settings → Profile.' });
+      }
+      if (existing === raw) {
+        return res.json({ ok: true, discord_id: existing, alreadyLinked: true });
+      }
+    } catch (err) {
+      console.error('[me/link-discord] existing-link check failed:', err.message);
+      return res.status(503).json({ error: 'Could not check your existing link right now. Try again in a moment.' });
+    }
+
+    let verification;
+    try {
+      const bot = getDiscordBot();
+      verification = await bot.verifyAndConfirmDiscordId(raw);
+    } catch (err) {
+      console.error('[me/link-discord] verify threw for account', accountId, ':', err.message);
+      return res.status(503).json({ error: 'Discord verification is unavailable right now. Try again in a moment.' });
+    }
+
+    if (!verification?.ok) {
+      // 503 for transient bot/Discord failures (the UI can suggest a retry);
+      // 400 only for definitive user-input failures (bad ID, DMs disabled).
+      const transient = verification?.code === 'not_ready' || verification?.code === 'unknown';
+      const status = transient ? 503 : 400;
+      return res.status(status).json({
+        error: verification?.error || 'Could not verify that Discord ID.',
+        code: verification?.code || 'unknown',
+      });
+    }
+
     try {
       const saved = await db.linkOwnDiscordId(accountId, raw);
-      res.json({ ok: true, discord_id: saved });
+      res.json({ ok: true, discord_id: saved, verified_username: verification.username || null });
     } catch (err) {
       console.error('[me/link-discord] failed for account', accountId, ':', err.message);
       res.status(500).json({ error: 'Could not save your Discord ID. Try again in a moment.' });

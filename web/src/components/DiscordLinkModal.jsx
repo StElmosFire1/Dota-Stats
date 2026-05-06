@@ -79,7 +79,13 @@ export default function DiscordLinkModal() {
       try { sessionStorage.setItem(SESSION_DISMISS_KEY, '1'); } catch {}
       setOpen(false);
       setSaving(false);
-      setToast('Discord linked. The bot can now DM you.');
+      setToast(
+        body.alreadyLinked
+          ? 'Your Discord is already linked.'
+          : body.verified_username
+            ? `Discord linked to @${body.verified_username}. Check your DMs for confirmation.`
+            : 'Discord linked. Check your DMs for the confirmation message.'
+      );
       if (typeof refreshMe === 'function') {
         refreshMe().catch(() => {});
       }

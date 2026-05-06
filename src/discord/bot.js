@@ -5672,6 +5672,62 @@ class DiscordBot {
     }
   }
 
+  // Verify a Discord User ID before persisting it during the first-login
+  // onboarding flow (task 97). Returns:
+  //   { ok: true,  username }                    — ID is real AND we DM'd them
+  //   { ok: false, code, error }                 — could not verify
+  // Codes:
+  //   not_ready   — bot client isn't logged in yet (transient)
+  //   not_found   — Discord REST returned no such user
+  //   dm_blocked  — user exists but won't accept DMs from us
+  //   unknown     — anything else
+  async verifyAndConfirmDiscordId(targetDiscordId) {
+    if (!this.client || !this.client.readyAt) {
+      return { ok: false, code: 'not_ready', error: 'Discord bot is starting up. Try again in a moment.' };
+    }
+    let user;
+    try {
+      user = await this.client.users.fetch(targetDiscordId);
+    } catch (err) {
+      const msg = (err && err.message) || '';
+      if (err?.code === 10013 || /Unknown User/i.test(msg)) {
+        return {
+          ok: false,
+          code: 'not_found',
+          error: "That Discord ID doesn't belong to any user. Double-check you copied it correctly (right-click your name → Copy User ID).",
+        };
+      }
+      return { ok: false, code: 'unknown', error: 'Could not reach Discord to verify that ID. Try again in a moment.' };
+    }
+    if (!user) {
+      return {
+        ok: false,
+        code: 'not_found',
+        error: "That Discord ID doesn't belong to any user. Double-check you copied it correctly.",
+      };
+    }
+    try {
+      await user.send(
+        "✅ **OCE Inhouse — Discord linked.**\n" +
+        "This DM confirms your Discord account is now linked to your Steam profile on the league site. " +
+        "You'll receive match results, MVP votes, and league announcements here.\n\n" +
+        "_(If you didn't just link your account on oceinhouse.gg, reply `!unlink` and let an admin know.)_"
+      );
+    } catch (err) {
+      const code = err?.code;
+      // 50007 = Cannot send messages to this user (DMs disabled / not in a shared server / blocked bot)
+      if (code === 50007) {
+        return {
+          ok: false,
+          code: 'dm_blocked',
+          error: "We found that Discord user but couldn't DM them. In Discord, join the OCE Inhouse server and enable \"Direct Messages from server members\" in Privacy Settings, then try again.",
+        };
+      }
+      return { ok: false, code: 'unknown', error: 'Could not send a confirmation DM to that Discord user. Try again in a moment.' };
+    }
+    return { ok: true, username: user.username };
+  }
+
   async shutdown() {
     if (this._coachingReminderTimer) clearInterval(this._coachingReminderTimer);
     if (this._coachingAutoReleaseTimer) clearInterval(this._coachingAutoReleaseTimer);
