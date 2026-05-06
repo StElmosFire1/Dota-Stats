@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, superuserFetch } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
@@ -82,7 +82,7 @@ function DbBackupManager({ superuserKey }) {
   const authHeader = { 'x-superuser-key': superuserKey };
 
   function loadBackups() {
-    fetch('/api/admin/list-backups', { headers: authHeader })
+    superuserFetch('/api/admin/list-backups', { headers: authHeader })
       .then(r => r.json())
       .then(d => setBackups(d.backups || []))
       .catch(() => setBackups([]));
@@ -91,7 +91,7 @@ function DbBackupManager({ superuserKey }) {
   function handleBackup() {
     setBackupLoading(true);
     setBackupMsg('');
-    fetch('/api/admin/backup-db', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({ label: 'manual' }) })
+    superuserFetch('/api/admin/backup-db', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({ label: 'manual' }) })
       .then(r => r.json())
       .then(d => {
         setBackupMsg(d.message || d.error || 'Done.');
@@ -104,7 +104,7 @@ function DbBackupManager({ superuserKey }) {
   function handleRestore(backup) {
     if (!window.confirm(`Restore from backup: ${backup}?\n\nThis will OVERWRITE the current player_stats, ratings, and rating_history tables with data from this snapshot. The current state cannot be recovered unless you have another backup.`)) return;
     setRestoring(backup);
-    fetch('/api/admin/restore-backup', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({ backup }) })
+    superuserFetch('/api/admin/restore-backup', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({ backup }) })
       .then(r => r.json())
       .then(d => { alert(d.message || d.error); loadBackups(); })
       .catch(e => alert('Restore failed: ' + e.message))
@@ -114,7 +114,7 @@ function DbBackupManager({ superuserKey }) {
   function handleDelete(backup) {
     if (!window.confirm(`Permanently delete backup: ${backup}?\n\nThis cannot be undone.`)) return;
     setDeleting(backup);
-    fetch(`/api/admin/delete-backup/${backup}`, { method: 'DELETE', headers: authHeader })
+    superuserFetch(`/api/admin/delete-backup/${backup}`, { method: 'DELETE', headers: authHeader })
       .then(r => r.json())
       .then(d => { loadBackups(); })
       .catch(e => alert('Delete failed: ' + e.message))
@@ -130,7 +130,7 @@ function DbBackupManager({ superuserKey }) {
     )) return;
     setFixNickLoading(true);
     setFixNickResult(null);
-    fetch('/api/admin/fix-nickname-account-ids', {
+    superuserFetch('/api/admin/fix-nickname-account-ids', {
       method: 'POST',
       headers: { ...authHeader, 'Content-Type': 'application/json' },
       body: JSON.stringify({ backup })
@@ -262,7 +262,7 @@ function ReplayManager({ superuserKey }) {
 
   function handleDownload(matchId) {
     const url = `/api/replays/${matchId}/download`;
-    fetch(url, { headers: authHeader })
+    superuserFetch(url, { headers: authHeader })
       .then(r => {
         if (!r.ok) return r.json().then(j => { throw new Error(j.error || 'Not available'); });
         return r.blob();
@@ -280,7 +280,7 @@ function ReplayManager({ superuserKey }) {
     if (!window.confirm(`Re-parse stored replay for match ${matchId}?\n\nThis will update all stats and recalculate MMR for all matches. Season assignment is preserved.`)) return;
     setReparsing(prev => ({ ...prev, [matchId]: true }));
     setReparseMsg(prev => ({ ...prev, [matchId]: '' }));
-    fetch(`/api/admin/reparse-replay/${matchId}`, { method: 'POST', headers: authHeader })
+    superuserFetch(`/api/admin/reparse-replay/${matchId}`, { method: 'POST', headers: authHeader })
       .then(r => r.json())
       .then(d => {
         if (d.success) {
@@ -296,13 +296,13 @@ function ReplayManager({ superuserKey }) {
   function handleReparseAll() {
     if (!window.confirm(`Re-parse ALL stored replays?\n\nA snapshot of the current database will be created automatically before starting, so you can roll back if needed.\n\nThis runs in the background and may take a long time. Stats for every replay on file will be updated and MMR recalculated for all players in chronological order. Season assignments are preserved.`)) return;
     setReparseAllLoading(true);
-    fetch('/api/admin/reparse-all-replays', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+    superuserFetch('/api/admin/reparse-all-replays', { method: 'POST', headers: { ...authHeader, 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
       .then(r => r.json())
       .then(d => {
         setReparseAllStatus(d);
         if (d.running || d.success) {
           const poll = setInterval(() => {
-            fetch('/api/admin/reparse-all-status', { headers: authHeader })
+            superuserFetch('/api/admin/reparse-all-status', { headers: authHeader })
               .then(r => r.json())
               .then(s => {
                 setReparseAllStatus(s);
@@ -320,7 +320,7 @@ function ReplayManager({ superuserKey }) {
     if (!window.confirm('Set ALL stored replays to never expire?')) return;
     setSetPermanentLoading(true);
     setSetPermanentMsg('');
-    fetch('/api/admin/replays/set-all-permanent', { method: 'POST', headers: authHeader })
+    superuserFetch('/api/admin/replays/set-all-permanent', { method: 'POST', headers: authHeader })
       .then(r => r.json())
       .then(d => {
         setSetPermanentMsg(d.message || d.error || 'Done.');
@@ -480,7 +480,7 @@ function TestDmPanel({ superuserKey }) {
     setLoading(true);
     setStatus(null);
     try {
-      const res = await fetch('/api/admin/test-dm', {
+      const res = await superuserFetch('/api/admin/test-dm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
         body: JSON.stringify({ discordId: id }),
@@ -557,7 +557,7 @@ function TestRsvpDmPanel({ superuserKey }) {
     setLoading(true);
     setStatus(null);
     try {
-      const res = await fetch('/api/admin/test-rsvp-dm', {
+      const res = await superuserFetch('/api/admin/test-rsvp-dm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
         body: JSON.stringify({ discordId: id }),
@@ -636,7 +636,7 @@ function ErrorLogViewer({ superuserKey }) {
     setLoading(true);
     const params = new URLSearchParams({ limit: 100 });
     if (level) params.set('level', level);
-    fetch(`/api/admin/error-log?${params}`, { headers: authHeader })
+    superuserFetch(`/api/admin/error-log?${params}`, { headers: authHeader })
       .then(r => r.json())
       .then(d => { setLogs(d.logs || []); setLoading(false); })
       .catch(() => { setLogs([]); setLoading(false); });
@@ -644,7 +644,7 @@ function ErrorLogViewer({ superuserKey }) {
 
   function handleClear() {
     if (!window.confirm('Clear server logs older than 30 days?')) return;
-    fetch('/api/admin/error-log?days=30', { method: 'DELETE', headers: authHeader })
+    superuserFetch('/api/admin/error-log?days=30', { method: 'DELETE', headers: authHeader })
       .then(r => r.json())
       .then(d => { setClearMsg(d.message || 'Done.'); load(); })
       .catch(e => setClearMsg('Error: ' + e.message));
@@ -902,7 +902,7 @@ function SteamBotPanel({ superuserKey }) {
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
-      const r = await fetch('/api/admin/steam/status', { headers: auth });
+      const r = await superuserFetch('/api/admin/steam/status', { headers: auth });
       setStatus(await r.json());
     } catch { setStatus(null); }
     setStatusLoading(false);
@@ -917,7 +917,7 @@ function SteamBotPanel({ superuserKey }) {
   const callApi = async (url, body, setMsg, setLoading) => {
     setLoading(true); setMsg(null);
     try {
-      const r = await fetch(url, {
+      const r = await superuserFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth },
         body: JSON.stringify(body),
@@ -1031,7 +1031,7 @@ function SteamBotPanel({ superuserKey }) {
                 onClick={async () => {
                   setFriendsLoading(true); setFriendsMsg(null);
                   try {
-                    const r = await fetch('/api/admin/steam/friends/add-all', { method: 'POST', headers: auth });
+                    const r = await superuserFetch('/api/admin/steam/friends/add-all', { method: 'POST', headers: auth });
                     const d = await r.json();
                     setFriendsMsg({ ok: r.ok, text: d.message || d.error || (r.ok ? 'Requests sent!' : 'Failed') });
                     setTimeout(loadStatus, 3000);
@@ -1090,7 +1090,7 @@ export default function AdminPanel() {
     if (!isSuperuser) return;
     setUnregLoading(true);
     try {
-      const r = await fetch('/api/admin/unregistered-players', { headers: { 'x-superuser-key': superuserKey } });
+      const r = await superuserFetch('/api/admin/unregistered-players', { headers: { 'x-superuser-key': superuserKey } });
       const d = await r.json();
       setUnregistered(Array.isArray(d) ? d : []);
     } catch {
@@ -1104,7 +1104,7 @@ export default function AdminPanel() {
 
   const loadOverview = useCallback(() => {
     if (!isSuperuser) return;
-    fetch('/api/admin/overview', { headers: authHeader })
+    superuserFetch('/api/admin/overview', { headers: authHeader })
       .then(r => r.json())
       .then(setOverview)
       .catch(() => {});
@@ -1116,7 +1116,7 @@ export default function AdminPanel() {
 
   const loadSiteSettings = useCallback(() => {
     if (!isSuperuser) return;
-    fetch('/api/admin/settings', { headers: authHeader })
+    superuserFetch('/api/admin/settings', { headers: authHeader })
       .then(r => r.json())
       .then(d => setSiteSettings(d.settings || {}))
       .catch(() => {});
@@ -1137,7 +1137,7 @@ export default function AdminPanel() {
     setRatingToggleSaving(true);
     setRatingToggleMsg('');
     try {
-      const r = await fetch('/api/admin/settings', {
+      const r = await superuserFetch('/api/admin/settings', {
         method: 'POST',
         headers: { ...authHeader, 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: 'use_v3_trueskill', value: useV3 ? 'false' : 'true' }),
@@ -1160,7 +1160,7 @@ export default function AdminPanel() {
     try {
       const sid = selectedSeason?.id ?? null;
       const url = `/api/admin/v3-preview${sid ? `?season_id=${sid}` : ''}`;
-      const res = await fetch(url, { headers: authHeader });
+      const res = await superuserFetch(url, { headers: authHeader });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed');
       setV3PreviewData(json.leaderboard || []);
@@ -1175,7 +1175,7 @@ export default function AdminPanel() {
     setRecalcLoading(true);
     setRecalcMsg('');
     try {
-      const r = await fetch('/api/admin/recalculate-ratings', { method: 'POST', headers: authHeader });
+      const r = await superuserFetch('/api/admin/recalculate-ratings', { method: 'POST', headers: authHeader });
       const d = await r.json();
       setRecalcMsg(d.message || d.error || 'Done.');
     } catch {
@@ -1188,7 +1188,7 @@ export default function AdminPanel() {
   const handleLoadDuplicates = async () => {
     setDupLoading(true);
     try {
-      const r = await fetch('/api/admin/duplicate-matches', { headers: authHeader });
+      const r = await superuserFetch('/api/admin/duplicate-matches', { headers: authHeader });
       const d = await r.json();
       setDuplicates(d.duplicates || d || []);
     } catch {
@@ -1723,7 +1723,7 @@ function ReplayInspectorPanel({ superuserKey }) {
     try {
       const fd = new FormData();
       fd.append('replay', file);
-      const res = await fetch('/api/replay-inspect', {
+      const res = await superuserFetch('/api/replay-inspect', {
         method: 'POST',
         headers: { 'x-superuser-key': superuserKey },
         body: fd,

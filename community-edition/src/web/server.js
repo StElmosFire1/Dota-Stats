@@ -398,6 +398,15 @@ function createApiRouter(startupStatus = {}) {
     if (!key) return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
     const provided = req.headers['x-superuser-key'];
     if (provided && provided === key) return next();
+    // Split: 401 = no credential / browser session expired (the frontend
+    // wrapper in community-edition/web/src/api.js triggers re-login on 401);
+    // 403 = caller explicitly presented a wrong header value (do not
+    // auto-reprompt). The browser client's session sentinel is the literal
+    // string 'session'; when that arrives without a valid session cookie we
+    // treat it as an expired session, not a bad credential.
+    if (!provided || provided === 'session') {
+      return res.status(401).json({ error: 'Superuser session expired' });
+    }
     return res.status(403).json({ error: 'Invalid superuser key' });
   }
 
