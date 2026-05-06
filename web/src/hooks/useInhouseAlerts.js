@@ -17,6 +17,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'inhouse:muted';
 
+// v6.03 — bumped filename for cache-busting. Browsers caching the old
+// `inhouse-alert.mp3` short ping will refetch the new bell asset because
+// the URL changed. The mp3 is a 2.8s synthesised church-bell strike
+// (six inharmonic sine partials, ~34 KB). The Web Audio synthesis below
+// remains the authoritative path; the mp3 is used as a primary play
+// target when HTMLAudioElement is available and the file loads cleanly.
+const SOUND_URL = '/sounds/church-bell-v603.mp3';
+
 const NOTIF_TITLES = {
   accept:        'Inhouse — accept phase open',
   captain:       'Inhouse — you are a captain',
@@ -86,6 +94,11 @@ function ringChurchBell(ctx, masterVolume = 0.7) {
 export function useInhouseAlerts({ session, players, myAccountId, draftStatus }) {
   const [muted, setMutedState] = useState(() => (typeof window !== 'undefined' ? readMuted() : false));
   const audioCtxRef = useRef(null);
+  // Lazy-loaded HTMLAudioElement for the shipped mp3; falls back to Web
+  // Audio synthesis if the file fails to load (offline, blocked extension,
+  // etc) so an alert always fires when not muted.
+  const audioElRef = useRef(null);
+  const audioElFailedRef = useRef(false);
   // Track previous values so we only fire on transitions, not every poll.
   const prev = useRef({
     status: null,
@@ -105,23 +118,44 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     // notifications still fire so a player who muted the page tab can
     // still see the OS-level toast for an accept/draft/match-ready event.
     if (!muted && typeof window !== 'undefined') {
-      try {
-        // Lazily create the AudioContext on first use — required by browser
-        // autoplay policy (must be created/resumed in a user-gesture stack;
-        // since the user toggled mute on or first interacted with the page
-        // earlier, this typically succeeds on real interactions).
-        const Ctor = window.AudioContext || window.webkitAudioContext;
-        if (Ctor) {
-          if (!audioCtxRef.current) audioCtxRef.current = new Ctor();
-          const ctx = audioCtxRef.current;
-          const ring = () => ringChurchBell(ctx, 0.7);
-          if (ctx.state === 'suspended') {
-            ctx.resume().then(ring).catch(() => {});
-          } else {
-            ring();
+      // Try the shipped church-bell mp3 first (so users hear the exact
+      // asset shipped with the build). Fall back to live Web Audio
+      // synthesis on any failure path so muting only ever silences the
+      // chime when the user explicitly asked for it.
+      let played = false;
+      if (!audioElFailedRef.current) {
+        try {
+          if (!audioElRef.current) {
+            audioElRef.current = new Audio(SOUND_URL);
+            audioElRef.current.preload = 'auto';
+            audioElRef.current.volume = 0.85;
+            audioElRef.current.addEventListener('error', () => { audioElFailedRef.current = true; });
           }
-        }
-      } catch (_) { /* autoplay blocked / no Web Audio — fall through to notification */ }
+          const el = audioElRef.current;
+          el.currentTime = 0;
+          const p = el.play();
+          if (p && typeof p.then === 'function') {
+            p.then(() => { played = true; }).catch(() => { audioElFailedRef.current = true; });
+          } else {
+            played = true;
+          }
+        } catch (_) { audioElFailedRef.current = true; }
+      }
+      if (!played) {
+        try {
+          const Ctor = window.AudioContext || window.webkitAudioContext;
+          if (Ctor) {
+            if (!audioCtxRef.current) audioCtxRef.current = new Ctor();
+            const ctx = audioCtxRef.current;
+            const ring = () => ringChurchBell(ctx, 0.7);
+            if (ctx.state === 'suspended') {
+              ctx.resume().then(ring).catch(() => {});
+            } else {
+              ring();
+            }
+          }
+        } catch (_) { /* autoplay blocked / no Web Audio — fall through to notification */ }
+      }
     }
     // Browser notification (best-effort, always attempted).
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -145,6 +179,21 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
   // "Test sound" button so they know what to listen for before a real event.
   const testChime = useCallback(() => {
     if (typeof window === 'undefined') return;
+    // Mirror fire()'s play strategy: shipped mp3 first, Web Audio fallback.
+    if (!audioElFailedRef.current) {
+      try {
+        if (!audioElRef.current) {
+          audioElRef.current = new Audio(SOUND_URL);
+          audioElRef.current.preload = 'auto';
+          audioElRef.current.volume = 0.85;
+          audioElRef.current.addEventListener('error', () => { audioElFailedRef.current = true; });
+        }
+        audioElRef.current.currentTime = 0;
+        const p = audioElRef.current.play();
+        if (p && typeof p.then === 'function') p.catch(() => { audioElFailedRef.current = true; });
+        return;
+      } catch (_) { audioElFailedRef.current = true; }
+    }
     try {
       const Ctor = window.AudioContext || window.webkitAudioContext;
       if (!Ctor) return;

@@ -60,9 +60,11 @@ async function tick(db, basePort) {
         } else if (new Date(s.auto_start_at).getTime() <= Date.now()) {
           // v6.03 — resolve the captain-mode vote winner BEFORE flipping the
           // status, so the captain selection that runs at end-of-accept-phase
-          // uses the mode the lobby actually voted for. Zero votes / ties →
-          // 'highest_rank' per resolveWinningCaptainMode().
-          const winningMode = db.resolveWinningCaptainMode(s.captain_mode_votes || {});
+          // uses the mode the lobby actually voted for. Filter to **current
+          // lobby members** so a leaver can't keep skewing the result. Zero
+          // valid votes / ties → 'highest_rank' per resolveWinningCaptainMode().
+          const memberSet = new Set(players.map(p => String(p.account_id)));
+          const winningMode = db.resolveWinningCaptainMode(s.captain_mode_votes || {}, memberSet);
           // Timer expired — flip to accepting. Status-guarded UPDATE so we
           // never race with a manual admin transition.
           const guard = await pool.query(

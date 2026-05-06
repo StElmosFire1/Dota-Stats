@@ -5781,12 +5781,15 @@ NOTES
           throw e;
         }
       }
-      const tally = db.tallyCaptainModeVotes(votes);
+      // v6.03 — only count votes from players that are *currently* in the
+      // lobby, so a vote-then-leave can't poison the tally / winner.
+      const memberSet = new Set(players.map(p => String(p.account_id)));
+      const tally = db.tallyCaptainModeVotes(votes, memberSet);
       res.json({
         ok: true,
-        myVote: votes[String(actor.accountId)] || null,
+        myVote: memberSet.has(String(actor.accountId)) ? (votes[String(actor.accountId)] || null) : null,
         tally,
-        winning: db.resolveWinningCaptainMode(votes),
+        winning: db.resolveWinningCaptainMode(votes, memberSet),
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -5797,14 +5800,55 @@ NOTES
     try {
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
-      const votes = await db.getCaptainModeVotes(session.id);
+      const [votes, players] = await Promise.all([
+        db.getCaptainModeVotes(session.id),
+        db.getInhouseSessionPlayers(session.id),
+      ]);
+      // v6.03 — filter to current members so the public tally never shows
+      // ghost votes from players that have left the lobby.
+      const memberSet = new Set(players.map(p => String(p.account_id)));
+      const filtered = db.filterVotesToMembers(votes, memberSet);
       const myAccountId = req.session?.accountId ? Number(req.session.accountId) : null;
       res.json({
-        tally: db.tallyCaptainModeVotes(votes),
-        winning: db.resolveWinningCaptainMode(votes),
-        myVote: myAccountId ? (votes[String(myAccountId)] || null) : null,
-        totalVotes: Object.keys(votes || {}).length,
+        tally: db.tallyCaptainModeVotes(votes, memberSet),
+        winning: db.resolveWinningCaptainMode(votes, memberSet),
+        myVote: myAccountId ? (filtered[String(myAccountId)] || null) : null,
+        totalVotes: Object.keys(filtered).length,
       });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // v6.03 — admin live-config update for an in-flight session. Lets a
+  // superuser tweak captain mode / accept timer / min players / lobby fill
+  // grace from the collapsed admin-overrides panel on /inhouse without
+  // having to open psql or cancel-and-recreate the session. Whitelist of
+  // fields is narrow on purpose; status / payment / replay / captain
+  // assignments stay on their dedicated routes.
+  router.patch('/inhouse/:id/config', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      const allowed = ['captain_mode','accept_phase_seconds','min_players','lobby_fill_seconds'];
+      const fields = {};
+      for (const k of allowed) {
+        if (req.body && Object.prototype.hasOwnProperty.call(req.body, k)) fields[k] = req.body[k];
+      }
+      // Validate captain_mode against the same set used in the poll/select route.
+      if (fields.captain_mode && !['highest_rank','random','highest_roll','auto_balance','volunteer'].includes(fields.captain_mode)) {
+        return res.status(400).json({ error: 'Invalid captain mode' });
+      }
+      for (const numKey of ['accept_phase_seconds','min_players','lobby_fill_seconds']) {
+        if (fields[numKey] != null) {
+          const n = Number(fields[numKey]);
+          if (!Number.isFinite(n) || n < 0 || n > 600) return res.status(400).json({ error: `Invalid ${numKey}` });
+          fields[numKey] = Math.floor(n);
+        }
+      }
+      if (Object.keys(fields).length === 0) return res.status(400).json({ error: 'No editable fields supplied' });
+      const updated = await db.updateInhouseSession(req.params.id, fields);
+      res.json({ session: updated });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

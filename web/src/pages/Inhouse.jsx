@@ -114,6 +114,67 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
   );
 }
 
+// v6.03 — admin live-config editor for an in-flight inhouse session.
+// Inlined here (not extracted into its own file) because it's the only
+// caller and the form is a tiny PATCH /inhouse/:id/config wrapper.
+function LiveConfigEditor({ session, onSaved }) {
+  const [captainMode, setCaptainMode] = useState(session.captain_mode || 'highest_rank');
+  const [acceptSec, setAcceptSec] = useState(session.accept_phase_seconds || 60);
+  const [minPl, setMinPl] = useState(session.min_players || 10);
+  const [grace, setGrace] = useState(session.lobby_fill_seconds || 30);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+  const dirty = (
+    captainMode !== (session.captain_mode || 'highest_rank') ||
+    Number(acceptSec) !== Number(session.accept_phase_seconds || 60) ||
+    Number(minPl) !== Number(session.min_players || 10) ||
+    Number(grace) !== Number(session.lobby_fill_seconds || 30)
+  );
+  async function save() {
+    setSaving(true); setErr(null);
+    try {
+      await api(`/inhouse/${session.id}/config`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          captain_mode: captainMode,
+          accept_phase_seconds: Number(acceptSec),
+          min_players: Number(minPl),
+          lobby_fill_seconds: Number(grace),
+        }),
+      });
+      if (onSaved) await onSaved();
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  }
+  return (
+    <div style={{ marginTop: 8, padding: 10, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <label style={{ fontSize: 12 }}>Captain mode override:&nbsp;
+        <select value={captainMode} onChange={e => setCaptainMode(e.target.value)} style={{ padding: 3, fontSize: 12 }}>
+          <option value="highest_rank">Highest Rank</option>
+          <option value="random">Random</option>
+          <option value="highest_roll">Highest Roll (1-100)</option>
+          <option value="auto_balance">Auto-balance (skill-based)</option>
+          <option value="volunteer">Volunteer</option>
+        </select>
+        <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)' }}>overrides the live vote</span>
+      </label>
+      <label style={{ fontSize: 12 }}>Accept timer:&nbsp;
+        <input type="number" min={15} max={300} value={acceptSec} onChange={e => setAcceptSec(parseInt(e.target.value || '60', 10))} style={{ padding: 3, width: 60, fontSize: 12 }} /> sec
+      </label>
+      <label style={{ fontSize: 12 }}>Min players to auto-start:&nbsp;
+        <input type="number" min={2} max={10} value={minPl} onChange={e => setMinPl(parseInt(e.target.value || '10', 10))} style={{ padding: 3, width: 50, fontSize: 12 }} />
+      </label>
+      <label style={{ fontSize: 12 }}>Lobby fill grace:&nbsp;
+        <input type="number" min={0} max={300} value={grace} onChange={e => setGrace(parseInt(e.target.value || '30', 10))} style={{ padding: 3, width: 50, fontSize: 12 }} /> sec
+      </label>
+      {err && <div style={{ fontSize: 11, color: '#f44336' }}>{err}</div>}
+      <button onClick={save} disabled={!dirty || saving} style={{ alignSelf: 'flex-start', padding: '5px 12px', background: dirty ? 'var(--brass)' : 'var(--bg)', color: dirty ? '#0d1424' : 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 3, cursor: dirty && !saving ? 'pointer' : 'not-allowed', fontWeight: 600, fontSize: 12 }}>
+        {saving ? 'Saving…' : dirty ? 'Save Live Config' : 'No changes'}
+      </button>
+    </div>
+  );
+}
+
 export default function Inhouse() {
   const { superuserKey } = useSuperuser();
   const { steamUser } = useSteamAuth();
@@ -626,6 +687,20 @@ export default function Inhouse() {
                     </>
                   )}
                   <button onClick={cancelSession} style={{ padding: '6px 12px', background: 'transparent', color: '#f44336', border: '1px solid #f44336', borderRadius: 4, cursor: 'pointer' }}>Cancel</button>
+
+                  {/* v6.03 — live-config editor. Lets the admin retune the
+                      auto-running lobby (captain mode override, accept
+                      timer, min players, grace timer) without cancelling.
+                      Fully optional — the lobby drives itself with the
+                      defaults if no admin ever opens this. */}
+                  {['open','accepting'].includes(session.status) && (
+                    <details style={{ flexBasis: '100%', marginTop: 6 }}>
+                      <summary style={{ cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)', letterSpacing: 0.4, fontWeight: 700 }}>
+                        ⚙ Live config (captain mode / timers / min players)
+                      </summary>
+                      <LiveConfigEditor session={session} onSaved={refresh} />
+                    </details>
+                  )}
                 </div>
               </details>
             )}

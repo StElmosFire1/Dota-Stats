@@ -8054,18 +8054,31 @@ async function getCaptainModeVotes(sessionId) {
   return (r.rows[0] && r.rows[0].captain_mode_votes) || {};
 }
 
-function tallyCaptainModeVotes(votesObj) {
+// v6.03 — Filter the raw vote map down to a set of currently-eligible
+// account IDs so a player who voted and then left/was-kicked can't keep
+// influencing the outcome. Pass null/undefined to skip filtering (used by
+// pure-function unit tests). Caller normally passes the live lobby roster.
+function filterVotesToMembers(votesObj, validAccountIdSet) {
+  if (!votesObj || typeof votesObj !== 'object') return {};
+  if (!validAccountIdSet) return votesObj;
+  const out = {};
+  for (const [acct, mode] of Object.entries(votesObj)) {
+    if (validAccountIdSet.has(String(acct))) out[acct] = mode;
+  }
+  return out;
+}
+
+function tallyCaptainModeVotes(votesObj, validAccountIdSet = null) {
   const tally = { highest_rank: 0, random: 0, auto_balance: 0, volunteer: 0 };
-  if (votesObj && typeof votesObj === 'object') {
-    for (const v of Object.values(votesObj)) {
-      if (Object.prototype.hasOwnProperty.call(tally, v)) tally[v] += 1;
-    }
+  const filtered = filterVotesToMembers(votesObj, validAccountIdSet);
+  for (const v of Object.values(filtered)) {
+    if (Object.prototype.hasOwnProperty.call(tally, v)) tally[v] += 1;
   }
   return tally;
 }
 
-function resolveWinningCaptainMode(votesObj) {
-  const tally = tallyCaptainModeVotes(votesObj);
+function resolveWinningCaptainMode(votesObj, validAccountIdSet = null) {
+  const tally = tallyCaptainModeVotes(votesObj, validAccountIdSet);
   const max = Math.max(...Object.values(tally));
   if (max === 0) return 'highest_rank'; // zero votes → default
   // Ties resolve toward highest_rank if it's tied for max (stable + matches the
@@ -8112,6 +8125,15 @@ async function joinInhouseSession(sessionId, accountId, preferredPositions = nul
 async function leaveInhouseSession(sessionId, accountId) {
   const p = getPool();
   await p.query(`DELETE FROM inhouse_session_players WHERE session_id = $1 AND account_id = $2`, [sessionId, accountId]);
+  // v6.03 — also drop the player's captain-mode vote so a leaver can't keep
+  // skewing the poll after they're gone (defence-in-depth alongside the
+  // membership filter applied at tally/resolve time).
+  await p.query(
+    `UPDATE inhouse_sessions
+        SET captain_mode_votes = COALESCE(captain_mode_votes, '{}'::jsonb) - $2::text
+      WHERE id = $1`,
+    [sessionId, String(accountId)]
+  ).catch(() => {});
 }
 
 // v5.88 — when a player signs out of the site, drop them from any
@@ -10628,6 +10650,7 @@ module.exports = {
   getCaptainModeVotes,
   tallyCaptainModeVotes,
   resolveWinningCaptainMode,
+  filterVotesToMembers,
   CAPTAIN_VOTE_MODES,
   getInhouseSession,
   listInhouseSessions,
