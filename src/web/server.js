@@ -550,10 +550,20 @@ function createServer(startupStatus = {}) {
     try {
       const bot = getDiscordBot();
       if (typeof bot.addUserToLeagueGuild === 'function') {
-        await bot.addUserToLeagueGuild(discordId, accessToken);
+        const joinResult = await bot.addUserToLeagueGuild(discordId, accessToken);
+        // Helper returns structured failure objects instead of throwing for
+        // non-throwing failure modes (missing config, non-2xx from Discord,
+        // etc.) — surface them here so they're visible in the auth log
+        // alongside the existing throw-path warning.
+        if (joinResult && joinResult.ok === false) {
+          console.warn(
+            '[discord-oauth] guild add returned non-ok for', discordId,
+            ':', joinResult.code, '-', joinResult.error,
+          );
+        }
       }
     } catch (err) {
-      console.warn('[discord-oauth] guild add failed for', discordId, ':', err.message);
+      console.warn('[discord-oauth] guild add threw for', discordId, ':', err.message);
     }
 
     return back({ discord_link: 'success', username: verification.username || discordUser.username || '' });
