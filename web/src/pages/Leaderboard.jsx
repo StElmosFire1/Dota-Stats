@@ -563,8 +563,8 @@ export default function Leaderboard() {
                 <th className="col-stat" title="Dota 2 rank medal">Dota Rank</th>
                 <th className="col-stat" title="Inhouse Rank">IH Rank</th>
                 <th className="col-stat" title="TrueSkill MMR rating">MMR</th>
-                <th className="col-stat" title="Wins">W</th>
-                <th className="col-stat" title="Losses">L</th>
+                <th className="col-stat col-wl-hide" title="Wins">W</th>
+                <th className="col-stat col-wl-hide" title="Losses">L</th>
                 <th className="col-stat" title="Total games played">Games</th>
                 <th className="col-stat" title="Win percentage">Win %</th>
                 <th className="col-stat" title="Impact Score 1–10: ranked by K/D/A, win rate and games played">Impact</th>
@@ -613,8 +613,8 @@ export default function Leaderboard() {
                     </td>
                     <td className="col-stat"><TierBadge mmr={p.mmr} dbTiers={dbTiers} isLeader={i === 0} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
-                    <td className="col-stat wins">{p.wins}</td>
-                    <td className="col-stat losses">{p.losses}</td>
+                    <td className="col-stat col-wl-hide wins">{p.wins}</td>
+                    <td className="col-stat col-wl-hide losses">{p.losses}</td>
                     <td className="col-stat">{p.games_played}</td>
                     <td className="col-stat">{winRate}%</td>
                     <td className="col-stat"><ImpactBadge score={p.impact_score} /></td>

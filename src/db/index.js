@@ -3542,14 +3542,49 @@ async function getComputedLeaderboard(seasonId = null) {
     };
   });
 
+  // v5.86 — fetch persisted PERF (Positive Impact Score) per account for the
+  // leaderboard's "Avg PERF" column. Same season scoping as the stats query.
+  const perfRows = await p.query(
+    `SELECT ps.account_id::text AS account_id,
+            AVG(ps.perf)::float AS avg_perf,
+            COUNT(ps.perf)::int  AS perf_games
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.account_id != 0 AND ps.perf IS NOT NULL ${statsWhere}
+      GROUP BY ps.account_id`,
+    statsParams
+  );
+  // Merge by canonical (handles nickname-merged accounts) using a weighted avg.
+  const perfAgg = {};
+  for (const row of perfRows.rows) {
+    const cid = getCanonical(row.account_id);
+    const games = parseInt(row.perf_games, 10) || 0;
+    const avg   = parseFloat(row.avg_perf);
+    if (!games || !Number.isFinite(avg)) continue;
+    if (!perfAgg[cid]) perfAgg[cid] = { sum: 0, games: 0 };
+    perfAgg[cid].sum   += avg * games;
+    perfAgg[cid].games += games;
+  }
+
   // Compute raw impact scores using per-game averages + kill involvement
   for (const player of leaderboard) {
     const s = statsAgg[player.player_id];
-    if (!s || !player.games_played) { player.impact_raw = null; continue; }
-    player.impact_raw = _computeImpactRaw(
-      player.games_played, player.wins,
-      s.avgKills, s.avgDeaths, s.avgAssists, s.avgKi
-    );
+    if (!s || !player.games_played) { player.impact_raw = null; }
+    else {
+      player.impact_raw = _computeImpactRaw(
+        player.games_played, player.wins,
+        s.avgKills, s.avgDeaths, s.avgAssists, s.avgKi
+      );
+    }
+    // Attach Avg PERF (rounded to 1 dp). Null when no PERF rows exist yet.
+    const pa = perfAgg[player.player_id];
+    if (pa && pa.games > 0) {
+      player.avg_perf   = Math.round((pa.sum / pa.games) * 10) / 10;
+      player.perf_games = pa.games;
+    } else {
+      player.avg_perf   = null;
+      player.perf_games = 0;
+    }
   }
 
   // Rank into 1–10 tiers (only among players who have a raw score)

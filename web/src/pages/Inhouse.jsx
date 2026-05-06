@@ -359,16 +359,72 @@ export default function Inhouse() {
         </div>
       )}
 
-      {session && (
-        <div style={{ background: 'var(--bg-elevated)', padding: 20, borderRadius: 8, border: '1px solid var(--border)', marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-            <div>
-              <h2 style={{ margin: 0 }}>Session #{session.id}</h2>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-                Status: <strong style={{ color: 'var(--text)' }}>{session.status.toUpperCase()}</strong>
-                &nbsp;·&nbsp;Captain mode: {session.captain_mode}
-                &nbsp;·&nbsp;{players.length} player{players.length === 1 ? '' : 's'}
+      {session && (() => {
+        // v5.86 — session card redesign. Status pill, captain-mode badge,
+        // player-count chip, and a slot-fill progress bar replace the bare
+        // "Status: OPEN · Captain mode: …" plain-text line. The card itself
+        // gets a brass top-rule and a slightly larger surface to anchor the
+        // page. Inner content (countdown, accept/decline, player rosters) is
+        // untouched.
+        const minPlayers = session.min_players || 10;
+        const fillPct = Math.min(100, Math.round((players.length / minPlayers) * 100));
+        const statusStyle = ({
+          open:        { bg: 'rgba(76,175,80,0.14)',  fg: '#4caf50', label: 'OPEN' },
+          accepting:   { bg: 'rgba(255,152,0,0.14)',  fg: '#ff9800', label: 'ACCEPT PHASE' },
+          drafting:    { bg: 'rgba(33,150,243,0.14)', fg: '#2196f3', label: 'DRAFTING' },
+          in_progress: { bg: 'rgba(197,169,117,0.18)', fg: 'var(--brass)', label: 'IN PROGRESS' },
+          completed:   { bg: 'rgba(120,120,120,0.18)', fg: 'var(--text-muted)', label: 'COMPLETED' },
+        })[session.status] || { bg: 'var(--bg)', fg: 'var(--text-muted)', label: String(session.status || '').toUpperCase() };
+        return (
+        <div style={{
+          background: 'var(--bg-elevated)',
+          padding: 20,
+          borderRadius: 10,
+          border: '1px solid var(--border)',
+          borderTop: '3px solid var(--brass)',
+          marginBottom: 20,
+          boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h2 style={{ margin: 0, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 0.5 }}>
+                  Session <span style={{ color: 'var(--brass)' }}>#{session.id}</span>
+                </h2>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '3px 10px', borderRadius: 999,
+                  background: statusStyle.bg, color: statusStyle.fg,
+                  fontSize: 11, fontWeight: 700, letterSpacing: 0.6,
+                  border: `1px solid ${statusStyle.fg === 'var(--text-muted)' ? 'var(--border)' : statusStyle.fg}33`,
+                }}>● {statusStyle.label}</span>
               </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                <span style={{
+                  fontSize: 11, fontWeight: 600, letterSpacing: 0.4,
+                  padding: '3px 8px', borderRadius: 4,
+                  background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)',
+                }}>👑 {session.captain_mode}</span>
+                <span style={{
+                  fontSize: 11, fontWeight: 600, letterSpacing: 0.4,
+                  padding: '3px 8px', borderRadius: 4,
+                  background: players.length >= minPlayers ? 'rgba(76,175,80,0.14)' : 'var(--bg)',
+                  color:      players.length >= minPlayers ? '#4caf50' : 'var(--text-muted)',
+                  border: `1px solid ${players.length >= minPlayers ? '#4caf5044' : 'var(--border)'}`,
+                }}>
+                  👥 {players.length} / {minPlayers} player{players.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              {/* Slot-fill bar — only useful before the match is in progress. */}
+              {['open','accepting'].includes(session.status) && (
+                <div style={{ marginTop: 10, height: 4, background: 'var(--bg)', borderRadius: 2, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <div style={{
+                    height: '100%', width: `${fillPct}%`,
+                    background: fillPct >= 100 ? 'linear-gradient(90deg, var(--brass), var(--amber))' : 'var(--brass)',
+                    transition: 'width 0.4s ease',
+                  }} />
+                </div>
+              )}
             </div>
             {isAdmin && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -546,7 +602,8 @@ export default function Inhouse() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {pastSessions.length > 0 && (
         <div>

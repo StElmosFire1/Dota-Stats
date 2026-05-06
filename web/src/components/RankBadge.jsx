@@ -58,17 +58,17 @@ function StarDots({ count, color }) {
 // realistic inhouse MMR range (start ~5000, ceiling ~8000+) so the ladder
 // actually distributes players instead of dumping everyone into the top tier.
 const MMR_BADGE_TIERS = [
-  { tier: 9, name: 'King',       floor: 999999, color: '#f5d97a', emoji: '👑', leaderOnly: true },
-  { tier: 8, name: 'Warlord',    floor: 7000, color: '#e0b56b', emoji: '🪓' },
-  { tier: 7, name: 'Paladin',    floor: 6500, color: '#d4b878', emoji: '✨' },
-  { tier: 6, name: 'Templar',    floor: 6200, color: '#c9c9d9', emoji: '⚔️' },
-  { tier: 5, name: 'Knight',     floor: 5900, color: '#b8b8c8', emoji: '🛡️' },
-  { tier: 4, name: 'Footman',    floor: 5600, color: '#9aa0b0', emoji: '🗡️' },
-  { tier: 3, name: 'Squire',     floor: 5300, color: '#8a8a9a', emoji: '🐎' },
-  { tier: 2, name: 'Apprentice', floor: 5000, color: '#c5a975', emoji: '📜' },
-  { tier: 1, name: 'Outlaw',     floor: 4500, color: '#EF9A9A', emoji: '🏴' },
-  { tier: 0, name: 'Vagabond',   floor: 4000, color: '#FFAB91', emoji: '🥾' },
-  { tier: -1, name: 'Peasant',   floor: 0,    color: '#EF9A9A', emoji: '🌾' },
+  { tier: 9, name: 'King',       floor: 999999, color: '#f5d97a', emoji: '👑', badge: '/badges/tier-8-king.png',       leaderOnly: true },
+  { tier: 8, name: 'Warlord',    floor: 7000, color: '#e0b56b', emoji: '🪓', badge: '/badges/tier-7-warlord.png' },
+  { tier: 7, name: 'Paladin',    floor: 6500, color: '#d4b878', emoji: '✨', badge: '/badges/tier-6-paladin.png' },
+  { tier: 6, name: 'Templar',    floor: 6200, color: '#c9c9d9', emoji: '⚔️', badge: '/badges/tier-5-templar.png' },
+  { tier: 5, name: 'Knight',     floor: 5900, color: '#b8b8c8', emoji: '🛡️', badge: '/badges/tier-4-knight.png' },
+  { tier: 4, name: 'Footman',    floor: 5600, color: '#9aa0b0', emoji: '🗡️', badge: '/badges/tier-3-footman.png' },
+  { tier: 3, name: 'Squire',     floor: 5300, color: '#8a8a9a', emoji: '🐎', badge: '/badges/tier-2-squire.png' },
+  { tier: 2, name: 'Apprentice', floor: 5000, color: '#c5a975', emoji: '📜', badge: '/badges/tier-1-apprentice.png' },
+  { tier: 1, name: 'Outlaw',     floor: 4500, color: '#EF9A9A', emoji: '🏴', badge: '/badges/tier-sub-1-outlaw.png' },
+  { tier: 0, name: 'Vagabond',   floor: 4000, color: '#FFAB91', emoji: '🥾', badge: '/badges/tier-sub-2-vagabond.png' },
+  { tier: -1, name: 'Peasant',   floor: 0,    color: '#EF9A9A', emoji: '🌾', badge: '/badges/tier-sub-3-peasant.png' },
 ];
 
 export function decodeMmrBadge(mmr, { isLeader = false } = {}) {
@@ -97,11 +97,14 @@ export function MmrBadge({ mmr, isLeader = false, style = {}, size = 'sm' }) {
   const fontSize = size === 'lg' ? 13 : 11;
   const padding  = size === 'lg' ? '4px 10px' : '2px 7px';
   const titleSuffix = isLeader ? ' — Server #1' : '';
+  // v5.86 — render the heraldic PNG badge from /public/badges/ instead of the
+  // emoji glyph. Falls back to the emoji if the PNG fails to load.
+  const badgeSize = size === 'lg' ? 18 : 14;
   return (
     <span
       title={`${decoded.name} · ${Math.round(mmr)} MMR${titleSuffix}`}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
+        display: 'inline-flex', alignItems: 'center', gap: 5,
         background: `${decoded.color}1a`,
         border: `1px solid ${decoded.color}66`,
         borderRadius: 8, padding, fontSize, fontWeight: 700,
@@ -110,7 +113,23 @@ export function MmrBadge({ mmr, isLeader = false, style = {}, size = 'sm' }) {
         ...style,
       }}
     >
-      <span style={{ fontSize: size === 'lg' ? 14 : 12 }}>{decoded.emoji}</span>
+      {decoded.badge ? (
+        <img
+          src={decoded.badge}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          style={{ width: badgeSize, height: badgeSize, objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
+          onError={(e) => {
+            const span = document.createElement('span');
+            span.style.cssText = `font-size:${size === 'lg' ? 14 : 12}px;line-height:1`;
+            span.textContent = decoded.emoji || '🛡️';
+            e.target.replaceWith(span);
+          }}
+        />
+      ) : (
+        <span style={{ fontSize: size === 'lg' ? 14 : 12 }}>{decoded.emoji}</span>
+      )}
       <span>{decoded.name}</span>
       <span style={{ fontSize: size === 'lg' ? 11 : 10, opacity: 0.85, fontWeight: 500 }}>
         {Math.round(mmr)}

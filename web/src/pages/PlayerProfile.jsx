@@ -6,6 +6,7 @@ import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import { useSuperuser } from '../context/SuperuserContext';
 import { useSeason } from '../context/SeasonContext';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -506,6 +507,8 @@ export default function PlayerProfile() {
   const { seasonId } = useSeason();
   const navigate = useNavigate();
   const { steamUser } = useSteamAuth();
+  // v5.86 — superusers can preview AI Scout without a Pro subscription.
+  const { superuserKey } = useSuperuser() || {};
   // Wave 1 feature flags
   const showMvpBadges = useFeatureFlag('mvp_match_badges');
   const newRankTheme  = useFeatureFlag('new_rank_theme');
@@ -832,7 +835,7 @@ export default function PlayerProfile() {
               setScoutingError(null);
               setScoutingLoading(true);
               try {
-                const data = await getScoutingReport(accountId);
+                const data = await getScoutingReport(accountId, superuserKey);
                 setScoutingReport(data);
                 if (data.share_link_ready !== false) {
                   const shareUrl = `${window.location.origin}/scouting/${accountId}`;
@@ -885,7 +888,7 @@ export default function PlayerProfile() {
           rest of the page. */}
       </div>{/* end profile card frame wrapper */}
 
-      {showProfileCustomization && profileCard && (profileCard.custom_title || profileCard.bio || profileCard.pinned_hero_id || profileCard.pinned_match || profileCard.extras) && (() => {
+      {showProfileCustomization && profileCard && (profileCard.custom_title || profileCard.bio || profileCard.pinned_hero_id || profileCard.pinnedMatch || (profileCard.extras && Object.keys(profileCard.extras).length > 0)) && (() => {
         // v5.81 — extras (mockup-graduated knobs). Default empty so the
         // ?? chain below is safe regardless of whether the row was created
         // before extras existed.
@@ -946,7 +949,7 @@ export default function PlayerProfile() {
               )}
             </div>
           )}
-          {(profileCard.pinned_hero_id || profileCard.pinned_match || pinnedAch) && (
+          {(profileCard.pinned_hero_id || profileCard.pinnedMatch || pinnedAch) && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {profileCard.pinned_hero_id && (
                 <div style={{
@@ -992,9 +995,9 @@ export default function PlayerProfile() {
                   </div>
                 </div>
               )}
-              {profileCard.pinned_match && (
+              {profileCard.pinnedMatch && (
                 <Link
-                  to={`/match/${profileCard.pinned_match.match_id}`}
+                  to={`/match/${profileCard.pinnedMatch.match_id}`}
                   style={{
                     display: 'flex', gap: 10, alignItems: 'center',
                     padding: '6px 12px', borderRadius: 8,
@@ -1006,18 +1009,18 @@ export default function PlayerProfile() {
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📌 Pinned match</div>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>
-                      #{profileCard.pinned_match.match_id}
-                      {profileCard.pinned_match.player_won != null && (
+                      #{profileCard.pinnedMatch.match_id}
+                      {profileCard.pinnedMatch.player_won != null && (
                         <span style={{
                           marginLeft: 8, fontSize: 11, padding: '1px 6px', borderRadius: 4,
-                          background: profileCard.pinned_match.player_won ? '#0f3a1f' : '#3a0f0f',
-                          color: profileCard.pinned_match.player_won ? '#22c55e' : '#ef4444',
-                        }}>{profileCard.pinned_match.player_won ? 'WIN' : 'LOSS'}</span>
+                          background: profileCard.pinnedMatch.player_won ? '#0f3a1f' : '#3a0f0f',
+                          color: profileCard.pinnedMatch.player_won ? '#22c55e' : '#ef4444',
+                        }}>{profileCard.pinnedMatch.player_won ? 'WIN' : 'LOSS'}</span>
                       )}
                     </div>
-                    {profileCard.pinned_match.kills != null && (
+                    {profileCard.pinnedMatch.kills != null && (
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {profileCard.pinned_match.hero || `Hero #${profileCard.pinned_match.hero_id}`} • {profileCard.pinned_match.kills}/{profileCard.pinned_match.deaths}/{profileCard.pinned_match.assists}
+                        {profileCard.pinnedMatch.hero || `Hero #${profileCard.pinnedMatch.hero_id}`} • {profileCard.pinnedMatch.kills}/{profileCard.pinnedMatch.deaths}/{profileCard.pinnedMatch.assists}
                       </div>
                     )}
                   </div>

@@ -1276,9 +1276,15 @@ export async function purchaseFrameCheckout(frameId) {
 }
 
 // ── Scouting report ─────────────────────────────────────────────────────────
-export async function getScoutingReport(playerId) {
+// v5.86 — accepts an optional superuser key so owner can preview the AI Scout
+// report without a Pro subscription. Falls back to credentials only when no
+// key is supplied.
+export async function getScoutingReport(playerId, superuserKey = null) {
+  const headers = {};
+  if (superuserKey) headers['x-superuser-key'] = superuserKey;
   const res = await fetch(BASE + `/player/${playerId}/scouting-report`, {
     credentials: 'include',
+    headers,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

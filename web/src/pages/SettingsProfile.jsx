@@ -281,7 +281,7 @@ export default function SettingsProfile() {
   };
 
   return (
-    <div className="container" style={{ maxWidth: 760, padding: '24px 16px' }}>
+    <div className="container settings-profile-shell" style={{ maxWidth: 1180, padding: '24px 16px' }}>
       {showWizard && (
         <OnboardingWizard
           onComplete={() => setShowWizard(false)}
@@ -310,10 +310,16 @@ export default function SettingsProfile() {
       {loading && <div className="loading">Loading…</div>}
 
       {!loading && (
-        <>
-          <PreviewCard displayName={displayName} customization={previewCustomization} />
+        // v5.86 — two-column grid on ≥960px so the live preview can sit in a
+        // sticky right rail and follow the page as the user scrolls through
+        // the form. Single-column stack on mobile keeps the preview at top.
+        <div className="settings-profile-grid">
+          <aside className="settings-profile-preview">
+            <PreviewCard displayName={displayName} customization={previewCustomization} />
+          </aside>
+          <div className="settings-profile-form">
 
-          <section style={{ marginTop: 24 }}>
+          <section style={{ marginTop: 0 }}>
             <h2 style={{ marginBottom: 8 }}>Basics</h2>
             <label style={{ display: 'block', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
               Bio ({bio.length}/{BIO_MAX})
@@ -681,7 +687,8 @@ export default function SettingsProfile() {
               {saving ? 'Saving…' : 'Save profile'}
             </button>
           </div>
-        </>
+          </div>{/* /.settings-profile-form */}
+        </div>
       )}
     </div>
   );

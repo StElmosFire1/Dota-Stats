@@ -6463,8 +6463,15 @@ NOTES
   router.get('/player/:id/scouting-report', async (req, res) => {
     try {
       const viewerAccountId = req.session?.accountId;
-      if (!viewerAccountId) return res.status(401).json({ error: 'Sign in with Steam.' });
-      if (!(await _isProAccount(viewerAccountId))) {
+      // v5.86 — superusers bypass the Pro paywall so the owner can preview/QA
+      // the AI Scouting Report without holding a Pro subscription.
+      const isSuperuser = Boolean(
+        process.env.SUPERUSER_PASSWORD
+        && req.headers['x-superuser-key']
+        && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
+      );
+      if (!viewerAccountId && !isSuperuser) return res.status(401).json({ error: 'Sign in with Steam.' });
+      if (!isSuperuser && !(await _isProAccount(viewerAccountId))) {
         return res.status(402).json({ error: 'AI Scouting Reports are a Pro feature.', paywall: true });
       }
       const subjectAccountId = req.params.id;
