@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.08",
+    "title": "Signed-in home now shows the standard landing under your personalized dashboard",
+    "published_at": "2026-05-06",
+    "content": "Signing in with Steam used to *replace* the public home page with a slimmed-down personalized view (LiveInhousePulse + PlayerOfTheWeek + HotHeroes + PersonalisedDashboard + a tiny four-stat *Community stats* card). The full `CourtPitchHomeLanding` block — totals chart, recent matches list, top-5 leaderboard preview — disappeared entirely the moment you logged in, which meant frequent visitors had to navigate away from `/` to see the same shared community context that logged-out visitors got for free.\n\n• **`CourtPitchHomeLanding` now renders for signed-in users too**, immediately below `PersonalisedDashboard` in `web/src/pages/Home.jsx`. The personalized dashboard still leads (so your own stats / streaks are still the first thing you see when logged in), but the totals chart, recent matches feed, and top-5 leaderboard preview are now reachable without leaving the home page.\n\n• **The redundant four-stat *Community stats* `StatCard` row has been removed** from the signed-in branch — the full landing block already surfaces total matches, players, weekly volume and most-played hero in a richer form, so keeping the mini row would have been pure duplication.\n\n• **The active weekend-tournament banner now also renders for signed-in users** (previously logged-out only), extracted into a shared `tournamentBanner` const so both branches render the same markup. Signed-in players are the ones most likely to actually enter the tournament, so hiding it from them was backwards.\n\n• **`getLeaderboard` is no longer gated on `!steamUser`** — the top-5 fetch now runs for both signed-in and logged-out users so the embedded leaderboard preview has data to render in either branch. The signed-in container also widened from `maxWidth: 1000` → `1200` to match the logged-out layout now that it hosts the same landing block.",
+    "author": "System"
+  },
+  {
     "version": "6.07",
     "title": "Profile editor live preview no longer covers the form",
     "published_at": "2026-05-06",

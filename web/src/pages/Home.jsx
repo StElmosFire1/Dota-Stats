@@ -500,16 +500,53 @@ export default function Home() {
   const [top5, setTop5] = useState([]);
 
   useEffect(() => {
-    if (authLoading || steamUser) return;
+    if (authLoading) return;
     getLeaderboard(5, seasonId)
       .then(d => setTop5((d?.leaderboard || []).slice(0, 5)))
       .catch(() => {});
   }, [authLoading, steamUser, seasonId]);
 
+  const tournamentBanner = activeTournament && (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(251,191,36,0.08) 100%)',
+      border: '1px solid rgba(245,158,11,0.4)',
+      borderRadius: 14, padding: '18px 24px', marginBottom: 24,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14,
+    }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <span style={{ fontSize: 20 }}>🏆</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: '#f59e0b' }}>{activeTournament.name}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+            background: activeTournament.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+            color: activeTournament.status === 'active' ? '#22c55e' : '#f59e0b',
+            textTransform: 'uppercase', letterSpacing: 1,
+          }}>
+            {activeTournament.status === 'active' ? 'Live Now' : 'Coming Soon'}
+          </span>
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          {activeTournament.description || `Top ${activeTournament.games_to_count} game scores across the weekend. Play any games — best scores count.`}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+          📅 {new Date(activeTournament.start_date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+          {' → '}
+          {new Date(activeTournament.end_date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+          {activeTournament.prize_pool > 0 && <> · 💰 ${activeTournament.prize_pool} prize pool</>}
+        </div>
+      </div>
+      <Link to={`/weekend-tournament/${activeTournament.id}`}
+        className="btn btn-primary" style={{ fontSize: 13, flexShrink: 0, background: '#f59e0b', borderColor: '#f59e0b', color: '#000' }}>
+        View Leaderboard →
+      </Link>
+    </div>
+  );
+
   if (!authLoading && steamUser) {
     return (
-      <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <HomeBanner />
+        {tournamentBanner}
         <LiveInhousePulse />
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
@@ -520,25 +557,12 @@ export default function Home() {
         </div>
         <PersonalisedDashboard steamUser={steamUser} />
 
-        {/* Community stats section below personalized view */}
-        <div style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-          padding: '16px 22px', marginBottom: 20,
-        }}>
-          <h2 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700, color: 'var(--text-secondary)' }}>
-            🌏 Community stats
-          </h2>
-          {loading ? (
-            <div className="loading">Loading…</div>
-          ) : (
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              <StatCard icon="🎮" label="Total Matches" value={totals.total_matches} />
-              <StatCard icon="👥" label="Players" value={totals.total_players} />
-              <StatCard icon="📅" label="This Week" value={totals.matches_this_week} sub="matches played" />
-              <StatCard icon="🦸" label="Most Played Hero" value={formatHeroName(totals.most_played_hero)} />
-            </div>
-          )}
-        </div>
+        <CourtPitchHomeLanding
+          loading={loading}
+          totals={totals}
+          recentMatches={recentMatches}
+          top5={top5}
+        />
       </div>
     );
   }
@@ -548,42 +572,7 @@ export default function Home() {
 
       <HomeBanner />
 
-      {/* Weekend Tournament Banner */}
-      {activeTournament && (
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(251,191,36,0.08) 100%)',
-          border: '1px solid rgba(245,158,11,0.4)',
-          borderRadius: 14, padding: '18px 24px', marginBottom: 24,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14,
-        }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <span style={{ fontSize: 20 }}>🏆</span>
-              <span style={{ fontSize: 16, fontWeight: 800, color: '#f59e0b' }}>{activeTournament.name}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                background: activeTournament.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
-                color: activeTournament.status === 'active' ? '#22c55e' : '#f59e0b',
-                textTransform: 'uppercase', letterSpacing: 1,
-              }}>
-                {activeTournament.status === 'active' ? 'Live Now' : 'Coming Soon'}
-              </span>
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              {activeTournament.description || `Top ${activeTournament.games_to_count} game scores across the weekend. Play any games — best scores count.`}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-              📅 {new Date(activeTournament.start_date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
-              {' → '}
-              {new Date(activeTournament.end_date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
-              {activeTournament.prize_pool > 0 && <> · 💰 ${activeTournament.prize_pool} prize pool</>}
-            </div>
-          </div>
-          <Link to={`/weekend-tournament/${activeTournament.id}`}
-            className="btn btn-primary" style={{ fontSize: 13, flexShrink: 0, background: '#f59e0b', borderColor: '#f59e0b', color: '#000' }}>
-            View Leaderboard →
-          </Link>
-        </div>
-      )}
+      {tournamentBanner}
 
       <LiveInhousePulse />
       <div style={{
