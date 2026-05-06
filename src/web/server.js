@@ -1245,6 +1245,28 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  // DELETE /api/me/link-discord — self-service *unlink* path (task 109).
+  //
+  // POST creates a first-time link, PUT replaces an existing one — but neither
+  // gives a player a way to fully clear their link if they've quit the league
+  // or permanently lost access to their Discord account. Without this they
+  // had to ask an admin to run the superuser setDiscordId with an empty
+  // value. DELETE clears nicknames.discord_id for the caller's account so
+  // the bot will stop DMing / mentioning / role-assigning that account, and
+  // the first-login modal + Connect-with-Discord button become available
+  // again so they can re-link a new account later.
+  router.delete('/me/link-discord', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam first.' });
+    try {
+      const cleared = await db.unlinkOwnDiscordId(accountId);
+      res.json({ ok: true, cleared });
+    } catch (err) {
+      console.error('[me/link-discord DELETE] failed for account', accountId, ':', err.message);
+      res.status(500).json({ error: 'Could not unlink your Discord ID. Try again in a moment.' });
+    }
+  });
+
   router.post('/auth/logout', async (req, res) => {
     // v5.88 — also remove the player from any open/accepting inhouse session
     // so logging out frees their slot for someone else.

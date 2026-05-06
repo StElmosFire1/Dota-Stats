@@ -3884,6 +3884,36 @@ async function linkOwnDiscordId(accountId, discordId) {
   return cleaned;
 }
 
+// Task 109 — self-service *unlink* for the player on /settings/profile.
+// Clears nicknames.discord_id for the caller's account (sets to empty string
+// to match the rest of the codebase's "not linked" sentinel — getDiscordId-
+// ByAccountId etc. filter on `discord_id != ''`). Idempotent: rows that are
+// already empty / missing return without error so the UI can rely on a clean
+// 200. Returns true when a row was actually updated, false otherwise.
+async function unlinkOwnDiscordId(accountId) {
+  if (!accountId) return false;
+  const p = getPool();
+  const acc = accountId.toString();
+  // Clear in BOTH tables: nicknames.discord_id (canonical, populated by the
+  // first-login modal / OAuth / settings) AND players.discord_id (legacy,
+  // populated by the old `!register` Discord command). getDiscordIdBy-
+  // AccountId falls back to the players table when nicknames is empty, so
+  // a legacy account would still appear linked after a nicknames-only clear
+  // — which would leave needs_discord_link false and prevent the first-login
+  // modal / Connect-with-Discord button from re-appearing.
+  const r1 = await p.query(
+    `UPDATE nicknames SET discord_id = '', updated_at = NOW()
+     WHERE account_id = $1 AND discord_id IS NOT NULL AND discord_id <> ''`,
+    [acc]
+  );
+  const r2 = await p.query(
+    `UPDATE players SET discord_id = ''
+     WHERE account_id_32 = $1 AND discord_id IS NOT NULL AND discord_id <> ''`,
+    [acc]
+  );
+  return (r1.rowCount || 0) + (r2.rowCount || 0) > 0;
+}
+
 async function getNicknameByDiscordId(discordId) {
   if (!discordId) return null;
   const p = getPool();
@@ -10431,6 +10461,7 @@ module.exports = {
   setNickname,
   setDiscordId,
   linkOwnDiscordId,
+  unlinkOwnDiscordId,
   getNicknameByDiscordId,
   getDiscordIdByAccountId,
   getSteamByDiscordId,

@@ -101,6 +101,7 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
   const initial = steamUser?.discord_id || '';
   const [value, setValue] = React.useState(initial);
   const [saving, setSaving] = React.useState(false);
+  const [unlinking, setUnlinking] = React.useState(false);
   const [msg, setMsg] = React.useState(null);
   const [error, setError] = React.useState(null);
 
@@ -178,6 +179,36 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
     setSaving(false);
   };
 
+  // Task 109 — fully clear the link. Confirms first because unlinking
+  // disables DMs, role assignment, hot-streak pings, MVP-vote DMs, etc.
+  const handleUnlink = async () => {
+    setError(null); setMsg(null);
+    const ok = window.confirm(
+      'Unlink your Discord account?\n\n' +
+      'The bot will stop DMing you, mentioning you, and assigning league roles. ' +
+      'You can re-link a different Discord account later from this page.'
+    );
+    if (!ok) return;
+    setUnlinking(true);
+    try {
+      const res = await fetch('/api/me/link-discord', {
+        method: 'DELETE', credentials: 'include',
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body.error || 'Could not unlink your Discord ID.');
+      } else {
+        setValue('');
+        setMsg('Discord account unlinked. The bot will no longer DM you.');
+        if (typeof refreshMe === 'function') refreshMe().catch(() => {});
+        setTimeout(() => setMsg(null), 4000);
+      }
+    } catch (e) {
+      setError(e.message || 'Network error.');
+    }
+    setUnlinking(false);
+  };
+
   return (
     <section style={{ marginTop: 24 }}>
       <h2 style={{ marginBottom: 8 }}>Discord link</h2>
@@ -225,10 +256,26 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
           type="button"
           className="btn btn-small"
           onClick={handleSave}
-          disabled={saving || !value || value === initial}
+          disabled={saving || unlinking || !value || value === initial}
         >
           {saving ? 'Saving…' : 'Save Discord ID'}
         </button>
+        {initial && (
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={handleUnlink}
+            disabled={saving || unlinking}
+            title="Disconnect this Discord account so the bot stops DMing and mentioning you."
+            style={{
+              background: 'transparent',
+              border: '1px solid #ef4444',
+              color: '#ef4444',
+            }}
+          >
+            {unlinking ? 'Unlinking…' : 'Unlink Discord'}
+          </button>
+        )}
       </div>
       {error && <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>{error}</div>}
       {msg && <div style={{ marginTop: 6, color: '#22c55e', fontSize: 12 }}>{msg}</div>}
