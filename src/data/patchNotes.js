@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.06",
+    "title": "Fixed Steam sign-in trust footnote overflowing the nav row",
+    "published_at": "2026-05-06",
+    "content": "The compact *Sign in with Steam* button in the global nav had an absolutely-positioned trust footnote (`Password stays with Valve · Why is this safe?`) anchored to `top: 100%`, which rendered outside the button's own row and bled down into the next nav row — manifesting on the live site as a stray padlock icon and *Locked-down…* text peeking out next to the button, and a broken-looking hit area.\n\n• **Replaced the absolute footnote with an inline trust badge** in `web/src/App.jsx`. The Steam pill and a small circular `?` button now sit side-by-side in a single `inline-flex` row — nothing escapes the button's own line box, so there's no possible overflow into siblings or the row below regardless of viewport width. The descriptive *Password stays with Valve* copy moved to the badge's `title` tooltip, with the full multi-bullet explanation still one click away in the existing `SteamTrustModal`.\n\n• **`WhyIsThisSafeLink` in `web/src/components/SteamTrustModal.jsx` now accepts `label` / `ariaLabel` / `title` props** so the same component can render either as the original underlined *Why is this safe?* text link (used by `SteamSignInPanel` on the Inhouse gate / buy-in pages — unchanged) or as the new compact `?` badge in the nav. Defaults preserve the previous behaviour, so no other caller is affected.\n\n• **Modal behaviour is unchanged** — clicking the badge still opens `SteamTrustModal` centered with the full OpenID 2.0 walkthrough, Escape / outside-click still close it, and the body-scroll lock still applies. Mobile and narrow viewports now render the button as a tidy two-element pill with no clipping.",
+    "author": "System"
+  },
+  {
     "version": "6.05",
     "title": "Players can fully unlink their Discord account from Settings",
     "published_at": "2026-05-06",

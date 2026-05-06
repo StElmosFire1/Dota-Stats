@@ -165,13 +165,15 @@ export function SteamTrustModal({ open, onClose }) {
  * "Sign in with Steam" CTA so users have a one-click answer to
  * "wait, is this safe?".
  */
-export function WhyIsThisSafeLink({ style }) {
+export function WhyIsThisSafeLink({ style, label, ariaLabel, title }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
+        aria-label={ariaLabel || (typeof label === 'string' ? label : 'Why is this safe?')}
+        title={title}
         style={{
           background: 'transparent', border: 'none',
           color: 'var(--text-muted)', fontSize: 11,
@@ -179,7 +181,7 @@ export function WhyIsThisSafeLink({ style }) {
           padding: 0, ...style,
         }}
       >
-        Why is this safe?
+        {label || 'Why is this safe?'}
       </button>
       <SteamTrustModal open={open} onClose={() => setOpen(false)} />
     </>
