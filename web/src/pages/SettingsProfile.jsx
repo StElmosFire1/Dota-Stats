@@ -11,6 +11,7 @@ import {
   HERO_BORDER_COLORS, FREE_FLAIRS, PREMIUM_FLAIRS, SOCIAL_URL_MAX, DEFAULT_EXTRAS,
 } from '../profileCosmetics';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
+import { oauthErrorMessage } from '../components/DiscordLinkModal';
 
 // Compact, dependency-free UI for editing /settings/profile. Renders three
 // sections (basics / cosmetics / pins) plus a live preview card. The premium
@@ -105,6 +106,39 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
 
   React.useEffect(() => { setValue(steamUser?.discord_id || ''); }, [steamUser?.discord_id]);
 
+  // Handle the `?discord_link=success|error&...` query params that
+  // /auth/discord/callback bounces back here when the user picked the
+  // "settings" return target. Strip them after surfacing so a refresh
+  // doesn't re-show the toast.
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('discord_link');
+    if (!result) return;
+    const reason = params.get('reason') || '';
+    const username = params.get('username') || '';
+    const already = params.get('already') === '1';
+    if (result === 'success') {
+      setMsg(
+        already
+          ? 'Your Discord is already linked.'
+          : username
+            ? `Discord linked to @${username}. Check your DMs for confirmation.`
+            : 'Discord linked. Check your DMs for the confirmation message.'
+      );
+      setTimeout(() => setMsg(null), 4000);
+      if (typeof refreshMe === 'function') refreshMe().catch(() => {});
+    } else if (result === 'error') {
+      setError(oauthErrorMessage(reason));
+    }
+    params.delete('discord_link');
+    params.delete('reason');
+    params.delete('username');
+    params.delete('already');
+    const newSearch = params.toString();
+    const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash;
+    window.history.replaceState({}, '', newUrl);
+  }, [refreshMe]);
+
   const handleSave = async () => {
     setError(null); setMsg(null);
     const cleaned = value.trim();
@@ -138,8 +172,30 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
       <h2 style={{ marginBottom: 8 }}>Discord link</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0, marginBottom: 8 }}>
         Used so the bot can DM you, mention you, and assign your league roles.
-        In Discord: profile → User Settings → Advanced → enable Developer Mode → right-click your name → Copy User ID.
       </p>
+      {steamUser?.discord_oauth_enabled && (
+        <div style={{ marginBottom: 12 }}>
+          <button
+            type="button"
+            onClick={() => window.location.assign('/auth/discord?return=settings')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '8px 14px', borderRadius: 6,
+              background: '#5865F2', border: '1px solid #4752c4',
+              color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            <span aria-hidden="true">🔗</span>
+            {initial ? 'Reconnect with Discord' : 'Connect with Discord'}
+          </button>
+          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+            One click — no Developer Mode needed.
+          </div>
+        </div>
+      )}
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+        Or paste your Discord User ID manually (Discord → User Settings → Advanced → enable Developer Mode → right-click your name → Copy User ID):
+      </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <input
           type="text"

@@ -353,6 +353,176 @@ function createServer(startupStatus = {}) {
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Discord OAuth — one-click "Connect with Discord" flow (task 98).
+  //
+  // Replaces the manual paste-your-User-ID step from task 89/97. The user
+  // clicks a button, we bounce them through Discord's OAuth2 authorize
+  // endpoint with the `identify` scope, exchange the returned code for an
+  // access token, fetch their Discord user from `/users/@me`, and then run
+  // the **same** verifyAndConfirmDiscordId + linkOwnDiscordId path the manual
+  // POST /api/me/link-discord uses — so the DM round-trip + 409 already-linked
+  // guarantees still apply. The manual route remains as a fallback.
+  //
+  // Requires DISCORD_CLIENT_ID + DISCORD_CLIENT_SECRET. The redirect_uri must
+  // be registered in the Discord developer portal as
+  // `<SITE_URL>/auth/discord/callback`.
+  // ─────────────────────────────────────────────────────────────────────────
+  const DISCORD_OAUTH_AUTHORIZE = 'https://discord.com/api/oauth2/authorize';
+  const DISCORD_OAUTH_TOKEN = 'https://discord.com/api/oauth2/token';
+  const DISCORD_OAUTH_USER = 'https://discord.com/api/users/@me';
+  const DISCORD_OAUTH_RETURNS = { home: '/', settings: '/settings/profile' };
+
+  function discordOAuthRedirectUri(req) {
+    return `${steamBaseUrl(req)}/auth/discord/callback`;
+  }
+  function buildDiscordReturnUrl(returnKey, params) {
+    const target = DISCORD_OAUTH_RETURNS[returnKey] || DISCORD_OAUTH_RETURNS.home;
+    const qs = new URLSearchParams(params).toString();
+    return `${target}${target.includes('?') ? '&' : '?'}${qs}`;
+  }
+
+  app.get('/auth/discord', authLimiter, (req, res) => {
+    if (!req.session?.accountId) {
+      return res.redirect('/?auth=required');
+    }
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return res.redirect(buildDiscordReturnUrl(req.query.return, {
+        discord_link: 'error', reason: 'oauth_disabled',
+      }));
+    }
+    const returnKey = DISCORD_OAUTH_RETURNS[req.query.return] ? req.query.return : 'home';
+    const state = crypto.randomBytes(24).toString('hex');
+    req.session.discordOAuth = { state, returnKey, createdAt: Date.now() };
+    // NB: do NOT set `prompt=none` here — it asks Discord for a *silent*
+    // auth, which fails (returning ?error=...) for any user who isn't
+    // already logged in to Discord in this browser with consent
+    // pre-granted, i.e. the exact first-time visitors this OAuth flow is
+    // meant to serve. Omitting `prompt` lets Discord show the login /
+    // consent UI when needed and skip it transparently when not.
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: 'code',
+      scope: 'identify',
+      state,
+      redirect_uri: discordOAuthRedirectUri(req),
+    });
+    res.redirect(`${DISCORD_OAUTH_AUTHORIZE}?${params}`);
+  });
+
+  app.get('/auth/discord/callback', authLimiter, async (req, res) => {
+    const stash = req.session?.discordOAuth || {};
+    const returnKey = DISCORD_OAUTH_RETURNS[stash.returnKey] ? stash.returnKey : 'home';
+    // Always clear the stash so a state nonce is single-use.
+    if (req.session) req.session.discordOAuth = null;
+
+    const back = (params) => res.redirect(buildDiscordReturnUrl(returnKey, params));
+
+    if (!req.session?.accountId) return back({ discord_link: 'error', reason: 'signed_out' });
+    if (req.query.error) {
+      return back({ discord_link: 'error', reason: req.query.error === 'access_denied' ? 'cancelled' : 'oauth_error' });
+    }
+    const code = (req.query.code || '').toString();
+    const state = (req.query.state || '').toString();
+    if (!code || !state || !stash.state || state !== stash.state) {
+      return back({ discord_link: 'error', reason: 'bad_state' });
+    }
+
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return back({ discord_link: 'error', reason: 'oauth_disabled' });
+    }
+
+    let accessToken;
+    try {
+      const tokenRes = await fetch(DISCORD_OAUTH_TOKEN, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: discordOAuthRedirectUri(req),
+        }).toString(),
+      });
+      if (!tokenRes.ok) {
+        const body = await tokenRes.text().catch(() => '');
+        console.error('[discord-oauth] token exchange failed:', tokenRes.status, body.slice(0, 200));
+        return back({ discord_link: 'error', reason: 'token_exchange' });
+      }
+      const tokenJson = await tokenRes.json();
+      accessToken = tokenJson.access_token;
+      if (!accessToken) return back({ discord_link: 'error', reason: 'token_exchange' });
+    } catch (err) {
+      console.error('[discord-oauth] token exchange threw:', err.message);
+      return back({ discord_link: 'error', reason: 'token_exchange' });
+    }
+
+    let discordUser;
+    try {
+      const userRes = await fetch(DISCORD_OAUTH_USER, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!userRes.ok) {
+        console.error('[discord-oauth] /users/@me failed:', userRes.status);
+        return back({ discord_link: 'error', reason: 'user_fetch' });
+      }
+      discordUser = await userRes.json();
+    } catch (err) {
+      console.error('[discord-oauth] /users/@me threw:', err.message);
+      return back({ discord_link: 'error', reason: 'user_fetch' });
+    }
+
+    const discordId = (discordUser?.id || '').toString();
+    if (!/^\d{17,19}$/.test(discordId)) {
+      return back({ discord_link: 'error', reason: 'bad_id' });
+    }
+
+    const accountId = req.session.accountId;
+
+    // Idempotency / collision guard — same rules as POST /api/me/link-discord.
+    try {
+      const existing = await db.getDiscordIdByAccountId(accountId);
+      if (existing && existing !== discordId) {
+        return back({ discord_link: 'error', reason: 'already_linked_other' });
+      }
+      if (existing === discordId) {
+        return back({ discord_link: 'success', already: '1', username: discordUser.username || '' });
+      }
+    } catch (err) {
+      console.error('[discord-oauth] existing-link check failed:', err.message);
+      return back({ discord_link: 'error', reason: 'db_error' });
+    }
+
+    // Run the same verify-and-DM round-trip the manual flow uses, so a Discord
+    // user who has DMs disabled still gets a clear error rather than a silent
+    // "linked but bot can never reach you" state.
+    let verification;
+    try {
+      const bot = getDiscordBot();
+      verification = await bot.verifyAndConfirmDiscordId(discordId);
+    } catch (err) {
+      console.error('[discord-oauth] verify threw for account', accountId, ':', err.message);
+      return back({ discord_link: 'error', reason: 'verify_unavailable' });
+    }
+    if (!verification?.ok) {
+      return back({ discord_link: 'error', reason: verification?.code || 'verify_failed' });
+    }
+
+    try {
+      await db.linkOwnDiscordId(accountId, discordId);
+    } catch (err) {
+      console.error('[discord-oauth] save failed for account', accountId, ':', err.message);
+      return back({ discord_link: 'error', reason: 'save_failed' });
+    }
+
+    return back({ discord_link: 'success', username: verification.username || discordUser.username || '' });
+  });
+
   // Stripe webhook MUST be registered before express.json() to receive raw body
   app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -857,6 +1027,7 @@ function createApiRouter(startupStatus = {}) {
         displayName: req.session.displayName || null,
         discord_id: discordId || null,
         needs_discord_link: !discordId,
+        discord_oauth_enabled: Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
       });
     } else {
       res.json(null);

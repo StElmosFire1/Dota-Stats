@@ -13,6 +13,29 @@ const SKIP_KEY = 'discordLinkModal:skipCount';
 const SESSION_DISMISS_KEY = 'discordLinkModal:dismissedThisSession';
 const MAX_PROMPTS = 3;
 
+// Map server-returned `?reason=...` codes from /auth/discord/callback to a
+// human-friendly message. Codes mirror verifyAndConfirmDiscordId() plus the
+// OAuth-specific failures (cancelled, bad_state, token_exchange, …).
+export function oauthErrorMessage(code) {
+  switch (code) {
+    case 'cancelled':            return 'Discord sign-in was cancelled.';
+    case 'oauth_disabled':       return 'Discord sign-in isn\'t configured on this site yet — paste your User ID below instead.';
+    case 'bad_state':            return 'Discord sign-in expired. Please try again.';
+    case 'token_exchange':
+    case 'user_fetch':
+    case 'oauth_error':          return 'Discord sign-in failed. Please try again.';
+    case 'signed_out':           return 'Your Steam session expired. Sign in again, then re-try.';
+    case 'already_linked_other': return 'Your account is already linked to a different Discord ID. Update it from Settings → Profile.';
+    case 'dm_blocked':           return "We found your Discord account but couldn't DM you. Join the OCE Inhouse server and enable \"Direct Messages from server members\" in Privacy Settings, then try again.";
+    case 'not_found':            return "We couldn't verify that Discord account. Try again, or paste your User ID below.";
+    case 'not_ready':            return 'The Discord bot is starting up. Try again in a moment.';
+    case 'verify_unavailable':   return 'Discord verification is unavailable right now. Try again in a moment.';
+    case 'save_failed':
+    case 'db_error':             return 'Could not save your Discord link. Try again in a moment.';
+    default:                     return 'Could not link Discord. Please try again or paste your User ID below.';
+  }
+}
+
 function getSkipCount() {
   try { return parseInt(localStorage.getItem(SKIP_KEY) || '0', 10) || 0; }
   catch { return 0; }
@@ -53,6 +76,55 @@ export default function DiscordLinkModal() {
     bumpSkipCount();
     try { sessionStorage.setItem(SESSION_DISMISS_KEY, '1'); } catch {}
     setOpen(false);
+  };
+
+  // Read OAuth callback result from URL params (?discord_link=success|error&...).
+  // The `/auth/discord/callback` route bounces the user back to `/` for the
+  // modal flow with these params; surface the outcome as a toast/error and
+  // strip the params so a refresh doesn't re-show them.
+  //
+  // IMPORTANT: This component is mounted globally in App.jsx, so it sees the
+  // URL params on **every** route. The /settings/profile DiscordLinkSection
+  // owns the callback UI when the user picked `return=settings`, so we MUST
+  // bail out on any non-home path — otherwise the modal would race with and
+  // strip params before the settings section can read them.
+  useEffect(() => {
+    if (window.location.pathname !== '/') return;
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('discord_link');
+    if (!result) return;
+    const reason = params.get('reason') || '';
+    const username = params.get('username') || '';
+    const already = params.get('already') === '1';
+
+    if (result === 'success') {
+      clearSkipCount();
+      try { sessionStorage.setItem(SESSION_DISMISS_KEY, '1'); } catch {}
+      setOpen(false);
+      setToast(
+        already
+          ? 'Your Discord is already linked.'
+          : username
+            ? `Discord linked to @${username}. Check your DMs for confirmation.`
+            : 'Discord linked. Check your DMs for the confirmation message.'
+      );
+      if (typeof refreshMe === 'function') refreshMe().catch(() => {});
+    } else if (result === 'error') {
+      setOpen(true);
+      setError(oauthErrorMessage(reason));
+    }
+
+    params.delete('discord_link');
+    params.delete('reason');
+    params.delete('username');
+    params.delete('already');
+    const newSearch = params.toString();
+    const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash;
+    window.history.replaceState({}, '', newUrl);
+  }, [refreshMe]);
+
+  const onConnectOAuth = () => {
+    window.location.assign('/auth/discord?return=home');
   };
 
   const onSave = async () => {
@@ -132,6 +204,33 @@ export default function DiscordLinkModal() {
               announcements, and assign your league roles. Without it, the bot
               can't reach you.
             </p>
+
+            {steamUser?.discord_oauth_enabled && (
+              <>
+                <button
+                  type="button"
+                  onClick={onConnectOAuth}
+                  disabled={saving}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    width: '100%', padding: '10px 14px', borderRadius: 6,
+                    background: '#5865F2', border: '1px solid #4752c4',
+                    color: '#fff', fontSize: 14, fontWeight: 600,
+                    cursor: saving ? 'not-allowed' : 'pointer', marginBottom: 12,
+                  }}
+                >
+                  <span aria-hidden="true">🔗</span> Connect with Discord
+                </button>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  margin: '0 0 12px', color: 'var(--text-muted)', fontSize: 11,
+                }}>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  or paste your User ID
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                </div>
+              </>
+            )}
 
             <label
               htmlFor="discord-id-input"
