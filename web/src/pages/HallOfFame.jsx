@@ -49,7 +49,7 @@ const RECORD_META = [
   { key: 'last_hits', emoji: '🎯', title: 'Most Last Hits' },
 ];
 
-export default function HallOfFame() {
+export default function HallOfFame({ embed = false } = {}) {
   const { seasonId } = useSeason();
   const [data, setData] = useState(null);
   const [hunters, setHunters] = useState([]);
@@ -86,10 +86,12 @@ export default function HallOfFame() {
 
   return (
     <div>
-      <h1 className="page-title">🏆 Hall of Fame</h1>
-      <p style={{ color: 'var(--text-muted)', marginBottom: 24, fontSize: 14 }}>
-        All-time single-match records, career achievements, top achievement hunters, and the most active recruiters.
-      </p>
+      {!embed && <h1 className="page-title">🏆 Hall of Fame</h1>}
+      {!embed && (
+        <p style={{ color: 'var(--text-muted)', marginBottom: 24, fontSize: 14 }}>
+          All-time single-match records, career achievements, top achievement hunters, and the most active recruiters.
+        </p>
+      )}
 
       <div className="tabs" style={{ marginBottom: 24 }}>
         {tabs.map(t => (

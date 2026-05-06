@@ -7982,6 +7982,24 @@ async function leaveInhouseSession(sessionId, accountId) {
   await p.query(`DELETE FROM inhouse_session_players WHERE session_id = $1 AND account_id = $2`, [sessionId, accountId]);
 }
 
+// v5.88 — when a player signs out of the site, drop them from any
+// open/accepting inhouse session they were registered in so a logged-out
+// browser doesn't keep their slot warm. Returns the number of session
+// memberships removed (0 if they weren't in anything).
+async function leaveAllJoinableInhouseSessions(accountId) {
+  if (!accountId) return 0;
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM inhouse_session_players
+       WHERE account_id = $1
+         AND session_id IN (
+           SELECT id FROM inhouse_sessions WHERE status IN ('open','accepting')
+         )`,
+    [accountId]
+  );
+  return r.rowCount || 0;
+}
+
 async function getInhouseSessionPlayers(sessionId) {
   const p = getPool();
   const r = await p.query(
@@ -10478,6 +10496,7 @@ module.exports = {
   deleteInhouseSession,
   joinInhouseSession,
   leaveInhouseSession,
+  leaveAllJoinableInhouseSessions,
   getInhouseSessionPlayers,
   updateInhouseSessionPlayer,
   setInhousePlayerAccepted,
@@ -11360,7 +11379,7 @@ async function getHallOfFameCareerStats(seasonId = null) {
     LEFT JOIN nicknames n ON n.account_id::text = ps.account_id::text
     WHERE ps.account_id::text != '0'${sc}
     GROUP BY ps.account_id, COALESCE(n.nickname, ps.persona_name)
-    HAVING COUNT(DISTINCT ps.match_id) >= 3
+    HAVING COUNT(DISTINCT ps.match_id) >= 1
     ORDER BY wins DESC, games DESC
   `, params);
   return result.rows;

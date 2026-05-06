@@ -279,7 +279,10 @@ function SteamButton() {
   // domain). The "Why is this safe?" link opens a modal that walks
   // through the entire OpenID 2.0 flow.
   return (
-    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: 4, gap: 2 }}>
+    // v5.88 — wrapper is position:relative + width:max-content so the wider
+    // trust footnote is absolutely positioned underneath without pushing the
+    // button (or sibling nav items) sideways.
+    <span style={{ position: 'relative', display: 'inline-block', marginLeft: 4 }}>
       <button
         className="btn btn-small steam-login-btn"
         onClick={signIn}
@@ -294,7 +297,12 @@ function SteamButton() {
         Sign in with Steam
         <span aria-hidden="true" style={{ marginLeft: 2, fontSize: 11, opacity: 0.85 }}>🔒</span>
       </button>
-      <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{
+        position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+        marginTop: 2, fontSize: 9, color: 'var(--text-muted)',
+        display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+        pointerEvents: 'auto',
+      }}>
         Password stays with Valve · <WhyIsThisSafeLink style={{ fontSize: 9 }} />
       </span>
     </span>
@@ -437,7 +445,7 @@ function Nav() {
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
-          <DropdownItem to="/records">Records &amp; Comebacks</DropdownItem>
+          <DropdownItem to="/records">Records</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
@@ -445,8 +453,7 @@ function Nav() {
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
-          <DropdownItem to="/hall-of-fame">Hall of Fame</DropdownItem>
-          <DropdownItem to="/multikills">Multi-Kills</DropdownItem>
+          {/* v5.88 — Hall of Fame and Multi-Kills now live as tabs inside the Records page. */}
           <DropdownItem to="/join">Join the League</DropdownItem>
         </DropdownMenu>
         <Link

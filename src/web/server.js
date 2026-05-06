@@ -849,7 +849,21 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  router.post('/auth/logout', (req, res) => {
+  router.post('/auth/logout', async (req, res) => {
+    // v5.88 — also remove the player from any open/accepting inhouse session
+    // so logging out frees their slot for someone else.
+    try {
+      // The Steam OpenID handler stores the 32-bit dota id under
+      // req.session.accountId (see Steam auth flow); some legacy callsites
+      // also reference steamAccountId. Accept either to be safe.
+      const acc = req.session?.accountId || req.session?.steamAccountId;
+      if (acc) {
+        const removed = await db.leaveAllJoinableInhouseSessions(acc);
+        if (removed > 0) console.log(`[auth/logout] removed ${acc} from ${removed} open inhouse session(s)`);
+      }
+    } catch (err) {
+      console.error('[auth/logout] inhouse cleanup failed:', err.message);
+    }
     req.session.destroy(() => res.json({ success: true }));
   });
 

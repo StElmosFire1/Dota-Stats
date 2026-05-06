@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getPersonalRecords, getFirstBloodStats, getComebackMatches, getMultiKillStats, getSeasonPlayerRecords } from '../api';
+import HallOfFame from './HallOfFame';
 import { useSeason } from '../context/SeasonContext';
 import { formatHeroName } from '../utils/heroes';
 
@@ -164,9 +165,11 @@ export default function Records() {
     }).finally(() => setLoading(false));
   }, [seasonId]);
 
+  // v5.88 — Hall of Fame absorbed as a tab here (was its own page).
   const tabs = [
     { key: 'records', label: '🏆 Hall of Records' },
     { key: 'season', label: '📊 Season Records' },
+    { key: 'halloffame', label: '🏛️ Hall of Fame' },
     { key: 'firstblood', label: '🩸 First Blood' },
     { key: 'comebacks', label: '⚡ Greatest Comebacks' },
     { key: 'multikills', label: '☠️ Multi-Kills' },
@@ -308,6 +311,10 @@ export default function Records() {
           </div>
         );
       })()}
+
+      {!loading && tab === 'halloffame' && (
+        <HallOfFame embed />
+      )}
 
       {!loading && tab === 'firstblood' && (
         <div>

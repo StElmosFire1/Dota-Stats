@@ -314,6 +314,9 @@ export default function SettingsProfile() {
         // sticky right rail and follow the page as the user scrolls through
         // the form. Single-column stack on mobile keeps the preview at top.
         <div className="settings-profile-grid">
+          {/* v5.88 — preview is a fixed floating panel on the right (see
+              .settings-profile-preview in styles.css). Form column flows
+              in the centre underneath. */}
           <aside className="settings-profile-preview">
             <PreviewCard displayName={displayName} customization={previewCustomization} />
           </aside>

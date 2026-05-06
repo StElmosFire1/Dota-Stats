@@ -409,7 +409,7 @@ function SeasonEndBanner({ season }) {
 
 export default function Leaderboard() {
   const { seasonId, seasons } = useSeason();
-  const showSeasonPass = true;
+  const showSeasonPass = false;
   const proMembers = useProMembers();
   const [data, setData] = useState({ leaderboard: [] });
   const [loading, setLoading] = useState(true);
