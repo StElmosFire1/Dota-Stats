@@ -152,32 +152,123 @@ function AdminButton() {
 
 function SteamButton() {
   const { steamUser, loading, signIn, logout } = useSteamAuth();
+  const [open, setOpen] = useState(false);
+  const wrapRef = React.useRef(null);
+  const location = useLocation();
+
+  // Close on route change.
+  React.useEffect(() => { setOpen(false); }, [location]);
+
+  // Close on outside click / Escape.
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   if (loading) return null;
+
   if (steamUser) {
-    // Make the signed-in state unmistakable: filled green pill with a
-    // checkmark + persona name + "(Sign out)" hint. Multiple users have
-    // asked "how do I tell if I'm signed in?" because the previous styling
-    // looked nearly identical to the Sign-in button.
+    // v5.84 — clicking the signed-in pill now opens an account dropdown
+    // (View profile / Settings / Notifications / My matches / Sign out)
+    // instead of immediately signing the user out. Several users hit
+    // "Sign out" by accident thinking it was a profile shortcut.
+    const accountId = steamUser.accountId;
+    const itemStyle = {
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '8px 14px', fontSize: 13,
+      color: 'var(--text-primary)', textDecoration: 'none',
+      cursor: 'pointer', background: 'transparent', border: 'none', width: '100%',
+      textAlign: 'left',
+    };
+    const onItemHover = (e, on) => {
+      e.currentTarget.style.background = on ? 'var(--bg-hover)' : 'transparent';
+    };
     return (
-      <button
-        className="btn btn-small steam-signed-in"
-        onClick={logout}
-        title={`Signed in as ${steamUser.displayName || steamUser.accountId} — click to sign out`}
-        style={{
-          marginLeft: 4,
-          background: 'linear-gradient(180deg,#2a4d12,#1b3008)',
-          borderColor: '#a4d007',
-          color: '#d6ff7a',
-          fontSize: 11,
-          fontWeight: 600,
-          boxShadow: '0 0 0 1px rgba(164,208,7,0.35)',
-        }}
-      >
-        <span style={{ marginRight: 4 }}>✓</span>
-        <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 12, height: 12, verticalAlign: 'middle', marginRight: 4 }} />
-        {steamUser.displayName || 'Signed in'}
-        <span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 400 }}>(Sign out)</span>
-      </button>
+      <span ref={wrapRef} style={{ position: 'relative', display: 'inline-flex', marginLeft: 4 }}>
+        <button
+          type="button"
+          className="btn btn-small steam-signed-in"
+          onClick={() => setOpen(o => !o)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          title={`Signed in as ${steamUser.displayName || accountId}`}
+          style={{
+            background: 'linear-gradient(180deg,#2a4d12,#1b3008)',
+            borderColor: '#a4d007',
+            color: '#d6ff7a',
+            fontSize: 11,
+            fontWeight: 600,
+            boxShadow: '0 0 0 1px rgba(164,208,7,0.35)',
+            display: 'inline-flex', alignItems: 'center',
+          }}
+        >
+          <span style={{ marginRight: 4 }}>✓</span>
+          <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 12, height: 12, marginRight: 4 }} />
+          {steamUser.displayName || 'Signed in'}
+          <span style={{ marginLeft: 6, fontSize: 9, opacity: 0.75 }}>▼</span>
+        </button>
+        {open && (
+          <div
+            role="menu"
+            style={{
+              position: 'absolute', top: '100%', right: 0, marginTop: 6,
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '6px 0', minWidth: 200, zIndex: 1000,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            }}
+          >
+            <div style={{
+              padding: '6px 14px 8px', fontSize: 11, color: 'var(--text-muted)',
+              borderBottom: '1px solid var(--border)', marginBottom: 4,
+            }}>
+              Signed in as<br />
+              <strong style={{ color: 'var(--text-primary)', fontSize: 13 }}>
+                {steamUser.displayName || `Player ${accountId}`}
+              </strong>
+            </div>
+            {accountId && (
+              <Link to={`/player/${accountId}`} role="menuitem" style={itemStyle}
+                onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
+                <span aria-hidden="true">👤</span> View profile
+              </Link>
+            )}
+            <Link to="/settings/profile" role="menuitem" style={itemStyle}
+              onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
+              <span aria-hidden="true">⚙️</span> Profile settings
+            </Link>
+            <Link to="/settings/notifications" role="menuitem" style={itemStyle}
+              onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
+              <span aria-hidden="true">🔔</span> Notifications
+            </Link>
+            {accountId && (
+              <Link to={`/player/${accountId}#matches`} role="menuitem" style={itemStyle}
+                onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
+                <span aria-hidden="true">🎮</span> My matches
+              </Link>
+            )}
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); logout(); }}
+              style={{ ...itemStyle, color: '#f08a8a' }}
+              onMouseEnter={(e) => onItemHover(e, true)}
+              onMouseLeave={(e) => onItemHover(e, false)}
+            >
+              <span aria-hidden="true">🚪</span> Sign out
+            </button>
+          </div>
+        )}
+      </span>
     );
   }
   return (
@@ -447,7 +538,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.83 — <Link to="/patch-notes">Patch notes</Link>
+            v5.84 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>

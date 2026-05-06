@@ -114,7 +114,11 @@ export default function Inhouse() {
   const [myPositions, setMyPositions] = useState([]);
   const [draftStatus, setDraftStatus] = useState(null);
   const isAdmin = !!superuserKey;
-  const myAccountId = steamUser?.steamAccountId ? Number(steamUser.steamAccountId) : null;
+  // v5.84 — was `steamUser?.steamAccountId` (typo); the `/api/auth/me`
+  // payload exposes the field as `accountId`. The mismatch made the lobby
+  // think every signed-in user was anonymous, so it always rendered the
+  // "Sign in with Steam to join" gate even after a successful sign-in.
+  const myAccountId = steamUser?.accountId ? Number(steamUser.accountId) : null;
   const pollRef = useRef(null);
 
   const refresh = useCallback(async () => {
