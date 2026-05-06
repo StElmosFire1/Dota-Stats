@@ -3920,6 +3920,38 @@ async function setDiscordId(accountId, discordId) {
   return (discordId || '').trim();
 }
 
+// Self-service variant of setDiscordId for the first-login onboarding modal
+// (POST /api/me/link-discord). Unlike the superuser-only setDiscordId above,
+// this UPSERTs a nicknames row when none exists yet — a brand-new Steam
+// sign-in won't have a nicknames entry, but we still want to capture their
+// Discord ID so the bot can DM them. Falls back to the player's persona name
+// (or a placeholder) for the required `nickname` column.
+async function linkOwnDiscordId(accountId, discordId) {
+  const p = getPool();
+  const cleaned = (discordId || '').trim();
+  const existing = await p.query('SELECT id FROM nicknames WHERE account_id = $1', [accountId]);
+  if (existing.rows.length > 0) {
+    await p.query(
+      `UPDATE nicknames SET discord_id = $1, updated_at = NOW() WHERE account_id = $2`,
+      [cleaned, accountId]
+    );
+  } else {
+    const personaRes = await p.query(
+      `SELECT persona_name FROM player_stats WHERE account_id = $1
+       ORDER BY id DESC LIMIT 1`,
+      [accountId]
+    );
+    const fallbackName = (personaRes.rows[0]?.persona_name || `Player ${accountId}`).slice(0, 64);
+    await p.query(
+      `INSERT INTO nicknames (account_id, nickname, discord_id, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (account_id) DO UPDATE SET discord_id = EXCLUDED.discord_id, updated_at = NOW()`,
+      [accountId, fallbackName, cleaned]
+    );
+  }
+  return cleaned;
+}
+
 async function getNicknameByDiscordId(discordId) {
   if (!discordId) return null;
   const p = getPool();
@@ -10303,6 +10335,7 @@ module.exports = {
   getMergedAccountIds,
   setNickname,
   setDiscordId,
+  linkOwnDiscordId,
   getNicknameByDiscordId,
   getDiscordIdByAccountId,
   getSteamByDiscordId,

@@ -7,6 +7,25 @@ export function SteamAuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [onboardingComplete, setOnboardingComplete] = useState(null);
 
+  // Pull /api/auth/me on mount and after a refresh request (e.g. after the
+  // first-login Discord link modal saves so `needs_discord_link` flips to
+  // false and the modal stops showing).
+  const refreshMe = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      const data = await res.json();
+      if (data && data.accountId) {
+        setSteamUser(data);
+        return data;
+      }
+      setSteamUser(null);
+      return null;
+    } catch {
+      setSteamUser(null);
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     fetch('/api/auth/me')
       .then(r => r.json())
@@ -46,7 +65,7 @@ export function SteamAuthProvider({ children }) {
   };
 
   return (
-    <SteamAuthContext.Provider value={{ steamUser, loading, signIn, logout, onboardingComplete, setOnboardingComplete }}>
+    <SteamAuthContext.Provider value={{ steamUser, loading, signIn, logout, onboardingComplete, setOnboardingComplete, refreshMe }}>
       {children}
     </SteamAuthContext.Provider>
   );

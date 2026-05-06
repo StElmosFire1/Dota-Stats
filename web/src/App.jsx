@@ -11,6 +11,7 @@ import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import WelcomeModal from './components/WelcomeModal';
 import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
+import DiscordLinkModal from './components/DiscordLinkModal';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
@@ -595,6 +596,7 @@ export default function App() {
             <SuperuserLoginModal />
             <WelcomeModal />
             <GlobalOnboardingWizard />
+            <DiscordLinkModal />
             <main className="container">
               <Suspense fallback={<div className="loading">Loading…</div>}>
               <Routes>

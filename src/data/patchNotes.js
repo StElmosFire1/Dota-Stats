@@ -1,5 +1,11 @@
 module.exports = [
   {
+    "version": "5.94",
+    "title": "First-login Discord ID onboarding modal",
+    "published_at": "2026-05-06",
+    "content": "Players who sign in with Steam for the first time and never used the **Join the League** form had no Discord link, so the bot couldn't DM them, mention them, or assign roles — and nothing prompted them to fix it. A new one-time modal now collects the Discord User ID right after first sign-in.\n\n• **New `<DiscordLinkModal />` mounted globally in `App.jsx`.** Watches `steamUser.needs_discord_link` from `/api/auth/me` and renders *“One last step — link your Discord”* with a Discord User ID input (`123456789012345678` placeholder), short instructions for enabling Developer Mode and copying the ID, a *Skip for now* link that dismisses for the rest of the session, and a *Save* button. Re-shows up to **3 times across sessions** (counter persisted in `localStorage` under `discordLinkModal:skipCount`); after that we stop nagging until the player updates from `/settings/profile`. A success toast (*“Discord linked. The bot can now DM you.”*) confirms the save.\n\n• **`/api/auth/me` payload extended.** Returns `discord_id` and `needs_discord_link: boolean` so the frontend never needs a second request to decide whether to prompt. Players who joined via the Join-the-League form already have `nicknames.discord_id` populated, so the modal is silently skipped for them.\n\n• **New `POST /api/me/link-discord` endpoint (signed-in only).** Validates the Discord ID is a 17–19 digit snowflake, then UPSERTs into `nicknames` for the caller's `account_id` via a new `db.linkOwnDiscordId()` helper that creates a nickname row on the fly when one doesn't exist yet (a brand-new Steam sign-in won't have one). The existing superuser-only `setDiscordId()` is unchanged.\n\n• **Discord field added to `/settings/profile`.** A new *Discord link* section at the top of the form pre-fills with the current `discord_id`, validates the same 17–19 digit format, and saves through the same endpoint — so players can update it later without going through the modal."
+  },
+  {
     "version": "5.93",
     "title": "Coaching Marketplace opens to everyone",
     "published_at": "2026-05-06",

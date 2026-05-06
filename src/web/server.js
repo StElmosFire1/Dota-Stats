@@ -838,15 +838,48 @@ function createApiRouter(startupStatus = {}) {
     });
   });
 
-  router.get('/auth/me', (req, res) => {
+  router.get('/auth/me', async (req, res) => {
     if (req.session && req.session.accountId) {
+      // First-login Discord onboarding (task 89): tell the frontend whether
+      // we still need to prompt this user for their Discord User ID. We check
+      // nicknames.discord_id directly so a user who joined via the public
+      // Join-the-League form (which already populates discord_id) is never
+      // bothered by the modal.
+      let discordId = null;
+      try {
+        discordId = await db.getDiscordIdByAccountId(req.session.accountId);
+      } catch (err) {
+        console.warn('[auth/me] discord-link check failed:', err.message);
+      }
       res.json({
         accountId: req.session.accountId,
         steamId64: req.session.steamId64,
         displayName: req.session.displayName || null,
+        discord_id: discordId || null,
+        needs_discord_link: !discordId,
       });
     } else {
       res.json(null);
+    }
+  });
+
+  // POST /api/me/link-discord — first-login Discord ID onboarding (task 89).
+  // Signed-in only. Accepts a 17–19 digit Discord snowflake and writes it
+  // into nicknames.discord_id for the caller's account. We do NOT verify the
+  // ID points at a real Discord user (out of scope per the task).
+  router.post('/me/link-discord', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam first.' });
+    const raw = (req.body?.discord_id || '').toString().trim();
+    if (!/^\d{17,19}$/.test(raw)) {
+      return res.status(400).json({ error: 'That doesn\'t look like a Discord User ID. It should be 17–19 digits.' });
+    }
+    try {
+      const saved = await db.linkOwnDiscordId(accountId, raw);
+      res.json({ ok: true, discord_id: saved });
+    } catch (err) {
+      console.error('[me/link-discord] failed for account', accountId, ':', err.message);
+      res.status(500).json({ error: 'Could not save your Discord ID. Try again in a moment.' });
     }
   });
 

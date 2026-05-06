@@ -96,8 +96,81 @@ function PreviewCard({ displayName, customization }) {
   );
 }
 
+function DiscordLinkSection({ steamUser, refreshMe }) {
+  const initial = steamUser?.discord_id || '';
+  const [value, setValue] = React.useState(initial);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState(null);
+  const [error, setError] = React.useState(null);
+
+  React.useEffect(() => { setValue(steamUser?.discord_id || ''); }, [steamUser?.discord_id]);
+
+  const handleSave = async () => {
+    setError(null); setMsg(null);
+    const cleaned = value.trim();
+    if (!/^\d{17,19}$/.test(cleaned)) {
+      setError("Discord User IDs are 17–19 digits — open Discord, enable Developer Mode, then right-click your name → Copy User ID.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/me/link-discord', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discord_id: cleaned }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body.error || 'Could not save your Discord ID.');
+      } else {
+        setMsg('Discord ID saved.');
+        if (typeof refreshMe === 'function') refreshMe().catch(() => {});
+        setTimeout(() => setMsg(null), 2500);
+      }
+    } catch (e) {
+      setError(e.message || 'Network error.');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <section style={{ marginTop: 24 }}>
+      <h2 style={{ marginBottom: 8 }}>Discord link</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0, marginBottom: 8 }}>
+        Used so the bot can DM you, mention you, and assign your league roles.
+        In Discord: profile → User Settings → Advanced → enable Developer Mode → right-click your name → Copy User ID.
+      </p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => { setValue(e.target.value.replace(/\D/g, '').slice(0, 19)); setError(null); setMsg(null); }}
+          placeholder="123456789012345678"
+          disabled={saving}
+          style={{
+            flex: 1, minWidth: 240, padding: '8px 10px', borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--bg-card)',
+            color: 'var(--text-primary)', fontSize: 14, letterSpacing: 0.4,
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={handleSave}
+          disabled={saving || !value || value === initial}
+        >
+          {saving ? 'Saving…' : 'Save Discord ID'}
+        </button>
+      </div>
+      {error && <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>{error}</div>}
+      {msg && <div style={{ marginTop: 6, color: '#22c55e', fontSize: 12 }}>{msg}</div>}
+    </section>
+  );
+}
+
 export default function SettingsProfile() {
-  const { steamUser } = useSteamAuth() || {};
+  const { steamUser, refreshMe } = useSteamAuth() || {};
   const enabled = true;
 
   const [loading, setLoading] = useState(true);
@@ -322,7 +395,9 @@ export default function SettingsProfile() {
           </aside>
           <div className="settings-profile-form">
 
-          <section style={{ marginTop: 0 }}>
+          <DiscordLinkSection steamUser={steamUser} refreshMe={refreshMe} />
+
+          <section style={{ marginTop: 24 }}>
             <h2 style={{ marginBottom: 8 }}>Basics</h2>
             <label style={{ display: 'block', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
               Bio ({bio.length}/{BIO_MAX})
