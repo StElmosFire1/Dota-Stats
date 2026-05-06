@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 
 const POSITIONS = [
   { id: 1, label: 'P1 — Carry' },
@@ -455,8 +456,26 @@ export default function Inhouse() {
           )}
 
           {!myAccountId && (
-            <div style={{ marginTop: 16, padding: 12, background: 'rgba(255,193,7,0.1)', borderRadius: 6, fontSize: 13 }}>
-              <Link to="/auth/steam" style={{ color: '#ffc107' }}>Sign in with Steam</Link> to join.
+            <div style={{ marginTop: 16, padding: 14, background: 'rgba(255,193,7,0.1)', border: '1px solid rgba(255,193,7,0.3)', borderRadius: 6, fontSize: 13, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+              <a
+                href="/auth/steam"
+                style={{
+                  background: '#1b2838', color: '#d6ff7a',
+                  border: '1px solid #66c0f4',
+                  padding: '6px 12px', fontSize: 12, fontWeight: 600,
+                  borderRadius: 4,
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  textDecoration: 'none',
+                }}
+              >
+                <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 14, height: 14 }} />
+                Sign in with Steam
+                <span aria-hidden="true">🔒</span>
+              </a>
+              <span style={{ color: '#ffc107' }}>to join this lobby.</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>
+                You sign in directly with Valve · <WhyIsThisSafeLink />
+              </span>
             </div>
           )}
 

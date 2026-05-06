@@ -9,6 +9,7 @@ import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import WelcomeModal from './components/WelcomeModal';
+import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
@@ -271,16 +272,32 @@ function SteamButton() {
       </span>
     );
   }
+  // v5.85 — added trust signaling next to the Steam Login button.
+  // Many users hesitated on the plain "Steam Login" pill because it
+  // wasn't clear whether they were handing us their Steam password
+  // (they aren't — Valve handles the credential entry on their own
+  // domain). The "Why is this safe?" link opens a modal that walks
+  // through the entire OpenID 2.0 flow.
   return (
-    <button
-      className="btn btn-small steam-login-btn"
-      onClick={signIn}
-      title="Sign in with Steam to verify your identity for buy-ins"
-      style={{ marginLeft: 4, background: '#1b2838', borderColor: '#567997', color: '#8ba7bf', fontSize: 11 }}
-    >
-      <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 12, height: 12, verticalAlign: 'middle', marginRight: 4 }} />
-      Steam Login
-    </button>
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: 4, gap: 2 }}>
+      <button
+        className="btn btn-small steam-login-btn"
+        onClick={signIn}
+        title="You'll sign in directly with Valve at steamcommunity.com — we never see your password."
+        style={{
+          background: '#1b2838', borderColor: '#66c0f4', color: '#d6ff7a',
+          fontSize: 11, fontWeight: 600,
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}
+      >
+        <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 14, height: 14 }} />
+        Sign in with Steam
+        <span aria-hidden="true" style={{ marginLeft: 2, fontSize: 11, opacity: 0.85 }}>🔒</span>
+      </button>
+      <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        Password stays with Valve · <WhyIsThisSafeLink style={{ fontSize: 9 }} />
+      </span>
+    </span>
   );
 }
 
@@ -538,7 +555,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.84 — <Link to="/patch-notes">Patch notes</Link>
+            v5.85 — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>
