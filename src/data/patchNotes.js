@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "5.97",
+    "title": "Snapshot test guards public-profile parity from silent regressions",
+    "published_at": "2026-05-06",
+    "content": "Follow-up to v5.91, which added `AUDIT (v5.91 parity pass)` JSX comments above every section in `web/src/pages/PlayerProfile.jsx` so any future PR re-introducing an `isOwnProfile` guard around an entire section would jump out in code review. That was a human safeguard — easy to miss on a fast-moving PR. v5.97 codifies the rule as an automated test so it can never silently break again.\n\n• **New `web/src/pages/__tests__/PlayerProfile.parity.test.jsx`.** Renders `<PlayerProfile />` twice for the same `accountId` — once with a Steam-auth context where `accountId` matches the URL param (owner) and once where it doesn't (a different signed-in visitor) — and asserts every `<h2 className=\"section-title\">` text in the owner render is also present in the public render (and vice versa). Owner-only chunks intentionally outside the parity check (✏️ Edit Profile, 🎓 Apply to coach, 🔗 Your Invite Link) and visitor-only chunks (🎁 Gift Pro, 🎫 Gift Season Pass) are asserted explicitly so re-classifying one of them silently also fails the test.\n\n• **Vitest harness wired up for the `web/` workspace.** Added `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, and `jsdom` as dev-dependencies; new `web/vitest.config.js` configures the jsdom environment and points at `web/src/test/setup.js`; `npm test` (run from `web/`) executes the suite. API responses are mocked with `vi.mock('../../api')` and direct `fetch()` calls (`/profile-card`, `/season-pass`, `/mvp-attitude-trends`, `/invite-link`, `/referrals`, `/coaching/eligibility/me`) are mocked via a stubbed `global.fetch`, so the test runs without a live DB or backend. Recharts is stubbed to a passthrough since jsdom can't render its SVG layout and we only care about the surrounding `<section>` titles.",
+    "author": "System"
+  },
+  {
     "version": "5.96",
     "title": "Auto-recover the superuser session so admin actions don't 403 silently",
     "published_at": "2026-05-06",
