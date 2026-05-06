@@ -2150,12 +2150,11 @@ export default function AdminPanel() {
   const [recalcLoading, setRecalcLoading] = useState(false);
   const [recalcMsg, setRecalcMsg] = useState('');
   const [siteSettings, setSiteSettings] = useState({});
-  const [ratingToggleSaving, setRatingToggleSaving] = useState(false);
-  const [ratingToggleMsg, setRatingToggleMsg] = useState('');
-  const [v3PreviewOpen, setV3PreviewOpen] = useState(false);
-  const [v3PreviewData, setV3PreviewData] = useState(null);
-  const [v3PreviewLoading, setV3PreviewLoading] = useState(false);
-  const [v3PreviewError, setV3PreviewError] = useState('');
+  // v5.90 — V1/V3 rating-engine toggle and the V3-vs-V1 preview have been
+  // removed from the Admin Panel; V3 is the sole production engine going
+  // forward. The corresponding state (ratingToggleSaving / v3Preview*) and
+  // handlers (handleToggleRatingSystem / handleRunV3Preview) were dropped
+  // along with the UI block in the Seasons tab.
   const [ranks, setRanks] = useState([]);
   const [rankSyncing, setRankSyncing] = useState(false);
   const [rankSyncMsg, setRankSyncMsg] = useState('');
@@ -2240,53 +2239,6 @@ export default function AdminPanel() {
   }, [isSuperuser, superuserKey]);
 
   useEffect(() => { loadSiteSettings(); }, [loadSiteSettings]);
-
-  const useV3 = siteSettings.use_v3_trueskill === 'true';
-
-  const handleToggleRatingSystem = async () => {
-    const target = useV3 ? 'V1 (Standard)' : 'V3 (Enhanced)';
-    const ok = window.confirm(
-      `Switch the active rating system to ${target}?\n\n`
-      + 'This will immediately recompute the public leaderboard and all player MMRs '
-      + 'on the next API call. Intended for season-start use only.'
-    );
-    if (!ok) return;
-    setRatingToggleSaving(true);
-    setRatingToggleMsg('');
-    try {
-      const r = await fetch('/api/admin/settings', {
-        method: 'POST',
-        headers: { ...authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'use_v3_trueskill', value: useV3 ? 'false' : 'true' }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Failed');
-      setSiteSettings(s => ({ ...s, use_v3_trueskill: useV3 ? 'false' : 'true' }));
-      setRatingToggleMsg(`Now using ${useV3 ? 'V1 (Standard)' : 'V3 (Enhanced)'}.`);
-    } catch (e) {
-      setRatingToggleMsg(`Error: ${e.message}`);
-    } finally {
-      setRatingToggleSaving(false);
-    }
-  };
-
-  const handleRunV3Preview = async () => {
-    setV3PreviewLoading(true);
-    setV3PreviewError('');
-    setV3PreviewData(null);
-    try {
-      const sid = activeSeason?.id ?? null;
-      const url = `/api/admin/v3-preview${sid ? `?season_id=${sid}` : ''}`;
-      const res = await fetch(url, { headers: authHeader });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed');
-      setV3PreviewData(json.leaderboard || []);
-    } catch (e) {
-      setV3PreviewError(e.message);
-    } finally {
-      setV3PreviewLoading(false);
-    }
-  };
 
   const handleRecalculate = async () => {
     setRecalcLoading(true);
@@ -2654,132 +2606,24 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'seasons' && (<>
-      {/* Rating System — V1 vs V3 toggle + preview */}
+      {/* v5.90 — Rating System: read-only status. The V1/V3 toggle and the
+          V3-vs-V1 preview were removed because V3 is now the only supported
+          engine and we're not going back. The DB column / setting key is
+          left in place so historical data and any external scripts keep
+          working unchanged. */}
       <section>
         <h2 id="ap-anchor-rating-system" style={{ marginBottom: 6 }}>⚖️ Rating System</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-          Controls which TrueSkill engine powers the public leaderboard and player profiles.
-          Switching rating systems takes effect immediately — only flip this at the start of a season.
-        </p>
-
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-          padding: 14, background: 'var(--surface-2, rgba(255,255,255,0.03))',
-          borderRadius: 8, marginBottom: 16,
+          padding: 12, background: 'var(--surface-2, rgba(255,255,255,0.03))',
+          borderRadius: 8, marginBottom: 16, fontSize: 13,
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         }}>
-          <div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Currently Active</div>
-            <span style={{
-              display: 'inline-block', padding: '4px 12px', borderRadius: 12,
-              fontWeight: 700, fontSize: 13,
-              background: useV3 ? 'var(--radiant-color)' : 'var(--text-muted)',
-              color: '#fff',
-            }}>
-              {useV3 ? 'V3 (Enhanced)' : 'V1 (Standard)'}
-            </span>
-          </div>
-          <div style={{ flex: 1, minWidth: 220, fontSize: 12, color: 'var(--text-muted)' }}>
-            {useV3 ? (
-              <>V3 fixes draw probability (Dota can't draw), floors σ at 2.5 to keep veterans fluid, and applies a per-match Impact-style modifier (±20%) to the μ update.</>
-            ) : (
-              <>V1 is the original TrueSkill default — uniform team-based rating updates, no per-player performance weighting.</>
-            )}
-          </div>
-          <button
-            className="btn"
-            disabled={ratingToggleSaving}
-            onClick={handleToggleRatingSystem}
-          >
-            {ratingToggleSaving ? 'Saving…' : useV3 ? 'Switch to V1' : 'Switch to V3'}
-          </button>
+          <span style={{ color: 'var(--text-muted)' }}>Rating engine:</span>
+          <strong style={{ color: 'var(--accent)' }}>TrueSkill V3</strong>
+          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            (per-match Impact-weighted µ updates, σ floored at 2.5, no draw probability)
+          </span>
         </div>
-        {ratingToggleMsg && (
-          <p style={{
-            marginTop: -8, marginBottom: 12, fontSize: 13,
-            color: ratingToggleMsg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)',
-          }}>
-            {ratingToggleMsg}
-          </p>
-        )}
-
-        <button
-          className="btn"
-          onClick={() => setV3PreviewOpen(o => !o)}
-          style={{ marginBottom: 12 }}
-        >
-          {v3PreviewOpen ? '▲ Hide V3 vs V1 Preview' : '▼ Show V3 vs V1 Preview'}
-        </button>
-
-        {v3PreviewOpen && (
-          <div>
-            <button
-              className="btn"
-              disabled={v3PreviewLoading}
-              onClick={handleRunV3Preview}
-              style={{ marginBottom: 16 }}
-            >
-              {v3PreviewLoading ? 'Computing…' : v3PreviewData ? '🔄 Recompute' : '▶ Run Comparison'}
-            </button>
-            {v3PreviewError && <p style={{ color: 'var(--dire-color)', marginBottom: 12 }}>{v3PreviewError}</p>}
-            {v3PreviewData && (
-              <div style={{ overflowX: 'auto' }}>
-                <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
-                  {v3PreviewData.length} players — sorted by V3 MMR.{' '}
-                  <strong style={{ color: 'var(--radiant-color)' }}>Green delta</strong> = V3 benefits this player.{' '}
-                  <strong style={{ color: 'var(--dire-color)' }}>Red delta</strong> = V3 hurts them.
-                </p>
-                <table className="scoreboard" style={{ width: '100%', fontSize: 13 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'center', width: 36 }}>#</th>
-                      <th style={{ textAlign: 'left' }}>Player</th>
-                      <th title="TrueSkill V3 MMR">V3 MMR</th>
-                      <th title="Current TrueSkill V1 MMR">V1 MMR</th>
-                      <th title="V3 minus V1">Δ MMR</th>
-                      <th title="V3 μ (mean skill)">μ</th>
-                      <th title="V3 σ (uncertainty)">σ</th>
-                      <th>W</th>
-                      <th>L</th>
-                      <th>Games</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {v3PreviewData.map((p, i) => {
-                      const deltaColor = p.delta > 0
-                        ? 'var(--radiant-color)'
-                        : p.delta < 0 ? 'var(--dire-color)' : 'var(--text-muted)';
-                      const medal = ['🥇', '🥈', '🥉'][i] || `${i + 1}`;
-                      return (
-                        <tr key={p.player_id}>
-                          <td style={{ textAlign: 'center', fontWeight: 700 }}>{medal}</td>
-                          <td style={{ fontWeight: 600 }}>{p.display_name}</td>
-                          <td className="col-stat" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                            {p.v3_mmr.toLocaleString()}
-                          </td>
-                          <td className="col-stat" style={{ color: 'var(--text-secondary)' }}>
-                            {p.v1_mmr.toLocaleString()}
-                          </td>
-                          <td className="col-stat" style={{ fontWeight: 700, color: deltaColor }}>
-                            {p.delta > 0 ? '+' : ''}{p.delta}
-                          </td>
-                          <td className="col-stat" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                            {Number(p.v3_mu).toFixed(2)}
-                          </td>
-                          <td className="col-stat" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                            {Number(p.v3_sigma).toFixed(2)}
-                          </td>
-                          <td className="col-stat" style={{ color: 'var(--radiant-color)' }}>{p.wins}</td>
-                          <td className="col-stat" style={{ color: 'var(--dire-color)' }}>{p.losses}</td>
-                          <td className="col-stat">{p.games}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
       </section>
 
       </>)}

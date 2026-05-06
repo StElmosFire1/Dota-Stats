@@ -257,7 +257,15 @@ export default function Inhouse() {
     try {
       const r = await api(`/inhouse/${session.id}/server`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({}) });
       if (r.rcon && !r.rcon.ok) {
-        alert(`Server provisioned but RCON push failed: ${r.rcon.error}\nPlayers will still see the connect link.`);
+        // v5.90 — friendlier wording. The most common cause is that the
+        // dedicated server isn't configured yet, in which case the connect
+        // link below is the intended fallback path, not a failure state.
+        const isMissing = /not.?configured|no.*server|missing|undefined|ENOTFOUND/i.test(String(r.rcon.error || ''));
+        if (isMissing) {
+          alert('Dedicated server is not configured yet — players will use the connect link below.\n\n(Admin: set DEDICATED_SERVER_IP to enable RCON push.)');
+        } else {
+          alert(`Server ready — players will use the connect link below.\nRCON push didn't go through (${r.rcon.error}), so you may need to bring them in manually.`);
+        }
       }
       await refresh();
     } catch (e) { alert(e.message); }

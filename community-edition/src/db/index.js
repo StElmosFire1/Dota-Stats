@@ -638,8 +638,10 @@ async function init() {
       )
     `);
     await p.query(
-      `INSERT INTO site_settings (key, value) VALUES ('use_v3_trueskill', 'false')
-       ON CONFLICT (key) DO NOTHING`
+      // v5.90 — seed default flipped to 'true' (V3-only); the value is now
+      // ignored at runtime, the row is kept only for historical-script compat.
+      `INSERT INTO site_settings (key, value) VALUES ('use_v3_trueskill', 'true')
+       ON CONFLICT (key) DO UPDATE SET value = 'true'`
     );
 
     // Feature flags — three-state toggle (off / preview / on) used to stage
@@ -2226,16 +2228,10 @@ function _computeImpactTier(rawScore, allRawScores) {
 async function getComputedLeaderboard(seasonId = null) {
   const p = getPool();
 
-  // Route to V3 if the admin toggle is on, else default V1
-  let useV3 = false;
-  try {
-    useV3 = (await getSetting('use_v3_trueskill')) === 'true';
-  } catch (e) {
-    useV3 = false;
-  }
-  const { ratings } = useV3
-    ? await computeSeasonTrueSkillV3(seasonId)
-    : await computeSeasonTrueSkill(seasonId);
+  // v5.90 — TrueSkill V3 is now the only supported production engine. The
+  // legacy `use_v3_trueskill` site setting is ignored; V1 is no longer
+  // reachable from the public leaderboard or any consumer of this helper.
+  const { ratings } = await computeSeasonTrueSkillV3(seasonId);
 
   // Fetch nicknames and build canonical-account mapping (same logic as computeSeasonTrueSkill)
   const nicknamesRes = await p.query(
@@ -2597,12 +2593,9 @@ async function getPlayerStats(accountId, seasonId = null) {
   // Use the canonical ID (in case this account is merged with another under the same nickname).
   let seasonMmr = null;
   if (isRealAccount) {
-    // Honour the V1/V3 admin toggle so profile MMR always matches the leaderboard.
-    let useV3 = false;
-    try { useV3 = (await getSetting('use_v3_trueskill')) === 'true'; } catch { useV3 = false; }
-    const { ratings: seasonRatings, accountToCanonical } = useV3
-      ? await computeSeasonTrueSkillV3(seasonId)
-      : await computeSeasonTrueSkill(seasonId);
+    // v5.90 — V3 is the only production engine. Pulled the V1/V3 toggle so
+    // profile MMR always matches the leaderboard unconditionally.
+    const { ratings: seasonRatings, accountToCanonical } = await computeSeasonTrueSkillV3(seasonId);
     const canonicalId = accountToCanonical[accountId.toString()] || accountId.toString();
     const entry = seasonRatings[canonicalId];
     if (entry) {

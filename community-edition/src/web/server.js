@@ -2054,7 +2054,9 @@ NOTES
 
   // Allowlist of settings keys writable via this endpoint — prevents the
   // generic key/value store from being abused as a free-form admin scratchpad.
-  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill']);
+  // v5.90 — `use_v3_trueskill` removed: V3 is the only supported engine and
+  // the value is forced/ignored at runtime. Operators can no longer flip it.
+  const ALLOWED_SETTING_KEYS = new Set();
 
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.

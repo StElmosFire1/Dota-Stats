@@ -179,7 +179,7 @@ export function WhyIsThisSafeLink({ style }) {
           padding: 0, ...style,
         }}
       >
-        🛡️ Why is this safe?
+        Why is this safe?
       </button>
       <SteamTrustModal open={open} onClose={() => setOpen(false)} />
     </>

@@ -2,14 +2,27 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 
+// v5.90 — added the missing labels (match_ready + the three coaching
+// categories) and a smarter fallback so any future server-side category
+// renders as a Title-Cased name instead of a blank row.
 const CATEGORY_LABELS = {
-  post_match_dm:     { title: 'Post-match summary',  desc: 'Card with your stats sent after each game.' },
-  mvp_vote:          { title: 'MVP vote prompts',    desc: 'DM asking you to nominate a teammate as MVP.' },
-  attitude_vote:     { title: 'Attitude rating prompts', desc: 'DM asking you to rate teammate attitude.' },
-  hot_streak:        { title: 'Hot-streak shoutouts', desc: 'Announcement when you hit a 5- or 10-win streak.' },
-  schedule_reminder: { title: 'Game schedule reminders', desc: 'T-24h and T-1h reminders for scheduled games.' },
-  weekly_recap:      { title: 'Weekly recap',        desc: 'Sunday-night digest of the week\u2019s games.' },
+  post_match_dm:              { title: 'Post-match summary',     desc: 'Card with your stats sent after each game.' },
+  match_ready:                { title: 'Match ready',            desc: 'DM when an inhouse lobby is ready for you to join.' },
+  mvp_vote:                   { title: 'MVP vote prompts',       desc: 'DM asking you to nominate a teammate as MVP.' },
+  attitude_vote:              { title: 'Attitude rating prompts', desc: 'DM asking you to rate teammate attitude.' },
+  hot_streak:                 { title: 'Hot-streak shoutouts',   desc: 'Announcement when you hit a 5- or 10-win streak.' },
+  schedule_reminder:          { title: 'Game schedule reminders', desc: 'T-24h and T-1h reminders for scheduled games.' },
+  weekly_recap:               { title: 'Weekly recap',           desc: 'Sunday-night digest of the week\u2019s games.' },
+  coaching_booking_confirmed: { title: 'Coaching: booking confirmed', desc: 'DM when one of your coaching bookings is paid and locked in.' },
+  coaching_session_reminder:  { title: 'Coaching: session reminder',  desc: 'DM ~1 hour before a scheduled coaching session.' },
+  coaching_review_request:    { title: 'Coaching: review request',    desc: 'DM after a completed session asking you to leave a review.' },
 };
+
+function humaniseCategory(key) {
+  return String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
 
 function urlBase64ToUint8Array(base64) {
   const padding = '='.repeat((4 - base64.length % 4) % 4);
@@ -177,7 +190,7 @@ export default function SettingsNotifications() {
       {!loading && prefs.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
           {prefs.map(p => {
-            const meta = CATEGORY_LABELS[p.category] || { title: p.category, desc: '' };
+            const meta = CATEGORY_LABELS[p.category] || { title: humaniseCategory(p.category), desc: '' };
             return (
               <div key={p.category} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',

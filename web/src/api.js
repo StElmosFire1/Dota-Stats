@@ -1026,11 +1026,20 @@ export async function getPlayerRanks() {
 }
 
 export async function triggerRankSync(superuserKey) {
+  // v5.90 — explicitly include credentials so the session cookie is sent
+  // even if BASE is ever switched to a cross-origin URL. The header is kept
+  // as a fallback for non-browser callers. Surface a clearer message on 403
+  // (session expired) so the user knows to re-log-in instead of seeing the
+  // generic "Invalid superuser key" string.
   const res = await fetch(BASE + '/ranks/sync', {
     method: 'POST',
-    headers: { 'x-superuser-key': superuserKey },
+    credentials: 'include',
+    headers: { 'x-superuser-key': superuserKey || '' },
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('Superuser session expired — log out and back in via the 🛡️ Superuser button, then try again.');
+  }
   if (!res.ok) throw new Error(data.error || 'Failed to start sync');
   return data;
 }

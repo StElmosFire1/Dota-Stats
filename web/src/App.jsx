@@ -279,9 +279,10 @@ function SteamButton() {
   // domain). The "Why is this safe?" link opens a modal that walks
   // through the entire OpenID 2.0 flow.
   return (
-    // v5.88 — wrapper is position:relative + width:max-content so the wider
-    // trust footnote is absolutely positioned underneath without pushing the
-    // button (or sibling nav items) sideways.
+    // v5.90 — trust footnote condensed to a single subtle line beneath the
+    // button. No emoji, single muted colour, tighter spacing, and the
+    // "Why is this safe?" link inherits the same colour/size so the row
+    // reads as one quiet sentence rather than competing visual elements.
     <span style={{ position: 'relative', display: 'inline-block', marginLeft: 4 }}>
       <button
         className="btn btn-small steam-login-btn"
@@ -295,15 +296,14 @@ function SteamButton() {
       >
         <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 14, height: 14 }} />
         Sign in with Steam
-        <span aria-hidden="true" style={{ marginLeft: 2, fontSize: 11, opacity: 0.85 }}>🔒</span>
       </button>
       <span style={{
         position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-        marginTop: 2, fontSize: 9, color: 'var(--text-muted)',
-        display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-        pointerEvents: 'auto',
+        marginTop: 1, fontSize: 9, lineHeight: 1.2,
+        color: 'var(--text-muted)', whiteSpace: 'nowrap',
       }}>
-        Password stays with Valve · <WhyIsThisSafeLink style={{ fontSize: 9 }} />
+        Password stays with Valve ·{' '}
+        <WhyIsThisSafeLink style={{ fontSize: 9, color: 'var(--text-muted)' }} />
       </span>
     </span>
   );

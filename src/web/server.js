@@ -1099,10 +1099,9 @@ function createApiRouter(startupStatus = {}) {
     try {
       const seasonId = req.query.season_id || null;
       const pool = db.getPool();
-      const [leaderboard, streaks, v3Setting, framesRes] = await Promise.all([
+      const [leaderboard, streaks, framesRes] = await Promise.all([
         db.getComputedLeaderboard(seasonId),
         db.getPlayerStreaks(seasonId),
-        db.getSetting('use_v3_trueskill').catch(() => 'false'),
         pool.query(`SELECT account_id, profile_frame FROM player_profiles WHERE profile_frame IS NOT NULL AND profile_frame != 'none'`).catch(() => ({ rows: [] })),
       ]);
       const framesByAccountId = {};
@@ -1113,7 +1112,8 @@ function createApiRouter(startupStatus = {}) {
         p.streak = streaks[p.player_id?.toString()] || 0;
         p.profile_frame = framesByAccountId[String(p.player_id)] || null;
       }
-      res.json({ leaderboard, useV3: v3Setting === 'true' });
+      // v5.90 — V3 is the only supported engine; field kept for client compat.
+      res.json({ leaderboard, useV3: true });
     } catch (err) {
       console.error('[API] Error fetching leaderboard:', err.message);
       res.status(500).json({ error: 'Failed to fetch leaderboard' });
@@ -4384,7 +4384,9 @@ NOTES
 
   // Allowlist of settings keys writable via this endpoint — prevents the
   // generic key/value store from being abused as a free-form admin scratchpad.
-  const ALLOWED_SETTING_KEYS = new Set(['use_v3_trueskill', 'engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker', 'home_banner']);
+  // v5.90 — `use_v3_trueskill` removed: V3 is the only supported engine and
+  // the value is forced/ignored at runtime. Operators can no longer flip it.
+  const ALLOWED_SETTING_KEYS = new Set(['engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker', 'home_banner']);
 
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.
@@ -5031,7 +5033,14 @@ NOTES
   router.get('/ranks', async (req, res) => {
     try {
       const rows = await db.getAllPlayerRanks();
-      res.json(rows);
+      // v5.90 — strip out the dummy bot accounts (9_000_001..9_000_010) used
+      // by the Inhouse draft sandbox. They get mass-registered with names
+      // like "Bot AM" / "Bot CM" and were polluting the rank-management table.
+      const filtered = (rows || []).filter(r => {
+        const id = Number(r.account_id);
+        return !(id >= 9000001 && id <= 9000010);
+      });
+      res.json(filtered);
     } catch (err) {
       console.error('[API] GET /ranks error:', err.message);
       res.status(500).json({ error: 'Failed to fetch ranks' });
@@ -6767,12 +6776,24 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!raw || raw.startsWith('AI chat is not configured')) {
         return res.status(503).json({ error: 'AI scouting is not available (API key not configured).' });
       }
-      const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim();
+      // v5.90 — Grok occasionally wraps the JSON in ```json fences, returns
+      // a leading "Here's the report:" preamble, or trails extra prose. Strip
+      // fences first, then extract the first {...} block as a fallback before
+      // declaring the response unparseable. Log the raw payload server-side so
+      // the owner can diagnose recurring failures from the error log.
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
       let structured;
       try {
         structured = JSON.parse(cleaned);
       } catch (_) {
-        return res.status(503).json({ error: 'AI scouting returned an unexpected response. Please try again.' });
+        const m = cleaned.match(/\{[\s\S]*\}/);
+        if (m) {
+          try { structured = JSON.parse(m[0]); } catch (_2) { /* fall through */ }
+        }
+        if (!structured) {
+          console.warn('[API] scouting-report unparseable response:', raw.slice(0, 500));
+          return res.status(503).json({ error: 'Scout temporarily unavailable, try again in a minute.' });
+        }
       }
       const report = {
         player_name: playerName,

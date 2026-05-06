@@ -592,10 +592,11 @@ section .scoreboard-wrapper {
   min-width: 48px;
 }
 
-/* v5.88 — /settings/profile: settings flow in a single clean centred column,
-   live preview is a TRULY floating fixed panel pinned to the right edge of
-   the viewport. On narrow screens (<1240px) the preview drops back into the
-   normal flow at the top so it never overlaps the form. */
+/* v5.90 — /settings/profile: live preview sits absolutely positioned inside
+   the form column at top:120px right:24px on screens ≥1240px so it can no
+   longer clip into the navbar. Drops back to inline flow above the form on
+   narrower viewports. (Was previously position:fixed pinned to the viewport,
+   which caused visible overlap with the global nav at common widths.) */
 .settings-profile-grid {
   display: block;
   margin-top: 12px;
@@ -607,24 +608,20 @@ section .scoreboard-wrapper {
   min-width: 0;
 }
 .settings-profile-grid .settings-profile-preview {
-  position: fixed;
-  top: 84px;
-  right: 16px;
+  position: absolute;
+  top: 120px;
+  right: 24px;
   width: 320px;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100vh - 160px);
   overflow-y: auto;
-  z-index: 50;
+  z-index: 5;
   background: var(--bg-card, #152036);
   border: 1px solid var(--border, #2a3a55);
   border-radius: 12px;
   padding: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
-/* Form (centred 720px) right edge sits at viewport/2 + 360. Fixed preview
-   left edge sits at viewport - 336. Solving for no-overlap gives viewport
-   >= 1392px; round up to 1400px so we have a small visual gap. Below that
-   the preview falls back to in-flow above the form. */
-@media (max-width: 1400px) {
+@media (max-width: 1240px) {
   .settings-profile-grid .settings-profile-preview {
     position: static;
     width: auto;
