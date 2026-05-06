@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "5.74.2",
+    "title": "Security: Session-Based Admin Auth & Superuser Privilege Boundary",
+    "published_at": "2026-05-06",
+    "content": "**Admin credentials no longer stored in browser sessionStorage.** Both the admin (upload key) and superuser login flows now establish a signed server-side session flag rather than storing the raw password in the browser. After login the browser holds only an HTTP-only session cookie — the actual secret never leaves the server. This eliminates the risk of any browser-side script, extension, or XSS payload exfiltrating a reusable backend credential.\n\n**UPLOAD_KEY no longer accepted as a superuser credential.** The `requireSuperuser` middleware and the superuser login endpoint now exclusively validate `SUPERUSER_PASSWORD`. The previous behaviour where knowing only the lower-privilege upload/admin key was sufficient to pass superuser checks has been corrected. All routes protected by `requireSuperuser` (replay path management, dedicated-server controls, inhouse orchestration, etc.) now require the distinct superuser credential.\n\n**Session-status endpoint added.** `GET /api/admin/session-status` and matching logout routes (`POST /api/admin/admin-logout`, `POST /api/admin/superuser-logout`) allow the frontend to restore privilege state on page reload without reading any secret from storage. Non-browser clients (bots, scripts) continue to authenticate via the existing header mechanism as a fallback.",
+    "author": "System"
+  },
+  {
     "version": "5.74.1",
     "title": "Profile Demo Page + Tournament Cross-Table Redirect",
     "published_at": "2026-05-05",

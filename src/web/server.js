@@ -84,13 +84,18 @@ setInterval(async () => {
 }, 12 * 60 * 60 * 1000);
 
 function authMiddleware(req, res, next) {
+  // Session-based auth: a browser operator who completed /admin/login or /admin/superuser-login
+  // carries their privilege in the signed server session — no credential in the header needed.
+  if (req.session && (req.session.isAdmin || req.session.isSuperuser)) return next();
+
   const uploadKey = process.env.UPLOAD_KEY;
   const superuserPassword = process.env.SUPERUSER_PASSWORD;
   if (!uploadKey && !superuserPassword) {
     return res.status(503).json({ error: 'Admin not configured. Set UPLOAD_KEY or SUPERUSER_PASSWORD.' });
   }
-  // Accept either header — frontend tournament endpoints send 'x-superuser-key'
-  // while replay/match upload endpoints send 'x-upload-key'. Either valid key works.
+  // Header fallback for non-browser clients (bots, scripts, deploy hooks).
+  // Accept either header — upload endpoints send 'x-upload-key',
+  // while some admin endpoints also accept 'x-superuser-key'.
   const providedKey = req.headers['x-upload-key'] || req.headers['x-superuser-key'];
   const validKey = (uploadKey && providedKey === uploadKey) || (superuserPassword && providedKey === superuserPassword);
   if (!validKey) {
@@ -852,37 +857,67 @@ function createApiRouter(startupStatus = {}) {
     const uploadKey = process.env.UPLOAD_KEY;
     if (!uploadKey) return res.status(503).json({ error: 'Admin not configured' });
     const { password } = req.body || {};
-    if (password === uploadKey) return res.json({ success: true });
-    return res.status(401).json({ error: 'Invalid password' });
+    if (password !== uploadKey) return res.status(401).json({ error: 'Invalid password' });
+    req.session.isAdmin = true;
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: 'Session error' });
+      res.json({ success: true });
+    });
   });
 
   router.post('/admin/superuser-login', authLimiter, express.json(), (req, res) => {
     const superuserPassword = process.env.SUPERUSER_PASSWORD;
-    const uploadKey = process.env.UPLOAD_KEY;
-    if (!superuserPassword && !uploadKey) {
-      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD or UPLOAD_KEY.' });
+    if (!superuserPassword) {
+      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
     }
     const { password } = req.body || {};
-    const valid =
-      (superuserPassword && password === superuserPassword) ||
-      (uploadKey && password === uploadKey);
-    if (valid) return res.json({ success: true });
-    return res.status(401).json({ error: 'Invalid password' });
+    if (password !== superuserPassword) return res.status(401).json({ error: 'Invalid password' });
+    req.session.isSuperuser = true;
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: 'Session error' });
+      res.json({ success: true });
+    });
+  });
+
+  router.get('/admin/session-status', (req, res) => {
+    res.json({
+      isAdmin: !!(req.session && req.session.isAdmin),
+      isSuperuser: !!(req.session && req.session.isSuperuser),
+    });
+  });
+
+  router.post('/admin/admin-logout', (req, res) => {
+    if (req.session) {
+      req.session.isAdmin = false;
+      req.session.save(() => res.json({ success: true }));
+    } else {
+      res.json({ success: true });
+    }
+  });
+
+  router.post('/admin/superuser-logout', (req, res) => {
+    if (req.session) {
+      req.session.isSuperuser = false;
+      req.session.save(() => res.json({ success: true }));
+    } else {
+      res.json({ success: true });
+    }
   });
 
   function requireSuperuser(req, res, next) {
+    // Session-based auth: preferred path for browser operators.
+    if (req.session && req.session.isSuperuser) return next();
+
+    // Header fallback for non-browser clients (scripts, bots).
+    // Only SUPERUSER_PASSWORD is accepted — the lower-privilege UPLOAD_KEY
+    // must never satisfy superuser checks.
     const superuserPassword = process.env.SUPERUSER_PASSWORD;
-    const uploadKey = process.env.UPLOAD_KEY;
-    // At least one credential must be configured.
-    if (!superuserPassword && !uploadKey) {
-      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD or UPLOAD_KEY.' });
+    if (!superuserPassword) {
+      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
     }
-    const provided = req.headers['x-superuser-key'] || req.headers['x-admin-key'];
-    const valid =
-      (superuserPassword && provided === superuserPassword) ||
-      (uploadKey && provided === uploadKey);
-    if (!valid) return res.status(403).json({ error: 'Invalid superuser key' });
-    next();
+    const provided = req.headers['x-superuser-key'];
+    if (provided && provided === superuserPassword) return next();
+    return res.status(403).json({ error: 'Invalid superuser key' });
   }
 
   router.put('/matches/:matchId/player-stats', express.json(), requireSuperuser, async (req, res) => {
@@ -1643,15 +1678,13 @@ function createApiRouter(startupStatus = {}) {
       const { matchId } = req.params;
       // Always enforce Pro/admin — replay archive downloads are a paid feature
       // regardless of whether the pro_tier feature flag is currently active.
-      // Accept superuser (SUPERUSER_PASSWORD) and admin/upload (UPLOAD_KEY) credentials.
-      // UPLOAD_KEY may arrive as x-upload-key, x-admin-key, OR x-superuser-key (the
-      // superuser login endpoint also accepts it, so clients logged in via SuperuserContext
-      // with the upload key will always send x-superuser-key).
+      // Accept superuser session/header or admin session/UPLOAD_KEY header.
       const isSu = _isSu(req);
+      const isAdminSession = Boolean(req.session && req.session.isAdmin);
       const uploadKey = process.env.UPLOAD_KEY;
-      const providedKey = req.headers['x-superuser-key'] || req.headers['x-upload-key'] || req.headers['x-admin-key'];
+      const providedKey = req.headers['x-upload-key'] || req.headers['x-admin-key'];
       const isAdminKey = Boolean(uploadKey && providedKey === uploadKey);
-      if (!isSu && !isAdminKey) {
+      if (!isSu && !isAdminSession && !isAdminKey) {
         const accountId = req.session?.accountId;
         const isPro = await _isProAccount(accountId);
         if (!isPro) {
@@ -1745,12 +1778,13 @@ function createApiRouter(startupStatus = {}) {
   router.get('/replays/:matchId/download', async (req, res) => {
     try {
       const { matchId } = req.params;
-      // Enforce Pro/admin — accept SUPERUSER_PASSWORD and UPLOAD_KEY from any auth header.
+      // Enforce Pro/admin — session-based auth preferred; header fallback for non-browser clients.
       const isSu = _isSu(req);
+      const isAdminSession = Boolean(req.session && req.session.isAdmin);
       const uploadKey = process.env.UPLOAD_KEY;
-      const providedKey = req.headers['x-superuser-key'] || req.headers['x-upload-key'] || req.headers['x-admin-key'];
+      const providedKey = req.headers['x-upload-key'] || req.headers['x-admin-key'];
       const isAdminKey = Boolean(uploadKey && providedKey === uploadKey);
-      if (!isSu && !isAdminKey) {
+      if (!isSu && !isAdminSession && !isAdminKey) {
         const accountId = req.session?.accountId;
         const isPro = await _isProAccount(accountId);
         if (!isPro) {
@@ -3938,6 +3972,7 @@ NOTES
   // feature surface is hidden when the flag is off (returns 404 to avoid
   // disclosing the route's existence).
   function _isSelfSignupSuperuser(req) {
+    if (req.session && req.session.isSuperuser) return true;
     return Boolean(
       req.headers['x-superuser-key']
       && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
@@ -4006,7 +4041,7 @@ NOTES
       // Gate the entire self-signup flow on the `tournament_self_signup` flag.
       // When the flag is off the route returns 404 so it doesn't leak that the
       // feature exists; superusers always bypass the gate.
-      const isSuperuser = Boolean(
+      const isSuperuser = (req.session && req.session.isSuperuser) || Boolean(
         req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
       );
       if (!process.env.STRIPE_SECRET_KEY) {
@@ -4090,7 +4125,7 @@ NOTES
   // checks of /checkout but writes a `paid` entry immediately.
   router.post('/tournaments/:id/free-signup', express.json(), async (req, res) => {
     try {
-      const isSuperuser = Boolean(
+      const isSuperuser = (req.session && req.session.isSuperuser) || Boolean(
         req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
       );
       const tournamentId = parseInt(req.params.id);
@@ -4375,14 +4410,12 @@ NOTES
 
   router.get('/feature-flags', async (req, res) => {
     try {
-      const providedKey = req.headers['x-superuser-key'] || req.headers['x-admin-key'];
-      const uploadKey = process.env.UPLOAD_KEY;
-      const superuserPassword = process.env.SUPERUSER_PASSWORD;
-      const isSuperuser = Boolean(
-        providedKey && (
-          (superuserPassword && providedKey === superuserPassword) ||
-          (uploadKey && providedKey === uploadKey)
-        )
+      // Session-based check first; header fallback accepts only SUPERUSER_PASSWORD
+      // (not UPLOAD_KEY — the upload/admin role does not have superuser preview access).
+      const isSuperuser = (req.session && req.session.isSuperuser) || Boolean(
+        req.headers['x-superuser-key']
+        && process.env.SUPERUSER_PASSWORD
+        && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
       );
       const flags = await db.getResolvedFeatureFlags({ isSuperuser });
       res.json({ flags });
@@ -5250,10 +5283,11 @@ NOTES
   });
 
   // Helper: derive caller account from authenticated Steam session, with admin override.
-  // Admins (valid x-superuser-key) may pass an explicit accountId in the body to act on behalf of any player.
+  // Admins (superuser session or valid x-superuser-key) may pass an explicit accountId in the body.
   function _resolveInhouseActor(req, requireAuth = true) {
     const adminKey = process.env.SUPERUSER_PASSWORD;
-    const isAdmin = !!(adminKey && req.headers['x-superuser-key'] === adminKey);
+    const isAdmin = !!(req.session && req.session.isSuperuser) ||
+      !!(adminKey && req.headers['x-superuser-key'] === adminKey);
     let accountId = null;
     if (req.session && req.session.accountId) accountId = req.session.accountId;
     if (isAdmin && req.body?.accountId) accountId = req.body.accountId;
@@ -5481,7 +5515,8 @@ NOTES
       // captain whose turn it is, and only for their own team. Admins can
       // override at any time.
       const adminKey = process.env.SUPERUSER_PASSWORD;
-      const isAdmin = !!(adminKey && req.headers['x-superuser-key'] === adminKey);
+      const isAdmin = !!(req.session && req.session.isSuperuser) ||
+        !!(adminKey && req.headers['x-superuser-key'] === adminKey);
       const myAccountId = req.session?.accountId ? Number(req.session.accountId) : null;
 
       if (!isAdmin) {
@@ -5725,6 +5760,7 @@ NOTES
   //   _flagOn(key, req) — flag is 'on', or ('preview' && superuser)
   // =====================================================================
   function _isSu(req) {
+    if (req.session && req.session.isSuperuser) return true;
     return Boolean(req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD);
   }
   async function _flagOn(_key, _req) {
@@ -6465,7 +6501,7 @@ NOTES
       const viewerAccountId = req.session?.accountId;
       // v5.86 — superusers bypass the Pro paywall so the owner can preview/QA
       // the AI Scouting Report without holding a Pro subscription.
-      const isSuperuser = Boolean(
+      const isSuperuser = (req.session && req.session.isSuperuser) || Boolean(
         process.env.SUPERUSER_PASSWORD
         && req.headers['x-superuser-key']
         && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD

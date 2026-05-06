@@ -60,13 +60,16 @@ setInterval(async () => {
 }, 12 * 60 * 60 * 1000);
 
 function authMiddleware(req, res, next) {
+  // Session-based auth: a browser operator who completed /admin/login or /admin/superuser-login
+  // carries their privilege in the signed server session — no credential in the header needed.
+  if (req.session && (req.session.isAdmin || req.session.isSuperuser)) return next();
+
   const uploadKey = process.env.UPLOAD_KEY;
   const superuserPassword = process.env.SUPERUSER_PASSWORD;
   if (!uploadKey && !superuserPassword) {
     return res.status(503).json({ error: 'Admin not configured. Set UPLOAD_KEY or SUPERUSER_PASSWORD.' });
   }
-  // Accept either header — frontend tournament endpoints send 'x-superuser-key'
-  // while replay/match upload endpoints send 'x-upload-key'. Either valid key works.
+  // Header fallback for non-browser clients (bots, scripts, deploy hooks).
   const providedKey = req.headers['x-upload-key'] || req.headers['x-superuser-key'];
   const validKey = (uploadKey && providedKey === uploadKey) || (superuserPassword && providedKey === superuserPassword);
   if (!validKey) {
@@ -340,23 +343,62 @@ function createApiRouter(startupStatus = {}) {
     const uploadKey = process.env.UPLOAD_KEY;
     if (!uploadKey) return res.status(503).json({ error: 'Admin not configured' });
     const { password } = req.body || {};
-    if (password === uploadKey) return res.json({ success: true });
-    return res.status(401).json({ error: 'Invalid password' });
+    if (password !== uploadKey) return res.status(401).json({ error: 'Invalid password' });
+    req.session.isAdmin = true;
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: 'Session error' });
+      res.json({ success: true });
+    });
   });
 
   router.post('/admin/superuser-login', authLimiter, express.json(), (req, res) => {
     const key = process.env.SUPERUSER_PASSWORD;
     if (!key) return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
     const { password } = req.body || {};
-    if (password === key) return res.json({ success: true });
-    return res.status(401).json({ error: 'Invalid password' });
+    if (password !== key) return res.status(401).json({ error: 'Invalid password' });
+    req.session.isSuperuser = true;
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: 'Session error' });
+      res.json({ success: true });
+    });
+  });
+
+  router.get('/admin/session-status', (req, res) => {
+    res.json({
+      isAdmin: !!(req.session && req.session.isAdmin),
+      isSuperuser: !!(req.session && req.session.isSuperuser),
+    });
+  });
+
+  router.post('/admin/admin-logout', (req, res) => {
+    if (req.session) {
+      req.session.isAdmin = false;
+      req.session.save(() => res.json({ success: true }));
+    } else {
+      res.json({ success: true });
+    }
+  });
+
+  router.post('/admin/superuser-logout', (req, res) => {
+    if (req.session) {
+      req.session.isSuperuser = false;
+      req.session.save(() => res.json({ success: true }));
+    } else {
+      res.json({ success: true });
+    }
   });
 
   function requireSuperuser(req, res, next) {
+    // Session-based auth: preferred path for browser operators.
+    if (req.session && req.session.isSuperuser) return next();
+
+    // Header fallback for non-browser clients (scripts, bots).
+    // Only SUPERUSER_PASSWORD is accepted.
     const key = process.env.SUPERUSER_PASSWORD;
     if (!key) return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
-    if (req.headers['x-superuser-key'] !== key) return res.status(403).json({ error: 'Invalid superuser key' });
-    next();
+    const provided = req.headers['x-superuser-key'];
+    if (provided && provided === key) return next();
+    return res.status(403).json({ error: 'Invalid superuser key' });
   }
 
   router.put('/matches/:matchId/player-stats', express.json(), requireSuperuser, async (req, res) => {
@@ -2020,9 +2062,11 @@ NOTES
   // as enabled. Non-superusers only see flags whose state is 'on'.
   router.get('/feature-flags', async (req, res) => {
     try {
-      const superuserKey = req.headers['x-superuser-key'];
-      const isSuperuser = Boolean(
-        superuserKey && process.env.SUPERUSER_PASSWORD && superuserKey === process.env.SUPERUSER_PASSWORD
+      // Session-based check first; header fallback accepts only SUPERUSER_PASSWORD.
+      const isSuperuser = (req.session && req.session.isSuperuser) || Boolean(
+        req.headers['x-superuser-key']
+        && process.env.SUPERUSER_PASSWORD
+        && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
       );
       const flags = await db.getResolvedFeatureFlags({ isSuperuser });
       res.json({ flags });
@@ -2575,6 +2619,7 @@ NOTES
   });
 
   function _isSu(req) {
+    if (req.session && req.session.isSuperuser) return true;
     return Boolean(req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD);
   }
   async function _flagOn(key, req) {

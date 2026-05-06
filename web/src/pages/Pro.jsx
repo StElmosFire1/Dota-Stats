@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getProPricing, createProCheckout } from '../api';
 import useProStatus from '../hooks/useProStatus';
+import { useSuperuser } from '../context/SuperuserContext';
 
 // Every Pro feature lives here. Standalone features get their own card with a
 // "Open" button; tab-features (e.g. Heroes → Position Meta) get a card that
@@ -127,6 +128,7 @@ function FeatureCard({ feat, isPro }) {
 }
 
 export default function Pro() {
+  const { isSuperuser } = useSuperuser();
   const { status, loading: statusLoading } = useProStatus();
   const [pricing, setPricing] = useState(null);
   const [pricingError, setPricingError] = useState(null);
@@ -161,8 +163,7 @@ export default function Pro() {
 
   // Superusers get full Pro feature access for testing/admin previews without
   // needing a Stripe purchase against their account.
-  const suKey = (() => { try { return sessionStorage.getItem('superuserKey'); } catch { return null; } })();
-  const isPro = !!status?.is_pro || !!suKey;
+  const isPro = !!status?.is_pro || isSuperuser;
 
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto' }}>

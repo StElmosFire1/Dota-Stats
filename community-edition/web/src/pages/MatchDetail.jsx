@@ -2694,10 +2694,10 @@ function MatchDetailInner() {
     if (!confirm(`Change winner from ${currentWinner} to ${newWinner}?\n\nThis will update the result and automatically recalculate MMR ratings for all players across all matches. May take a few seconds.`)) return;
     setCorrectingWinner(true);
     try {
-      const key = sessionStorage.getItem('superuserKey') || '';
       const res = await fetch(`/api/matches/${matchId}/winner`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-superuser-key': key },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ radiantWin }),
       });
       if (!res.ok) {
@@ -2717,8 +2717,7 @@ function MatchDetailInner() {
     setSendingDMs(true);
     setDmMsg('');
     try {
-      const key = sessionStorage.getItem('superuserKey') || '';
-      const result = await triggerMissingDMs(matchId, key);
+      const result = await triggerMissingDMs(matchId, '');
       if (result.sent === 0) {
         setDmMsg('All players have already rated this match.');
       } else {
@@ -2832,9 +2831,8 @@ function MatchDetailInner() {
             }}
             onClick={e => {
               e.preventDefault();
-              const key = sessionStorage.getItem('superuserKey') || '';
               const url = `/api/replays/${matchId}/download`;
-              fetch(url, { headers: { 'x-superuser-key': key } })
+              fetch(url, { credentials: 'same-origin' })
                 .then(r => {
                   if (!r.ok) return r.json().then(j => { throw new Error(j.error || 'Not available'); });
                   return r.blob();

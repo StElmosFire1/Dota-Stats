@@ -1,63 +1,29 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const SuperuserContext = createContext(null);
 
-const STORAGE_KEY = 'superuserKey';
-
-function installFetchInterceptor(key) {
-  if (window.__superuserFetchInstalled) return;
-  const originalFetch = window.__superuserOriginalFetch || window.fetch;
-  window.__superuserOriginalFetch = originalFetch;
-  window.fetch = function superuserFetch(input, init = {}) {
-    const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-    const currentKey = sessionStorage.getItem(STORAGE_KEY);
-    if (currentKey && (url.startsWith('/api/') || url.includes('/api/'))) {
-      const headers = new Headers(init.headers || (input instanceof Request ? input.headers : {}));
-      if (!headers.has('x-superuser-key')) {
-        headers.set('x-superuser-key', currentKey);
-      }
-      return originalFetch(input instanceof Request
-        ? new Request(input, { ...init, headers })
-        : input, { ...init, headers });
-    }
-    return originalFetch(input, init);
-  };
-  window.__superuserFetchInstalled = true;
-}
-
-function uninstallFetchInterceptor() {
-  if (window.__superuserOriginalFetch) {
-    window.fetch = window.__superuserOriginalFetch;
-    delete window.__superuserOriginalFetch;
-    delete window.__superuserFetchInstalled;
-  }
-}
-
 export function SuperuserProvider({ children }) {
   const [isSuperuser, setIsSuperuser] = useState(false);
-  const [superuserKey, setSuperuserKey] = useState('');
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      setSuperuserKey(saved);
-      setIsSuperuser(true);
-      installFetchInterceptor(saved);
-    }
+    fetch('/api/admin/session-status', { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.isSuperuser) setIsSuperuser(true);
+      })
+      .catch(() => {});
   }, []);
 
   const login = async (password) => {
     const res = await fetch('/api/admin/superuser-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ password }),
     });
     if (res.ok) {
-      setSuperuserKey(password);
       setIsSuperuser(true);
-      sessionStorage.setItem(STORAGE_KEY, password);
-      installFetchInterceptor(password);
       setShowModal(false);
       return { success: true };
     }
@@ -65,12 +31,19 @@ export function SuperuserProvider({ children }) {
     return { success: false, error: data.error || 'Invalid password' };
   };
 
-  const logout = () => {
-    setSuperuserKey('');
+  const logout = async () => {
+    await fetch('/api/admin/superuser-logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+    }).catch(() => {});
     setIsSuperuser(false);
-    sessionStorage.removeItem(STORAGE_KEY);
-    uninstallFetchInterceptor();
   };
+
+  // Expose a truthy sentinel when logged in so existing !!superuserKey / {superuserKey && …}
+  // UI guards continue to work without change. The real password is never stored in the browser.
+  // API calls that pass this string as x-superuser-key are authenticated via the session cookie;
+  // the server checks req.session.isSuperuser first and ignores the header value.
+  const superuserKey = isSuperuser ? 'session' : '';
 
   return (
     <SuperuserContext.Provider value={{ isSuperuser, superuserKey, login, logout, showModal, setShowModal }}>
