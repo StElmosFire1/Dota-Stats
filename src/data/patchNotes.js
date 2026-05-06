@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "5.91",
+    "title": "Public-profile parity audit — every block confirmed visible to non-owners",
+    "published_at": "2026-05-06",
+    "content": "Follow-up to v5.89 after a report that public profiles still looked stripped-down. Did a full diff between the `isOwnProfile=true` and `isOwnProfile=false` render paths in `web/src/pages/PlayerProfile.jsx` and confirmed every data block is already public; only four explicitly opt-in elements remain owner-scoped (✏️ Edit Profile button, 🎓 Apply-to-coach CTA, 🔗 invite/referral link, and the inverse 🎁 Gift Pro / 🎫 Gift Season Pass buttons that only show on *other* people's profiles). Verified server-side that none of the data endpoints powering those blocks contain owner-only filtering — `/players/:id`, `/players/:id/rating-history`, `/players/:id/v3-modifier-history`, `/players/:id/positions`, `/players/:id/achievements`, `/players/:id/hero-counters`, `/players/:id/duration-stats`, `/player/:id/profile-card`, `/player/:id/win-rate-history`, `/player/:id/nemesis`, `/player/:id/ally`, `/player/:id/season-pass`, `/player/:id/mvp-attitude-trends`, `/player/:id/hero-suggestions`, and `/impact-scores` are all open public reads. The two intentionally Pro-paywalled blocks (V2 Performance Trend chart and AI Scouting Report) already render a `PaywallCard` for non-Pro signed-in viewers instead of disappearing. To stop this regression from happening silently again, every section in `PlayerProfile.jsx` now carries an `AUDIT (v5.91 parity pass): PUBLIC|OWNER-ONLY|PRO-PAYWALLED` JSX comment naming the backing endpoint and gate, so any future PR that re-adds an `isOwnProfile` guard will jump out in code review. Newly-confirmed public blocks (now explicitly labelled): profile customization card (bio/title/accent/pinned hero w/ border/pinned match/pinned achievement/flair/streak chip/background pattern), top stat-cards row (MMR/W-L/Win%/KDA/Avg PERF/Streak/First Blood/Hook%/Impact/Damage/MVP/Attitude), MMR History chart, V3 PERF Modifier chart, Rolling Win Rate chart, Achievement badges, Season Pass tier, MVP & Attitude trends, Match Predictions, Nemesis, Best Allies, Hero Matchups, Averages, Position Breakdown, How You Compare, Most Played Heroes, Win Rate by Game Duration, Heroes to Try, Recent Matches.",
+    "author": "System"
+  },
+  {
     "version": "5.90",
     "title": "Quick admin / UX fixes batch (8 items)",
     "published_at": "2026-05-06",

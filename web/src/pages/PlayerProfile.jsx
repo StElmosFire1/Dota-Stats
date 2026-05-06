@@ -693,6 +693,11 @@ export default function PlayerProfile() {
     <div>
       <Link to="/players" className="back-link">&larr; Back to players</Link>
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — header card (name, badges, MMR, share/export
+          buttons) renders for every visitor. Owner-only controls inside this card are
+          explicitly opt-in below: ✏️ Edit Profile (isOwnProfile), CoachingApplyCta
+          (isOwnProfile), 🎁 Gift Pro / 🎫 Gift Season Pass (NOT isOwnProfile + signed-in),
+          and the 🔍 AI Scout button (any signed-in viewer; report itself is requirePro). */}
       {/* Profile card — wrapped in a styled border if the player has set a frame */}
       <div style={{
         borderRadius: activeFrameId ? 14 : 0,
@@ -882,6 +887,8 @@ export default function PlayerProfile() {
         </div>
       )}
 
+      {/* AUDIT (v5.91 parity pass): OWNER-ONLY — invite/referral link is only meaningful
+          to the profile owner (it grants them XP for referrals). Public viewers see nothing. */}
       {/* Invite link — shown only on own profile */}
       {isOwnProfile && <InviteLinkCard accountId={accountId} />}
 
@@ -891,6 +898,11 @@ export default function PlayerProfile() {
           rest of the page. */}
       </div>{/* end profile card frame wrapper */}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — profile customization block (custom title,
+          bio, accent colour, pinned hero w/ border, pinned match, pinned achievement,
+          flair chip, streak chip, background pattern). Sourced from the open
+          /api/player/:id/profile-card endpoint and renders identically for owner and
+          public visitors. Edit controls live on a separate page (/settings/profile). */}
       {showProfileCustomization && profileCard && (profileCard.custom_title || profileCard.bio || profileCard.pinned_hero_id || profileCard.pinnedMatch || (profileCard.extras && Object.keys(profileCard.extras).length > 0)) && (() => {
         // v5.81 — extras (mockup-graduated knobs). Default empty so the
         // ?? chain below is safe regardless of whether the row was created
@@ -1091,6 +1103,11 @@ export default function PlayerProfile() {
         );
       })()}
 
+      {/* AUDIT (v5.91 parity pass): PRO-PAYWALLED — AI Scouting Report. Trigger
+          button shows for any signed-in viewer; the actual /player/:id/scouting-report
+          endpoint is requirePro and returns 402 → setScoutingError() shows the upgrade
+          message. Public/anonymous viewers don't see the trigger at all (gated on
+          steamUser?.accountId in the header). */}
       {/* AI Scouting Report (Pro feature) */}
       {scoutingReport && (
         <div id="scouting-report-anchor" style={{
@@ -1227,6 +1244,10 @@ export default function PlayerProfile() {
         </div>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — top stat-card grid (MMR, W/L, Win Rate,
+          KDA, Avg PERF, Streak, First Blood, Hook%, Impact Score, Damage, MVP Wins,
+          Attitude). Renders for any visitor; data comes from the open /players/:id and
+          related public endpoints. */}
       {rating && (
         <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
           {/* Row 1 */}
@@ -1338,10 +1359,19 @@ export default function PlayerProfile() {
         </div>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — MMR / rating history line chart.
+          /players/:id/rating-history is open; renders the same for any visitor. */}
       <RatingChart history={ratingHistory} />
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — V3 PERF modifier history chart.
+          /players/:id/v3-modifier-history is open; renders the same for any visitor. */}
       <ModifierHistoryChart history={modifierHistory} />
 
+      {/* AUDIT (v5.91 parity pass): PRO-PAYWALLED — V2 Performance Trend chart (rolling
+          KDA / GPM / hero damage). /player/:id/match-stats-history is gated by
+          requirePro('performance_trend'); on a 402 the page renders a PaywallCard so
+          public + non-Pro viewers still see *something* in this slot. v5.89 ungated
+          this from owner-only; v5.91 confirms the parity holds and adds this audit. */}
       {showProfileChartV2 && trendPaywall && (
         <PaywallCard feature={trendPaywall.feature || 'performance_trend'} signedIn={trendPaywall.signedIn} />
       )}
@@ -1349,6 +1379,8 @@ export default function PlayerProfile() {
         <ProfileChartV2 history={matchStatsHistory} />
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — rolling win-rate chart with 5/10/20/All
+          window selector. /player/:id/win-rate-history is open. */}
       {rawWinRateHistory.length >= 3 && (
         <section style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -1383,8 +1415,12 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — achievement badges grid (with category
+          filter + show-locked toggle). /players/:id/achievements is open. */}
       <AchievementBadges achievements={achievements} />
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — Season Pass tier + XP progress bar.
+          /player/:id/season-pass is open. */}
       {showSeasonPass && seasonPass && (
         <section style={{ marginBottom: 24, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -1417,6 +1453,9 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — MVP & Attitude rolling-window trends.
+          /player/:id/mvp-attitude-trends is open; gated only by the
+          mvp_attitude_analytics feature flag, not by isOwnProfile. */}
       {showMvpAttitude && mvpTrends && (
         <section style={{ marginBottom: 24, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
           <h2 className="section-title" style={{ marginTop: 0, marginBottom: 10 }}>🌟 MVP & Attitude Trends</h2>
@@ -1434,6 +1473,8 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — match-prediction stats card.
+          /players/:id/predictions is open. */}
       {predictionStats && parseInt(predictionStats.total) > 0 && (
         <section style={{ marginBottom: 24 }}>
           <h2 className="section-title">🎯 Match Predictions</h2>
@@ -1472,6 +1513,8 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — Nemesis cards (top killers across all
+          matches). /player/:id/nemesis is open. */}
       {nemesis.length > 0 && (
         <section style={{ marginBottom: 24 }}>
           <h2 className="section-title">☠️ Nemesis</h2>
@@ -1505,6 +1548,8 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — Best Allies cards (top win-rate
+          teammates). /player/:id/ally is open. */}
       {allies.length > 0 && (
         <section style={{ marginBottom: 24 }}>
           <h2 className="section-title">🤝 Best Allies</h2>
@@ -1538,6 +1583,8 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — Hero Matchups table (vs/with win rates).
+          /players/:id/hero-counters is open. */}
       {heroCounters.filter(c => parseInt(c.games_against) >= 2).length > 0 && (
         <section style={{ marginBottom: 24 }}>
           <h2 className="section-title">⚔️ Hero Matchups</h2>
@@ -1582,6 +1629,9 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — per-stat averages grid (KDA, GPM/XPM,
+          damage, healing, last hits, wards, camps stacked). Comes from the open
+          /players/:id payload. */}
       {averages && totalMatches > 0 && (
         <section>
           <h2 className="section-title">Averages ({totalMatches} games)</h2>
@@ -1642,6 +1692,8 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — Position Breakdown table (games / wins /
+          win% / KDA / GPM per role). /players/:id/positions is open. */}
       {positions.length > 0 && (
         <section>
           <h2 className="section-title">Position Breakdown</h2>
@@ -1681,6 +1733,8 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — "How You Compare" bars (player vs server
+          averages on their main role). /position-averages is open. */}
       {(() => {
         if (!positions.length || !positionAverages.length) return null;
         const mainPos = positions.filter(p => p.position > 0).sort((a, b) => b.games - a.games)[0];
@@ -1733,6 +1787,8 @@ export default function PlayerProfile() {
         );
       })()}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — Most Played Heroes table (top 20 by
+          games). Sourced from the open /players/:id payload. */}
       {heroes && heroes.length > 0 && (
         <section>
           <h2 className="section-title">Most Played Heroes</h2>
@@ -1773,6 +1829,8 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — Win Rate by Game Duration buckets.
+          /players/:id/duration-stats is open. */}
       {durationStats && durationStats.length > 0 && (
         <section>
           <h2 className="section-title">Win Rate by Game Duration</h2>
@@ -1798,6 +1856,10 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC, internal Pro upsell — Heroes to Try
+          (a.k.a. "Best Player Heroes" suggestions). /player/:id/hero-suggestions is open;
+          the Pro vs free split is per-row inside the card (correlation breakdown is
+          Pro-only, the suggestion list itself is public). */}
       {heroSuggestions && totalMatches > 0 && (
         <section>
           <h2 className="section-title">Heroes to Try</h2>
@@ -1851,6 +1913,8 @@ export default function PlayerProfile() {
         </section>
       )}
 
+      {/* AUDIT (v5.91 parity pass): PUBLIC — Recent Matches table with optional MVP
+          star marker (mvp_match_badges flag). Sourced from the open /players/:id payload. */}
       {recentMatches && recentMatches.length > 0 && (
         <section>
           <h2 className="section-title">Recent Matches</h2>
