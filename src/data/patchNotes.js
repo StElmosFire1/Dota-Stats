@@ -910,6 +910,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "5.87",
+    "title": "Security: Feature flag gates now enforced server-side for coaching marketplace and tournament self-signup",
+    "published_at": "2026-05-06",
+    "content": "**Two medium-severity authorization gaps closed.** Both the coaching marketplace and tournament self-signup surfaces had their feature-flag helpers stubbed to always return `true`, meaning flag values stored in the database (`'off'`, `'preview'`) had no effect on server-side access control. Any direct HTTP call bypassed the intended rollout gate entirely.\n\n**1. `_flagOn()` now queries the database.** The core helper that all Wave 2/3 feature-flag gates call was a one-liner stub (`return true`). It now reads the `feature_flags` table via `db.getFeatureFlag(key)` and applies the correct policy: `'on'` → allow everyone; `'preview'` → allow superusers only; `'off'` or missing → deny with 404. The error path fails closed (returns `false`) so a DB outage does not accidentally open a gate.\n\n**2. `_selfSignupVisible()` delegates to `_flagOn()`.** The tournament self-signup helper was an identical stub. It now calls `_flagOn('tournament_self_signup', req)`, meaning the `tournament_self_signup` flag seeded as `'off'` in the database actually prevents access to all self-signup routes.\n\n**3. Mutating tournament routes now check the flag.** `POST /api/tournaments/:id/checkout` and `POST /api/tournaments/:id/free-signup` both lacked any feature-flag check despite the route comments stating they should 404 when the flag is off. Both routes now call `_selfSignupVisible(req)` as the first gate before any auth or business logic, consistent with the read-only routes on the same surface.\n\n**Impact.** With `tournament_self_signup = 'off'` (the seeded default), non-superusers can no longer create Stripe Checkout sessions or insert free tournament entries directly over HTTP. With `coaching_marketplace = 'off'`, all coaching endpoints (onboarding, booking, disputes, refunds) now correctly return 404 to non-superusers. Superusers retain preview access in both cases when the flag is set to `'preview'`.\n\nFooter bump v5.86 → v5.87.",
+    "author": "System"
+  },
+  {
     "version": "5.86",
     "title": "Inhouse Lobby Glow-Up · PERF on Leaderboard · Tier Badges Everywhere · AI Scout Preview",
     "published_at": "2026-05-06",

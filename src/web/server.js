@@ -3978,8 +3978,8 @@ NOTES
       && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
     );
   }
-  async function _selfSignupVisible(_req) {
-    return true;
+  async function _selfSignupVisible(req) {
+    return _flagOn('tournament_self_signup', req);
   }
   // SECURITY: strip payment session ids and other internal identifiers before
   // returning a tournament_entries row to a non-superuser caller. Superusers
@@ -4041,6 +4041,7 @@ NOTES
       // Gate the entire self-signup flow on the `tournament_self_signup` flag.
       // When the flag is off the route returns 404 so it doesn't leak that the
       // feature exists; superusers always bypass the gate.
+      if (!(await _selfSignupVisible(req))) return res.status(404).json({ error: 'Not found' });
       const isSuperuser = (req.session && req.session.isSuperuser) || Boolean(
         req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
       );
@@ -4125,6 +4126,7 @@ NOTES
   // checks of /checkout but writes a `paid` entry immediately.
   router.post('/tournaments/:id/free-signup', express.json(), async (req, res) => {
     try {
+      if (!(await _selfSignupVisible(req))) return res.status(404).json({ error: 'Not found' });
       const isSuperuser = (req.session && req.session.isSuperuser) || Boolean(
         req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD
       );
@@ -5763,8 +5765,17 @@ NOTES
     if (req.session && req.session.isSuperuser) return true;
     return Boolean(req.headers['x-superuser-key'] && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD);
   }
-  async function _flagOn(_key, _req) {
-    return true;
+  async function _flagOn(key, req) {
+    try {
+      const flag = await db.getFeatureFlag(key);
+      if (!flag || flag.state === 'off') return false;
+      if (flag.state === 'on') return true;
+      if (flag.state === 'preview') return _isSu(req);
+      return false;
+    } catch (err) {
+      console.error(`[FeatureFlag] DB read error for key="${key}":`, err.message);
+      return false;
+    }
   }
 
   // ---------- Pro Tier gating ----------
