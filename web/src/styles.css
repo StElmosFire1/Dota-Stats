@@ -601,15 +601,14 @@ section .scoreboard-wrapper {
   min-width: 48px;
 }
 
-/* v5.90 — /settings/profile: live preview sits absolutely positioned inside
-   the form column at top:120px right:24px on screens ≥1240px so it can no
-   longer clip into the navbar. Drops back to inline flow above the form on
-   narrower viewports. (Was previously position:fixed pinned to the viewport,
-   which caused visible overlap with the global nav at common widths.) */
+/* v5.91 — /settings/profile: at ≥1240px the form and live preview each live
+   in their own CSS-grid track, so the preview can no longer overlap form
+   controls. Preview uses position:sticky so it follows scroll within its own
+   column. Below 1240px the layout collapses to a single column with the
+   preview rendered inline above the form (current mobile behaviour). */
 .settings-profile-grid {
   display: block;
   margin-top: 12px;
-  position: relative;
 }
 .settings-profile-grid .settings-profile-form {
   max-width: 720px;
@@ -617,28 +616,34 @@ section .scoreboard-wrapper {
   min-width: 0;
 }
 .settings-profile-grid .settings-profile-preview {
-  position: absolute;
-  top: 120px;
-  right: 24px;
-  width: 320px;
-  max-height: calc(100vh - 160px);
-  overflow-y: auto;
-  z-index: 5;
   background: var(--bg-card, #152036);
   border: 1px solid var(--border, #2a3a55);
   border-radius: 12px;
   padding: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
-@media (max-width: 1240px) {
-  .settings-profile-grid .settings-profile-preview {
-    position: static;
-    width: auto;
+@media (min-width: 1240px) {
+  .settings-profile-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    column-gap: 24px;
+    align-items: start;
+  }
+  .settings-profile-grid .settings-profile-form {
+    grid-column: 1;
     max-width: 720px;
-    margin: 0 auto 16px;
-    max-height: none;
-    overflow: visible;
-    box-shadow: none;
+    margin: 0;
+    justify-self: end;
+    width: 100%;
+  }
+  .settings-profile-grid .settings-profile-preview {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: 96px;
+    width: 320px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   }
 }
 

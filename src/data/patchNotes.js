@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.07",
+    "title": "Profile editor live preview no longer covers the form",
+    "published_at": "2026-05-06",
+    "content": "On `/settings/profile` the *Live preview* card was `position: absolute; top: 120px; right: 24px` inside the form column, which floated it on top of the form at desktop widths and visually hid the Custom Title radios and Discord-link / Bio inputs at common viewport sizes (1280–1440px in particular).\n\n• **`.settings-profile-grid` is now a real two-column CSS grid at ≥1240px** (`grid-template-columns: minmax(0,1fr) 320px` with a 24px column gap). The form lives in column 1 (capped at `max-width: 720px`, justified to the gap so it stays visually anchored to the preview) and the live preview lives in column 2 — they each get their own track and can never overlap regardless of viewport width.\n\n• **Preview is now `position: sticky; top: 96px`** within its own column, so it still follows the page as the user scrolls through Bio / Custom title / Theme / Pinned hero / Pinned match / Frame / Extras, but it can no longer escape its column and clip into the form.\n\n• **Below 1240px the layout collapses to a single column** with the preview rendered inline above the form (the existing mobile / narrow-tablet behaviour), and the floating box-shadow / sticky / overflow rules are scoped to the desktop media query so the inline rendering stays clean.\n\nFooter bump v6.06 → v6.07.",
+    "author": "System"
+  },
+  {
     "version": "6.06",
     "title": "Fixed Steam sign-in trust footnote overflowing the nav row",
     "published_at": "2026-05-06",
