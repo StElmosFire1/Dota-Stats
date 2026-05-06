@@ -1271,6 +1271,9 @@ async function init() {
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS min_players INTEGER DEFAULT 10`);
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS lobby_fill_seconds INTEGER DEFAULT 30`);
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS auto_start_at TIMESTAMPTZ`);
+    // v6.03 — per-player captain-mode poll. JSONB map { "<accountId>": "highest_rank" | "random" | "auto_balance" | "volunteer" }.
+    // Resolved into the session's captain_mode by autoStartTicker at the moment the accept phase begins.
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS captain_mode_votes JSONB NOT NULL DEFAULT '{}'::jsonb`);
 
     // ===== Wave 2 / 3 schema =====
     // F3 — Season Pass: per-event XP ledger. account_id + season_number +
@@ -7963,9 +7966,118 @@ async function getActiveInhouseSession() {
   return r.rows[0] || null;
 }
 
+// v6.03 — Idempotent open-session getter for the auto-running lobby. If a
+// joinable (`open` or `accepting`) session already exists we return it; only
+// otherwise do we INSERT a fresh one with sensible defaults. Wrapped in an
+// advisory transaction lock so two concurrent first-joiners can't race two
+// sessions into existence. `created` is true iff this call was the one that
+// inserted the row, so the caller can log/announce only on the real creation.
+async function getOrCreateOpenInhouseSession(defaults = {}) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    // Per-key advisory lock — global to the inhouse-create namespace, scoped
+    // to the transaction so a crashing client doesn't permanently hold it.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('inhouse_session_create_v603'))");
+    const existing = await client.query(
+      `SELECT * FROM inhouse_sessions
+        WHERE status IN ('open','accepting','drafting','in_progress')
+        ORDER BY created_at DESC LIMIT 1`
+    );
+    if (existing.rows[0]) {
+      await client.query('COMMIT');
+      return { session: existing.rows[0], created: false };
+    }
+    const r = await client.query(
+      `INSERT INTO inhouse_sessions
+         (captain_mode, created_by, accept_phase_seconds, min_players, lobby_fill_seconds, notes)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [
+        defaults.captainMode || 'highest_rank',
+        defaults.createdBy || 'auto',
+        Number.isFinite(defaults.acceptPhaseSeconds) ? defaults.acceptPhaseSeconds : 60,
+        Number.isFinite(defaults.minPlayers) ? defaults.minPlayers : 10,
+        Number.isFinite(defaults.lobbyFillSeconds) ? defaults.lobbyFillSeconds : 30,
+        defaults.notes || null,
+      ]
+    );
+    await client.query('COMMIT');
+    return { session: r.rows[0], created: true };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// v6.03 — captain-mode poll helpers. Votes live in inhouse_sessions.captain_mode_votes
+// as a JSONB map { "<accountId>": "<mode>" } so each player gets exactly one vote
+// (re-voting overwrites). Tally + winner resolution are pure functions so the
+// autoStartTicker and the API tally endpoint share the same outcome.
+const CAPTAIN_VOTE_MODES = ['highest_rank','random','auto_balance','volunteer'];
+
+async function setCaptainModeVote(sessionId, accountId, mode) {
+  if (!CAPTAIN_VOTE_MODES.includes(mode)) {
+    const err = new Error('Invalid captain mode');
+    err.code = 'invalid_mode';
+    throw err;
+  }
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE inhouse_sessions
+        SET captain_mode_votes = COALESCE(captain_mode_votes, '{}'::jsonb)
+                                 || jsonb_build_object($2::text, $3::text)
+      WHERE id = $1
+      RETURNING captain_mode_votes`,
+    [sessionId, String(accountId), mode]
+  );
+  return (r.rows[0] && r.rows[0].captain_mode_votes) || {};
+}
+
+async function clearCaptainModeVote(sessionId, accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE inhouse_sessions
+        SET captain_mode_votes = COALESCE(captain_mode_votes, '{}'::jsonb) - $2::text
+      WHERE id = $1
+      RETURNING captain_mode_votes`,
+    [sessionId, String(accountId)]
+  );
+  return (r.rows[0] && r.rows[0].captain_mode_votes) || {};
+}
+
+async function getCaptainModeVotes(sessionId) {
+  const p = getPool();
+  const r = await p.query(`SELECT captain_mode_votes FROM inhouse_sessions WHERE id = $1`, [sessionId]);
+  return (r.rows[0] && r.rows[0].captain_mode_votes) || {};
+}
+
+function tallyCaptainModeVotes(votesObj) {
+  const tally = { highest_rank: 0, random: 0, auto_balance: 0, volunteer: 0 };
+  if (votesObj && typeof votesObj === 'object') {
+    for (const v of Object.values(votesObj)) {
+      if (Object.prototype.hasOwnProperty.call(tally, v)) tally[v] += 1;
+    }
+  }
+  return tally;
+}
+
+function resolveWinningCaptainMode(votesObj) {
+  const tally = tallyCaptainModeVotes(votesObj);
+  const max = Math.max(...Object.values(tally));
+  if (max === 0) return 'highest_rank'; // zero votes → default
+  // Ties resolve toward highest_rank if it's tied for max (stable + matches the
+  // documented default), otherwise alphabetically among the tied winners.
+  const winners = Object.entries(tally).filter(([, c]) => c === max).map(([k]) => k);
+  if (winners.includes('highest_rank')) return 'highest_rank';
+  return winners.sort()[0];
+}
+
 async function updateInhouseSession(id, fields) {
   const p = getPool();
-  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at'];
+  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes'];
   const sets = [];
   const vals = [];
   for (const k of Object.keys(fields)) {
@@ -10510,6 +10622,13 @@ module.exports = {
   createSignupRequest,
   getSignupRequests,
   createInhouseSession,
+  getOrCreateOpenInhouseSession,
+  setCaptainModeVote,
+  clearCaptainModeVote,
+  getCaptainModeVotes,
+  tallyCaptainModeVotes,
+  resolveWinningCaptainMode,
+  CAPTAIN_VOTE_MODES,
   getInhouseSession,
   listInhouseSessions,
   getActiveInhouseSession,

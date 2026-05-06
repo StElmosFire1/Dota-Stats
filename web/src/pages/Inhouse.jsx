@@ -209,10 +209,49 @@ export default function Inhouse() {
   }
 
   async function joinSession() {
-    if (!session || !myAccountId) return;
+    if (!myAccountId) return;
     try {
-      await api(`/inhouse/${session.id}/join`, { method: 'POST', body: JSON.stringify({ accountId: myAccountId, preferredPositions: myPositions.join(',') || null }) });
+      // v6.03 — auto-running lobby. Always go through /inhouse/join (no id);
+      // the backend auto-creates an open session with default settings if
+      // none exists, so a player never sees a "no active session" empty
+      // state. Falls back to the per-id route only if we already know the
+      // session id and just need to add a preferred-positions update.
+      if (!session) {
+        await api('/inhouse/join', { method: 'POST', body: JSON.stringify({ preferredPositions: myPositions.join(',') || null }) });
+      } else {
+        await api(`/inhouse/${session.id}/join`, { method: 'POST', body: JSON.stringify({ accountId: myAccountId, preferredPositions: myPositions.join(',') || null }) });
+      }
       await refresh();
+    } catch (e) { alert(e.message); }
+  }
+
+  // v6.03 — captain-mode poll. One vote per player; clicking the same chip
+  // again clears it. Tally is fetched via the dedicated endpoint while the
+  // session is `open` so the chip counts stay live without polling the full
+  // /inhouse/active payload more often.
+  const [voteTally, setVoteTally] = useState({ tally: { highest_rank: 0, random: 0, auto_balance: 0, volunteer: 0 }, myVote: null, totalVotes: 0, winning: 'highest_rank' });
+  const refreshVotes = useCallback(async () => {
+    if (!session || session.status !== 'open') return;
+    try {
+      const data = await api(`/inhouse/${session.id}/captain-vote-tally`);
+      setVoteTally(data);
+    } catch (_) {}
+  }, [session?.id, session?.status]);
+  useEffect(() => {
+    if (!session || session.status !== 'open') return;
+    refreshVotes();
+    const t = setInterval(refreshVotes, 4000);
+    return () => clearInterval(t);
+  }, [session?.id, session?.status, refreshVotes]);
+  async function castCaptainVote(mode) {
+    if (!session || !myAccountId) return;
+    const isClearing = voteTally.myVote === mode;
+    try {
+      const r = await api(`/inhouse/${session.id}/captain-vote`, {
+        method: 'POST',
+        body: JSON.stringify(isClearing ? { clear: true } : { mode }),
+      });
+      setVoteTally({ tally: r.tally, myVote: r.myVote, totalVotes: Object.values(r.tally).reduce((a,b)=>a+b,0), winning: r.winning });
     } catch (e) { alert(e.message); }
   }
 
@@ -411,37 +450,70 @@ export default function Inhouse() {
       {error && <div style={{ padding: 12, background: 'rgba(244,67,54,0.1)', border: '1px solid #f44336', borderRadius: 6, marginBottom: 16, color: '#f44336' }}>{error}</div>}
 
       {!session && (
-        <div style={{ padding: 30, textAlign: 'center', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)' }}>
-          <h3 style={{ marginTop: 0 }}>No active inhouse session</h3>
-          <p style={{ color: 'var(--text-muted)' }}>An admin can open a session below to start the FACEIT-style flow.</p>
-          {isAdmin && (
-            <div style={{ marginTop: 16, display: 'inline-flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start', textAlign: 'left' }}>
-              <label style={{ fontSize: 13 }}>
-                Captain mode:&nbsp;
-                <select value={captainMode} onChange={e => setCaptainMode(e.target.value)} style={{ padding: 4 }}>
-                  <option value="highest_rank">Highest Rank</option>
-                  <option value="random">Random</option>
-                  <option value="highest_roll">Highest Roll (1-100)</option>
-                </select>
-              </label>
-              <label style={{ fontSize: 13 }}>
-                Accept timer:&nbsp;
-                <input type="number" min={15} max={300} value={acceptSeconds} onChange={e => setAcceptSeconds(parseInt(e.target.value || '60', 10))} style={{ padding: 4, width: 70 }} /> sec
-              </label>
-              <label style={{ fontSize: 13 }}>
-                Min players to auto-start:&nbsp;
-                <input type="number" min={2} max={10} value={minPlayers} onChange={e => setMinPlayers(parseInt(e.target.value || '10', 10))} style={{ padding: 4, width: 60 }} />
-              </label>
-              <label style={{ fontSize: 13 }}>
-                Lobby fill grace period:&nbsp;
-                <input type="number" min={0} max={300} value={lobbyFillSeconds} onChange={e => setLobbyFillSeconds(parseInt(e.target.value || '30', 10))} style={{ padding: 4, width: 60 }} /> sec
-              </label>
-              <button onClick={createSession} disabled={creating} style={{ padding: '8px 16px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>
-                {creating ? 'Creating…' : 'Open Session'}
+        <div style={{ padding: 30, textAlign: 'center', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)', borderTop: '3px solid var(--brass)' }}>
+          {/* v6.03 — auto-running lobby. No more "An admin must open a session"
+              empty state: any signed-in player joining auto-creates the open
+              session via /inhouse/join, so the primary CTA is always present
+              and the previous admin-only form is collapsed into <details>. */}
+          <h3 style={{ marginTop: 0, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 0.5 }}>Inhouse lobby is open</h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>
+            Be the first to sign in — joining auto-starts the lobby. Once 10 players have queued
+            we'll auto-open the accept phase.
+          </p>
+          {myAccountId ? (
+            <>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
+                {POSITIONS.map(p => (
+                  <button key={p.id} onClick={() => setMyPositions(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                    style={{ padding: '4px 10px', background: myPositions.includes(p.id) ? '#2196f3' : 'var(--bg)', color: myPositions.includes(p.id) ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={joinSession} style={{ padding: '10px 24px', background: 'var(--brass)', color: '#0d1424', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700, fontSize: 15, letterSpacing: 0.4 }}>
+                Sign In to Inhouse
               </button>
-            </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Sign in with Steam to join.</p>
           )}
-          {!isAdmin && <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Sign in as admin to open a session.</p>}
+          {isAdmin && (
+            <details style={{ marginTop: 24, textAlign: 'left', maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', letterSpacing: 0.5, fontWeight: 600 }}>
+                ⚙ Admin override — open session with custom settings
+              </summary>
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <label style={{ fontSize: 13 }}>
+                  Captain mode:&nbsp;
+                  <select value={captainMode} onChange={e => setCaptainMode(e.target.value)} style={{ padding: 4 }}>
+                    <option value="highest_rank">Highest Rank</option>
+                    <option value="random">Random</option>
+                    <option value="highest_roll">Highest Roll (1-100)</option>
+                    <option value="auto_balance">Auto-balance (skill-based)</option>
+                    <option value="volunteer">Volunteer</option>
+                  </select>
+                </label>
+                <label style={{ fontSize: 13 }}>
+                  Accept timer:&nbsp;
+                  <input type="number" min={15} max={300} value={acceptSeconds} onChange={e => setAcceptSeconds(parseInt(e.target.value || '60', 10))} style={{ padding: 4, width: 70 }} /> sec
+                </label>
+                <label style={{ fontSize: 13 }}>
+                  Min players to auto-start:&nbsp;
+                  <input type="number" min={2} max={10} value={minPlayers} onChange={e => setMinPlayers(parseInt(e.target.value || '10', 10))} style={{ padding: 4, width: 60 }} />
+                </label>
+                <label style={{ fontSize: 13 }}>
+                  Lobby fill grace period:&nbsp;
+                  <input type="number" min={0} max={300} value={lobbyFillSeconds} onChange={e => setLobbyFillSeconds(parseInt(e.target.value || '30', 10))} style={{ padding: 4, width: 60 }} /> sec
+                </label>
+                <button onClick={createSession} disabled={creating} style={{ padding: '8px 16px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>
+                  {creating ? 'Creating…' : 'Open Session With These Settings'}
+                </button>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  Players don't need this — joining auto-creates a session with the standard 60s / 10-player / 30s defaults.
+                </div>
+              </div>
+            </details>
+          )}
         </div>
       )}
 
@@ -513,45 +585,119 @@ export default function Inhouse() {
               )}
             </div>
             {isAdmin && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {session.status === 'open' && players.length >= 2 && (
-                  <button
-                    onClick={startAcceptPhase}
-                    title="Locks the lobby and gives every signed-in player a 60-second window to click Accept. Anyone who doesn't accept in time is dropped from the session."
-                    style={{ padding: '6px 12px', background: '#ff9800', color: '#000', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
-                  >
-                    Start Accept Phase
-                  </button>
-                )}
-                {session.status === 'accepting' && acceptedCount >= 2 && (
-                  <button onClick={selectCaptains} style={{ padding: '6px 12px', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Select Captains ({acceptedCount} ready)</button>
-                )}
-                {session.status === 'drafting' && undrafted.length === 0 && (
-                  <button onClick={provisionServer} style={{ padding: '6px 12px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Provision Server</button>
-                )}
-                {/* v5.89 — demo lobby controls (admin only). */}
-                {['open','accepting'].includes(session.status) && players.length < (session.min_players || 10) && (
-                  <button onClick={seedBots} title="Fill empty slots with bot players for end-to-end demo" style={{ padding: '6px 12px', background: 'transparent', color: 'var(--brass)', border: '1px dashed var(--brass)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>🤖 Seed Bots</button>
-                )}
-                {['open','accepting','drafting'].includes(session.status) && players.some(p => Number(p.account_id) >= 9000001 && Number(p.account_id) <= 9000010) && (
-                  <button onClick={clearBots} style={{ padding: '6px 12px', background: 'transparent', color: 'var(--text-muted)', border: '1px dashed var(--text-muted)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Clear Bots</button>
-                )}
-                {session.status === 'drafting' && undrafted.length > 0 && (
-                  <button onClick={autoDraft} title="Randomly distribute remaining picks across both teams (skips captains)" style={{ padding: '6px 12px', background: 'transparent', color: 'var(--brass)', border: '1px dashed var(--brass)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>🎲 Auto-Draft</button>
-                )}
-                {session.status === 'in_progress' && (
-                  <>
-                    <button onClick={fetchReplayNow} style={{ padding: '6px 12px', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Fetch Replay</button>
-                    <button onClick={completeSession} style={{ padding: '6px 12px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Mark Complete</button>
-                  </>
-                )}
-                <button onClick={cancelSession} style={{ padding: '6px 12px', background: 'transparent', color: '#f44336', border: '1px solid #f44336', borderRadius: 4, cursor: 'pointer' }}>Cancel</button>
-              </div>
+              // v6.03 — collapse the entire admin override toolbar into a
+              // <details> so the lobby reads as a player-driven space by
+              // default. The auto-start ticker handles every transition for
+              // a normal game; these buttons exist only for stuck/edge cases.
+              <details style={{ flex: '0 0 auto' }}>
+                <summary style={{ cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)', letterSpacing: 0.5, fontWeight: 700, padding: '4px 8px', border: '1px dashed var(--border)', borderRadius: 4 }}>
+                  ⚙ ADMIN OVERRIDES
+                </summary>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, padding: 10, background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: 4 }}>
+                  {session.status === 'open' && players.length >= 2 && (
+                    <button
+                      onClick={startAcceptPhase}
+                      title="Force-start the accept phase before the auto-start timer fires."
+                      style={{ padding: '6px 12px', background: '#ff9800', color: '#000', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Start Accept Phase
+                    </button>
+                  )}
+                  {session.status === 'accepting' && acceptedCount >= 2 && (
+                    <button onClick={selectCaptains} style={{ padding: '6px 12px', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Select Captains ({acceptedCount} ready)</button>
+                  )}
+                  {session.status === 'drafting' && undrafted.length === 0 && (
+                    <button onClick={provisionServer} style={{ padding: '6px 12px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Provision Server</button>
+                  )}
+                  {/* v5.89 — demo lobby controls (admin only). */}
+                  {['open','accepting'].includes(session.status) && players.length < (session.min_players || 10) && (
+                    <button onClick={seedBots} title="Fill empty slots with bot players for end-to-end demo" style={{ padding: '6px 12px', background: 'transparent', color: 'var(--brass)', border: '1px dashed var(--brass)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>🤖 Seed Bots</button>
+                  )}
+                  {['open','accepting','drafting'].includes(session.status) && players.some(p => Number(p.account_id) >= 9000001 && Number(p.account_id) <= 9000010) && (
+                    <button onClick={clearBots} style={{ padding: '6px 12px', background: 'transparent', color: 'var(--text-muted)', border: '1px dashed var(--text-muted)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Clear Bots</button>
+                  )}
+                  {session.status === 'drafting' && undrafted.length > 0 && (
+                    <button onClick={autoDraft} title="Randomly distribute remaining picks across both teams (skips captains)" style={{ padding: '6px 12px', background: 'transparent', color: 'var(--brass)', border: '1px dashed var(--brass)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>🎲 Auto-Draft</button>
+                  )}
+                  {session.status === 'in_progress' && (
+                    <>
+                      <button onClick={fetchReplayNow} style={{ padding: '6px 12px', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Fetch Replay</button>
+                      <button onClick={completeSession} style={{ padding: '6px 12px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Mark Complete</button>
+                    </>
+                  )}
+                  <button onClick={cancelSession} style={{ padding: '6px 12px', background: 'transparent', color: '#f44336', border: '1px solid #f44336', borderRadius: 4, cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </details>
             )}
           </div>
 
           {session.status === 'accepting' && session.accept_phase_starts_at && (
             <Countdown startsAt={session.accept_phase_starts_at} seconds={session.accept_phase_seconds || 60} />
+          )}
+
+          {/* v6.03 — captain-mode poll. Open while the lobby is filling.
+              Players in the lobby cast one vote (re-clicking clears it); the
+              winning mode is materialised onto session.captain_mode by the
+              auto-start ticker the moment we flip into the accept phase.
+              Tie / zero-vote → Highest Rank. */}
+          {session.status === 'open' && (
+            <div style={{ marginTop: 14, padding: 14, background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ fontWeight: 700, letterSpacing: 0.4, color: 'var(--brass)', fontSize: 13 }}>👑 CAPTAIN MODE — VOTE</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {voteTally.totalVotes} vote{voteTally.totalVotes === 1 ? '' : 's'} · winning: <strong style={{ color: 'var(--text)' }}>{({
+                    highest_rank: 'Highest Rank',
+                    random: 'Random',
+                    auto_balance: 'Auto-balance',
+                    volunteer: 'Volunteer',
+                  })[voteTally.winning] || voteTally.winning}</strong>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+                {[
+                  { id: 'highest_rank', label: 'Highest Rank', hint: 'Top 2 by MMR / leaderboard / rank tier' },
+                  { id: 'random',       label: 'Random',       hint: 'Two random captains from accepted players' },
+                  { id: 'auto_balance', label: 'Auto-balance', hint: 'Skill-based pairing (currently uses Highest Rank)' },
+                  { id: 'volunteer',    label: 'Volunteer',    hint: 'Self-nominate (currently uses Highest Rank)' },
+                ].map(opt => {
+                  const count = voteTally.tally[opt.id] || 0;
+                  const isMine = voteTally.myVote === opt.id;
+                  const disabled = !myAccountId || !isInSession;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => castCaptainVote(opt.id)}
+                      disabled={disabled}
+                      title={disabled ? 'Join the lobby to vote' : opt.hint}
+                      style={{
+                        padding: '10px 12px',
+                        background: isMine ? 'color-mix(in srgb, var(--brass) 18%, transparent)' : 'var(--bg-elevated)',
+                        border: `1px solid ${isMine ? 'var(--brass)' : 'var(--border)'}`,
+                        borderRadius: 6,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.55 : 1,
+                        textAlign: 'left',
+                        color: 'var(--text)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 4,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>{opt.label}</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                          background: count > 0 ? 'var(--brass)' : 'var(--bg)',
+                          color: count > 0 ? '#0d1424' : 'var(--text-muted)',
+                        }}>{count}</span>
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{opt.hint}</span>
+                      {isMine && <span style={{ fontSize: 10, color: 'var(--brass)', fontWeight: 700, letterSpacing: 0.4 }}>YOUR VOTE — click again to clear</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* v5.75: auto-start countdown — visible to everyone once min_players is reached. */}

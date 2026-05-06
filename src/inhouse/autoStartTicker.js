@@ -58,20 +58,26 @@ async function tick(db, basePort) {
           await db.updateInhouseSession(s.id, { auto_start_at: new Date(Date.now() + fillSec * 1000) });
           log(`Session #${s.id}: ${players.length}/${min} reached, auto-start in ${fillSec}s`);
         } else if (new Date(s.auto_start_at).getTime() <= Date.now()) {
-          // Timer expired — flip to accepting. Use a status-guarded UPDATE so
-          // we never race with a manual admin transition.
+          // v6.03 — resolve the captain-mode vote winner BEFORE flipping the
+          // status, so the captain selection that runs at end-of-accept-phase
+          // uses the mode the lobby actually voted for. Zero votes / ties →
+          // 'highest_rank' per resolveWinningCaptainMode().
+          const winningMode = db.resolveWinningCaptainMode(s.captain_mode_votes || {});
+          // Timer expired — flip to accepting. Status-guarded UPDATE so we
+          // never race with a manual admin transition.
           const guard = await pool.query(
             `UPDATE inhouse_sessions
                 SET status = 'accepting',
                     accept_phase_starts_at = NOW(),
                     accept_phase_seconds = COALESCE(accept_phase_seconds, $2),
+                    captain_mode = $3,
                     auto_start_at = NULL
               WHERE id = $1 AND status = 'open'
             RETURNING id`,
-            [s.id, s.accept_phase_seconds || 60]
+            [s.id, s.accept_phase_seconds || 60, winningMode]
           );
           if (guard.rowCount > 0) {
-            log(`Session #${s.id}: auto-flipped to accepting (${players.length} players)`);
+            log(`Session #${s.id}: auto-flipped to accepting (${players.length} players, captain mode=${winningMode})`);
           }
         }
       } else if (s.auto_start_at) {

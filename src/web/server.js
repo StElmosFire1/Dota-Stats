@@ -5724,6 +5724,92 @@ NOTES
     return { accountId, isAdmin };
   }
 
+  // v6.03 — auto-running lobby entrypoint. Any signed-in player can join
+  // without an admin pre-creating a session: if no joinable session exists
+  // we create one with default settings (60s accept window / 10 min players /
+  // 30s grace). Idempotent — concurrent first-joiners share the session via
+  // an advisory lock inside getOrCreateOpenInhouseSession().
+  router.post('/inhouse/join', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const { session, created } = await db.getOrCreateOpenInhouseSession({
+        createdBy: 'auto:' + actor.accountId,
+      });
+      if (!['open','accepting'].includes(session.status)) {
+        return res.status(409).json({
+          error: `Lobby is in ${session.status} phase — cannot join right now.`,
+          session,
+        });
+      }
+      const player = await db.joinInhouseSession(
+        session.id, actor.accountId, req.body?.preferredPositions || null
+      );
+      res.json({ session, player, created });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // v6.03 — captain-mode poll. Signed-in players that have joined the
+  // session can cast / change their vote until the accept phase begins.
+  // The winning mode is materialised onto inhouse_sessions.captain_mode
+  // by autoStartTicker at status-flip time.
+  router.post('/inhouse/:id/captain-vote', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (session.status !== 'open') {
+        return res.status(400).json({ error: 'Voting is closed once the accept phase has started.' });
+      }
+      const players = await db.getInhouseSessionPlayers(session.id);
+      const inLobby = players.some(p => Number(p.account_id) === Number(actor.accountId));
+      if (!inLobby && !actor.isAdmin) {
+        return res.status(403).json({ error: 'Join the lobby first, then vote.' });
+      }
+      const mode = String(req.body?.mode || '');
+      let votes;
+      if (req.body?.clear) {
+        votes = await db.clearCaptainModeVote(session.id, actor.accountId);
+      } else {
+        try {
+          votes = await db.setCaptainModeVote(session.id, actor.accountId, mode);
+        } catch (e) {
+          if (e.code === 'invalid_mode') return res.status(400).json({ error: 'Invalid captain mode.' });
+          throw e;
+        }
+      }
+      const tally = db.tallyCaptainModeVotes(votes);
+      res.json({
+        ok: true,
+        myVote: votes[String(actor.accountId)] || null,
+        tally,
+        winning: db.resolveWinningCaptainMode(votes),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/inhouse/:id/captain-vote-tally', async (req, res) => {
+    try {
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      const votes = await db.getCaptainModeVotes(session.id);
+      const myAccountId = req.session?.accountId ? Number(req.session.accountId) : null;
+      res.json({
+        tally: db.tallyCaptainModeVotes(votes),
+        winning: db.resolveWinningCaptainMode(votes),
+        myVote: myAccountId ? (votes[String(myAccountId)] || null) : null,
+        totalVotes: Object.keys(votes || {}).length,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/inhouse', requireSuperuser, express.json(), async (req, res) => {
     try {
       const { captainMode, acceptPhaseSeconds, notes, minPlayers, lobbyFillSeconds } = req.body || {};
@@ -5889,6 +5975,33 @@ NOTES
           p.roll = roll;
         }
         const sorted = [...accepted].sort((a, b) => (b.roll || 0) - (a.roll || 0));
+        cap1 = sorted[0];
+        cap2 = sorted[1];
+      } else if (mode === 'auto_balance' || mode === 'volunteer') {
+        // v6.03 — these modes are exposed in the captain-mode poll but the
+        // dedicated balancing / volunteer-signup logic isn't built yet (per
+        // task #115 "out of scope" — treat as Highest Rank for now). We pick
+        // captains via the highest_rank path so the lobby still progresses.
+        const RANK_TIER_TO_MMR = {
+          11: 200, 12: 400, 13: 600, 14: 800, 15: 1000,
+          21: 1200, 22: 1400, 23: 1600, 24: 1800, 25: 2000,
+          31: 2200, 32: 2400, 33: 2600, 34: 2800, 35: 3000,
+          41: 3200, 42: 3400, 43: 3600, 44: 3800, 45: 4000,
+          51: 4200, 52: 4400, 53: 4600, 54: 4800, 55: 5000,
+          61: 5300, 62: 5600, 63: 5900, 64: 6200, 65: 6500,
+          71: 6800, 72: 7200, 73: 7600, 74: 8000, 75: 8500,
+          80: 9500,
+        };
+        const score = (p) => {
+          const games = Number(p.games_played) || 0;
+          if (games >= 20) return Number(p.trueskill_mmr || 0) * 100;
+          if (p.dota_leaderboard_rank && Number(p.dota_leaderboard_rank) > 0) {
+            return 12000 - Math.min(2500, Math.log2(Number(p.dota_leaderboard_rank)) * 250);
+          }
+          if (p.dota_rank_tier && RANK_TIER_TO_MMR[p.dota_rank_tier]) return RANK_TIER_TO_MMR[p.dota_rank_tier];
+          return Number(p.trueskill_mmr || 0) * 100 - 1000;
+        };
+        const sorted = [...accepted].sort((a, b) => score(b) - score(a));
         cap1 = sorted[0];
         cap2 = sorted[1];
       } else {
