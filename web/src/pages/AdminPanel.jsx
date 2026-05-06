@@ -875,6 +875,58 @@ function ErrorLogViewer({ superuserKey }) {
 
 // Season Lifecycle panel — configure end conditions (end date / match limit) and
 // manually close a season + post the Discord summary embed.
+// v5.89 — small standalone button + log viewer for the community → full
+// nickname/discord/rank sync. Lives in the rank management section because
+// it shares context (one-shot data imports for player metadata).
+function CommunitySyncButton({ superuserKey }) {
+  const [busy, setBusy] = React.useState(false);
+  const [overwrite, setOverwrite] = React.useState(false);
+  const [dryRun, setDryRun] = React.useState(true);
+  const [result, setResult] = React.useState(null);
+  const [error, setError] = React.useState('');
+  async function run() {
+    setBusy(true); setError(''); setResult(null);
+    try {
+      const r = await fetch('/api/admin/sync-community-nicknames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+        body: JSON.stringify({ overwrite, dryRun }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      setResult(d);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <label style={{ fontSize: 13 }}>
+          <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} /> Dry run (preview only)
+        </label>
+        <label style={{ fontSize: 13 }}>
+          <input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} /> Overwrite existing values
+        </label>
+        <button className="btn btn-primary" disabled={busy} onClick={run}>
+          {busy ? '⏳ Syncing…' : (dryRun ? '🔍 Preview Sync' : '📥 Run Sync Now')}
+        </button>
+      </div>
+      {error && <div style={{ padding: 10, background: 'rgba(244,67,54,0.1)', border: '1px solid #f44336', borderRadius: 6, color: '#f44336', fontSize: 13 }}>{error}</div>}
+      {result && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 13, marginBottom: 6 }}>
+            <strong>{result.dryRun ? 'DRY RUN — nothing was written.' : 'Done.'}</strong>{' '}
+            inserted={result.inserted} · updated={result.updated} · skipped={result.skipped} · players-linked={result.playerLinked} · total-source-rows={result.total}
+          </div>
+          <pre style={{ maxHeight: 280, overflow: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, padding: 10, fontSize: 11, lineHeight: 1.4 }}>
+            {result.log}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SeasonLifecyclePanel({ superuserKey }) {
   const [seasons, setSeasons] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -2774,6 +2826,21 @@ export default function AdminPanel() {
           {rankSyncMsg && (
             <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{rankSyncMsg}</span>
           )}
+        </div>
+
+        {/* v5.89 — one-shot import of nicknames + Discord IDs + Dota ranks
+            from the community-edition database into this (full-edition) DB.
+            Conservative by default: existing rows are NOT overwritten. The
+            server reads COMMUNITY_DATABASE_URL from its env, so set that
+            secret on the prod host before clicking. */}
+        <div style={{ marginTop: 24, padding: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 6 }}>📥 Import from Community Edition</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+            Pulls nicknames, Discord IDs, and Dota ranks from the community-edition DB and upserts them here.
+            Requires the <code>COMMUNITY_DATABASE_URL</code> secret to be set on the server, pointing at the
+            community Postgres. By default only fills empty columns — toggle <em>overwrite</em> to clobber existing values.
+          </p>
+          <CommunitySyncButton superuserKey={superuserKey} />
         </div>
 
         <div className="scoreboard-wrapper">

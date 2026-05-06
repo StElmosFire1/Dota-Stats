@@ -290,6 +290,36 @@ export default function Inhouse() {
     } catch (e) { alert('Fetch failed: ' + e.message); }
   }
 
+  // v5.89 — admin demo lobby. Fills empty slots with bot players (account
+  // ids 9_000_001..9_000_010) so an admin can walk the full sign-in →
+  // accept → captains → draft → ready flow end-to-end without needing 9
+  // friends. Auto-draft fills remaining picks once captains are set.
+  async function seedBots() {
+    if (!isAdmin || !session) return;
+    try {
+      const r = await api(`/admin/inhouse/${session.id}/seed-bots`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({}) });
+      await refresh();
+      alert(`Added ${r.added} bot${r.added === 1 ? '' : 's'} (lobby now ${r.total}).`);
+    } catch (e) { alert('Seed failed: ' + e.message); }
+  }
+  async function clearBots() {
+    if (!isAdmin || !session) return;
+    if (!confirm('Remove all demo bots from this session?')) return;
+    try {
+      const r = await api(`/admin/inhouse/${session.id}/clear-bots`, { method: 'POST', headers: adminHeaders });
+      await refresh();
+      alert(`Removed ${r.removed} bot${r.removed === 1 ? '' : 's'}.`);
+    } catch (e) { alert('Clear failed: ' + e.message); }
+  }
+  async function autoDraft() {
+    if (!isAdmin || !session) return;
+    try {
+      const r = await api(`/admin/inhouse/${session.id}/auto-draft`, { method: 'POST', headers: adminHeaders });
+      await refresh();
+      alert(`Auto-drafted ${r.picked} pick${r.picked === 1 ? '' : 's'}.`);
+    } catch (e) { alert('Auto-draft failed: ' + e.message); }
+  }
+
   const myPlayer = myAccountId ? players.find(p => Number(p.account_id) === myAccountId) : null;
   const isInSession = !!myPlayer;
   const acceptedCount = players.filter(p => p.status === 'accepted').length;
@@ -436,6 +466,16 @@ export default function Inhouse() {
                 )}
                 {session.status === 'drafting' && undrafted.length === 0 && (
                   <button onClick={provisionServer} style={{ padding: '6px 12px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Provision Server</button>
+                )}
+                {/* v5.89 — demo lobby controls (admin only). */}
+                {['open','accepting'].includes(session.status) && players.length < (session.min_players || 10) && (
+                  <button onClick={seedBots} title="Fill empty slots with bot players for end-to-end demo" style={{ padding: '6px 12px', background: 'transparent', color: 'var(--brass)', border: '1px dashed var(--brass)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>🤖 Seed Bots</button>
+                )}
+                {['open','accepting','drafting'].includes(session.status) && players.some(p => Number(p.account_id) >= 9000001 && Number(p.account_id) <= 9000010) && (
+                  <button onClick={clearBots} style={{ padding: '6px 12px', background: 'transparent', color: 'var(--text-muted)', border: '1px dashed var(--text-muted)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Clear Bots</button>
+                )}
+                {session.status === 'drafting' && undrafted.length > 0 && (
+                  <button onClick={autoDraft} title="Randomly distribute remaining picks across both teams (skips captains)" style={{ padding: '6px 12px', background: 'transparent', color: 'var(--brass)', border: '1px dashed var(--brass)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>🎲 Auto-Draft</button>
                 )}
                 {session.status === 'in_progress' && (
                   <>

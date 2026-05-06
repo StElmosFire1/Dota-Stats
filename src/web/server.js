@@ -5665,6 +5665,149 @@ NOTES
     }
   });
 
+  // ──────────────────────────────────────────────────────────────────────
+  // v5.89 — admin demo lobby helpers
+  //
+  // Lets a superuser fill an open/accepting session with bot players so
+  // they can walk through the full sign-in → accept → captains → draft
+  // → ready flow end-to-end without recruiting 9 friends. Bots use a
+  // dedicated account_id range (9_000_001..9_000_010) and get a temporary
+  // nickname so they render nicely in the roster. Auto-draft fills the
+  // remaining 8 non-captain slots following DRAFT_PICK_SEQUENCE — works
+  // whether the captains are bots or real players.
+  // ──────────────────────────────────────────────────────────────────────
+  const BOT_NAMES = ['Bot Lina','Bot Pudge','Bot CM','Bot Sven','Bot Mirana','Bot SK','Bot Lion','Bot Tide','Bot AM','Bot Invoker'];
+  const BOT_ID_BASE = 9000001;
+  const BOT_ID_MAX  = 9000010;
+
+  router.post('/admin/inhouse/:id/seed-bots', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (!['open','accepting'].includes(session.status)) {
+        return res.status(400).json({ error: `Cannot seed bots while status=${session.status}` });
+      }
+      const minPlayers = session.min_players || 10;
+      const existing = await db.getInhouseSessionPlayers(session.id);
+      const existingAccts = new Set(existing.map(p => Number(p.account_id)));
+      const need = Math.max(0, minPlayers - existing.length);
+      const pool = db.getPool();
+      let added = 0;
+      for (let i = 0; i < BOT_NAMES.length && added < need; i++) {
+        const acc = BOT_ID_BASE + i;
+        if (acc > BOT_ID_MAX) break;
+        if (existingAccts.has(acc)) continue;
+        // Ensure a nickname row exists so the bot renders with a friendly name.
+        // We only fill an empty nickname so a re-seed doesn't clobber any
+        // human-edited nickname row that happens to share the same id.
+        await pool.query(
+          `INSERT INTO nicknames (account_id, nickname, updated_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (account_id) DO UPDATE
+             SET nickname = EXCLUDED.nickname, updated_at = NOW()
+             WHERE COALESCE(nicknames.nickname, '') = ''`,
+          [acc, BOT_NAMES[i]]
+        );
+        // Random preferred positions (1-2 picks)
+        const positions = Array.from(new Set([
+          1 + Math.floor(Math.random() * 5),
+          1 + Math.floor(Math.random() * 5),
+        ])).sort();
+        await db.joinInhouseSession(session.id, acc, positions);
+        // Pre-accept so admin can skip directly to captain selection.
+        await db.setInhousePlayerAccepted(session.id, acc);
+        added++;
+      }
+      res.json({ added, total: existing.length + added });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/inhouse/:id/clear-bots', requireSuperuser, async (req, res) => {
+    try {
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (!['open','accepting','drafting'].includes(session.status)) {
+        return res.status(400).json({ error: 'Cannot clear bots once match is in progress' });
+      }
+      const pool = db.getPool();
+      const r = await pool.query(
+        `DELETE FROM inhouse_session_players
+           WHERE session_id = $1 AND account_id BETWEEN $2 AND $3`,
+        [session.id, BOT_ID_BASE, BOT_ID_MAX]
+      );
+      res.json({ removed: r.rowCount });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/inhouse/:id/auto-draft', requireSuperuser, async (req, res) => {
+    try {
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (session.status !== 'drafting') {
+        return res.status(400).json({ error: 'Auto-draft only works in drafting phase' });
+      }
+      const cap1 = Number(session.captain1_account_id);
+      const cap2 = Number(session.captain2_account_id);
+      const players = await db.getInhouseSessionPlayers(session.id);
+      const isCap = (p) => Number(p.account_id) === cap1 || Number(p.account_id) === cap2;
+      let pickIdx = players.filter(p => p.team !== 0 && !isCap(p)).length;
+      const undrafted = players
+        .filter(p => (p.team === 0 || p.team == null) && !isCap(p))
+        .sort(() => Math.random() - 0.5);
+      let picked = 0;
+      for (const p of undrafted) {
+        if (pickIdx >= DRAFT_PICK_SEQUENCE.length) break;
+        const team = DRAFT_PICK_SEQUENCE[pickIdx];
+        await db.assignInhouseTeams(session.id, [{ accountId: p.account_id, team, pickOrder: pickIdx + 1 }]);
+        pickIdx++;
+        picked++;
+      }
+      const updated = await db.getInhouseSessionPlayers(session.id);
+      res.json({ picked, players: updated });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // v5.89 — community → full nickname/discord/rank sync (admin trigger).
+  // Reads COMMUNITY_DATABASE_URL from the server env (must be added as a
+  // secret on prod). Conservative: only fills empty target columns unless
+  // the admin opts in to overwrite. Returns the per-row log so the admin
+  // can review what changed without shelling into the host.
+  // ──────────────────────────────────────────────────────────────────────
+  router.post('/admin/sync-community-nicknames', requireSuperuser, express.json(), async (req, res) => {
+    const sourceUrl = process.env.COMMUNITY_DATABASE_URL;
+    if (!sourceUrl) {
+      return res.status(400).json({
+        error: 'COMMUNITY_DATABASE_URL is not set on the server. Add it as a secret pointing at the community-edition Postgres, then retry.'
+      });
+    }
+    if (sourceUrl === process.env.DATABASE_URL) {
+      return res.status(400).json({ error: 'COMMUNITY_DATABASE_URL is identical to DATABASE_URL — refusing to run.' });
+    }
+    const overwrite = !!req.body?.overwrite;
+    const dryRun = !!req.body?.dryRun;
+    try {
+      const { runSync } = require('../../scripts/sync-community-nicknames');
+      const lines = [];
+      const result = await runSync({
+        sourceUrl,
+        destPool: db.getPool(),
+        overwrite,
+        dryRun,
+        log: (m) => lines.push(m),
+      });
+      res.json({ ...result, log: lines.join('\n') });
+    } catch (err) {
+      res.status(500).json({ error: err.message, stack: err.stack });
+    }
+  });
+
   router.post('/inhouse/:id/cancel', requireSuperuser, async (req, res) => {
     try {
       const session = await db.updateInhouseSession(req.params.id, {

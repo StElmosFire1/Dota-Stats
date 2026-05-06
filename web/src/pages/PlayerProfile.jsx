@@ -572,7 +572,10 @@ export default function PlayerProfile() {
   const [heroSuggestions, setHeroSuggestions] = useState(null);
 
   useEffect(() => {
-    if (!showProfileChartV2 || !isOwnProfile || !accountId) {
+    // v5.89 — Performance Trend chart is no longer owner-only. Any signed-in
+    // viewer (subject to the existing pro/paywall server check) can see it on
+    // any profile so the public profile reaches parity with the private view.
+    if (!showProfileChartV2 || !accountId) {
       setMatchStatsHistory([]);
       setTrendPaywall(null);
       return;
@@ -584,7 +587,7 @@ export default function PlayerProfile() {
         setMatchStatsHistory([]);
         if (err && err.paywall) setTrendPaywall(err);
       });
-  }, [accountId, seasonId, showProfileChartV2, isOwnProfile]);
+  }, [accountId, seasonId, showProfileChartV2]);
 
   useEffect(() => {
     getPlayerRanks()
@@ -1339,10 +1342,10 @@ export default function PlayerProfile() {
 
       <ModifierHistoryChart history={modifierHistory} />
 
-      {showProfileChartV2 && isOwnProfile && trendPaywall && (
+      {showProfileChartV2 && trendPaywall && (
         <PaywallCard feature={trendPaywall.feature || 'performance_trend'} signedIn={trendPaywall.signedIn} />
       )}
-      {showProfileChartV2 && isOwnProfile && !trendPaywall && matchStatsHistory.length >= 5 && (
+      {showProfileChartV2 && !trendPaywall && matchStatsHistory.length >= 5 && (
         <ProfileChartV2 history={matchStatsHistory} />
       )}
 
