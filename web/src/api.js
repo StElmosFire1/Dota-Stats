@@ -1,17 +1,109 @@
 const BASE = '/api';
 
+// ── Superuser auto-recovery (Task #91) ──────────────────────────────────────
+// All admin/superuser-gated calls funnel through superuserFetch() so a
+// dropped session (HTTP 401, or 403 with the literal `session` sentinel) can
+// transparently re-prompt the operator via SuperuserContext + SuperuserModal,
+// retry the original request once on success, and otherwise surface a
+// clear "session expired" error to the caller. SuperuserContext registers
+// its handler at mount via setSuperuserReauthHandler().
+let _superuserReauthHandler = null;
+export function setSuperuserReauthHandler(fn) {
+  _superuserReauthHandler = typeof fn === 'function' ? fn : null;
+}
+
+function _superuserHeaderName(headers) {
+  if (!headers) return null;
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === 'x-superuser-key') return k;
+  }
+  return null;
+}
+
+// Centralised wrapper for any admin/superuser-gated request. Mirrors the
+// ergonomics of the inline `fetch + json + throw` pattern used throughout
+// this file but adds the auto-recovery loop. Pass a string body (already
+// JSON-encoded) or omit the body entirely; callers that send FormData should
+// not use this helper.
+export async function superuserFetch(url, options = {}) {
+  const headerName = _superuserHeaderName(options.headers);
+  // Accept either a path like '/admin/foo' or an already-prefixed BASE + path
+  // so callers refactored from `fetch(BASE + '/x', …)` don't have to drop the
+  // BASE concatenation.
+  const fullUrl = url.startsWith(BASE) || /^https?:/i.test(url) ? url : BASE + url;
+  const doFetch = (extraInit = {}) => fetch(fullUrl, {
+    credentials: 'same-origin',
+    ...options,
+    ...extraInit,
+    headers: { ...(options.headers || {}), ...(extraInit.headers || {}) },
+  });
+
+  let res = await doFetch();
+  // 401 = browser session expired (server returns it for missing key OR the
+  // `session` sentinel header without a valid cookie). 403 is treated the
+  // same way only when we're using the session sentinel — a wrong literal
+  // header from a script should not trigger a UI re-prompt.
+  const looksLikeSessionDrop =
+    res.status === 401 ||
+    (res.status === 403 && headerName && options.headers[headerName] === 'session');
+  if (looksLikeSessionDrop && _superuserReauthHandler) {
+    let ok = false;
+    try { ok = await _superuserReauthHandler(); } catch (_) { ok = false; }
+    if (ok) res = await doFetch();
+  }
+  return res;
+}
+
+// JSON convenience wrapper: parses the response, surfaces a friendly
+// "session expired" message when re-auth was declined, and rethrows the
+// server's `error` field for any other failure.
+export async function superuserJson(url, {
+  method = 'GET',
+  body,
+  superuserKey,
+  headers = {},
+} = {}) {
+  const finalHeaders = { ...headers };
+  if (superuserKey) finalHeaders['x-superuser-key'] = superuserKey;
+  let payload;
+  if (body !== undefined && body !== null) {
+    if (typeof body === 'string' || body instanceof FormData) {
+      payload = body;
+    } else {
+      payload = JSON.stringify(body);
+      if (!_findHeader(finalHeaders, 'content-type')) {
+        finalHeaders['Content-Type'] = 'application/json';
+      }
+    }
+  }
+  const res = await superuserFetch(url, { method, headers: finalHeaders, body: payload });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(data.error || 'Superuser session expired — please log in again.');
+    }
+    throw new Error(data.error || `Request failed: ${res.status}`);
+  }
+  return data;
+}
+
+function _findHeader(headers, name) {
+  const lower = name.toLowerCase();
+  return Object.keys(headers).some(k => k.toLowerCase() === lower);
+}
+
 // ── Feature flags ──────────────────────────────────────────────────────────
 export async function getFeatureFlags(superuserKey) {
   const headers = {};
   if (superuserKey) headers['x-superuser-key'] = superuserKey;
-  const res = await fetch(BASE + '/feature-flags', { headers });
+  const res = await superuserFetch(BASE + '/feature-flags', { headers });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed');
   return data;
 }
 
 export async function getAdminFeatureFlags(superuserKey) {
-  const res = await fetch(BASE + '/admin/feature-flags', {
+  const res = await superuserFetch(BASE + '/admin/feature-flags', {
     headers: { 'x-superuser-key': superuserKey },
   });
   const data = await res.json();
@@ -20,7 +112,7 @@ export async function getAdminFeatureFlags(superuserKey) {
 }
 
 export async function setFeatureFlag({ key, state, description }, superuserKey) {
-  const res = await fetch(BASE + '/admin/feature-flags', {
+  const res = await superuserFetch(BASE + '/admin/feature-flags', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ key, state, description }),
@@ -31,7 +123,7 @@ export async function setFeatureFlag({ key, state, description }, superuserKey) 
 }
 
 export async function launchSeason10(superuserKey) {
-  const res = await fetch(BASE + '/admin/launch-season-10', {
+  const res = await superuserFetch(BASE + '/admin/launch-season-10', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ confirmation: 'LAUNCH SEASON 10' }),
@@ -42,7 +134,7 @@ export async function launchSeason10(superuserKey) {
 }
 
 export async function setMatchReplayPath(matchId, replayPath, superuserKey) {
-  const res = await fetch(`${BASE}/admin/matches/${matchId}/set-replay-path`, {
+  const res = await superuserFetch(`${BASE}/admin/matches/${matchId}/set-replay-path`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -56,7 +148,7 @@ export async function setMatchReplayPath(matchId, replayPath, superuserKey) {
 }
 
 export async function getMatchReplayStatus(superuserKey, limit = 100, offset = 0) {
-  const res = await fetch(`${BASE}/admin/matches/replay-status?limit=${limit}&offset=${offset}`, {
+  const res = await superuserFetch(`${BASE}/admin/matches/replay-status?limit=${limit}&offset=${offset}`, {
     headers: { 'x-superuser-key': superuserKey },
   });
   const data = await res.json();
@@ -65,7 +157,7 @@ export async function getMatchReplayStatus(superuserKey, limit = 100, offset = 0
 }
 
 export async function triggerMissingDMs(matchId, superuserKey) {
-  const res = await fetch(`${BASE}/admin/matches/${matchId}/trigger-dms`, {
+  const res = await superuserFetch(`${BASE}/admin/matches/${matchId}/trigger-dms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ missingOnly: true }),
@@ -84,7 +176,7 @@ export async function getPatchNote(id) {
 }
 
 export async function createPatchNote({ version, title, content, author }, superuserKey) {
-  const res = await fetch(BASE + '/patch-notes', {
+  const res = await superuserFetch(BASE + '/patch-notes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
     body: JSON.stringify({ version, title, content, author }),
@@ -95,7 +187,7 @@ export async function createPatchNote({ version, title, content, author }, super
 }
 
 export async function updatePatchNote(id, { version, title, content, author }, superuserKey) {
-  const res = await fetch(BASE + `/patch-notes/${id}`, {
+  const res = await superuserFetch(BASE + `/patch-notes/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
     body: JSON.stringify({ version, title, content, author }),
@@ -106,7 +198,7 @@ export async function updatePatchNote(id, { version, title, content, author }, s
 }
 
 export async function deletePatchNote(id, superuserKey) {
-  const res = await fetch(BASE + `/patch-notes/${id}`, {
+  const res = await superuserFetch(BASE + `/patch-notes/${id}`, {
     method: 'DELETE',
     headers: { 'X-Superuser-Key': superuserKey },
   });
@@ -250,7 +342,7 @@ export async function getPlayerHeroSuggestions(accountId, seasonId = null) {
 
 export async function getAdminHeroTierOverrides(seasonId, superuserKey) {
   const q = seasonId ? `?season=${seasonId}` : '';
-  const res = await fetch(BASE + `/admin/heroes/tier-overrides${q}`, {
+  const res = await superuserFetch(BASE + `/admin/heroes/tier-overrides${q}`, {
     headers: { 'x-superuser-key': superuserKey },
   });
   const data = await res.json();
@@ -259,7 +351,7 @@ export async function getAdminHeroTierOverrides(seasonId, superuserKey) {
 }
 
 export async function setAdminHeroTierOverride({ season_id, hero_id, tier }, superuserKey) {
-  const res = await fetch(BASE + '/admin/heroes/tier-overrides', {
+  const res = await superuserFetch(BASE + '/admin/heroes/tier-overrides', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ season_id, hero_id, tier }),
@@ -271,7 +363,7 @@ export async function setAdminHeroTierOverride({ season_id, hero_id, tier }, sup
 
 export async function deleteAdminHeroTierOverride(heroId, seasonId, superuserKey) {
   const q = seasonId ? `?season=${seasonId}` : '';
-  const res = await fetch(BASE + `/admin/heroes/tier-overrides/${heroId}${q}`, {
+  const res = await superuserFetch(BASE + `/admin/heroes/tier-overrides/${heroId}${q}`, {
     method: 'DELETE',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -352,7 +444,7 @@ export async function getNicknames() {
 }
 
 export async function setNickname(accountId, nickname, superuserKey) {
-  const res = await fetch(BASE + `/nicknames/${accountId}`, {
+  const res = await superuserFetch(BASE + `/nicknames/${accountId}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -366,7 +458,7 @@ export async function setNickname(accountId, nickname, superuserKey) {
 }
 
 export async function setPlayerDiscordId(accountId, discordId, superuserKey) {
-  const res = await fetch(BASE + `/players/${accountId}/discord`, {
+  const res = await superuserFetch(BASE + `/players/${accountId}/discord`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -544,7 +636,7 @@ export async function getReferralLeaderboard(limit = 10) {
 }
 
 export async function recomputeAchievements(superuserKey) {
-  const res = await fetch(BASE + '/admin/recompute-achievements', {
+  const res = await superuserFetch(BASE + '/admin/recompute-achievements', {
     method: 'POST',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -628,7 +720,7 @@ export async function confirmBuyinSession(sessionId) {
 }
 
 export async function deleteSeasonApi(seasonId, superuserKey) {
-  const res = await fetch(BASE + `/seasons/${seasonId}`, {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}`, {
     method: 'DELETE',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -833,7 +925,7 @@ export async function getSchedule() {
 }
 
 export async function createScheduledGame(scheduledAt, note, superuserKey) {
-  const res = await fetch(BASE + '/schedule', {
+  const res = await superuserFetch(BASE + '/schedule', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
     body: JSON.stringify({ scheduled_at: scheduledAt, note }),
@@ -844,7 +936,7 @@ export async function createScheduledGame(scheduledAt, note, superuserKey) {
 }
 
 export async function cancelScheduledGame(id, superuserKey) {
-  const res = await fetch(BASE + `/schedule/${id}`, {
+  const res = await superuserFetch(BASE + `/schedule/${id}`, {
     method: 'DELETE',
     headers: { 'X-Superuser-Key': superuserKey },
   });
@@ -888,7 +980,7 @@ export async function getMatchRatings(matchId) {
 }
 
 export async function getStoredReplays(superuserKey) {
-  const res = await fetch(BASE + '/replays/stored', {
+  const res = await superuserFetch(BASE + '/replays/stored', {
     headers: { 'x-superuser-key': superuserKey },
   });
   if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Request failed: ${res.status}`); }
@@ -896,7 +988,7 @@ export async function getStoredReplays(superuserKey) {
 }
 
 export async function extendReplayExpiry(matchId, days, superuserKey) {
-  const res = await fetch(BASE + `/replays/${matchId}/extend`, {
+  const res = await superuserFetch(BASE + `/replays/${matchId}/extend`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ days }),
@@ -936,7 +1028,7 @@ export async function getTournamentById(id) {
 }
 
 export async function createTournament(data, superuserKey) {
-  const res = await fetch(BASE + '/tournaments', {
+  const res = await superuserFetch(BASE + '/tournaments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify(data),
@@ -946,7 +1038,7 @@ export async function createTournament(data, superuserKey) {
 }
 
 export async function addTournamentParticipant(tournamentId, accountId, superuserKey) {
-  const res = await fetch(BASE + `/tournaments/${tournamentId}/participants`, {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/participants`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ accountId }),
@@ -956,7 +1048,7 @@ export async function addTournamentParticipant(tournamentId, accountId, superuse
 }
 
 export async function removeTournamentParticipant(tournamentId, accountId, superuserKey) {
-  const res = await fetch(BASE + `/tournaments/${tournamentId}/participants/${accountId}`, {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/participants/${accountId}`, {
     method: 'DELETE',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -965,7 +1057,7 @@ export async function removeTournamentParticipant(tournamentId, accountId, super
 }
 
 export async function generateTournamentBracket(tournamentId, superuserKey) {
-  const res = await fetch(BASE + `/tournaments/${tournamentId}/generate`, {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/generate`, {
     method: 'POST',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -974,7 +1066,7 @@ export async function generateTournamentBracket(tournamentId, superuserKey) {
 }
 
 export async function setTournamentMatchWinner(matchId, winnerId, superuserKey) {
-  const res = await fetch(BASE + `/tournament-matches/${matchId}/winner`, {
+  const res = await superuserFetch(BASE + `/tournament-matches/${matchId}/winner`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ winnerId }),
@@ -984,7 +1076,7 @@ export async function setTournamentMatchWinner(matchId, winnerId, superuserKey) 
 }
 
 export async function clearTournamentMatchWinner(matchId, superuserKey) {
-  const res = await fetch(BASE + `/tournament-matches/${matchId}/winner`, {
+  const res = await superuserFetch(BASE + `/tournament-matches/${matchId}/winner`, {
     method: 'DELETE',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -993,7 +1085,7 @@ export async function clearTournamentMatchWinner(matchId, superuserKey) {
 }
 
 export async function linkTournamentMatch(matchId, inhouseMatchId, superuserKey) {
-  const res = await fetch(BASE + `/tournament-matches/${matchId}/link`, {
+  const res = await superuserFetch(BASE + `/tournament-matches/${matchId}/link`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ inhouseMatchId }),
@@ -1003,7 +1095,7 @@ export async function linkTournamentMatch(matchId, inhouseMatchId, superuserKey)
 }
 
 export async function reseedTournamentParticipants(tournamentId, orderedAccountIds, superuserKey) {
-  const res = await fetch(BASE + `/tournaments/${tournamentId}/reseed`, {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/reseed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ orderedAccountIds }),
@@ -1013,7 +1105,7 @@ export async function reseedTournamentParticipants(tournamentId, orderedAccountI
 }
 
 export async function deleteTournament(id, superuserKey) {
-  const res = await fetch(BASE + `/tournaments/${id}`, {
+  const res = await superuserFetch(BASE + `/tournaments/${id}`, {
     method: 'DELETE',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -1031,7 +1123,7 @@ export async function triggerRankSync(superuserKey) {
   // as a fallback for non-browser callers. Surface a clearer message on 403
   // (session expired) so the user knows to re-log-in instead of seeing the
   // generic "Invalid superuser key" string.
-  const res = await fetch(BASE + '/ranks/sync', {
+  const res = await superuserFetch(BASE + '/ranks/sync', {
     method: 'POST',
     credentials: 'include',
     headers: { 'x-superuser-key': superuserKey || '' },
@@ -1045,7 +1137,7 @@ export async function triggerRankSync(superuserKey) {
 }
 
 export async function setManualRank(accountId, rankTier, leaderboardRank, superuserKey) {
-  const res = await fetch(BASE + '/ranks/manual', {
+  const res = await superuserFetch(BASE + '/ranks/manual', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ accountId, rankTier, leaderboardRank }),
@@ -1056,7 +1148,7 @@ export async function setManualRank(accountId, rankTier, leaderboardRank, superu
 }
 
 export async function clearPlayerRank(accountId, superuserKey) {
-  const res = await fetch(BASE + `/ranks/${accountId}`, {
+  const res = await superuserFetch(BASE + `/ranks/${accountId}`, {
     method: 'DELETE',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -1067,7 +1159,7 @@ export async function clearPlayerRank(accountId, superuserKey) {
 
 export async function getSignupRequests(superuserKey, status = null) {
   const url = BASE + `/admin/signups` + (status ? `?status=${status}` : '');
-  const res = await fetch(url, { headers: { 'x-superuser-key': superuserKey } });
+  const res = await superuserFetch(url, { headers: { 'x-superuser-key': superuserKey } });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Failed to fetch signups');
   return data;
@@ -1082,7 +1174,7 @@ export async function getWeekendTournament(id) {
 }
 
 export async function createWeekendTournament(data, superuserKey) {
-  const res = await fetch(BASE + '/weekend-tournaments', {
+  const res = await superuserFetch(BASE + '/weekend-tournaments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify(data),
@@ -1093,7 +1185,7 @@ export async function createWeekendTournament(data, superuserKey) {
 }
 
 export async function updateWeekendTournament(id, data, superuserKey) {
-  const res = await fetch(BASE + `/weekend-tournaments/${id}`, {
+  const res = await superuserFetch(BASE + `/weekend-tournaments/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify(data),
@@ -1104,7 +1196,7 @@ export async function updateWeekendTournament(id, data, superuserKey) {
 }
 
 export async function announceWeekendTournament(id, superuserKey) {
-  const res = await fetch(BASE + `/weekend-tournaments/${id}/announce`, {
+  const res = await superuserFetch(BASE + `/weekend-tournaments/${id}/announce`, {
     method: 'POST',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -1124,7 +1216,7 @@ export async function getSeasonTiers(seasonId) {
   return fetchJson(`/seasons/${seasonId}/tiers`);
 }
 export async function ensureSeasonTiers(seasonId, superuserKey) {
-  const res = await fetch(BASE + `/seasons/${seasonId}/tiers/ensure`, {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/tiers/ensure`, {
     method: 'POST',
     headers: { 'x-superuser-key': superuserKey },
   });
@@ -1133,7 +1225,7 @@ export async function ensureSeasonTiers(seasonId, superuserKey) {
   return d;
 }
 export async function updateSeasonTier(seasonId, tierNumber, fields, superuserKey) {
-  const res = await fetch(BASE + `/seasons/${seasonId}/tiers/${tierNumber}`, {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/tiers/${tierNumber}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify(fields),
@@ -1143,7 +1235,7 @@ export async function updateSeasonTier(seasonId, tierNumber, fields, superuserKe
   return d;
 }
 export async function placeAllPlayersInTiers(seasonId, force, superuserKey) {
-  const res = await fetch(BASE + `/seasons/${seasonId}/tiers/place-all`, {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/tiers/place-all`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ force: !!force }),
@@ -1156,7 +1248,7 @@ export async function getSeasonTierPlayers(seasonId, tierNumber) {
   return fetchJson(`/seasons/${seasonId}/tiers/${tierNumber}/players`);
 }
 export async function overridePlayerTier(seasonId, accountId, tierNumber, superuserKey) {
-  const res = await fetch(BASE + `/seasons/${seasonId}/tiers/override`, {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/tiers/override`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ accountId, tierNumber }),
@@ -1217,7 +1309,7 @@ export async function withdrawFromTournament(tournamentId, accountId) {
 }
 
 export async function updateSignupRequest(id, { status, adminNotes }, superuserKey) {
-  const res = await fetch(BASE + `/admin/signups/${id}`, {
+  const res = await superuserFetch(BASE + `/admin/signups/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
     body: JSON.stringify({ status, adminNotes }),
@@ -1243,7 +1335,7 @@ export async function setSeasonEndConditions(seasonId, { end_date, match_count_l
 }
 
 export async function closeSeasonApi(seasonId, superuserKey) {
-  const res = await fetch(BASE + `/seasons/${seasonId}/close`, {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/close`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
   });
@@ -1253,7 +1345,7 @@ export async function closeSeasonApi(seasonId, superuserKey) {
 }
 
 export async function reannounceSeasonApi(seasonId, superuserKey) {
-  const res = await fetch(BASE + `/seasons/${seasonId}/announce`, {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/announce`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
   });

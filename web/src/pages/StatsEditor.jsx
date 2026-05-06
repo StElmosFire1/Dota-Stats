@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getMatch } from '../api';
+import { getMatch, superuserFetch } from '../api';
 import { useSuperuser } from '../context/SuperuserContext';
 import { ALL_HEROES, getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -8,7 +8,7 @@ import { formatHeroName } from '../utils/heroes';
 const BASE = '/api';
 
 async function apiUpdateMatchDetails(matchId, body, key) {
-  const res = await fetch(`${BASE}/matches/${matchId}/match-details`, {
+  const res = await superuserFetch(`${BASE}/matches/${matchId}/match-details`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': key },
     body: JSON.stringify(body),
@@ -19,7 +19,7 @@ async function apiUpdateMatchDetails(matchId, body, key) {
 }
 
 async function apiUpdatePlayerStats(matchId, players, key) {
-  const res = await fetch(`${BASE}/matches/${matchId}/player-stats`, {
+  const res = await superuserFetch(`${BASE}/matches/${matchId}/player-stats`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': key },
     body: JSON.stringify({ players }),
@@ -30,7 +30,7 @@ async function apiUpdatePlayerStats(matchId, players, key) {
 }
 
 async function apiUpdateMatchDraft(matchId, entries, key) {
-  const res = await fetch(`${BASE}/matches/${matchId}/draft`, {
+  const res = await superuserFetch(`${BASE}/matches/${matchId}/draft`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': key },
     body: JSON.stringify({ entries }),

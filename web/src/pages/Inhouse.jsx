@@ -5,6 +5,7 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
 import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
+import { superuserFetch } from '../api';
 
 const POSITIONS = [
   { id: 1, label: 'P1 — Carry' },
@@ -16,7 +17,9 @@ const POSITIONS = [
 
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
-  const res = await fetch(`/api${path}`, { ...opts, headers, credentials: 'include' });
+  const hasSuperuserHeader = Object.keys(headers).some(k => k.toLowerCase() === 'x-superuser-key');
+  const fetcher = hasSuperuserHeader ? superuserFetch : fetch;
+  const res = await fetcher(`/api${path}`, { ...opts, headers, credentials: 'include' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;

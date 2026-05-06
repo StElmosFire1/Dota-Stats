@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
+import { superuserFetch } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
@@ -119,7 +120,7 @@ export default function RecordMatch() {
     setSubmitting(true);
     try {
       const duration = (parseInt(durationMins) || 0) * 60 + (parseInt(durationSecs) || 0);
-      const r = await fetch('/api/admin/matches/manual', {
+      const r = await superuserFetch('/api/admin/matches/manual', {
         method: 'POST',
         headers: { ...authHeader, 'Content-Type': 'application/json' },
         body: JSON.stringify({
