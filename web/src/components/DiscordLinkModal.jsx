@@ -26,6 +26,7 @@ export function oauthErrorMessage(code) {
     case 'oauth_error':          return 'Discord sign-in failed. Please try again.';
     case 'signed_out':           return 'Your Steam session expired. Sign in again, then re-try.';
     case 'already_linked_other': return 'Your account is already linked to a different Discord ID. Update it from Settings → Profile.';
+    case 'discord_id_taken':     return 'That Discord account is already linked to another player. If this is your account, ask an admin to help reconcile it.';
     case 'dm_blocked':           return "We found your Discord account but couldn't DM you. Join the OCE Inhouse server and enable \"Direct Messages from server members\" in Privacy Settings, then try again.";
     case 'not_found':            return "We couldn't verify that Discord account. Try again, or paste your User ID below.";
     case 'not_ready':            return 'The Discord bot is starting up. Try again in a moment.';

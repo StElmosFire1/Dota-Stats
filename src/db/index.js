@@ -826,6 +826,46 @@ async function init() {
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_source VARCHAR(16) DEFAULT NULL`);
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_updated_at TIMESTAMPTZ DEFAULT NULL`);
 
+    // Task 103 — enforce one-Discord-per-account at the DB layer too. Prevents
+    // the race where two POST /api/me/link-discord calls slip past the
+    // application-level cross-account check and both write the same
+    // discord_id. Partial index so that empty / NULL discord_id values (the
+    // "not yet linked" state) are still allowed for many accounts.
+    //
+    // If pre-existing duplicates exist, the CREATE will throw — surface the
+    // collisions to admins via the log so they can be reconciled by hand
+    // rather than silently picking a winner.
+    try {
+      await p.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_nicknames_discord_id_unique
+        ON nicknames(TRIM(discord_id))
+        WHERE discord_id IS NOT NULL AND TRIM(discord_id) <> ''
+      `);
+    } catch (err) {
+      try {
+        const dupes = await p.query(`
+          SELECT TRIM(discord_id) AS discord_id, ARRAY_AGG(account_id ORDER BY account_id) AS account_ids
+          FROM nicknames
+          WHERE discord_id IS NOT NULL AND TRIM(discord_id) <> ''
+          GROUP BY TRIM(discord_id)
+          HAVING COUNT(*) > 1
+        `);
+        if (dupes.rows.length > 0) {
+          console.error(
+            `[nicknames] Cannot create unique index on discord_id — ${dupes.rows.length} duplicate(s) need admin attention:`
+          );
+          for (const row of dupes.rows) {
+            console.error(`  discord_id=${row.discord_id} → accounts=${row.account_ids.join(', ')}`);
+          }
+        } else {
+          console.error('[nicknames] Failed to create unique index on discord_id:', err.message);
+        }
+      } catch (innerErr) {
+        console.error('[nicknames] Failed to create unique index on discord_id:', err.message);
+        console.error('[nicknames] Duplicate diagnostic also failed:', innerErr.message);
+      }
+    }
+
     // Backfill: link discord_id into nicknames for players registered via !register
     // who already have a players table entry but no nicknames row or empty discord_id.
     await p.query(`
@@ -3865,6 +3905,37 @@ async function getDiscordIdByAccountId(accountId32) {
     [accountId32.toString()]
   );
   return r2.rows[0]?.discord_id || null;
+}
+
+// Task 103 — return every account_id currently bound to the given Discord ID.
+// Used by POST/PUT /api/me/link-discord and the OAuth callback to refuse a
+// link when the same Discord ID is already on a *different* player's account.
+// Includes both the nicknames table (canonical) and the legacy players table
+// (populated by !register) so an old !register-only link still blocks a
+// hijack attempt via the modal/OAuth.
+async function findAccountIdsByDiscordId(discordId) {
+  if (!discordId) return [];
+  const p = getPool();
+  const id = (discordId || '').toString().trim();
+  if (!id) return [];
+  const out = new Set();
+  const r = await p.query(
+    `SELECT account_id FROM nicknames
+     WHERE TRIM(discord_id) = $1 AND discord_id != '' AND account_id IS NOT NULL`,
+    [id]
+  );
+  for (const row of r.rows) {
+    if (row.account_id != null) out.add(String(row.account_id));
+  }
+  const r2 = await p.query(
+    `SELECT account_id_32 AS account_id FROM players
+     WHERE TRIM(discord_id) = $1 AND account_id_32 IS NOT NULL AND account_id_32 != ''`,
+    [id]
+  );
+  for (const row of r2.rows) {
+    if (row.account_id) out.add(String(row.account_id));
+  }
+  return Array.from(out);
 }
 
 async function getSteamByDiscordId(discordId) {
@@ -10227,6 +10298,7 @@ module.exports = {
   getNicknameByDiscordId,
   getDiscordIdByAccountId,
   getSteamByDiscordId,
+  findAccountIdsByDiscordId,
   getAllNicknames,
   scheduleGame,
   getUpcomingGames,

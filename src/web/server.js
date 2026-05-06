@@ -499,6 +499,15 @@ function createServer(startupStatus = {}) {
       if (existing === discordId) {
         return back({ discord_link: 'success', already: '1', username: discordUser.username || '' });
       }
+      // Task 103 — also refuse if a *different* account already owns this
+      // Discord ID. OAuth proves the caller owns the Discord account, but
+      // some other Steam account already has it bound — collapsing them is
+      // an admin operation, not a self-service one.
+      const owners = await db.findAccountIdsByDiscordId(discordId);
+      const otherOwner = owners.find((id) => String(id) !== String(accountId));
+      if (otherOwner) {
+        return back({ discord_link: 'error', reason: 'discord_id_taken' });
+      }
     } catch (err) {
       console.error('[discord-oauth] existing-link check failed:', err.message);
       return back({ discord_link: 'error', reason: 'db_error' });
@@ -522,6 +531,10 @@ function createServer(startupStatus = {}) {
     try {
       await db.linkOwnDiscordId(accountId, discordId);
     } catch (err) {
+      // Task 103 — race path against the partial unique index.
+      if (err && err.code === '23505') {
+        return back({ discord_link: 'error', reason: 'discord_id_taken' });
+      }
       console.error('[discord-oauth] save failed for account', accountId, ':', err.message);
       return back({ discord_link: 'error', reason: 'save_failed' });
     }
@@ -1069,6 +1082,18 @@ function createApiRouter(startupStatus = {}) {
       if (existing === raw) {
         return res.json({ ok: true, discord_id: existing, alreadyLinked: true });
       }
+      // Task 103 — refuse if a *different* account already owns this Discord
+      // ID. Without this check, two Steam accounts could both bind to the
+      // same discord_id and let an attacker who knows a victim's ID hijack
+      // DM-driven flows (MVP voting, post-match rating).
+      const owners = await db.findAccountIdsByDiscordId(raw);
+      const otherOwner = owners.find((id) => String(id) !== String(accountId));
+      if (otherOwner) {
+        return res.status(409).json({
+          error: 'That Discord ID is already linked to another player. If this is your account, ask an admin to help reconcile it.',
+          code: 'discord_id_taken',
+        });
+      }
     } catch (err) {
       console.error('[me/link-discord] existing-link check failed:', err.message);
       return res.status(503).json({ error: 'Could not check your existing link right now. Try again in a moment.' });
@@ -1098,6 +1123,17 @@ function createApiRouter(startupStatus = {}) {
       const saved = await db.linkOwnDiscordId(accountId, raw);
       res.json({ ok: true, discord_id: saved, verified_username: verification.username || null });
     } catch (err) {
+      // Task 103 — race path: another request slipped in between our
+      // findAccountIdsByDiscordId() check and this save and won the
+      // partial unique index (idx_nicknames_discord_id_unique). Surface
+      // the same friendly 409 the precheck would have returned instead
+      // of a generic 500.
+      if (err && err.code === '23505') {
+        return res.status(409).json({
+          error: 'That Discord ID is already linked to another player. If this is your account, ask an admin to help reconcile it.',
+          code: 'discord_id_taken',
+        });
+      }
       console.error('[me/link-discord] failed for account', accountId, ':', err.message);
       res.status(500).json({ error: 'Could not save your Discord ID. Try again in a moment.' });
     }
@@ -1132,6 +1168,18 @@ function createApiRouter(startupStatus = {}) {
       if (existing === raw) {
         return res.json({ ok: true, discord_id: existing, alreadyLinked: true });
       }
+      // Task 103 — even on the re-link path, refuse if a *different* account
+      // already owns this Discord ID. The DM-driven flows (MVP voting,
+      // post-match rating) lookup by discord_id, so two accounts sharing the
+      // same id makes the lookup ambiguous and exploitable.
+      const owners = await db.findAccountIdsByDiscordId(raw);
+      const otherOwner = owners.find((id) => String(id) !== String(accountId));
+      if (otherOwner) {
+        return res.status(409).json({
+          error: 'That Discord ID is already linked to another player. If this is your account, ask an admin to help reconcile it.',
+          code: 'discord_id_taken',
+        });
+      }
     } catch (err) {
       console.error('[me/link-discord PUT] existing-link check failed:', err.message);
       return res.status(503).json({ error: 'Could not check your existing link right now. Try again in a moment.' });
@@ -1158,6 +1206,13 @@ function createApiRouter(startupStatus = {}) {
       const saved = await db.linkOwnDiscordId(accountId, raw);
       res.json({ ok: true, discord_id: saved, verified_username: verification.username || null, relinked: true });
     } catch (err) {
+      // Task 103 — race path against the partial unique index.
+      if (err && err.code === '23505') {
+        return res.status(409).json({
+          error: 'That Discord ID is already linked to another player. If this is your account, ask an admin to help reconcile it.',
+          code: 'discord_id_taken',
+        });
+      }
       console.error('[me/link-discord PUT] failed for account', accountId, ':', err.message);
       res.status(500).json({ error: 'Could not save your Discord ID. Try again in a moment.' });
     }

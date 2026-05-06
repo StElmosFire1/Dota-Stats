@@ -592,6 +592,41 @@ async function init() {
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_source VARCHAR(16) DEFAULT NULL`);
     await p.query(`ALTER TABLE nicknames ADD COLUMN IF NOT EXISTS dota_rank_updated_at TIMESTAMPTZ DEFAULT NULL`);
 
+    // Task 103 — enforce one-Discord-per-account at the DB layer. Mirrors the
+    // full edition. Partial index so empty / NULL discord_id values stay
+    // allowed for many accounts. If pre-existing duplicates exist, the CREATE
+    // throws and we surface them to admins via the log.
+    try {
+      await p.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_nicknames_discord_id_unique
+        ON nicknames(TRIM(discord_id))
+        WHERE discord_id IS NOT NULL AND TRIM(discord_id) <> ''
+      `);
+    } catch (err) {
+      try {
+        const dupes = await p.query(`
+          SELECT TRIM(discord_id) AS discord_id, ARRAY_AGG(account_id ORDER BY account_id) AS account_ids
+          FROM nicknames
+          WHERE discord_id IS NOT NULL AND TRIM(discord_id) <> ''
+          GROUP BY TRIM(discord_id)
+          HAVING COUNT(*) > 1
+        `);
+        if (dupes.rows.length > 0) {
+          console.error(
+            `[nicknames] Cannot create unique index on discord_id — ${dupes.rows.length} duplicate(s) need admin attention:`
+          );
+          for (const row of dupes.rows) {
+            console.error(`  discord_id=${row.discord_id} → accounts=${row.account_ids.join(', ')}`);
+          }
+        } else {
+          console.error('[nicknames] Failed to create unique index on discord_id:', err.message);
+        }
+      } catch (innerErr) {
+        console.error('[nicknames] Failed to create unique index on discord_id:', err.message);
+        console.error('[nicknames] Duplicate diagnostic also failed:', innerErr.message);
+      }
+    }
+
     // Backfill: link discord_id into nicknames for players registered via !register
     // who already have a players table entry but no nicknames row or empty discord_id.
     await p.query(`
