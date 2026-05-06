@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
+import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
+import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
 
 const POSITIONS = [
   { id: 1, label: 'P1 — Carry' },
@@ -57,22 +59,33 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
     drafted: { bg: 'rgba(33,150,243,0.15)', color: '#2196f3', label: 'Drafted' },
   };
   const s = statusColors[player.status] || statusColors.registered;
+  // v5.92 — every name routes through the shared resolver so we never
+  // render `Player <raw id>` unless every other source is missing.
+  const displayName = resolvePlayerDisplayName(player);
 
   return (
     <div style={{
+      position: 'relative',
       display: 'flex',
       alignItems: 'center',
       gap: 12,
-      padding: '10px 14px',
-      background: isCurrentUser ? 'rgba(255,193,7,0.08)' : 'var(--bg-elevated)',
-      border: `1px solid ${isCurrentUser ? 'rgba(255,193,7,0.3)' : 'var(--border)'}`,
+      padding: '10px 14px 10px 18px',
+      background: isCurrentUser ? 'color-mix(in srgb, var(--brass) 10%, var(--bg-card))' : 'var(--bg-card)',
+      border: `1px solid ${isCurrentUser ? 'color-mix(in srgb, var(--brass) 45%, var(--border))' : 'var(--border)'}`,
       borderRadius: 6,
       marginBottom: 6,
+      boxShadow: isCurrentUser ? '0 1px 6px color-mix(in srgb, var(--brass) 15%, transparent)' : 'none',
     }}>
+      {/* Brass left-rule (Hybrid Court & Pitch motif). */}
+      <span aria-hidden="true" style={{
+        position: 'absolute', left: 0, top: 10, bottom: 10, width: 2, borderRadius: 2,
+        background: `linear-gradient(to bottom, transparent, ${isCurrentUser ? 'var(--amber)' : 'var(--brass)'} 30%, ${isCurrentUser ? 'var(--amber)' : 'var(--brass)'} 70%, transparent)`,
+        opacity: isCurrentUser ? 0.95 : 0.55,
+      }} />
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-serif)', fontSize: 15 }}>
           <Link to={`/player/${player.account_id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-            {player.nickname || `Player ${player.account_id}`}
+            {displayName}
           </Link>
           {isCaptain && <span style={{ fontSize: 11, padding: '2px 6px', background: '#ff9800', color: '#000', borderRadius: 3, fontWeight: 700 }}>CAPTAIN</span>}
           {player.team > 0 && <span style={{ fontSize: 11, padding: '2px 6px', background: player.team === 1 ? '#2e7d32' : '#c62828', color: '#fff', borderRadius: 3 }}>Team {player.team}</span>}
@@ -121,6 +134,10 @@ export default function Inhouse() {
   // "Sign in with Steam to join" gate even after a successful sign-in.
   const myAccountId = steamUser?.accountId ? Number(steamUser.accountId) : null;
   const pollRef = useRef(null);
+
+  // v5.92 — sound + browser-notification alerts on every event that needs
+  // a human input. Mute toggle in the lobby header persists in localStorage.
+  const { muted, toggleMute } = useInhouseAlerts({ session, players, myAccountId, draftStatus });
 
   const refresh = useCallback(async () => {
     try {
@@ -345,9 +362,36 @@ export default function Inhouse() {
     <div style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0 }}>Inhouse Lobby</h1>
-          <p style={{ color: 'var(--text-muted)', margin: '6px 0 0' }}>FACEIT-style match accept, captain draft, and direct server connect.</p>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', letterSpacing: 0.2 }}>Inhouse Lobby</h1>
+          <div aria-hidden="true" style={{
+            height: 4, marginTop: 6, width: 220, maxWidth: '100%',
+            background:
+              'linear-gradient(to right, var(--brass), transparent 30%) top/100% 2px no-repeat,' +
+              'linear-gradient(to right, var(--border), var(--border)) bottom/100% 1px no-repeat',
+          }} />
+          <p style={{ color: 'var(--text-muted)', margin: '8px 0 0' }}>FACEIT-style match accept, captain draft, and direct server connect.</p>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {/* v5.92 — mute toggle for inhouse sound alerts. */}
+          <button
+            onClick={toggleMute}
+            title={muted
+              ? 'Chime is muted — click to re-enable. Browser notifications still fire either way.'
+              : 'Chime is on — click to mute. Browser notifications still fire either way.'}
+            aria-pressed={!muted}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 10px', fontSize: 12, fontWeight: 600, letterSpacing: 0.4,
+              background: muted ? 'var(--bg-card)' : 'color-mix(in srgb, var(--brass) 14%, transparent)',
+              color: muted ? 'var(--text-muted)' : 'var(--brass)',
+              border: `1px solid ${muted ? 'var(--border)' : 'color-mix(in srgb, var(--brass) 45%, transparent)'}`,
+              borderRadius: 4, cursor: 'pointer',
+              fontFamily: 'var(--font-condensed, var(--font))', textTransform: 'uppercase',
+            }}
+          >
+            <span aria-hidden="true">{muted ? '🔕' : '🔔'}</span>
+            {muted ? 'Chime muted' : 'Chime on'}
+          </button>
         {serverStatus && (
           <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 6, fontSize: 12, border: '1px solid var(--border)' }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Dedicated Server</div>
@@ -358,6 +402,7 @@ export default function Inhouse() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {error && <div style={{ padding: 12, background: 'rgba(244,67,54,0.1)', border: '1px solid #f44336', borderRadius: 6, marginBottom: 16, color: '#f44336' }}>{error}</div>}
@@ -467,7 +512,13 @@ export default function Inhouse() {
             {isAdmin && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {session.status === 'open' && players.length >= 2 && (
-                  <button onClick={startAcceptPhase} style={{ padding: '6px 12px', background: '#ff9800', color: '#000', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Start Accept Phase</button>
+                  <button
+                    onClick={startAcceptPhase}
+                    title="Locks the lobby and gives every signed-in player a 60-second window to click Accept. Anyone who doesn't accept in time is dropped from the session."
+                    style={{ padding: '6px 12px', background: '#ff9800', color: '#000', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    Start Accept Phase
+                  </button>
                 )}
                 {session.status === 'accepting' && acceptedCount >= 2 && (
                   <button onClick={selectCaptains} style={{ padding: '6px 12px', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Select Captains ({acceptedCount} ready)</button>
@@ -584,63 +635,165 @@ export default function Inhouse() {
           )}
 
           {/* Players / teams */}
-          {session.status === 'drafting' || session.status === 'in_progress' || session.status === 'completed' ? (
-            <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div>
-                <h3 style={{ marginTop: 0, color: '#4caf50' }}>Team 1{session.team1_is_radiant ? ' (Radiant)' : ' (Dire)'}</h3>
-                {team1.sort((a,b)=>(a.pick_order||0)-(b.pick_order||0)).map(p => (
-                  <PlayerRow key={p.account_id} player={p} session={session} isCurrentUser={Number(p.account_id) === myAccountId}
-                    isCaptain={Number(session.captain1_account_id) === Number(p.account_id)} />
-                ))}
-                {team1.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No picks yet</div>}
+          {session.status === 'drafting' || session.status === 'in_progress' || session.status === 'completed' ? (() => {
+            // v5.92 — Captain-draft layout brought up to the Hybrid · Court &
+            // Pitch sandbox composition: a timer / turn-indicator strip
+            // anchored at the top, then a three-column board with vertical
+            // roster panels on the left and right and the unpicked-player
+            // pool centred between them. Each roster panel inherits the
+            // brass top-rule, navy card surface, and serif lockup that the
+            // sandbox mockup uses for team blocks. We compute captain /
+            // turn state once here so both the top strip and the centre
+            // pool can label themselves consistently.
+            const cap1Id = Number(session.captain1_account_id);
+            const cap2Id = Number(session.captain2_account_id);
+            const cap1Player = players.find(p => Number(p.account_id) === cap1Id);
+            const cap2Player = players.find(p => Number(p.account_id) === cap2Id);
+            const cap1Name = cap1Player ? resolvePlayerDisplayName(cap1Player) : resolveDisplayName(cap1Id);
+            const cap2Name = cap2Player ? resolvePlayerDisplayName(cap2Player) : resolveDisplayName(cap2Id);
+            const myCaptainTeam = myAccountId === cap1Id ? 1 : myAccountId === cap2Id ? 2 : null;
+            const turn = draftStatus?.currentPickerTeam ?? null;
+            const isMyTurn = myCaptainTeam !== null && turn === myCaptainTeam;
+            const canDraft = isAdmin || isMyTurn;
+            const turnName = turn === 1 ? cap1Name : turn === 2 ? cap2Name : null;
+            const isDrafting = session.status === 'drafting';
+            const team1Label = `Team 1${session.team1_is_radiant ? ' · Radiant' : ' · Dire'}`;
+            const team2Label = `Team 2${session.team1_is_radiant ? ' · Dire' : ' · Radiant'}`;
+
+            const RosterPanel = ({ teamNum, label, accent, capName, picks }) => (
+              <div style={{
+                position: 'relative',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderTop: `3px solid ${accent}`,
+                borderRadius: 8,
+                padding: '14px 12px 12px',
+                minHeight: 320,
+              }}>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{
+                    fontFamily: 'var(--font-condensed, var(--font))',
+                    fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase',
+                    color: 'var(--text-muted)', fontWeight: 600,
+                  }}>{label}</div>
+                  <div style={{
+                    fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
+                    color: 'var(--text-primary)', marginTop: 2,
+                    display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap',
+                  }}>
+                    <span style={{ color: accent }}>★</span>
+                    <span>{capName}</span>
+                    <span style={{ fontSize: 10, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 1, color: 'var(--text-muted)' }}>CAPTAIN</span>
+                  </div>
+                </div>
+                {picks.length === 0
+                  ? <div style={{ color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic', padding: '6px 4px' }}>No picks yet</div>
+                  : picks.map(p => (
+                      <PlayerRow
+                        key={p.account_id} player={p} session={session}
+                        isCurrentUser={Number(p.account_id) === myAccountId}
+                        isCaptain={Number(p.account_id) === (teamNum === 1 ? cap1Id : cap2Id)}
+                      />
+                    ))}
               </div>
-              <div>
-                <h3 style={{ marginTop: 0, color: '#f44336' }}>Team 2{session.team1_is_radiant ? ' (Dire)' : ' (Radiant)'}</h3>
-                {team2.sort((a,b)=>(a.pick_order||0)-(b.pick_order||0)).map(p => (
-                  <PlayerRow key={p.account_id} player={p} session={session} isCurrentUser={Number(p.account_id) === myAccountId}
-                    isCaptain={Number(session.captain2_account_id) === Number(p.account_id)} />
-                ))}
-                {team2.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No picks yet</div>}
-              </div>
-              {session.status === 'drafting' && undrafted.length > 0 && (() => {
-                // v5.75: figure out whether the signed-in user is one of the
-                // two captains and whether it's their turn to pick.
-                const cap1Id = Number(session.captain1_account_id);
-                const cap2Id = Number(session.captain2_account_id);
-                const myCaptainTeam = myAccountId === cap1Id ? 1 : myAccountId === cap2Id ? 2 : null;
-                const turn = draftStatus?.currentPickerTeam ?? null;
-                const isMyTurn = myCaptainTeam !== null && turn === myCaptainTeam;
-                const canDraft = isAdmin || isMyTurn;
-                const cap1Name = players.find(p => Number(p.account_id) === cap1Id)?.nickname || 'Captain 1';
-                const cap2Name = players.find(p => Number(p.account_id) === cap2Id)?.nickname || 'Captain 2';
-                const turnName = turn === 1 ? cap1Name : turn === 2 ? cap2Name : null;
-                return (
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                      <h3 style={{ margin: 0 }}>Unpicked Players</h3>
-                      {turn && (
-                        <div style={{ padding: '6px 12px', borderRadius: 4, fontWeight: 700, fontSize: 13,
-                          background: isMyTurn ? 'color-mix(in srgb, var(--amber) 18%, transparent)' : 'var(--bg-elevated)',
-                          color: isMyTurn ? 'var(--amber)' : 'var(--text-muted)',
-                          border: `1px solid ${isMyTurn ? 'var(--amber)' : 'var(--border)'}` }}>
-                          {isMyTurn ? '⚡ Your pick!' : `Waiting for ${turnName} (Team ${turn})…`}
-                        </div>
-                      )}
+            );
+
+            return (
+              <div style={{ marginTop: 20 }}>
+                {/* Timer / turn-indicator strip — anchored at the top of the draft board. */}
+                {isDrafting && (
+                  <div style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    borderTop: '3px solid var(--brass)',
+                    borderRadius: 8,
+                    padding: '12px 16px',
+                    marginBottom: 14,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: 12, flexWrap: 'wrap',
+                  }}>
+                    <div>
+                      <div style={{
+                        fontFamily: 'var(--font-condensed, var(--font))',
+                        fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase',
+                        color: 'var(--text-muted)', fontWeight: 600,
+                      }}>Captain Draft</div>
+                      <div style={{
+                        fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700,
+                        color: 'var(--text-primary)', marginTop: 2,
+                      }}>
+                        {undrafted.length > 0 ? `${undrafted.length} player${undrafted.length === 1 ? '' : 's'} remaining` : 'Draft complete'}
+                      </div>
                     </div>
-                    {isMyTurn && !isAdmin && (
+                    {turn && undrafted.length > 0 && (
+                      <div style={{
+                        padding: '8px 14px', borderRadius: 4, fontWeight: 700, fontSize: 13,
+                        background: isMyTurn ? 'color-mix(in srgb, var(--amber) 18%, transparent)' : 'var(--bg-secondary)',
+                        color: isMyTurn ? 'var(--amber)' : 'var(--text-secondary)',
+                        border: `1px solid ${isMyTurn ? 'var(--amber)' : 'var(--border)'}`,
+                        fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 0.6, textTransform: 'uppercase',
+                      }}>
+                        {isMyTurn ? '⚡ Your pick' : `On the clock · ${turnName} (Team ${turn})`}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Three-column board: roster · pool · roster. Stacks on narrow screens. */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(220px, 1fr) minmax(260px, 1.4fr) minmax(220px, 1fr)',
+                  gap: 14,
+                }} className="inhouse-draft-board">
+                  <RosterPanel
+                    teamNum={1} label={team1Label} accent="#4caf50" capName={cap1Name}
+                    picks={team1.sort((a,b)=>(a.pick_order||0)-(b.pick_order||0))}
+                  />
+
+                  {/* Centre pool — unpicked players. */}
+                  <div style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    borderTop: '3px solid var(--brass)',
+                    borderRadius: 8,
+                    padding: '14px 12px 12px',
+                    minHeight: 320,
+                  }}>
+                    <div style={{
+                      fontFamily: 'var(--font-condensed, var(--font))',
+                      fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase',
+                      color: 'var(--text-muted)', fontWeight: 600, marginBottom: 2,
+                    }}>The Pool</div>
+                    <div style={{
+                      fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
+                      color: 'var(--text-primary)', marginBottom: 10,
+                    }}>
+                      Unpicked players {undrafted.length > 0 ? `(${undrafted.length})` : ''}
+                    </div>
+                    {isDrafting && isMyTurn && !isAdmin && undrafted.length > 0 && (
                       <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
                         Click → T{myCaptainTeam} on the player you want to pick onto your team.
                       </div>
                     )}
-                    {undrafted.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
-                      <PlayerRow key={p.account_id} player={p} session={session} isCurrentUser={Number(p.account_id) === myAccountId}
-                        canDraft={canDraft} onDraftPick={draftPick} />
-                    ))}
+                    {undrafted.length === 0
+                      ? <div style={{ color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic', padding: '6px 4px' }}>
+                          {isDrafting ? 'All players drafted.' : 'No unpicked players.'}
+                        </div>
+                      : undrafted.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
+                          <PlayerRow key={p.account_id} player={p} session={session}
+                            isCurrentUser={Number(p.account_id) === myAccountId}
+                            canDraft={isDrafting && canDraft} onDraftPick={draftPick} />
+                        ))}
                   </div>
-                );
-              })()}
-            </div>
-          ) : (
+
+                  <RosterPanel
+                    teamNum={2} label={team2Label} accent="#f44336" capName={cap2Name}
+                    picks={team2.sort((a,b)=>(a.pick_order||0)-(b.pick_order||0))}
+                  />
+                </div>
+              </div>
+            );
+          })() : (
             <div style={{ marginTop: 20 }}>
               <h3>Registered Players ({players.length})</h3>
               {players.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
