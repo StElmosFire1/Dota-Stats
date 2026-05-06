@@ -275,16 +275,32 @@ function createServer(startupStatus = {}) {
         return res.redirect('/?auth=invalid');
       }
 
-      const verifyParams = new URLSearchParams(req.query);
-      verifyParams.set('openid.mode', 'check_authentication');
+      // ⚠️  v5.80 — DO NOT rebuild the verify body from `req.query`.
+      // Steam OpenID 2.0 `check_authentication` requires the params we POST
+      // back to be byte-for-byte identical to what Steam signed. Round-
+      // tripping `req.url` → Express qs parser → JS object → URLSearchParams
+      // → `.toString()` re-encodes characters differently (e.g. `:` ↔ `%3A`,
+      // `+` ↔ `%20`), which silently invalidates the signature and causes
+      // Steam to return `is_valid:false`. The user lands at `?auth=invalid`
+      // even though their Steam credentials were correct. This was the v5.78
+      // mystery — trust-proxy was already fine; the verify body was the
+      // actual culprit. Pull the raw query string off req.url and only swap
+      // `openid.mode=id_res` for `check_authentication`. Same approach as
+      // the canonical `passport-steam` library.
+      const rawQuery = req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : '';
+      const verifyBody = rawQuery.replace(/(^|&)openid\.mode=id_res(&|$)/, '$1openid.mode=check_authentication$2');
       const verifyRes = await fetch(STEAM_OPEN_ID, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: verifyParams.toString(),
+        body: verifyBody,
       });
       const text = await verifyRes.text();
-      console.log(`[Steam Auth] /auth/steam/return — host=${req.get('host')} proto=${req.protocol} verify=${text.includes('is_valid:true') ? 'OK' : 'INVALID'} cookie-len=${(req.headers.cookie || '').length}`);
-      if (!text.includes('is_valid:true')) {
+      const isValid = text.includes('is_valid:true');
+      console.log(`[Steam Auth] /auth/steam/return — host=${req.get('host')} proto=${req.protocol} verify=${isValid ? 'OK' : 'INVALID'} cookie-len=${(req.headers.cookie || '').length} body-len=${verifyBody.length}`);
+      if (!isValid) {
+        // Log the upstream Steam response on a verify failure so the next
+        // PM2 line tells you exactly why (e.g. `is_valid:false\nns:...`).
+        console.warn('[Steam Auth] Steam check_authentication response:', text.replace(/\s+/g, ' ').slice(0, 300));
         return res.redirect('/?auth=invalid');
       }
 

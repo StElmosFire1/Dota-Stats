@@ -189,15 +189,20 @@ function createServer(startupStatus = {}) {
         return res.redirect('/?auth=invalid');
       }
 
-      const verifyParams = new URLSearchParams(req.query);
-      verifyParams.set('openid.mode', 'check_authentication');
+      // ⚠️  v5.80 — see main edition for the full root-cause comment.
+      // Steam OpenID requires the verify body to be byte-for-byte identical
+      // to what was signed; rebuilding from req.query re-encodes characters
+      // and silently invalidates the signature.
+      const rawQuery = req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : '';
+      const verifyBody = rawQuery.replace(/(^|&)openid\.mode=id_res(&|$)/, '$1openid.mode=check_authentication$2');
       const verifyRes = await fetch(STEAM_OPEN_ID, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: verifyParams.toString(),
+        body: verifyBody,
       });
       const text = await verifyRes.text();
       if (!text.includes('is_valid:true')) {
+        console.warn('[Steam Auth] check_authentication failed:', text.replace(/\s+/g, ' ').slice(0, 300));
         return res.redirect('/?auth=invalid');
       }
 
