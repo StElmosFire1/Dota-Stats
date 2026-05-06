@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import { TierBadge, MMR_TIERS } from './Leaderboard';
 import { ALL_HEROES, getHeroName } from '../heroNames';
@@ -1854,6 +1854,90 @@ function TierLadderPreview() {
   );
 }
 
+// v5.93 — Coaching Marketplace launch kill-switch.
+// Surfaces the `coaching_marketplace` feature flag in the admin Config tab so
+// it can be flipped between 'on' / 'preview' / 'off' without a DB shell if
+// anything goes sideways post-launch. 'preview' = visible to superusers only.
+function CoachingMarketplaceFlagPanel({ superuserKey }) {
+  const [state, setState] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    getAdminFeatureFlags(superuserKey)
+      .then(d => {
+        const row = (d.flags || []).find(f => f.key === 'coaching_marketplace');
+        setState(row?.state || 'off');
+      })
+      .catch(e => setMsg('Load failed: ' + e.message));
+  }, [superuserKey]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  async function handleSet(next) {
+    if (next === state) return;
+    setSaving(true);
+    setMsg('');
+    try {
+      await setFeatureFlag({ key: 'coaching_marketplace', state: next }, superuserKey);
+      setState(next);
+      setMsg(`Saved — flag is now ${next}.`);
+    } catch (e) {
+      setMsg('Save failed: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const OPTIONS = [
+    { value: 'on', label: 'On', hint: 'Live for everyone' },
+    { value: 'preview', label: 'Preview', hint: 'Superusers only' },
+    { value: 'off', label: 'Off', hint: 'Hidden + routes 404' },
+  ];
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-coaching-flag" className="section-title" style={{ marginBottom: 6 }}>
+        🎓 Coaching Marketplace — feature flag
+      </h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Single switch for the <code>coaching_marketplace</code> flag. Use this to roll back to
+        <code> preview</code> (superusers only) or <code>off</code> (hidden + every coaching API
+        route returns 404) if the launch needs to be paused. Flipping back to <code>on</code>
+        re-opens the marketplace immediately for all users.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {OPTIONS.map(opt => {
+          const active = state === opt.value;
+          return (
+            <button
+              key={opt.value}
+              className="btn"
+              disabled={saving || state === null}
+              onClick={() => handleSet(opt.value)}
+              title={opt.hint}
+              style={{
+                padding: '6px 14px',
+                borderColor: active ? 'var(--accent)' : 'var(--border)',
+                background: active ? 'rgba(245,158,11,0.15)' : 'var(--bg-card)',
+                color: active ? 'var(--accent)' : 'var(--text-primary)',
+                fontWeight: active ? 700 : 500,
+              }}
+            >
+              {opt.label}
+              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
+                {opt.hint}
+              </span>
+            </button>
+          );
+        })}
+        {msg && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{msg}</span>}
+      </div>
+    </section>
+  );
+}
+
 function WelcomeModalPanel({ superuserKey }) {
   const [cfg, setCfg] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -2324,6 +2408,7 @@ export default function AdminPanel() {
     { label: 'Welcome Modal (CMS)', tab: 'config', anchor: 'ap-anchor-welcome-modal', icon: '📣', kw: 'popup intro onboarding cta' },
     { label: 'Home Banner (CMS)', tab: 'config', anchor: 'ap-anchor-home-banner', icon: '🪧', kw: 'home banner hero ad announcement dismissable closeable' },
     { label: 'Tier Ladder Preview', tab: 'config', anchor: 'ap-anchor-tier-ladder', icon: '🎖️', kw: 'rank tier symbol badge ladder reference' },
+    { label: 'Coaching Marketplace Flag', tab: 'config', anchor: 'ap-anchor-coaching-flag', icon: '🎓', kw: 'coaching marketplace feature flag toggle on off preview kill switch rollback' },
     { label: 'Draft Sandbox', tab: 'steambot', anchor: 'ap-anchor-draft-sandbox', icon: '🎮', kw: 'draft pick captain test simulator placeholder dummy lobby inhouse' },
     { label: 'Dota 2 Rank Management', tab: 'users', anchor: 'ap-anchor-rank-management', icon: '🎖️', kw: 'rank tier players' },
     { label: 'Manage Nicknames (Players page)', tab: 'users', anchor: 'ap-anchor-nicknames', icon: '✏️', kw: 'nickname rename alias display name' },
@@ -2631,6 +2716,8 @@ export default function AdminPanel() {
       {activeTab === 'config' && (<>
       {/* ── Tier Ladder Preview ──────────────────────────────────────── */}
       <TierLadderPreview />
+      {/* ── Coaching Marketplace flag (v5.93 launch kill-switch) ─────── */}
+      <CoachingMarketplaceFlagPanel superuserKey={superuserKey} />
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
       <WelcomeModalPanel superuserKey={superuserKey} />

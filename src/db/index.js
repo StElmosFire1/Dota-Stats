@@ -958,9 +958,38 @@ async function init() {
          ('mvp_attitude_analytics', 'off', 'Wave 3: MVP rate + attitude trend analytics on player profiles'),
          ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions'),
          ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on'),
-         ('coaching_marketplace', 'off', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.')
+         ('coaching_marketplace', 'on', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.')
        ON CONFLICT (key) DO NOTHING`
     );
+
+    // v5.93 — Coaching Marketplace launch. One-shot migration: flip the flag
+    // from the original 'off' seed to 'on' for existing deployments where the
+    // ON CONFLICT DO NOTHING above would otherwise leave the row at its
+    // launch-day default. Gated on a sentinel in `site_settings` so the bump
+    // runs **exactly once per database** — without this guard, db.init() runs
+    // every process boot and would silently undo any admin who later flipped
+    // the flag back to 'off' via the kill-switch panel. Rows previously set
+    // to 'preview' are also left untouched.
+    {
+      const sentinel = await p.query(
+        `SELECT 1 FROM site_settings WHERE key = 'coaching_marketplace_v593_launched'`
+      );
+      if (sentinel.rows.length === 0) {
+        await p.query(
+          `UPDATE feature_flags
+             SET state = 'on',
+                 enabled_at = COALESCE(enabled_at, NOW()),
+                 updated_at = NOW()
+           WHERE key = 'coaching_marketplace' AND state = 'off'`
+        );
+        await p.query(
+          `INSERT INTO site_settings (key, value)
+           VALUES ('coaching_marketplace_v593_launched', $1)
+           ON CONFLICT (key) DO NOTHING`,
+          [new Date().toISOString()]
+        );
+      }
+    }
 
     // Profile customization (`profile_customization`) — per-account cosmetic
     // overrides that render on the public PlayerProfile page. Keyed by

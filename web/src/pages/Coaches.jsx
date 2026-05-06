@@ -54,7 +54,17 @@ export default function Coaches() {
   return (
     <div style={{ maxWidth: 1100, margin: '24px auto', padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>🎓 Coaching Marketplace</h1>
+        <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          🎓 Coaching Marketplace
+          {/* v5.93 — temporary "Beta" pill for the launch week. Safe to remove
+              one release cycle after coaching_marketplace flag flipped to 'on'. */}
+          <span style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: 0.6,
+            padding: '3px 8px', borderRadius: 999,
+            background: 'linear-gradient(135deg, #f59e0b, #c5a975)',
+            color: '#0d1424', textTransform: 'uppercase',
+          }}>Beta</span>
+        </h1>
         {eligibility?.signed_in && eligibility?.eligible ? (
           <Link
             to={eligibility.has_coach_row ? '/coach/edit' : '/coach/onboarding'}

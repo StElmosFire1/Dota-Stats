@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "5.93",
+    "title": "Coaching Marketplace opens to everyone",
+    "published_at": "2026-05-06",
+    "content": "The Coaching Marketplace is live for all signed-in users — the existing Stripe Connect onboarding, booking, and payout flows are unchanged; we've just flipped the gate.\n\n• **`coaching_marketplace` flag flipped on.** Seed value in `feature_flags` is now `'on'` for fresh installs, and a one-shot migration in `db.init()` bumps existing rows still sitting at the launch-day `'off'` to `'on'`. The migration is gated on a `coaching_marketplace_v593_launched` sentinel row in `site_settings`, so it runs **exactly once per database** — admins who later use the kill-switch panel to flip the flag back to `'preview'` or `'off'` will see their setting persist across restarts. Rows previously set to `'preview'` by an admin are also left untouched. `_coachingOn(req)` / `_flagOn('coaching_marketplace', req)` now resolve true for everyone, so `/coaches`, `/coach/onboarding`, `/coach/edit`, `/coaches/:id`, and the full `/api/coaching/*` route surface stop returning 404.\n\n• **Beta pill on the marketplace header.** `/coaches` now renders a small brass-amber `Beta` pill next to the 🎓 Coaching Marketplace title. Hardcoded for one release cycle so users can see the surface is freshly opened — comment in `web/src/pages/Coaches.jsx` flags the line for removal next version.\n\n• **Admin kill-switch added to Site Settings.** New `🎓 Coaching Marketplace — feature flag` panel under Admin Panel → Site Settings (anchor `ap-anchor-coaching-flag`, indexed in the admin search). Three buttons (`On` / `Preview` / `Off`) wired to the existing `getAdminFeatureFlags` + `setFeatureFlag` endpoints, so the marketplace can be rolled back to superusers-only or fully hidden without a DB shell if anything goes sideways post-launch.",
+    "author": "System"
+  },
+  {
     "version": "5.92",
     "title": "Tournament self-registration + paid buy-ins (Stripe) with withdraw/refund + participant entry badges",
     "published_at": "2026-05-06",
