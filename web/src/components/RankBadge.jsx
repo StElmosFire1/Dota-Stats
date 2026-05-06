@@ -51,43 +51,55 @@ function StarDots({ count, color }) {
   );
 }
 
-// ── MMR-Based Badge System (1.8 / Season 10 — `new_rank_theme` flag) ─────────
-// 8-tier badge system based on inhouse TrueSkill MMR (5000 baseline at S10).
-// Tier 5 (5000–5999) is the default starting band. Names are deliberate
-// placeholders — colour scheme + iconography is the visual hook. Updated
-// alongside the broader rank-theme refresh.
+// ── Heraldic MMR Badge System (v5.82) ────────────────────────────────────────
+// Heraldic names matching the leaderboard ladder (King → Peasant). King is
+// reserved for the #1 leaderboard player only — every other MMR maxes out at
+// Warlord regardless of how high. Thresholds are spread to span the full
+// realistic inhouse MMR range (start ~5000, ceiling ~8000+) so the ladder
+// actually distributes players instead of dumping everyone into the top tier.
 const MMR_BADGE_TIERS = [
-  { tier: 1, name: 'Tier I',    floor: 0,    color: '#6b7280', emoji: '🪨' },
-  { tier: 2, name: 'Tier II',   floor: 2000, color: '#84cc16', emoji: '🌱' },
-  { tier: 3, name: 'Tier III',  floor: 3000, color: '#22d3ee', emoji: '💧' },
-  { tier: 4, name: 'Tier IV',   floor: 4000, color: '#3b82f6', emoji: '🛡️' },
-  { tier: 5, name: 'Tier V',    floor: 5000, color: '#a855f7', emoji: '⚡' },
-  { tier: 6, name: 'Tier VI',   floor: 6000, color: '#f59e0b', emoji: '🔥' },
-  { tier: 7, name: 'Tier VII',  floor: 7000, color: '#f97316', emoji: '☀️' },
-  { tier: 8, name: 'Tier VIII', floor: 8000, color: '#ef4444', emoji: '👑' },
+  { tier: 9, name: 'King',       floor: 999999, color: '#f5d97a', emoji: '👑', leaderOnly: true },
+  { tier: 8, name: 'Warlord',    floor: 7000, color: '#e0b56b', emoji: '🪓' },
+  { tier: 7, name: 'Paladin',    floor: 6500, color: '#d4b878', emoji: '✨' },
+  { tier: 6, name: 'Templar',    floor: 6200, color: '#c9c9d9', emoji: '⚔️' },
+  { tier: 5, name: 'Knight',     floor: 5900, color: '#b8b8c8', emoji: '🛡️' },
+  { tier: 4, name: 'Footman',    floor: 5600, color: '#9aa0b0', emoji: '🗡️' },
+  { tier: 3, name: 'Squire',     floor: 5300, color: '#8a8a9a', emoji: '🐎' },
+  { tier: 2, name: 'Apprentice', floor: 5000, color: '#c5a975', emoji: '📜' },
+  { tier: 1, name: 'Outlaw',     floor: 4500, color: '#EF9A9A', emoji: '🏴' },
+  { tier: 0, name: 'Vagabond',   floor: 4000, color: '#FFAB91', emoji: '🥾' },
+  { tier: -1, name: 'Peasant',   floor: 0,    color: '#EF9A9A', emoji: '🌾' },
 ];
 
-export function decodeMmrBadge(mmr) {
+export function decodeMmrBadge(mmr, { isLeader = false } = {}) {
   if (mmr == null || isNaN(mmr)) return null;
   const m = Number(mmr);
-  let match = MMR_BADGE_TIERS[0];
-  for (const t of MMR_BADGE_TIERS) {
-    if (m >= t.floor) match = t;
+  if (isLeader) {
+    return MMR_BADGE_TIERS.find(t => t.name === 'King') || null;
   }
-  return match;
+  // Skip leader-only tiers when the player isn't the #1.
+  for (const t of MMR_BADGE_TIERS) {
+    if (t.leaderOnly) continue;
+    if (m >= t.floor) return t;
+  }
+  return MMR_BADGE_TIERS[MMR_BADGE_TIERS.length - 1];
 }
 
 // Compact MMR-based badge. Render unconditionally — caller is responsible for
 // gating on the `new_rank_theme` feature flag so the legacy Dota rank badge
 // stays the source of truth until the rank-theme refresh ships.
-export function MmrBadge({ mmr, style = {}, size = 'sm' }) {
-  const decoded = decodeMmrBadge(mmr);
+//
+// `isLeader` (v5.82) — when true, the badge promotes to "King" regardless of
+// raw MMR. Caller is responsible for determining leaderboard position.
+export function MmrBadge({ mmr, isLeader = false, style = {}, size = 'sm' }) {
+  const decoded = decodeMmrBadge(mmr, { isLeader });
   if (!decoded) return null;
   const fontSize = size === 'lg' ? 13 : 11;
   const padding  = size === 'lg' ? '4px 10px' : '2px 7px';
+  const titleSuffix = isLeader ? ' — Server #1' : '';
   return (
     <span
-      title={`${decoded.name} · ${Math.round(mmr)} MMR`}
+      title={`${decoded.name} · ${Math.round(mmr)} MMR${titleSuffix}`}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         background: `${decoded.color}1a`,

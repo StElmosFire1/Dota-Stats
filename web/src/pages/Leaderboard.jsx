@@ -11,9 +11,12 @@ import { FRAME_META } from '../profileCosmetics';
 
 // Medieval tier ladder — top 8 are the heraldic ranks (with /badges/tier-N-name.png art),
 // bottom 3 are the meme fallback tiers retained for sub-Apprentice MMR.
+// v5.82 — King is reserved (`leaderOnly: true`) for the #1 leaderboard player.
+// MMR-only callers cannot land on King; they max out at Warlord. The badge
+// table still includes King so leader-aware callers can resolve it by name.
 // V1 thresholds — fresh player starts at ~2600 MMR
 const MMR_TIERS_V1 = [
-  { name: 'King',          tierNum: 8, badge: '/badges/tier-8-king.png',       emoji: '👑', description: "Ruler of the realm. Bow before greatness.",                                      min: 4100, color: '#f5d97a',   bg: 'rgba(245,158,11,0.14)',  border: 'rgba(245,158,11,0.55)'    },
+  { name: 'King',          tierNum: 8, badge: '/badges/tier-8-king.png',       emoji: '👑', description: "Ruler of the realm. Bow before greatness.",                                      min: Infinity, leaderOnly: true, color: '#f5d97a',   bg: 'rgba(245,158,11,0.14)',  border: 'rgba(245,158,11,0.55)'    },
   { name: 'Warlord',       tierNum: 7, badge: '/badges/tier-7-warlord.png',    emoji: '🪓', description: "Battle-hardened commander. Banners follow you.",                                  min: 3800, color: '#e0b56b',   bg: 'rgba(197,169,117,0.14)', border: 'rgba(197,169,117,0.55)'   },
   { name: 'Paladin',       tierNum: 6, badge: '/badges/tier-6-paladin.png',    emoji: '✨', description: "Righteous champion. The light is on your side.",                                  min: 3500, color: '#d4b878',   bg: 'rgba(197,169,117,0.12)', border: 'rgba(197,169,117,0.45)'   },
   { name: 'Templar',       tierNum: 5, badge: '/badges/tier-5-templar.png',    emoji: '⚔️', description: "Sworn to the order. Disciplined and feared.",                                    min: 3200, color: '#c9c9d9',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
@@ -26,34 +29,41 @@ const MMR_TIERS_V1 = [
   { name: 'Peasant',       badge: '/badges/tier-sub-3-peasant.png',  emoji: '🌾', description: "Tilling the fields. Pick up a sword — every Knight begins here.",                       min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
 ];
 
-// V3 thresholds — fresh player starts at exactly 5000 MMR (+2400 offset from V1)
+// V3 thresholds — fresh player starts at exactly 5000 MMR (+2400 offset from V1).
+// v5.82 — King is reserved for #1 leaderboard player. Other tiers spread wider
+// so the entire active player base doesn't pile into the top band.
 const MMR_TIERS_V3 = [
-  { name: 'King',          tierNum: 8, badge: '/badges/tier-8-king.png',       emoji: '👑', description: "Ruler of the realm. Bow before greatness.",                                      min: 6500, color: '#f5d97a',   bg: 'rgba(245,158,11,0.14)',  border: 'rgba(245,158,11,0.55)'    },
-  { name: 'Warlord',       tierNum: 7, badge: '/badges/tier-7-warlord.png',    emoji: '🪓', description: "Battle-hardened commander. Banners follow you.",                                  min: 6200, color: '#e0b56b',   bg: 'rgba(197,169,117,0.14)', border: 'rgba(197,169,117,0.55)'   },
-  { name: 'Paladin',       tierNum: 6, badge: '/badges/tier-6-paladin.png',    emoji: '✨', description: "Righteous champion. The light is on your side.",                                  min: 5900, color: '#d4b878',   bg: 'rgba(197,169,117,0.12)', border: 'rgba(197,169,117,0.45)'   },
-  { name: 'Templar',       tierNum: 5, badge: '/badges/tier-5-templar.png',    emoji: '⚔️', description: "Sworn to the order. Disciplined and feared.",                                    min: 5600, color: '#c9c9d9',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
-  { name: 'Knight',        tierNum: 4, badge: '/badges/tier-4-knight.png',     emoji: '🛡️', description: "Chivalrous and dependable. The kingdom counts on you.",                          min: 5300, color: '#b8b8c8',   bg: 'rgba(184,184,200,0.10)', border: 'rgba(184,184,200,0.4)'    },
-  { name: 'Footman',       tierNum: 3, badge: '/badges/tier-3-footman.png',    emoji: '🗡️', description: "Honest soldier. Holds the line, takes the field.",                               min: 5000, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'Squire',        tierNum: 2, badge: '/badges/tier-2-squire.png',     emoji: '🐎', description: "In training. One day you may be knighted.",                                       min: 4700, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'Apprentice',    tierNum: 1, badge: '/badges/tier-1-apprentice.png', emoji: '📜', description: "Just beginning the climb. Read the scrolls, hold the line.",                     min: 4400, color: '#c5a975',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
-  { name: 'Outlaw',        badge: '/badges/tier-sub-1-outlaw.png',   emoji: '🏴', description: "Branded and exiled — feared by the kingdom. One step from being knighted… or hanged.", min: 4100, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
-  { name: 'Vagabond',      badge: '/badges/tier-sub-2-vagabond.png', emoji: '🥾', description: "Wandering the realm with staff and bindle. No banner yet, but the road teaches you.",  min: 3800, color: '#FFAB91',   bg: 'rgba(255,87,34,0.10)',   border: 'rgba(255,87,34,0.35)'    },
+  { name: 'King',          tierNum: 8, badge: '/badges/tier-8-king.png',       emoji: '👑', description: "Ruler of the realm. Reserved for the #1 player on the leaderboard.",              min: Infinity, leaderOnly: true, color: '#f5d97a',   bg: 'rgba(245,158,11,0.14)',  border: 'rgba(245,158,11,0.55)'    },
+  { name: 'Warlord',       tierNum: 7, badge: '/badges/tier-7-warlord.png',    emoji: '🪓', description: "Battle-hardened commander. Banners follow you.",                                  min: 7000, color: '#e0b56b',   bg: 'rgba(197,169,117,0.14)', border: 'rgba(197,169,117,0.55)'   },
+  { name: 'Paladin',       tierNum: 6, badge: '/badges/tier-6-paladin.png',    emoji: '✨', description: "Righteous champion. The light is on your side.",                                  min: 6500, color: '#d4b878',   bg: 'rgba(197,169,117,0.12)', border: 'rgba(197,169,117,0.45)'   },
+  { name: 'Templar',       tierNum: 5, badge: '/badges/tier-5-templar.png',    emoji: '⚔️', description: "Sworn to the order. Disciplined and feared.",                                    min: 6200, color: '#c9c9d9',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
+  { name: 'Knight',        tierNum: 4, badge: '/badges/tier-4-knight.png',     emoji: '🛡️', description: "Chivalrous and dependable. The kingdom counts on you.",                          min: 5900, color: '#b8b8c8',   bg: 'rgba(184,184,200,0.10)', border: 'rgba(184,184,200,0.4)'    },
+  { name: 'Footman',       tierNum: 3, badge: '/badges/tier-3-footman.png',    emoji: '🗡️', description: "Honest soldier. Holds the line, takes the field.",                               min: 5600, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'Squire',        tierNum: 2, badge: '/badges/tier-2-squire.png',     emoji: '🐎', description: "In training. One day you may be knighted.",                                       min: 5300, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
+  { name: 'Apprentice',    tierNum: 1, badge: '/badges/tier-1-apprentice.png', emoji: '📜', description: "Just beginning the climb. Read the scrolls, hold the line.",                     min: 5000, color: '#c5a975',   bg: 'rgba(197,169,117,0.10)', border: 'rgba(197,169,117,0.4)'    },
+  { name: 'Outlaw',        badge: '/badges/tier-sub-1-outlaw.png',   emoji: '🏴', description: "Branded and exiled — feared by the kingdom. One step from being knighted… or hanged.", min: 4500, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
+  { name: 'Vagabond',      badge: '/badges/tier-sub-2-vagabond.png', emoji: '🥾', description: "Wandering the realm with staff and bindle. No banner yet, but the road teaches you.",  min: 4000, color: '#FFAB91',   bg: 'rgba(255,87,34,0.10)',   border: 'rgba(255,87,34,0.35)'    },
   { name: 'Peasant',       badge: '/badges/tier-sub-3-peasant.png',  emoji: '🌾', description: "Tilling the fields. Pick up a sword — every Knight begins here.",                       min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
 ];
 
 // Back-compat alias — components that don't know about V3 yet default to V1
 const MMR_TIERS = MMR_TIERS_V1;
 
-function getTier(mmr, tiers = MMR_TIERS_V1) {
+function getTier(mmr, tiers = MMR_TIERS_V1, { isLeader = false } = {}) {
+  if (isLeader) {
+    const king = tiers.find(t => t.leaderOnly);
+    if (king) return king;
+  }
   for (const t of tiers) {
+    if (t.leaderOnly) continue;
     if (mmr >= t.min) return t;
   }
   return tiers[tiers.length - 1];
 }
 
-export function TierBadge({ mmr, useV3 = false, dbTiers = null }) {
+export function TierBadge({ mmr, useV3 = false, dbTiers = null, isLeader = false }) {
   const tiers = useV3 ? MMR_TIERS_V3 : MMR_TIERS_V1;
-  const t = getTier(mmr, tiers);
+  const t = getTier(mmr, tiers, { isLeader });
   if (!t) return null;
 
   const now = Date.now();
@@ -601,7 +611,7 @@ export default function Leaderboard() {
                         leaderboardRank={p.dota_leaderboard_rank}
                       />
                     </td>
-                    <td className="col-stat"><TierBadge mmr={p.mmr} useV3={data.useV3} dbTiers={dbTiers} /></td>
+                    <td className="col-stat"><TierBadge mmr={p.mmr} useV3={data.useV3} dbTiers={dbTiers} isLeader={i === 0} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>

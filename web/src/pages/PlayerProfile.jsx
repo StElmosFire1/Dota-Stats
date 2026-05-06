@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard } from '../api';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
@@ -648,6 +648,17 @@ export default function PlayerProfile() {
     }).catch(() => {});
   }, [accountId, seasonId]);
 
+  // v5.82 — fetch the #1 leaderboard player so we can promote their MmrBadge
+  // to "King" (every other player tops out at "Warlord").
+  const [topLeaderId, setTopLeaderId] = useState(null);
+  useEffect(() => {
+    getLeaderboard(1, seasonId).then(rows => {
+      const top = Array.isArray(rows) ? rows[0] : (rows?.leaderboard || [])[0];
+      if (top?.player_id != null) setTopLeaderId(String(top.player_id));
+    }).catch(() => {});
+  }, [seasonId]);
+  const isLeader = topLeaderId != null && String(accountId) === topLeaderId;
+
   const proMembers = useProMembers();
   const isPlayerPro = proMembers.has(String(accountId));
 
@@ -704,7 +715,7 @@ export default function PlayerProfile() {
         )}
         {/* 1.8 — Inhouse MMR badge (8-tier MMR ladder, gated on `new_rank_theme`) */}
         {newRankTheme && (seasonMmr != null || rating?.mmr != null) && (
-          <MmrBadge mmr={seasonMmr != null ? seasonMmr : rating?.mmr} size="lg" />
+          <MmrBadge mmr={seasonMmr != null ? seasonMmr : rating?.mmr} size="lg" isLeader={isLeader} />
         )}
         <button
           onClick={() => {

@@ -210,6 +210,7 @@ function MiniMmrChart({ accountId }) {
 }
 
 function PersonalisedDashboard({ steamUser }) {
+  const { seasonId } = useSeason();
   const [homeData, setHomeData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -228,8 +229,19 @@ function PersonalisedDashboard({ steamUser }) {
     fetchHomeData();
   }, [fetchHomeData]);
 
+  // v5.82 — fetch the #1 leaderboard player so the signed-in user's MmrBadge
+  // is promoted to "King" if (and only if) they're top of the realm.
+  const [topLeaderId, setTopLeaderId] = useState(null);
+  useEffect(() => {
+    getLeaderboard(1, seasonId).then(rows => {
+      const top = Array.isArray(rows) ? rows[0] : (rows?.leaderboard || [])[0];
+      if (top?.player_id != null) setTopLeaderId(String(top.player_id));
+    }).catch(() => {});
+  }, [seasonId]);
+
   const displayName = steamUser?.displayName || `Player ${steamUser?.accountId}`;
   const accountId = steamUser?.accountId;
+  const isLeader = topLeaderId != null && accountId != null && String(accountId) === topLeaderId;
 
   return (
     <>
@@ -249,7 +261,7 @@ function PersonalisedDashboard({ steamUser }) {
           {!loading && homeData && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
                   {homeData.mmr !== null && (
-                <MmrBadge mmr={homeData.mmr} size="lg" />
+                <MmrBadge mmr={homeData.mmr} size="lg" isLeader={isLeader} />
               )}
               {homeData.games_played > 0 && (
                 <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>

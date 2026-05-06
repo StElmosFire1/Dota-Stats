@@ -335,7 +335,15 @@ function createServer(startupStatus = {}) {
       // SECURITY: log full error server-side, redirect with a generic flag so
       // we never echo upstream Steam OpenID failure details (which can include
       // network/host info) back to the visitor's URL bar.
-      console.error('[Steam Auth] Error:', err);
+      //
+      // v5.82 — granular diagnostics. Reports of `?auth=error` after the v5.80
+      // verify-body fix mean the *post-verify* steps are throwing (DB lookup,
+      // session save, BigInt parse, …). The catch was previously a black box;
+      // we now log the error name, message, and stack so the very next PM2
+      // line says exactly which step failed in prod.
+      console.error('[Steam Auth] catch hit — error name:', err?.name, '| message:', err?.message);
+      if (err?.code) console.error('[Steam Auth] error code:', err.code);
+      if (err?.stack) console.error('[Steam Auth] stack:', err.stack.split('\n').slice(0, 6).join('\n'));
       res.redirect('/?auth=error');
     }
   });
