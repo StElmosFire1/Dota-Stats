@@ -118,12 +118,26 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     // notifications still fire so a player who muted the page tab can
     // still see the OS-level toast for an accept/draft/match-ready event.
     if (!muted && typeof window !== 'undefined') {
-      // Try the shipped church-bell mp3 first (so users hear the exact
-      // asset shipped with the build). Fall back to live Web Audio
-      // synthesis on any failure path so muting only ever silences the
-      // chime when the user explicitly asked for it.
-      let played = false;
-      if (!audioElFailedRef.current) {
+      // Try the shipped church-bell mp3 first. Web Audio synthesis is the
+      // fallback — but ONLY runs from the play() promise's .catch() so a
+      // successful HTMLAudio playback never layers a synthesised chime on
+      // top of it. (Previous version triggered fallback eagerly when
+      // play()'s promise hadn't resolved yet, causing doubled chimes.)
+      const playWebAudioFallback = () => {
+        try {
+          const Ctor = window.AudioContext || window.webkitAudioContext;
+          if (!Ctor) return;
+          if (!audioCtxRef.current) audioCtxRef.current = new Ctor();
+          const ctx = audioCtxRef.current;
+          const ring = () => ringChurchBell(ctx, 0.7);
+          if (ctx.state === 'suspended') ctx.resume().then(ring).catch(() => {});
+          else ring();
+        } catch (_) { /* no Web Audio — fall through to notification */ }
+      };
+
+      if (audioElFailedRef.current) {
+        playWebAudioFallback();
+      } else {
         try {
           if (!audioElRef.current) {
             audioElRef.current = new Audio(SOUND_URL);
@@ -135,26 +149,18 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
           el.currentTime = 0;
           const p = el.play();
           if (p && typeof p.then === 'function') {
-            p.then(() => { played = true; }).catch(() => { audioElFailedRef.current = true; });
-          } else {
-            played = true;
+            // Only fall back when play() actually rejects — never speculatively.
+            p.catch(() => {
+              audioElFailedRef.current = true;
+              playWebAudioFallback();
+            });
           }
-        } catch (_) { audioElFailedRef.current = true; }
-      }
-      if (!played) {
-        try {
-          const Ctor = window.AudioContext || window.webkitAudioContext;
-          if (Ctor) {
-            if (!audioCtxRef.current) audioCtxRef.current = new Ctor();
-            const ctx = audioCtxRef.current;
-            const ring = () => ringChurchBell(ctx, 0.7);
-            if (ctx.state === 'suspended') {
-              ctx.resume().then(ring).catch(() => {});
-            } else {
-              ring();
-            }
-          }
-        } catch (_) { /* autoplay blocked / no Web Audio — fall through to notification */ }
+          // If play() returned undefined (legacy browsers) it played
+          // synchronously; no fallback needed.
+        } catch (_) {
+          audioElFailedRef.current = true;
+          playWebAudioFallback();
+        }
       }
     }
     // Browser notification (best-effort, always attempted).

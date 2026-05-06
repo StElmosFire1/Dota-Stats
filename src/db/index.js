@@ -8081,11 +8081,13 @@ function resolveWinningCaptainMode(votesObj, validAccountIdSet = null) {
   const tally = tallyCaptainModeVotes(votesObj, validAccountIdSet);
   const max = Math.max(...Object.values(tally));
   if (max === 0) return 'highest_rank'; // zero votes → default
-  // Ties resolve toward highest_rank if it's tied for max (stable + matches the
-  // documented default), otherwise alphabetically among the tied winners.
   const winners = Object.entries(tally).filter(([, c]) => c === max).map(([k]) => k);
-  if (winners.includes('highest_rank')) return 'highest_rank';
-  return winners.sort()[0];
+  // v6.03 — task spec: ANY tie (regardless of which modes are tied) AND
+  // any zero-vote session falls back to Highest Rank. Only a single clear
+  // winner with strictly more votes than every other mode is allowed to
+  // override the default.
+  if (winners.length > 1) return 'highest_rank';
+  return winners[0];
 }
 
 async function updateInhouseSession(id, fields) {
