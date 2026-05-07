@@ -4,6 +4,7 @@ import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3Modif
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
+import ProfileCard from '../components/ProfileCard';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -685,192 +686,252 @@ export default function PlayerProfile() {
     ? ((parseInt(averages.total_kills) + parseInt(averages.total_assists)) / Math.max(parseInt(averages.total_deaths), 1)).toFixed(2)
     : null;
 
-  const activeFrameId = showProfileCustomization && profileCard?.profile_frame && profileCard.profile_frame !== 'none'
-    ? profileCard.profile_frame : null;
-  const activeFrameStyle = activeFrameId ? (FRAME_META[activeFrameId]?.style || {}) : {};
+  // v6.18 — Resolve real player data into the shape ProfileCard wants. Replaces the
+  // ~400-line scattered customization stack that used to live here with a single
+  // shared component used by the public profile, the Settings editor preview, and
+  // the sandbox. All data comes from the existing /players/:id and
+  // /player/:id/profile-card endpoints — no SAMPLE_* stubs, no extra round trips.
+  const allHeroes = data?.heroes || data?.heroStats || [];
+  const ex = (showProfileCustomization && profileCard?.extras) || {};
+  const pinnedHeroRow = (showProfileCustomization && profileCard?.pinned_hero_id)
+    ? allHeroes.find(h => Number(h.hero_id || h.heroId) === Number(profileCard.pinned_hero_id))
+    : null;
+  const pinnedHero = (showProfileCustomization && profileCard?.pinned_hero_id) ? {
+    hero_id: profileCard.pinned_hero_id,
+    name: pinnedHeroRow ? (pinnedHeroRow.hero_name || getHeroName(profileCard.pinned_hero_id)) : getHeroName(profileCard.pinned_hero_id),
+    games: pinnedHeroRow ? parseInt(pinnedHeroRow.games || pinnedHeroRow.matches || 0) : 0,
+    wins: pinnedHeroRow ? parseInt(pinnedHeroRow.wins || 0) : 0,
+    kda: pinnedHeroRow ? (
+      (parseFloat(pinnedHeroRow.avg_kills || 0) + parseFloat(pinnedHeroRow.avg_assists || 0))
+      / Math.max(parseFloat(pinnedHeroRow.avg_deaths || 0), 1)
+    ) : null,
+    caption: profileCard.pinned_hero_caption || null,
+    borderColor: ex.pinned_hero_border || null,
+  } : null;
+  const pinnedAchievement = (showProfileCustomization && ex.pinned_achievement_id)
+    ? (() => {
+        const a = (achievements || []).find(x => (x.key || x.id) === ex.pinned_achievement_id);
+        if (!a) return null;
+        return {
+          emoji: a.emoji || a.icon || '🏆',
+          label: a.label || a.title || a.key,
+          sub: a.description || a.sub || null,
+        };
+      })()
+    : null;
+  // v6.18 — Every customization-derived prop is gated on showProfileCustomization
+  // so the free-tier baseline (no flag, or flag off) renders just the name +
+  // adornments + headerExtras, exactly matching the pre-refactor behaviour.
+  const topHeroesForCard = showProfileCustomization
+    ? allHeroes.slice(0, 5).map(h => ({
+        hero_id: h.hero_id || h.heroId,
+        games: parseInt(h.games || h.matches || 0),
+        wins: parseInt(h.wins || 0),
+      }))
+    : [];
+  const pinnedMatchForCard = showProfileCustomization ? (profileCard?.pinnedMatch || null) : null;
+  const streakForCard = showProfileCustomization ? streak : null;
+  const customizationForCard = showProfileCustomization && profileCard ? profileCard : { extras: {} };
+  const frameForCard = (showProfileCustomization && profileCard?.profile_frame) || 'none';
+
+  const headerNameAdornments = (
+    <>
+      {nickname && rating?.display_name && nickname !== rating.display_name && (
+        <span style={{ fontSize: 12, color: '#888' }}>({rating.display_name})</span>
+      )}
+      {isPlayerPro && <ProBadge size="sm" />}
+      {playerRank?.dota_rank_tier && (
+        <RankBadge
+          rankTier={playerRank.dota_rank_tier}
+          leaderboardRank={playerRank.dota_leaderboard_rank}
+          source={playerRank.dota_rank_source}
+          size="sm"
+        />
+      )}
+      {/* 1.8 — Inhouse MMR badge (8-tier MMR ladder, gated on `new_rank_theme`) */}
+      {newRankTheme && (seasonMmr != null || rating?.mmr != null) && (
+        <MmrBadge mmr={seasonMmr != null ? seasonMmr : rating?.mmr} size="sm" isLeader={isLeader} />
+      )}
+    </>
+  );
+
+  // AUDIT (v6.18): Owner-only and signed-in viewer controls — kept intact next to
+  // the shared card. Edit Profile / CoachingApplyCta gated on isOwnProfile, Gift
+  // buttons gated on (!isOwnProfile + signed in), AI Scout gated on signed in
+  // (paywall enforced server-side). Share + Export always public.
+  const headerExtras = (
+    <>
+      <button
+        onClick={() => {
+          const url = window.location.href;
+          navigator.clipboard?.writeText(url).then(() => {
+            const btn = document.getElementById('share-btn');
+            if (btn) { btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = '🔗 Share'; }, 2000); }
+          }).catch(() => {
+            window.prompt('Copy this link:', url);
+          });
+        }}
+        id="share-btn"
+        style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+          borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+        }}
+      >🔗 Share</button>
+      <button
+        onClick={async () => {
+          try {
+            const res = await fetch(`/api/players/${accountId}/matches/export.csv${seasonId ? `?season_id=${seasonId}` : ''}`, { credentials: 'same-origin' });
+            if (res.status === 402) {
+              const body = await res.json().catch(() => ({}));
+              setTrendPaywall({ paywall: true, feature: body.feature || 'csv_export', signedIn: body.signed_in });
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              return;
+            }
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `matches_${accountId}${seasonId ? `_s${seasonId}` : ''}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          } catch (err) {
+            alert(`Export failed: ${err.message}`);
+          }
+        }}
+        style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+          borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+        }}
+      >📥 Export CSV</button>
+      {trendPaywall && trendPaywall.feature === 'csv_export' && (
+        <PaywallCard feature="csv_export" signedIn={trendPaywall.signedIn} compact />
+      )}
+      {showProfileCustomization && isOwnProfile && (
+        <Link
+          to="/settings/profile"
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+            borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, textDecoration: 'none',
+          }}
+        >✏️ Edit Profile</Link>
+      )}
+      {/* Coaching marketplace — Apply to coach CTA shows on own profile when
+          eligible (top-5 leaderboard or Immortal+). Hidden when the
+          coaching_marketplace flag is off (eligibility endpoint 404s). */}
+      {isOwnProfile && <CoachingApplyCta />}
+      {/* Gift buttons — shown when viewing another player's profile and signed in */}
+      {!isOwnProfile && steamUser?.accountId && (
+        <>
+          <button
+            onClick={async () => {
+              setGiftError(null);
+              setGiftLoading('pro');
+              try {
+                const { url } = await createGiftProCheckout(accountId);
+                window.location.href = url;
+              } catch (err) {
+                setGiftError(err.message);
+                setGiftLoading(null);
+              }
+            }}
+            disabled={giftLoading != null}
+            style={{
+              background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%)',
+              border: '1px solid rgba(245,158,11,0.5)', color: '#f59e0b',
+              borderRadius: 8, padding: '6px 14px', cursor: giftLoading ? 'wait' : 'pointer',
+              fontSize: 13, fontWeight: 600,
+            }}
+          >🎁 {giftLoading === 'pro' ? 'Redirecting…' : 'Gift Pro'}</button>
+          <button
+            onClick={async () => {
+              setGiftError(null);
+              setGiftLoading('sp');
+              try {
+                const { url } = await createGiftSeasonPassCheckout(accountId);
+                window.location.href = url;
+              } catch (err) {
+                setGiftError(err.message);
+                setGiftLoading(null);
+              }
+            }}
+            disabled={giftLoading != null}
+            style={{
+              background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(168,85,247,0.05) 100%)',
+              border: '1px solid rgba(168,85,247,0.5)', color: '#a855f7',
+              borderRadius: 8, padding: '6px 14px', cursor: giftLoading ? 'wait' : 'pointer',
+              fontSize: 13, fontWeight: 600,
+            }}
+          >🎫 {giftLoading === 'sp' ? 'Redirecting…' : 'Gift Season Pass'}</button>
+        </>
+      )}
+      {/* Scouting report — Pro feature, shown on any profile when viewer is signed in */}
+      {steamUser?.accountId && (
+        <button
+          onClick={async () => {
+            if (scoutingLoading) return;
+            setScoutingReport(null);
+            setScoutingError(null);
+            setScoutingLoading(true);
+            try {
+              const reportData = await getScoutingReport(accountId, superuserKey);
+              setScoutingReport(reportData);
+              if (reportData.share_link_ready !== false) {
+                const shareUrl = `${window.location.origin}/scouting/${accountId}`;
+                navigator.clipboard?.writeText(shareUrl).then(() => {
+                  setScoutingAutoCopied(true);
+                  setTimeout(() => setScoutingAutoCopied(false), 4000);
+                }).catch(() => {});
+              }
+              setTimeout(() => {
+                document.getElementById('scouting-report-anchor')?.scrollIntoView({ behavior: 'smooth' });
+              }, 100);
+            } catch (err) {
+              setScoutingError(err.paywall ? 'AI Scouting Reports require Pro membership.' : err.message);
+            } finally {
+              setScoutingLoading(false);
+            }
+          }}
+          disabled={scoutingLoading}
+          style={{
+            background: 'linear-gradient(135deg, rgba(6,182,212,0.15) 0%, rgba(6,182,212,0.05) 100%)',
+            border: '1px solid rgba(6,182,212,0.5)', color: '#06b6d4',
+            borderRadius: 8, padding: '6px 14px', cursor: scoutingLoading ? 'wait' : 'pointer',
+            fontSize: 13, fontWeight: 600,
+          }}
+        >🔍 {scoutingLoading ? 'Generating…' : 'AI Scout'}</button>
+      )}
+    </>
+  );
 
   return (
     <div>
       <Link to="/players" className="back-link">&larr; Back to players</Link>
 
-      {/* AUDIT (v5.91 parity pass): PUBLIC — header card (name, badges, MMR, share/export
-          buttons) renders for every visitor. Owner-only controls inside this card are
-          explicitly opt-in below: ✏️ Edit Profile (isOwnProfile), CoachingApplyCta
-          (isOwnProfile), 🎁 Gift Pro / 🎫 Gift Season Pass (NOT isOwnProfile + signed-in),
-          and the 🔍 AI Scout button (any signed-in viewer; report itself is requirePro). */}
-      {/* Profile card — wrapped in a styled border if the player has set a frame */}
-      <div style={{
-        borderRadius: activeFrameId ? 14 : 0,
-        padding: activeFrameId ? '14px 16px 12px' : 0,
-        marginBottom: activeFrameId ? 16 : 0,
-        transition: 'box-shadow 0.2s',
-        ...activeFrameStyle,
-      }}>
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 0 }}>
-        <h1 className="page-title" style={{ marginBottom: 0 }}>
-          {displayName}
-          {nickname && rating?.display_name && nickname !== rating.display_name && (
-            <span style={{ fontSize: '0.6em', color: '#888', marginLeft: '0.5rem' }}>
-              ({rating.display_name})
-            </span>
-          )}
-        </h1>
-        {isPlayerPro && <ProBadge size="lg" />}
-        {playerRank?.dota_rank_tier && (
-          <RankBadge
-            rankTier={playerRank.dota_rank_tier}
-            leaderboardRank={playerRank.dota_leaderboard_rank}
-            source={playerRank.dota_rank_source}
-            size="lg"
-          />
-        )}
-        {/* 1.8 — Inhouse MMR badge (8-tier MMR ladder, gated on `new_rank_theme`) */}
-        {newRankTheme && (seasonMmr != null || rating?.mmr != null) && (
-          <MmrBadge mmr={seasonMmr != null ? seasonMmr : rating?.mmr} size="lg" isLeader={isLeader} />
-        )}
-        <button
-          onClick={() => {
-            const url = window.location.href;
-            navigator.clipboard?.writeText(url).then(() => {
-              const btn = document.getElementById('share-btn');
-              if (btn) { btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = '🔗 Share'; }, 2000); }
-            }).catch(() => {
-              window.prompt('Copy this link:', url);
-            });
-          }}
-          id="share-btn"
-          style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
-            borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-          }}
-        >🔗 Share</button>
-        <button
-          onClick={async () => {
-            try {
-              const res = await fetch(`/api/players/${accountId}/matches/export.csv${seasonId ? `?season_id=${seasonId}` : ''}`, { credentials: 'same-origin' });
-              if (res.status === 402) {
-                const body = await res.json().catch(() => ({}));
-                setTrendPaywall({ paywall: true, feature: body.feature || 'csv_export', signedIn: body.signed_in });
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                return;
-              }
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              const blob = await res.blob();
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `matches_${accountId}${seasonId ? `_s${seasonId}` : ''}.csv`;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              URL.revokeObjectURL(url);
-            } catch (err) {
-              alert(`Export failed: ${err.message}`);
-            }
-          }}
-          style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
-            borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-          }}
-        >📥 Export CSV</button>
-        {trendPaywall && trendPaywall.feature === 'csv_export' && (
-          <PaywallCard feature="csv_export" signedIn={trendPaywall.signedIn} compact />
-        )}
-        {showProfileCustomization && isOwnProfile && (
-          <Link
-            to="/settings/profile"
-            style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
-              borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, textDecoration: 'none',
-            }}
-          >✏️ Edit Profile</Link>
-        )}
-        {/* Coaching marketplace — "Apply to coach" CTA shows on own profile when
-            eligible (top-5 leaderboard or Immortal+). Hidden when the
-            `coaching_marketplace` flag is off (eligibility endpoint 404s). */}
-        {isOwnProfile && <CoachingApplyCta />}
-        {/* Gift buttons — shown when viewing another player's profile and you're signed in */}
-        {!isOwnProfile && steamUser?.accountId && (
-          <>
-            <button
-              onClick={async () => {
-                setGiftError(null);
-                setGiftLoading('pro');
-                try {
-                  const { url } = await createGiftProCheckout(accountId);
-                  window.location.href = url;
-                } catch (err) {
-                  setGiftError(err.message);
-                  setGiftLoading(null);
-                }
-              }}
-              disabled={giftLoading != null}
-              style={{
-                background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%)',
-                border: '1px solid rgba(245,158,11,0.5)', color: '#f59e0b',
-                borderRadius: 8, padding: '6px 14px', cursor: giftLoading ? 'wait' : 'pointer',
-                fontSize: 13, fontWeight: 600,
-              }}
-            >🎁 {giftLoading === 'pro' ? 'Redirecting…' : 'Gift Pro'}</button>
-            <button
-              onClick={async () => {
-                setGiftError(null);
-                setGiftLoading('sp');
-                try {
-                  const { url } = await createGiftSeasonPassCheckout(accountId);
-                  window.location.href = url;
-                } catch (err) {
-                  setGiftError(err.message);
-                  setGiftLoading(null);
-                }
-              }}
-              disabled={giftLoading != null}
-              style={{
-                background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(168,85,247,0.05) 100%)',
-                border: '1px solid rgba(168,85,247,0.5)', color: '#a855f7',
-                borderRadius: 8, padding: '6px 14px', cursor: giftLoading ? 'wait' : 'pointer',
-                fontSize: 13, fontWeight: 600,
-              }}
-            >🎫 {giftLoading === 'sp' ? 'Redirecting…' : 'Gift Season Pass'}</button>
-          </>
-        )}
-        {/* Scouting report — Pro feature, shown on any profile when viewer is signed in */}
-        {steamUser?.accountId && (
-          <button
-            onClick={async () => {
-              if (scoutingLoading) return;
-              setScoutingReport(null);
-              setScoutingError(null);
-              setScoutingLoading(true);
-              try {
-                const data = await getScoutingReport(accountId, superuserKey);
-                setScoutingReport(data);
-                if (data.share_link_ready !== false) {
-                  const shareUrl = `${window.location.origin}/scouting/${accountId}`;
-                  navigator.clipboard?.writeText(shareUrl).then(() => {
-                    setScoutingAutoCopied(true);
-                    setTimeout(() => setScoutingAutoCopied(false), 4000);
-                  }).catch(() => {});
-                }
-                setTimeout(() => {
-                  document.getElementById('scouting-report-anchor')?.scrollIntoView({ behavior: 'smooth' });
-                }, 100);
-              } catch (err) {
-                setScoutingError(err.paywall ? 'AI Scouting Reports require Pro membership.' : err.message);
-              } finally {
-                setScoutingLoading(false);
-              }
-            }}
-            disabled={scoutingLoading}
-            style={{
-              background: 'linear-gradient(135deg, rgba(6,182,212,0.15) 0%, rgba(6,182,212,0.05) 100%)',
-              border: '1px solid rgba(6,182,212,0.5)', color: '#06b6d4',
-              borderRadius: 8, padding: '6px 14px', cursor: scoutingLoading ? 'wait' : 'pointer',
-              fontSize: 13, fontWeight: 600,
-            }}
-          >🔍 {scoutingLoading ? 'Generating…' : 'AI Scout'}</button>
-        )}
-      </div>
+      {/* AUDIT (v6.18): PUBLIC — single shared <ProfileCard /> renders the polished
+          serif name lockup, theme accent rule, optional flair + streak chips, pinned
+          hero / pinned match / pinned achievement tiles, top-heroes strip, social
+          chips, optional background pattern, and the active profile frame. Same
+          component is used by Settings → Profile editor preview and the sandbox so
+          the editor preview is always 1:1 with what visitors see. Owner-only and
+          signed-in-viewer buttons (Edit Profile / Gift Pro / Gift SP / AI Scout /
+          Apply to Coach) sit beneath the card via the headerExtras slot, with their
+          existing isOwnProfile / steamUser / requirePro gates intact. */}
+      <ProfileCard
+        displayName={displayName}
+        customization={customizationForCard}
+        pinnedHero={pinnedHero}
+        pinnedMatch={pinnedMatchForCard}
+        pinnedAchievement={pinnedAchievement}
+        topHeroes={topHeroesForCard}
+        streak={streakForCard}
+        frame={frameForCard}
+        nameAdornments={headerNameAdornments}
+        headerExtras={headerExtras}
+      />
+
       {giftError && (
         <div style={{ marginTop: 8, padding: '6px 12px', background: '#3a0f0f', border: '1px solid #ef4444', borderRadius: 6, fontSize: 13, color: '#ef4444' }}>
           {giftError}
@@ -889,219 +950,7 @@ export default function PlayerProfile() {
 
       {/* AUDIT (v5.91 parity pass): OWNER-ONLY — invite/referral link is only meaningful
           to the profile owner (it grants them XP for referrals). Public viewers see nothing. */}
-      {/* Invite link — shown only on own profile */}
       {isOwnProfile && <InviteLinkCard accountId={accountId} />}
-
-      {/* Profile customization (`profile_customization`) — title + bio under the
-          page header, plus pinned hero / pinned match cards. Theme accent is
-          painted as a left border on the bio block so it doesn't recolour the
-          rest of the page. */}
-      </div>{/* end profile card frame wrapper */}
-
-      {/* AUDIT (v5.91 parity pass): PUBLIC — profile customization block (custom title,
-          bio, accent colour, pinned hero w/ border, pinned match, pinned achievement,
-          flair chip, streak chip, background pattern). Sourced from the open
-          /api/player/:id/profile-card endpoint and renders identically for owner and
-          public visitors. Edit controls live on a separate page (/settings/profile). */}
-      {showProfileCustomization && profileCard && (profileCard.custom_title || profileCard.bio || profileCard.pinned_hero_id || profileCard.pinnedMatch || (profileCard.extras && Object.keys(profileCard.extras).length > 0)) && (() => {
-        // v5.81 — extras (mockup-graduated knobs). Default empty so the
-        // ?? chain below is safe regardless of whether the row was created
-        // before extras existed.
-        const ex = profileCard.extras || {};
-        const accent = profileCard.theme_accent || '#3b82f6';
-        const flairToShow = (ex.flair_unlocked && ex.flair_override) ? ex.flair_override : null;
-        const pinnedAch = ex.pinned_achievement_id
-          ? (achievements || []).find(a => (a.key || a.id) === ex.pinned_achievement_id) : null;
-        const topHeroes = (data?.heroes || data?.heroStats || []).slice(0, 5);
-        return (
-        <div style={{
-          marginTop: 12, marginBottom: 16,
-          ...(ex.bg_pattern ? {
-            padding: 14, borderRadius: 10,
-            background: `repeating-linear-gradient(45deg, ${accent}10 0 6px, transparent 6px 14px), linear-gradient(180deg, ${accent}18 0%, var(--bg-card) 80%)`,
-          } : {}),
-        }}>
-          {/* Flair + streak chip row */}
-          {(flairToShow || (ex.show_streak !== false && streak && Math.abs(streak) >= 3)) && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-              {flairToShow && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
-                  background: `${accent}22`, color: accent, border: `1px solid ${accent}66`,
-                  letterSpacing: 0.5,
-                }}>✦ {flairToShow}</span>
-              )}
-              {ex.show_streak !== false && streak && Math.abs(streak) >= 3 && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
-                  background: streak > 0 ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)',
-                  color: streak > 0 ? '#22c55e' : '#ef4444',
-                  border: `1px solid ${streak > 0 ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'}`,
-                }}>
-                  {streak > 0 ? '🔥' : '❄️'} {Math.abs(streak)}-game {streak > 0 ? 'win' : 'loss'} streak
-                </span>
-              )}
-            </div>
-          )}
-
-          {(profileCard.custom_title || profileCard.bio) && (
-            <div style={{
-              borderLeft: `3px solid ${accent}`,
-              paddingLeft: 12, marginBottom: 12,
-            }}>
-              {profileCard.custom_title && (
-                <div style={{
-                  fontSize: 14, fontWeight: 700, letterSpacing: 0.5,
-                  color: accent, textTransform: 'uppercase',
-                }}>{profileCard.custom_title}</div>
-              )}
-              {profileCard.bio && (
-                <div style={{ fontSize: 14, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 2 }}>
-                  “{profileCard.bio}”
-                </div>
-              )}
-            </div>
-          )}
-          {(profileCard.pinned_hero_id || profileCard.pinnedMatch || pinnedAch) && (
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {profileCard.pinned_hero_id && (
-                <div style={{
-                  display: 'flex', gap: 10, alignItems: 'center',
-                  padding: '6px 12px', borderRadius: 8,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderLeft: `3px solid ${accent}`,
-                }}>
-                  <img
-                    src={getHeroImageUrl(profileCard.pinned_hero_id)}
-                    alt=""
-                    style={{
-                      width: 48, height: 27, borderRadius: 3, objectFit: 'cover',
-                      ...(ex.pinned_hero_border
-                        ? { border: `3px solid ${ex.pinned_hero_border}`, boxShadow: `0 0 8px ${ex.pinned_hero_border}66` }
-                        : {}),
-                    }}
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📌 Pinned hero</div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{getHeroName(profileCard.pinned_hero_id) || `Hero #${profileCard.pinned_hero_id}`}</div>
-                    {profileCard.pinned_hero_caption && (
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{profileCard.pinned_hero_caption}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {pinnedAch && (
-                <div style={{
-                  display: 'flex', gap: 10, alignItems: 'center',
-                  padding: '6px 12px', borderRadius: 8,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderLeft: `3px solid ${accent}`,
-                }}>
-                  <span style={{ fontSize: 24 }}>{pinnedAch.emoji || pinnedAch.icon || '🏆'}</span>
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📌 Pinned achievement</div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{pinnedAch.label || pinnedAch.title || pinnedAch.key}</div>
-                    {(pinnedAch.description || pinnedAch.sub) && (
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{pinnedAch.description || pinnedAch.sub}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {profileCard.pinnedMatch && (
-                <Link
-                  to={`/match/${profileCard.pinnedMatch.match_id}`}
-                  style={{
-                    display: 'flex', gap: 10, alignItems: 'center',
-                    padding: '6px 12px', borderRadius: 8,
-                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    borderLeft: `3px solid ${profileCard.theme_accent || '#3b82f6'}`,
-                    textDecoration: 'none', color: 'inherit',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📌 Pinned match</div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>
-                      #{profileCard.pinnedMatch.match_id}
-                      {profileCard.pinnedMatch.player_won != null && (
-                        <span style={{
-                          marginLeft: 8, fontSize: 11, padding: '1px 6px', borderRadius: 4,
-                          background: profileCard.pinnedMatch.player_won ? '#0f3a1f' : '#3a0f0f',
-                          color: profileCard.pinnedMatch.player_won ? '#22c55e' : '#ef4444',
-                        }}>{profileCard.pinnedMatch.player_won ? 'WIN' : 'LOSS'}</span>
-                      )}
-                    </div>
-                    {profileCard.pinnedMatch.kills != null && (
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {profileCard.pinnedMatch.hero || `Hero #${profileCard.pinnedMatch.hero_id}`} • {profileCard.pinnedMatch.kills}/{profileCard.pinnedMatch.deaths}/{profileCard.pinnedMatch.assists}
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              )}
-            </div>
-          )}
-
-          {/* v5.81 — Top heroes auto strip */}
-          {ex.show_top_heroes !== false && topHeroes.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
-                Most-played heroes
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {topHeroes.map(h => {
-                  const games = h.games || h.matches || 0;
-                  const wins = h.wins || 0;
-                  const wr = games ? Math.round((wins / games) * 100) : 0;
-                  const heroId = h.hero_id || h.heroId;
-                  return (
-                    <div key={heroId} style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '4px 10px', borderRadius: 6,
-                      background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    }}>
-                      <img src={getHeroImageUrl(heroId)} alt="" style={{ width: 32, height: 18, borderRadius: 2 }} />
-                      <div style={{ fontSize: 12 }}>
-                        <div style={{ fontWeight: 700 }}>{getHeroName(heroId) || `#${heroId}`}</div>
-                        <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                          {games}g · <span style={{ color: wr >= 55 ? '#22c55e' : '#f59e0b' }}>{wr}%</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* v5.81 — Social chips */}
-          {(ex.social_twitch || ex.social_youtube || ex.social_steam) && (
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {ex.social_twitch && (
-                <a href={ex.social_twitch} target="_blank" rel="noreferrer noopener"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#9146FF', color: '#fff', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}>
-                  📺 Twitch
-                </a>
-              )}
-              {ex.social_youtube && (
-                <a href={ex.social_youtube} target="_blank" rel="noreferrer noopener"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#FF0000', color: '#fff', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}>
-                  ▶️ YouTube
-                </a>
-              )}
-              {ex.social_steam && (
-                <a href={ex.social_steam} target="_blank" rel="noreferrer noopener"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#1b2838', color: '#fff', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}>
-                  🎮 Steam
-                </a>
-              )}
-            </div>
-          )}
-        </div>
-        );
-      })()}
 
       {/* AUDIT (v5.91 parity pass): PRO-PAYWALLED — AI Scouting Report. Trigger
           button shows for any signed-in viewer; the actual /player/:id/scouting-report

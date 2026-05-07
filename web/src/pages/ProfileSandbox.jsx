@@ -8,6 +8,7 @@ import {
   FREE_FRAMES, PREMIUM_FRAMES,
   BIO_MAX, PINNED_HERO_CAPTION_MAX, DEFAULT_THEME, DEFAULT_FRAME, FRAME_META,
 } from '../profileCosmetics';
+import ProfileCard from '../components/ProfileCard';
 
 // ---- Mock data ------------------------------------------------------------
 // All numbers below are fabricated for the sandbox preview only — nothing is
@@ -105,221 +106,78 @@ function fmtDuration(s) {
 }
 
 // ---- Preview card ---------------------------------------------------------
+// v6.18 — Sandbox now renders the same shared <ProfileCard /> the public
+// profile uses. The legacy inline FullPreviewCard below is gone; this thin
+// adapter just maps the sandbox's flat editor state into the shape ProfileCard
+// expects so the sandbox keeps acting as a one-stop visual harness for every
+// cosmetic knob.
 
 function FullPreviewCard({ displayName, c, frame }) {
-  const accent = c.theme_accent || DEFAULT_THEME;
-  const meta = FRAME_META[frame] || {};
   const heroStats = getHeroStats(c.pinned_hero_id);
   const pinnedMatch = SAMPLE_RECENT_MATCHES.find(m => m.match_id === c.pinned_match_id) || null;
   const pinnedAch = SAMPLE_ACHIEVEMENTS.find(a => a.id === c.pinned_achievement_id) || null;
-  const flairToShow = (c.flair_unlocked && c.flair_override) ? c.flair_override : c.flair_auto;
+
+  const customization = {
+    bio: c.bio,
+    custom_title: c.custom_title,
+    theme_accent: c.theme_accent,
+    profile_frame: frame,
+    extras: {
+      flair_unlocked: c.flair_unlocked,
+      flair_override: c.flair_override,
+      show_top_heroes: c.show_top_heroes,
+      show_streak: c.show_streak,
+      frame_animated: c.frame_animated,
+      bg_pattern: c.bg_pattern,
+      pinned_hero_border: c.pinned_hero_border_color,
+      social_twitch: c.social_twitch,
+      social_youtube: c.social_youtube,
+      social_steam: c.social_steam,
+    },
+  };
+  const pinnedHero = c.pinned_hero_id ? {
+    hero_id: c.pinned_hero_id,
+    name: getHeroName(c.pinned_hero_id),
+    games: heroStats?.games || 0,
+    wins: heroStats?.wins || 0,
+    kda: heroStats?.kda ?? null,
+    caption: c.pinned_hero_caption,
+    borderColor: c.pinned_hero_border_color || null,
+  } : null;
+  const pinnedMatchProp = pinnedMatch ? {
+    match_id: pinnedMatch.match_id,
+    hero_id: pinnedMatch.hero_id,
+    hero: getHeroName(pinnedMatch.hero_id),
+    kills: pinnedMatch.kills,
+    deaths: pinnedMatch.deaths,
+    assists: pinnedMatch.assists,
+    duration: pinnedMatch.duration,
+    player_won: pinnedMatch.win,
+    radiantScore: pinnedMatch.radiantScore,
+    direScore: pinnedMatch.direScore,
+  } : null;
 
   return (
-    <div style={{
-      borderRadius: 14, padding: 18,
-      background: c.bg_pattern
-        ? `repeating-linear-gradient(45deg, ${accent}08 0 6px, transparent 6px 14px), linear-gradient(180deg, ${accent}22 0%, var(--bg-card) 80%)`
-        : `linear-gradient(180deg, ${accent}22 0%, var(--bg-card) 80%)`,
-      borderLeft: `4px solid ${accent}`,
-      ...(meta.style || { border: '1px solid var(--border)' }),
-      ...(c.frame_animated ? { animation: 'profileFrameShimmer 2.4s ease-in-out infinite' } : {}),
-    }}>
-      <style>{`
-        @keyframes profileFrameShimmer {
-          0%, 100% { box-shadow: 0 0 0 0 ${accent}00; }
-          50%       { box-shadow: 0 0 22px 2px ${accent}55; }
-        }
-      `}</style>
-
+    <div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1.5, marginBottom: 6, textTransform: 'uppercase' }}>
         Live Preview · profile card
       </div>
+      <ProfileCard
+        displayName={displayName}
+        customization={customization}
+        pinnedHero={pinnedHero}
+        pinnedMatch={pinnedMatchProp}
+        pinnedAchievement={pinnedAch}
+        topHeroes={SAMPLE_TOP_HEROES}
+        streak={c.show_streak ? SAMPLE_STREAK : 0}
+        frame={frame}
+        flairAuto={c.flair_auto}
+      />
 
-      {/* Name + flair + streak */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-serif, inherit)' }}>
-          {displayName}
-        </div>
-        {c.custom_title && (
-          <div style={{ fontSize: 14, color: accent, fontWeight: 700, letterSpacing: 0.5 }}>
-            {c.custom_title}
-          </div>
-        )}
-      </div>
-
-      {/* Flair line */}
-      <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {flairToShow && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
-            background: `${accent}22`, color: accent, border: `1px solid ${accent}66`,
-            letterSpacing: 0.5,
-          }}>
-            ✦ {flairToShow}
-            {(c.flair_unlocked && c.flair_override) ? null
-              : <span style={{ fontSize: 9, opacity: 0.6, marginLeft: 4 }}>(auto)</span>}
-          </span>
-        )}
-        {c.show_streak && SAMPLE_STREAK >= 3 && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
-            background: SAMPLE_STREAK > 0 ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)',
-            color: SAMPLE_STREAK > 0 ? '#22c55e' : '#ef4444',
-            border: `1px solid ${SAMPLE_STREAK > 0 ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'}`,
-          }}>
-            {SAMPLE_STREAK > 0 ? '🔥' : '❄️'} {Math.abs(SAMPLE_STREAK)}-game {SAMPLE_STREAK > 0 ? 'win' : 'loss'} streak
-          </span>
-        )}
-      </div>
-
-      {c.bio && (
-        <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 10, fontStyle: 'italic',
-          padding: '8px 12px', borderLeft: `2px solid ${accent}55`, background: 'rgba(255,255,255,0.02)' }}>
-          “{c.bio}”
-        </div>
-      )}
-
-      {/* Pinned cards row */}
-      <div style={{ display: 'flex', gap: 14, marginTop: 16, flexWrap: 'wrap' }}>
-        {c.pinned_hero_id && (
-          <div style={{
-            display: 'flex', gap: 12, alignItems: 'center', padding: '10px 14px',
-            border: `1px solid ${accent}55`, borderRadius: 8, background: 'var(--bg-card)',
-            minWidth: 230,
-          }}>
-            <img
-              src={getHeroImageUrl(c.pinned_hero_id)}
-              alt=""
-              style={{
-                width: 64, height: 36, borderRadius: 4,
-                ...(c.pinned_hero_border_color
-                  ? { border: `3px solid ${c.pinned_hero_border_color}`, boxShadow: `0 0 8px ${c.pinned_hero_border_color}66` }
-                  : {}),
-              }}
-            />
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>Pinned hero</div>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>{getHeroName(c.pinned_hero_id) || `#${c.pinned_hero_id}`}</div>
-              {heroStats && (
-                <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 11, fontFamily: 'monospace' }}>
-                  <span>
-                    <span style={{ color: 'var(--text-muted)' }}>WR </span>
-                    <strong style={{ color: heroStats.wins / heroStats.games >= 0.55 ? '#22c55e' : '#f59e0b' }}>
-                      {Math.round((heroStats.wins / heroStats.games) * 100)}%
-                    </strong>
-                  </span>
-                  <span>
-                    <span style={{ color: 'var(--text-muted)' }}>KDA </span>
-                    <strong style={{ color: 'var(--text-primary)' }}>{heroStats.kda.toFixed(2)}</strong>
-                  </span>
-                  <span style={{ color: 'var(--text-muted)' }}>{heroStats.games}g</span>
-                </div>
-              )}
-              {c.pinned_hero_caption && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, fontStyle: 'italic' }}>
-                  “{c.pinned_hero_caption}”
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {pinnedMatch && (
-          <div style={{
-            padding: '10px 14px', border: `1px solid ${accent}55`, borderRadius: 8,
-            background: 'var(--bg-card)', minWidth: 220,
-          }}>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>Pinned match</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-              <span style={{
-                fontWeight: 800, fontSize: 13, padding: '2px 8px', borderRadius: 4,
-                background: pinnedMatch.win ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)',
-                color: pinnedMatch.win ? '#22c55e' : '#ef4444',
-              }}>
-                {pinnedMatch.win ? '✓ WIN' : '✗ LOSS'}
-              </span>
-              <span style={{ fontSize: 13, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
-                <span style={{ color: '#22c55e' }}>{pinnedMatch.radiantScore}</span>
-                <span style={{ color: 'var(--text-muted)' }}> – </span>
-                <span style={{ color: '#ef4444' }}>{pinnedMatch.direScore}</span>
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDuration(pinnedMatch.duration)}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-              <img src={getHeroImageUrl(pinnedMatch.hero_id)} alt="" style={{ width: 40, height: 22, borderRadius: 3 }} />
-              <span style={{ fontSize: 12 }}>
-                <span style={{ color: 'var(--text-muted)' }}>as </span>
-                <strong>{getHeroName(pinnedMatch.hero_id)}</strong>
-              </span>
-              <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-                {pinnedMatch.kills}/{pinnedMatch.deaths}/{pinnedMatch.assists}
-              </span>
-            </div>
-            <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-              #{pinnedMatch.match_id} · {pinnedMatch.date}
-            </div>
-          </div>
-        )}
-
-        {pinnedAch && (
-          <div style={{
-            padding: '10px 14px', border: `1px solid ${accent}55`, borderRadius: 8,
-            background: 'var(--bg-card)', minWidth: 200,
-          }}>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>Pinned achievement</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-              <span style={{ fontSize: 26 }}>{pinnedAch.emoji}</span>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>{pinnedAch.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{pinnedAch.sub}</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Top heroes auto-strip */}
-      {c.show_top_heroes && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
-            Most-played heroes (auto)
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {SAMPLE_TOP_HEROES.map(h => {
-              const wr = Math.round((h.wins / h.games) * 100);
-              return (
-                <div key={h.hero_id} style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '4px 10px', borderRadius: 6,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                }}>
-                  <img src={getHeroImageUrl(h.hero_id)} alt="" style={{ width: 36, height: 20, borderRadius: 2 }} />
-                  <div style={{ fontSize: 12 }}>
-                    <div style={{ fontWeight: 700 }}>{getHeroName(h.hero_id)}</div>
-                    <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {h.games}g · <span style={{ color: wr >= 55 ? '#22c55e' : '#f59e0b' }}>{wr}% WR</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Linked socials */}
-      {(c.social_twitch || c.social_youtube || c.social_steam) && (
-        <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {c.social_twitch && <SocialChip kind="Twitch" url={c.social_twitch} bg="#9146FF" emoji="📺" />}
-          {c.social_youtube && <SocialChip kind="YouTube" url={c.social_youtube} bg="#FF0000" emoji="▶️" />}
-          {c.social_steam && <SocialChip kind="Steam" url={c.social_steam} bg="#1b2838" emoji="🎮" />}
-        </div>
-      )}
-
-      {/* Mock recent matches strip so the preview looks like a real profile */}
-      <div style={{ marginTop: 18 }}>
+      {/* Mock recent matches strip kept here so the sandbox still doubles as a
+          full visual harness — the public profile renders this from real data
+          inside its own match-history widget below the card. */}
+      <div style={{ marginTop: 18, padding: 12, borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
           Recent matches (sample)
         </div>

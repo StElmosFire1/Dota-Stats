@@ -12,6 +12,7 @@ import {
 } from '../profileCosmetics';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
 import { oauthErrorMessage } from '../components/DiscordLinkModal';
+import ProfileCard from '../components/ProfileCard';
 
 // Compact, dependency-free UI for editing /settings/profile. Renders three
 // sections (basics / cosmetics / pins) plus a live preview card. The premium
@@ -313,6 +314,8 @@ export default function SettingsProfile() {
   const [achievementsList, setAchievementsList] = useState([]);
 
   const [ownMatches, setOwnMatches] = useState([]);
+  const [ownHeroes, setOwnHeroes] = useState([]);
+  const [streak, setStreak] = useState(null);
 
   const accountId = steamUser?.accountId;
   const displayName = steamUser?.displayName || (accountId ? `Player ${accountId}` : 'Your profile');
@@ -358,7 +361,14 @@ export default function SettingsProfile() {
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.recentMatches) setOwnMatches(d.recentMatches);
+        if (d?.heroes) setOwnHeroes(d.heroes);
       })
+      .catch(() => {});
+    // v6.18 — pull current streak so the preview's streak chip mirrors what
+    // visitors actually see on the public profile (instead of always-off).
+    fetch(`/api/players/${accountId}/streak`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.streak != null) setStreak(d.streak); })
       .catch(() => {});
   }, [accountId]);
 
@@ -460,12 +470,67 @@ export default function SettingsProfile() {
     );
   }
 
+  // v6.18 — Build the same shape /api/player/:id/profile-card returns so the
+  // shared <ProfileCard /> renders the editor preview identically to what
+  // public visitors see on /player/:id. Real player data (recent matches,
+  // hero career, current streak, earned achievements) is mixed in so the
+  // preview is never SAMPLE_*.
   const previewCustomization = {
-    bio, custom_title: customTitle, theme_accent: themeAccent,
+    bio,
+    custom_title: customTitle,
+    theme_accent: themeAccent,
+    profile_frame: profileFrame,
     pinned_hero_id: pinnedHeroId ? parseInt(pinnedHeroId, 10) : null,
     pinned_hero_caption: pinnedHeroCaption,
     pinned_match_id: pinnedMatchId ? parseInt(pinnedMatchId, 10) : null,
+    extras,
   };
+  const previewPinnedHeroRow = previewCustomization.pinned_hero_id
+    ? ownHeroes.find(h => Number(h.hero_id) === Number(previewCustomization.pinned_hero_id))
+    : null;
+  const previewPinnedHero = previewCustomization.pinned_hero_id ? {
+    hero_id: previewCustomization.pinned_hero_id,
+    name: previewPinnedHeroRow ? (previewPinnedHeroRow.hero_name || getHeroName(previewCustomization.pinned_hero_id)) : getHeroName(previewCustomization.pinned_hero_id),
+    games: previewPinnedHeroRow ? parseInt(previewPinnedHeroRow.games || 0) : 0,
+    wins: previewPinnedHeroRow ? parseInt(previewPinnedHeroRow.wins || 0) : 0,
+    kda: previewPinnedHeroRow
+      ? (parseFloat(previewPinnedHeroRow.avg_kills || 0) + parseFloat(previewPinnedHeroRow.avg_assists || 0))
+        / Math.max(parseFloat(previewPinnedHeroRow.avg_deaths || 0), 1)
+      : null,
+    caption: pinnedHeroCaption || null,
+    borderColor: extras.pinned_hero_border || null,
+  } : null;
+  const previewPinnedMatchRow = previewCustomization.pinned_match_id
+    ? ownMatches.find(m => Number(m.match_id) === Number(previewCustomization.pinned_match_id))
+    : null;
+  const previewPinnedMatch = previewPinnedMatchRow ? {
+    match_id: previewPinnedMatchRow.match_id,
+    hero_id: previewPinnedMatchRow.hero_id,
+    hero: previewPinnedMatchRow.hero,
+    kills: previewPinnedMatchRow.kills,
+    deaths: previewPinnedMatchRow.deaths,
+    assists: previewPinnedMatchRow.assists,
+    duration: previewPinnedMatchRow.duration,
+    start_time: previewPinnedMatchRow.start_time
+      || (previewPinnedMatchRow.date ? Math.floor(new Date(previewPinnedMatchRow.date).getTime() / 1000) : null),
+    player_won: (previewPinnedMatchRow.team === 'radiant') === !!previewPinnedMatchRow.radiant_win,
+  } : null;
+  const previewPinnedAchievement = extras.pinned_achievement_id
+    ? (() => {
+        const a = (achievementsList || []).find(x => (x.key || x.id) === extras.pinned_achievement_id);
+        if (!a) return null;
+        return {
+          emoji: a.emoji || a.icon || '🏆',
+          label: a.label || a.title || a.key,
+          sub: a.description || a.sub || null,
+        };
+      })()
+    : null;
+  const previewTopHeroes = (ownHeroes || []).slice(0, 5).map(h => ({
+    hero_id: h.hero_id,
+    games: parseInt(h.games || 0),
+    wins: parseInt(h.wins || 0),
+  }));
 
   return (
     <div className="container settings-profile-shell" style={{ maxWidth: 1180, padding: '24px 16px' }}>
@@ -505,7 +570,20 @@ export default function SettingsProfile() {
               .settings-profile-preview in styles.css). Form column flows
               in the centre underneath. */}
           <aside className="settings-profile-preview">
-            <PreviewCard displayName={displayName} customization={previewCustomization} />
+            {/* v6.18 — same <ProfileCard /> visitors see on /player/:id. */}
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1.5, marginBottom: 6, textTransform: 'uppercase' }}>
+              Live preview · profile card
+            </div>
+            <ProfileCard
+              displayName={displayName}
+              customization={previewCustomization}
+              pinnedHero={previewPinnedHero}
+              pinnedMatch={previewPinnedMatch}
+              pinnedAchievement={previewPinnedAchievement}
+              topHeroes={previewTopHeroes}
+              streak={streak}
+              frame={profileFrame}
+            />
           </aside>
           <div className="settings-profile-form">
 
