@@ -176,9 +176,87 @@ function LiveConfigEditor({ session, onSaved }) {
   );
 }
 
+// Task #136 — tri-state Discord gate. Renders the appropriate CTA when a
+// signed-in player can't yet join the inhouse lobby:
+//   * not signed in        → "Sign in with Steam" (handled by parent: caller
+//                            renders this component only when myAccountId is
+//                            present, so this branch is implicit)
+//   * needs Discord link   → "Link Discord" → /auth/discord
+//   * not in OCE Inhouse   → "Join the OCE Inhouse Discord" → invite URL
+// Returns null when the player is allowed to join. Soft-passes when guild
+// membership is unknown (bot starting up, guild not configured) so a
+// transient bot outage doesn't lock the lobby.
+function DiscordJoinGate({ steamUser, refreshMe }) {
+  if (!steamUser) return null;
+  // Re-poll /auth/me every 8s while the gate is shown so the moment the
+  // player completes the OAuth link or joins the Discord server, the gate
+  // disappears without a manual refresh.
+  React.useEffect(() => {
+    if (!refreshMe) return;
+    if (steamUser.needs_discord_link || steamUser.discord_in_guild === false) {
+      const id = setInterval(() => { refreshMe().catch(() => {}); }, 8000);
+      return () => clearInterval(id);
+    }
+  }, [steamUser?.needs_discord_link, steamUser?.discord_in_guild, refreshMe]);
+
+  if (steamUser.needs_discord_link) {
+    const oauthEnabled = !!steamUser.discord_oauth_enabled;
+    return (
+      <div style={{ marginTop: 8, padding: 14, background: 'color-mix(in srgb, #5865F2 12%, transparent)', border: '1px solid color-mix(in srgb, #5865F2 45%, transparent)', borderRadius: 6, textAlign: 'left' }}>
+        <div style={{ fontWeight: 700, color: '#5865F2', marginBottom: 4 }}>🔗 Link Discord to join the lobby</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+          Inhouse matches run on Discord voice. Link your Discord account so we can pull you into the right voice channel and DM you match results.
+        </div>
+        {oauthEnabled ? (
+          <a href="/auth/discord" style={{ display: 'inline-block', padding: '8px 16px', background: '#5865F2', color: '#fff', borderRadius: 4, textDecoration: 'none', fontWeight: 700, fontSize: 14 }}>
+            Link Discord
+          </a>
+        ) : (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Discord linking isn't configured on this site. Open the Discord-link prompt from the homepage banner, or ask an admin.
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (steamUser.discord_in_guild === false) {
+    const invite = steamUser.discord_invite_url;
+    return (
+      <div style={{ marginTop: 8, padding: 14, background: 'color-mix(in srgb, var(--brass) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--brass) 45%, transparent)', borderRadius: 6, textAlign: 'left' }}>
+        <div style={{ fontWeight: 700, color: 'var(--brass)', marginBottom: 4 }}>🛡️ Join the OCE Inhouse Discord server</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+          We can see your Discord account ({steamUser.discord_id || 'linked'}), but you aren't currently a member of the OCE Inhouse server. Inhouse voice / DMs require it.
+        </div>
+        {invite ? (
+          <a href={invite} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', padding: '8px 16px', background: 'var(--brass)', color: '#0d1424', borderRadius: 4, textDecoration: 'none', fontWeight: 700, fontSize: 14 }}>
+            Open the Discord invite ↗
+          </a>
+        ) : (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Discord invite URL isn't configured. Ask an admin for the OCE Inhouse server invite link.
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+          This panel re-checks every few seconds — once you're in the server, the join button will appear automatically.
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function Inhouse() {
   const { superuserKey } = useSuperuser();
-  const { steamUser } = useSteamAuth();
+  const { steamUser, refreshMe } = useSteamAuth();
+  // Task #136 — tri-state gate. The "Sign In to Inhouse" / "Join Session"
+  // buttons must stay disabled until the player is signed in, has Discord
+  // linked, and is currently in the OCE Inhouse server. Unknown
+  // (discord_in_guild === null) is treated as "allow" so a bot-side outage
+  // doesn't lock everyone out — the server enforces the same rule.
+  const discordGateBlocked = !!steamUser && (
+    steamUser.needs_discord_link === true ||
+    steamUser.discord_in_guild === false
+  );
   const [session, setSession] = useState(null);
   const [players, setPlayers] = useState([]);
   const [pastSessions, setPastSessions] = useState([]);
@@ -482,6 +560,51 @@ export default function Inhouse() {
 
   const myPlayer = myAccountId ? players.find(p => Number(p.account_id) === myAccountId) : null;
   const isInSession = !!myPlayer;
+
+  // Task #136 — liveness heartbeat. While the player is registered in an
+  // open/accepting session, ping /api/inhouse/heartbeat every 15s so the
+  // autoStartTicker sweep keeps their slot. Also fire a final beacon on
+  // visibility-hide / page-unload so a closed tab releases the slot fast.
+  // Server-side, the same endpoint is a cheap UPDATE — safe to spam.
+  React.useEffect(() => {
+    if (!isInSession || !session || !['open','accepting'].includes(session.status)) return;
+    let cancelled = false;
+    const send = () => {
+      if (cancelled) return;
+      fetch('/api/inhouse/heartbeat', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => {});
+    };
+    // Best-effort beacon for tab-close / page-hide. navigator.sendBeacon
+    // delivers reliably even when the browser is tearing the page down,
+    // where a normal fetch would be cancelled mid-flight. The endpoint is
+    // session-cookie authenticated and ignores the request body, so an
+    // empty Blob is fine.
+    const beacon = () => {
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          navigator.sendBeacon('/api/inhouse/heartbeat', new Blob([''], { type: 'application/json' }));
+        }
+      } catch {}
+    };
+    send();
+    const id = setInterval(send, 15000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') send();
+      else beacon();
+    };
+    const onPageHide = () => beacon();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [isInSession, session?.id, session?.status]);
   const acceptedCount = players.filter(p => p.status === 'accepted').length;
   const draftedCount = players.filter(p => p.team > 0).length;
   const team1 = players.filter(p => p.team === 1);
@@ -563,9 +686,22 @@ export default function Inhouse() {
                   </button>
                 ))}
               </div>
-              <button onClick={joinSession} style={{ padding: '10px 24px', background: 'var(--brass)', color: '#0d1424', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700, fontSize: 15, letterSpacing: 0.4 }}>
+              <button
+                onClick={joinSession}
+                disabled={discordGateBlocked}
+                title={discordGateBlocked ? 'Link your Discord and join the OCE Inhouse server first.' : ''}
+                style={{
+                  padding: '10px 24px',
+                  background: discordGateBlocked ? 'var(--bg)' : 'var(--brass)',
+                  color: discordGateBlocked ? 'var(--text-muted)' : '#0d1424',
+                  border: discordGateBlocked ? '1px solid var(--border)' : 'none',
+                  borderRadius: 4,
+                  cursor: discordGateBlocked ? 'not-allowed' : 'pointer',
+                  fontWeight: 700, fontSize: 15, letterSpacing: 0.4,
+                }}>
                 Sign In to Inhouse
               </button>
+              <DiscordJoinGate steamUser={steamUser} refreshMe={refreshMe} />
             </>
           ) : (
             <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Sign in with Steam to join.</p>
@@ -831,7 +967,20 @@ export default function Inhouse() {
                       </button>
                     ))}
                   </div>
-                  <button onClick={joinSession} style={{ padding: '8px 16px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Join Session</button>
+                  <button
+                    onClick={joinSession}
+                    disabled={discordGateBlocked}
+                    title={discordGateBlocked ? 'Link your Discord and join the OCE Inhouse server first.' : ''}
+                    style={{
+                      padding: '8px 16px',
+                      background: discordGateBlocked ? 'var(--bg)' : '#4caf50',
+                      color: discordGateBlocked ? 'var(--text-muted)' : '#fff',
+                      border: discordGateBlocked ? '1px solid var(--border)' : 'none',
+                      borderRadius: 4,
+                      cursor: discordGateBlocked ? 'not-allowed' : 'pointer',
+                      fontWeight: 600,
+                    }}>Join Session</button>
+                  <DiscordJoinGate steamUser={steamUser} refreshMe={refreshMe} />
                 </div>
               )}
               {isInSession && session.status === 'accepting' && myPlayer.status !== 'accepted' && myPlayer.status !== 'declined' && (

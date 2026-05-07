@@ -1307,6 +1307,15 @@ async function init() {
         UNIQUE (session_id, account_id)
       )
     `);
+    // Task #136 — liveness heartbeat. Frontend pings every ~15s while the
+    // lobby page is mounted; the autoStartTicker sweep drops anyone whose
+    // last_seen_at is older than the configured threshold.
+    await p.query(`ALTER TABLE inhouse_session_players ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    // Task #136 — last express-session id we saw the player on. Used by the
+    // sweep tick to drop seats whose underlying Steam session has been
+    // destroyed (logout, cookie expiry, store-side eviction) without waiting
+    // for the heartbeat-staleness window. Nullable for legacy / bot rows.
+    await p.query(`ALTER TABLE inhouse_session_players ADD COLUMN IF NOT EXISTS last_session_id TEXT`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_session_players_session ON inhouse_session_players (session_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_sessions_status ON inhouse_sessions (status)`);
     // v5.75: auto-start gating once min_players is reached, plus lobby_fill_seconds
@@ -8637,6 +8646,75 @@ async function leaveAllJoinableInhouseSessions(accountId) {
   return r.rowCount || 0;
 }
 
+// Task #136 — bump every joinable-session row this account owns so the
+// stale-player sweep treats them as live. Returns the number of rows
+// touched (0 if the account isn't currently in any open/accepting
+// session). Cheap enough to call from a 15s frontend poll.
+async function touchInhousePlayerHeartbeat(accountId, sessionIdToken = null) {
+  if (!accountId) return 0;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE inhouse_session_players
+        SET last_seen_at = NOW(),
+            last_session_id = COALESCE($2, last_session_id)
+       WHERE account_id = $1
+         AND session_id IN (
+           SELECT id FROM inhouse_sessions WHERE status IN ('open','accepting')
+         )`,
+    [accountId, sessionIdToken]
+  );
+  return r.rowCount || 0;
+}
+
+// Task #136 — list active (open/accepting) inhouse seats together with the
+// last express-session id we saw them on. The sweep tick uses this to drop
+// any seat whose underlying Steam session has gone away (logout, cookie
+// expiry, store eviction) without waiting for the heartbeat-staleness
+// window. Bot/demo seats (last_session_id IS NULL) are skipped.
+async function listInhousePlayerSessionTokens() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT isp.session_id, isp.account_id, isp.last_session_id
+       FROM inhouse_session_players isp
+       JOIN inhouse_sessions s ON s.id = isp.session_id
+      WHERE s.status IN ('open','accepting')
+        AND isp.last_session_id IS NOT NULL`
+  );
+  return r.rows || [];
+}
+
+// Task #136 — drop a single seat. Used by the session-validity sweep when
+// the express-session token attached to a seat is no longer in the store.
+async function dropInhousePlayerSeat(sessionId, accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM inhouse_session_players
+       WHERE session_id = $1 AND account_id = $2
+       RETURNING session_id, account_id`,
+    [sessionId, accountId]
+  );
+  return r.rows[0] || null;
+}
+
+// Task #136 — sweep tick. Drops any player from an open/accepting session
+// whose last_seen_at is older than `thresholdSeconds`. Runs on the same
+// tick cadence as autoStartTicker so leavers free their slot quickly.
+// Returns an array of { session_id, account_id } rows that were removed
+// so the caller can log / re-tally.
+async function pruneStaleInhousePlayers(thresholdSeconds = 45) {
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM inhouse_session_players
+       WHERE session_id IN (
+         SELECT id FROM inhouse_sessions WHERE status IN ('open','accepting')
+       )
+       AND last_seen_at < NOW() - ($1 || ' seconds')::interval
+       RETURNING session_id, account_id`,
+    [String(thresholdSeconds)]
+  );
+  return r.rows || [];
+}
+
 async function getInhouseSessionPlayers(sessionId) {
   const p = getPool();
   const r = await p.query(
@@ -11166,6 +11244,10 @@ module.exports = {
   joinInhouseSession,
   leaveInhouseSession,
   leaveAllJoinableInhouseSessions,
+  touchInhousePlayerHeartbeat,
+  pruneStaleInhousePlayers,
+  listInhousePlayerSessionTokens,
+  dropInhousePlayerSeat,
   getInhouseSessionPlayers,
   updateInhouseSessionPlayer,
   setInhousePlayerAccepted,

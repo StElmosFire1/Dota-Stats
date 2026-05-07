@@ -6017,6 +6017,64 @@ class DiscordBot {
     }
   }
 
+  // Task #136 — quick-and-dirty guild membership check used by the inhouse
+  // join hard gate and the auth/me payload. Returns:
+  //   { inGuild: true,  configured: true  } — bot can see the user in the guild
+  //   { inGuild: false, configured: true  } — guild known but user isn't a member
+  //   { inGuild: null,  configured: false } — DISCORD_GUILD_ID not set, or bot
+  //                                           not ready (treat as "unknown" upstream)
+  // Cached per discord_id for ~30s to keep the auth poll cheap. The cache is
+  // shared across all callers on this process; for a multi-process deploy
+  // each PM2 worker will warm its own copy independently.
+  async isInLeagueGuild(discordId) {
+    const guildId = process.env.DISCORD_GUILD_ID;
+    if (!guildId) return { inGuild: null, configured: false };
+    if (!this.client || !this.client.readyAt) return { inGuild: null, configured: true };
+    if (!discordId || !/^\d{17,19}$/.test(String(discordId))) {
+      return { inGuild: false, configured: true };
+    }
+    if (!this._guildMembershipCache) this._guildMembershipCache = new Map();
+    const key = `${guildId}:${discordId}`;
+    const now = Date.now();
+    const cached = this._guildMembershipCache.get(key);
+    if (cached && (now - cached.ts) < 30_000) {
+      return { inGuild: cached.inGuild, configured: true };
+    }
+    let guild = this.client.guilds.cache.get(guildId);
+    if (!guild) {
+      try { guild = await this.client.guilds.fetch(guildId); } catch { guild = null; }
+    }
+    if (!guild) {
+      // Bot can't reach the guild at all (not invited, etc.) — surface as
+      // "unknown" rather than false so the UI doesn't lock everyone out
+      // because of a bot-side misconfig.
+      return { inGuild: null, configured: true };
+    }
+    let inGuild;
+    try {
+      const member = await guild.members.fetch(String(discordId));
+      inGuild = !!member;
+    } catch (err) {
+      // Distinguish definitive "not a member" from transient/transport
+      // failures. Discord API error code 10007 (and HTTP 404) is the only
+      // signal that means "this user is not in the guild" — anything else
+      // (rate limits, 5xx, network, websocket disconnect, etc.) is an
+      // *unknown* result. Caching `false` on a transient hiccup would
+      // hard-block legitimate users for 30s and break joins during minor
+      // Discord outages, so we surface those as `null` (soft-pass upstream)
+      // and skip caching so the next poll retries fresh.
+      const code = err && (err.code ?? err.rawError?.code);
+      const status = err && (err.httpStatus ?? err.status);
+      const isUnknownMember = code === 10007 || status === 404;
+      if (!isUnknownMember) {
+        return { inGuild: null, configured: true };
+      }
+      inGuild = false;
+    }
+    this._guildMembershipCache.set(key, { inGuild, ts: now });
+    return { inGuild, configured: true };
+  }
+
   // Task #128 — best-effort DM nudge to a player whose `addUserToLeagueGuild`
   // call just failed, telling them to click *Reconnect with Discord* on the
   // site once an admin has fixed the underlying perms / config issue. Caller

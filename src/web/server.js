@@ -205,8 +205,18 @@ function createServer(startupStatus = {}) {
   // It is safe in dev too: with no proxy in front, the X-Forwarded-* headers
   // simply aren't set and req.protocol falls back to the connection scheme.
   app.set('trust proxy', 1);
+  // Task #136 — keep an explicit reference to the session store so the
+  // inhouse stale-seat sweep can ask "is this express-session id still
+  // alive?" without going through HTTP. With express-session's default
+  // MemoryStore (what we use), `store.get(sid, cb)` returns the cached
+  // session or `undefined` if it's been destroyed / evicted. Exposed via
+  // app.locals so the ticker (started from src/index.js after the API
+  // boots) can pick it up.
+  const sessionStore = new session.MemoryStore();
+  app.locals.sessionStore = sessionStore;
   app.use(session({
     name: 'oi.sid',
+    store: sessionStore,
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
@@ -1101,12 +1111,34 @@ function createApiRouter(startupStatus = {}) {
       } catch (err) {
         console.warn('[auth/me] discord-link check failed:', err.message);
       }
+      // Task #136 — surface live guild-membership state so the inhouse page
+      // can render the tri-state gate (signed-out → no Discord link → not in
+      // guild → ready to join). null means "unknown" (bot not ready / guild
+      // not configured) and the UI should treat that as "allow" rather than
+      // locking everyone out on a bot-side outage.
+      let discordInGuild = null;
+      let guildConfigured = false;
+      if (discordId) {
+        try {
+          const bot = getDiscordBot();
+          const r = await bot.isInLeagueGuild(discordId);
+          discordInGuild = r.inGuild;
+          guildConfigured = !!r.configured;
+        } catch (err) {
+          console.warn('[auth/me] guild-membership check failed:', err.message);
+        }
+      } else {
+        guildConfigured = !!process.env.DISCORD_GUILD_ID;
+      }
       res.json({
         accountId: req.session.accountId,
         steamId64: req.session.steamId64,
         displayName: req.session.displayName || null,
         discord_id: discordId || null,
         needs_discord_link: !discordId,
+        discord_in_guild: discordInGuild,
+        discord_guild_configured: guildConfigured,
+        discord_invite_url: config.discord.serverInvite || null,
         discord_oauth_enabled: Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
       });
     } else {
@@ -5928,6 +5960,56 @@ NOTES
     return { accountId, isAdmin };
   }
 
+  // Task #136 — hard gate. Every player joining the inhouse lobby must (a)
+  // have a Discord account linked to their Steam account, and (b) currently
+  // be a member of the OCE Inhouse Discord server. Admins bypass both
+  // checks (so the demo / seed-bots flow is unaffected). Returns null when
+  // the caller is allowed; otherwise returns { status, body } the route
+  // should respond with directly. The bot helper returns inGuild=null when
+  // it cannot answer (bot starting up, guild not configured, can't reach
+  // the guild) — we treat that as a soft pass so a bot-side outage doesn't
+  // lock everyone out of joining.
+  async function _enforceDiscordGuildGate(actor) {
+    if (!actor || actor.isAdmin) return null;
+    let discordId = null;
+    try {
+      discordId = await db.getDiscordIdByAccountId(actor.accountId);
+    } catch (err) {
+      console.warn('[inhouse-gate] discord lookup failed:', err.message);
+      return { status: 503, body: { error: 'Could not verify your Discord link right now. Try again in a moment.', code: 'discord_check_failed' } };
+    }
+    if (!discordId) {
+      return {
+        status: 403,
+        body: {
+          error: 'Link your Discord account before joining the inhouse lobby.',
+          code: 'discord_required',
+        },
+      };
+    }
+    try {
+      const bot = getDiscordBot();
+      const r = await bot.isInLeagueGuild(discordId);
+      if (r.inGuild === false) {
+        return {
+          status: 403,
+          body: {
+            error: 'Join the OCE Inhouse Discord server before queueing — you currently aren\'t a member.',
+            code: 'discord_not_in_guild',
+            invite_url: config.discord.serverInvite || null,
+          },
+        };
+      }
+      // r.inGuild === true (allow) or null (unknown — soft-allow with a log).
+      if (r.inGuild === null) {
+        console.warn(`[inhouse-gate] guild membership unknown for account ${actor.accountId} — soft-allowing join.`);
+      }
+    } catch (err) {
+      console.warn('[inhouse-gate] guild check threw:', err.message);
+    }
+    return null;
+  }
+
   // v6.03 — auto-running lobby entrypoint. Any signed-in player can join
   // without an admin pre-creating a session: if no joinable session exists
   // we create one with default settings (60s accept window / 10 min players /
@@ -5937,6 +6019,9 @@ NOTES
     try {
       const actor = _resolveInhouseActor(req);
       if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      // Task #136 — Discord-link + guild-membership hard gate.
+      const gate = await _enforceDiscordGuildGate(actor);
+      if (gate) return res.status(gate.status).json(gate.body);
       const { session, created } = await db.getOrCreateOpenInhouseSession({
         createdBy: 'auto:' + actor.accountId,
       });
@@ -5949,6 +6034,10 @@ NOTES
       const player = await db.joinInhouseSession(
         session.id, actor.accountId, req.body?.preferredPositions || null
       );
+      // Task #136 — capture the express-session id so the sweep tick can
+      // drop this seat the moment the underlying Steam session goes away
+      // (logout, cookie expiry, store eviction).
+      try { await db.touchInhousePlayerHeartbeat(actor.accountId, req.sessionID || null); } catch {}
       res.json({ session, player, created });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -6141,11 +6230,33 @@ NOTES
     try {
       const actor = _resolveInhouseActor(req);
       if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      // Task #136 — Discord-link + guild-membership hard gate.
+      const gate = await _enforceDiscordGuildGate(actor);
+      if (gate) return res.status(gate.status).json(gate.body);
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
       if (!['open','accepting'].includes(session.status)) return res.status(400).json({ error: 'Session not joinable in current phase' });
       const player = await db.joinInhouseSession(session.id, actor.accountId, req.body?.preferredPositions || null);
+      try { await db.touchInhousePlayerHeartbeat(actor.accountId, req.sessionID || null); } catch {}
       res.json({ player });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #136 — liveness heartbeat. Frontend pings this every ~15s while
+  // the inhouse page is mounted (and via navigator.sendBeacon on tab hide /
+  // unload). Updates last_seen_at across every joinable session the caller
+  // is in, so the autoStartTicker sweep can drop stale players (closed tab
+  // / asleep browser) and free their lobby slot quickly. Cheap by design —
+  // returns the count of rows touched so the client can detect "you've been
+  // dropped" without reloading.
+  router.post('/inhouse/heartbeat', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const touched = await db.touchInhousePlayerHeartbeat(actor.accountId, req.sessionID || null);
+      res.json({ ok: true, touched });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -6214,8 +6325,51 @@ NOTES
 
   router.post('/inhouse/:id/select-captains', requireSuperuser, express.json(), async (req, res) => {
     try {
-      // Atomic phase-guarded transition: only proceed if still in 'accepting'
+      // Task #136 — pre-flight Discord guild re-verification. We do this
+      // BEFORE the atomic flip to 'drafting' so that any player who has left
+      // the OCE Inhouse Discord server between joining and the accept-phase
+      // expiry gets dropped from the lobby (they're skipping voice). Bot
+      // accounts (the demo seed range 9_000_001..9_000_010) are excluded.
+      // Players whose discord_id can't be looked up or whose membership the
+      // bot can't currently answer for are NOT dropped — soft-pass to avoid
+      // killing the lobby on a bot-side outage.
       const pool = db.getPool();
+      try {
+        const preflightPlayers = await db.getInhouseSessionPlayers(req.params.id);
+        const acceptedPre = preflightPlayers.filter(p => p.status === 'accepted');
+        const dropped = [];
+        if (acceptedPre.length > 0) {
+          const bot = getDiscordBot();
+          for (const p of acceptedPre) {
+            const aid = Number(p.account_id);
+            if (aid >= 9_000_001 && aid <= 9_000_010) continue; // demo bots
+            let discordId = null;
+            try { discordId = await db.getDiscordIdByAccountId(aid); } catch {}
+            if (!discordId) {
+              await db.leaveInhouseSession(req.params.id, aid).catch(() => {});
+              dropped.push({ account_id: aid, reason: 'discord_required' });
+              continue;
+            }
+            let inGuild;
+            try {
+              const r = await bot.isInLeagueGuild(discordId);
+              inGuild = r.inGuild;
+            } catch { inGuild = null; }
+            if (inGuild === false) {
+              await db.leaveInhouseSession(req.params.id, aid).catch(() => {});
+              dropped.push({ account_id: aid, reason: 'discord_not_in_guild' });
+            }
+          }
+        }
+        if (dropped.length) {
+          console.warn(`[select-captains] preflight dropped ${dropped.length} player(s) from session ${req.params.id}:`,
+            dropped.map(d => `${d.account_id}(${d.reason})`).join(', '));
+        }
+      } catch (e) {
+        console.warn('[select-captains] preflight guild check failed (soft-pass):', e.message);
+      }
+
+      // Atomic phase-guarded transition: only proceed if still in 'accepting'
       const guardRes = await pool.query(
         `UPDATE inhouse_sessions SET status = 'drafting' WHERE id = $1 AND status = 'accepting' RETURNING *`,
         [req.params.id]
@@ -6228,6 +6382,32 @@ NOTES
       const session = guardRes.rows[0];
       const players = await db.getInhouseSessionPlayers(session.id);
       const accepted = players.filter(p => p.status === 'accepted');
+      // Task #136 — re-honour the session's min_players after the guild
+      // pre-flight may have trimmed the accepted roster. If we've dropped
+      // below the floor, abort the flip and return the lobby to 'open' so
+      // it can refill cleanly (mirrors the autoStartTicker shortfall path).
+      const minRequired = Math.max(2, Number(session.min_players) || 2);
+      if (accepted.length < minRequired) {
+        await pool.query(
+          `UPDATE inhouse_sessions
+              SET status = 'open',
+                  accept_phase_starts_at = NULL,
+                  auto_start_at = NULL
+            WHERE id = $1`,
+          [session.id]
+        );
+        await pool.query(
+          `UPDATE inhouse_session_players SET status = 'registered', accepted_at = NULL
+             WHERE session_id = $1 AND status IN ('accepted','declined')`,
+          [session.id]
+        );
+        return res.status(409).json({
+          error: `Only ${accepted.length}/${minRequired} accepted players remain after Discord guild re-check — returning lobby to open.`,
+          code: 'preflight_shortfall',
+          accepted: accepted.length,
+          required: minRequired,
+        });
+      }
       if (accepted.length < 2) {
         // Roll back phase guard
         await db.updateInhouseSession(session.id, { status: 'accepting' });

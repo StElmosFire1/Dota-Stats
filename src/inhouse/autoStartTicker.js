@@ -21,15 +21,71 @@
 // guards via internal HTTP calls (so we don't duplicate transition logic).
 
 const TICK_MS = 5000;
+// Task #136 — drop players whose last_seen_at is older than this (default
+// 45s, override via INHOUSE_HEARTBEAT_STALE_SECONDS). The frontend pings
+// every 15s, so 45s gives ~3 missed pings before reclaiming the slot.
+const STALE_SECONDS = Number(process.env.INHOUSE_HEARTBEAT_STALE_SECONDS) || 45;
 
 let _timer = null;
 let _logger = console;
+let _sessionStore = null;
 
 function log(...args) { _logger.log('[InhouseAutoStart]', ...args); }
 function warn(...args) { _logger.warn('[InhouseAutoStart]', ...args); }
 
 async function tick(db, basePort) {
   const fetch = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
+  // Task #136 — sweep stale players first so the open/accepting reads below
+  // see the freshly-trimmed roster. Failures here are non-fatal; we still
+  // run the phase advancement.
+  try {
+    const dropped = await db.pruneStaleInhousePlayers(STALE_SECONDS);
+    if (dropped.length) {
+      log(`Heartbeat sweep dropped ${dropped.length} stale player row(s):`,
+        dropped.map(r => `s${r.session_id}/${r.account_id}`).join(', '));
+    }
+  } catch (e) {
+    warn('pruneStaleInhousePlayers failed:', e.message);
+  }
+  // Task #136 — Steam-session-validity sweep. For every active inhouse
+  // seat that has a recorded express-session id, ask the session store
+  // whether that session still exists. Logout, cookie expiry, and
+  // store-side eviction all destroy the row, so this catches "ghost
+  // seats" whose underlying Steam auth is gone without waiting for the
+  // 45s heartbeat-staleness window. No-op if the session store wasn't
+  // wired in (e.g. tests / non-API runners).
+  if (_sessionStore && typeof _sessionStore.get === 'function') {
+    try {
+      const seats = await db.listInhousePlayerSessionTokens();
+      const uniqueSids = Array.from(new Set(seats.map(s => s.last_session_id).filter(Boolean)));
+      const liveness = new Map();
+      await Promise.all(uniqueSids.map(sid => new Promise(resolve => {
+        try {
+          _sessionStore.get(sid, (err, sess) => {
+            if (err) { liveness.set(sid, true); return resolve(); } // soft-pass on store error
+            // A live Steam session has steamId64 / accountId set on it;
+            // an anonymous-but-existing session row doesn't count.
+            const alive = !!(sess && (sess.steamId64 || sess.accountId));
+            liveness.set(sid, alive);
+            resolve();
+          });
+        } catch (e) {
+          liveness.set(sid, true); // soft-pass on throw
+          resolve();
+        }
+      })));
+      const dead = seats.filter(s => liveness.get(s.last_session_id) === false);
+      if (dead.length) {
+        for (const seat of dead) {
+          try { await db.dropInhousePlayerSeat(seat.session_id, seat.account_id); } catch {}
+        }
+        log(`Session-expiry sweep dropped ${dead.length} seat(s) (Steam session gone):`,
+          dead.map(r => `s${r.session_id}/${r.account_id}`).join(', '));
+      }
+    } catch (e) {
+      warn('session-expiry sweep failed:', e.message);
+    }
+  }
   // Only fetch sessions that could need advancing — keeps the poll cheap
   // even as the inhouse_sessions table grows.
   const pool = db.getPool();
@@ -151,6 +207,7 @@ async function tick(db, basePort) {
 function start(db, opts = {}) {
   if (_timer) return;
   _logger = opts.logger || console;
+  _sessionStore = opts.sessionStore || null;
   const basePort = opts.basePort;
   _timer = setInterval(() => {
     tick(db, basePort).catch(e => warn('tick fatal:', e.message));

@@ -244,7 +244,12 @@ async function main() {
     if (startupStatus.database) {
       try {
         const ticker = require('./inhouse/autoStartTicker');
-        ticker.start(db, { basePort: webPort });
+        ticker.start(db, {
+          basePort: webPort,
+          // Task #136 — pass the live express-session store so the ticker
+          // can drop inhouse seats whose Steam session is gone.
+          sessionStore: webApp.locals && webApp.locals.sessionStore,
+        });
       } catch (err) {
         console.warn('[Startup] Inhouse auto-start ticker failed to start:', err.message);
       }
