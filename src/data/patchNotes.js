@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.20",
+    "title": "Fewer round-trips on every page load — Discord retry banner now rides /api/auth/me",
+    "published_at": "2026-05-07",
+    "content": "**Closing the loop on Task #139.** The site-wide `DiscordRetryBanner` (added in v6.15 / Task #128) was firing its own `GET /api/me/discord-autojoin-status` round-trip on every single page load for every signed-in user, even though for the ~99% of users with no pending auto-join failure the response was just `{ pending: false }`. That's a steady-state DB read per page nav for almost no benefit.\n\n• **Inlined `discord_autojoin_pending` on `/api/auth/me`** in `src/web/server.js`. The handler now does a single indexed `getDiscordAutoJoinFailureForAccount` lookup off the session's `accountId` and surfaces the boolean directly on the existing `/api/auth/me` payload that `SteamAuthContext` already fetches at startup. Failure is swallowed (warns to console, defaults to `false`) so a flaky DB read on this side-channel can never blank out the auth payload.\n\n• **`DiscordRetryBanner` reads from `steamUser`** in `web/src/components/DiscordRetryBanner.jsx` instead of firing its own fetch — the entire `useEffect` + state branch is gone, replaced with `steamUser?.discord_autojoin_pending`. The dismiss-per-session behaviour is unchanged.\n\n• **Removed the now-unused `GET /api/me/discord-autojoin-status` endpoint.** Nothing else consumed it (the admin-side `/api/admin/discord-autojoin-status` is a completely different superuser route). A short comment marker is left in the route file so anyone grepping for it lands on the explanation. The `getDiscordAutoJoinFailureForAccount` helper docstring in `src/db/index.js` is updated to point at the new caller.\n\nNet effect: one fewer HTTP round-trip and one fewer DB read per page load for every signed-in user, with no change to when or how the banner appears.",
+    "author": "System"
+  },
+  {
     "version": "6.19",
     "title": "Admins can see who's stuck waiting to retry their Discord auto-join",
     "published_at": "2026-05-07",

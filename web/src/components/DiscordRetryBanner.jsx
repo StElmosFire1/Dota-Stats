@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useSteamAuth } from '../context/SteamAuthContext';
 
 // Task #128 — site-wide banner shown to signed-in users whose Discord
@@ -8,25 +8,16 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 // transparently — clicking *Reconnect with Discord* re-runs the OAuth flow
 // and the callback retries `addUserToLeagueGuild`. The pending row is
 // cleared automatically on the next successful join.
+//
+// Task #139 — the pending boolean now rides along with /api/auth/me as
+// `discord_autojoin_pending`, so the banner no longer fires its own
+// per-page-load fetch against `/api/me/discord-autojoin-status`.
 export default function DiscordRetryBanner() {
   const { steamUser } = useSteamAuth();
-  const [pending, setPending] = useState(null);
   const [dismissed, setDismissed] = useState(false);
+  const pending = !!(steamUser?.accountId && steamUser?.discord_autojoin_pending);
 
-  useEffect(() => {
-    if (!steamUser?.accountId) {
-      setPending(null);
-      return;
-    }
-    let alive = true;
-    fetch('/api/me/discord-autojoin-status', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (alive) setPending(d && d.pending ? d : null); })
-      .catch(() => { if (alive) setPending(null); });
-    return () => { alive = false; };
-  }, [steamUser?.accountId]);
-
-  if (!steamUser?.accountId || !pending || dismissed) return null;
+  if (!pending || dismissed) return null;
 
   return (
     <div

@@ -1130,6 +1130,20 @@ function createApiRouter(startupStatus = {}) {
       } else {
         guildConfigured = !!process.env.DISCORD_GUILD_ID;
       }
+      // Task #139 — inline the Discord auto-join "pending retry" boolean here
+      // so the site-wide DiscordRetryBanner doesn't have to fire its own
+      // round-trip on every page load. For the ~99% of users with no pending
+      // failure this is a single indexed PK lookup that returns null. We only
+      // expose the boolean (the banner doesn't render any of the detail
+      // fields the standalone endpoint returned), and we fail soft so a
+      // flaky DB read on this side-channel can't blank out /api/auth/me.
+      let discordAutojoinPending = false;
+      try {
+        const row = await db.getDiscordAutoJoinFailureForAccount(req.session.accountId);
+        discordAutojoinPending = !!row;
+      } catch (err) {
+        console.warn('[auth/me] discord-autojoin-pending check failed:', err.message);
+      }
       res.json({
         accountId: req.session.accountId,
         steamId64: req.session.steamId64,
@@ -1140,6 +1154,7 @@ function createApiRouter(startupStatus = {}) {
         discord_guild_configured: guildConfigured,
         discord_invite_url: config.discord.serverInvite || null,
         discord_oauth_enabled: Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
+        discord_autojoin_pending: discordAutojoinPending,
       });
     } else {
       res.json(null);
@@ -1311,32 +1326,11 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  // GET /api/me/discord-autojoin-status — Task #128. Returns whether the
-  // signed-in user has a pending Discord auto-join failure (i.e. they linked
-  // their Discord successfully but the bot couldn't pull them into the OCE
-  // Inhouse server). When `pending: true` the site-wide banner prompts them
-  // to click *Reconnect with Discord* to retry the join. Always returns 200
-  // with `{ pending: false }` for unauthenticated callers / no row, so the
-  // frontend doesn't have to special-case 401s.
-  router.get('/me/discord-autojoin-status', async (req, res) => {
-    const accountId = req.session?.accountId;
-    if (!accountId) return res.json({ pending: false });
-    try {
-      const row = await db.getDiscordAutoJoinFailureForAccount(accountId);
-      if (!row) return res.json({ pending: false });
-      res.json({
-        pending: true,
-        code: row.last_code || 'unknown',
-        attempts: row.attempts || 1,
-        first_failed_at: row.first_failed_at,
-        last_failed_at: row.last_failed_at,
-      });
-    } catch (err) {
-      console.error('[me/discord-autojoin-status] failed for account', accountId, ':', err.message);
-      // Fail soft so a flaky DB read can't break every page load.
-      res.json({ pending: false });
-    }
-  });
+  // Task #128's `GET /api/me/discord-autojoin-status` was removed in Task
+  // #139 — its only consumer (the site-wide DiscordRetryBanner) now reads
+  // `discord_autojoin_pending` from the existing `/api/auth/me` payload, so
+  // we no longer need a standalone endpoint and the per-page-load round-trip
+  // is gone for everyone.
 
   // DELETE /api/me/link-discord — self-service *unlink* path (task 109).
   //

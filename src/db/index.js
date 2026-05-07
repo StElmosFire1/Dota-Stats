@@ -4048,9 +4048,10 @@ async function clearDiscordAutoJoinFailure(discordId, accountId) {
 }
 
 // Task #128 — return the pending failure row (if any) for an account, used
-// by the site-wide banner endpoint `GET /api/me/discord-autojoin-status`.
-// Looks up by account_id (not discord_id) so the lookup works directly off
-// the session without an extra nicknames join.
+// to populate `discord_autojoin_pending` on the `/api/auth/me` payload that
+// drives the site-wide DiscordRetryBanner (the standalone banner endpoint
+// was removed in Task #139). Looks up by account_id (not discord_id) so the
+// lookup works directly off the session without an extra nicknames join.
 async function getDiscordAutoJoinFailureForAccount(accountId) {
   if (!accountId) return null;
   const p = getPool();
