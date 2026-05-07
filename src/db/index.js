@@ -1274,6 +1274,11 @@ async function init() {
     // v6.03 — per-player captain-mode poll. JSONB map { "<accountId>": "highest_rank" | "random" | "auto_balance" | "volunteer" }.
     // Resolved into the session's captain_mode by autoStartTicker at the moment the accept phase begins.
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS captain_mode_votes JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    // Task #119 — per-player captain volunteer signups for 'volunteer' captain mode.
+    // JSONB map { "<accountId>": true }. Only accepted players can self-nominate; the
+    // /select-captains route filters this map down to current accepted members at
+    // resolve time, then picks the captains from that pool.
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS captain_volunteers JSONB NOT NULL DEFAULT '{}'::jsonb`);
 
     // ===== Wave 2 / 3 schema =====
     // F3 — Season Pass: per-event XP ledger. account_id + season_number +
@@ -8353,9 +8358,53 @@ function resolveWinningCaptainMode(votesObj, validAccountIdSet = null) {
   return winners[0];
 }
 
+// Task #119 — captain volunteer helpers. Stored as JSONB { "<accountId>": true }
+// on inhouse_sessions.captain_volunteers. Only meaningful when captain_mode is
+// 'volunteer'; the route filters volunteers to currently-accepted players at
+// resolve time and falls back to Highest Rank if there are 0 or 1 volunteers.
+async function setCaptainVolunteer(sessionId, accountId, volunteer) {
+  const p = getPool();
+  if (volunteer) {
+    const r = await p.query(
+      `UPDATE inhouse_sessions
+          SET captain_volunteers = COALESCE(captain_volunteers, '{}'::jsonb)
+                                   || jsonb_build_object($2::text, true)
+        WHERE id = $1
+        RETURNING captain_volunteers`,
+      [sessionId, String(accountId)]
+    );
+    return (r.rows[0] && r.rows[0].captain_volunteers) || {};
+  }
+  const r = await p.query(
+    `UPDATE inhouse_sessions
+        SET captain_volunteers = COALESCE(captain_volunteers, '{}'::jsonb) - $2::text
+      WHERE id = $1
+      RETURNING captain_volunteers`,
+    [sessionId, String(accountId)]
+  );
+  return (r.rows[0] && r.rows[0].captain_volunteers) || {};
+}
+
+async function getCaptainVolunteers(sessionId) {
+  const p = getPool();
+  const r = await p.query(`SELECT captain_volunteers FROM inhouse_sessions WHERE id = $1`, [sessionId]);
+  return (r.rows[0] && r.rows[0].captain_volunteers) || {};
+}
+
+function listVolunteerAccountIds(volunteersObj, validAccountIdSet = null) {
+  if (!volunteersObj || typeof volunteersObj !== 'object') return [];
+  const out = [];
+  for (const [acct, v] of Object.entries(volunteersObj)) {
+    if (!v) continue;
+    if (validAccountIdSet && !validAccountIdSet.has(String(acct))) continue;
+    out.push(String(acct));
+  }
+  return out;
+}
+
 async function updateInhouseSession(id, fields) {
   const p = getPool();
-  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes'];
+  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes','captain_volunteers'];
   const sets = [];
   const vals = [];
   for (const k of Object.keys(fields)) {
@@ -8393,9 +8442,11 @@ async function leaveInhouseSession(sessionId, accountId) {
   // v6.03 — also drop the player's captain-mode vote so a leaver can't keep
   // skewing the poll after they're gone (defence-in-depth alongside the
   // membership filter applied at tally/resolve time).
+  // Task #119 — same defence-in-depth for captain volunteer signups.
   await p.query(
     `UPDATE inhouse_sessions
-        SET captain_mode_votes = COALESCE(captain_mode_votes, '{}'::jsonb) - $2::text
+        SET captain_mode_votes = COALESCE(captain_mode_votes, '{}'::jsonb) - $2::text,
+            captain_volunteers = COALESCE(captain_volunteers, '{}'::jsonb) - $2::text
       WHERE id = $1`,
     [sessionId, String(accountId)]
   ).catch(() => {});
@@ -8466,6 +8517,15 @@ async function setInhousePlayerAccepted(sessionId, accountId) {
 }
 
 async function setInhousePlayerDeclined(sessionId, accountId) {
+  // Task #119 — declining drops any captain volunteer signup so a player who
+  // volunteered then declined can't be picked as captain.
+  const p = getPool();
+  await p.query(
+    `UPDATE inhouse_sessions
+        SET captain_volunteers = COALESCE(captain_volunteers, '{}'::jsonb) - $2::text
+      WHERE id = $1`,
+    [sessionId, String(accountId)]
+  ).catch(() => {});
   return updateInhouseSessionPlayer(sessionId, accountId, { status: 'declined' });
 }
 
@@ -10921,6 +10981,9 @@ module.exports = {
   tallyCaptainModeVotes,
   resolveWinningCaptainMode,
   filterVotesToMembers,
+  setCaptainVolunteer,
+  getCaptainVolunteers,
+  listVolunteerAccountIds,
   CAPTAIN_VOTE_MODES,
   getInhouseSession,
   listInhouseSessions,

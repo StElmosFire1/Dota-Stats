@@ -316,6 +316,37 @@ export default function Inhouse() {
     } catch (e) { alert(e.message); }
   }
 
+  // Task #119 — captain volunteer pool. Visible/usable only when the lobby's
+  // resolved captain mode is 'volunteer' AND the player has accepted. Polls
+  // alongside the rest of the session so the tally stays live.
+  const [volunteerInfo, setVolunteerInfo] = useState({ count: 0, myVolunteer: false, volunteers: [] });
+  const refreshVolunteers = useCallback(async () => {
+    if (!session || !['open','accepting'].includes(session.status)) return;
+    try {
+      const data = await api(`/inhouse/${session.id}/captain-volunteers`);
+      setVolunteerInfo(data);
+    } catch (_) {}
+  }, [session?.id, session?.status]);
+  useEffect(() => {
+    if (!session || !['open','accepting'].includes(session.status)) {
+      setVolunteerInfo({ count: 0, myVolunteer: false, volunteers: [] });
+      return;
+    }
+    refreshVolunteers();
+    const t = setInterval(refreshVolunteers, 4000);
+    return () => clearInterval(t);
+  }, [session?.id, session?.status, refreshVolunteers]);
+  async function toggleVolunteer() {
+    if (!session || !myAccountId) return;
+    try {
+      const r = await api(`/inhouse/${session.id}/captain-volunteer`, {
+        method: 'POST',
+        body: JSON.stringify({ volunteer: !volunteerInfo.myVolunteer }),
+      });
+      setVolunteerInfo({ count: r.count, myVolunteer: r.myVolunteer, volunteers: r.volunteers });
+    } catch (e) { alert(e.message); }
+  }
+
   async function leaveSession() {
     if (!session || !myAccountId) return;
     try {
@@ -733,7 +764,7 @@ export default function Inhouse() {
                   { id: 'highest_rank', label: 'Highest Rank', hint: 'Top 2 by MMR / leaderboard / rank tier' },
                   { id: 'random',       label: 'Random',       hint: 'Two random captains from accepted players' },
                   { id: 'auto_balance', label: 'Auto-balance', hint: 'Skill-based 5v5 split with smallest projected MMR delta' },
-                  { id: 'volunteer',    label: 'Volunteer',    hint: 'Self-nominate (currently uses Highest Rank)' },
+                  { id: 'volunteer',    label: 'Volunteer',    hint: 'Self-nominate during accept phase — falls back to Highest Rank if <2 volunteer' },
                 ].map(opt => {
                   const count = voteTally.tally[opt.id] || 0;
                   const isMine = voteTally.myVote === opt.id;
@@ -813,6 +844,50 @@ export default function Inhouse() {
               )}
               {isInSession && myPlayer.status === 'accepted' && session.status === 'accepting' && (
                 <div style={{ color: '#4caf50', fontWeight: 600 }}>✓ You're ready. Waiting for others…</div>
+              )}
+              {/* Task #119 — Volunteer captain signup. Visible only when the
+                  resolved captain mode is 'volunteer' and the player has
+                  accepted the match. Tally is shown to everyone in the
+                  accept phase so players can see whether enough have
+                  volunteered before the timer expires. */}
+              {isInSession && session.status === 'accepting' && session.captain_mode === 'volunteer' && (
+                <div style={{
+                  marginTop: 12, padding: '10px 12px',
+                  background: 'color-mix(in srgb, var(--brass) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--brass) 35%, transparent)',
+                  borderRadius: 6,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  flexWrap: 'wrap', gap: 8,
+                }}>
+                  <div style={{ fontSize: 12 }}>
+                    <div style={{ fontWeight: 700, color: 'var(--brass)', letterSpacing: 0.4 }}>👑 VOLUNTEER MODE</div>
+                    <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
+                      {volunteerInfo.count} volunteer{volunteerInfo.count === 1 ? '' : 's'} so far ·{' '}
+                      {volunteerInfo.count >= 2
+                        ? (volunteerInfo.count === 2
+                            ? 'these two will be captains'
+                            : 'two will be picked at random from the pool')
+                        : `need ${2 - volunteerInfo.count} more or it falls back to Highest Rank`}
+                    </div>
+                  </div>
+                  {myPlayer.status === 'accepted' ? (
+                    <button
+                      onClick={toggleVolunteer}
+                      style={{
+                        padding: '8px 14px',
+                        background: volunteerInfo.myVolunteer ? 'var(--brass)' : 'transparent',
+                        color: volunteerInfo.myVolunteer ? '#0d1424' : 'var(--brass)',
+                        border: '1px solid var(--brass)',
+                        borderRadius: 4, cursor: 'pointer', fontWeight: 700, fontSize: 12,
+                        letterSpacing: 0.4, textTransform: 'uppercase',
+                      }}
+                    >
+                      {volunteerInfo.myVolunteer ? '✓ Volunteering — click to withdraw' : '🙋 Captain me'}
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Accept the match to volunteer</span>
+                  )}
+                </div>
               )}
               {isInSession && session.status === 'open' && (
                 <div>

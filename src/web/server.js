@@ -5916,6 +5916,68 @@ NOTES
     }
   });
 
+  // Task #119 — captain volunteer signups for the 'volunteer' captain mode.
+  // Players that have *accepted* the match can opt in/out as a captain
+  // volunteer until /select-captains runs. The select route then picks the
+  // two captains from the volunteer pool (falling back to Highest Rank if 0
+  // or 1 volunteers, random pick if more than 2).
+  router.post('/inhouse/:id/captain-volunteer', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      // Volunteer signup is only meaningful while the lobby is filling or in
+      // accept phase — once we're drafting/in_progress the captains are set.
+      if (!['open','accepting'].includes(session.status)) {
+        return res.status(400).json({ error: 'Volunteer signup is closed for this session.' });
+      }
+      const players = await db.getInhouseSessionPlayers(session.id);
+      const me = players.find(p => Number(p.account_id) === Number(actor.accountId));
+      if (!me && !actor.isAdmin) {
+        return res.status(403).json({ error: 'Join the lobby first.' });
+      }
+      const wantVolunteer = !!req.body?.volunteer;
+      // Only accepted players can volunteer. (An admin can toggle their own
+      // signup at any time so demo/seed flows still work.)
+      if (wantVolunteer && me && me.status !== 'accepted' && !actor.isAdmin) {
+        return res.status(400).json({ error: 'Accept the match before volunteering as captain.' });
+      }
+      const volunteers = await db.setCaptainVolunteer(session.id, actor.accountId, wantVolunteer);
+      const memberSet = new Set(players.map(p => String(p.account_id)));
+      const list = db.listVolunteerAccountIds(volunteers, memberSet);
+      res.json({
+        ok: true,
+        myVolunteer: list.includes(String(actor.accountId)),
+        count: list.length,
+        volunteers: list.map(Number),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/inhouse/:id/captain-volunteers', async (req, res) => {
+    try {
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      const [volunteers, players] = await Promise.all([
+        db.getCaptainVolunteers(session.id),
+        db.getInhouseSessionPlayers(session.id),
+      ]);
+      const memberSet = new Set(players.map(p => String(p.account_id)));
+      const list = db.listVolunteerAccountIds(volunteers, memberSet);
+      const myAccountId = req.session?.accountId ? Number(req.session.accountId) : null;
+      res.json({
+        volunteers: list.map(Number),
+        count: list.length,
+        myVolunteer: myAccountId ? list.includes(String(myAccountId)) : false,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/inhouse/:id/captain-vote-tally', async (req, res) => {
     try {
       const session = await db.getInhouseSession(req.params.id);
@@ -6233,8 +6295,13 @@ NOTES
           cap2 = bestPair[0].s >= bestPair[1].s ? bestPair[1].p : bestPair[0].p;
         }
       } else if (mode === 'volunteer') {
-        // Volunteer mode isn't implemented yet — treat as Highest Rank so
-        // the lobby still progresses. Picks captains by hybrid skill score.
+        // Task #119 — Volunteer mode. Players self-nominate via
+        // /inhouse/:id/captain-volunteer during the accept phase. Filter the
+        // saved volunteer pool down to currently-accepted players, then:
+        //   * 0 or 1 volunteers → fall back to Highest Rank (hybrid skill)
+        //     so the lobby still progresses if nobody opts in.
+        //   * exactly 2 volunteers → those two are the captains.
+        //   * more than 2 volunteers → pick two at random.
         const RANK_TIER_TO_MMR = {
           11: 200, 12: 400, 13: 600, 14: 800, 15: 1000,
           21: 1200, 22: 1400, 23: 1600, 24: 1800, 25: 2000,
@@ -6254,9 +6321,32 @@ NOTES
           if (p.dota_rank_tier && RANK_TIER_TO_MMR[p.dota_rank_tier]) return RANK_TIER_TO_MMR[p.dota_rank_tier];
           return Number(p.trueskill_mmr || 0) * 100 - 1000;
         };
-        const sorted = [...accepted].sort((a, b) => score(b) - score(a));
-        cap1 = sorted[0];
-        cap2 = sorted[1];
+
+        const volunteersObj = await db.getCaptainVolunteers(session.id);
+        const acceptedSet = new Set(accepted.map(p => String(p.account_id)));
+        const volunteerIds = db.listVolunteerAccountIds(volunteersObj, acceptedSet);
+        const volunteers = accepted.filter(p => volunteerIds.includes(String(p.account_id)));
+
+        if (volunteers.length >= 2) {
+          if (volunteers.length === 2) {
+            // Higher-scored volunteer → team 1 to keep team labels
+            // deterministic when there are exactly two volunteers.
+            const sorted = [...volunteers].sort((a, b) => score(b) - score(a));
+            cap1 = sorted[0];
+            cap2 = sorted[1];
+          } else {
+            const shuffled = [...volunteers].sort(() => Math.random() - 0.5);
+            cap1 = shuffled[0];
+            cap2 = shuffled[1];
+          }
+        } else {
+          // 0 or 1 volunteers — fall back to Highest Rank so the lobby
+          // still progresses. Note: we keep `mode === 'volunteer'` on the
+          // session so the UI/audit still reflects the lobby's intent.
+          const sorted = [...accepted].sort((a, b) => score(b) - score(a));
+          cap1 = sorted[0];
+          cap2 = sorted[1];
+        }
       } else {
         await db.updateInhouseSession(session.id, { status: 'accepting' });
         return res.status(400).json({ error: 'Unknown captain mode' });
