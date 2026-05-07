@@ -4192,12 +4192,23 @@ async function getDiscordAutoJoinFailuresPage({ days = 7, limit = 20, offset = 0
         AND ts >= date_trunc('day', NOW()) - (($1::int - 1) || ' days')::interval`,
     [d]
   );
+  // Task #144 — LEFT JOIN nicknames on discord_id so admins see *who* each
+  // failure belongs to without having to copy the raw ID into another panel.
+  // The unique partial index on TRIM(discord_id) (created in initSchema) keeps
+  // this join 1:1 for linked players; unlinked failures simply return NULL
+  // nickname/account_id and the frontend falls back to the raw ID.
   const r = await p.query(
-    `SELECT EXTRACT(EPOCH FROM ts) * 1000 AS ts_ms, code, discord_id, error
-       FROM discord_autojoin_log
-      WHERE NOT ok
-        AND ts >= date_trunc('day', NOW()) - (($1::int - 1) || ' days')::interval
-      ORDER BY ts DESC
+    `SELECT EXTRACT(EPOCH FROM l.ts) * 1000 AS ts_ms,
+            l.code, l.discord_id, l.error,
+            n.nickname, n.account_id
+       FROM discord_autojoin_log l
+       LEFT JOIN nicknames n
+         ON l.discord_id IS NOT NULL
+        AND TRIM(l.discord_id) <> ''
+        AND TRIM(n.discord_id) = TRIM(l.discord_id)
+      WHERE NOT l.ok
+        AND l.ts >= date_trunc('day', NOW()) - (($1::int - 1) || ' days')::interval
+      ORDER BY l.ts DESC
       LIMIT $2 OFFSET $3`,
     [d, cap, off]
   );
@@ -4208,6 +4219,8 @@ async function getDiscordAutoJoinFailuresPage({ days = 7, limit = 20, offset = 0
       code: row.code || 'unknown',
       discordId: row.discord_id || '',
       error: row.error || null,
+      nickname: row.nickname || null,
+      accountId: row.account_id != null ? String(row.account_id) : null,
     })),
   };
 }

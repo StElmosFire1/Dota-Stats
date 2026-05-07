@@ -2489,7 +2489,28 @@ function DiscordAutoJoinHistorySection({ history, err, loading, offset, pageSize
                 <tr key={`${f.ts}-${i}`} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{fmtTs(f.ts)}</td>
                   <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}><code>{f.code}</code></td>
-                  <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 11 }}>{f.discordId || '—'}</td>
+                  <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', fontSize: 11 }}>
+                    {/* Task #144 — show nickname (linked to profile) when the
+                        discord_id resolves to a known player; fall back to the
+                        raw ID so unlinked failures are still actionable. */}
+                    {f.nickname && f.accountId ? (
+                      <>
+                        <a
+                          href={`/player/${f.accountId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: 'var(--accent)', fontWeight: 600 }}
+                        >
+                          {f.nickname}
+                        </a>
+                        <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', marginLeft: 6 }}>
+                          ({f.discordId})
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ fontFamily: 'monospace' }}>{f.discordId || '—'}</span>
+                    )}
+                  </td>
                   <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)', wordBreak: 'break-word' }}>{f.error || '—'}</td>
                 </tr>
               ))}

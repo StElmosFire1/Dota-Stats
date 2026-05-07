@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.23",
+    "title": "Admin auto-join failure list now shows player nicknames next to Discord IDs",
+    "published_at": "2026-05-07",
+    "content": "**Closing the loop on Task #144.** The 7-day failure drill-down on the admin auto-join panel (added in Task #142) only rendered the raw `discord_id` for each row. Admins had to copy each ID into the separate Discord ID Collisions / Retry Queue panels just to find out *who* the failure belonged to.\n\n• **`db.getDiscordAutoJoinFailuresPage`** in `src/db/index.js` now `LEFT JOIN`s `nicknames` on `TRIM(discord_id)` (the existing unique partial index keeps the join 1:1 for linked players) and surfaces `nickname` + `accountId` on each returned row. Unlinked failures still come back with NULLs so the panel can fall back gracefully.\n\n• **`DiscordAutoJoinHistorySection`** in `web/src/pages/AdminPanel.jsx` now renders the nickname (linked to `/player/<account_id>`) when present, with the raw discord_id shown in muted monospace alongside it. Falls back to the bare ID when no link exists so unlinked failures remain actionable.\n\nNet effect: admins can recognise affected users at a glance without bouncing between panels.",
+    "author": "System"
+  },
+  {
     "version": "6.22",
     "title": "Discord auto-join retry queue now self-prunes ancient stuck rows",
     "published_at": "2026-05-07",
