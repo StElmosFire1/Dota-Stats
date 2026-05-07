@@ -75,7 +75,7 @@ export function TrophyWall() {
             <div className="flex flex-col gap-6">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <h1 className="font-serif italic text-6xl md:text-8xl font-bold leading-none tracking-tight" style={{ color: 'var(--text-main)' }}>
+                  <h1 className="font-serif italic text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold leading-none tracking-tight break-words" style={{ color: 'var(--text-main)' }}>
                     {player.display_name}
                   </h1>
                   {player.customization.custom_title && (
@@ -307,12 +307,18 @@ export function TrophyWall() {
           {/* Pinned Hero */}
           <div className="p-6 rounded-xl border flex flex-col items-center text-center" style={{ backgroundColor: 'var(--bg-card)', borderColor: player.pinnedHero.borderColor || 'var(--border-strong)' }}>
             <div className="font-condensed text-[10px] tracking-widest uppercase mb-4" style={{ color: 'var(--text-faint)' }}>Signature Hero</div>
-            <img 
-              src={heroImg(player.pinnedHero.hero_id)} 
-              alt={player.pinnedHero.name} 
-              className="w-32 h-auto rounded-lg shadow-xl mb-4 border-2" 
-              style={{ borderColor: player.pinnedHero.borderColor || 'transparent' }}
-            />
+            <div className={`mb-5 ${
+              isOG && player.customization.extras.frame_animated ? 'frame-animated'
+                : player.customization.profile_frame === 'gold' ? 'frame-gold'
+                : player.customization.profile_frame === 'silver' ? 'frame-silver'
+                : ''
+            }`}>
+              <img 
+                src={heroImg(player.pinnedHero.hero_id)} 
+                alt={player.pinnedHero.name} 
+                className="w-32 h-auto rounded-lg shadow-xl block"
+              />
+            </div>
             <h4 className="font-bold text-lg mb-2" style={{ color: 'var(--text-main)' }}>{player.pinnedHero.name}</h4>
             <div className="flex gap-4 text-sm font-mono mb-4">
               <div className="flex flex-col"><span style={{ color: 'var(--text-faint)', fontSize: 10 }}>GAMES</span><span style={{ color: 'var(--text-main)' }}>{player.pinnedHero.games}</span></div>
