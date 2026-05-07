@@ -266,3 +266,297 @@ export function fmtDuration(s: number): string {
 export function fmtDate(unix: number): string {
   return new Date(unix * 1000).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
+
+// ---------------------------------------------------------------------------
+// v2 extras: deeper stats consumed by MagazineSpreadV2.tsx.
+// Kept in a separate EXTRAS map so v1 personas stay unchanged.
+// ---------------------------------------------------------------------------
+
+export interface RecentMatch {
+  match_id: number;
+  hero_id: number;
+  hero: string;
+  won: boolean;
+  k: number; d: number; a: number;
+  duration: number;
+  start_time: number;
+  mmr_delta: number;
+}
+
+export interface AllyRow {
+  steam_id: string;
+  name: string;
+  games: number;
+  wins: number;
+}
+
+export interface HeroMatchup {
+  hero_id: number;
+  name: string;
+  with_games: number;
+  with_wr: number;
+  vs_games: number;
+  vs_wr: number;
+}
+
+export interface PerfStat {
+  label: string;
+  delta: number; // +/- vs role baseline, percent
+}
+
+export interface MockExtras {
+  positions: Array<{ pos: 1 | 2 | 3 | 4 | 5; games: number; wins: number }>;
+  statAvg: {
+    lh: number; dn: number;
+    heroDmg: number; towerDmg: number;
+    healing: number; stuns: number;
+    wards: number; campsStacked: number; runes: number;
+  };
+  multiKills: { double: number; triple: number; ultra: number; rampage: number };
+  rollingWR: number[];               // 30 values 0..100
+  recentMatches: RecentMatch[];      // last 10
+  bestAllies: AllyRow[];
+  worstAllies: AllyRow[];
+  heroMatchups: HeroMatchup[];
+  // 7 weekdays (Mon..Sun) × 4 buckets (00-06, 06-12, 12-18, 18-24); -1 = no games
+  heatmap: number[][];
+  perfHelped: PerfStat[];
+  perfHurt: PerfStat[];
+  buildTrends: { items: Array<{ name: string; pct: number }>; skillOrder: string[] };
+}
+
+const NOW = 1746421200; // matches FREE.pinnedMatch.start_time
+const D = 86400;
+
+const FREE_X: MockExtras = {
+  positions: [
+    { pos: 1, games: 24, wins: 15 },
+    { pos: 2, games: 4, wins: 2 },
+    { pos: 3, games: 2, wins: 1 },
+    { pos: 4, games: 0, wins: 0 },
+    { pos: 5, games: 0, wins: 0 },
+  ],
+  statAvg: { lh: 287, dn: 12, heroDmg: 22400, towerDmg: 4200, healing: 210, stuns: 4.2, wards: 1, campsStacked: 2.4, runes: 8 },
+  multiKills: { double: 18, triple: 4, ultra: 1, rampage: 1 },
+  rollingWR: [50, 52, 55, 53, 58, 60, 57, 62, 65, 60, 58, 56, 60, 62, 64, 60, 57, 55, 58, 60, 63, 60, 58, 56, 58, 60, 62, 60, 58, 60],
+  recentMatches: [
+    { match_id: 7842931, hero_id: 1,  hero: "Anti-Mage",       won: true,  k: 14, d: 2, a: 6,  duration: 2310, start_time: NOW,         mmr_delta: +24 },
+    { match_id: 7842220, hero_id: 11, hero: "Shadow Fiend",    won: false, k: 6,  d: 9, a: 4,  duration: 2680, start_time: NOW - 1*D,   mmr_delta: -23 },
+    { match_id: 7841119, hero_id: 7,  hero: "Earthshaker",     won: true,  k: 4,  d: 3, a: 18, duration: 2890, start_time: NOW - 2*D,   mmr_delta: +20 },
+    { match_id: 7840002, hero_id: 1,  hero: "Anti-Mage",       won: true,  k: 11, d: 4, a: 5,  duration: 2440, start_time: NOW - 3*D,   mmr_delta: +22 },
+    { match_id: 7838991, hero_id: 35, hero: "Sniper",          won: false, k: 5,  d: 7, a: 7,  duration: 2110, start_time: NOW - 4*D,   mmr_delta: -25 },
+    { match_id: 7837800, hero_id: 1,  hero: "Anti-Mage",       won: true,  k: 9,  d: 1, a: 4,  duration: 2530, start_time: NOW - 5*D,   mmr_delta: +21 },
+    { match_id: 7836711, hero_id: 20, hero: "Vengeful Spirit", won: true,  k: 3,  d: 4, a: 21, duration: 3020, start_time: NOW - 6*D,   mmr_delta: +19 },
+    { match_id: 7835600, hero_id: 1,  hero: "Anti-Mage",       won: false, k: 8,  d: 6, a: 3,  duration: 2200, start_time: NOW - 7*D,   mmr_delta: -22 },
+    { match_id: 7834505, hero_id: 8,  hero: "Juggernaut",      won: true,  k: 13, d: 3, a: 7,  duration: 2620, start_time: NOW - 8*D,   mmr_delta: +24 },
+    { match_id: 7833491, hero_id: 1,  hero: "Anti-Mage",       won: true,  k: 16, d: 2, a: 4,  duration: 2380, start_time: NOW - 9*D,   mmr_delta: +25 },
+  ],
+  bestAllies: [
+    { steam_id: "76561198029811233", name: "BrassKnuckles",  games: 18, wins: 14 },
+    { steam_id: "76561198001234567", name: "OldManOffLane",  games: 12, wins: 9 },
+    { steam_id: "76561198100200300", name: "WardSlut",       games: 9,  wins: 7 },
+    { steam_id: "76561198400500600", name: "WhipDelivery",   games: 8,  wins: 6 },
+    { steam_id: "76561198700800900", name: "PingMachine",    games: 6,  wins: 4 },
+  ],
+  worstAllies: [
+    { steam_id: "76561198111222333", name: "AfkSimulator",   games: 11, wins: 2 },
+    { steam_id: "76561198444555666", name: "CourierFeeder",  games: 9,  wins: 2 },
+    { steam_id: "76561198777888999", name: "MidGriefer",     games: 8,  wins: 2 },
+    { steam_id: "76561198000111222", name: "TiltMaster",     games: 7,  wins: 2 },
+    { steam_id: "76561198333444555", name: "SmokeOnCD",      games: 6,  wins: 2 },
+  ],
+  heroMatchups: [
+    { hero_id: 14, name: "Pudge",          with_games: 9,  with_wr: 67, vs_games: 6, vs_wr: 33 },
+    { hero_id: 11, name: "Shadow Fiend",   with_games: 8,  with_wr: 50, vs_games: 7, vs_wr: 43 },
+    { hero_id: 7,  name: "Earthshaker",    with_games: 12, with_wr: 75, vs_games: 4, vs_wr: 50 },
+    { hero_id: 8,  name: "Juggernaut",     with_games: 5,  with_wr: 40, vs_games: 9, vs_wr: 56 },
+    { hero_id: 96, name: "Centaur",        with_games: 6,  with_wr: 67, vs_games: 5, vs_wr: 40 },
+    { hero_id: 47, name: "Tidehunter",     with_games: 5,  with_wr: 60, vs_games: 8, vs_wr: 25 },
+  ],
+  heatmap: [
+    [-1,-1, 50, 60],
+    [-1,-1, 45, 65],
+    [-1,-1, 55, 70],
+    [-1,-1, 50, 55],
+    [-1,-1, 60, 75],
+    [-1, 50, 55, 80],
+    [-1, 40, 60, 65],
+  ],
+  perfHelped: [
+    { label: "Last hits / min",  delta: +18 },
+    { label: "Hero damage",      delta: +12 },
+    { label: "Survivability",    delta: +9 },
+  ],
+  perfHurt: [
+    { label: "Stuns landed",     delta: -22 },
+    { label: "Wards placed",     delta: -14 },
+    { label: "Early kills",      delta: -8 },
+  ],
+  buildTrends: {
+    items: [
+      { name: "Battle Fury",    pct: 92 },
+      { name: "Manta Style",    pct: 78 },
+      { name: "Abyssal Blade",  pct: 64 },
+      { name: "Butterfly",      pct: 51 },
+      { name: "Monkey King Bar",pct: 38 },
+    ],
+    skillOrder: ["Q","Q","W","Q","Q","R","Q","W","W","W","R","W","E","E","E","E","R"],
+  },
+};
+
+const PRO_X: MockExtras = {
+  positions: [
+    { pos: 1, games: 3,  wins: 1 },
+    { pos: 2, games: 28, wins: 21 },
+    { pos: 3, games: 0,  wins: 0 },
+    { pos: 4, games: 0,  wins: 0 },
+    { pos: 5, games: 2,  wins: 1 },
+  ],
+  statAvg: { lh: 254, dn: 18, heroDmg: 28600, towerDmg: 5800, healing: 180, stuns: 11.4, wards: 2, campsStacked: 4.1, runes: 14 },
+  multiKills: { double: 42, triple: 11, ultra: 4, rampage: 3 },
+  rollingWR: [60, 62, 64, 67, 70, 72, 68, 74, 76, 73, 70, 72, 75, 78, 80, 76, 73, 70, 72, 75, 77, 74, 72, 70, 72, 75, 73, 70, 72, 73],
+  recentMatches: [
+    { match_id: 7896412, hero_id: 14, hero: "Pudge",         won: true,  k: 22, d: 4, a: 18, duration: 2890, start_time: 1746334800,         mmr_delta: +24 },
+    { match_id: 7896001, hero_id: 11, hero: "Shadow Fiend",  won: true,  k: 17, d: 3, a: 9,  duration: 2410, start_time: 1746334800 - 1*D,   mmr_delta: +22 },
+    { match_id: 7895212, hero_id: 14, hero: "Pudge",         won: false, k: 9,  d: 7, a: 12, duration: 3110, start_time: 1746334800 - 2*D,   mmr_delta: -21 },
+    { match_id: 7894100, hero_id: 8,  hero: "Juggernaut",    won: true,  k: 18, d: 5, a: 7,  duration: 2740, start_time: 1746334800 - 3*D,   mmr_delta: +23 },
+    { match_id: 7893012, hero_id: 64, hero: "Jakiro",        won: true,  k: 6,  d: 4, a: 22, duration: 2610, start_time: 1746334800 - 4*D,   mmr_delta: +20 },
+    { match_id: 7891901, hero_id: 14, hero: "Pudge",         won: true,  k: 19, d: 6, a: 14, duration: 3220, start_time: 1746334800 - 5*D,   mmr_delta: +21 },
+    { match_id: 7890800, hero_id: 26, hero: "Lion",          won: false, k: 4,  d: 8, a: 11, duration: 2480, start_time: 1746334800 - 6*D,   mmr_delta: -22 },
+    { match_id: 7889711, hero_id: 14, hero: "Pudge",         won: true,  k: 14, d: 4, a: 19, duration: 2820, start_time: 1746334800 - 7*D,   mmr_delta: +22 },
+    { match_id: 7888600, hero_id: 11, hero: "Shadow Fiend",  won: true,  k: 21, d: 4, a: 8,  duration: 2310, start_time: 1746334800 - 8*D,   mmr_delta: +25 },
+    { match_id: 7887500, hero_id: 14, hero: "Pudge",         won: false, k: 7,  d: 9, a: 13, duration: 3340, start_time: 1746334800 - 9*D,   mmr_delta: -20 },
+  ],
+  bestAllies: [
+    { steam_id: "76561198001234567", name: "OldManOffLane",  games: 24, wins: 19 },
+    { steam_id: "76561198073811934", name: "ShadowCarry",    games: 18, wins: 14 },
+    { steam_id: "76561198100200300", name: "WardSlut",       games: 16, wins: 12 },
+    { steam_id: "76561198400500600", name: "WhipDelivery",   games: 12, wins: 9  },
+    { steam_id: "76561198700800900", name: "PingMachine",    games: 9,  wins: 7  },
+  ],
+  worstAllies: [
+    { steam_id: "76561198111222333", name: "AfkSimulator",   games: 14, wins: 4 },
+    { steam_id: "76561198444555666", name: "CourierFeeder",  games: 11, wins: 3 },
+    { steam_id: "76561198777888999", name: "MidGriefer",     games: 10, wins: 3 },
+    { steam_id: "76561198000111222", name: "TiltMaster",     games: 8,  wins: 2 },
+    { steam_id: "76561198333444555", name: "SmokeOnCD",      games: 7,  wins: 2 },
+  ],
+  heroMatchups: [
+    { hero_id: 14, name: "Pudge",         with_games: 24, with_wr: 79, vs_games: 9,  vs_wr: 33 },
+    { hero_id: 11, name: "Shadow Fiend",  with_games: 18, with_wr: 72, vs_games: 14, vs_wr: 64 },
+    { hero_id: 8,  name: "Juggernaut",    with_games: 12, with_wr: 67, vs_games: 11, vs_wr: 55 },
+    { hero_id: 47, name: "Tidehunter",    with_games: 9,  with_wr: 78, vs_games: 13, vs_wr: 38 },
+    { hero_id: 96, name: "Centaur",       with_games: 14, with_wr: 79, vs_games: 7,  vs_wr: 57 },
+    { hero_id: 17, name: "Storm Spirit",  with_games: 6,  with_wr: 50, vs_games: 12, vs_wr: 42 },
+    { hero_id: 1,  name: "Anti-Mage",     with_games: 8,  with_wr: 63, vs_games: 9,  vs_wr: 67 },
+    { hero_id: 28, name: "Slardar",       with_games: 10, with_wr: 70, vs_games: 5,  vs_wr: 40 },
+  ],
+  heatmap: [
+    [-1, 50, 65, 78],
+    [-1, 55, 62, 80],
+    [-1, 60, 70, 85],
+    [-1, 50, 68, 75],
+    [-1, 65, 72, 88],
+    [40, 60, 70, 82],
+    [35, 55, 65, 70],
+  ],
+  perfHelped: [
+    { label: "Hero damage",      delta: +28 },
+    { label: "Stuns landed",     delta: +21 },
+    { label: "Kill participation", delta: +17 },
+  ],
+  perfHurt: [
+    { label: "Last hits / min",  delta: -9 },
+    { label: "Tower damage",     delta: -6 },
+    { label: "Camps stacked",    delta: -4 },
+  ],
+  buildTrends: {
+    items: [
+      { name: "Tranquil Boots",  pct: 88 },
+      { name: "Aether Lens",     pct: 74 },
+      { name: "Aghanim's Scepter", pct: 69 },
+      { name: "Glimmer Cape",    pct: 52 },
+      { name: "Force Staff",     pct: 47 },
+    ],
+    skillOrder: ["Q","W","Q","E","Q","R","Q","W","W","W","R","E","E","E","E","R"],
+  },
+};
+
+const OGPRO_X: MockExtras = {
+  positions: [
+    { pos: 1, games: 0,  wins: 0 },
+    { pos: 2, games: 0,  wins: 0 },
+    { pos: 3, games: 27, wins: 18 },
+    { pos: 4, games: 3,  wins: 2 },
+    { pos: 5, games: 2,  wins: 1 },
+  ],
+  statAvg: { lh: 198, dn: 24, heroDmg: 18400, towerDmg: 3100, healing: 320, stuns: 42.6, wards: 3, campsStacked: 8.2, runes: 11 },
+  multiKills: { double: 29, triple: 7, ultra: 2, rampage: 1 },
+  rollingWR: [55, 58, 60, 62, 65, 63, 60, 64, 67, 65, 63, 60, 62, 65, 68, 65, 62, 60, 63, 65, 68, 65, 63, 60, 62, 65, 63, 60, 65, 65],
+  recentMatches: [
+    { match_id: 7901234, hero_id: 96,  hero: "Centaur",      won: true,  k: 9,  d: 3, a: 24, duration: 3140, start_time: 1746248400,         mmr_delta: +21 },
+    { match_id: 7900111, hero_id: 47,  hero: "Tidehunter",   won: true,  k: 5,  d: 4, a: 22, duration: 2980, start_time: 1746248400 - 1*D,   mmr_delta: +20 },
+    { match_id: 7899002, hero_id: 129, hero: "Mars",         won: false, k: 4,  d: 7, a: 11, duration: 2710, start_time: 1746248400 - 2*D,   mmr_delta: -22 },
+    { match_id: 7897900, hero_id: 96,  hero: "Centaur",      won: true,  k: 7,  d: 2, a: 19, duration: 2890, start_time: 1746248400 - 3*D,   mmr_delta: +22 },
+    { match_id: 7896800, hero_id: 28,  hero: "Slardar",      won: true,  k: 11, d: 3, a: 14, duration: 2540, start_time: 1746248400 - 4*D,   mmr_delta: +23 },
+    { match_id: 7895700, hero_id: 47,  hero: "Tidehunter",   won: false, k: 3,  d: 8, a: 9,  duration: 3210, start_time: 1746248400 - 5*D,   mmr_delta: -19 },
+    { match_id: 7894600, hero_id: 96,  hero: "Centaur",      won: true,  k: 6,  d: 4, a: 21, duration: 3050, start_time: 1746248400 - 6*D,   mmr_delta: +21 },
+    { match_id: 7893500, hero_id: 71,  hero: "Spirit Breaker",won: true, k: 13, d: 5, a: 12, duration: 2620, start_time: 1746248400 - 7*D,   mmr_delta: +20 },
+    { match_id: 7892400, hero_id: 96,  hero: "Centaur",      won: false, k: 4,  d: 9, a: 12, duration: 3340, start_time: 1746248400 - 8*D,   mmr_delta: -23 },
+    { match_id: 7891300, hero_id: 47,  hero: "Tidehunter",   won: true,  k: 7,  d: 3, a: 26, duration: 2880, start_time: 1746248400 - 9*D,   mmr_delta: +22 },
+  ],
+  bestAllies: [
+    { steam_id: "76561198029811233", name: "BrassKnuckles",  games: 24, wins: 19 },
+    { steam_id: "76561198073811934", name: "ShadowCarry",    games: 12, wins: 9  },
+    { steam_id: "76561198100200300", name: "WardSlut",       games: 21, wins: 15 },
+    { steam_id: "76561198400500600", name: "WhipDelivery",   games: 18, wins: 13 },
+    { steam_id: "76561198700800900", name: "PingMachine",    games: 14, wins: 10 },
+  ],
+  worstAllies: [
+    { steam_id: "76561198111222333", name: "AfkSimulator",   games: 16, wins: 5 },
+    { steam_id: "76561198444555666", name: "CourierFeeder",  games: 13, wins: 4 },
+    { steam_id: "76561198777888999", name: "MidGriefer",     games: 11, wins: 3 },
+    { steam_id: "76561198000111222", name: "TiltMaster",     games: 9,  wins: 3 },
+    { steam_id: "76561198333444555", name: "SmokeOnCD",      games: 7,  wins: 2 },
+  ],
+  heroMatchups: [
+    { hero_id: 96,  name: "Centaur",       with_games: 28, with_wr: 71, vs_games: 6,  vs_wr: 50 },
+    { hero_id: 47,  name: "Tidehunter",    with_games: 22, with_wr: 73, vs_games: 8,  vs_wr: 38 },
+    { hero_id: 129, name: "Mars",          with_games: 16, with_wr: 56, vs_games: 11, vs_wr: 45 },
+    { hero_id: 14,  name: "Pudge",         with_games: 19, with_wr: 79, vs_games: 9,  vs_wr: 33 },
+    { hero_id: 11,  name: "Shadow Fiend",  with_games: 12, with_wr: 67, vs_games: 14, vs_wr: 50 },
+    { hero_id: 1,   name: "Anti-Mage",     with_games: 10, with_wr: 60, vs_games: 12, vs_wr: 42 },
+  ],
+  heatmap: [
+    [-1, 60, 70, 75],
+    [-1, 55, 65, 72],
+    [-1, 60, 68, 78],
+    [-1, 55, 62, 70],
+    [-1, 65, 70, 80],
+    [50, 60, 65, 72],
+    [45, 55, 60, 65],
+  ],
+  perfHelped: [
+    { label: "Stuns landed",     delta: +34 },
+    { label: "Hero damage taken",delta: +27 },
+    { label: "Kill participation",delta: +18 },
+  ],
+  perfHurt: [
+    { label: "Hero damage",      delta: -12 },
+    { label: "Last hits / min",  delta: -10 },
+    { label: "Tower damage",     delta: -7 },
+  ],
+  buildTrends: {
+    items: [
+      { name: "Blink Dagger",      pct: 96 },
+      { name: "Crimson Guard",     pct: 81 },
+      { name: "Pipe of Insight",   pct: 67 },
+      { name: "Shiva's Guard",     pct: 54 },
+      { name: "Heart of Tarrasque",pct: 41 },
+    ],
+    skillOrder: ["Q","W","Q","E","Q","R","Q","W","W","W","R","E","E","E","E","R"],
+  },
+};
+
+export const EXTRAS: Record<Persona, MockExtras> = { free: FREE_X, pro: PRO_X, ogpro: OGPRO_X };
+
