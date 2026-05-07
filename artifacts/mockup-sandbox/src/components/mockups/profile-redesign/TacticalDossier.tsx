@@ -299,7 +299,23 @@ export function TacticalDossier() {
             </div>
             <div className="tile-content flex flex-col justify-center items-center text-center opacity-70">
                <div className="w-8 h-8 rounded-full mb-3" style={{ backgroundColor: p.customization.theme_accent, border: '2px solid white' }}></div>
-               <div className="text-xs mb-1 uppercase tracking-wider">{p.customization.profile_frame} FRAME</div>
+               <div className="flex flex-wrap gap-1 justify-center mb-2">
+                 {([
+                   { key: 'none',     label: 'None',   border: 'var(--border-strong)', tier: 'free' },
+                   { key: 'silver',   label: 'Silver', border: '#9ca3af',              tier: 'free' },
+                   { key: 'gold',     label: 'Gold',   border: 'var(--accent-brass)',  tier: 'pro' },
+                   { key: 'animated', label: 'Cosmic', border: '#a78bfa',              tier: 'ogpro' },
+                 ] as const).map(sw => {
+                   const selected = (sw.key === 'animated' ? p.customization.extras.frame_animated : p.customization.profile_frame === sw.key);
+                   const locked = (sw.tier === 'pro' && !isPro) || (sw.tier === 'ogpro' && !isOgPro);
+                   return (
+                     <span key={sw.key} className={`text-[10px] px-2 py-0.5 rounded border uppercase tracking-wider ${selected ? 'ring-1 ring-white' : ''} ${locked ? 'opacity-50' : ''}`}
+                       style={{ borderColor: sw.border }}>
+                       {sw.label}{locked && '🔒'}
+                     </span>
+                   );
+                 })}
+               </div>
                <div className="text-[10px] text-muted">Theme applied to dossier grid.</div>
             </div>
           </div>

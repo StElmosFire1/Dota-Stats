@@ -205,9 +205,14 @@ export function MagazineSpread() {
           </div>
 
           {isFree && (
-             <button className="cta-primary w-full justify-center mt-4 py-4">
-               <Star className="w-4 h-4" /> Unlock Pro Analytics & Cosmetics
-             </button>
+            <div className="flex flex-col gap-2 mt-4">
+              <button className="cta-primary w-full justify-center py-4">
+                <Star className="w-4 h-4" /> Unlock Pro Analytics & Cosmetics
+              </button>
+              <button className="cta-secondary w-full justify-center py-3 text-sm">
+                <Sparkles className="w-4 h-4" /> Gift Pro to {p.display_name}
+              </button>
+            </div>
           )}
         </div>
 

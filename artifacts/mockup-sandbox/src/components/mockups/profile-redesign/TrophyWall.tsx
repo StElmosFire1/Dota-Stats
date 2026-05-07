@@ -259,9 +259,23 @@ export function TrophyWall() {
                 <span className="text-xs text-[var(--text-faint)]">Theme:</span>
                 <div className="w-6 h-6 rounded-full border-2" style={{ backgroundColor: player.customization.theme_accent, borderColor: 'var(--bg-base)' }} />
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-xs text-[var(--text-faint)]">Frame:</span>
-                <span className="text-sm px-3 py-1 rounded bg-[var(--bg-base)] border border-[var(--border-subtle)] capitalize">{player.customization.profile_frame}</span>
+                {([
+                  { key: 'none',     label: 'None',   border: 'var(--border-strong)', bg: 'transparent', tier: 'free' },
+                  { key: 'silver',   label: 'Silver', border: '#9ca3af',              bg: 'rgba(156,163,175,.10)', tier: 'free' },
+                  { key: 'gold',     label: 'Gold',   border: 'var(--accent-brass)',  bg: 'rgba(197,169,117,.12)', tier: 'pro' },
+                  { key: 'animated', label: 'Cosmic', border: '#a78bfa',              bg: 'rgba(167,139,250,.12)', tier: 'ogpro' },
+                ] as const).map(sw => {
+                  const selected = (sw.key === 'animated' ? player.customization.extras.frame_animated : player.customization.profile_frame === sw.key);
+                  const locked = (sw.tier === 'pro' && !isPro) || (sw.tier === 'ogpro' && !isOG);
+                  return (
+                    <span key={sw.key} className={`text-xs px-2 py-1 rounded border capitalize ${selected ? 'ring-2 ring-offset-1 ring-offset-[var(--bg-card-2)]' : ''} ${locked ? 'opacity-50' : ''}`}
+                      style={{ borderColor: sw.border, background: sw.bg, color: 'var(--text-main)' }}>
+                      {sw.label}{locked && ' 🔒'}
+                    </span>
+                  );
+                })}
               </div>
               
               <div className="flex items-center gap-3">
