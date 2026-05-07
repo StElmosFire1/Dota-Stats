@@ -2214,6 +2214,13 @@ function DiscordAutoJoinStatusPanel({ superuserKey }) {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  // Task #142 — 7-day history (sparkline buckets + paginated failure list).
+  const [history, setHistory] = React.useState(null);
+  const [historyErr, setHistoryErr] = React.useState('');
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [failuresOffset, setFailuresOffset] = React.useState(0);
+  const FAILURES_PAGE_SIZE = 20;
+  const HISTORY_DAYS = 7;
 
   const load = React.useCallback(() => {
     if (!superuserKey) return;
@@ -2225,7 +2232,23 @@ function DiscordAutoJoinStatusPanel({ superuserKey }) {
       .finally(() => setLoading(false));
   }, [superuserKey]);
 
+  const loadHistory = React.useCallback((offset = 0) => {
+    if (!superuserKey) return;
+    setHistoryLoading(true);
+    const qs = new URLSearchParams({
+      days: String(HISTORY_DAYS),
+      failures_limit: String(FAILURES_PAGE_SIZE),
+      failures_offset: String(offset),
+    }).toString();
+    superuserFetch(`/api/admin/discord-autojoin-history?${qs}`, { headers: { 'x-superuser-key': superuserKey } })
+      .then(r => r.json())
+      .then(d => { if (d.error) setHistoryErr(d.error); else { setHistory(d); setHistoryErr(''); } })
+      .catch(e => setHistoryErr(e.message))
+      .finally(() => setHistoryLoading(false));
+  }, [superuserKey]);
+
   React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => { loadHistory(failuresOffset); }, [loadHistory, failuresOffset]);
 
   const counts = data?.counts || {};
   const successCount = (counts.success_added || 0) + (counts.success_already || 0);
@@ -2323,6 +2346,18 @@ function DiscordAutoJoinStatusPanel({ superuserKey }) {
             </div>
           )}
 
+          <DiscordAutoJoinHistorySection
+            history={history}
+            err={historyErr}
+            loading={historyLoading}
+            offset={failuresOffset}
+            pageSize={FAILURES_PAGE_SIZE}
+            days={HISTORY_DAYS}
+            onPage={setFailuresOffset}
+            onRefresh={() => loadHistory(failuresOffset)}
+            fmtTs={fmtTs}
+          />
+
           <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <span><code>DISCORD_GUILD_ID</code>: {data.guild_configured ? '✓ set' : '✗ missing'}</span>
             <span><code>DISCORD_TOKEN</code>: {data.bot_token_configured ? '✓ set' : '✗ missing'}</span>
@@ -2335,6 +2370,118 @@ function DiscordAutoJoinStatusPanel({ superuserKey }) {
         </>
       )}
     </section>
+  );
+}
+
+// Task #142 — 7-day timeline + paginated failure list for the auto-join
+// health panel. Renders per-day stacked success/failure bars (a poor-
+// person's sparkline using divs) so admins can spot multi-day dips that
+// the existing 24h rollup hides, plus a tabular drill-down of the failure
+// rows behind those dips. All read-only.
+function DiscordAutoJoinHistorySection({ history, err, loading, offset, pageSize, days, onPage, onRefresh, fmtTs }) {
+  const buckets = history?.buckets || [];
+  const failures = history?.failures || [];
+  const total = history?.failures_total || 0;
+  // Scale every bar against the busiest day so a quiet week isn't flattened.
+  const maxCount = Math.max(
+    1,
+    ...buckets.map(b => (b.success || 0) + (b.failure || 0))
+  );
+  const dayLabel = (ms) => {
+    if (!ms) return '';
+    try {
+      return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch { return ''; }
+  };
+  const showingFrom = total === 0 ? 0 : offset + 1;
+  const showingTo = Math.min(total, offset + failures.length);
+  const canPrev = offset > 0;
+  const canNext = offset + failures.length < total;
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+          Last {days} days — daily success vs failure
+        </div>
+        <button className="btn" onClick={onRefresh} disabled={loading} style={{ padding: '2px 8px', fontSize: 11 }}>
+          {loading ? '…' : 'Refresh'}
+        </button>
+      </div>
+
+      {err && (
+        <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)', fontSize: 12, color: '#fca5a5', marginBottom: 8 }}>
+          History load failed: {err}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, buckets.length)}, 1fr)`, gap: 6, alignItems: 'end', padding: '10px 12px', borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--border)', minHeight: 90, marginBottom: 12 }}>
+        {buckets.length === 0 && !loading && (
+          <div style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
+            No history yet.
+          </div>
+        )}
+        {buckets.map((b) => {
+          const successFrac = (b.success || 0) / maxCount;
+          const failureFrac = (b.failure || 0) / maxCount;
+          const total = (b.success || 0) + (b.failure || 0);
+          return (
+            <div key={b.day} title={`${dayLabel(b.day)} — ${b.success} success / ${b.failure} failure`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: 60, width: '100%' }}>
+                <div style={{ height: `${failureFrac * 100}%`, background: 'rgba(239,68,68,0.7)', borderTopLeftRadius: 3, borderTopRightRadius: 3 }} />
+                <div style={{ height: `${successFrac * 100}%`, background: 'rgba(74,222,128,0.7)', borderBottomLeftRadius: 3, borderBottomRightRadius: 3 }} />
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{dayLabel(b.day)}</div>
+              <div style={{ fontSize: 10, color: total === 0 ? 'var(--text-muted)' : 'var(--text)', fontWeight: 600 }}>
+                {total === 0 ? '—' : total}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+        Recent failures (last {days} days) — {total} total
+      </div>
+      {failures.length === 0 ? (
+        <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.25)', fontSize: 12, color: 'var(--text-muted)' }}>
+          No failures in the last {days} days.
+        </div>
+      ) : (
+        <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-card)', textAlign: 'left' }}>
+                <th style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--text-muted)' }}>When</th>
+                <th style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--text-muted)' }}>Code</th>
+                <th style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--text-muted)' }}>Discord ID</th>
+                <th style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--text-muted)' }}>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {failures.map((f, i) => (
+                <tr key={`${f.ts}-${i}`} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{fmtTs(f.ts)}</td>
+                  <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}><code>{f.code}</code></td>
+                  <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 11 }}>{f.discordId || '—'}</td>
+                  <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)', wordBreak: 'break-word' }}>{f.error || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {total > pageSize && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span>Showing {showingFrom}–{showingTo} of {total}</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn" disabled={!canPrev || loading} onClick={() => onPage(Math.max(0, offset - pageSize))} style={{ padding: '2px 10px', fontSize: 11 }}>← Prev</button>
+            <button className="btn" disabled={!canNext || loading} onClick={() => onPage(offset + pageSize)} style={{ padding: '2px 10px', fontSize: 11 }}>Next →</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

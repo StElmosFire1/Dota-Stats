@@ -5100,6 +5100,34 @@ NOTES
     }
   });
 
+  // Superuser-only — 7-day history of Discord auto-join outcomes (Task #142).
+  // Returns per-day success/failure buckets for the sparkline plus a paginated
+  // slice of failure rows so admins can drill into "we lost ~5% of signups
+  // for three days last week"-style slow-burn issues that the existing 24h
+  // rollup hides. Read-only; never throws.
+  router.get('/admin/discord-autojoin-history', requireSuperuser, async (req, res) => {
+    try {
+      const days = Math.max(1, Math.min(30, parseInt(req.query.days, 10) || 7));
+      const limit = Math.max(1, Math.min(200, parseInt(req.query.failures_limit, 10) || 20));
+      const offset = Math.max(0, parseInt(req.query.failures_offset, 10) || 0);
+      const [buckets, page] = await Promise.all([
+        db.getDiscordAutoJoinDailyBuckets(days),
+        db.getDiscordAutoJoinFailuresPage({ days, limit, offset }),
+      ]);
+      res.json({
+        days,
+        buckets,
+        failures: page.failures,
+        failures_total: page.total,
+        failures_limit: limit,
+        failures_offset: offset,
+      });
+    } catch (err) {
+      console.error('[API] admin/discord-autojoin-history error:', err.message);
+      res.status(500).json({ error: 'Failed to read Discord auto-join history' });
+    }
+  });
+
   // Superuser-only — list every pending Discord auto-join failure (Task #138).
   // Joined with the player nickname so admins can tell at a glance who is
   // currently stuck waiting to retry the join after a perms fix. Read-only.

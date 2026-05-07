@@ -4140,6 +4140,78 @@ async function getRecentDiscordAutoJoinLog(limit = 500) {
   }));
 }
 
+// Task #142 — per-day success/failure buckets over the last `days` days,
+// for the admin auto-join health sparkline. Buckets are computed in the
+// database's local time zone (UTC in prod) so day boundaries are stable.
+// Days with no events are returned as zero rows so the frontend can render
+// a contiguous sparkline without having to backfill missing days itself.
+async function getDiscordAutoJoinDailyBuckets(days = 7) {
+  const p = getPool();
+  const d = Math.max(1, Math.min(30, Number(days) || 7));
+  const r = await p.query(
+    `WITH days AS (
+       SELECT generate_series(
+         date_trunc('day', NOW()) - (($1::int - 1) || ' days')::interval,
+         date_trunc('day', NOW()),
+         '1 day'
+       ) AS day
+     )
+     SELECT EXTRACT(EPOCH FROM days.day) * 1000 AS day_ms,
+            COALESCE(SUM(CASE WHEN l.ok THEN 1 ELSE 0 END), 0)::int AS success,
+            COALESCE(SUM(CASE WHEN NOT l.ok THEN 1 ELSE 0 END), 0)::int AS failure
+       FROM days
+       LEFT JOIN discord_autojoin_log l
+         ON date_trunc('day', l.ts) = days.day
+      GROUP BY days.day
+      ORDER BY days.day ASC`,
+    [d]
+  );
+  return r.rows.map(row => ({
+    day: Number(row.day_ms) || 0,
+    success: Number(row.success) || 0,
+    failure: Number(row.failure) || 0,
+  }));
+}
+
+// Task #142 — paginated slice of failure rows over the last `days` days,
+// newest first. Returns `{ total, failures }` so the admin panel can render
+// "showing 1–20 of 47" and offer prev/next pagination. Read-only.
+async function getDiscordAutoJoinFailuresPage({ days = 7, limit = 20, offset = 0 } = {}) {
+  const p = getPool();
+  const d = Math.max(1, Math.min(30, Number(days) || 7));
+  const cap = Math.max(1, Math.min(200, Number(limit) || 20));
+  const off = Math.max(0, Number(offset) || 0);
+  // Use the same calendar-day window as getDiscordAutoJoinDailyBuckets so the
+  // earliest listed failure can never fall outside the earliest sparkline
+  // bucket — operators would otherwise be confused by a failure timestamped
+  // on a day that no longer appears in the chart.
+  const totalRes = await p.query(
+    `SELECT COUNT(*)::int AS n
+       FROM discord_autojoin_log
+      WHERE NOT ok
+        AND ts >= date_trunc('day', NOW()) - (($1::int - 1) || ' days')::interval`,
+    [d]
+  );
+  const r = await p.query(
+    `SELECT EXTRACT(EPOCH FROM ts) * 1000 AS ts_ms, code, discord_id, error
+       FROM discord_autojoin_log
+      WHERE NOT ok
+        AND ts >= date_trunc('day', NOW()) - (($1::int - 1) || ' days')::interval
+      ORDER BY ts DESC
+      LIMIT $2 OFFSET $3`,
+    [d, cap, off]
+  );
+  return {
+    total: totalRes.rows[0]?.n || 0,
+    failures: r.rows.map(row => ({
+      ts: Number(row.ts_ms) || 0,
+      code: row.code || 'unknown',
+      discordId: row.discord_id || '',
+      error: row.error || null,
+    })),
+  };
+}
+
 // Task #135 — drop log entries older than `days` (default 7) so the table
 // never grows unbounded. Cheap to run on every insert because the index on
 // ts DESC keeps the delete bounded; the bot caller throttles invocation
@@ -11043,6 +11115,8 @@ module.exports = {
   listAllDiscordAutoJoinFailures,
   appendDiscordAutoJoinLog,
   getRecentDiscordAutoJoinLog,
+  getDiscordAutoJoinDailyBuckets,
+  getDiscordAutoJoinFailuresPage,
   pruneDiscordAutoJoinLog,
   getDiscordIdCollisions,
   resolveDiscordIdCollision,

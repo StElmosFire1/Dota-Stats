@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.21",
+    "title": "Admin auto-join panel now shows a 7-day timeline with drill-down on failures",
+    "published_at": "2026-05-07",
+    "content": "**Closing the loop on Task #142.** The admin Discord auto-join health panel only summarised the last 24 hours, even though Task #135 already persisted ~7 days of outcomes in `discord_autojoin_log`. Slow-burn issues like 'we lost ~5% of signups for three days last week' were invisible — the rolling 24h window flushed them out before the next admin glance.\n\n• **New `db.getDiscordAutoJoinDailyBuckets(days=7)`** in `src/db/index.js`. Uses `generate_series` so every day in the window comes back as a row (zero-fill), grouped by `date_trunc('day', ts)`, with success / failure counts split out. The fixed shape lets the frontend render a contiguous bar chart without backfilling missing days itself.\n\n• **New `db.getDiscordAutoJoinFailuresPage({ days, limit, offset })`** alongside it. Returns `{ total, failures }` of the failure-only rows newest-first, with `total` taken from a parallel `COUNT(*)` so the panel can render `Showing 1–20 of N` and offer prev/next pagination. Reuses the same `idx_discord_autojoin_log_ts` so both queries are bounded.\n\n• **New superuser route `GET /api/admin/discord-autojoin-history`** in `src/web/server.js` that fans both helpers out in parallel. Supports `?days=`, `?failures_limit=`, `?failures_offset=` query params (clamped server-side to 1–30 days / 1–200 rows). Read-only, never throws — falls through to the existing 500 handler if the DB is down.\n\n• **New `DiscordAutoJoinHistorySection` block on the existing panel** in `web/src/pages/AdminPanel.jsx`. Renders a 7-bucket bar chart (red on top of green, scaled against the busiest day so a quiet week isn't flattened, with hover tooltips and per-day totals underneath) and a paginated table of the failure rows behind those bars (timestamp, code, discord_id, error). Sits between the existing 24h rollup and the env-vars footer so the original at-a-glance view is unchanged. Refresh button is local to this section so refreshing the timeline doesn't re-fetch the rollup.\n\nNet effect: admins can now spot multi-day signup dips and click straight through to the failure rows that caused them, without leaving the Site Settings tab or running ad-hoc DB queries.",
+    "author": "System"
+  },
+  {
     "version": "6.20",
     "title": "Fewer round-trips on every page load — Discord retry banner now rides /api/auth/me",
     "published_at": "2026-05-07",
