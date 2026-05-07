@@ -1029,6 +1029,29 @@ async function init() {
       }
     }
 
+    // Task #128 — discord_autojoin_failures: queue of users whose Discord
+    // OAuth round-trip succeeded (we have their Steam↔Discord link saved)
+    // but `bot.addUserToLeagueGuild` then failed to actually pull them into
+    // the OCE Inhouse server (e.g. bot lost Manage Roles for a few hours,
+    // 5xx from Discord, network blip). The OAuth access token is single-use
+    // and we don't store it, so we can't retry transparently — instead we
+    // remember the failure here so the next-visit site banner + DM can
+    // prompt the player to click *Reconnect with Discord*. Keyed by
+    // discord_id (one pending row per Discord user, latest failure wins);
+    // cleared on the next successful auto-join.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS discord_autojoin_failures (
+        discord_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        last_code TEXT,
+        last_error TEXT,
+        attempts INTEGER NOT NULL DEFAULT 1,
+        first_failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_discord_autojoin_failures_account ON discord_autojoin_failures (account_id)`);
+
     // Profile customization (`profile_customization`) — per-account cosmetic
     // overrides that render on the public PlayerProfile page. Keyed by
     // account_id (UNIQUE) so each player has at most one customization row.
@@ -3943,6 +3966,69 @@ async function getDiscordIdByAccountId(accountId32) {
     [accountId32.toString()]
   );
   return r2.rows[0]?.discord_id || null;
+}
+
+// Task #128 — record a failed `addUserToLeagueGuild` outcome so the next-
+// visit site banner can prompt the player to click *Reconnect with Discord*
+// and retry the join. UPSERT by discord_id: one pending row per Discord
+// user, attempts++ on every repeat failure so admins can see who's stuck.
+async function recordDiscordAutoJoinFailure(discordId, accountId, code, errorText) {
+  if (!discordId || !accountId) return;
+  const p = getPool();
+  await p.query(
+    `INSERT INTO discord_autojoin_failures
+       (discord_id, account_id, last_code, last_error, attempts, first_failed_at, last_failed_at)
+     VALUES ($1, $2, $3, $4, 1, NOW(), NOW())
+     ON CONFLICT (discord_id) DO UPDATE SET
+       account_id = EXCLUDED.account_id,
+       last_code = EXCLUDED.last_code,
+       last_error = EXCLUDED.last_error,
+       attempts = discord_autojoin_failures.attempts + 1,
+       last_failed_at = NOW()`,
+    [
+      String(discordId),
+      String(accountId),
+      code ? String(code).slice(0, 64) : null,
+      errorText ? String(errorText).slice(0, 500) : null,
+    ]
+  );
+}
+
+// Task #128 — clear the pending row(s) once the player has successfully
+// joined the guild (or was already in it). Called from the OAuth callback
+// after a successful `addUserToLeagueGuild`. Deletes by BOTH discord_id
+// and account_id so a player who re-linked to a new Discord account
+// doesn't leave a stale row from their old Discord ID still triggering
+// the banner for their account. Idempotent: no-op when no row exists.
+async function clearDiscordAutoJoinFailure(discordId, accountId) {
+  if (!discordId && !accountId) return false;
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM discord_autojoin_failures
+      WHERE ($1::TEXT IS NOT NULL AND discord_id = $1)
+         OR ($2::TEXT IS NOT NULL AND account_id = $2)`,
+    [discordId ? String(discordId) : null, accountId ? String(accountId) : null]
+  );
+  return (r.rowCount || 0) > 0;
+}
+
+// Task #128 — return the pending failure row (if any) for an account, used
+// by the site-wide banner endpoint `GET /api/me/discord-autojoin-status`.
+// Looks up by account_id (not discord_id) so the lookup works directly off
+// the session without an extra nicknames join.
+async function getDiscordAutoJoinFailureForAccount(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT discord_id, account_id, last_code, last_error, attempts,
+            first_failed_at, last_failed_at
+       FROM discord_autojoin_failures
+      WHERE account_id = $1
+      ORDER BY last_failed_at DESC
+      LIMIT 1`,
+    [String(accountId)]
+  );
+  return r.rows[0] || null;
 }
 
 // Task 103 — return every account_id currently bound to the given Discord ID.
@@ -10759,6 +10845,9 @@ module.exports = {
   getDiscordIdByAccountId,
   getSteamByDiscordId,
   findAccountIdsByDiscordId,
+  recordDiscordAutoJoinFailure,
+  clearDiscordAutoJoinFailure,
+  getDiscordAutoJoinFailureForAccount,
   getDiscordIdCollisions,
   resolveDiscordIdCollision,
   tryEnforceDiscordIdUniqueIndex,

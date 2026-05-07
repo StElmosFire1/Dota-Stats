@@ -5976,6 +5976,27 @@ class DiscordBot {
     }
   }
 
+  // Task #128 — best-effort DM nudge to a player whose `addUserToLeagueGuild`
+  // call just failed, telling them to click *Reconnect with Discord* on the
+  // site once an admin has fixed the underlying perms / config issue. Caller
+  // (the OAuth callback) fires this without awaiting; any failure here is
+  // swallowed so the auth flow can never be taken down by a flaky DM.
+  async dmDiscordAutoJoinRetryHint(discordId) {
+    try {
+      if (!this.client?.users?.fetch) return;
+      const user = await this.client.users.fetch(String(discordId)).catch(() => null);
+      if (!user) return;
+      await user.send(
+        "Heads up — we couldn't add you to the **OCE Inhouse** Discord server " +
+        "during sign-up (the bot was likely missing permissions). Once that's " +
+        "fixed, head back to the site and click **Reconnect with Discord** on " +
+        "the banner at the top of the page to retry the join."
+      ).catch(() => {});
+    } catch (err) {
+      console.warn('[Discord] dmDiscordAutoJoinRetryHint failed:', err.message);
+    }
+  }
+
   async shutdown() {
     if (this._coachingReminderTimer) clearInterval(this._coachingReminderTimer);
     if (this._coachingAutoReleaseTimer) clearInterval(this._coachingAutoReleaseTimer);

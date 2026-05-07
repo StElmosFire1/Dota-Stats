@@ -560,10 +560,44 @@ function createServer(startupStatus = {}) {
             '[discord-oauth] guild add returned non-ok for', discordId,
             ':', joinResult.code, '-', joinResult.error,
           );
+          // Task #128 — queue the failure so the next-visit site banner can
+          // prompt the player to click *Reconnect with Discord* once an admin
+          // fixes the underlying perms / config issue. Skip the input-shape
+          // codes that re-linking can't fix on its own.
+          const code = joinResult.code || 'unknown';
+          const skipQueue = code === 'bad_discord_id' || code === 'no_access_token';
+          if (!skipQueue) {
+            try {
+              await db.recordDiscordAutoJoinFailure(discordId, accountId, code, joinResult.error);
+            } catch (qErr) {
+              console.warn('[discord-oauth] recordDiscordAutoJoinFailure failed:', qErr.message);
+            }
+            // Best-effort DM nudge so the player doesn't have to wait until
+            // their next site visit to find out the join failed.
+            try {
+              if (typeof bot.dmDiscordAutoJoinRetryHint === 'function') {
+                bot.dmDiscordAutoJoinRetryHint(discordId);
+              }
+            } catch (_) { /* swallow */ }
+          }
+        } else if (joinResult && joinResult.ok === true) {
+          // Task #128 — successful join (newly added or already a member);
+          // clear any pending retry row so the banner stops showing.
+          try {
+            await db.clearDiscordAutoJoinFailure(discordId, accountId);
+          } catch (qErr) {
+            console.warn('[discord-oauth] clearDiscordAutoJoinFailure failed:', qErr.message);
+          }
         }
       }
     } catch (err) {
       console.warn('[discord-oauth] guild add threw for', discordId, ':', err.message);
+      // Task #128 — the helper is meant to never throw, but defend against
+      // future regressions: if it does, queue a generic failure so we can
+      // still prompt the player to retry on their next visit.
+      try {
+        await db.recordDiscordAutoJoinFailure(discordId, accountId, 'threw', err.message);
+      } catch (_) { /* swallow */ }
     }
 
     return back({ discord_link: 'success', username: verification.username || discordUser.username || '' });
@@ -1242,6 +1276,33 @@ function createApiRouter(startupStatus = {}) {
       }
       console.error('[me/link-discord PUT] failed for account', accountId, ':', err.message);
       res.status(500).json({ error: 'Could not save your Discord ID. Try again in a moment.' });
+    }
+  });
+
+  // GET /api/me/discord-autojoin-status — Task #128. Returns whether the
+  // signed-in user has a pending Discord auto-join failure (i.e. they linked
+  // their Discord successfully but the bot couldn't pull them into the OCE
+  // Inhouse server). When `pending: true` the site-wide banner prompts them
+  // to click *Reconnect with Discord* to retry the join. Always returns 200
+  // with `{ pending: false }` for unauthenticated callers / no row, so the
+  // frontend doesn't have to special-case 401s.
+  router.get('/me/discord-autojoin-status', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.json({ pending: false });
+    try {
+      const row = await db.getDiscordAutoJoinFailureForAccount(accountId);
+      if (!row) return res.json({ pending: false });
+      res.json({
+        pending: true,
+        code: row.last_code || 'unknown',
+        attempts: row.attempts || 1,
+        first_failed_at: row.first_failed_at,
+        last_failed_at: row.last_failed_at,
+      });
+    } catch (err) {
+      console.error('[me/discord-autojoin-status] failed for account', accountId, ':', err.message);
+      // Fail soft so a flaky DB read can't break every page load.
+      res.json({ pending: false });
     }
   });
 

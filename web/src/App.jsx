@@ -12,6 +12,7 @@ import WelcomeModal from './components/WelcomeModal';
 import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
 import DiscordLinkModal from './components/DiscordLinkModal';
+import DiscordRetryBanner from './components/DiscordRetryBanner';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
@@ -606,6 +607,7 @@ export default function App() {
             <WelcomeModal />
             <GlobalOnboardingWizard />
             <DiscordLinkModal />
+            <DiscordRetryBanner />
             <main className="container">
               <Suspense fallback={<div className="loading">Loading…</div>}>
               <Routes>
