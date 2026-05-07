@@ -5106,6 +5106,41 @@ NOTES
     }
   });
 
+  // Superuser-only — list every pending Discord auto-join failure (Task #138).
+  // Joined with the player nickname so admins can tell at a glance who is
+  // currently stuck waiting to retry the join after a perms fix. Read-only.
+  router.get('/admin/discord-autojoin-failures', requireSuperuser, async (req, res) => {
+    try {
+      const failures = await db.listAllDiscordAutoJoinFailures(200);
+      res.json({ failures });
+    } catch (err) {
+      console.error('[API] admin/discord-autojoin-failures GET error:', err.message);
+      res.status(500).json({ error: 'Failed to load Discord auto-join failures' });
+    }
+  });
+
+  // Superuser-only — clear one pending failure row (Task #138). Idempotent:
+  // returns { cleared: false } if the row was already gone (e.g. the player
+  // re-linked successfully between the admin loading the panel and clicking
+  // Clear). Identifies the row by discord_id and/or account_id so the same
+  // route works whether the operator is clearing by discord ID or account.
+  router.post('/admin/discord-autojoin-failures/clear', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const { discord_id, account_id } = req.body || {};
+      if (!discord_id && !account_id) {
+        return res.status(400).json({ error: 'discord_id or account_id required' });
+      }
+      const cleared = await db.clearDiscordAutoJoinFailure(
+        discord_id ? String(discord_id) : null,
+        account_id ? String(account_id) : null,
+      );
+      res.json({ cleared });
+    } catch (err) {
+      console.error('[API] admin/discord-autojoin-failures/clear error:', err.message);
+      res.status(500).json({ error: 'Failed to clear Discord auto-join failure' });
+    }
+  });
+
   // Superuser-only — Stripe configuration status (Task #113).
   // Returns whether STRIPE_SECRET_KEY is set so the admin panel can warn the
   // operator when payments are silently disabled, instead of waiting for a

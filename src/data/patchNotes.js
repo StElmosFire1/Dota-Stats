@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.19",
+    "title": "Admins can see who's stuck waiting to retry their Discord auto-join",
+    "published_at": "2026-05-07",
+    "content": "**Closing the loop on Task #138.** Task #128 added a `discord_autojoin_failures` queue and a per-user retry banner, but operators had no way to see who was currently stuck — they had to query the DB by hand to tell whether a recent perms fix had actually drained the queue.\n\n• **New `db.listAllDiscordAutoJoinFailures(limit=200)`** in `src/db/index.js`. LEFT JOINs `nicknames` on `account_id` (BIGINT cast — the discord_id may have rotated since the failure was recorded, so account_id is the stable join key) and returns the rows newest-first, capped so a runaway outage can't blow up the response.\n\n• **New superuser route `GET /api/admin/discord-autojoin-failures`** in `src/web/server.js` returning `{ failures: [{ discord_id, account_id, nickname, last_code, last_error, attempts, first_failed_at, last_failed_at }] }`. Plus a paired `POST /api/admin/discord-autojoin-failures/clear` route that takes either `discord_id` or `account_id` and reuses the existing `clearDiscordAutoJoinFailure` helper — idempotent, returns `{ cleared: false }` if the row was already pruned by the player re-linking in the meantime.\n\n• **New 'Discord Auto-Join Retry Queue' panel on Admin → Users** in `web/src/pages/AdminPanel.jsx`, sitting alongside the existing Discord ID Collisions section. Renders nickname (linked to player profile), account/discord IDs, the failure code with hover-to-see full error, attempts (amber when >1), first/last failed timestamps, and a per-row Clear button with a confirm prompt. Empty state shows a green ✓ so admins can confirm at a glance the queue is drained.",
+    "author": "System"
+  },
+  {
     "version": "6.18",
     "title": "Public profiles now use the same polished card the editor previews",
     "published_at": "2026-05-07",

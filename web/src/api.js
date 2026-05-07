@@ -488,6 +488,27 @@ export async function enforceDiscordIdUniqueIndex(superuserKey) {
   return data;
 }
 
+// Task #138 — Discord auto-join failure queue (superuser-only).
+export async function getDiscordAutoJoinFailures(superuserKey) {
+  const res = await superuserFetch(BASE + '/admin/discord-autojoin-failures', {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to load Discord auto-join failures');
+  return data;
+}
+
+export async function clearDiscordAutoJoinFailure({ discord_id, account_id }, superuserKey) {
+  const res = await superuserFetch(BASE + '/admin/discord-autojoin-failures/clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ discord_id, account_id }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to clear failure');
+  return data;
+}
+
 export async function setPlayerDiscordId(accountId, discordId, superuserKey) {
   const res = await superuserFetch(BASE + `/players/${accountId}/discord`, {
     method: 'POST',

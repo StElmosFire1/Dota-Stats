@@ -4066,6 +4066,38 @@ async function getDiscordAutoJoinFailureForAccount(accountId) {
   return r.rows[0] || null;
 }
 
+// Task #138 — list every pending Discord auto-join failure row joined with
+// the player's current nickname so the admin panel can render a "who's
+// stuck" table without operators having to query the DB by hand. Newest
+// failure first, capped at 200 so a runaway bot outage can't blow up the
+// response. LEFT JOIN nicknames on account_id (BIGINT) — the discord_id
+// stored on the failure row may have rotated since (re-link), so the
+// account_id is the stable join key.
+async function listAllDiscordAutoJoinFailures(limit = 200) {
+  const p = getPool();
+  const cap = Math.max(1, Math.min(1000, Number(limit) || 200));
+  const r = await p.query(
+    `SELECT f.discord_id, f.account_id, f.last_code, f.last_error,
+            f.attempts, f.first_failed_at, f.last_failed_at,
+            n.nickname
+       FROM discord_autojoin_failures f
+       LEFT JOIN nicknames n ON n.account_id = f.account_id::BIGINT
+      ORDER BY f.last_failed_at DESC
+      LIMIT $1`,
+    [cap]
+  );
+  return r.rows.map(row => ({
+    discord_id: row.discord_id || '',
+    account_id: row.account_id || '',
+    nickname: row.nickname || null,
+    last_code: row.last_code || null,
+    last_error: row.last_error || null,
+    attempts: Number(row.attempts) || 0,
+    first_failed_at: row.first_failed_at,
+    last_failed_at: row.last_failed_at,
+  }));
+}
+
 // Task #135 — append a single auto-join outcome (success or failure) to the
 // persistent audit log. Best-effort: callers in the Discord bot fire-and-
 // forget so a transient DB blip can never break the OAuth sign-up flow.
@@ -11007,6 +11039,7 @@ module.exports = {
   recordDiscordAutoJoinFailure,
   clearDiscordAutoJoinFailure,
   getDiscordAutoJoinFailureForAccount,
+  listAllDiscordAutoJoinFailures,
   appendDiscordAutoJoinLog,
   getRecentDiscordAutoJoinLog,
   pruneDiscordAutoJoinLog,

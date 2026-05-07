@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import { TierBadge, MMR_TIERS } from './Leaderboard';
 import { ALL_HEROES, getHeroName } from '../heroNames';
@@ -306,6 +306,170 @@ function DiscordIdCollisions({ superuserKey }) {
           </div>
         </div>
       ))}
+    </section>
+  );
+}
+
+// Task #138 — surfaces the queue of users whose `bot.addUserToLeagueGuild`
+// call failed mid-OAuth (Task #128). Each row shows the player nickname,
+// the failure code/error, attempt count, and timing so admins can tell at
+// a glance whether a recent perms fix has actually drained the queue. The
+// per-row Clear button calls /api/admin/discord-autojoin-failures/clear so
+// rows that the player has already self-resolved by re-linking can be
+// pruned without waiting for the next successful auto-join.
+function DiscordAutoJoinFailures({ superuserKey }) {
+  const [failures, setFailures] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState({});
+  const [error, setError] = useState('');
+  const [statusMsg, setStatusMsg] = useState('');
+
+  const load = useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true);
+    setError('');
+    getDiscordAutoJoinFailures(superuserKey)
+      .then(d => setFailures(d.failures || []))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function handleClear(row) {
+    const label = row.nickname || `account ${row.account_id}`;
+    if (!window.confirm(
+      `Clear the pending Discord auto-join failure for ${label}?\n\n` +
+      `Use this only if you've confirmed the player is now actually in the Discord server, ` +
+      `or if they've re-linked. The banner will stop showing for them on their next page load.`
+    )) return;
+    const key = `${row.discord_id}|${row.account_id}`;
+    setClearing(prev => ({ ...prev, [key]: true }));
+    setStatusMsg('');
+    clearDiscordAutoJoinFailure({ discord_id: row.discord_id, account_id: row.account_id }, superuserKey)
+      .then(r => {
+        setStatusMsg(r.cleared ? `✓ Cleared pending failure for ${label}.` : `Row was already gone for ${label}.`);
+        load();
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setClearing(prev => ({ ...prev, [key]: false })));
+  }
+
+  function fmtTs(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleString(); } catch { return String(ts); }
+  }
+
+  const rows = failures || [];
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-discord-autojoin-failures" className="section-title" style={{ marginBottom: 6 }}>
+        ⏳ Discord Auto-Join Retry Queue
+      </h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+        Players whose <code>addUserToLeagueGuild</code> call failed during OAuth (Task #128). They see a
+        site-wide banner prompting them to re-click <em>Reconnect with Discord</em>; the row is cleared
+        automatically on the next successful auto-join. Use this list to confirm whether a recent perms
+        fix has actually drained the queue.
+      </p>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <button className="btn" onClick={load} disabled={loading}>
+          {loading ? '⏳ Loading…' : 'Refresh'}
+        </button>
+        {failures !== null && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {rows.length === 0 ? 'No pending failures.' : `${rows.length} player${rows.length === 1 ? '' : 's'} stuck`}
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: '#450a0a', border: '1px solid #f87171',
+                      color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+      {statusMsg && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: '#052e16', border: '1px solid #4ade80',
+                      color: '#86efac', fontSize: 13, marginBottom: 12 }}>
+          {statusMsg}
+        </div>
+      )}
+
+      {failures !== null && rows.length === 0 && !error && (
+        <p style={{ color: '#4ade80', fontSize: 13 }}>
+          ✓ No players are currently stuck waiting to retry their Discord auto-join.
+        </p>
+      )}
+
+      {rows.length > 0 && (
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard" style={{ fontSize: 12, width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Nickname</th>
+                <th style={{ textAlign: 'left' }}>Account ID</th>
+                <th style={{ textAlign: 'left' }}>Discord ID</th>
+                <th style={{ textAlign: 'left' }}>Last Code</th>
+                <th>Attempts</th>
+                <th>First Failed</th>
+                <th>Last Failed</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => {
+                const key = `${row.discord_id}|${row.account_id}`;
+                const label = row.nickname || `#${row.account_id}`;
+                return (
+                  <tr key={key}>
+                    <td style={{ fontWeight: 600 }}>
+                      {row.account_id ? (
+                        <a href={`/player/${row.account_id}`} target="_blank" rel="noopener noreferrer"
+                           style={{ color: 'var(--accent)' }}>{label}</a>
+                      ) : label}
+                    </td>
+                    <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{row.account_id || '—'}</td>
+                    <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{row.discord_id || '—'}</td>
+                    <td>
+                      <code style={{ fontSize: 11 }}>{row.last_code || 'unknown'}</code>
+                      {row.last_error && (
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2,
+                                      maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                             title={row.last_error}>
+                          {row.last_error}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: 600,
+                                 color: row.attempts > 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                      {row.attempts}
+                    </td>
+                    <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>
+                      {fmtTs(row.first_failed_at)}
+                    </td>
+                    <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>
+                      {fmtTs(row.last_failed_at)}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        className="btn btn-sm"
+                        disabled={!!clearing[key]}
+                        onClick={() => handleClear(row)}
+                        style={{ fontSize: 11, padding: '2px 8px', color: '#f87171', borderColor: '#f87171' }}
+                      >
+                        {clearing[key] ? 'Working…' : '✕ Clear'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -3123,6 +3287,9 @@ export default function AdminPanel() {
       {activeTab === 'users' && (<>
       {/* ── Discord ID Collisions (Task 114) ─────────────────────────── */}
       <DiscordIdCollisions superuserKey={superuserKey} />
+
+      {/* ── Discord Auto-Join Retry Queue (Task #138) ────────────────── */}
+      <DiscordAutoJoinFailures superuserKey={superuserKey} />
 
       {/* ── Dota Rank Management ─────────────────────────────────────── */}
       <section className="admin-section" style={{ marginTop: 32 }}>
