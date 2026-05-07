@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import "./_profile.css";
 import "./_tacticaldossier.css";
-import { PERSONAS, heroImg, fmtDuration, fmtDate, type Persona } from "./_mockProfile";
+import { PERSONAS, heroImg, fmtDuration, type Persona } from "./_mockProfile";
 import { Sun, Moon, ArrowLeft, Trophy, Target, Shield, Settings2, BarChart2, ShieldAlert, Zap, Lock, Star } from "lucide-react";
 
 export function TacticalDossier() {

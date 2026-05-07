@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import "./_profile.css";
 import "./_magazinespread.css";
-import { PERSONAS, heroImg, fmtDuration, fmtDate, type Persona } from "./_mockProfile";
+import { PERSONAS, heroImg, fmtDuration, type Persona } from "./_mockProfile";
 import { Moon, Sun, ArrowLeft, Twitch, Youtube, Gamepad2, Settings2, BarChart2, Star, Unlock, Eye, Sparkles, Activity, Trophy } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer

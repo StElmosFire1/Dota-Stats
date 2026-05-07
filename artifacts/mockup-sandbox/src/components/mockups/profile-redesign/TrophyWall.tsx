@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import "./_profile.css";
-import { PERSONAS, heroImg, fmtDuration, fmtDate, type Persona } from "./_mockProfile";
+import { PERSONAS, heroImg, fmtDuration, type Persona } from "./_mockProfile";
 import { Moon, Sun, ArrowLeft, ExternalLink, Activity, Trophy, Shield, Crosshair, Star, Gift, Settings, Twitch, Youtube, Gamepad2, Search, ArrowUpRight } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, YAxis } from "recharts";
 
