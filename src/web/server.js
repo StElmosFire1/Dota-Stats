@@ -5133,8 +5133,24 @@ NOTES
   // currently stuck waiting to retry the join after a perms fix. Read-only.
   router.get('/admin/discord-autojoin-failures', requireSuperuser, async (req, res) => {
     try {
-      const failures = await db.listAllDiscordAutoJoinFailures(200);
-      res.json({ failures });
+      // Task #143 — also surface the auto-prune threshold and the last-prune
+      // timestamp so admins can see the queue is being maintained even when
+      // it's currently empty. The threshold mirrors the env-overridable
+      // default the bot uses on its hourly throttle.
+      const pruneDays = Math.max(
+        1,
+        Math.min(365, parseInt(process.env.DISCORD_AUTOJOIN_FAILURE_PRUNE_DAYS, 10) || 30)
+      );
+      const [failures, pruneInfo] = await Promise.all([
+        db.listAllDiscordAutoJoinFailures(200),
+        db.getDiscordAutoJoinFailuresPruneInfo(),
+      ]);
+      res.json({
+        failures,
+        prune_threshold_days: pruneDays,
+        prune_last_run_ts: pruneInfo?.ts || null,
+        prune_last_removed: pruneInfo?.removed ?? null,
+      });
     } catch (err) {
       console.error('[API] admin/discord-autojoin-failures GET error:', err.message);
       res.status(500).json({ error: 'Failed to load Discord auto-join failures' });

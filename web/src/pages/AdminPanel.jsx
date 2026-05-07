@@ -319,6 +319,7 @@ function DiscordIdCollisions({ superuserKey }) {
 // pruned without waiting for the next successful auto-join.
 function DiscordAutoJoinFailures({ superuserKey }) {
   const [failures, setFailures] = useState(null);
+  const [pruneInfo, setPruneInfo] = useState({ thresholdDays: null, lastRunTs: null, lastRemoved: null });
   const [loading, setLoading] = useState(false);
   const [clearing, setClearing] = useState({});
   const [error, setError] = useState('');
@@ -329,7 +330,14 @@ function DiscordAutoJoinFailures({ superuserKey }) {
     setLoading(true);
     setError('');
     getDiscordAutoJoinFailures(superuserKey)
-      .then(d => setFailures(d.failures || []))
+      .then(d => {
+        setFailures(d.failures || []);
+        setPruneInfo({
+          thresholdDays: d.prune_threshold_days ?? null,
+          lastRunTs: d.prune_last_run_ts ?? null,
+          lastRemoved: d.prune_last_removed ?? null,
+        });
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [superuserKey]);
@@ -384,6 +392,24 @@ function DiscordAutoJoinFailures({ superuserKey }) {
           </span>
         )}
       </div>
+
+      {pruneInfo.thresholdDays !== null && (
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: -4, marginBottom: 12 }}>
+          🧹 Auto-prune: rows with no fresh failure for{' '}
+          <strong>{pruneInfo.thresholdDays} day{pruneInfo.thresholdDays === 1 ? '' : 's'}</strong>{' '}
+          are dropped automatically (hourly, off the bot's auto-join write path).{' '}
+          {pruneInfo.lastRunTs ? (
+            <>
+              Last run <strong>{fmtTs(pruneInfo.lastRunTs)}</strong>
+              {typeof pruneInfo.lastRemoved === 'number'
+                ? ` — removed ${pruneInfo.lastRemoved} row${pruneInfo.lastRemoved === 1 ? '' : 's'}.`
+                : '.'}
+            </>
+          ) : (
+            <>Has not run yet on this database.</>
+          )}
+        </p>
+      )}
 
       {error && (
         <div style={{ padding: '8px 12px', borderRadius: 6, background: '#450a0a', border: '1px solid #f87171',

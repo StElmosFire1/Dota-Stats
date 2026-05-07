@@ -5889,6 +5889,19 @@ class DiscordBot {
           db.pruneDiscordAutoJoinLog(7).catch(err =>
             console.warn('[Discord] pruneDiscordAutoJoinLog failed:', err.message)
           );
+          // Task #143 — piggy-back on the same hourly throttle to drop
+          // ancient pending auto-join failure rows so the admin queue
+          // doesn't accumulate players who never come back. Threshold is
+          // env-overridable for ops; defaults to 30 days.
+          if (typeof db.pruneDiscordAutoJoinFailures === 'function') {
+            const failureDays = Math.max(
+              1,
+              Math.min(365, parseInt(process.env.DISCORD_AUTOJOIN_FAILURE_PRUNE_DAYS, 10) || 30)
+            );
+            db.pruneDiscordAutoJoinFailures(failureDays).catch(err =>
+              console.warn('[Discord] pruneDiscordAutoJoinFailures failed:', err.message)
+            );
+          }
         }
       } catch (err) {
         console.warn('[Discord] persist auto-join log failed:', err.message);

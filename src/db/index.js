@@ -4226,6 +4226,69 @@ async function pruneDiscordAutoJoinLog(days = 7) {
   return r.rowCount || 0;
 }
 
+// Task #143 — drop pending auto-join failure rows older than `days` (default
+// 30) where there's been no fresh failure since then. Players who never
+// return after the original OAuth failure would otherwise sit in the queue
+// forever, slowly polluting the admin panel and making it harder to spot
+// fresh failures after a real outage. Mirrors `pruneDiscordAutoJoinLog`'s
+// shape — bounded by the existing `idx_discord_autojoin_failures_account`
+// index isn't useful here (we filter on last_failed_at), but the table is
+// small and the bot caller throttles invocation to once per hour anyway.
+//
+// Also stamps `discord_autojoin_failures_last_prune` in `site_settings`
+// (JSON `{ ts, days, removed }`) on every run — including no-op runs — so
+// the admin panel can surface the threshold and last-prune time and
+// operators can confirm the queue is auto-maintained even when nothing
+// has been removed recently.
+async function pruneDiscordAutoJoinFailures(days = 30) {
+  const p = getPool();
+  const d = Math.max(1, Math.min(365, Number(days) || 30));
+  const r = await p.query(
+    `DELETE FROM discord_autojoin_failures
+      WHERE last_failed_at < NOW() - ($1 || ' days')::interval`,
+    [String(d)]
+  );
+  const removed = r.rowCount || 0;
+  try {
+    await p.query(
+      `INSERT INTO site_settings (key, value, updated_at)
+       VALUES ('discord_autojoin_failures_last_prune', $1, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [JSON.stringify({ ts: Date.now(), days: d, removed })]
+    );
+  } catch (err) {
+    console.warn('[DB] pruneDiscordAutoJoinFailures: failed to record last-prune ts:', err.message);
+  }
+  return removed;
+}
+
+// Task #143 — read back the last-prune marker stamped by
+// `pruneDiscordAutoJoinFailures` so the admin panel can render
+// "auto-pruned every hour, threshold N days, last run X ago". Returns
+// `null` when the row is missing (fresh DB / never pruned). Read-only.
+async function getDiscordAutoJoinFailuresPruneInfo() {
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `SELECT value, EXTRACT(EPOCH FROM updated_at) * 1000 AS updated_ms
+         FROM site_settings
+        WHERE key = 'discord_autojoin_failures_last_prune'
+        LIMIT 1`
+    );
+    if (!r.rows[0]) return null;
+    let parsed = {};
+    try { parsed = JSON.parse(r.rows[0].value || '{}'); } catch { /* ignore */ }
+    return {
+      ts: Number(parsed.ts) || Number(r.rows[0].updated_ms) || 0,
+      days: Number(parsed.days) || 0,
+      removed: Number(parsed.removed) || 0,
+    };
+  } catch (err) {
+    console.warn('[DB] getDiscordAutoJoinFailuresPruneInfo failed:', err.message);
+    return null;
+  }
+}
+
 // Task 103 — return every account_id currently bound to the given Discord ID.
 // Used by POST/PUT /api/me/link-discord and the OAuth callback to refuse a
 // link when the same Discord ID is already on a *different* player's account.
@@ -11118,6 +11181,8 @@ module.exports = {
   getDiscordAutoJoinDailyBuckets,
   getDiscordAutoJoinFailuresPage,
   pruneDiscordAutoJoinLog,
+  pruneDiscordAutoJoinFailures,
+  getDiscordAutoJoinFailuresPruneInfo,
   getDiscordIdCollisions,
   resolveDiscordIdCollision,
   tryEnforceDiscordIdUniqueIndex,
