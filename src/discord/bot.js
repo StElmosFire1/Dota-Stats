@@ -5759,19 +5759,25 @@ class DiscordBot {
     const roleId = process.env.DISCORD_LEAGUE_MEMBER_ROLE_ID || null;
     if (!guildId) {
       const r = { ok: false, code: 'guild_not_configured', error: 'DISCORD_GUILD_ID is not set; skipping guild auto-join.' };
+      this._recordGuildAutoJoinResult(discordId, r);
       this._alertGuildAutoJoinFailure(discordId, r);
       return r;
     }
     if (!botToken) {
       const r = { ok: false, code: 'bot_token_missing', error: 'DISCORD_TOKEN is not set; cannot call /guilds/.../members.' };
+      this._recordGuildAutoJoinResult(discordId, r);
       this._alertGuildAutoJoinFailure(discordId, r);
       return r;
     }
     if (!/^\d{17,19}$/.test(String(discordId))) {
-      return { ok: false, code: 'bad_discord_id', error: 'Invalid Discord user id.' };
+      const r = { ok: false, code: 'bad_discord_id', error: 'Invalid Discord user id.' };
+      this._recordGuildAutoJoinResult(discordId, r);
+      return r;
     }
     if (!accessToken || typeof accessToken !== 'string') {
-      return { ok: false, code: 'no_access_token', error: 'Missing OAuth access token from caller.' };
+      const r = { ok: false, code: 'no_access_token', error: 'Missing OAuth access token from caller.' };
+      this._recordGuildAutoJoinResult(discordId, r);
+      return r;
     }
 
     const url = `https://discord.com/api/v10/guilds/${guildId}/members/${discordId}`;
@@ -5791,6 +5797,7 @@ class DiscordBot {
     } catch (err) {
       console.warn(`[Discord] guild auto-join fetch failed for ${discordId}:`, err.message);
       const r = { ok: false, code: 'network', error: err.message };
+      this._recordGuildAutoJoinResult(discordId, r);
       this._alertGuildAutoJoinFailure(discordId, r);
       return r;
     }
@@ -5799,7 +5806,9 @@ class DiscordBot {
     // (Discord returns 204 with no body in that case). Both are success.
     if (res.status === 201) {
       console.log(`[Discord] guild auto-join: added ${discordId} to guild ${guildId}${roleId ? ` with role ${roleId}` : ''}.`);
-      return { ok: true, added: true };
+      const r = { ok: true, added: true };
+      this._recordGuildAutoJoinResult(discordId, r);
+      return r;
     }
     if (res.status === 204) {
       console.log(`[Discord] guild auto-join: ${discordId} already in guild ${guildId}; attempting role top-up.`);
@@ -5819,7 +5828,9 @@ class DiscordBot {
           console.warn(`[Discord] guild role-add threw for ${discordId}:`, err.message);
         }
       }
-      return { ok: true, added: false };
+      const r = { ok: true, added: false };
+      this._recordGuildAutoJoinResult(discordId, r);
+      return r;
     }
 
     // Any other status is a real failure — log enough context for ops to
@@ -5829,8 +5840,90 @@ class DiscordBot {
     try { detail = (await res.text()).slice(0, 300); } catch { /* ignore */ }
     console.warn(`[Discord] guild auto-join failed for ${discordId}: ${res.status} ${detail}`);
     const result = { ok: false, code: `http_${res.status}`, error: detail || `HTTP ${res.status}` };
+    this._recordGuildAutoJoinResult(discordId, result);
     this._alertGuildAutoJoinFailure(discordId, result);
     return result;
+  }
+
+  // Task #127 — in-memory ring buffer of recent auto-join outcomes so the
+  // admin dashboard can render a green/amber/red health indicator at a glance
+  // without having to tail the Discord alert channel. Capped at 50 entries
+  // (older entries dropped) — this is intentionally lossy and resets on bot
+  // restart; persistence is not worth a DB table for a debugging affordance.
+  _recordGuildAutoJoinResult(discordId, result) {
+    try {
+      if (!this._guildAutoJoinHistory) this._guildAutoJoinHistory = [];
+      let code;
+      if (result?.ok) {
+        code = result.added ? 'success_added' : 'success_already';
+      } else {
+        code = result?.code || 'unknown';
+      }
+      const entry = {
+        ts: Date.now(),
+        code,
+        ok: Boolean(result?.ok),
+        discordId: String(discordId || ''),
+        error: result?.ok ? null : (result?.error ? String(result.error).slice(0, 200) : null),
+      };
+      this._guildAutoJoinHistory.push(entry);
+      if (this._guildAutoJoinHistory.length > 50) {
+        this._guildAutoJoinHistory.splice(0, this._guildAutoJoinHistory.length - 50);
+      }
+    } catch (err) {
+      console.warn('[Discord] _recordGuildAutoJoinResult error:', err.message);
+    }
+  }
+
+  // Task #127 — rolled-up view of the auto-join ring buffer for the admin
+  // dashboard. Counts are scoped to the last 24 hours; `last_failure` is the
+  // most recent non-ok entry across the whole buffer (so admins can still see
+  // what last broke even if the failure happened > 24h ago).
+  getGuildAutoJoinStats() {
+    const history = this._guildAutoJoinHistory || [];
+    const WINDOW_MS = 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - WINDOW_MS;
+    const recent = history.filter(e => e.ts >= cutoff);
+    const counts = {};
+    for (const e of recent) {
+      counts[e.code] = (counts[e.code] || 0) + 1;
+    }
+    const HINTS = {
+      guild_not_configured: 'Set DISCORD_GUILD_ID on the bot host.',
+      bot_token_missing: 'Set DISCORD_TOKEN on the bot host.',
+      bad_discord_id: 'Caller passed an invalid Discord user id (likely an unlinked account).',
+      no_access_token: 'Caller did not include an OAuth access token (re-link required).',
+      network: 'Discord API was unreachable — check outbound connectivity / Discord status.',
+      http_401: 'Bot token rejected — check DISCORD_TOKEN is current.',
+      http_403: 'Missing Create Instant Invite / Manage Roles, or the league role sits above the bot in the role list.',
+      http_404: 'Guild or user not found — verify DISCORD_GUILD_ID and that the user completed OAuth.',
+      http_429: 'Rate limited by Discord — high signup volume or token shared with another instance.',
+    };
+    let lastFailure = null;
+    let lastSuccessTs = null;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const e = history[i];
+      if (!lastFailure && !e.ok) {
+        lastFailure = {
+          ts: e.ts,
+          code: e.code,
+          discordId: e.discordId,
+          error: e.error,
+          hint: HINTS[e.code] || 'Check the bot logs for the full Discord response.',
+        };
+      }
+      if (lastSuccessTs == null && e.ok) lastSuccessTs = e.ts;
+      if (lastFailure && lastSuccessTs != null) break;
+    }
+    return {
+      window_ms: WINDOW_MS,
+      buffer_capacity: 50,
+      total_recorded: history.length,
+      recent_count: recent.length,
+      counts,
+      last_failure: lastFailure,
+      last_success_ts: lastSuccessTs,
+    };
   }
 
   // Task 116 — surface auto-join failures to an admin/log Discord channel so

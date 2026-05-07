@@ -2041,6 +2041,154 @@ function TierLadderPreview() {
   );
 }
 
+// Task #127 — Discord guild auto-join health panel.
+// Surfaces the in-memory ring buffer maintained by DiscordBot
+// (`addUserToLeagueGuild` outcomes over the last 24h) so admins can see
+// at a glance whether new signups are actually landing in the Discord
+// server, instead of having to tail the throttled alert channel.
+function DiscordAutoJoinStatusPanel({ superuserKey }) {
+  const [data, setData] = React.useState(null);
+  const [err, setErr] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true);
+    superuserFetch('/api/admin/discord-autojoin-status', { headers: { 'x-superuser-key': superuserKey } })
+      .then(r => r.json())
+      .then(d => { if (d.error) setErr(d.error); else { setData(d); setErr(''); } })
+      .catch(e => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const counts = data?.counts || {};
+  const successCount = (counts.success_added || 0) + (counts.success_already || 0);
+  const failureCount = Object.entries(counts)
+    .filter(([k]) => !k.startsWith('success_'))
+    .reduce((sum, [, v]) => sum + v, 0);
+  const totalRecent = data?.recent_count || 0;
+
+  // Health logic: red if any failures in the last 24h AND no successes after
+  // the last failure (i.e. broken right now); amber if there are failures but
+  // also more recent successes (transient hiccup); green otherwise.
+  let level = 'green';
+  let levelLabel = 'Healthy';
+  if (!data?.guild_configured || !data?.bot_token_configured) {
+    level = 'red';
+    levelLabel = 'Not configured';
+  } else if (failureCount > 0) {
+    const lastFailTs = data?.last_failure?.ts || 0;
+    const hasRecentSuccess = (data?.last_success_ts || 0) > lastFailTs;
+    level = hasRecentSuccess ? 'amber' : 'red';
+    levelLabel = hasRecentSuccess ? 'Recovered after failures' : 'Failures in last 24h';
+  } else if (totalRecent === 0) {
+    level = 'amber';
+    levelLabel = 'No signups recorded yet';
+  }
+
+  const COLORS = {
+    green: { bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.4)', text: '#4ade80' },
+    amber: { bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', text: '#f59e0b' },
+    red: { bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.5)', text: '#ef4444' },
+  };
+  const c = COLORS[level];
+
+  function fmtTs(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleString(); } catch { return String(ts); }
+  }
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-discord-autojoin" className="section-title" style={{ marginBottom: 6 }}>
+        🤝 Discord Auto-Join Health
+      </h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Outcomes of <code>bot.addUserToLeagueGuild</code> over the last 24 hours
+        (in-memory ring buffer of the most recent {data?.buffer_capacity || 50} attempts —
+        resets on bot restart). If new signups aren't landing in the Discord server,
+        the most recent failure code and a remediation hint will show below.
+      </p>
+
+      {err && (
+        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)', fontSize: 13, color: '#fca5a5', marginBottom: 12 }}>
+          Status check failed: {err}
+        </div>
+      )}
+
+      {data && (
+        <>
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: c.bg, border: `1px solid ${c.border}`, fontSize: 13, color: c.text, marginBottom: 12, fontWeight: 600 }}>
+            ● {levelLabel} — {totalRecent} attempt{totalRecent === 1 ? '' : 's'} recorded in the last 24h
+            ({successCount} success / {failureCount} failed)
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 12 }}>
+            <StatPill label="Added (new member)" value={counts.success_added || 0} tone="ok" />
+            <StatPill label="Already in guild" value={counts.success_already || 0} tone="ok" />
+            <StatPill label="HTTP 403 (perms)" value={counts.http_403 || 0} tone={counts.http_403 ? 'bad' : 'muted'} />
+            <StatPill label="HTTP 404 (not found)" value={counts.http_404 || 0} tone={counts.http_404 ? 'bad' : 'muted'} />
+            <StatPill label="HTTP 429 (rate limit)" value={counts.http_429 || 0} tone={counts.http_429 ? 'bad' : 'muted'} />
+            <StatPill label="HTTP 401 (token)" value={counts.http_401 || 0} tone={counts.http_401 ? 'bad' : 'muted'} />
+            <StatPill label="Network errors" value={counts.network || 0} tone={counts.network ? 'bad' : 'muted'} />
+            <StatPill label="Other failures" value={
+              Object.entries(counts)
+                .filter(([k]) => !k.startsWith('success_') && !['http_401','http_403','http_404','http_429','network'].includes(k))
+                .reduce((s, [, v]) => s + v, 0)
+            } tone="muted" />
+          </div>
+
+          {data.last_failure ? (
+            <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.3)', fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              <div style={{ color: '#fca5a5', fontWeight: 600, marginBottom: 4 }}>
+                Last failure: <code>{data.last_failure.code}</code> at {fmtTs(data.last_failure.ts)}
+                {data.last_failure.discordId && <> for user <code>{data.last_failure.discordId}</code></>}
+              </div>
+              <div>{data.last_failure.hint}</div>
+              {data.last_failure.error && (
+                <div style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+                  Discord said: {data.last_failure.error}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.25)', fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              No failures recorded in the current ring buffer.
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span><code>DISCORD_GUILD_ID</code>: {data.guild_configured ? '✓ set' : '✗ missing'}</span>
+            <span><code>DISCORD_TOKEN</code>: {data.bot_token_configured ? '✓ set' : '✗ missing'}</span>
+            <span><code>DISCORD_LEAGUE_MEMBER_ROLE_ID</code>: {data.league_role_configured ? '✓ set' : '— optional'}</span>
+            <span><code>DISCORD_ADMIN_LOG_CHANNEL_ID</code>: {data.admin_log_channel_configured ? '✓ set' : '— alerts disabled'}</span>
+            <button className="btn" onClick={load} disabled={loading} style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: 11 }}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function StatPill({ label, value, tone }) {
+  const TONES = {
+    ok: { color: '#4ade80', border: 'rgba(74,222,128,0.3)' },
+    bad: { color: '#ef4444', border: 'rgba(239,68,68,0.4)' },
+    muted: { color: 'var(--text-muted)', border: 'var(--border)' },
+  };
+  const t = TONES[tone] || TONES.muted;
+  return (
+    <div style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--bg-card)', border: `1px solid ${t.border}` }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: t.color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
 // Task #113 — Stripe configuration banner.
 // Sits at the top of the Site Settings tab so an admin notices immediately
 // when STRIPE_SECRET_KEY is missing in the current environment, rather than
@@ -2959,6 +3107,8 @@ export default function AdminPanel() {
       {activeTab === 'config' && (<>
       {/* ── Stripe configuration banner (Task #113) ─────────────────── */}
       <StripeStatusBanner superuserKey={superuserKey} />
+      {/* ── Discord auto-join health (Task #127) ─────────────────────── */}
+      <DiscordAutoJoinStatusPanel superuserKey={superuserKey} />
       {/* ── Tier Ladder Preview ──────────────────────────────────────── */}
       <TierLadderPreview />
       {/* ── Coaching Marketplace flag (v5.93 launch kill-switch) ─────── */}

@@ -4990,6 +4990,29 @@ NOTES
     }
   });
 
+  // Superuser-only — Discord guild auto-join health (Task #127).
+  // Surfaces the in-memory ring buffer maintained by DiscordBot so the admin
+  // Site Settings tab can render a green/amber/red status without anyone
+  // having to tail the Discord alert channel. Read-only, never throws.
+  router.get('/admin/discord-autojoin-status', requireSuperuser, async (req, res) => {
+    try {
+      const bot = getDiscordBot();
+      const stats = typeof bot.getGuildAutoJoinStats === 'function'
+        ? bot.getGuildAutoJoinStats()
+        : { window_ms: 24 * 60 * 60 * 1000, recent_count: 0, total_recorded: 0, counts: {}, last_failure: null };
+      res.json({
+        ...stats,
+        guild_configured: Boolean(process.env.DISCORD_GUILD_ID),
+        bot_token_configured: Boolean(process.env.DISCORD_TOKEN),
+        league_role_configured: Boolean(process.env.DISCORD_LEAGUE_MEMBER_ROLE_ID),
+        admin_log_channel_configured: Boolean(process.env.DISCORD_ADMIN_LOG_CHANNEL_ID),
+      });
+    } catch (err) {
+      console.error('[API] admin/discord-autojoin-status error:', err.message);
+      res.status(500).json({ error: 'Failed to read Discord auto-join status' });
+    }
+  });
+
   // Superuser-only — Stripe configuration status (Task #113).
   // Returns whether STRIPE_SECRET_KEY is set so the admin panel can warn the
   // operator when payments are silently disabled, instead of waiting for a
