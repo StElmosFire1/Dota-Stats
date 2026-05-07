@@ -1,0 +1,311 @@
+.pp-redesign.magazine-layout {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.magazine-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  max-w: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .magazine-container {
+    grid-template-columns: 380px 1fr;
+    gap: 4rem;
+    padding: 3rem 2rem;
+  }
+}
+
+.magazine-header {
+  border-bottom: 2px solid var(--border-strong);
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-base);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.magazine-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.magazine-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+/* Typography styles for Magazine */
+.mag-eyebrow {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-brass);
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mag-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+
+.mag-subtitle {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.25rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.mag-body {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-main);
+}
+
+.mag-story {
+  position: relative;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.mag-story:last-child {
+  border-bottom: none;
+}
+
+.mag-story.is-pro {
+  padding-left: 1.5rem;
+  border-left: 3px solid var(--accent-amber);
+  background: linear-gradient(90deg, rgba(245,158,11,0.05) 0%, transparent 100%);
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: none;
+  border-radius: 0 8px 8px 0;
+}
+
+/* Profile Card Analog */
+.mag-profile-card {
+  position: relative;
+  background: var(--bg-card);
+  padding: 2rem 1.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+.mag-profile-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 20px;
+  bottom: 20px;
+  width: 4px;
+  background: linear-gradient(to bottom, transparent, var(--theme-accent, var(--accent-brass)) 20%, var(--theme-accent, var(--accent-brass)) 80%, transparent);
+}
+
+.mag-pull-quote {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.35rem;
+  font-style: italic;
+  color: var(--text-main);
+  line-height: 1.4;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 1.5rem 0;
+  margin: 2rem 0;
+  text-align: center;
+}
+
+.mag-hero-large {
+  width: 100%;
+  aspect-ratio: 4/5;
+  object-fit: cover;
+  object-position: top center;
+  border-radius: 4px;
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+  border: 1px solid var(--border-subtle);
+}
+
+.mag-hero-large.has-border {
+  border: 4px solid var(--hero-border, var(--accent-brass));
+  box-shadow: 0 0 20px var(--hero-border, var(--accent-brass));
+}
+
+.mag-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.mag-stat-box {
+  background: var(--bg-card-2);
+  padding: 1rem;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.mag-stat-val {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.mag-stat-lbl {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.mag-pinned-match {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  padding: 1rem;
+  border-radius: 4px;
+}
+
+.mag-match-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 4px;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+.mag-match-result.win { background: var(--radiant-tint); color: var(--radiant); }
+.mag-match-result.loss { background: var(--dire-tint); color: var(--dire); }
+
+.mag-social-chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+
+.mag-social-chip {
+  padding: 0.4rem 0.8rem;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  text-decoration: none;
+  background: var(--bg-card-2);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  transition: opacity 0.2s;
+}
+.mag-social-chip:hover { opacity: 0.8; }
+
+.mag-top-heroes-strip {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.mag-hero-card {
+  flex: 0 0 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.mag-hero-card img {
+  width: 100%;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.mag-achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.mag-achievement {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  gap: 0.5rem;
+}
+.mag-achievement-icon { font-size: 2rem; }
+.mag-achievement-title { font-weight: 600; font-size: 0.85rem; color: var(--text-main); }
+.mag-achievement-sub { font-size: 0.7rem; color: var(--text-muted); }
+
+.mag-sparkline {
+  height: 60px;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.mag-spark-bar {
+  flex: 1;
+  background: var(--accent-brass);
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s ease;
+  opacity: 0.8;
+}
+
+.mag-persona-switcher {
+  display: flex;
+  gap: 0.5rem;
+}
+.mag-persona-btn {
+  padding: 0.25rem 0.75rem;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+.mag-persona-btn.active {
+  background: var(--accent-brass);
+  color: #000;
+  border-color: var(--accent-brass);
+}
+
+.mag-edit-rail {
+  padding: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  margin-top: 2rem;
+}

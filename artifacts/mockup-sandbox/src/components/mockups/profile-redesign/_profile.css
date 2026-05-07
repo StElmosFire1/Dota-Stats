@@ -1,0 +1,202 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Oswald:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&display=swap');
+
+/* Court & Pitch palette scoped to .pp-redesign so it never leaks into other mockups. */
+.pp-redesign {
+  --bg-base: #0d1424;
+  --bg-card: #152036;
+  --bg-card-2: #1a2744;
+  --bg-elev: #0a0f1c;
+  --text-main: #e6edf8;
+  --text-muted: #94a6cb;
+  --text-faint: #6c7d9d;
+  --border-subtle: #2a3b5c;
+  --border-strong: #3a4d72;
+  --accent-brass: #c5a975;
+  --accent-amber: #f59e0b;
+  --accent-amber-2: #fbbf24;
+  --parchment: #f5efe2;
+  --radiant: #34d399;
+  --radiant-tint: rgba(52, 211, 153, 0.14);
+  --dire: #f87171;
+  --dire-tint: rgba(248, 113, 113, 0.14);
+  --pro: #f59e0b;
+
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.pp-redesign.theme-light {
+  --bg-base: #f5efe2;
+  --bg-card: #ece5d3;
+  --bg-card-2: #e3dabc;
+  --bg-elev: #fffaf0;
+  --text-main: #2c2825;
+  --text-muted: #6b635e;
+  --text-faint: #8a807a;
+  --border-subtle: #d4ccb9;
+  --border-strong: #b8ac8e;
+  --accent-brass: #8f743c;
+  --accent-amber: #b45309;
+  --accent-amber-2: #d97706;
+  --radiant: #047857;
+  --radiant-tint: rgba(4, 120, 87, 0.14);
+  --dire: #b91c1c;
+  --dire-tint: rgba(185, 28, 28, 0.14);
+}
+
+.pp-redesign .font-serif { font-family: 'Playfair Display', serif; }
+.pp-redesign .font-condensed { font-family: 'Oswald', sans-serif; letter-spacing: 0.04em; }
+.pp-redesign .font-mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+
+/* Brass left-rule card — the Court & Pitch signature */
+.pp-redesign .oa-card {
+  position: relative;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.pp-redesign .oa-card.with-rule::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 14px; bottom: 14px;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, var(--accent-brass) 25%, var(--accent-brass) 75%, transparent);
+  opacity: 0.9;
+  border-radius: 2px;
+}
+
+.pp-redesign .hairline { height: 1px; background: linear-gradient(to right, transparent, var(--border-subtle) 15%, var(--border-subtle) 85%, transparent); }
+
+/* The Pro upsell signature pattern (must read as Pro, not as a banner ad) */
+.pp-redesign .pro-card {
+  position: relative;
+  background:
+    linear-gradient(135deg, rgba(245,158,11,0.08) 0%, var(--bg-card) 60%);
+  border: 1px solid rgba(245,158,11,0.4);
+  border-radius: 10px;
+}
+.pp-redesign .pro-corner {
+  position: absolute; top: 0; right: 0;
+  width: 0; height: 0;
+  border-style: solid;
+  border-width: 0 44px 44px 0;
+  border-color: transparent var(--accent-amber) transparent transparent;
+}
+.pp-redesign .pro-corner::after {
+  content: "★";
+  position: absolute;
+  top: 4px; right: -36px;
+  color: #1a1a1a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pp-redesign .pro-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 7px; border-radius: 4px;
+  background: linear-gradient(135deg, var(--accent-amber) 0%, var(--accent-amber-2) 100%);
+  color: #1a1a1a; font-weight: 800; font-size: 10px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  box-shadow: 0 1px 3px rgba(245,158,11,0.4);
+}
+
+.pp-redesign .lock-overlay {
+  position: relative;
+}
+.pp-redesign .lock-overlay::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(13,20,36,0) 0%, rgba(13,20,36,0.85) 70%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.pp-redesign .lock-overlay > .lock-msg {
+  position: absolute; left: 0; right: 0; bottom: 12px;
+  text-align: center; z-index: 2;
+  color: var(--accent-amber); font-weight: 700; font-size: 12px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+
+/* Animated frame for OG Pro */
+@keyframes pp-shimmer {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+  50% { box-shadow: 0 0 28px 2px rgba(245,158,11,0.55); }
+}
+.pp-redesign .frame-animated {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 3px;
+  animation: pp-shimmer 2.6s ease-in-out infinite;
+  border-radius: 12px;
+}
+.pp-redesign .frame-gold {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 3px;
+  box-shadow: 0 0 8px rgba(245,158,11,0.5);
+  border-radius: 12px;
+}
+.pp-redesign .frame-silver {
+  outline: 2px solid #c0c0c0;
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+.pp-redesign .stat-tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 14px 16px;
+  position: relative;
+}
+
+.pp-redesign .eyebrow {
+  font-family: 'Oswald', sans-serif;
+  font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--text-faint);
+}
+
+.pp-redesign .cta-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent-amber), var(--accent-brass));
+  color: #0a0f1c; border: 0;
+  font-weight: 700; font-size: 13px; letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 6px 18px -8px rgba(245,158,11,0.45);
+}
+.pp-redesign .cta-ghost {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 6px;
+  background: transparent; color: var(--text-main);
+  border: 1px solid var(--border-strong);
+  font-weight: 600; font-size: 13px; cursor: pointer;
+}
+
+.pp-redesign .pos-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; padding: 1px 6px;
+  border-radius: 999px; font-family: 'Oswald', sans-serif;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  background: rgba(197,169,117,0.12); color: var(--accent-brass);
+  border: 1px solid rgba(197,169,117,0.4);
+}
+
+.pp-redesign .tier-S { color: #f59e0b; }
+.pp-redesign .tier-A { color: #c5a975; }
+.pp-redesign .tier-B { color: #94a6cb; }
+
+.pp-redesign a { color: inherit; text-decoration: none; }
+.pp-redesign button { font-family: inherit; }
+
+/* mock hero image fallbacks */
+.pp-redesign .hero-img {
+  display: block;
+  background:
+    linear-gradient(135deg, rgba(197,169,117,0.25), rgba(13,20,36,0.4)),
+    radial-gradient(circle at 30% 30%, var(--accent-brass), var(--bg-elev) 70%);
+  border-radius: 4px;
+}

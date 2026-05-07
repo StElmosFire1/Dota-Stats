@@ -1,0 +1,146 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+.tactical-dossier {
+  --grid-gap: 16px;
+  font-family: 'Space Mono', monospace;
+}
+
+.tactical-dossier .font-condensed {
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tactical-dossier .scoreboard-strip {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--accent-brass);
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
+}
+
+.tactical-dossier .dossier-tile {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.tactical-dossier .dossier-tile::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  background: var(--tile-accent, var(--border-strong));
+}
+
+.tactical-dossier .tile-header {
+  font-size: 10px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0,0,0,0.1);
+}
+
+.tactical-dossier .tile-content {
+  padding: 12px;
+  flex-grow: 1;
+}
+
+.tactical-dossier .value-lg {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.1;
+}
+
+.tactical-dossier .value-sm {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.tactical-dossier .accent-text {
+  color: var(--accent-brass);
+}
+
+.tactical-dossier .amber-text {
+  color: var(--accent-amber);
+}
+
+.tactical-dossier .grid-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--grid-gap);
+}
+
+.tactical-dossier .stat-row {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed var(--border-subtle);
+  padding: 4px 0;
+  font-size: 13px;
+}
+.tactical-dossier .stat-row:last-child {
+  border-bottom: none;
+}
+
+/* Custom Sparkline */
+.tactical-dossier .sparkline {
+  display: flex;
+  align-items: flex-end;
+  height: 60px;
+  gap: 2px;
+  margin-top: auto;
+}
+.tactical-dossier .spark-bar {
+  flex: 1;
+  background-color: var(--accent-brass);
+  min-height: 2px;
+  opacity: 0.8;
+  transition: height 0.3s ease;
+}
+.tactical-dossier .spark-bar:hover {
+  opacity: 1;
+  background-color: var(--accent-amber);
+}
+
+.tactical-dossier .achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 8px;
+}
+
+.tactical-dossier .achievement-item {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+  padding: 6px;
+  border-radius: 4px;
+  font-size: 20px;
+}
+.tactical-dossier .achievement-item.legendary { border-color: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.3); }
+.tactical-dossier .achievement-item.epic { border-color: #a855f7; box-shadow: 0 0 8px rgba(168,85,247,0.3); }
+.tactical-dossier .achievement-item.rare { border-color: #3b82f6; }
+.tactical-dossier .achievement-item.common { border-color: var(--border-subtle); opacity: 0.8; }
+
+.tactical-dossier .fab-customize {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, var(--accent-amber), var(--accent-brass));
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(245,158,11,0.4);
+  cursor: pointer;
+  z-index: 100;
+}
