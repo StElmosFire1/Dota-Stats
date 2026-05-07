@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import { TierBadge, MMR_TIERS } from './Leaderboard';
 import { ALL_HEROES, getHeroName } from '../heroNames';
@@ -120,6 +120,193 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
       <td><input type="number" min={0} max={50} value={player.deaths} onChange={e => onChange({ deaths: parseInt(e.target.value) || 0 })} style={{ width: 50 }} /></td>
       <td><input type="number" min={0} max={50} value={player.assists} onChange={e => onChange({ assists: parseInt(e.target.value) || 0 })} style={{ width: 50 }} /></td>
     </tr>
+  );
+}
+
+// Task 114 — surfaces every Discord ID currently bound to >1 account in a
+// table where the operator picks the canonical owner and clears the rest in
+// one click. Once the listing is empty it lets them turn on the partial
+// unique index without redeploying.
+function DiscordIdCollisions({ superuserKey }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [resolving, setResolving] = useState({});
+  const [enforcing, setEnforcing] = useState(false);
+  const [error, setError] = useState('');
+  const [statusMsg, setStatusMsg] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError('');
+    getDiscordIdCollisions(superuserKey)
+      .then(d => setData(d))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  function handleResolve(discordId, keepAccountId, keeperLabel, otherCount) {
+    if (!window.confirm(
+      `Keep "${keeperLabel}" (account ${keepAccountId}) as the owner of Discord ID ${discordId}?\n\n` +
+      `This will clear the Discord link from ${otherCount} other account${otherCount === 1 ? '' : 's'}. ` +
+      `Those players can re-link from their settings if needed.`
+    )) return;
+    const key = `${discordId}|${keepAccountId}`;
+    setResolving(prev => ({ ...prev, [key]: true }));
+    setStatusMsg('');
+    resolveDiscordIdCollision(discordId, keepAccountId, superuserKey)
+      .then(r => {
+        setStatusMsg(`✓ Cleared ${r.cleared.length} loser account${r.cleared.length === 1 ? '' : 's'} for Discord ID ${discordId}.`);
+        load();
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setResolving(prev => ({ ...prev, [key]: false })));
+  }
+
+  function handleEnforce() {
+    setEnforcing(true);
+    setStatusMsg('');
+    enforceDiscordIdUniqueIndex(superuserKey)
+      .then(r => {
+        if (r.index?.error) setError(r.index.error);
+        else if (r.index?.created) setStatusMsg('✓ Unique index created — duplicate Discord IDs are now blocked at the DB layer.');
+        else if (r.index?.exists) setStatusMsg('✓ Unique index already enforced.');
+        load();
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setEnforcing(false));
+  }
+
+  const collisions = data?.collisions || [];
+  const indexExists = data?.index?.exists;
+  const indexError = data?.index?.error;
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' }) : '—';
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-discord-collisions" className="section-title" style={{ marginBottom: 6 }}>
+        🔗 Discord ID Collisions
+      </h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+        Lists every Discord ID currently bound to more than one player account. Pick the canonical
+        owner and the rest will be cleared (<code>discord_id = ''</code>) in both the <code>nicknames</code>
+        and legacy <code>players</code> tables. Once the list is empty the partial unique index can be
+        enforced so future duplicates are blocked at the DB layer.
+      </p>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+        <button className="btn" onClick={load} disabled={loading}>
+          {loading ? '⏳ Loading…' : data === null ? 'Load' : 'Refresh'}
+        </button>
+        {data !== null && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {collisions.length === 0 ? 'No collisions found.' : `${collisions.length} colliding Discord ID${collisions.length === 1 ? '' : 's'}`}
+          </span>
+        )}
+        {data !== null && (
+          <span style={{ fontSize: 12, padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)',
+                        background: indexExists ? 'rgba(74,222,128,0.12)' : 'rgba(245,158,11,0.12)',
+                        color: indexExists ? '#4ade80' : '#f59e0b' }}>
+            {indexExists ? '✓ Unique index enforced' : '⚠ Unique index NOT enforced'}
+          </span>
+        )}
+        {data !== null && !indexExists && collisions.length === 0 && (
+          <button className="btn btn-primary" onClick={handleEnforce} disabled={enforcing} style={{ fontSize: '0.82rem' }}>
+            {enforcing ? 'Enforcing…' : '🔒 Enforce Unique Index Now'}
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: '#450a0a', border: '1px solid #f87171',
+                      color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+      {statusMsg && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: '#052e16', border: '1px solid #4ade80',
+                      color: '#86efac', fontSize: 13, marginBottom: 12 }}>
+          {statusMsg}
+        </div>
+      )}
+      {indexError && !indexExists && data !== null && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(245,158,11,0.08)',
+                      border: '1px solid #f59e0b', color: '#fbbf24', fontSize: 12, marginBottom: 12 }}>
+          Index status: {indexError}
+        </div>
+      )}
+
+      {data !== null && collisions.length === 0 && indexExists && (
+        <p style={{ color: '#4ade80', fontSize: 13 }}>
+          ✓ Nothing to reconcile. Every Discord ID maps to a single account and the unique index is in place.
+        </p>
+      )}
+
+      {collisions.map(group => (
+        <div key={group.discord_id} style={{
+          border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px',
+          marginBottom: 14, background: 'var(--bg-elevated)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Discord ID</span>
+            <code style={{ fontSize: 13, fontWeight: 600 }}>{group.discord_id}</code>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              · {group.candidates.length} accounts
+            </span>
+          </div>
+          <div className="scoreboard-wrapper">
+            <table className="scoreboard" style={{ fontSize: 12, width: '100%' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>Nickname</th>
+                  <th style={{ textAlign: 'left' }}>Account ID</th>
+                  <th>Source</th>
+                  <th>Last Match</th>
+                  <th>MMR</th>
+                  <th>Games</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.candidates.map(c => {
+                  const key = `${group.discord_id}|${c.account_id}`;
+                  const label = c.nickname || `#${c.account_id}`;
+                  return (
+                    <tr key={c.account_id}>
+                      <td style={{ fontWeight: 600 }}>
+                        <a href={`/player/${c.account_id}`} target="_blank" rel="noopener noreferrer"
+                           style={{ color: 'var(--accent)' }}>{label}</a>
+                      </td>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{c.account_id}</td>
+                      <td style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
+                        {c.in_nicknames ? 'nicknames' : 'players (legacy)'}
+                      </td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        {c.last_match_id
+                          ? <a href={`/match/${c.last_match_id}`} target="_blank" rel="noopener noreferrer"
+                               style={{ color: 'var(--accent)' }}>{fmtDate(c.last_match_at)}</a>
+                          : '—'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>{c.mmr ?? '—'}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{c.games_played}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          className="btn btn-sm"
+                          disabled={!!resolving[key]}
+                          onClick={() => handleResolve(group.discord_id, c.account_id, label, group.candidates.length - 1)}
+                          style={{ fontSize: 11, padding: '2px 8px', color: '#4ade80', borderColor: '#4ade80' }}
+                        >
+                          {resolving[key] ? 'Working…' : '✓ Keep this one'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -2469,6 +2656,7 @@ export default function AdminPanel() {
     { label: 'Manage Nicknames (Players page)', tab: 'users', anchor: 'ap-anchor-nicknames', icon: '✏️', kw: 'nickname rename alias display name' },
     { label: 'Profile Sandbox', tab: 'users', anchor: 'ap-anchor-profile-preview', icon: '👤', kw: 'profile customization edit bio title accent pin sample dummy sandbox test frame premium pro theme' },
     { label: 'Unregistered Players', tab: 'users', anchor: 'ap-anchor-unregistered-players', icon: '👤', kw: 'orphan link account' },
+    { label: 'Discord ID Collisions', tab: 'users', anchor: 'ap-anchor-discord-collisions', icon: '🔗', kw: 'discord duplicate merge split collision unique link reconcile' },
     { label: 'Sign-Up Requests', tab: 'users', anchor: 'signup-requests', icon: '📋', kw: 'applications join approve reject pending' },
     { label: 'Gift Purchases', tab: 'marketplace', anchor: 'ap-anchor-gifts', icon: '🎁', kw: 'pro gift stripe' },
     { label: 'Coaching Marketplace', tab: 'marketplace', anchor: 'ap-anchor-coaching', icon: '🎓', kw: 'coach payout connect bookings' },
@@ -2783,6 +2971,9 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'users' && (<>
+      {/* ── Discord ID Collisions (Task 114) ─────────────────────────── */}
+      <DiscordIdCollisions superuserKey={superuserKey} />
+
       {/* ── Dota Rank Management ─────────────────────────────────────── */}
       <section className="admin-section" style={{ marginTop: 32 }}>
         <h2 id="ap-anchor-rank-management" className="section-title" style={{ marginBottom: 12 }}>🎖️ Dota 2 Rank Management</h2>

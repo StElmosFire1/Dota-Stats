@@ -457,6 +457,37 @@ export async function setNickname(accountId, nickname, superuserKey) {
   return data;
 }
 
+// Task 114 — Discord ID collision reconciliation (superuser-only).
+export async function getDiscordIdCollisions(superuserKey) {
+  const res = await superuserFetch(BASE + '/admin/discord-id-collisions', {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to load Discord ID collisions');
+  return data;
+}
+
+export async function resolveDiscordIdCollision(discordId, keepAccountId, superuserKey) {
+  const res = await superuserFetch(BASE + '/admin/discord-id-collisions/resolve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ discord_id: discordId, keep_account_id: keepAccountId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to resolve collision');
+  return data;
+}
+
+export async function enforceDiscordIdUniqueIndex(superuserKey) {
+  const res = await superuserFetch(BASE + '/admin/discord-id-collisions/enforce-index', {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to enforce index');
+  return data;
+}
+
 export async function setPlayerDiscordId(accountId, discordId, superuserKey) {
   const res = await superuserFetch(BASE + `/players/${accountId}/discord`, {
     method: 'POST',

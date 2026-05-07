@@ -1606,6 +1606,55 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  // Task 114 — admin reconciliation UI for Discord-ID collisions. Lists every
+  // discord_id currently bound to >1 account so an operator can pick the
+  // canonical owner in one click instead of running setDiscordId by hand.
+  // Also reports whether the partial unique index (added in Task 103) is
+  // already enforced; once the listing is empty the UI lets the operator
+  // create the index without redeploying.
+  router.get('/admin/discord-id-collisions', requireSuperuser, async (req, res) => {
+    try {
+      const collisions = await db.getDiscordIdCollisions();
+      // Pure read: report whether the unique index already exists, but DO
+      // NOT attempt to create it here — index creation only happens on the
+      // explicit resolve / enforce-index POST routes below so a list call
+      // never has a side effect.
+      const indexStatus = await db.getDiscordIdUniqueIndexStatus().catch(err => ({
+        exists: false, error: err.message,
+      }));
+      res.json({ collisions, index: indexStatus });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to load collisions' });
+    }
+  });
+
+  router.post('/admin/discord-id-collisions/resolve', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const { discord_id, keep_account_id } = req.body || {};
+      if (!discord_id || !keep_account_id) {
+        return res.status(400).json({ error: 'discord_id and keep_account_id required' });
+      }
+      const result = await db.resolveDiscordIdCollision(discord_id, keep_account_id);
+      // Try to enforce the index opportunistically once a group is resolved
+      // — does nothing if other collisions still exist.
+      const indexStatus = await db.tryEnforceDiscordIdUniqueIndex().catch(err => ({
+        exists: false, created: false, error: err.message,
+      }));
+      res.json({ ...result, index: indexStatus });
+    } catch (err) {
+      res.status(400).json({ error: err.message || 'Failed to resolve collision' });
+    }
+  });
+
+  router.post('/admin/discord-id-collisions/enforce-index', requireSuperuser, async (req, res) => {
+    try {
+      const indexStatus = await db.tryEnforceDiscordIdUniqueIndex();
+      res.json({ index: indexStatus });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to enforce index' });
+    }
+  });
+
   router.get('/social-graph', requirePro('player_network'), async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

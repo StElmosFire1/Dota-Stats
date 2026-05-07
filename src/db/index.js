@@ -3971,6 +3971,239 @@ async function findAccountIdsByDiscordId(discordId) {
   return Array.from(out);
 }
 
+// Task 114 — list every Discord ID currently bound to more than one
+// account_id, including per-candidate metadata (nickname, last-seen match
+// timestamp, current MMR) so admins can pick the canonical owner from a
+// one-click UI. Pulls candidates from BOTH the canonical nicknames table and
+// the legacy players table (populated by the old `!register` flow), since
+// either can keep the unique partial index from being created.
+async function getDiscordIdCollisions() {
+  const p = getPool();
+  // Build the union of (discord_id, account_id) pairs from both sources,
+  // then group by trimmed discord_id and only keep groups with > 1 distinct
+  // account_id. We then enrich each candidate with nickname, last-seen
+  // match timestamp and current MMR.
+  const groupsRes = await p.query(`
+    WITH pairs AS (
+      SELECT TRIM(discord_id) AS discord_id, account_id::text AS account_id, 'nicknames' AS source
+        FROM nicknames
+       WHERE discord_id IS NOT NULL AND TRIM(discord_id) <> '' AND account_id IS NOT NULL
+      UNION
+      SELECT TRIM(discord_id) AS discord_id, account_id_32::text AS account_id, 'players' AS source
+        FROM players
+       WHERE discord_id IS NOT NULL AND TRIM(discord_id) <> ''
+         AND account_id_32 IS NOT NULL AND account_id_32 <> ''
+    ),
+    grouped AS (
+      SELECT discord_id, ARRAY_AGG(DISTINCT account_id ORDER BY account_id) AS account_ids
+        FROM pairs
+       GROUP BY discord_id
+       HAVING COUNT(DISTINCT account_id) > 1
+    )
+    SELECT discord_id, account_ids FROM grouped ORDER BY discord_id
+  `);
+  if (groupsRes.rows.length === 0) return [];
+
+  // Flatten all account ids we need metadata for.
+  const allIds = new Set();
+  for (const row of groupsRes.rows) {
+    for (const id of row.account_ids) allIds.add(id);
+  }
+  const idsArr = Array.from(allIds);
+
+  // Fetch nickname rows (canonical display name + the discord_id currently
+  // stored on that account, which may differ from the colliding key when
+  // the legacy players table is the source of the collision).
+  const nickRes = await p.query(
+    `SELECT account_id::text AS account_id, nickname, TRIM(discord_id) AS discord_id
+       FROM nicknames
+      WHERE account_id::text = ANY($1::text[])`,
+    [idsArr]
+  );
+  const nickByAcc = new Map();
+  for (const r of nickRes.rows) nickByAcc.set(r.account_id, r);
+
+  // Last-seen match: take the single most-recent player_stats row per
+  // account, ordered by matches.start_time (NULLs last) and tie-broken by
+  // ps.match_id. DISTINCT ON guarantees match_id and start_time come from
+  // the same row — using MAX() independently could pair an id and a
+  // timestamp from different matches.
+  const lastMatchRes = await p.query(
+    `SELECT DISTINCT ON (ps.account_id)
+            ps.account_id::text AS account_id,
+            ps.match_id::text   AS last_match_id,
+            m.start_time        AS last_match_at
+       FROM player_stats ps
+       LEFT JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.account_id::text = ANY($1::text[])
+      ORDER BY ps.account_id, m.start_time DESC NULLS LAST, ps.match_id DESC`,
+    [idsArr]
+  );
+  const lastByAcc = new Map();
+  for (const r of lastMatchRes.rows) lastByAcc.set(r.account_id, r);
+
+  // Current rating (mu/sigma based MMR) and game count.
+  const ratingRes = await p.query(
+    `SELECT player_id::text AS account_id, mmr, games_played
+       FROM ratings
+      WHERE player_id::text = ANY($1::text[])`,
+    [idsArr]
+  );
+  const ratingByAcc = new Map();
+  for (const r of ratingRes.rows) ratingByAcc.set(r.account_id, r);
+
+  return groupsRes.rows.map(row => ({
+    discord_id: row.discord_id,
+    candidates: row.account_ids.map(accId => {
+      const nick = nickByAcc.get(accId) || {};
+      const last = lastByAcc.get(accId) || {};
+      const rating = ratingByAcc.get(accId) || {};
+      return {
+        account_id: accId,
+        nickname: nick.nickname || null,
+        // True when this account currently has the colliding discord_id
+        // stored on its nicknames row (vs only on the legacy players row).
+        in_nicknames: nick.discord_id === row.discord_id,
+        last_match_id: last.last_match_id || null,
+        last_match_at: last.last_match_at || null,
+        mmr: rating.mmr != null ? Number(rating.mmr) : null,
+        games_played: rating.games_played != null ? Number(rating.games_played) : 0,
+      };
+    }),
+  }));
+}
+
+// Task 114 — clear nicknames.discord_id (and players.discord_id) on every
+// account currently bound to `discordId` EXCEPT `keepAccountId`. Idempotent:
+// returns the list of account_ids that were actually cleared. Run as a
+// transaction so a half-applied collision can never leave the index in a
+// broken state.
+async function resolveDiscordIdCollision(discordId, keepAccountId) {
+  const id = (discordId || '').toString().trim();
+  if (!id) throw new Error('discord_id required');
+  const keep = (keepAccountId || '').toString().trim();
+  if (!keep) throw new Error('keep_account_id required');
+
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Confirm the keeper is actually one of the colliding accounts. Look in
+    // both tables (legacy + canonical) so the check matches the listing.
+    const ownerCheck = await client.query(
+      `SELECT 1 WHERE EXISTS (
+         SELECT 1 FROM nicknames WHERE TRIM(discord_id) = $1 AND account_id::text = $2
+       ) OR EXISTS (
+         SELECT 1 FROM players WHERE TRIM(discord_id) = $1 AND account_id_32::text = $2
+       )`,
+      [id, keep]
+    );
+    if (ownerCheck.rowCount === 0) {
+      throw new Error('keep_account_id is not bound to this discord_id');
+    }
+
+    // Make sure the keeper actually has the discord_id on its canonical
+    // nicknames row — the rest of the codebase reads from nicknames first
+    // and only falls back to players. Without this, "keep" a legacy-only
+    // candidate would silently leave the discord_id missing from nicknames.
+    const nickRow = await client.query(
+      `SELECT id, TRIM(discord_id) AS discord_id FROM nicknames WHERE account_id::text = $1`,
+      [keep]
+    );
+    if (nickRow.rowCount === 0) {
+      // Pull a fallback display name from player_stats (mirrors linkOwn
+      // DiscordId's behaviour) so we can satisfy the NOT NULL nickname.
+      const personaRes = await client.query(
+        `SELECT persona_name FROM player_stats WHERE account_id::text = $1
+          ORDER BY id DESC LIMIT 1`,
+        [keep]
+      );
+      const fallbackName = (personaRes.rows[0]?.persona_name || `Player ${keep}`).slice(0, 64);
+      await client.query(
+        `INSERT INTO nicknames (account_id, nickname, discord_id, updated_at)
+              VALUES ($1, $2, $3, NOW())`,
+        [keep, fallbackName, id]
+      );
+    } else if (nickRow.rows[0].discord_id !== id) {
+      await client.query(
+        `UPDATE nicknames SET discord_id = $1, updated_at = NOW() WHERE id = $2`,
+        [id, nickRow.rows[0].id]
+      );
+    }
+
+    // Clear the loser rows in BOTH tables (the unique index only spans
+    // nicknames, but a stale legacy players row would hijack the link
+    // again on the next login via the players-table fallback in
+    // getDiscordIdByAccountId).
+    const r1 = await client.query(
+      `UPDATE nicknames
+          SET discord_id = '', updated_at = NOW()
+        WHERE TRIM(discord_id) = $1
+          AND account_id::text <> $2
+        RETURNING account_id::text AS account_id`,
+      [id, keep]
+    );
+    const r2 = await client.query(
+      `UPDATE players
+          SET discord_id = ''
+        WHERE TRIM(discord_id) = $1
+          AND account_id_32::text <> $2
+        RETURNING account_id_32::text AS account_id`,
+      [id, keep]
+    );
+
+    await client.query('COMMIT');
+
+    const cleared = new Set();
+    for (const row of r1.rows) cleared.add(row.account_id);
+    for (const row of r2.rows) cleared.add(row.account_id);
+    return { kept: keep, cleared: Array.from(cleared) };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Task 114 — pure read: returns whether the partial unique index already
+// exists, without ever attempting to create it. Used by the GET listing
+// route so a list call has no side effects.
+async function getDiscordIdUniqueIndexStatus() {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT 1 FROM pg_indexes WHERE indexname = 'idx_nicknames_discord_id_unique'`
+  );
+  return { exists: res.rowCount > 0 };
+}
+
+// Task 114 — try to (re)create the partial unique index on
+// nicknames.discord_id. Returns { exists, created, error? } so the admin UI
+// can show "✓ unique constraint enforced" once all collisions are cleared.
+// Safe to call repeatedly — IF NOT EXISTS makes it a no-op when the index
+// is already there.
+async function tryEnforceDiscordIdUniqueIndex() {
+  const p = getPool();
+  const beforeRes = await p.query(
+    `SELECT 1 FROM pg_indexes WHERE indexname = 'idx_nicknames_discord_id_unique'`
+  );
+  const existedBefore = beforeRes.rowCount > 0;
+  try {
+    await p.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_nicknames_discord_id_unique
+        ON nicknames(TRIM(discord_id))
+        WHERE discord_id IS NOT NULL AND TRIM(discord_id) <> ''
+    `);
+  } catch (err) {
+    return { exists: existedBefore, created: false, error: err.message };
+  }
+  const afterRes = await p.query(
+    `SELECT 1 FROM pg_indexes WHERE indexname = 'idx_nicknames_discord_id_unique'`
+  );
+  return { exists: afterRes.rowCount > 0, created: !existedBefore && afterRes.rowCount > 0 };
+}
+
 async function getSteamByDiscordId(discordId) {
   if (!discordId) return null;
   const p = getPool();
@@ -10466,6 +10699,10 @@ module.exports = {
   getDiscordIdByAccountId,
   getSteamByDiscordId,
   findAccountIdsByDiscordId,
+  getDiscordIdCollisions,
+  resolveDiscordIdCollision,
+  tryEnforceDiscordIdUniqueIndex,
+  getDiscordIdUniqueIndexStatus,
   getAllNicknames,
   scheduleGame,
   getUpcomingGames,
