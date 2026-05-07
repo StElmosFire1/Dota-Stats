@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.17",
+    "title": "Discord auto-join health panel now survives bot restarts",
+    "published_at": "2026-05-07",
+    "content": "**Closing the loop on Task #135.** The auto-join health panel added in v6.14 was backed by a 50-entry in-memory ring buffer on the `DiscordBot` instance, which meant every PM2 restart wiped the 24h counts and the last-failure record. The panel went amber (\"No signups recorded yet\") for hours after each deploy, and admins lost the trail of any failure that happened before the restart.\n\n• **New `discord_autojoin_log` table** in `src/db/index.js` (id, ts, ok, code, discord_id, error) with a `ts DESC` index. Persists every `addUserToLeagueGuild` outcome (success or failure) so the rollup survives PM2 restarts and deploys. Three new helpers: `appendDiscordAutoJoinLog`, `getRecentDiscordAutoJoinLog(limit=500)`, `pruneDiscordAutoJoinLog(days=7)`.\n\n• **Bot-side persistence** in `src/discord/bot.js`. `_recordGuildAutoJoinResult` still writes to the in-memory ring (cheap fast-path / fallback) but now *also* fire-and-forgets a row into the persistent log. Errors are swallowed so a transient DB blip can never break the OAuth sign-up flow. An opportunistic prune (>7 days) is throttled to once per hour off the same write path so the table never grows unbounded and we don't need a separate cron.\n\n• **`getGuildAutoJoinStats()` is now async** and reads the last 500 entries from `discord_autojoin_log` (newest first, then reversed to match the existing oldest-first walk). Falls back to the in-memory ring if the DB read fails so the panel never goes blank during a DB outage. Same 24h windowing, same `last_failure` / `last_success_ts` semantics, same per-code rollup as before.\n\n• **`GET /api/admin/discord-autojoin-status` awaits the rollup** in `src/web/server.js`. The wire format is unchanged, so the existing admin Site Settings panel just keeps working — except the post-restart amber-flash is gone.",
+    "author": "System"
+  },
+  {
     "version": "6.16",
     "title": "Auto-balance now shows the projected MMR balance up front",
     "published_at": "2026-05-07",

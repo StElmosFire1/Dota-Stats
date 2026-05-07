@@ -5059,7 +5059,7 @@ NOTES
     try {
       const bot = getDiscordBot();
       const stats = typeof bot.getGuildAutoJoinStats === 'function'
-        ? bot.getGuildAutoJoinStats()
+        ? await bot.getGuildAutoJoinStats()
         : { window_ms: 24 * 60 * 60 * 1000, recent_count: 0, total_recorded: 0, counts: {}, last_failure: null };
       res.json({
         ...stats,

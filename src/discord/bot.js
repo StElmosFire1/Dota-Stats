@@ -5845,11 +5845,13 @@ class DiscordBot {
     return result;
   }
 
-  // Task #127 — in-memory ring buffer of recent auto-join outcomes so the
-  // admin dashboard can render a green/amber/red health indicator at a glance
-  // without having to tail the Discord alert channel. Capped at 50 entries
-  // (older entries dropped) — this is intentionally lossy and resets on bot
-  // restart; persistence is not worth a DB table for a debugging affordance.
+  // Task #127 / Task #135 — record an auto-join outcome to both an in-memory
+  // ring buffer (cheap fast path used as a fallback if the DB read in
+  // getGuildAutoJoinStats fails) AND the persistent `discord_autojoin_log`
+  // table so the admin health panel's 24h rollup and last-failure record
+  // survive PM2 restarts and deploys. The DB write is fire-and-forget so a
+  // transient DB blip can never break the OAuth sign-up flow. The on-write
+  // prune is throttled to once per hour so we don't hammer the table.
   _recordGuildAutoJoinResult(discordId, result) {
     try {
       if (!this._guildAutoJoinHistory) this._guildAutoJoinHistory = [];
@@ -5870,17 +5872,56 @@ class DiscordBot {
       if (this._guildAutoJoinHistory.length > 50) {
         this._guildAutoJoinHistory.splice(0, this._guildAutoJoinHistory.length - 50);
       }
+
+      // Fire-and-forget persistent write + opportunistic prune.
+      try {
+        const db = require('../db');
+        if (typeof db.appendDiscordAutoJoinLog === 'function') {
+          db.appendDiscordAutoJoinLog(entry).catch(err =>
+            console.warn('[Discord] appendDiscordAutoJoinLog failed:', err.message)
+          );
+        }
+        const ONE_HOUR = 60 * 60 * 1000;
+        const now = Date.now();
+        if (typeof db.pruneDiscordAutoJoinLog === 'function'
+            && (!this._guildAutoJoinLastPruneTs || now - this._guildAutoJoinLastPruneTs > ONE_HOUR)) {
+          this._guildAutoJoinLastPruneTs = now;
+          db.pruneDiscordAutoJoinLog(7).catch(err =>
+            console.warn('[Discord] pruneDiscordAutoJoinLog failed:', err.message)
+          );
+        }
+      } catch (err) {
+        console.warn('[Discord] persist auto-join log failed:', err.message);
+      }
     } catch (err) {
       console.warn('[Discord] _recordGuildAutoJoinResult error:', err.message);
     }
   }
 
-  // Task #127 — rolled-up view of the auto-join ring buffer for the admin
-  // dashboard. Counts are scoped to the last 24 hours; `last_failure` is the
-  // most recent non-ok entry across the whole buffer (so admins can still see
-  // what last broke even if the failure happened > 24h ago).
-  getGuildAutoJoinStats() {
-    const history = this._guildAutoJoinHistory || [];
+  // Task #127 / Task #135 — rolled-up view of the auto-join history for the
+  // admin dashboard. Reads from the persistent `discord_autojoin_log` table
+  // so 24h counts and the last-failure record survive bot restarts and
+  // deploys. Falls back to the in-memory ring buffer if the DB read fails.
+  // Counts are scoped to the last 24 hours; `last_failure` is the most
+  // recent non-ok entry across the whole returned slice (so admins can still
+  // see what last broke even if the failure happened > 24h ago).
+  async getGuildAutoJoinStats() {
+    let history = [];
+    try {
+      const db = require('../db');
+      if (typeof db.getRecentDiscordAutoJoinLog === 'function') {
+        history = await db.getRecentDiscordAutoJoinLog(500);
+        // DB returns newest-first; the rest of this method walks oldest-
+        // first / newest-from-end, matching the ring-buffer ordering.
+        history = history.slice().reverse();
+      }
+    } catch (err) {
+      console.warn('[Discord] getGuildAutoJoinStats: DB read failed, using in-memory fallback:', err.message);
+      history = [];
+    }
+    if (!history.length) {
+      history = this._guildAutoJoinHistory || [];
+    }
     const WINDOW_MS = 24 * 60 * 60 * 1000;
     const cutoff = Date.now() - WINDOW_MS;
     const recent = history.filter(e => e.ts >= cutoff);

@@ -1052,6 +1052,26 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_discord_autojoin_failures_account ON discord_autojoin_failures (account_id)`);
 
+    // Task #135 — discord_autojoin_log: persistent audit trail of every
+    // `addUserToLeagueGuild` outcome (success or failure) so the admin
+    // health panel's 24h rollup and last-failure record survive PM2
+    // restarts and deploys. Previously this lived in an in-memory ring
+    // buffer on the DiscordBot instance, which meant the panel went
+    // amber ("No signups recorded yet") for hours after every restart
+    // and admins lost the trail of any failure that pre-dated the
+    // restart. Pruned to ~7 days so it doesn't grow unbounded.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS discord_autojoin_log (
+        id BIGSERIAL PRIMARY KEY,
+        ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ok BOOLEAN NOT NULL DEFAULT false,
+        code TEXT NOT NULL DEFAULT 'unknown',
+        discord_id TEXT,
+        error TEXT
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_discord_autojoin_log_ts ON discord_autojoin_log (ts DESC)`);
+
     // Profile customization (`profile_customization`) — per-account cosmetic
     // overrides that render on the public PlayerProfile page. Keyed by
     // account_id (UNIQUE) so each player has at most one customization row.
@@ -4035,6 +4055,61 @@ async function getDiscordAutoJoinFailureForAccount(accountId) {
     [String(accountId)]
   );
   return r.rows[0] || null;
+}
+
+// Task #135 — append a single auto-join outcome (success or failure) to the
+// persistent audit log. Best-effort: callers in the Discord bot fire-and-
+// forget so a transient DB blip can never break the OAuth sign-up flow.
+async function appendDiscordAutoJoinLog(entry) {
+  if (!entry) return;
+  const p = getPool();
+  await p.query(
+    `INSERT INTO discord_autojoin_log (ts, ok, code, discord_id, error)
+     VALUES (to_timestamp($1::double precision / 1000.0), $2, $3, $4, $5)`,
+    [
+      Number(entry.ts) || Date.now(),
+      Boolean(entry.ok),
+      entry.code ? String(entry.code).slice(0, 64) : 'unknown',
+      entry.discordId ? String(entry.discordId).slice(0, 64) : null,
+      entry.error ? String(entry.error).slice(0, 500) : null,
+    ]
+  );
+}
+
+// Task #135 — return the recent auto-join log entries, newest first, capped
+// at `limit`. Used to compute the 24h rollup and surface the last-failure
+// record on the admin Site Settings panel after a bot restart.
+async function getRecentDiscordAutoJoinLog(limit = 500) {
+  const p = getPool();
+  const cap = Math.max(1, Math.min(2000, Number(limit) || 500));
+  const r = await p.query(
+    `SELECT EXTRACT(EPOCH FROM ts) * 1000 AS ts_ms, ok, code, discord_id, error
+       FROM discord_autojoin_log
+       ORDER BY ts DESC
+       LIMIT $1`,
+    [cap]
+  );
+  return r.rows.map(row => ({
+    ts: Number(row.ts_ms) || 0,
+    ok: Boolean(row.ok),
+    code: row.code || 'unknown',
+    discordId: row.discord_id || '',
+    error: row.error || null,
+  }));
+}
+
+// Task #135 — drop log entries older than `days` (default 7) so the table
+// never grows unbounded. Cheap to run on every insert because the index on
+// ts DESC keeps the delete bounded; the bot caller throttles invocation
+// to once per hour anyway.
+async function pruneDiscordAutoJoinLog(days = 7) {
+  const p = getPool();
+  const d = Math.max(1, Math.min(365, Number(days) || 7));
+  const r = await p.query(
+    `DELETE FROM discord_autojoin_log WHERE ts < NOW() - ($1 || ' days')::interval`,
+    [String(d)]
+  );
+  return r.rowCount || 0;
 }
 
 // Task 103 — return every account_id currently bound to the given Discord ID.
@@ -10854,6 +10929,9 @@ module.exports = {
   recordDiscordAutoJoinFailure,
   clearDiscordAutoJoinFailure,
   getDiscordAutoJoinFailureForAccount,
+  appendDiscordAutoJoinLog,
+  getRecentDiscordAutoJoinLog,
+  pruneDiscordAutoJoinLog,
   getDiscordIdCollisions,
   resolveDiscordIdCollision,
   tryEnforceDiscordIdUniqueIndex,
