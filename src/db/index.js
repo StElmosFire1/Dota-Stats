@@ -1302,6 +1302,12 @@ async function init() {
     // /select-captains route filters this map down to current accepted members at
     // resolve time, then picks the captains from that pool.
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS captain_volunteers JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    // Task #130 — projected balance metadata for auto_balance captain mode.
+    // Persists the per-player skill score, per-team sums, |delta|, and a
+    // simple Elo-style win probability so the inhouse page can show players
+    // exactly how balanced the auto-picked teams are.
+    // Shape: { team1Sum, team2Sum, delta, winProbTeam1, scores: { "<accountId>": number } }
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS auto_balance_meta JSONB`);
 
     // ===== Wave 2 / 3 schema =====
     // F3 — Season Pass: per-event XP ledger. account_id + season_number +
@@ -8490,7 +8496,7 @@ function listVolunteerAccountIds(volunteersObj, validAccountIdSet = null) {
 
 async function updateInhouseSession(id, fields) {
   const p = getPool();
-  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes','captain_volunteers'];
+  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes','captain_volunteers','auto_balance_meta'];
   const sets = [];
   const vals = [];
   for (const k of Object.keys(fields)) {

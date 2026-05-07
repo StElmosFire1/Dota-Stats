@@ -6320,6 +6320,9 @@ NOTES
           return Number(p.trueskill_mmr || 0) * 100 - 1000;
         };
         const scored = accepted.map(p => ({ p, s: score(p) }));
+        // Task #130 — capture projected balance metadata so the inhouse page
+        // can show players how balanced the auto-picked teams actually are.
+        var _autoBalanceMeta = null;
 
         if (scored.length === 10) {
           // Enumerate all C(10,5) = 252 partitions. Track best by |delta|;
@@ -6364,6 +6367,25 @@ NOTES
               pickOrder: k,
             })),
           ];
+          // Task #130 — record the projected balance for the chosen split.
+          // sum1/sum2 are recomputed from the canonical scored[] so they
+          // exactly match what the search optimised. winProbTeam1 uses an
+          // Elo-style logistic on the score delta (treating a score unit as
+          // ~1 MMR point, since score() multiplies trueskill mu by 100).
+          const sum1 = best.team1.reduce((acc, i) => acc + scored[i].s, 0);
+          const sum2 = best.team2.reduce((acc, i) => acc + scored[i].s, 0);
+          const scoresMap = {};
+          for (const { p, s } of scored) scoresMap[String(p.account_id)] = Math.round(s);
+          const winProbTeam1 = 1 / (1 + Math.pow(10, (sum2 - sum1) / 4000));
+          _autoBalanceMeta = {
+            team1Sum: Math.round(sum1),
+            team2Sum: Math.round(sum2),
+            delta: Math.round(best.delta),
+            winProbTeam1: Number(winProbTeam1.toFixed(4)),
+            scores: scoresMap,
+            playerCount: scored.length,
+            computedAt: new Date().toISOString(),
+          };
         } else {
           // Fewer (or more) than 10 accepted — just pair captains by closest
           // score so the resulting draft starts from a balanced top.
@@ -6440,6 +6462,10 @@ NOTES
         captain1_account_id: cap1.account_id,
         captain2_account_id: cap2.account_id,
         captain_mode: mode,
+        // Task #130 — persist the projected balance for auto_balance so the
+        // frontend can render the "Projected balance" card. Cleared for any
+        // other mode so a re-run doesn't surface stale numbers.
+        auto_balance_meta: (typeof _autoBalanceMeta !== 'undefined' ? _autoBalanceMeta : null),
       });
       if (typeof _autoBalanceAssignments !== 'undefined' && _autoBalanceAssignments) {
         // Auto-balance produced a complete 5v5 split — assign every player

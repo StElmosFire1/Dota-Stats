@@ -53,7 +53,7 @@ function Countdown({ startsAt, seconds, onExpire }) {
   );
 }
 
-function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick }) {
+function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick, balanceScore }) {
   const mmr = Math.round(Number(player.trueskill_mmr) || 0);
   const statusColors = {
     registered: { bg: 'rgba(120,120,120,0.15)', color: '#aaa', label: 'Waiting' },
@@ -95,6 +95,7 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
           MMR {mmr}
+          {balanceScore != null && <span> · <span title="Auto-balance score that fed into the projected balance" style={{ color: 'var(--brass)', fontWeight: 600 }}>Score {balanceScore.toLocaleString()}</span></span>}
           {player.preferred_positions && <span> · Prefers {player.preferred_positions}</span>}
           {player.roll != null && <span> · Roll {player.roll}</span>}
           {player.voice_verified && <span> · 🎙 In voice</span>}
@@ -959,6 +960,19 @@ export default function Inhouse() {
             const team1Label = `Team 1${session.team1_is_radiant ? ' · Radiant' : ' · Dire'}`;
             const team2Label = `Team 2${session.team1_is_radiant ? ' · Dire' : ' · Radiant'}`;
 
+            // Task #130 — auto_balance projected balance metadata. Only
+            // populated when the captain mode is auto_balance and the route
+            // ran the 5v5 enumeration (10 players present at the moment of
+            // the split).
+            const balanceMeta = (session.captain_mode === 'auto_balance' && session.auto_balance_meta)
+              ? session.auto_balance_meta : null;
+            const balanceScores = balanceMeta?.scores || null;
+            const scoreFor = (accountId) => {
+              if (!balanceScores) return null;
+              const v = balanceScores[String(accountId)];
+              return v == null ? null : Number(v);
+            };
+
             const RosterPanel = ({ teamNum, label, accent, capName, picks }) => (
               <div style={{
                 position: 'relative',
@@ -992,6 +1006,7 @@ export default function Inhouse() {
                         key={p.account_id} player={p} session={session}
                         isCurrentUser={Number(p.account_id) === myAccountId}
                         isCaptain={Number(p.account_id) === (teamNum === 1 ? cap1Id : cap2Id)}
+                        balanceScore={scoreFor(p.account_id)}
                       />
                     ))}
               </div>
@@ -1037,6 +1052,88 @@ export default function Inhouse() {
                     )}
                   </div>
                 )}
+
+                {/* Task #130 — Projected balance card. Shown only when the
+                    captains were chosen via auto_balance and the route had a
+                    full 5v5 to optimise. Surfaces team sums, |delta|, and a
+                    rough Elo-style win probability so players can see how
+                    balanced the auto-picked teams actually are. */}
+                {balanceMeta && (() => {
+                  const t1Sum = Number(balanceMeta.team1Sum) || 0;
+                  const t2Sum = Number(balanceMeta.team2Sum) || 0;
+                  const delta = Number(balanceMeta.delta) || 0;
+                  const winProbT1 = Math.max(0, Math.min(1, Number(balanceMeta.winProbTeam1) || 0.5));
+                  const winProbT2 = 1 - winProbT1;
+                  // Tag balance quality in plain English so players know how
+                  // tight the split is without needing to interpret the raw
+                  // delta. Thresholds are loose — score units ≈ MMR points.
+                  const quality = delta < 200 ? { label: 'Razor-thin', color: 'var(--amber)' }
+                                : delta < 600 ? { label: 'Well balanced', color: '#4caf50' }
+                                : delta < 1200 ? { label: 'Lean', color: 'var(--brass)' }
+                                : { label: 'Skewed', color: '#f44336' };
+                  const fmt = (n) => Math.round(n).toLocaleString();
+                  const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
+                  return (
+                    <div style={{
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border)',
+                      borderTop: '3px solid var(--brass)',
+                      borderRadius: 8,
+                      padding: '12px 16px',
+                      marginBottom: 14,
+                    }}>
+                      <div style={{
+                        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                        gap: 12, flexWrap: 'wrap', marginBottom: 10,
+                      }}>
+                        <div>
+                          <div style={{
+                            fontFamily: 'var(--font-condensed, var(--font))',
+                            fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase',
+                            color: 'var(--text-muted)', fontWeight: 600,
+                          }}>Auto-balance · Projected balance</div>
+                          <div style={{
+                            fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
+                            color: 'var(--text-primary)', marginTop: 2,
+                          }}>
+                            Smallest possible delta from {balanceMeta.playerCount || 10} players
+                          </div>
+                        </div>
+                        <div style={{
+                          padding: '6px 12px', borderRadius: 4, fontWeight: 700, fontSize: 12,
+                          background: `color-mix(in srgb, ${quality.color} 18%, transparent)`,
+                          color: quality.color,
+                          border: `1px solid ${quality.color}`,
+                          fontFamily: 'var(--font-condensed, var(--font))',
+                          letterSpacing: 0.6, textTransform: 'uppercase',
+                        }}>
+                          {quality.label} · |Δ| {fmt(delta)}
+                        </div>
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr auto 1fr',
+                        gap: 12,
+                        alignItems: 'center',
+                      }}>
+                        <div style={{ borderLeft: '3px solid #4caf50', paddingLeft: 10 }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>{team1Label}</div>
+                          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(t1Sum)}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Win prob <strong style={{ color: 'var(--text-primary)' }}>{fmtPct(winProbT1)}</strong></div>
+                        </div>
+                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-condensed, var(--font))', fontSize: 11, letterSpacing: 1.2 }}>VS</div>
+                        <div style={{ borderRight: '3px solid #f44336', paddingRight: 10, textAlign: 'right' }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>{team2Label}</div>
+                          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(t2Sum)}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Win prob <strong style={{ color: 'var(--text-primary)' }}>{fmtPct(winProbT2)}</strong></div>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                        Per-player score appears next to each name in the rosters below. Higher = stronger. Win probability is an Elo-style estimate from the score delta.
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Three-column board: roster · pool · roster. Stacks on narrow screens. */}
                 <div style={{
