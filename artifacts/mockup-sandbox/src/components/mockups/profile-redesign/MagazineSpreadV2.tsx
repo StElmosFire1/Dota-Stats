@@ -206,6 +206,20 @@ export function MagazineSpreadV2() {
                   <span className={`text-xs px-2 py-1 border border-purple-500 rounded bg-purple-500/10 text-purple-400 ${isFree ? 'opacity-50' : ''}`}>Cosmic {isFree && '🔒'}</span>
                 </div>
               </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Background Pattern</label>
+                <div className={`w-8 h-4 rounded-full ${ex.bg_pattern ? 'bg-[var(--accent-brass)]' : 'bg-[var(--border-strong)]'} relative`}>
+                  <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 ${ex.bg_pattern ? 'right-0.5' : 'left-0.5'}`} />
+                </div>
+              </div>
+
+              <div className={`flex items-center justify-between ${isFree ? 'opacity-50' : ''}`}>
+                <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1">Animated Frame {isFree && <Unlock className="w-3 h-3"/>}</label>
+                <div className={`w-8 h-4 rounded-full ${ex.frame_animated ? 'bg-[var(--accent-brass)]' : 'bg-[var(--border-strong)]'} relative`}>
+                  <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 ${ex.frame_animated ? 'right-0.5' : 'left-0.5'}`} />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -671,15 +685,15 @@ function ProSection({
       </div>
       <h2 className="mag-title">{title}</h2>
 
-      <div className={`v2-pro-gate ${isFree ? 'locked' : ''} mt-4`}>
-        <div className="v2-pro-content">{children}</div>
+      <div className={`mt-4 ${isFree ? 'lock-overlay' : ''}`} style={{ position: 'relative' }}>
+        {children}
         {isFree && (
-          <div className="v2-pro-overlay">
-            <div className="v2-pro-overlay-card">
-              <div className="flex justify-center mb-2"><Unlock className="w-6 h-6 text-[var(--accent-amber)]" /></div>
-              <div className="v2-pro-title">{unlockTitle}</div>
-              <div className="v2-pro-sub">{unlockSub}</div>
-              <button className="cta-primary text-xs px-4 py-2">Upgrade to Pro</button>
+          <div className="lock-msg">
+            <div className="flex flex-col items-center justify-center p-6 bg-[var(--bg-card)] border border-[var(--accent-amber)] rounded-lg shadow-2xl max-w-sm mx-auto">
+              <Unlock className="w-8 h-8 text-[var(--accent-amber)] mb-3" />
+              <div className="font-serif text-lg font-bold text-[var(--text-main)] mb-1">{unlockTitle}</div>
+              <div className="text-xs text-[var(--text-muted)] text-center normal-case tracking-normal mb-4">{unlockSub}</div>
+              <button className="cta-primary text-sm px-6 py-2">Upgrade to Pro</button>
             </div>
           </div>
         )}

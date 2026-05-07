@@ -1,8 +1,8 @@
 import "./_profile.css";
 
 type Variant = {
-  letter: "A" | "B" | "C";
-  id: "TrophyWall" | "MagazineSpread" | "TacticalDossier";
+  letter: "A" | "B" | "C" | "B2";
+  id: "TrophyWall" | "MagazineSpread" | "TacticalDossier" | "MagazineSpreadV2";
   title: string;
   tagline: string;
   rationale: string;
@@ -24,6 +24,14 @@ const VARIANTS: Variant[] = [
     tagline: "Editorial two-column long-form",
     rationale:
       "Reads like a player feature in a print magazine. Left column is identity + customization controls; right column is a stack of long-form stories (Latest Game, Current Form, AI Scouting, Trophy Cabinet, Hero Pool). Lock overlay over AI Scouting for free users sells Pro hard. Best when content depth matters more than dashboard density.",
+  },
+  {
+    letter: "B2",
+    id: "MagazineSpreadV2",
+    title: "Magazine Spread v2",
+    tagline: "Editorial v1 — fuller, organised, free/Pro split",
+    rationale:
+      "Extends Variant B (the user's favourite). Right column reorganised into 7 mag-story sections with clear free vs Pro separation. Free: per-position breakdown, full stat averages, multi-kill chips, recent matches table (with date + link arrow), rolling 10-game WR area chart. Pro (visible to any Pro viewer on any profile): AI Scout, best/worst allies, head-to-head search, PERF helped/hurt bars, sortable hero matchup table (defaults to highest delta), time-of-day × weekday heatmap, item & skill build trends, and an MMR Δ column on Recent Matches. Uses v1's lock-overlay + lock-msg pattern verbatim for parity.",
   },
   {
     letter: "C",
@@ -69,7 +77,7 @@ export default function ProfileRedesignBoard() {
       </header>
 
       {/* Rationale row: A / B / C side by side */}
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: COL_GAP, marginBottom: 32 }}>
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: COL_GAP, marginBottom: 32 }}>
         {VARIANTS.map(v => (
           <div key={v.id} style={{
             border: "1px solid var(--border-strong)", borderRadius: 8, padding: 16,
