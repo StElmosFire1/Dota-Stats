@@ -66,7 +66,7 @@ export default function ProfileRedesignBoard() {
       <header style={{ marginBottom: 28, borderBottom: "1px solid var(--border-subtle)", paddingBottom: 16 }}>
         <div style={eyebrow}>OCE Inhouse · Player Profile Redesign · Decision Board</div>
         <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 38, margin: "6px 0 4px", color: "var(--text-main)" }}>
-          Three Directions, Side by Side
+          Four Directions, Side by Side
         </h1>
         <p style={{ color: "var(--text-muted)", maxWidth: 920, margin: 0 }}>
           Each variant covers the full spec — pinned hero / match / achievement, customization (theme accent +

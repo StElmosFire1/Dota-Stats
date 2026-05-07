@@ -233,38 +233,6 @@
 .v2-skill-pip.e { border-color: #10b981; color: #34d399; }
 .v2-skill-pip.r { border-color: var(--accent-amber); color: var(--accent-amber); background: rgba(245,158,11,0.08); }
 
-/* Pro section header that doesn't full-blur (keeps title visible above the gate) */
-.v2-pro-gate {
-  position: relative;
-}
-.v2-pro-gate .v2-pro-content { position: relative; }
-.v2-pro-gate.locked .v2-pro-content {
-  filter: blur(4px);
-  pointer-events: none;
-  user-select: none;
-  opacity: 0.55;
-}
-.v2-pro-gate .v2-pro-overlay {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  z-index: 3;
-}
-.v2-pro-gate .v2-pro-overlay-card {
-  background: var(--bg-card);
-  border: 1px solid var(--accent-amber);
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  text-align: center;
-  max-width: 320px;
-  box-shadow: 0 12px 30px -10px rgba(0,0,0,0.6);
-}
-.v2-pro-gate .v2-pro-overlay-card .v2-pro-title {
-  font-family: 'Playfair Display', serif; font-weight: 700; font-size: 1.1rem; color: var(--text-main); margin-bottom: 0.35rem;
-}
-.v2-pro-gate .v2-pro-overlay-card .v2-pro-sub {
-  font-size: 12px; color: var(--text-muted); margin-bottom: 0.75rem;
-}
-
 /* Rolling WR area */
 .v2-rolling-card {
   background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0.9rem 1rem;
