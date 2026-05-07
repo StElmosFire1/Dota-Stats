@@ -7063,13 +7063,16 @@ async function seedPatchNotes(notes) {
   const p = getPool();
 
   // Guard: ensure seed array is in strictly ascending version order.
-  // Versions are "major.minor" strings — compare numerically.
-  const parseVer = v => v.split('.').map(Number);
+  // Versions are dotted numeric strings ("major.minor" or "major.minor.patch")
+  // — compare numerically, padding to 3 components so e.g. 5.74.1 sorts strictly
+  // after 5.74 and strictly before 5.74.2 instead of being treated as equal.
+  const parseVer = v => {
+    const [maj = 0, min = 0, patch = 0] = String(v).split('.').map(Number);
+    return maj * 1_000_000 + min * 1000 + patch;
+  };
   for (let i = 1; i < notes.length; i++) {
-    const [aMaj, aMin] = parseVer(notes[i - 1].version);
-    const [bMaj, bMin] = parseVer(notes[i].version);
-    const aNum = aMaj * 1000 + aMin;
-    const bNum = bMaj * 1000 + bMin;
+    const aNum = parseVer(notes[i - 1].version);
+    const bNum = parseVer(notes[i].version);
     if (bNum <= aNum) {
       throw new Error(
         `[DB] patchNotes.js is out of order: v${notes[i - 1].version} appears before v${notes[i].version}. ` +

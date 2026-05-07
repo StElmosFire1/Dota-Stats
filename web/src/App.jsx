@@ -562,6 +562,26 @@ function BroadcastTicker() {
 }
 
 function EditorialFooter() {
+  // v6.25 — derive the footer version label from the live patch-notes API so
+  // it always reflects whatever the most recent published patch note is. The
+  // previous implementation hardcoded "v5.85" and silently fell out of sync
+  // every time a new note shipped. /api/patch-notes returns rows already
+  // sorted (major DESC, minor DESC) by the DB, so the first entry is the
+  // newest. Render an em-dash placeholder while the request is in flight or
+  // if it fails — never block the page on this lookup.
+  const [version, setVersion] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/patch-notes')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled) return;
+        const v = d && Array.isArray(d.patchNotes) && d.patchNotes[0]?.version;
+        if (v) setVersion(v);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   return (
     <footer className="oa-footer">
       <div className="oa-footer-inner">
@@ -573,7 +593,7 @@ function EditorialFooter() {
           <a href="https://discord.gg" target="_blank" rel="noreferrer">Discord</a>
           <span className="oa-footer-sep">|</span>
           <span className="oa-footer-version">
-            v5.85 — <Link to="/patch-notes">Patch notes</Link>
+            {version ? `v${version}` : '—'} — <Link to="/patch-notes">Patch notes</Link>
           </span>
         </div>
       </div>
