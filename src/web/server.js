@@ -205,14 +205,49 @@ function createServer(startupStatus = {}) {
   // It is safe in dev too: with no proxy in front, the X-Forwarded-* headers
   // simply aren't set and req.protocol falls back to the connection scheme.
   app.set('trust proxy', 1);
-  // Task #136 — keep an explicit reference to the session store so the
-  // inhouse stale-seat sweep can ask "is this express-session id still
-  // alive?" without going through HTTP. With express-session's default
-  // MemoryStore (what we use), `store.get(sid, cb)` returns the cached
-  // session or `undefined` if it's been destroyed / evicted. Exposed via
-  // app.locals so the ticker (started from src/index.js after the API
-  // boots) can pick it up.
-  const sessionStore = new session.MemoryStore();
+  // Task #151 (v6.26) — Postgres-backed session store.
+  //
+  // We previously used express-session's in-memory MemoryStore. That made
+  // every PM2 restart wipe every signed-in user's session, which was the
+  // most likely root cause of the long-running "?auth=success but signed
+  // out" regression: between the OpenID redirect and the browser's
+  // follow-up `/api/auth/me` request, the bot could restart (post-deploy
+  // hook, crash, manual `pm2 restart oi-bot`) and the just-saved session
+  // would no longer exist. Moving the store into Postgres also unblocks
+  // future cluster-mode rollout — every worker reads/writes the same
+  // session row instead of holding its own private cache.
+  //
+  // The cookie settings, name (`oi.sid`), and secret are all unchanged so
+  // existing valid sessions are honoured and new ones are created in the
+  // new store transparently.
+  //
+  // Task #136 still needs a callback-style `store.get(sid, cb)` for the
+  // inhouse stale-seat sweep — connect-pg-simple exposes the same
+  // express-session Store interface, so `app.locals.sessionStore` keeps
+  // working with no autoStartTicker changes required.
+  let sessionStore;
+  try {
+    const PgSession = require('connect-pg-simple')(session);
+    sessionStore = new PgSession({
+      pool: db.getPool(),
+      tableName: 'user_sessions',
+      createTableIfMissing: true,
+      // Prune expired rows every 15 minutes so the table doesn't bloat
+      // forever; connect-pg-simple's default is 60 minutes.
+      pruneSessionInterval: 15 * 60,
+    });
+    sessionStore.on('error', (err) => {
+      console.error('[Session] Postgres session store error:', err?.message || err);
+    });
+    console.log('[Session] Using Postgres-backed session store (table=user_sessions).');
+  } catch (err) {
+    // Fail loudly but stay up — falling back to MemoryStore preserves the
+    // pre-v6.26 behaviour, so a bad DB at boot doesn't lock everyone out
+    // of an otherwise-working site. The startup log makes the degraded
+    // mode obvious in PM2 output.
+    console.error('[Session] FATAL fallback: could not initialise Postgres session store, using MemoryStore. Sessions will NOT survive a restart.', err?.message || err);
+    sessionStore = new session.MemoryStore();
+  }
   app.locals.sessionStore = sessionStore;
   app.use(session({
     name: 'oi.sid',
@@ -1159,6 +1194,55 @@ function createApiRouter(startupStatus = {}) {
     } else {
       res.json(null);
     }
+  });
+
+  // Task #151 (v6.26) — POST /api/auth/diagnose
+  //
+  // Fired by the frontend when it detects ?auth=success in the URL but
+  // /api/auth/me returned null — i.e. the OpenID round-trip claimed
+  // success on the server but the browser is still signed-out. We log
+  // every signal that distinguishes the four known causes so prod logs
+  // can pin down which one is firing without asking the user to copy
+  // headers out of devtools:
+  //   1. host    — apex vs www drift between sign-in and follow-up
+  //   2. cookie  — cookie present at all? right name? length?
+  //   3. session — does the cookie's sid resolve to a session row?
+  //   4. proto   — was the follow-up over https (cookie won't ride http)?
+  //
+  // The endpoint is unauthenticated by design (the whole point is that
+  // there is no valid session) but is rate-limited via authLimiter so it
+  // can't be used to spam logs. It always returns 204 — the client
+  // doesn't need a body, just acknowledgement.
+  router.post('/auth/diagnose', authLimiter, async (req, res) => {
+    try {
+      const cookieHeader = req.headers.cookie || '';
+      const hasOiSid = /(^|; *)oi\.sid=/.test(cookieHeader);
+      const cookieLen = cookieHeader.length;
+      const sid = req.sessionID || null;
+      let sessionExists = null;
+      if (sid && req.app.locals.sessionStore && typeof req.app.locals.sessionStore.get === 'function') {
+        sessionExists = await new Promise((resolve) => {
+          try {
+            req.app.locals.sessionStore.get(sid, (err, sess) => {
+              if (err) return resolve(`error:${err.message || err}`);
+              resolve(Boolean(sess));
+            });
+          } catch (e) {
+            resolve(`throw:${e.message || e}`);
+          }
+        });
+      }
+      const sessionAccountId = req.session?.accountId || null;
+      console.warn(
+        `[Steam Auth] /auth/diagnose — host=${req.get('host')} proto=${req.protocol} ` +
+        `cookie-len=${cookieLen} has-oi.sid=${hasOiSid} sid=${sid ? sid.slice(0, 8) + '…' : 'none'} ` +
+        `session-exists=${sessionExists} session-accountId=${sessionAccountId} ` +
+        `referer=${(req.get('referer') || '').slice(0, 120)} ua=${(req.get('user-agent') || '').slice(0, 80)}`
+      );
+    } catch (err) {
+      console.error('[Steam Auth] /auth/diagnose log failed:', err?.message || err);
+    }
+    res.status(204).end();
   });
 
   // POST /api/me/link-discord — first-login Discord ID onboarding (task 89).

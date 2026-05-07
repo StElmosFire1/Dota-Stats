@@ -27,7 +27,14 @@ export function SteamAuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    // Task #151 (v6.26) — explicit credentials: 'include'. Same-origin
+    // fetches usually carry cookies by default, but if anything makes the
+    // request cross-origin (service worker, embedded iframe context, an
+    // accidental host alias such as www↔apex) the session cookie is
+    // silently dropped and the user lands at /?auth=success but stays
+    // signed out. Mirrors the pattern already used by refreshMe() and
+    // logout().
+    fetch('/api/auth/me', { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
         if (data && data.accountId) {

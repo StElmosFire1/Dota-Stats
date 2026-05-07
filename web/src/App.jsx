@@ -601,6 +601,79 @@ function EditorialFooter() {
   );
 }
 
+// Task #151 (v6.26) — surfaces the long-running "?auth=success but
+// signed out" regression to the user instead of leaving them silently
+// signed-out. Fires a one-time POST /api/auth/diagnose so prod logs
+// capture the exact host/cookie/session state from the failing browser,
+// then renders a small retry banner. Self-clears once the user is
+// signed in or navigates away. Strictly read-only — does not block the
+// page or change any other UI.
+function SignInRetryBanner() {
+  const { steamUser, loading } = useSteamAuth();
+  const location = useLocation();
+  const [show, setShow] = useState(false);
+  // One-shot guard: only POST /api/auth/diagnose once per mount, even if
+  // the auth context briefly re-renders or the URL/search changes while
+  // the banner is up.
+  const diagnoseFiredRef = React.useRef(false);
+
+  useEffect(() => {
+    // Always self-clear when the trigger conditions no longer apply —
+    // otherwise the banner would persist after the user navigated away
+    // from /?auth=success or the session finally landed (e.g. via the
+    // refreshMe poll in another tab).
+    if (loading) {
+      setShow(false);
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    if (params.get('auth') !== 'success') {
+      setShow(false);
+      return;
+    }
+    if (steamUser && steamUser.accountId) {
+      setShow(false);
+      return;
+    }
+    // ?auth=success but no session — fire the diagnostic ping at most once
+    // per mount, then surface the retry banner.
+    setShow(true);
+    if (!diagnoseFiredRef.current) {
+      diagnoseFiredRef.current = true;
+      fetch('/api/auth/diagnose', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ at: new Date().toISOString() }),
+      }).catch(() => {});
+    }
+  }, [loading, steamUser, location.search]);
+
+  if (!show) return null;
+  return (
+    <div
+      role="status"
+      style={{
+        background: 'var(--bg-card, #152036)',
+        borderBottom: '1px solid var(--brass, #c5a975)',
+        color: 'var(--text-primary, #f5efe2)',
+        padding: '10px 16px',
+        fontSize: 13,
+        textAlign: 'center',
+      }}
+    >
+      Steam confirmed your sign-in but the session didn't stick.{' '}
+      <a
+        href="/auth/steam"
+        style={{ color: 'var(--amber, #f59e0b)', fontWeight: 600, textDecoration: 'underline' }}
+      >
+        Try once more
+      </a>
+      , or contact an admin if it keeps happening.
+    </div>
+  );
+}
+
 function GlobalOnboardingWizard() {
   const { onboardingComplete, setOnboardingComplete } = useSteamAuth();
   if (onboardingComplete !== false) return null;
@@ -628,6 +701,7 @@ export default function App() {
             <GlobalOnboardingWizard />
             <DiscordLinkModal />
             <DiscordRetryBanner />
+            <SignInRetryBanner />
             <main className="container">
               <Suspense fallback={<div className="loading">Loading…</div>}>
               <Routes>
