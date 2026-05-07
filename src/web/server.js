@@ -6141,11 +6141,100 @@ NOTES
         const sorted = [...accepted].sort((a, b) => (b.roll || 0) - (a.roll || 0));
         cap1 = sorted[0];
         cap2 = sorted[1];
-      } else if (mode === 'auto_balance' || mode === 'volunteer') {
-        // v6.03 — these modes are exposed in the captain-mode poll but the
-        // dedicated balancing / volunteer-signup logic isn't built yet (per
-        // task #115 "out of scope" — treat as Highest Rank for now). We pick
-        // captains via the highest_rank path so the lobby still progresses.
+      } else if (mode === 'auto_balance') {
+        // v6.04 — real skill-based balancing. We score each accepted player
+        // using the same hybrid TS/Dota signal as Highest Rank, then:
+        //   * If exactly 10 accepted, enumerate all 5-vs-5 partitions (252)
+        //     and pick the split with the smallest projected skill delta.
+        //     Captains = top scorer on each team. The remaining 8 players
+        //     are auto-assigned to their teams (drafted) so the captain
+        //     draft is effectively skipped — the lobby goes straight from
+        //     "captains chosen" to a fully populated, balanced match.
+        //   * Otherwise, pair captains as the two accepted players whose
+        //     scores are closest (so the resulting captain draft starts
+        //     from an already-balanced top of the pool). Any leftover
+        //     players still go through the normal draft.
+        const RANK_TIER_TO_MMR = {
+          11: 200, 12: 400, 13: 600, 14: 800, 15: 1000,
+          21: 1200, 22: 1400, 23: 1600, 24: 1800, 25: 2000,
+          31: 2200, 32: 2400, 33: 2600, 34: 2800, 35: 3000,
+          41: 3200, 42: 3400, 43: 3600, 44: 3800, 45: 4000,
+          51: 4200, 52: 4400, 53: 4600, 54: 4800, 55: 5000,
+          61: 5300, 62: 5600, 63: 5900, 64: 6200, 65: 6500,
+          71: 6800, 72: 7200, 73: 7600, 74: 8000, 75: 8500,
+          80: 9500,
+        };
+        const score = (p) => {
+          const games = Number(p.games_played) || 0;
+          if (games >= 20) return Number(p.trueskill_mmr || 0) * 100;
+          if (p.dota_leaderboard_rank && Number(p.dota_leaderboard_rank) > 0) {
+            return 12000 - Math.min(2500, Math.log2(Number(p.dota_leaderboard_rank)) * 250);
+          }
+          if (p.dota_rank_tier && RANK_TIER_TO_MMR[p.dota_rank_tier]) return RANK_TIER_TO_MMR[p.dota_rank_tier];
+          return Number(p.trueskill_mmr || 0) * 100 - 1000;
+        };
+        const scored = accepted.map(p => ({ p, s: score(p) }));
+
+        if (scored.length === 10) {
+          // Enumerate all C(10,5) = 252 partitions. Track best by |delta|;
+          // break ties randomly so repeated calls don't always produce the
+          // same arrangement when several splits are equally balanced.
+          const n = scored.length;
+          let best = null; // { team1: [idx...], team2: [idx...], delta }
+          const idx = [0,1,2,3,4,5,6,7,8,9];
+          for (let a=0; a<n-4; a++)
+          for (let b=a+1; b<n-3; b++)
+          for (let c=b+1; c<n-2; c++)
+          for (let d=c+1; d<n-1; d++)
+          for (let e=d+1; e<n; e++) {
+            const t1 = [a,b,c,d,e];
+            const t1set = new Set(t1);
+            const t2 = idx.filter(i => !t1set.has(i));
+            const sum1 = t1.reduce((acc,i)=>acc+scored[i].s, 0);
+            const sum2 = t2.reduce((acc,i)=>acc+scored[i].s, 0);
+            const delta = Math.abs(sum1 - sum2);
+            if (!best || delta < best.delta || (delta === best.delta && Math.random() < 0.5)) {
+              best = { team1: t1, team2: t2, delta };
+            }
+          }
+          // Captain on each side = highest scorer. Sort each team's indices
+          // by descending score so position 0 is the captain (pickOrder=0)
+          // and the rest get sequential pickOrders 1..4 in score order.
+          const t1Sorted = best.team1.slice().sort((i, j) => scored[j].s - scored[i].s);
+          const t2Sorted = best.team2.slice().sort((i, j) => scored[j].s - scored[i].s);
+          cap1 = scored[t1Sorted[0]].p;
+          cap2 = scored[t2Sorted[0]].p;
+          // Stash the full team assignment so we can apply it after picking
+          // captains (avoids changing the captain-selection contract).
+          var _autoBalanceAssignments = [
+            ...t1Sorted.map((i, k) => ({
+              accountId: scored[i].p.account_id,
+              team: 1,
+              pickOrder: k, // k=0 is the captain by construction
+            })),
+            ...t2Sorted.map((i, k) => ({
+              accountId: scored[i].p.account_id,
+              team: 2,
+              pickOrder: k,
+            })),
+          ];
+        } else {
+          // Fewer (or more) than 10 accepted — just pair captains by closest
+          // score so the resulting draft starts from a balanced top.
+          const sorted = scored.slice().sort((a, b) => b.s - a.s);
+          let bestPair = [sorted[0], sorted[1]];
+          let bestDelta = Math.abs(sorted[0].s - sorted[1].s);
+          for (let i = 0; i < sorted.length - 1; i++) {
+            const d = Math.abs(sorted[i].s - sorted[i+1].s);
+            if (d < bestDelta) { bestDelta = d; bestPair = [sorted[i], sorted[i+1]]; }
+          }
+          // Higher-scored player → team 1 to keep deterministic team labels.
+          cap1 = bestPair[0].s >= bestPair[1].s ? bestPair[0].p : bestPair[1].p;
+          cap2 = bestPair[0].s >= bestPair[1].s ? bestPair[1].p : bestPair[0].p;
+        }
+      } else if (mode === 'volunteer') {
+        // Volunteer mode isn't implemented yet — treat as Highest Rank so
+        // the lobby still progresses. Picks captains by hybrid skill score.
         const RANK_TIER_TO_MMR = {
           11: 200, 12: 400, 13: 600, 14: 800, 15: 1000,
           21: 1200, 22: 1400, 23: 1600, 24: 1800, 25: 2000,
@@ -6178,10 +6267,32 @@ NOTES
         captain2_account_id: cap2.account_id,
         captain_mode: mode,
       });
-      await db.assignInhouseTeams(session.id, [
-        { accountId: cap1.account_id, team: 1, pickOrder: 0 },
-        { accountId: cap2.account_id, team: 2, pickOrder: 0 },
-      ]);
+      if (typeof _autoBalanceAssignments !== 'undefined' && _autoBalanceAssignments) {
+        // Auto-balance produced a complete 5v5 split — assign every player
+        // to their team and mark the 8 non-captains as drafted so the
+        // captain-draft UI shows a fully populated, balanced match.
+        await db.assignInhouseTeams(session.id, _autoBalanceAssignments);
+        const cap1Id = Number(cap1.account_id);
+        const cap2Id = Number(cap2.account_id);
+        const nonCaptainIds = _autoBalanceAssignments
+          .map(a => Number(a.accountId))
+          .filter(id => id !== cap1Id && id !== cap2Id);
+        if (nonCaptainIds.length) {
+          await pool.query(
+            `UPDATE inhouse_session_players
+                SET status = 'drafted'
+              WHERE session_id = $1
+                AND account_id = ANY($2::bigint[])
+                AND status <> 'declined'`,
+            [session.id, nonCaptainIds]
+          );
+        }
+      } else {
+        await db.assignInhouseTeams(session.id, [
+          { accountId: cap1.account_id, team: 1, pickOrder: 0 },
+          { accountId: cap2.account_id, team: 2, pickOrder: 0 },
+        ]);
+      }
       const playersAfter = await db.getInhouseSessionPlayers(session.id);
       res.json({ session: updated, players: playersAfter });
     } catch (err) {

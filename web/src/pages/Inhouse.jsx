@@ -732,7 +732,7 @@ export default function Inhouse() {
                 {[
                   { id: 'highest_rank', label: 'Highest Rank', hint: 'Top 2 by MMR / leaderboard / rank tier' },
                   { id: 'random',       label: 'Random',       hint: 'Two random captains from accepted players' },
-                  { id: 'auto_balance', label: 'Auto-balance', hint: 'Skill-based pairing (currently uses Highest Rank)' },
+                  { id: 'auto_balance', label: 'Auto-balance', hint: 'Skill-based 5v5 split with smallest projected MMR delta' },
                   { id: 'volunteer',    label: 'Volunteer',    hint: 'Self-nominate (currently uses Highest Rank)' },
                 ].map(opt => {
                   const count = voteTally.tally[opt.id] || 0;
