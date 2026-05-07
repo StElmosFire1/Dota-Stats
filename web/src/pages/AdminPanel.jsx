@@ -448,14 +448,21 @@ function DiscordAutoJoinFailures({ superuserKey }) {
             <tbody>
               {rows.map(row => {
                 const key = `${row.discord_id}|${row.account_id}`;
-                const label = row.nickname || `#${row.account_id}`;
                 return (
                   <tr key={key}>
+                    {/* Task #148 — match the Task #144 history-table treatment:
+                        linked nickname when we have one, otherwise the raw ID
+                        (unlinked) so we never imply a profile exists for a
+                        player who hasn't actually been recognised yet. */}
                     <td style={{ fontWeight: 600 }}>
-                      {row.account_id ? (
+                      {row.nickname && row.account_id ? (
                         <a href={`/player/${row.account_id}`} target="_blank" rel="noopener noreferrer"
-                           style={{ color: 'var(--accent)' }}>{label}</a>
-                      ) : label}
+                           style={{ color: 'var(--accent)' }}>{row.nickname}</a>
+                      ) : (
+                        <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                          {row.account_id || row.discord_id || '—'}
+                        </span>
+                      )}
                     </td>
                     <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{row.account_id || '—'}</td>
                     <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{row.discord_id || '—'}</td>

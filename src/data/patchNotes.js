@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.24",
+    "title": "Admin retry-queue rows now match the new history-table nickname treatment",
+    "published_at": "2026-05-07",
+    "content": "**Closing the loop on Task #148.** Task #144 polished the 7-day failure *log* table on the admin auto-join panel so each row shows the player nickname (linked to `/player/<account_id>`) when one is known, falling back to the raw ID otherwise. The sibling Retry Queue table (`DiscordAutoJoinFailures` in `web/src/pages/AdminPanel.jsx`) was already joining nicknames server-side via `db.listAllDiscordAutoJoinFailures` but its Nickname column was rendering a misleading linked `#<account_id>` placeholder for unlinked rows — implying a profile existed for a player who hadn't actually been recognised yet.\n\n• The Retry Queue's Nickname cell now renders the linked nickname when present, and falls back to a muted monospace raw ID (no link) otherwise — the same pattern Task #144 introduced on the history table. The neighbouring Account ID / Discord ID columns are unchanged, so the row still surfaces every identifier admins need.\n\nNet effect: admins get the same one-glance recognition on the Retry Queue as on the history drill-down, without ever being misled into clicking through to a phantom profile.",
+    "author": "System"
+  },
+  {
     "version": "6.23",
     "title": "Admin auto-join failure list now shows player nicknames next to Discord IDs",
     "published_at": "2026-05-07",
