@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.11",
+    "title": "Discord auto-join failures now ping an admin channel instead of dying silently in PM2",
+    "published_at": "2026-05-07",
+    "content": "**Closing the loop on Task #116.** The `bot.addUserToLeagueGuild` helper added in v6.04 (called from `/auth/discord/callback` for every new Discord-linked signup) returned a structured `{ ok: false, code, error }` on failure but only `console.warn`'d it. If the bot lost **Create Instant Invite** / **Manage Roles** in the OCE Inhouse server, or the league role got re-ordered above the bot, every new signup would silently fail to join — and nobody would notice until a player complained.\n\n• **New `DISCORD_ADMIN_LOG_CHANNEL_ID` env var.** When set, any non-OK result from `addUserToLeagueGuild` now posts a one-line alert into that channel (`⚠️ Discord auto-join failed for user <id> — code <code> — <error> · <hint>`). Includes the failing Discord ID, the failure code (`http_403`, `http_429`, `guild_not_configured`, `bot_token_missing`, `network`, …) and a hint at the likely cause (e.g. `http_403` → check **Create Instant Invite** / **Manage Roles** + role hierarchy; `guild_not_configured` → set `DISCORD_GUILD_ID`).\n\n• **Throttled to 1 alert per error code per 10 min** via an in-memory `Map` on the bot instance, so a stuck mis-config (e.g. role permanently sitting above the bot) can't spam the admin channel — the operator gets one ping every ten minutes per distinct failure mode until they fix it. Input-shape errors (`bad_discord_id`, `no_access_token`) are intentionally *not* alerted because they aren't actionable for ops.\n\n• **Send is best-effort.** Cache lookup first, then a `channels.fetch` fallback for cold caches; any send/fetch error is swallowed with a `console.warn` so the alerting layer can't itself take down the OAuth callback. If `DISCORD_ADMIN_LOG_CHANNEL_ID` is unset, the helper is a no-op — safe to deploy before the secret is populated.",
+    "author": "System"
+  },
+  {
     "version": "6.10",
     "title": "One-click admin tool for reconciling Discord IDs shared by multiple accounts",
     "published_at": "2026-05-06",

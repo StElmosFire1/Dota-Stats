@@ -5758,10 +5758,14 @@ class DiscordBot {
     const botToken = process.env.DISCORD_TOKEN;
     const roleId = process.env.DISCORD_LEAGUE_MEMBER_ROLE_ID || null;
     if (!guildId) {
-      return { ok: false, code: 'guild_not_configured', error: 'DISCORD_GUILD_ID is not set; skipping guild auto-join.' };
+      const r = { ok: false, code: 'guild_not_configured', error: 'DISCORD_GUILD_ID is not set; skipping guild auto-join.' };
+      this._alertGuildAutoJoinFailure(discordId, r);
+      return r;
     }
     if (!botToken) {
-      return { ok: false, code: 'bot_token_missing', error: 'DISCORD_TOKEN is not set; cannot call /guilds/.../members.' };
+      const r = { ok: false, code: 'bot_token_missing', error: 'DISCORD_TOKEN is not set; cannot call /guilds/.../members.' };
+      this._alertGuildAutoJoinFailure(discordId, r);
+      return r;
     }
     if (!/^\d{17,19}$/.test(String(discordId))) {
       return { ok: false, code: 'bad_discord_id', error: 'Invalid Discord user id.' };
@@ -5786,7 +5790,9 @@ class DiscordBot {
       });
     } catch (err) {
       console.warn(`[Discord] guild auto-join fetch failed for ${discordId}:`, err.message);
-      return { ok: false, code: 'network', error: err.message };
+      const r = { ok: false, code: 'network', error: err.message };
+      this._alertGuildAutoJoinFailure(discordId, r);
+      return r;
     }
 
     // 201 Created = newly added. 204 No Content = already in the guild
@@ -5822,7 +5828,59 @@ class DiscordBot {
     let detail = '';
     try { detail = (await res.text()).slice(0, 300); } catch { /* ignore */ }
     console.warn(`[Discord] guild auto-join failed for ${discordId}: ${res.status} ${detail}`);
-    return { ok: false, code: `http_${res.status}`, error: detail || `HTTP ${res.status}` };
+    const result = { ok: false, code: `http_${res.status}`, error: detail || `HTTP ${res.status}` };
+    this._alertGuildAutoJoinFailure(discordId, result);
+    return result;
+  }
+
+  // Task 116 — surface auto-join failures to an admin/log Discord channel so
+  // that a silently-broken Discord integration (missing perms, role re-ordered
+  // above the bot, missing env vars, etc.) gets noticed quickly instead of
+  // sitting in PM2 logs while every new signup fails to join the server.
+  //
+  // Throttled: at most one alert per error `code` per 10 minutes, so a
+  // persistently-broken state can't spam the channel. Configure with
+  // `DISCORD_ADMIN_LOG_CHANNEL_ID` — when unset, this is a no-op.
+  _alertGuildAutoJoinFailure(discordId, result) {
+    try {
+      const channelId = process.env.DISCORD_ADMIN_LOG_CHANNEL_ID;
+      if (!channelId) return;
+      const code = (result && result.code) || 'unknown';
+      // Don't alert on input-shape errors that aren't actionable for ops.
+      if (code === 'bad_discord_id' || code === 'no_access_token') return;
+
+      if (!this._guildJoinAlertThrottle) this._guildJoinAlertThrottle = new Map();
+      const now = Date.now();
+      const last = this._guildJoinAlertThrottle.get(code) || 0;
+      const TEN_MIN = 10 * 60 * 1000;
+      if (now - last < TEN_MIN) return;
+      this._guildJoinAlertThrottle.set(code, now);
+
+      const hints = {
+        guild_not_configured: 'Set `DISCORD_GUILD_ID` on the bot host.',
+        bot_token_missing: 'Set `DISCORD_TOKEN` on the bot host.',
+        network: 'Discord API was unreachable — check outbound connectivity / Discord status.',
+        http_401: 'Bot token rejected — check `DISCORD_TOKEN` is current.',
+        http_403: 'Missing **Create Instant Invite** / **Manage Roles**, or the league role sits above the bot in the role list.',
+        http_404: 'Guild or user not found — verify `DISCORD_GUILD_ID` and that the user completed OAuth.',
+        http_429: 'Rate limited by Discord — high signup volume or token shared with another instance.',
+      };
+      const hint = hints[code] || 'Check the bot logs for the full Discord response.';
+      const errBlurb = result?.error ? ` — \`${String(result.error).slice(0, 120).replace(/`/g, "'")}\`` : '';
+      const msg = `⚠️ **Discord auto-join failed** for user \`${discordId}\` — code \`${code}\`${errBlurb}\n${hint}\n_(throttled to 1 alert per code per 10 min)_`;
+
+      const channel = this.client?.channels?.cache?.get(channelId);
+      const send = (ch) => ch.send(msg).catch(err => console.warn('[Discord] admin-log alert send failed:', err.message));
+      if (channel) {
+        send(channel);
+      } else if (this.client?.channels?.fetch) {
+        this.client.channels.fetch(channelId)
+          .then(ch => ch && send(ch))
+          .catch(err => console.warn('[Discord] admin-log channel fetch failed:', err.message));
+      }
+    } catch (err) {
+      console.warn('[Discord] _alertGuildAutoJoinFailure error:', err.message);
+    }
   }
 
   async shutdown() {
