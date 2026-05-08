@@ -1,0 +1,131 @@
+// Task #168 — Auto-provision dedicated server when captain draft completes.
+//
+// Extracted from the body of POST /api/inhouse/:id/server so the same
+// provisioning path can be triggered from three places without duplication:
+//
+//   1. The owner-only POST /api/inhouse/:id/server route (manual override).
+//   2. POST /api/inhouse/:id/draft-pick once the 10th player has been placed
+//      (primary trigger — no operator click required).
+//   3. autoStartTicker.js as a belt-and-braces poll for sessions stuck in
+//      `drafting` with all 10 slots filled but no match_password recorded
+//      (covers a missed in-flight trigger after a server restart).
+//
+// A per-session in-memory single-flight lock prevents the three callers from
+// racing into a duplicate RCON setMatchPassword + Discord announcement.
+
+const db = require('../db');
+const { generateMatchPassword } = require('../services/steamConnectLink');
+
+const _inFlight = new Set();
+
+function _isProvisioned(session) {
+  return !!(session && session.match_password && session.status === 'in_progress');
+}
+
+// Returns { ok, session, rcon, skipped } so callers can log/announce, but
+// always resolves — never throws — so background callers don't crash the
+// process. RCON failure does NOT roll back the status flip (matches the
+// existing manual-route semantics: players still need the password to
+// connect even if the server happened to already have it set).
+async function provisionInhouseServer(sessionId, opts = {}) {
+  const id = Number(sessionId);
+  if (!id) return { ok: false, error: 'invalid session id' };
+
+  if (_inFlight.has(id)) {
+    return { ok: false, skipped: 'in_flight' };
+  }
+  _inFlight.add(id);
+  try {
+    const cfg = require('../config').config;
+    const cur = await db.getInhouseSession(id);
+    if (!cur) return { ok: false, error: 'Session not found' };
+    if (_isProvisioned(cur)) return { ok: true, session: cur, skipped: 'already_provisioned' };
+    if (cur.status !== 'drafting') {
+      return { ok: false, error: `Cannot provision from status ${cur.status}`, skipped: 'wrong_status' };
+    }
+
+    const reqPwd = (opts.password || '').toString();
+    const safePwd = /^[A-Za-z0-9_-]{4,32}$/.test(reqPwd) ? reqPwd : generateMatchPassword(8);
+    const ip = (opts.ip || cfg.dota?.dedicatedServer?.ip || '').toString();
+    if (ip && !/^[0-9.]{7,15}$|^[a-zA-Z0-9.-]+$/.test(ip)) {
+      return { ok: false, error: 'Invalid server IP' };
+    }
+    const port = parseInt(opts.port || cfg.dota?.dedicatedServer?.port || 27015, 10);
+
+    let rconResult = null;
+    try {
+      const { setMatchPassword } = require('../services/rconClient');
+      await setMatchPassword(safePwd);
+      rconResult = { ok: true };
+    } catch (rconErr) {
+      rconResult = { ok: false, error: rconErr.message };
+    }
+
+    const session = await db.updateInhouseSession(id, {
+      match_password: safePwd,
+      server_ip: ip,
+      server_port: port,
+      status: 'in_progress',
+      started_at: new Date(),
+    });
+
+    // Discord announcement + voice-channel shuffle. Wrapped so a Discord
+    // outage never affects the HTTP response or the calling ticker.
+    try {
+      const { getDiscordBot } = require('../discord/bot');
+      const bot = getDiscordBot();
+      if (bot && ip) {
+        const connectLink = `steam://connect/${ip}:${port}/${encodeURIComponent(safePwd)}`;
+        const trigger = opts.trigger || 'manual';
+        const triggerLabel = trigger === 'auto_draft_complete'
+          ? '\n_(auto-provisioned the moment the draft finished)_'
+          : trigger === 'auto_recovery'
+            ? '\n_(auto-provisioned by the recovery sweep)_'
+            : '';
+        bot._notifyChannel(
+          `🖥️ **Inhouse server provisioned — game is live!**\n` +
+          `Server: \`${ip}:${port}\` · Password: \`${safePwd}\`\n` +
+          `**One-click connect:** <${connectLink}>` + triggerLabel
+        );
+      }
+      if (bot && typeof bot._movePlayersToVoiceChannels === 'function') {
+        const players = await db.getInhouseSessionPlayers(id);
+        const STEAM64_OFFSET = 76561197960265728n;
+        const t1IsRad = session.team1_is_radiant !== false;
+        const synthLobby = {
+          players: players
+            .filter(p => p.team === 1 || p.team === 2)
+            .map(p => ({
+              steamId: (BigInt(p.account_id) + STEAM64_OFFSET).toString(),
+              team: (p.team === 1 ? (t1IsRad ? 0 : 1) : (t1IsRad ? 1 : 0)),
+            })),
+        };
+        bot._movePlayersToVoiceChannels(synthLobby).catch(e =>
+          console.warn('[Inhouse] Voice-move failed:', e.message)
+        );
+      }
+    } catch (e) {
+      console.warn('[Inhouse] Could not notify Discord of server provisioning:', e.message);
+    }
+
+    return { ok: true, session, rcon: rconResult };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    _inFlight.delete(id);
+  }
+}
+
+// Returns true when the 8 non-captain slots are all placed (i.e. the snake
+// draft has completed and the session is ready to provision).
+function isDraftComplete(session, players) {
+  if (!session) return false;
+  const cap1 = Number(session.captain1_account_id);
+  const cap2 = Number(session.captain2_account_id);
+  const drafted = players.filter(p =>
+    p.team !== 0 && Number(p.account_id) !== cap1 && Number(p.account_id) !== cap2
+  ).length;
+  return drafted >= 8;
+}
+
+module.exports = { provisionInhouseServer, isDraftComplete };

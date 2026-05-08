@@ -7024,6 +7024,25 @@ NOTES
         return res.status(409).json({ error: 'Player already picked or no longer eligible' });
       }
       res.json({ player: guard.rows[0] });
+
+      // Task #168 — fire-and-forget auto-provision the dedicated server the
+      // moment the 8th non-captain pick lands. No admin click required. The
+      // helper has its own per-session single-flight lock, so a concurrent
+      // tick from autoStartTicker won't double-provision.
+      try {
+        const allPlayers = await db.getInhouseSessionPlayers(req.params.id);
+        const { provisionInhouseServer, isDraftComplete } = require('../inhouse/serverProvisioner');
+        if (isDraftComplete(cur, allPlayers)) {
+          provisionInhouseServer(req.params.id, { trigger: 'auto_draft_complete' })
+            .then(r => {
+              if (r && r.ok) console.log(`[Inhouse] Auto-provisioned session #${req.params.id} after draft completion`);
+              else if (r && !r.skipped) console.warn(`[Inhouse] Auto-provision after draft failed for session #${req.params.id}:`, r.error);
+            })
+            .catch(e => console.warn('[Inhouse] Auto-provision threw:', e.message));
+        }
+      } catch (e) {
+        console.warn('[Inhouse] Auto-provision wiring error:', e.message);
+      }
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -7055,74 +7074,25 @@ NOTES
 
   router.post('/inhouse/:id/server', requireSuperuser, express.json(), async (req, res) => {
     try {
-      const { generateMatchPassword } = require('../services/steamConnectLink');
-      const cfg = require('../config').config;
-      const cur = await db.getInhouseSession(req.params.id);
-      if (!cur) return res.status(404).json({ error: 'Session not found' });
-      if (cur.status !== 'drafting') return res.status(400).json({ error: `Cannot provision server from status ${cur.status}` });
-
-      // Generate password server-side; reject any user-supplied special chars to avoid RCON injection
-      const reqPwd = (req.body?.password || '').toString();
-      const safePwd = /^[A-Za-z0-9_-]{4,32}$/.test(reqPwd) ? reqPwd : generateMatchPassword(8);
-      const ip = (req.body?.ip || cfg.dota?.dedicatedServer?.ip || '').toString();
-      if (ip && !/^[0-9.]{7,15}$|^[a-zA-Z0-9.-]+$/.test(ip)) return res.status(400).json({ error: 'Invalid server IP' });
-      const port = parseInt(req.body?.port || cfg.dota?.dedicatedServer?.port || 27015, 10);
-
-      // Try to push password via RCON if configured
-      let rconResult = null;
-      try {
-        const { setMatchPassword } = require('../services/rconClient');
-        await setMatchPassword(safePwd);
-        rconResult = { ok: true };
-      } catch (rconErr) {
-        rconResult = { ok: false, error: rconErr.message };
-      }
-
-      const session = await db.updateInhouseSession(req.params.id, {
-        match_password: safePwd,
-        server_ip: ip,
-        server_port: port,
-        status: 'in_progress',
-        started_at: new Date(),
+      // Task #168 — delegated to the shared helper so the manual admin
+      // override and the auto-trigger from /draft-pick (and the recovery
+      // sweep in autoStartTicker) all run identical code, with the same
+      // single-flight lock and Discord announcement.
+      const { provisionInhouseServer } = require('../inhouse/serverProvisioner');
+      const result = await provisionInhouseServer(req.params.id, {
+        password: req.body?.password,
+        ip: req.body?.ip,
+        port: req.body?.port,
+        trigger: 'manual',
       });
-      res.json({ session, rcon: rconResult });
-
-      // Notify Discord with one-click connect link + auto-move team voice channels.
-      try {
-        const { getDiscordBot } = require('../discord/bot');
-        const bot = getDiscordBot();
-        if (bot && ip) {
-          const connectLink = `steam://connect/${ip}:${port}/${encodeURIComponent(safePwd)}`;
-          bot._notifyChannel(
-            `🖥️ **Inhouse server provisioned — game is live!**\n` +
-            `Server: \`${ip}:${port}\` · Password: \`${safePwd}\`\n` +
-            `**One-click connect:** <${connectLink}>`
-          );
-        }
-        // v5.75: shuffle drafted players into the right team voice channel.
-        // The existing _movePlayersToVoiceChannels expects a lobby-shaped
-        // object with players[].steamId + players[].team (0=Radiant, 1=Dire).
-        // We synthesize that from the inhouse session players + the
-        // session.team1_is_radiant flag.
-        if (bot && typeof bot._movePlayersToVoiceChannels === 'function') {
-          const players = await db.getInhouseSessionPlayers(req.params.id);
-          const STEAM64_OFFSET = 76561197960265728n;
-          const t1IsRad = session.team1_is_radiant !== false;
-          const synthLobby = {
-            players: players
-              .filter(p => p.team === 1 || p.team === 2)
-              .map(p => ({
-                steamId: (BigInt(p.account_id) + STEAM64_OFFSET).toString(),
-                team: (p.team === 1 ? (t1IsRad ? 0 : 1) : (t1IsRad ? 1 : 0)),
-              })),
-          };
-          bot._movePlayersToVoiceChannels(synthLobby).catch(e =>
-            console.warn('[Inhouse] Voice-move failed:', e.message)
-          );
-        }
-      } catch (e) {
-        console.warn('[Inhouse] Could not notify Discord of server provisioning:', e.message);
+      if (!result.ok) {
+        if (result.skipped === 'in_flight') return res.status(409).json({ error: 'Provisioning already in progress' });
+        if (result.skipped === 'wrong_status') return res.status(400).json({ error: result.error });
+        if (result.error === 'Session not found') return res.status(404).json({ error: result.error });
+        if (result.error === 'Invalid server IP') return res.status(400).json({ error: result.error });
+        return res.status(500).json({ error: result.error || 'Provisioning failed' });
       }
+      res.json({ session: result.session, rcon: result.rcon, skipped: result.skipped });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

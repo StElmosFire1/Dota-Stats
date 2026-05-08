@@ -89,11 +89,15 @@ async function tick(db, basePort) {
   // Only fetch sessions that could need advancing — keeps the poll cheap
   // even as the inhouse_sessions table grows.
   const pool = db.getPool();
-  let openRows, acceptingRows;
+  let openRows, acceptingRows, draftingRows;
   try {
-    [openRows, acceptingRows] = await Promise.all([
+    [openRows, acceptingRows, draftingRows] = await Promise.all([
       pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'open' ORDER BY id DESC LIMIT 20`),
       pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'accepting' ORDER BY id DESC LIMIT 20`),
+      // Task #168 — recovery sweep: pick up sessions that finished drafting
+      // but never got their server provisioned (missed in-flight trigger,
+      // server restart between the 8th pick and the helper firing, etc).
+      pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'drafting' AND match_password IS NULL ORDER BY id DESC LIMIT 20`),
     ]);
   } catch (e) {
     warn('listInhouseSessions failed:', e.message);
@@ -101,6 +105,7 @@ async function tick(db, basePort) {
   }
   const open = openRows.rows;
   const accepting = acceptingRows.rows;
+  const drafting = draftingRows.rows;
 
   for (const s of open) {
     try {
@@ -200,6 +205,31 @@ async function tick(db, basePort) {
       }
     } catch (e) {
       warn(`Session #${s.id} (accepting) tick failed:`, e.message);
+    }
+  }
+
+  // Task #168 — recovery sweep for sessions where the draft completed but
+  // the in-flight auto-provision never landed (server restart, transient
+  // DB blip, etc). The provisioner has its own per-session single-flight
+  // lock, so this is safe to run alongside the /draft-pick trigger.
+  for (const s of drafting) {
+    try {
+      const players = await db.getInhouseSessionPlayers(s.id);
+      const cap1 = Number(s.captain1_account_id);
+      const cap2 = Number(s.captain2_account_id);
+      const drafted = players.filter(p =>
+        p.team !== 0 && Number(p.account_id) !== cap1 && Number(p.account_id) !== cap2
+      ).length;
+      if (drafted < 8) continue;
+      const { provisionInhouseServer } = require('./serverProvisioner');
+      const r = await provisionInhouseServer(s.id, { trigger: 'auto_recovery' });
+      if (r.ok && !r.skipped) {
+        log(`Session #${s.id}: recovery sweep auto-provisioned dedicated server`);
+      } else if (!r.ok && !r.skipped) {
+        warn(`Session #${s.id}: recovery sweep provision failed:`, r.error);
+      }
+    } catch (e) {
+      warn(`Session #${s.id} (drafting recovery) tick failed:`, e.message);
     }
   }
 }
