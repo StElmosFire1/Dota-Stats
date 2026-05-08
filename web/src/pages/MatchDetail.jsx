@@ -31,6 +31,7 @@ import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import useProStatus from '../hooks/useProStatus';
+import VerifiedBadge from '../components/VerifiedBadge';
 import {
   LineChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts';
@@ -878,8 +879,15 @@ function PerfPanel({ allPlayers, perfRanks = {} }) {
 
 function PlayerLink({ player, index }) {
   const name = getDisplayName(player, index);
+  // Round-8: scoreboard rows now show the verified-badge tick next to the
+  // nickname (lazy-loaded via VerifiedBadge — null render for unverified).
   if (player.account_id > 0) {
-    return <Link to={`/player/${player.account_id}`} className="player-link">{name}</Link>;
+    return (
+      <Link to={`/player/${player.account_id}`} className="player-link">
+        {name}
+        <VerifiedBadge accountId={player.account_id} size={12} />
+      </Link>
+    );
   }
   if (player.persona_name) {
     return <Link to={`/player/${encodeURIComponent(player.persona_name)}`} className="player-link">{name}</Link>;

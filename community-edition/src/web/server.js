@@ -885,10 +885,35 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  // Public: download the archived .dem replay file for a match.
-  router.get('/replays/:matchId/download', async (req, res) => {
+  // Pro/admin gated: download the archived .dem replay file for a match.
+  // Task #157 — community edition mirrors the full edition paywall on
+  // replay downloads. If the deployment doesn't have Pro infra wired up
+  // (`db.isProMember` missing) the route falls back to admin-only.
+  // Shared handler — mounted at both `/replays/:matchId/download`
+  // (legacy) and `/matches/:matchId/replay` (canonical, mirrors the
+  // full edition route per Task #157 contract).
+  const _ceReplayDownloadHandler = async (req, res) => {
     try {
       const { matchId } = req.params;
+      const isAdminSession = Boolean(req.session && req.session.isAdmin);
+      const uploadKey = process.env.UPLOAD_KEY;
+      const providedKey = req.headers['x-upload-key'] || req.headers['x-admin-key'];
+      const isAdminKey = Boolean(uploadKey && providedKey === uploadKey);
+      if (!isAdminSession && !isAdminKey) {
+        const accountId = req.session?.accountId;
+        let isPro = false;
+        if (typeof db.isProMember === 'function' && accountId) {
+          try { isPro = await db.isProMember(accountId); } catch (_) {}
+        }
+        if (!isPro) {
+          return res.status(402).json({
+            error: 'Replay download requires Pro membership.',
+            paywall: true,
+            feature: 'replay_download',
+            signed_in: Boolean(accountId),
+          });
+        }
+      }
       const row = await db.getReplayFilePath(matchId);
       if (!row || !row.replay_file_path) {
         return res.status(404).json({ error: 'No replay file stored for this match.' });
@@ -904,7 +929,9 @@ function createApiRouter(startupStatus = {}) {
       console.error('[API] Replay download error:', err.message);
       res.status(500).json({ error: 'Download failed' });
     }
-  });
+  };
+  router.get('/replays/:matchId/download', _ceReplayDownloadHandler);
+  router.get('/matches/:matchId/replay', _ceReplayDownloadHandler);
 
   // Superuser-only: list all stored replay files (match id, file size, expiry).
   router.get('/replays/stored', requireSuperuser, async (req, res) => {

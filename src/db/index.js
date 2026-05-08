@@ -1478,6 +1478,28 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_scouting_reports_account ON scouting_reports(account_id)`);
 
+    // Task #157 — Magazine v3 monetization features (replay paywall log,
+    // weekly AI reports, org sponsorships, pickem, verified badges, one-off
+    // perks). Schema lives in src/monetization/magazineV3.js so the diff in
+    // this file stays small. Applied last so it doesn't block earlier
+    // migrations on a fresh DB.
+    // Round-6 hardening: previously this swallowed migration errors with
+    // a warn, which left production in a partially-migrated state while
+    // the v3 routes (paywall, perks, sponsorships, verified badges) were
+    // already mounted and serving requests. Fail-fast so the process
+    // exits non-zero and the deploy/restart loop surfaces the problem
+    // instead of silently disabling monetization features. Opt-out via
+    // `MAGV3_SCHEMA_OPTIONAL=1` for dev hosts that intentionally don't
+    // want the v3 tables.
+    try {
+      const { applyMagazineV3Schema } = require('../monetization/magazineV3');
+      await applyMagazineV3Schema(p);
+    } catch (e) {
+      console.error('[DB] magazineV3 schema apply failed:', e.message);
+      if (process.env.MAGV3_SCHEMA_OPTIONAL !== '1') throw e;
+      console.warn('[DB] continuing because MAGV3_SCHEMA_OPTIONAL=1 — v3 routes may misbehave.');
+    }
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -11136,9 +11158,15 @@ async function upsertScoutingReport(accountId, report) {
   );
 }
 
+// Task #157 — Magazine v3 helpers are produced by a factory that closes over
+// `getPool` so they share the same pool as everything else in this file.
+const _magV3 = require('../monetization/magazineV3').createMagazineV3Db({ getPool });
+
 module.exports = {
   init,
   getPool,
+  // Magazine v3 (Task #157) — exposed via the same shape as the rest of `db`.
+  magV3: _magV3,
   recordMatch,
   isMatchRecorded,
   isFileHashRecorded,

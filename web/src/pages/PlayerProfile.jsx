@@ -14,6 +14,11 @@ import { formatHeroName } from '../utils/heroes';
 import HeroIcon from '../components/HeroIcon';
 import ProBadge from '../components/ProBadge';
 import PaywallCard from '../components/PaywallCard';
+import WeeklyReportTile from '../components/WeeklyReportTile';
+import SponsorChip from '../components/SponsorChip';
+import VerifiedBadge from '../components/VerifiedBadge';
+import CoachRecommendationsTile from '../components/CoachRecommendationsTile';
+import { VerifiedBadgeOwnerCta } from '../components/VerifiedBadgePurchaseModal';
 import useProMembers from '../hooks/useProMembers';
 import useProStatus from '../hooks/useProStatus';
 import {
@@ -528,6 +533,18 @@ export default function PlayerProfile() {
   const [scoutingAutoCopied, setScoutingAutoCopied] = useState(false);
   const [giftError, setGiftError] = useState(null);
   const [giftLoading, setGiftLoading] = useState(null);
+  // Round-8: Pro state for the replay-download CTA. Free users see the
+  // "🔒 Pro" upsell instead of the download icon. Defaults to false so
+  // the upsell is shown on first paint until we know otherwise.
+  const [replayIsPro, setReplayIsPro] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/me/replay-quota', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (!cancelled && j) setReplayIsPro(Boolean(j.is_pro)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!showProfileCustomization || !accountId) { setProfileCard(null); return; }
@@ -740,6 +757,9 @@ export default function PlayerProfile() {
         <span style={{ fontSize: 12, color: '#888' }}>({rating.display_name})</span>
       )}
       {isPlayerPro && <ProBadge size="sm" />}
+      {/* Magazine v3 (Task #157): verified-checkmark propagation. Component
+          self-hides when the player has no verified badges. */}
+      <VerifiedBadge accountId={accountId} size={14} />
       {playerRank?.dota_rank_tier && (
         <RankBadge
           rankTier={playerRank.dota_rank_tier}
@@ -931,6 +951,16 @@ export default function PlayerProfile() {
         nameAdornments={headerNameAdornments}
         headerExtras={headerExtras}
       />
+
+      {/* Magazine v3 (Task #157): public sponsor chip on every profile;
+          weekly AI report tile only for the profile owner (component
+          self-hides on 401 / shows Pro paywall on 402). */}
+      <div style={{ marginTop: 12 }}>
+        <SponsorChip accountId={accountId} />
+      </div>
+      {isOwnProfile && <WeeklyReportTile />}
+      {isOwnProfile && <CoachRecommendationsTile />}
+      {isOwnProfile && <VerifiedBadgeOwnerCta accountId={accountId} />}
 
       {giftError && (
         <div style={{ marginTop: 8, padding: '6px 12px', background: '#3a0f0f', border: '1px solid #ef4444', borderRadius: 6, fontSize: 13, color: '#ef4444' }}>
@@ -1778,6 +1808,7 @@ export default function PlayerProfile() {
                   <th className="col-stat" title="Assists">A</th>
                   <th className="col-stat" title="Gold Per Minute">GPM</th>
                   <th className="col-stat" title="Match result">Result</th>
+                  <th className="col-stat" title="Download replay (Pro)">Replay</th>
                 </tr>
               </thead>
               <tbody>
@@ -1809,6 +1840,54 @@ export default function PlayerProfile() {
                       <td className="col-stat">{m.gpm}</td>
                       <td className={`col-stat ${won ? 'wins' : 'losses'}`}>
                         {won ? 'Won' : 'Lost'}
+                      </td>
+                      {/* Magazine v3 (Task #157 round-8): per the reviewer,
+                          free users must see a Pro upsell *in place of* the
+                          download icon — not a click-through that 402s. We
+                          fetch is_pro once for the page (replayIsPro state)
+                          and conditionally render either the ⬇ download or
+                          a 🔒 link to /pricing. */}
+                      <td className="col-stat">
+                        {replayIsPro ? (
+                          <a
+                            href={`/api/matches/${m.match_id}/replay`}
+                            title="Download replay"
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              try {
+                                const r = await fetch(`/api/matches/${m.match_id}/replay`, { credentials: 'include' });
+                                if (r.status === 429) {
+                                  const j = await r.json().catch(() => ({}));
+                                  alert(j.error || 'Daily replay limit reached.');
+                                  return;
+                                }
+                                if (!r.ok) {
+                                  const j = await r.json().catch(() => ({}));
+                                  alert(j.error || `Replay unavailable (HTTP ${r.status})`);
+                                  return;
+                                }
+                                const blob = await r.blob();
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `match-${m.match_id}.dem`;
+                                document.body.appendChild(a);
+                                a.click();
+                                a.remove();
+                                URL.revokeObjectURL(url);
+                              } catch (err) {
+                                alert(`Replay download failed: ${err.message}`);
+                              }
+                            }}
+                            style={{ color: 'var(--amber, #f59e0b)', fontSize: 13 }}
+                          >⬇</a>
+                        ) : (
+                          <Link
+                            to="/pricing"
+                            title="Replay downloads are a Pro perk — upgrade to unlock"
+                            style={{ color: 'var(--brass, #c5a975)', fontSize: 13, opacity: 0.85 }}
+                          >🔒 Pro</Link>
+                        )}
                       </td>
                     </tr>
                   );

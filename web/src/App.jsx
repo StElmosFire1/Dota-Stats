@@ -32,6 +32,8 @@ const PlayerTools = lazy(() => import('./pages/PlayerTools'));
 const Predictions = lazy(() => import('./pages/Predictions'));
 const StatsEditor = lazy(() => import('./pages/StatsEditor'));
 const PatchNotes = lazy(() => import('./pages/PatchNotes'));
+const Pickem = lazy(() => import('./pages/Pickem'));
+const SponsorshipInbox = lazy(() => import('./pages/SponsorshipInbox'));
 const Home = lazy(() => import('./pages/Home'));
 const MultiKills = lazy(() => import('./pages/MultiKills'));
 const WardMap = lazy(() => import('./pages/WardMap'));
@@ -731,6 +733,8 @@ export default function App() {
                 <Route path="/position-player-profiles" element={<PositionStats defaultTab="profiles" />} />
                 <Route path="/predictions" element={<Predictions />} />
                 <Route path="/patch-notes" element={<PatchNotes />} />
+                <Route path="/pickem" element={<Pickem />} />
+                <Route path="/sponsorships/inbox" element={<SponsorshipInbox />} />
                 <Route path="/multikills" element={<MultiKills />} />
                 <Route path="/ward-map" element={<WardMap />} />
                 <Route path="/records" element={<Records />} />

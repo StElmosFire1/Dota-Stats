@@ -718,6 +718,20 @@ function createServer(startupStatus = {}) {
           } else {
             console.warn('[Stripe] coaching_booking webhook: no booking for session', session.id);
           }
+        } else if (purpose === 'verified_badge' || purpose === 'org_sponsorship' || purpose === 'one_off_perk') {
+          // Task #157 — Magazine v3 monetization purposes are dispatched to
+          // a self-contained handler so the giant webhook switch stays small.
+          try {
+            const { handleStripeWebhookPurpose } = require('../monetization/magazineV3');
+            await handleStripeWebhookPurpose({
+              purpose, session, db, magV3: db.magV3,
+              log: console,
+            });
+          } catch (e) {
+            console.error('[mag-v3] webhook handler failed:', e.message);
+            // Re-throw so Stripe retries on transient DB failures.
+            throw e;
+          }
         } else if (purpose === 'frame_purchase') {
           const frameId = session.metadata?.frame_id;
           const frameAccountId = session.metadata?.account_id;
@@ -928,7 +942,82 @@ function createServer(startupStatus = {}) {
 
   app.use(express.json());
 
-  app.use('/api', createApiRouter(startupStatus));
+  // Stash `app` on a module-shared symbol so createApiRouter() can reach it
+  // when mounting Magazine v3 routes that need to live at the app level
+  // (e.g. the public `/embed/:accountId` widget which must not sit under /api).
+  const apiRouter = createApiRouter(startupStatus, app);
+  app.use('/api', apiRouter);
+
+  // Magazine v3 nightly worker — review fix. Generates weekly AI reports,
+  // expires stale verified badges, and DMs deliveries via the Discord bot.
+  // Best-effort: failure to start the worker does not block the server.
+  try {
+    const { startWeeklyReportWorker } = require('../monetization/magazineV3');
+    const bot = startupStatus.botInstance || null;
+    startWeeklyReportWorker({
+      db, magV3: db.magV3,
+      getGroq: () => {
+        try { return require('../services/groqService'); } catch { return null; }
+      },
+      // Round-4 review: gate weekly report on the existing `weekly_recap`
+      // notification category — users can disable from notification settings.
+      isNotificationEnabled: async (accountId, category) => {
+        try { return await db.isNotificationEnabled(accountId, category); }
+        catch { return true; }
+      },
+      // Round-4: email is the spec'd primary channel. Default impl logs
+      // to console so behaviour is deterministic on dev hosts; production
+      // can wire Resend/Mailgun by replacing this dep.
+      sendEmail: async ({ accountId, email, subject, markdown }) => {
+        if (process.env.RESEND_API_KEY) {
+          try {
+            const r = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                from: process.env.WEEKLY_REPORT_FROM_EMAIL
+                       || 'OCE Inhouse <noreply@oceinhouse.gg>',
+                to: [email], subject,
+                text: markdown,
+              }),
+            });
+            if (!r.ok) throw new Error(`Resend ${r.status}`);
+          } catch (e) {
+            console.warn('[mag-v3:weekly] resend failed:', e.message);
+            throw e;
+          }
+        } else {
+          console.log(`[mag-v3:weekly] (no RESEND_API_KEY) would email account=${accountId} to=${email} subject=${JSON.stringify(subject)}`);
+        }
+      },
+      // Pull the set of currently-Pro account IDs. We treat the
+      // `subscriptions` table (existing Pro/Stripe infra) as authoritative;
+      // if the helper isn't available on this deployment, return [].
+      getProAccountIds: async () => {
+        try {
+          const r = await db.getPool().query(
+            `SELECT DISTINCT account_id FROM subscriptions
+              WHERE status = 'active' AND tier = 'pro'`
+          );
+          return r.rows.map(x => x.account_id);
+        } catch { return []; }
+      },
+      notifyWeeklyReport: async (accountId, contentMd) => {
+        if (!bot || typeof bot.sendDmToAccount !== 'function') return;
+        try {
+          await bot.sendDmToAccount(accountId, {
+            content: `Your weekly report is ready:\n\n${contentMd.slice(0, 1800)}`,
+          });
+        } catch { /* best-effort */ }
+      },
+    });
+    console.log('[mag-v3] weekly report worker started');
+  } catch (err) {
+    console.warn('[mag-v3] weekly worker failed to start:', err.message);
+  }
 
   // Convert any middleware errors (body-parser etc) to JSON instead of HTML
   app.use((err, req, res, next) => {
@@ -1098,7 +1187,7 @@ function createServer(startupStatus = {}) {
   return app;
 }
 
-function createApiRouter(startupStatus = {}) {
+function createApiRouter(startupStatus = {}, _app = null) {
   const router = express.Router();
 
   router.get('/health', async (req, res) => {
@@ -2333,58 +2422,15 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
-  // Pro/admin: download the archived .dem replay from dedicated server for a match.
-  router.get('/matches/:matchId/replay', async (req, res) => {
-    try {
-      const { matchId } = req.params;
-      // Always enforce Pro/admin — replay archive downloads are a paid feature
-      // regardless of whether the pro_tier feature flag is currently active.
-      // Accept superuser session/header or admin session/UPLOAD_KEY header.
-      const isSu = _isSu(req);
-      const isAdminSession = Boolean(req.session && req.session.isAdmin);
-      const uploadKey = process.env.UPLOAD_KEY;
-      const providedKey = req.headers['x-upload-key'] || req.headers['x-admin-key'];
-      const isAdminKey = Boolean(uploadKey && providedKey === uploadKey);
-      if (!isSu && !isAdminSession && !isAdminKey) {
-        const accountId = req.session?.accountId;
-        const isPro = await _isProAccount(accountId);
-        if (!isPro) {
-          return res.status(402).json({
-            error: 'Replay download requires Pro membership.',
-            paywall: true,
-            feature: 'replay_download',
-            signed_in: Boolean(accountId),
-          });
-        }
-      }
-      const row = await db.getReplayPath(matchId);
-      if (!row || !row.replay_path) {
-        return res.status(404).json({ error: 'No archived replay for this match.' });
-      }
-      const { streamReplayFromArchive } = require('../services/serverReplayFetcher');
-      const safeMatchId = String(matchId).replace(/[^a-zA-Z0-9_-]/g, '_');
-      const filename = `match_${safeMatchId}.dem`;
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Type', 'application/octet-stream');
-      try {
-        await streamReplayFromArchive(row.replay_path, res);
-      } catch (streamErr) {
-        // Map SFTP read failures (stale / missing path) to a clean 404 before headers are sent.
-        if (!res.headersSent) {
-          const code = streamErr?.code;
-          if (code === 2 /* SSH_FX_NO_SUCH_FILE */ || code === 'ENOENT') {
-            return res.status(404).json({ error: 'Replay file not found on archive server.' });
-          }
-        }
-        throw streamErr;
-      }
-    } catch (err) {
-      console.error('[API] Remote replay download error:', err.message);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Replay download failed: ' + err.message });
-      }
-    }
-  });
+  // (round-7 review) The canonical `/matches/:matchId/replay` route used
+  // to be registered here as a remote-archive-only handler, then *again*
+  // a few hundred lines later as the local-file + quota-aware handler.
+  // Express resolves the first match, so the quota path was dead code on
+  // the canonical URL and a Pro user could bulk-scrape the archive
+  // without ever tripping the per-day limit. The unified handler now
+  // lives at the registration site below (`_replayDownloadHandler`),
+  // which performs auth + quota first and then tries the local store
+  // before falling back to the remote SFTP archive.
 
   // Superuser: manually set (or clear) the remote replay_path for a match.
   // If the value looks like a bare filename (no leading slash or path separator),
@@ -2436,7 +2482,12 @@ function createApiRouter(startupStatus = {}) {
   // Pro/admin: download the locally stored .dem replay file for a match.
   // This route is gated the same way as /matches/:matchId/replay to prevent
   // free users from bypassing the paywall via the legacy local-copy URL.
-  router.get('/replays/:matchId/download', async (req, res) => {
+  // Drift closure (Task #157 round-3): the spec listed `/api/matches/:id/replay`
+  // as the canonical endpoint. We keep `/replays/:matchId/download` as the
+  // implementation but alias `/matches/:matchId/replay` so any consumer using
+  // the spec'd contract works identically — same handler, same gating, same
+  // quota.
+  const _replayDownloadHandler = async (req, res) => {
     try {
       const { matchId } = req.params;
       // Enforce Pro/admin — session-based auth preferred; header fallback for non-browser clients.
@@ -2445,8 +2496,8 @@ function createApiRouter(startupStatus = {}) {
       const uploadKey = process.env.UPLOAD_KEY;
       const providedKey = req.headers['x-upload-key'] || req.headers['x-admin-key'];
       const isAdminKey = Boolean(uploadKey && providedKey === uploadKey);
+      const accountId = req.session?.accountId;
       if (!isSu && !isAdminSession && !isAdminKey) {
-        const accountId = req.session?.accountId;
         const isPro = await _isProAccount(accountId);
         if (!isPro) {
           return res.status(402).json({
@@ -2456,23 +2507,76 @@ function createApiRouter(startupStatus = {}) {
             signed_in: Boolean(accountId),
           });
         }
+        // Task #157 — per-user daily quota even for Pro, to keep the local
+        // replay store from being scraped wholesale by a single account.
+        try {
+          const used = await db.magV3.countReplayDownloadsLast24h(accountId);
+          const { REPLAY_RATE_LIMIT_PER_DAY } = require('../monetization/magazineV3');
+          if (used >= REPLAY_RATE_LIMIT_PER_DAY) {
+            return res.status(429).json({
+              error: `Daily replay download limit reached (${REPLAY_RATE_LIMIT_PER_DAY}). Resets in 24h.`,
+              feature: 'replay_download',
+              limit: REPLAY_RATE_LIMIT_PER_DAY,
+              used,
+            });
+          }
+        } catch (qErr) {
+          // Quota check is non-fatal — better to let the download through
+          // than to break replay access on a transient DB blip.
+          console.warn('[mag-v3] replay quota check failed:', qErr.message);
+        }
       }
-      const row = await db.getReplayFilePath(matchId);
-      if (!row || !row.replay_file_path) {
-        return res.status(404).json({ error: 'No replay file stored for this match.' });
+      // Local-file path first (free + fast), with remote archive as
+      // fallback. Both paths run AFTER the same Pro/admin gate + the
+      // Pro-only daily quota check above, so the canonical
+      // `/matches/:matchId/replay` URL is never a scraping bypass.
+      const localRow = await db.getReplayFilePath(matchId);
+      if (localRow && localRow.replay_file_path && fs.existsSync(localRow.replay_file_path)) {
+        const filename = path.basename(localRow.replay_file_path);
+        let bytes = null;
+        try { bytes = fs.statSync(localRow.replay_file_path).size; } catch (_) {}
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        if (accountId && !isSu && !isAdminSession && !isAdminKey) {
+          db.magV3.logReplayDownload(accountId, matchId, bytes).catch(() => {});
+        }
+        return fs.createReadStream(localRow.replay_file_path).pipe(res);
       }
-      if (!fs.existsSync(row.replay_file_path)) {
-        return res.status(404).json({ error: 'Replay file was deleted or has expired.' });
+      // Fall back to the remote SFTP archive if the dedicated server
+      // recorded a `replay_path` for this match.
+      const remoteRow = await db.getReplayPath(matchId);
+      if (remoteRow && remoteRow.replay_path) {
+        const safeMatchId = String(matchId).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const filename = `match_${safeMatchId}.dem`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        if (accountId && !isSu && !isAdminSession && !isAdminKey) {
+          db.magV3.logReplayDownload(accountId, matchId, null).catch(() => {});
+        }
+        try {
+          const { streamReplayFromArchive } = require('../services/serverReplayFetcher');
+          await streamReplayFromArchive(remoteRow.replay_path, res);
+          return;
+        } catch (streamErr) {
+          if (!res.headersSent) {
+            const code = streamErr?.code;
+            if (code === 2 /* SSH_FX_NO_SUCH_FILE */ || code === 'ENOENT') {
+              return res.status(404).json({ error: 'Replay file not found on archive server.' });
+            }
+            return res.status(500).json({ error: 'Replay download failed: ' + streamErr.message });
+          }
+          throw streamErr;
+        }
       }
-      const filename = path.basename(row.replay_file_path);
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Type', 'application/octet-stream');
-      fs.createReadStream(row.replay_file_path).pipe(res);
+      return res.status(404).json({ error: 'No replay stored for this match.' });
     } catch (err) {
       console.error('[API] Replay download error:', err.message);
-      res.status(500).json({ error: 'Download failed' });
+      if (!res.headersSent) res.status(500).json({ error: 'Download failed' });
     }
-  });
+  };
+  router.get('/replays/:matchId/download', _replayDownloadHandler);
+  // Spec'd canonical alias — same handler, same paywall + quota.
+  router.get('/matches/:matchId/replay', _replayDownloadHandler);
 
   // Superuser-only: list all stored replay files (match id, file size, expiry).
   router.get('/replays/stored', requireSuperuser, async (req, res) => {
@@ -2669,7 +2773,30 @@ function createApiRouter(startupStatus = {}) {
       if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
       const season = await db.archiveSeason(id);
       if (!season) return res.status(404).json({ error: 'Season not found' });
-      res.json({ season });
+      // Magazine v3 (Task #157 round-4): season-end is the natural rollover
+      // point for pickem too. Award the cosmetic champion frame to the #1
+      // pickem player and roll a fresh pickem season into place. Both calls
+      // are best-effort — they never block the main season archive response.
+      let pickemAward = null;
+      try {
+        if (db.magV3?.getActivePickemSeason && db.magV3.awardPickemSeasonChampion) {
+          const ps = await db.magV3.getActivePickemSeason();
+          if (ps?.id) {
+            pickemAward = await db.magV3.awardPickemSeasonChampion(ps.id);
+            // Close the old pickem season + open a fresh one so the next
+            // main season starts with an empty leaderboard.
+            try {
+              await db.getPool().query(
+                `UPDATE pickem_seasons SET status = 'closed', ends_at = NOW()
+                  WHERE id = $1 AND status = 'open'`, [ps.id]);
+            } catch (_) {}
+            try { await db.magV3.ensureDefaultPickemSeason(); } catch (_) {}
+          }
+        }
+      } catch (e) {
+        console.warn('[API] archiveSeason: pickem rollover failed:', e.message);
+      }
+      res.json({ season, pickem_award: pickemAward });
     } catch (err) {
       console.error('[API] archiveSeason:', err.message);
       res.status(500).json({ error: 'Failed to archive season' });
@@ -9125,6 +9252,47 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     }
   });
 
+  // Task #157 — Magazine v3 monetization features. All routes are mounted
+  // here so the existing `requirePro` / `_isProAccount` / `_isSu` helpers can
+  // be passed in by closure. The module also adds an app-level
+  // `/embed/:accountId` route via the `app` reference.
+  try {
+    const { mountMagazineV3Routes } = require('../monetization/magazineV3');
+    mountMagazineV3Routes({
+      router,
+      app: _app,
+      express,
+      deps: {
+        db,
+        magV3: db.magV3,
+        isProAccount: _isProAccount,
+        isSuperuser: _isSu,
+        requirePro,
+        getStripe: () => process.env.STRIPE_SECRET_KEY
+          ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null,
+        getSiteUrl: () => process.env.SITE_URL
+          || `http://localhost:${process.env.PORT || 5000}`,
+        getGroq: () => {
+          try { return require('../services/groqService'); }
+          catch (_) { return null; }
+        },
+      },
+    });
+  } catch (e) {
+    // Round-9 review comment: silent route-mount failure means an entire
+    // monetization batch (replay quota, weekly report, coach pairing,
+    // sponsorships, embed, pickem, verified badges, one-off perks) would
+    // boot disabled in production with no obvious indicator. Fail fast in
+    // production to surface the misconfiguration; allow opt-out for
+    // dev/CI hosts via MAGV3_ROUTES_OPTIONAL=1 (mirrors the
+    // MAGV3_SCHEMA_OPTIONAL escape hatch on the schema side).
+    console.error('[mag-v3] route mount failed:', e && e.stack || e && e.message || e);
+    if (process.env.NODE_ENV === 'production'
+        && process.env.MAGV3_ROUTES_OPTIONAL !== '1') {
+      throw e;
+    }
+  }
+
   return router;
 }
 
@@ -9265,6 +9433,47 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
     try {
       getDiscordBot()._checkMatchQuality(matchStats).catch(e => console.error('[QualityCheck] Replay job error:', e.message));
       getDiscordBot()._rconResetServer().catch(e => console.log('[RCON] Post-replay reset skipped:', e.message));
+    } catch (_) {}
+
+    // Drift closure (Task #157 round-3): auto-resolve any open pickem picks
+    // for this match using the recorded radiant_win flag. Best-effort — the
+    // helper itself swallows errors so it can't break the upload pipeline.
+    try {
+      if (db.magV3?.autoResolvePickemForMatch && matchStats?.matchId != null) {
+        // Round-8: pass the side-bet actuals derived from the parsed
+        // replay so first-blood / total-kills / duration-tier picks are
+        // auto-resolved alongside the winner pick. Each field is wrapped
+        // in its own try because the parser doesn't always populate
+        // every field — autoResolvePickemForMatch tolerates nulls.
+        let totalKills = null;
+        try {
+          totalKills = (matchStats.players || []).reduce(
+            (s, p) => s + (Number(p.kills) || 0), 0
+          );
+        } catch (_) {}
+        let firstBloodTeam = null;
+        try {
+          // Replays expose firstblood_claimed as the slot of the killer.
+          // Slots 0-4 = radiant, 5-9 = dire (Dota's convention).
+          const fbClaimer = (matchStats.players || []).find(p =>
+            p.firstblood_claimed === 1 || p.firstblood_claimed === true
+          );
+          if (fbClaimer) {
+            firstBloodTeam = (fbClaimer.team === 'radiant'
+              || (typeof fbClaimer.player_slot === 'number' && fbClaimer.player_slot < 128))
+              ? 'radiant' : 'dire';
+          }
+        } catch (_) {}
+        db.magV3.autoResolvePickemForMatch(
+          matchStats.matchId,
+          Boolean(matchStats.radiantWin),
+          {
+            durationSeconds: Number(matchStats.duration) || null,
+            totalKills: Number.isFinite(totalKills) ? totalKills : null,
+            firstBloodTeam,
+          },
+        ).catch(() => {});
+      }
     } catch (_) {}
 
     // Notify Discord about achievements granted inside recordMatch()

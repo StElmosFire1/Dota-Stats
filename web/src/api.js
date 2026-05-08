@@ -1474,3 +1474,73 @@ export async function getScoutingReport(playerId, superuserKey = null) {
   }
   return data;
 }
+
+// =============================================================================
+// Task #157 — Magazine v3 monetization helpers.
+// All paths surface 402 paywall errors as `err.paywall = true` via the
+// existing fetchJson convention so callers can render the Pro upsell card.
+// =============================================================================
+async function _getJson(path) {
+  const res = await fetch(BASE + path, { credentials: 'same-origin' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data?.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    if (res.status === 402) err.paywall = true;
+    if (data?.feature) err.feature = data.feature;
+    throw err;
+  }
+  return data;
+}
+async function _postJson(path, body) {
+  const res = await fetch(BASE + path, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data?.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    if (res.status === 402) err.paywall = true;
+    throw err;
+  }
+  return data;
+}
+
+export const getReplayQuota = () => _getJson('/me/replay-quota');
+export const getWeeklyReport = () => _getJson('/me/weekly-report');
+export const getCoachRecommendations = () => _getJson('/me/coach-recommendations');
+export const getMyPerks = () => _getJson('/me/perks');
+
+export const getActivePickemSeason = () => _getJson('/pickem/active-season');
+export const getPickemLeaderboard = (seasonId) =>
+  _getJson('/pickem/leaderboard' + (seasonId ? `?season_id=${seasonId}` : ''));
+export const getMyPickemPicks = () => _getJson('/pickem/me');
+// Round-8: optional side-bet dimensions. Each is nullable — caller may
+// pass undefined/null to skip a dimension while still picking the winner.
+//   pickedFirstBlood        : 'radiant' | 'dire'   (+5 pts)
+//   pickedTotalKillsBucket  : 'under' | 'over'     (+5 pts, boundary 50)
+//   pickedDurationTier      : 'short' | 'medium' | 'long'  (+5 pts)
+export const submitPickemPick = (
+  matchRef, pickedWinner,
+  { pickedFirstBlood = null, pickedTotalKillsBucket = null, pickedDurationTier = null } = {},
+) =>
+  _postJson('/pickem/pick', {
+    matchRef, pickedWinner,
+    pickedFirstBlood, pickedTotalKillsBucket, pickedDurationTier,
+  });
+
+export const getPlayerSponsorships = (accountId) =>
+  _getJson(`/players/${accountId}/sponsorships`);
+export const getPlayerVerifiedBadges = (accountId) =>
+  _getJson(`/players/${accountId}/verified-badges`);
+export const getMySponsorshipInbox = () => _getJson('/me/sponsorships/inbox');
+export const acceptSponsorship = (id) => _postJson(`/sponsorships/${id}/accept`);
+export const declineSponsorship = (id) => _postJson(`/sponsorships/${id}/decline`);
+export const createSponsorshipCheckout = (payload) =>
+  _postJson('/sponsorships/checkout', payload);
+
+export const createVerifiedBadgeCheckout = (provider, handle) =>
+  _postJson('/verified/checkout', { provider, handle });
+

@@ -4,6 +4,7 @@ import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest } fro
 import { useSeason } from '../context/SeasonContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import ProBadge from '../components/ProBadge';
+import VerifiedBadge from '../components/VerifiedBadge';
 import useProMembers from '../hooks/useProMembers';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
@@ -601,6 +602,11 @@ export default function Leaderboard() {
                           >
                             {p.nickname || p.display_name || p.player_id}
                             {proMembers.has(String(p.player_id)) && <ProBadge size="sm" />}
+                            {/* Round-8: propagate verified-badge to public
+                                surfaces. Inline lazy-mount — VerifiedBadge
+                                returns null when the player has none, so
+                                this is a no-op for unverified players. */}
+                            <VerifiedBadge accountId={p.player_id} size={12} />
                           </Link>
                         );
                       })()}
