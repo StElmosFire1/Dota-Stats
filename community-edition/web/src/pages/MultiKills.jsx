@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
 import { getMultiKillStats } from '../api';
 
@@ -41,14 +42,16 @@ export default function MultiKills() {
   });
 
   const Th = ({ col, label, title }) => (
-    <th
+    <SortableTh
       className="col-stat"
       title={title}
-      style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === col ? 'var(--accent-blue)' : '' }}
-      onClick={() => setSortKey(col)}
+      active={sortKey === col}
+      direction="desc"
+      onSort={() => setSortKey(col)}
+      style={{ color: sortKey === col ? 'var(--accent-blue)' : '' }}
     >
       {label} {sortKey === col ? '▼' : ''}
-    </th>
+    </SortableTh>
   );
 
   const topRampage = sorted.find(r => Number(r.rampages) > 0);

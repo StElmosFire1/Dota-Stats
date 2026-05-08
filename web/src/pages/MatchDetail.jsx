@@ -570,15 +570,18 @@ function TimelineGraph({ timeline, allPlayers }) {
         {playerKeysDesc.map(({ key, name, color }) => {
           const hidden = hiddenPlayers.has(key);
           return (
-            <div
+            <button
+              type="button"
               key={key}
+              aria-pressed={!hidden}
+              aria-label={`${hidden ? 'Show' : 'Hide'} ${name} on chart`}
               onClick={() => setHiddenPlayers(prev => {
                 const next = new Set(prev);
                 if (next.has(key)) next.delete(key); else next.add(key);
                 return next;
               })}
               style={{
-                display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', font: 'inherit',
                 opacity: hidden ? 0.35 : 1,
                 fontSize: 11, color: hidden ? '#64748b' : color,
                 padding: '2px 8px', borderRadius: 4, border: '1px solid',
@@ -589,7 +592,7 @@ function TimelineGraph({ timeline, allPlayers }) {
             >
               <div style={{ width: 14, height: 2, background: hidden ? '#64748b' : color, borderRadius: 1 }} />
               {name}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -925,8 +928,12 @@ function PositionSelect({ player, matchId, onUpdate }) {
   if (!editing) {
     return (
       <span
+        role="button"
+        tabIndex={0}
+        aria-label="Edit position"
         className="position-label editable"
         onClick={() => setEditing(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); } }}
         title="Click to edit position"
       >
         {POSITION_NAMES[pos] || '-'}
@@ -2687,12 +2694,13 @@ function RemoteReplayButton({ match }) {
         {downloading ? '⏳ Downloading…' : !isPro ? '★ Download Replay (Pro)' : '⬇ Download Replay (Archive)'}
       </button>
       {paywallVisible && (
-        <div style={{
+        <div role="presentation" style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           background: 'rgba(0,0,0,0.7)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setPaywallVisible(false)}>
-          <div style={{
+        }} onClick={() => setPaywallVisible(false)}
+           onKeyDown={(e) => { if (e.key === 'Escape') setPaywallVisible(false); }}>
+          <div role="dialog" aria-modal="true" aria-label="Replay download — Pro feature" style={{
             background: 'var(--bg-card, #1e293b)', border: '1px solid rgba(245,158,11,0.4)',
             borderRadius: 12, padding: '28px 32px', maxWidth: 420, width: '90vw',
             textAlign: 'center',

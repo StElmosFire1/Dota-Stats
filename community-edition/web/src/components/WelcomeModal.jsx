@@ -30,9 +30,9 @@ export default function WelcomeModal() {
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
+      role="presentation"
       onClick={dismiss}
+      onKeyDown={e => { if (e.key === 'Escape') dismiss(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 10000,
         background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)',
@@ -41,6 +41,9 @@ export default function WelcomeModal() {
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Welcome"
         onClick={e => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 540,

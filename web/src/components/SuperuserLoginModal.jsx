@@ -41,11 +41,22 @@ export default function SuperuserLoginModal() {
   };
 
   return (
-    <div className="modal-overlay" onClick={() => setShowModal(false)}>
-      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="modal-overlay"
+      onClick={() => setShowModal(false)}
+      onKeyDown={(e) => { if (e.key === 'Escape') setShowModal(false); }}
+      role="presentation"
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="superuser-login-title"
+      >
         <div className="modal-header">
-          <span className="modal-title">&#128081; Superuser Login</span>
-          <button className="modal-close" onClick={() => setShowModal(false)}>&#x2715;</button>
+          <span className="modal-title" id="superuser-login-title">&#128081; Superuser Login</span>
+          <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Close">&#x2715;</button>
         </div>
         <p style={{ color: '#888', fontSize: '0.85rem', margin: '0 0 12px' }}>
           Full stats editing access. Requires a separate superuser password.

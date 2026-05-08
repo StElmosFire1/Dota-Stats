@@ -50,6 +50,18 @@ The web dashboard is a React-based frontend with an Express backend, offering ex
 - **Graceful Degradation:** Core functionalities are designed to remain operational even if non-critical components are unavailable.
 - **Child Processes:** The Java replay parser is executed as a child process.
 
+## Frontend accessibility house rule
+Every clickable thing in `web/src/` and `community-edition/web/src/` must be keyboard-reachable, screen-reader-labelled, and operable without a mouse. The shapes below have repeatedly slipped through PRs (Tasks #158 and #161) — do not reintroduce them.
+
+- **No `<div onClick>` / `<span onClick>` for actions.** Use a real `<button type="button">` (preferred) or, if the layout makes a button impossible (e.g. a row containing a nested `<Link>`, where button-in-button or anchor-in-button would be invalid HTML), add ALL of: `role="button"`, `tabIndex={0}`, an `onKeyDown` that handles Enter/Space, and an `aria-label` (or visible text) describing the action. Toggles also need `aria-expanded` / `aria-pressed` / `aria-checked` as appropriate.
+- **Sortable table columns** must use the shared `SortableTh` component (`web/src/components/SortableTh.jsx`, `community-edition/web/src/components/SortableTh.jsx`) — never raw `<th onClick>`. Pass `active={sortField === 'foo'}` and `direction={sortDir > 0 ? 'asc' : 'desc'}` so screen readers get a real `aria-sort` value.
+- **Modals/dialogs** must set `role="dialog"`, `aria-modal="true"`, and either `aria-labelledby` (pointing at the visible title) or `aria-label`. The backdrop should be `role="presentation"` and an Escape-to-close `onKeyDown` is required. Login modals already manage focus with `inputRef`; new dialogs should follow the same pattern.
+- **Hover-only reveals are forbidden.** Anything that appears on `:hover` (tooltips, detail panels, expanded card faces) must also appear on `:focus`/`:focus-within` and must remain readable on touch devices (`@media (hover: none)`). The v3 Magazine hero cards (Task #158) are the reference pattern.
+- **Custom toggle/switch/radio shapes** must use the matching ARIA role (`role="switch"` with `aria-checked`, or `role="radiogroup"` + `role="radio"` children). Don't ship a `<div>` styled as a switch.
+- **Button-as-icon-only** must carry an `aria-label` (e.g. dismiss `×` buttons, close buttons).
+
+If the codebase grows a clickable that doesn't fit one of these shapes, add the shape and document it here before it spreads.
+
 ## External Dependencies
 - **Discord API:** `discord.js`
 - **Steam API:** `steam-user`, `dota2-user`

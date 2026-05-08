@@ -136,10 +136,20 @@ export default function MyBookings() {
       )}
 
       {reviewModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
-          onClick={() => setReviewModal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 10, maxWidth: 500, width: '90%' }}>
-            <h3 style={{ marginTop: 0 }}>Review {reviewModal.coach_name}</h3>
+        <div
+          role="presentation"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          onClick={() => setReviewModal(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setReviewModal(null); }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-modal-title"
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 10, maxWidth: 500, width: '90%' }}
+          >
+            <h3 id="review-modal-title" style={{ marginTop: 0 }}>Review {reviewModal.coach_name}</h3>
             <label>Rating:&nbsp;
               <select value={reviewModal.rating} onChange={e => setReviewModal(m => ({ ...m, rating: parseInt(e.target.value) }))}
                 style={{ padding: 6, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>

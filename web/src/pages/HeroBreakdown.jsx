@@ -69,7 +69,12 @@ export default function HeroBreakdown() {
               return (
                 <React.Fragment key={p.player_key}>
                   <tr
-                    onClick={() => toggleExpanded(p.player_key)}
+                    onClick={(e) => { if (e.target.closest('a,button')) return; toggleExpanded(p.player_key); }}
+                    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); toggleExpanded(p.player_key); } }}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={!!isExpanded}
+                    aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${p.nickname || p.persona_name} stats`}
                     style={{ cursor: 'pointer', background: isExpanded ? 'rgba(59,130,246,0.1)' : 'transparent' }}
                     className="player-profile-header"
                   >

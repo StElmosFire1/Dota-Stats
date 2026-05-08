@@ -54,6 +54,7 @@ export function SteamTrustModal({ open, onClose }) {
       aria-modal="true"
       aria-labelledby="steam-trust-modal-title"
       onClick={onClose}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 10000,
         background: 'rgba(0,0,0,0.78)',

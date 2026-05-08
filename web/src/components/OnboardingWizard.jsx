@@ -101,8 +101,13 @@ export default function OnboardingWizard({ onComplete, onDismiss }) {
   );
 
   return (
-    <div style={backdrop} onClick={e => { if (e.target === e.currentTarget) onDismiss?.(); }}>
-      <div style={modal}>
+    <div
+      style={backdrop}
+      role="presentation"
+      onClick={e => { if (e.target === e.currentTarget) onDismiss?.(); }}
+      onKeyDown={e => { if (e.key === 'Escape') onDismiss?.(); }}
+    >
+      <div style={modal} role="dialog" aria-modal="true" aria-label="Welcome to OCE Inhouse">
         <button
           onClick={onDismiss}
           style={{

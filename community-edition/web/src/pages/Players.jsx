@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
 import { getAllPlayers, setNickname, setPlayerDiscordId } from '../api';
 import { useSeason } from '../context/SeasonContext';
@@ -186,16 +187,16 @@ export default function Players() {
         <table className="scoreboard">
           <thead>
             <tr>
-              <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('persona_name')}>Player{si('persona_name')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games_played')}>Games{si('games_played')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')}>W{si('wins')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')}>Win%{si('win_rate')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')}>K{si('avg_kills')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')}>D{si('avg_deaths')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')}>A{si('avg_assists')}</th>
-              <th className="col-stat" title="Kill Involvement" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')}>KI%{si('avg_kill_involvement')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('most_played_position')}>Most Played{si('most_played_position')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('best_position_score')}>Best Pos{si('best_position_score')}</th>
+              <SortableTh className="col-player" active={sortField === 'persona_name'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('persona_name')}>Player{si('persona_name')}</SortableTh>
+              <SortableTh className="col-stat" active={sortField === 'games_played'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('games_played')}>Games{si('games_played')}</SortableTh>
+              <SortableTh className="col-stat" active={sortField === 'wins'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('wins')}>W{si('wins')}</SortableTh>
+              <SortableTh className="col-stat" active={sortField === 'win_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('win_rate')}>Win%{si('win_rate')}</SortableTh>
+              <SortableTh className="col-stat" active={sortField === 'avg_kills'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_kills')}>K{si('avg_kills')}</SortableTh>
+              <SortableTh className="col-stat" active={sortField === 'avg_deaths'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_deaths')}>D{si('avg_deaths')}</SortableTh>
+              <SortableTh className="col-stat" active={sortField === 'avg_assists'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_assists')}>A{si('avg_assists')}</SortableTh>
+              <SortableTh className="col-stat" title="Kill Involvement" active={sortField === 'avg_kill_involvement'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_kill_involvement')}>KI%{si('avg_kill_involvement')}</SortableTh>
+              <SortableTh className="col-stat" active={sortField === 'most_played_position'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('most_played_position')}>Most Played{si('most_played_position')}</SortableTh>
+              <SortableTh className="col-stat" active={sortField === 'best_position_score'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('best_position_score')}>Best Pos{si('best_position_score')}</SortableTh>
               <th className="col-stat">Nickname</th>
               <th className="col-stat" title="Discord User ID — used for bot DMs">Discord ID</th>
             </tr>

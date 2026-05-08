@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
 import { getSocialGraph, getPlayerConnections, getAllPlayers } from '../api';
 import { useSeason } from '../context/SeasonContext';
@@ -90,9 +91,9 @@ function TopDuosTab() {
                 <th className="col-rank">#</th>
                 <th className="col-player">Player 1</th>
                 <th className="col-player">Player 2</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')}>Games{si('games')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')}>Wins{si('wins')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wr')}>Win %{si('wr')}</th>
+                <SortableTh className="col-stat" active={sortField === 'games'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('games')}>Games{si('games')}</SortableTh>
+                <SortableTh className="col-stat" active={sortField === 'wins'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('wins')}>Wins{si('wins')}</SortableTh>
+                <SortableTh className="col-stat" active={sortField === 'wr'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('wr')}>Win %{si('wr')}</SortableTh>
                 <th className="col-stat">Form</th>
               </tr>
             </thead>

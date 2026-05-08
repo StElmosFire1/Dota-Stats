@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList } from '../api';
 import PaywallCard from '../components/PaywallCard';
 import PaywallBlur from '../components/PaywallBlur';
@@ -185,7 +186,12 @@ function HeroBreakdownTab() {
               return (
                 <React.Fragment key={p.player_key}>
                   <tr
-                    onClick={() => toggleExpanded(p.player_key)}
+                    onClick={(e) => { if (e.target.closest('a,button')) return; toggleExpanded(p.player_key); }}
+                    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); toggleExpanded(p.player_key); } }}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={!!isExpanded}
+                    aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${p.nickname || p.persona_name} stats`}
                     style={{ cursor: 'pointer', background: isExpanded ? 'rgba(59,130,246,0.1)' : 'transparent' }}
                     className="player-profile-header"
                   >
@@ -462,10 +468,10 @@ function HeroMatchupsTab() {
           <table className="scoreboard">
             <thead>
               <tr>
-                <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('opp_hero_name')}>Opponent{si('opp_hero_name')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('matchups')}>Games{si('matchups')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')}>Wins{si('wins')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wr')}>Win %{si('wr')}</th>
+                <SortableTh className="col-player" active={sortField === 'opp_hero_name'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('opp_hero_name')}>Opponent{si('opp_hero_name')}</SortableTh>
+                <SortableTh className="col-stat" active={sortField === 'matchups'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('matchups')}>Games{si('matchups')}</SortableTh>
+                <SortableTh className="col-stat" active={sortField === 'wins'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('wins')}>Wins{si('wins')}</SortableTh>
+                <SortableTh className="col-stat" active={sortField === 'wr'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('wr')}>Win %{si('wr')}</SortableTh>
                 <th className="col-stat" title="Win rate bar">Advantage</th>
               </tr>
             </thead>
@@ -667,36 +673,36 @@ export default function Heroes({ defaultTab }) {
             <table className="scoreboard">
               <thead>
                 <tr>
-                  <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('hero_name')} title="Hero name">
+                  <SortableTh className="col-player" title="Hero name" active={sortField === 'hero_name'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('hero_name')}>
                     Hero{sortIcon('hero_name')}
-                  </th>
-                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Times picked">
+                  </SortableTh>
+                  <SortableTh className="col-stat" title="Times picked" active={sortField === 'games'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('games')}>
                     Picks{sortIcon('games')}
-                  </th>
-                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('pick_rate')} title="Pick rate">
+                  </SortableTh>
+                  <SortableTh className="col-stat" title="Pick rate" active={sortField === 'pick_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('pick_rate')}>
                     Pick%{sortIcon('pick_rate')}
-                  </th>
-                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win rate">
+                  </SortableTh>
+                  <SortableTh className="col-stat" title="Win rate" active={sortField === 'win_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('win_rate')}>
                     Win%{sortIcon('win_rate')}
-                  </th>
+                  </SortableTh>
                   {hasDraftData && (
                     <>
-                      <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('bans')} title="Times banned">
+                      <SortableTh className="col-stat" title="Times banned" active={sortField === 'bans'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('bans')}>
                         Bans{sortIcon('bans')}
-                      </th>
-                      <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('ban_rate')} title="Ban rate">
+                      </SortableTh>
+                      <SortableTh className="col-stat" title="Ban rate" active={sortField === 'ban_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('ban_rate')}>
                         Ban%{sortIcon('ban_rate')}
-                      </th>
-                      <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('contest_rate')} title="Contest rate">
+                      </SortableTh>
+                      <SortableTh className="col-stat" title="Contest rate" active={sortField === 'contest_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('contest_rate')}>
                         Contest%{sortIcon('contest_rate')}
-                      </th>
+                      </SortableTh>
                     </>
                   )}
-                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')}>K{sortIcon('avg_kills')}</th>
-                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')}>D{sortIcon('avg_deaths')}</th>
-                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')}>A{sortIcon('avg_assists')}</th>
-                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_gpm')}>GPM{sortIcon('avg_gpm')}</th>
-                  <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_damage')}>HD{sortIcon('avg_hero_damage')}</th>
+                  <SortableTh className="col-stat" active={sortField === 'avg_kills'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_kills')}>K{sortIcon('avg_kills')}</SortableTh>
+                  <SortableTh className="col-stat" active={sortField === 'avg_deaths'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_deaths')}>D{sortIcon('avg_deaths')}</SortableTh>
+                  <SortableTh className="col-stat" active={sortField === 'avg_assists'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_assists')}>A{sortIcon('avg_assists')}</SortableTh>
+                  <SortableTh className="col-stat" active={sortField === 'avg_gpm'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_gpm')}>GPM{sortIcon('avg_gpm')}</SortableTh>
+                  <SortableTh className="col-stat" active={sortField === 'avg_hero_damage'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_hero_damage')}>HD{sortIcon('avg_hero_damage')}</SortableTh>
                 </tr>
               </thead>
               <tbody>

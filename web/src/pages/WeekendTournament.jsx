@@ -104,10 +104,24 @@ function PlayerRow({ player, rank, gamesToCount }) {
 
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 8 }}>
-      <div onClick={() => setExpanded(e => !e)} style={{
-        display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, cursor: 'pointer',
-        background: rank <= 3 ? `rgba(245,158,11,${0.07 - rank * 0.015})` : 'transparent',
-      }}>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} ${player.display_name}`}
+        onClick={() => setExpanded(e => !e)}
+        onKeyDown={(e) => {
+          // Only toggle when the row itself (not the inner Link) is focused.
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded(v => !v);
+          }
+        }}
+        style={{
+          display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, cursor: 'pointer',
+          background: rank <= 3 ? `rgba(245,158,11,${0.07 - rank * 0.015})` : 'transparent',
+        }}>
         <span style={{ fontSize: 18, minWidth: 26, textAlign: 'center' }}>
           {rank <= 3 ? medals[rank - 1] : <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 700 }}>#{rank}</span>}
         </span>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
 import { getOverallStats } from '../api';
 import { useSeason } from '../context/SeasonContext';
@@ -75,16 +76,16 @@ export default function OverallStats() {
         <table className="scoreboard">
           <thead>
             <tr>
-              <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('persona_name')} title="Player name (click to sort)">Player{si('persona_name')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Total games played">Games{si('games')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')} title="Wins">W{si('wins')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('losses')} title="Losses">L{si('losses')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')} title="Average kills per game">K{si('avg_kills')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')} title="Average deaths per game">D{si('avg_deaths')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')} title="Average assists per game">A{si('avg_assists')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">Win%{si('win_rate')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')} title="Kill Involvement — percentage of team kills you participated in (kills + assists)">KI%{si('avg_kill_involvement')}</th>
-              <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('captain_win_rate')} title="Captain win rate — win percentage when this player was captain">Capt%{si('captain_win_rate')}</th>
+              <SortableTh className="col-player" title="Player name (click to sort)" active={sortField === 'persona_name'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('persona_name')}>Player{si('persona_name')}</SortableTh>
+              <SortableTh className="col-stat" title="Total games played" active={sortField === 'games'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('games')}>Games{si('games')}</SortableTh>
+              <SortableTh className="col-stat" title="Wins" active={sortField === 'wins'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('wins')}>W{si('wins')}</SortableTh>
+              <SortableTh className="col-stat" title="Losses" active={sortField === 'losses'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('losses')}>L{si('losses')}</SortableTh>
+              <SortableTh className="col-stat" title="Average kills per game" active={sortField === 'avg_kills'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_kills')}>K{si('avg_kills')}</SortableTh>
+              <SortableTh className="col-stat" title="Average deaths per game" active={sortField === 'avg_deaths'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_deaths')}>D{si('avg_deaths')}</SortableTh>
+              <SortableTh className="col-stat" title="Average assists per game" active={sortField === 'avg_assists'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_assists')}>A{si('avg_assists')}</SortableTh>
+              <SortableTh className="col-stat" title="Win percentage" active={sortField === 'win_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('win_rate')}>Win%{si('win_rate')}</SortableTh>
+              <SortableTh className="col-stat" title="Kill Involvement — percentage of team kills you participated in (kills + assists)" active={sortField === 'avg_kill_involvement'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_kill_involvement')}>KI%{si('avg_kill_involvement')}</SortableTh>
+              <SortableTh className="col-stat" title="Captain win rate — win percentage when this player was captain" active={sortField === 'captain_win_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('captain_win_rate')}>Capt%{si('captain_win_rate')}</SortableTh>
               <th className="col-stat" title="Best position by composite score: win rate + KDA + kill involvement">Best Pos</th>
             </tr>
           </thead>

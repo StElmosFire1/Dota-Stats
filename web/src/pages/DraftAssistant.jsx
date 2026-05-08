@@ -11,15 +11,17 @@ function HeroChip({ heroId, onRemove, team }) {
   const bg = team === 'ally' ? 'rgba(76,175,80,0.2)' : team === 'enemy' ? 'rgba(244,67,54,0.2)' : 'rgba(100,100,100,0.2)';
   const border = team === 'ally' ? 'var(--accent-green)' : team === 'enemy' ? 'var(--accent-red)' : '#555';
   return (
-    <div
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: bg, border: `1px solid ${border}`, borderRadius: 16, padding: '3px 8px 3px 4px', margin: '2px', cursor: 'pointer', fontSize: 12 }}
+    <button
+      type="button"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: bg, border: `1px solid ${border}`, borderRadius: 16, padding: '3px 8px 3px 4px', margin: '2px', cursor: 'pointer', fontSize: 12, color: 'inherit', font: 'inherit' }}
       onClick={() => onRemove(heroId)}
+      aria-label={`Remove ${name}`}
       title={`Remove ${name}`}
     >
       {img && <img src={img} alt="" style={{ width: 20, height: 20, borderRadius: 3 }} />}
       <span>{name}</span>
       <span style={{ color: '#888', marginLeft: 2 }}>✕</span>
-    </div>
+    </button>
   );
 }
 

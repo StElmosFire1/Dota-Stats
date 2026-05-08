@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
 import { getPlayerBenchmarks } from '../api';
 import { useSeason } from '../context/SeasonContext';
@@ -67,12 +68,14 @@ export default function PlayerBenchmarks() {
   }
 
   const SortTh = ({ metricKey, label }) => (
-    <th
-      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
-      onClick={() => handleSort(metricKey)}
+    <SortableTh
+      active={sortKey === metricKey}
+      direction={sortDir === 'desc' ? 'desc' : 'asc'}
+      onSort={() => handleSort(metricKey)}
+      style={{ whiteSpace: 'nowrap' }}
     >
       {label} {sortKey === metricKey ? (sortDir === 'desc' ? '▼' : '▲') : ''}
-    </th>
+    </SortableTh>
   );
 
   if (loading) return <div className="loading">Loading benchmarks…</div>;

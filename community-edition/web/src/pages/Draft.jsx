@@ -24,15 +24,17 @@ function HeroChip({ heroId, onRemove, team }) {
   const bg = team === 'ally' ? 'rgba(76,175,80,0.2)' : team === 'enemy' ? 'rgba(244,67,54,0.2)' : 'rgba(100,100,100,0.2)';
   const border = team === 'ally' ? 'var(--accent-green)' : team === 'enemy' ? 'var(--accent-red)' : '#555';
   return (
-    <div
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: bg, border: `1px solid ${border}`, borderRadius: 16, padding: '3px 8px 3px 4px', margin: '2px', cursor: 'pointer', fontSize: 12 }}
+    <button
+      type="button"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: bg, border: `1px solid ${border}`, borderRadius: 16, padding: '3px 8px 3px 4px', margin: '2px', cursor: 'pointer', fontSize: 12, color: 'inherit', font: 'inherit' }}
       onClick={() => onRemove(heroId)}
+      aria-label={`Remove ${name}`}
       title={`Remove ${name}`}
     >
       {img && <img src={img} alt="" style={{ width: 20, height: 20, borderRadius: 3 }} />}
       <span>{name}</span>
       <span style={{ color: '#888', marginLeft: 2 }}>✕</span>
-    </div>
+    </button>
   );
 }
 
@@ -263,15 +265,16 @@ function PlayerPoolPanel({ label, color, players, allPlayers, heroPool, pickedHe
         {filtered.length > 0 && (
           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6, zIndex: 10, maxHeight: 200, overflowY: 'auto' }}>
             {filtered.map(p => (
-              <div
+              <button
+                type="button"
                 key={p.account_id}
                 onClick={() => { onAddPlayer(p); setSearch(''); }}
-                style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 13 }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 0, color: 'inherit', font: 'inherit', padding: '7px 10px', cursor: 'pointer', fontSize: 13 }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                 onMouseLeave={e => e.currentTarget.style.background = ''}
               >
                 {p.nickname || p.display_name}
-              </div>
+              </button>
             ))}
           </div>
         )}

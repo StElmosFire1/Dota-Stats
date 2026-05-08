@@ -208,6 +208,11 @@ export default function PatchNotes() {
               }}
             >
               <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={isOpen}
+                aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${note.title}`}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(isOpen ? null : note.id); } }}
                 onClick={() => setExpanded(isOpen ? null : note.id)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
 import { getPositionStats, getPlayerPositionProfiles } from '../api';
 import { useSeason } from '../context/SeasonContext';
@@ -103,22 +104,22 @@ function PositionStatsView() {
           <table className="scoreboard">
             <thead>
               <tr>
-                <th className="col-player" style={{ cursor: 'pointer' }} onClick={() => handleSort('persona_name')} title="Player name">Player{si('persona_name')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('games')} title="Games at this position">Games{si('games')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('wins')} title="Wins">W{si('wins')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('losses')} title="Losses">L{si('losses')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kills')} title="Average kills">K{si('avg_kills')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_deaths')} title="Average deaths">D{si('avg_deaths')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_assists')} title="Average assists">A{si('avg_assists')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_kill_involvement')} title="Kill Involvement">KI%{si('avg_kill_involvement')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('win_rate')} title="Win percentage">Win%{si('win_rate')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('lane_win_rate')} title="% of lanes won (dominant or slight advantage)">Lane W%{si('lane_win_rate')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_gpm')} title="Average GPM">GPM{si('avg_gpm')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_xpm')} title="Average XPM">XPM{si('avg_xpm')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_hero_damage')} title="Average Hero Damage">Dmg{si('avg_hero_damage')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_damage_taken')} title="Average Damage Taken">Tanked{si('avg_damage_taken')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_support_gold')} title="Average wards placed">Wards{si('avg_support_gold')}</th>
-                <th className="col-stat" style={{ cursor: 'pointer' }} onClick={() => handleSort('avg_stacks')} title="Average camps stacked">Stacks{si('avg_stacks')}</th>
+                <SortableTh className="col-player" title="Player name" active={sortField === 'persona_name'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('persona_name')}>Player{si('persona_name')}</SortableTh>
+                <SortableTh className="col-stat" title="Games at this position" active={sortField === 'games'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('games')}>Games{si('games')}</SortableTh>
+                <SortableTh className="col-stat" title="Wins" active={sortField === 'wins'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('wins')}>W{si('wins')}</SortableTh>
+                <SortableTh className="col-stat" title="Losses" active={sortField === 'losses'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('losses')}>L{si('losses')}</SortableTh>
+                <SortableTh className="col-stat" title="Average kills" active={sortField === 'avg_kills'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_kills')}>K{si('avg_kills')}</SortableTh>
+                <SortableTh className="col-stat" title="Average deaths" active={sortField === 'avg_deaths'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_deaths')}>D{si('avg_deaths')}</SortableTh>
+                <SortableTh className="col-stat" title="Average assists" active={sortField === 'avg_assists'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_assists')}>A{si('avg_assists')}</SortableTh>
+                <SortableTh className="col-stat" title="Kill Involvement" active={sortField === 'avg_kill_involvement'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_kill_involvement')}>KI%{si('avg_kill_involvement')}</SortableTh>
+                <SortableTh className="col-stat" title="Win percentage" active={sortField === 'win_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('win_rate')}>Win%{si('win_rate')}</SortableTh>
+                <SortableTh className="col-stat" title="% of lanes won (dominant or slight advantage)" active={sortField === 'lane_win_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('lane_win_rate')}>Lane W%{si('lane_win_rate')}</SortableTh>
+                <SortableTh className="col-stat" title="Average GPM" active={sortField === 'avg_gpm'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_gpm')}>GPM{si('avg_gpm')}</SortableTh>
+                <SortableTh className="col-stat" title="Average XPM" active={sortField === 'avg_xpm'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_xpm')}>XPM{si('avg_xpm')}</SortableTh>
+                <SortableTh className="col-stat" title="Average Hero Damage" active={sortField === 'avg_hero_damage'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_hero_damage')}>Dmg{si('avg_hero_damage')}</SortableTh>
+                <SortableTh className="col-stat" title="Average Damage Taken" active={sortField === 'avg_damage_taken'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_damage_taken')}>Tanked{si('avg_damage_taken')}</SortableTh>
+                <SortableTh className="col-stat" title="Average wards placed" active={sortField === 'avg_support_gold'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_support_gold')}>Wards{si('avg_support_gold')}</SortableTh>
+                <SortableTh className="col-stat" title="Average camps stacked" active={sortField === 'avg_stacks'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('avg_stacks')}>Stacks{si('avg_stacks')}</SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -218,7 +219,12 @@ function PlayerProfilesView() {
               return (
                 <React.Fragment key={p.player_key}>
                   <tr
-                    onClick={() => toggleExpanded(p.player_key)}
+                    onClick={(e) => { if (e.target.closest('a,button')) return; toggleExpanded(p.player_key); }}
+                    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); toggleExpanded(p.player_key); } }}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={!!isExpanded}
+                    aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${p.nickname || p.persona_name} stats`}
                     style={{ cursor: 'pointer', background: isExpanded ? 'rgba(59,130,246,0.1)' : 'transparent' }}
                     className="player-profile-header"
                   >

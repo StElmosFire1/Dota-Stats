@@ -781,14 +781,15 @@ export default function SettingsProfile() {
                     zIndex: 10, maxHeight: 220, overflowY: 'auto',
                   }}>
                     {heroOptions.map(h => (
-                      <div key={h.id}
+                      <button type="button" key={h.id}
                         onClick={() => { setPinnedHeroId(String(h.id)); setPinnedHeroSearch(h.name); }}
-                        style={{ padding: '6px 10px', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}
+                        aria-label={`Pin hero ${h.name}`}
+                        style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 0, color: 'inherit', font: 'inherit', padding: '6px 10px', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}
                         onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
                         onMouseLeave={(e) => e.currentTarget.style.background = ''}>
                         <img src={getHeroImageUrl(h.id)} alt="" style={{ width: 36, height: 20, borderRadius: 2 }} />
                         {h.name}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}

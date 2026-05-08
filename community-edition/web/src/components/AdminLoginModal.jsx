@@ -34,11 +34,22 @@ export default function AdminLoginModal() {
   };
 
   return (
-    <div className="modal-overlay" onClick={() => setShowModal(false)}>
-      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="modal-overlay"
+      onClick={() => setShowModal(false)}
+      onKeyDown={(e) => { if (e.key === 'Escape') setShowModal(false); }}
+      role="presentation"
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-login-title"
+      >
         <div className="modal-header">
-          <span className="modal-title">Admin Login</span>
-          <button className="modal-close" onClick={() => setShowModal(false)}>&#x2715;</button>
+          <span className="modal-title" id="admin-login-title">Admin Login</span>
+          <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Close">&#x2715;</button>
         </div>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <input

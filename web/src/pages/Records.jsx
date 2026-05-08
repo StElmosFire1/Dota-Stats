@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
 import { getPersonalRecords, getFirstBloodStats, getComebackMatches, getMultiKillStats, getSeasonPlayerRecords } from '../api';
 import HallOfFame from './HallOfFame';
@@ -60,11 +61,12 @@ function MultiKillsTab({ rows, sortKey, setSortKey }) {
   });
   const topRampage = sorted.find(r => Number(r.rampages) > 0);
   const Th = ({ col, label, title }) => (
-    <th className="col-stat" title={title}
-      style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === col ? 'var(--accent-blue)' : '' }}
-      onClick={() => setSortKey(col)}>
+    <SortableTh className="col-stat" title={title}
+      active={sortKey === col} direction="desc"
+      onSort={() => setSortKey(col)}
+      style={{ color: sortKey === col ? 'var(--accent-blue)' : '' }}>
       {label} {sortKey === col ? '▼' : ''}
-    </th>
+    </SortableTh>
   );
   return (
     <div>

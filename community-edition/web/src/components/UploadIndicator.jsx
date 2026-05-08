@@ -170,10 +170,15 @@ export default function UploadIndicator() {
 
   if (summary.status === 'active') {
     return (
-      <div className="upload-indicator processing" onClick={() => navigate('/upload')}>
+      <button
+        type="button"
+        className="upload-indicator processing"
+        onClick={() => navigate('/upload')}
+        aria-label="Upload in progress — open upload page"
+      >
         <span className="indicator-dot pulsing"></span>
         <span>{summary.step} ({summary.doneCount}/{summary.total} done)</span>
-      </div>
+      </button>
     );
   }
 
@@ -181,7 +186,8 @@ export default function UploadIndicator() {
     return (
       <div className="upload-indicator success">
         <span className="indicator-dot"></span>
-        <span
+        <button
+          type="button"
           className="indicator-link"
           onClick={() => {
             setDismissed(true);
@@ -195,8 +201,8 @@ export default function UploadIndicator() {
           {summary.completed} replay{summary.completed !== 1 ? 's' : ''} done
           {summary.failed > 0 && `, ${summary.failed} failed`}
            — click to view
-        </span>
-        <button className="indicator-dismiss" onClick={handleDismiss}>&times;</button>
+        </button>
+        <button className="indicator-dismiss" onClick={handleDismiss} aria-label="Dismiss notification">&times;</button>
       </div>
     );
   }

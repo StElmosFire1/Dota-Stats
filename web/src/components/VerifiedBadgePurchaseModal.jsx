@@ -88,7 +88,9 @@ export default function VerifiedBadgePurchaseModal({ open, onClose }) {
 
   return (
     <div
+      role="presentation"
       onClick={onClose}
+      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -96,6 +98,9 @@ export default function VerifiedBadgePurchaseModal({ open, onClose }) {
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Purchase verified badge"
         onClick={e => e.stopPropagation()}
         style={{
           background: 'var(--bg-secondary, #11192b)',

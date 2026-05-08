@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
 import { getPudgeStats, getPudgeGames } from '../api';
 import { useSeason } from '../context/SeasonContext';
@@ -84,11 +85,12 @@ function SummaryTab({ players }) {
   });
 
   const Th = ({ col }) => (
-    <th className="col-stat" title={col.title}
-      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
-      onClick={() => handleSort(col.key)}>
+    <SortableTh className="col-stat" title={col.title}
+      active={sortKey === col.key} direction={sortDir === -1 ? 'desc' : 'asc'}
+      onSort={() => handleSort(col.key)}
+      style={{ whiteSpace: 'nowrap' }}>
       {col.label}{sortKey === col.key ? (sortDir === -1 ? ' ▼' : ' ▲') : ''}
-    </th>
+    </SortableTh>
   );
 
   return (
@@ -179,11 +181,12 @@ function GamesTab({ games }) {
   });
 
   const Th = ({ col }) => (
-    <th className="col-stat" title={col.title}
-      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
-      onClick={() => handleSort(col.key)}>
+    <SortableTh className="col-stat" title={col.title}
+      active={sortKey === col.key} direction={sortDir === -1 ? 'desc' : 'asc'}
+      onSort={() => handleSort(col.key)}
+      style={{ whiteSpace: 'nowrap' }}>
       {col.label}{sortKey === col.key ? (sortDir === -1 ? ' ▼' : ' ▲') : ''}
-    </th>
+    </SortableTh>
   );
 
   if (games.length === 0) {

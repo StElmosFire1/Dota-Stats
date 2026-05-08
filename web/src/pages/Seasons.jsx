@@ -81,10 +81,11 @@ function BuyinModal({ season, players, onClose }) {
   const isSteamVerified = !!steamUser && String(accountId) === String(steamUser.accountId);
 
   return (
-    <div style={{
+    <div role="presentation" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
+    }} onClick={e => e.target === e.currentTarget && onClose()}
+       onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
       <div className="card" style={{ width: '100%', maxWidth: 480, margin: 16 }}>
         <h3 style={{ marginTop: 0 }}>Pay Season Buy-in — {season.name}</h3>
         <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 16 }}>
@@ -183,10 +184,11 @@ function BuyinAmountModal({ season, adminKey, onClose, onSaved }) {
   }
 
   return (
-    <div style={{
+    <div role="presentation" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
+    }} onClick={e => e.target === e.currentTarget && onClose()}
+       onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
       <div className="card" style={{ width: '100%', maxWidth: 400, margin: 16 }}>
         <h3 style={{ marginTop: 0 }}>Set Buy-in Amount — {season.name}</h3>
         <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16 }}>Set to 0 to disable buy-in for this season.</p>
@@ -223,10 +225,11 @@ function BuyinListModal({ season, onClose }) {
   const totalCents = data?.totalCents || 0;
 
   return (
-    <div style={{
+    <div role="presentation" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
+    }} onClick={e => e.target === e.currentTarget && onClose()}
+       onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
       <div className="card" style={{ width: '100%', maxWidth: 560, margin: 16, maxHeight: '80vh', overflowY: 'auto' }}>
         <h3 style={{ marginTop: 0 }}>Buy-ins — {season.name}</h3>
         {loading ? (
@@ -383,10 +386,11 @@ function PayoutsModal({ season, players, adminKey, onClose }) {
   const totalPrizeCents = payouts.reduce((s, p) => s + p.amount_cents, 0);
 
   return (
-    <div style={{
+    <div role="presentation" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
+    }} onClick={e => e.target === e.currentTarget && onClose()}
+       onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
       <div className="card" style={{ width: '100%', maxWidth: 680, margin: 16, maxHeight: '85vh', overflowY: 'auto' }}>
         <h3 style={{ marginTop: 0 }}>Prize Categories — {season.name}</h3>
 

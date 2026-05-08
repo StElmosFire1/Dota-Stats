@@ -213,7 +213,7 @@ export default function MatchList() {
                         {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
 
                         {isSuperuser && isEditing ? (
-                          <span onClick={e => e.preventDefault()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             <select
                               autoFocus
                               value={seasonInput}
@@ -241,7 +241,13 @@ export default function MatchList() {
                           </span>
                         ) : (
                           <span
-                            onClick={e => startEditSeason(e, match)}
+                            {...(isSuperuser ? {
+                              role: 'button',
+                              tabIndex: 0,
+                              'aria-label': 'Edit season',
+                              onClick: (e) => startEditSeason(e, match),
+                              onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEditSeason(e, match); } },
+                            } : {})}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: isSuperuser ? 'pointer' : 'default' }}
                             title={isSuperuser ? 'Click to change season' : undefined}
                           >
@@ -263,7 +269,12 @@ export default function MatchList() {
                   {/* Checkbox in bottom-right corner so it doesn't overlap the date */}
                   {isSuperuser && (
                     <div
+                      role="checkbox"
+                      tabIndex={0}
+                      aria-checked={!!isSelected}
+                      aria-label={`Select match ${match.match_id}`}
                       onClick={e => toggleSelect(e, match.match_id)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSelect(e, match.match_id); } }}
                       style={{
                         position: 'absolute', bottom: 10, right: 10, zIndex: 2,
                         width: 18, height: 18, borderRadius: 4,

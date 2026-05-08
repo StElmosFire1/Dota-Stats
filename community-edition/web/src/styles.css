@@ -103,6 +103,16 @@ a:hover {
   font-size: 0.85rem;
   cursor: pointer;
   transition: opacity 0.2s;
+  /* Buttons reset (component may render as <button>) */
+  width: 100%;
+  border: 0;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+.upload-indicator:focus-visible {
+  outline: 2px solid var(--accent, #5b9bd5);
+  outline-offset: -2px;
 }
 
 .upload-indicator:hover {
@@ -1418,3 +1428,6 @@ th.col-stat {
     min-width: 580px;
   }
 }
+
+.sortable-th-button:focus { outline: none; }
+.sortable-th-button:focus-visible { outline: 2px solid var(--accent, #c5a975); outline-offset: 2px; border-radius: 2px; }

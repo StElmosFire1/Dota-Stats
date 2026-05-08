@@ -36,7 +36,12 @@ function SearchableSelect({ players, value, onChange, placeholder = 'Search play
   return (
     <div ref={ref} style={{ position: 'relative', flex: 1 }}>
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        aria-label="Select player"
         onClick={() => setOpen(o => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
           background: 'var(--bg-input)', border: `1px solid ${open ? 'var(--accent)' : 'var(--border)'}`,
@@ -49,7 +54,11 @@ function SearchableSelect({ players, value, onChange, placeholder = 'Search play
         </span>
         {selected && (
           <span
+            role="button"
+            tabIndex={0}
+            aria-label="Clear selection"
             onClick={handleClear}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClear(e); } }}
             style={{ color: 'var(--text-muted)', fontSize: 12, padding: '0 2px', cursor: 'pointer' }}
             title="Clear"
           >✕</span>
@@ -83,10 +92,12 @@ function SearchableSelect({ players, value, onChange, placeholder = 'Search play
             {filtered.length === 0 ? (
               <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--text-muted)' }}>No players found</div>
             ) : filtered.map(p => (
-              <div
+              <button
+                type="button"
                 key={p.player_id}
                 onClick={() => handleSelect(p)}
                 style={{
+                  display: 'block', width: '100%', textAlign: 'left', border: 0, font: 'inherit',
                   padding: '7px 12px', fontSize: 14, cursor: 'pointer',
                   background: p.player_id?.toString() === value?.toString() ? 'var(--accent-muted, rgba(99,102,241,0.15))' : 'transparent',
                   color: p.player_id?.toString() === value?.toString() ? 'var(--accent)' : 'var(--text-primary)',
@@ -95,7 +106,7 @@ function SearchableSelect({ players, value, onChange, placeholder = 'Search play
                 onMouseLeave={e => e.currentTarget.style.background = p.player_id?.toString() === value?.toString() ? 'var(--accent-muted, rgba(99,102,241,0.15))' : 'transparent'}
               >
                 {displayName(p)}
-              </div>
+              </button>
             ))}
           </div>
         </div>
