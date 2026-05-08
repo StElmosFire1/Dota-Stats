@@ -356,12 +356,15 @@ export function MagazineSpreadV2() {
               </div>
             </div>
 
-            <div className="v2-rule" />
+            {/* Editorial pull-quote breaker between position grid and the dense stat lists */}
+            <div className="v2-insight">
+              <span><strong>{p.display_name}</strong> averages <strong>{x.statAvg.heroDmg.toLocaleString()}</strong> hero damage per game across {p.recent.wins + p.recent.losses} matches — {p.primary_pos === 2 ? 'classic mid-lane carry profile.' : p.primary_pos <= 2 ? 'a textbook core impact line.' : 'a high-utility support footprint.'}</span>
+            </div>
 
-            {/* Full stat averages */}
+            {/* Full stat averages — flat data strip, no boxes */}
             <div className="v2-block">
               <div className="v2-mini-eyebrow"><BarChart3 className="w-3 h-3"/> Full stat averages · per game</div>
-              <div className="v2-stat-table">
+              <div className="v2-stat-strip">
                 {([
                   { lbl: "LH",        v: x.statAvg.lh,           emph: p.primary_pos <= 2 },
                   { lbl: "DN",        v: x.statAvg.dn,           emph: false },
@@ -373,29 +376,27 @@ export function MagazineSpreadV2() {
                   { lbl: "Camps",     v: x.statAvg.campsStacked.toFixed(1), emph: p.primary_pos === 4 },
                   { lbl: "Runes",     v: x.statAvg.runes,          emph: p.primary_pos === 2 },
                 ]).map(s => (
-                  <div key={s.lbl} className={`v2-stat-cell ${s.emph ? 'is-emph' : ''}`}>
-                    <div className="lbl">{s.lbl}</div>
-                    <div className="val">{s.v}</div>
+                  <div key={s.lbl} className={`v2-stat-strip-row ${s.emph ? 'is-emph' : ''}`}>
+                    <span className="lbl">{s.lbl}</span>
+                    <span className="val">{s.v}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="v2-rule" />
-
-            {/* Multi-kill chips */}
-            <div className="v2-block">
+            {/* Multi-kill — slim inline pills */}
+            <div className="v2-block mt-4">
               <div className="v2-mini-eyebrow"><Crosshair className="w-3 h-3"/> Multi-kill counts · career</div>
-              <div className="v2-mk-row">
+              <div className="v2-mk-strip">
                 {([
                   { lbl: "Double",  v: x.multiKills.double,  rare: false },
                   { lbl: "Triple",  v: x.multiKills.triple,  rare: false },
                   { lbl: "Ultra",   v: x.multiKills.ultra,   rare: x.multiKills.ultra > 0 },
                   { lbl: "Rampage", v: x.multiKills.rampage, rare: x.multiKills.rampage > 0 },
                 ]).map(m => (
-                  <div key={m.lbl} className={`v2-mk-chip ${m.rare ? 'is-rare' : ''}`}>
-                    <div className="v2-mk-num">{m.v}</div>
-                    <div className="v2-mk-lbl">{m.lbl}</div>
+                  <div key={m.lbl} className={`v2-mk-pill ${m.rare ? 'is-rare' : ''}`}>
+                    <span className="num">{m.v}</span>
+                    <span className="lbl">{m.lbl}</span>
                   </div>
                 ))}
               </div>
@@ -427,6 +428,10 @@ export function MagazineSpreadV2() {
                 </a>
               ))}
             </div>
+
+            <a href="#all-matches" className="v2-view-all">
+              View All Matches <ChevronRight className="w-3.5 h-3.5" />
+            </a>
           </article>
 
           {/* §4 — AI Scout (Pro) */}

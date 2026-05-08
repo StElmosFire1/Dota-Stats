@@ -240,13 +240,98 @@
 
 /* Player name as the main showpiece — bigger than any section title */
 .magazine-v2 .v2-player-name {
-  font-size: clamp(2.25rem, 4.5vw, 3.25rem);
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  hyphens: auto;
+  font-size: clamp(1.6rem, 2.4vw, 2.4rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .magazine-v2 .mag-story .mag-title { font-size: 1.85rem; }
 .magazine-v2 .mag-story .mag-eyebrow { font-size: 11px; letter-spacing: 0.18em; }
+
+/* Inline data strip — replaces boxy 9-cell stat grid */
+.v2-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0 1.25rem;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0.65rem 0;
+  margin-top: 0.5rem;
+}
+.v2-stat-strip-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 0.35rem 0;
+  font-family: 'Oswald', sans-serif;
+  border-bottom: 1px dotted var(--border-subtle);
+}
+.v2-stat-strip-row:last-child { border-bottom: 0; }
+.v2-stat-strip-row .lbl {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.v2-stat-strip-row .val {
+  font-size: 15px; font-weight: 700; color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+.v2-stat-strip-row.is-emph .val { color: var(--accent-amber); }
+
+/* Slim multi-kill pill row */
+.v2-mk-strip {
+  display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;
+}
+.v2-mk-pill {
+  display: inline-flex; align-items: baseline; gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-family: 'Oswald', sans-serif;
+  background: transparent;
+}
+.v2-mk-pill .num {
+  font-size: 14px; font-weight: 800; color: var(--text-main); font-variant-numeric: tabular-nums;
+}
+.v2-mk-pill .lbl {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted);
+}
+.v2-mk-pill.is-rare {
+  border-color: var(--accent-amber);
+  background: rgba(245, 158, 11, 0.08);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15) inset;
+}
+.v2-mk-pill.is-rare .num { color: var(--accent-amber); }
+
+/* Pull-quote insight — visual breaker between dense data blocks */
+.v2-insight {
+  display: flex; align-items: center; gap: 1rem;
+  margin: 1.25rem 0 0.5rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--accent-brass);
+  background: linear-gradient(90deg, rgba(197, 169, 117, 0.06), transparent 60%);
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.v2-insight strong { color: var(--text-main); font-style: normal; font-weight: 700; }
+
+/* "View All Matches" footer link */
+.v2-view-all {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-muted);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.v2-view-all:hover {
+  border-color: var(--accent-brass); color: var(--accent-brass);
+  background: rgba(197, 169, 117, 0.06);
+}
 
 /* TrophyWall-style top hero rows */
 .v2-tw-hero-row {
