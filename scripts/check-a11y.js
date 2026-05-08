@@ -129,7 +129,6 @@ function scanFile(file) {
       continue;
     }
 
-    const hasRole = /\brole\s*=\s*["'{]/.test(opening);
     const roleNonActionable = /\brole\s*=\s*["'](presentation|none|dialog)["']/.test(opening);
 
     // Non-actionable container roles are the documented escape hatch:
@@ -144,12 +143,27 @@ function scanFile(file) {
     //                                         rule" section of replit.md.
     if (roleNonActionable) continue;
 
+    // For actionable click handlers we require a real interactive ARIA role,
+    // not just any role= attribute. The house rule names button/switch/radio/
+    // checkbox explicitly; we also accept the other ARIA "widget" roles that
+    // imply Enter/Space activation (link, menuitem, menuitemcheckbox,
+    // menuitemradio, tab, option). A bare role= with a static value
+    // (e.g. role="article") would otherwise satisfy the check while still
+    // leaving the element semantically wrong for an action.
+    const ACTIONABLE_ROLES = '(button|switch|checkbox|radio|menuitem|menuitemcheckbox|menuitemradio|tab|option|link)';
+    const hasActionableRole =
+      new RegExp(`\\brole\\s*=\\s*["']${ACTIONABLE_ROLES}["']`).test(opening) ||
+      // Allow expression-form roles (e.g. role={canPickWinner ? 'button' : undefined})
+      // as long as one of the actionable role names appears literally inside
+      // the role={...} expression.
+      new RegExp(`\\brole\\s*=\\s*\\{[^}]*['"]${ACTIONABLE_ROLES}['"][^}]*\\}`).test(opening);
+
     const hasTabIndex = /\btabIndex\s*=/.test(opening);
     const hasKeyDown = /\bonKeyDown\s*=/.test(opening);
 
-    if (!(hasRole && hasTabIndex && hasKeyDown)) {
+    if (!(hasActionableRole && hasTabIndex && hasKeyDown)) {
       const missing = [];
-      if (!hasRole) missing.push('role="button"');
+      if (!hasActionableRole) missing.push('role="button"');
       if (!hasTabIndex) missing.push('tabIndex={0}');
       if (!hasKeyDown) missing.push('onKeyDown (Enter/Space)');
       issues.push({
