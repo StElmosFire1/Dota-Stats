@@ -6,6 +6,7 @@
   "scripts": {
     "build:parser": "bash scripts/build-parser.sh",
     "check:parser": "bash scripts/build-parser.sh --check",
+    "check:a11y": "node scripts/check-a11y.js",
     "prestart": "bash scripts/build-parser.sh",
     "start": "node src/index.js",
     "test": "node --test tests/",

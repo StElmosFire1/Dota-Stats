@@ -62,6 +62,8 @@ Every clickable thing in `web/src/` and `community-edition/web/src/` must be key
 
 If the codebase grows a clickable that doesn't fit one of these shapes, add the shape and document it here before it spreads.
 
+**Automated gate (Task #164):** `scripts/check-a11y.js` (runnable as `npm run check:a11y`) statically scans both `web/src/` and `community-edition/web/src/` for `<div>/<span>/<li>/<tr>/<td>/<th>/<section>/<article>/<header>/<footer>/<nav>/<aside>/<main>/<ul>/<ol>/<p>/<figure>/<figcaption>/<img>` opening tags that have an `onClick` but are missing the `role`+`tabIndex`+`onKeyDown` triad. `<th onClick>` is always flagged with a hint to use the shared `SortableTh` component. The check allows `role="presentation"`, `role="none"`, and `role="dialog"` as the documented non-actionable container roles (modal backdrops and modal content surfaces that exist only to `e.stopPropagation()`). The gate runs as a hard pre-build step in both `deploy.sh` and `scripts/post-merge.sh`, so a regression fails the deploy / GitHub push before the frontend bundle is rebuilt.
+
 ## External Dependencies
 - **Discord API:** `discord.js`
 - **Steam API:** `steam-user`, `dota2-user`

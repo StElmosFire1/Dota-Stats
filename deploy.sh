@@ -15,6 +15,12 @@ echo "==> Verifying committed replay parser jar is in sync with sources..."
 # committed artifact cannot be silently self-healed by the deploy host.
 bash scripts/build-parser.sh --check
 
+echo "==> Verifying frontend accessibility (Task #164 — house rule gate)..."
+# Hard gate: refuse to deploy if any non-interactive element (div/span/li/tr/td
+# /th/etc.) has an onClick without the documented role+tabIndex+onKeyDown
+# triad, or if a raw <th onClick> reappears (must use SortableTh).
+node scripts/check-a11y.js
+
 echo "==> Installing frontend dependencies..."
 cd web
 npm install --silent

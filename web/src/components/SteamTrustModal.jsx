@@ -63,6 +63,7 @@ export function SteamTrustModal({ open, onClose }) {
       }}
     >
       <div
+        role="presentation"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'var(--bg-card)',

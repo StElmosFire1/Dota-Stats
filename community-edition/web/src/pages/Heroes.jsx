@@ -514,6 +514,16 @@ export default function Heroes({ defaultTab }) {
                       <tr
                         style={{ opacity: unplayed ? 0.4 : 1, cursor: h.games > 0 ? 'pointer' : 'default', background: isExpanded ? 'rgba(59,130,246,0.08)' : '' }}
                         onClick={() => h.games > 0 && toggleHeroExpand(h.hero_id)}
+                        onKeyDown={(e) => {
+                          if (h.games > 0 && (e.key === 'Enter' || e.key === ' ')) {
+                            e.preventDefault();
+                            toggleHeroExpand(h.hero_id);
+                          }
+                        }}
+                        role={h.games > 0 ? 'button' : undefined}
+                        tabIndex={h.games > 0 ? 0 : undefined}
+                        aria-expanded={h.games > 0 ? isExpanded : undefined}
+                        aria-label={h.games > 0 ? `${isExpanded ? 'Collapse' : 'Expand'} players for ${formatHeroName(h.hero_name)}` : undefined}
                         title={h.games > 0 ? 'Click to see who played this hero' : ''}
                       >
                         <td className="col-player">

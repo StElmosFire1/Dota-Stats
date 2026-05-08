@@ -20,6 +20,13 @@ if [ -f scripts/build-parser.sh ]; then
   bash scripts/build-parser.sh --check
 fi
 
+echo "[post-merge] Verifying frontend accessibility (Task #164 — house rule gate)..."
+# Hard gate: refuse to push if any non-interactive element (div/span/li/tr/td
+# /th/etc.) has an onClick without the documented role+tabIndex+onKeyDown
+# triad, or if a raw <th onClick> reappears (must use SortableTh). Runs
+# BEFORE the frontend build so a regression fails fast.
+node scripts/check-a11y.js
+
 if [ -f web/package.json ]; then
   echo "[post-merge] Installing web/ dependencies..."
   (cd web && npm install --no-audit --no-fund)

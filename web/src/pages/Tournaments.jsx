@@ -192,15 +192,27 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin, participants 
       minWidth: 210, background: 'var(--bg-card)',
       boxShadow: match.winner_id ? '0 0 0 1px var(--accent-blue)' : 'none',
     }}>
-      {players.map((player, idx) => (
+      {players.map((player, idx) => {
+        const canPickWinner = isAdmin && player.id && !isBye && !match.winner_id && !loading;
+        const pickWinner = () => {
+          if (!canPickWinner) return;
+          if (window.confirm(`Set ${player.name} as winner?`)) handleSetWinner(player.id);
+        };
+        return (
         <div
           key={idx}
           onMouseEnter={() => setHoveredIdx(idx)}
           onMouseLeave={() => setHoveredIdx(null)}
-          onClick={() => {
-            if (loading || !isAdmin || !player.id || isBye || match.winner_id) return;
-            if (window.confirm(`Set ${player.name} as winner?`)) handleSetWinner(player.id);
+          onClick={pickWinner}
+          onKeyDown={(e) => {
+            if (canPickWinner && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              pickWinner();
+            }
           }}
+          role={canPickWinner ? 'button' : undefined}
+          tabIndex={canPickWinner ? 0 : undefined}
+          aria-label={canPickWinner ? `Set ${player.name} as winner` : undefined}
           style={{
             padding: '10px 14px',
             borderTop: idx === 1 ? '1px solid var(--border)' : 'none',
@@ -248,7 +260,8 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin, participants 
             </span>
           )}
         </div>
-      ))}
+        );
+      })}
       {isAdmin && match.winner_id && (
         <div style={{ padding: '4px 10px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', gap: 8, alignItems: 'center' }}>
           <button

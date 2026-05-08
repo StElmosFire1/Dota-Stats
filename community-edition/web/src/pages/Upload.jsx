@@ -314,7 +314,16 @@ export default function Upload() {
           <label>Replay Files (.dem)</label>
           <div
             className={`drop-zone ${queue.length > 0 ? 'has-file' : ''}`}
+            role="button"
+            tabIndex={0}
+            aria-label="Choose .dem replay files (or drop them here)"
             onClick={() => fileRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileRef.current?.click();
+              }
+            }}
             onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
             onDragLeave={(e) => { e.currentTarget.classList.remove('drag-over'); }}
             onDrop={(e) => {
