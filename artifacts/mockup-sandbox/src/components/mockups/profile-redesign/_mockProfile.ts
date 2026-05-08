@@ -603,7 +603,7 @@ export interface VoicePackOption {
 export interface ShopItem {
   id: string;
   name: string;
-  category: "frame" | "voice" | "achievement-border" | "cover-fx" | "season-wrapped" | "vanity" | "verified";
+  category: "frame" | "voice" | "achievement-border" | "cover-fx" | "season-wrapped" | "vanity" | "verified" | "theme" | "founders" | "spotlight";
   blurb: string;
   price: string;          // display string only ("$3.99" / "$19" / "Auction")
   tier: "common" | "rare" | "epic" | "legendary" | "mythic";
@@ -776,6 +776,13 @@ const FREE_V3: V3Extras = {
     { id: "vanity-3",           name: "3-Letter Vanity URL",   category: "vanity",             blurb: "Auction. Highest bid wins for 12 months.",       price: "Auction",tier: "legendary",owned: false, proGate: true  },
     { id: "vanity-custom",      name: "Custom Vanity URL",     category: "vanity",             blurb: "Pick any unused 4+ char slug.",                  price: "$9.99", tier: "rare",      owned: false, proGate: false },
     { id: "verified",           name: "Verified Badge",        category: "verified",           blurb: "Earned via OCE staff review (free for confirmed pros).", price: "—", tier: "mythic", owned: false, proGate: false },
+    { id: "theme-newsprint",    name: "Theme — Newsprint",     category: "theme",              blurb: "High-contrast editorial palette for your profile.", price: "$3.99", tier: "rare",   owned: false, proGate: true },
+    { id: "theme-carbon",       name: "Theme — Carbon",        category: "theme",              blurb: "Dark mono broadcast palette.",                       price: "$3.99", tier: "rare",   owned: false, proGate: true },
+    { id: "theme-holo",         name: "Theme — Holographic",   category: "theme",              blurb: "Iridescent gradient accents over deep navy.",        price: "$4.99", tier: "epic",   owned: false, proGate: true },
+    { id: "theme-heritage",     name: "Theme — Heritage",      category: "theme",              blurb: "Sepia + leather + gold almanac vibe.",               price: "$4.99", tier: "epic",   owned: false, proGate: true },
+    { id: "theme-broadcast",    name: "Theme — Broadcast",     category: "theme",              blurb: "Saturated red sports-broadcast lower-third look.",   price: "$4.99", tier: "epic",   owned: false, proGate: true },
+    { id: "founders-backcat",   name: "Founders Back-catalogue", category: "founders",         blurb: "S2+ access to retired Founders Pass cosmetics from S1.", price: "$14.99", tier: "legendary", owned: false, proGate: true },
+    { id: "spotlight-credit",   name: "Spotlight Credit (24h)", category: "spotlight",          blurb: "Buy a 24h slot on the home leaderboard spotlight rail.", price: "$2.99", tier: "rare",   owned: false, proGate: false },
   ],
   aiQuote: "Solo-killed twice in lane, then closed before Pudge got Aghs. Textbook 'farm-and-finish' AM.",
 };
@@ -859,6 +866,13 @@ const PRO_V3: V3Extras = {
     { id: "vanity-3",           name: "3-Letter Vanity URL",   category: "vanity",             blurb: "Auction. Highest bid wins for 12 months.",       price: "Auction",tier: "legendary",owned: false, proGate: true  },
     { id: "vanity-custom",      name: "Custom Vanity URL",     category: "vanity",             blurb: "Pick any unused 4+ char slug.",                  price: "$9.99", tier: "rare",      owned: true,  proGate: false },
     { id: "verified",           name: "Verified Badge",        category: "verified",           blurb: "Earned via OCE staff review (free for confirmed pros).", price: "—", tier: "mythic", owned: true,  proGate: false },
+    { id: "theme-newsprint",    name: "Theme — Newsprint",     category: "theme",              blurb: "High-contrast editorial palette for your profile.", price: "$3.99", tier: "rare",   owned: true,  proGate: true },
+    { id: "theme-carbon",       name: "Theme — Carbon",        category: "theme",              blurb: "Dark mono broadcast palette.",                       price: "$3.99", tier: "rare",   owned: false, proGate: true },
+    { id: "theme-holo",         name: "Theme — Holographic",   category: "theme",              blurb: "Iridescent gradient accents over deep navy.",        price: "$4.99", tier: "epic",   owned: false, proGate: true },
+    { id: "theme-heritage",     name: "Theme — Heritage",      category: "theme",              blurb: "Sepia + leather + gold almanac vibe.",               price: "$4.99", tier: "epic",   owned: false, proGate: true },
+    { id: "theme-broadcast",    name: "Theme — Broadcast",     category: "theme",              blurb: "Saturated red sports-broadcast lower-third look.",   price: "$4.99", tier: "epic",   owned: false, proGate: true },
+    { id: "founders-backcat",   name: "Founders Back-catalogue", category: "founders",         blurb: "S2+ access to retired Founders Pass cosmetics from S1.", price: "$14.99", tier: "legendary", owned: false, proGate: true },
+    { id: "spotlight-credit",   name: "Spotlight Credit (24h)", category: "spotlight",          blurb: "Buy a 24h slot on the home leaderboard spotlight rail.", price: "$2.99", tier: "rare",   owned: true,  proGate: false },
   ],
   aiQuote: "Six hooks, four kill participation, zero deaths. Pudge mid is back and BrassKnuckles is the proof.",
 };
@@ -944,6 +958,13 @@ const OGPRO_V3: V3Extras = {
     { id: "vanity-3",           name: "3-Letter Vanity URL",   category: "vanity",             blurb: "Auction. You hold 'old' until 12 Aug 2026.",     price: "$240",  tier: "legendary",owned: true,  proGate: true  },
     { id: "vanity-custom",      name: "Custom Vanity URL",     category: "vanity",             blurb: "Pick any unused 4+ char slug.",                  price: "$9.99", tier: "rare",      owned: false, proGate: false },
     { id: "verified",           name: "Verified Badge",        category: "verified",           blurb: "Earned · founding captain.",                     price: "—",     tier: "mythic",   owned: true,  proGate: false },
+    { id: "theme-newsprint",    name: "Theme — Newsprint",     category: "theme",              blurb: "High-contrast editorial palette for your profile.", price: "$3.99", tier: "rare",   owned: true,  proGate: true },
+    { id: "theme-carbon",       name: "Theme — Carbon",        category: "theme",              blurb: "Dark mono broadcast palette.",                       price: "$3.99", tier: "rare",   owned: true,  proGate: true },
+    { id: "theme-holo",         name: "Theme — Holographic",   category: "theme",              blurb: "Iridescent gradient accents over deep navy.",        price: "$4.99", tier: "epic",   owned: true,  proGate: true },
+    { id: "theme-heritage",     name: "Theme — Heritage",      category: "theme",              blurb: "Sepia + leather + gold almanac vibe.",               price: "$4.99", tier: "epic",   owned: true,  proGate: true },
+    { id: "theme-broadcast",    name: "Theme — Broadcast",     category: "theme",              blurb: "Saturated red sports-broadcast lower-third look.",   price: "$4.99", tier: "epic",   owned: true,  proGate: true },
+    { id: "founders-backcat",   name: "Founders Back-catalogue", category: "founders",         blurb: "S2+ access to retired Founders Pass cosmetics from S1.", price: "$14.99", tier: "legendary", owned: true,  proGate: true },
+    { id: "spotlight-credit",   name: "Spotlight Credit (24h)", category: "spotlight",          blurb: "Buy a 24h slot on the home leaderboard spotlight rail.", price: "$2.99", tier: "rare",   owned: true,  proGate: false },
   ],
   aiQuote: "Won the lane on stuns alone. 24 assists, 3 deaths, every fight initiated by him.",
 };

@@ -35,7 +35,7 @@ type ThemeId = "default" | "newsprint" | "carbon" | "holo" | "heritage" | "broad
 type CoverVariant = "backdrop" | "split" | "minimal";
 type CoverFx = "none" | "kenburns" | "parallax" | "particle" | "shimmer" | "vignette-pulse" | "streak-glow";
 type WindowKey = "10" | "30" | "season" | "alltime";
-type ShopCat = "all" | "frame" | "voice" | "achievement-border" | "cover-fx" | "vanity" | "season-wrapped" | "verified";
+type ShopCat = "all" | "frame" | "voice" | "achievement-border" | "cover-fx" | "vanity" | "season-wrapped" | "verified" | "theme" | "founders" | "spotlight";
 
 const THEMES: Array<{ id: ThemeId; label: string }> = [
   { id: "default",   label: "Court & Pitch" },
@@ -99,6 +99,7 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
   const [timeWindow, setTimeWindow] = useState<WindowKey>("30");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [shopCat, setShopCat] = useState<ShopCat>("all");
+  const [wrappedPinForever, setWrappedPinForever] = useState(false);
   const [stickyVisible, setStickyVisible] = useState(false);
   const [wrappedVisible, setWrappedVisible] = useState(true);
 
@@ -111,6 +112,9 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
   const isOG = persona === "ogpro";
   const c = p.customization;
   const ex = c.extras;
+
+  const [voicePackId, setVoicePackId] = useState<string>(v3.voicePacks?.currentId || "default");
+  useEffect(() => { setVoicePackId(v3.voicePacks?.currentId || "default"); }, [persona, v3.voicePacks?.currentId]);
 
   // Reset cover-fx when persona changes so we honour per-persona owned/locked state cleanly.
   useEffect(() => {
@@ -302,7 +306,7 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
           )}
 
           {/* Cover sting mute toggle (B18) — only meaningful when an entrance sting is configured */}
-          {v3.voicePacks?.currentId && v3.voicePacks.currentId !== "default" && (
+          {voicePackId && voicePackId !== "default" && (
             <button
               type="button"
               className="v3-cover-mute"
@@ -429,20 +433,23 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
             <img src={heroImg(p.pinnedMatch.hero_id)} alt="" className="w-16 h-16 object-cover rounded shadow-md" />
           </div>
 
-          {/* AI commentary pull-quote — Pro-only on free profiles */}
-          {v3.aiQuote && !isFree && (
-            <div className="v3-ai-quote mt-6">
-              {v3.aiQuote}
-              <span className="v3-ai-quote-attr">Grok · post-match commentary</span>
-            </div>
-          )}
-          {v3.aiQuote && isFree && (
-            <div className="v3-ai-quote mt-6 v3-ai-quote-locked" title="AI pull-quote is a Pro feature on free profiles.">
-              <Lock className="w-3 h-3 inline-block mr-1" />
-              <span className="opacity-80">AI pull-quote unlocks with Pro.</span>
-              <span className="v3-ai-quote-attr">Grok · post-match commentary</span>
-            </div>
-          )}
+          {/* AI commentary pull-quote — Pro-only on free profiles · re-renders with selected voice pack */}
+          {(() => {
+            const vp = v3.voicePacks.options.find(o => o.id === voicePackId);
+            const vpLabel = vp?.label || "Default";
+            return v3.aiQuote && !isFree ? (
+              <div key={voicePackId} className={`v3-ai-quote mt-6 v3-ai-voice-${voicePackId}`}>
+                {v3.aiQuote}
+                <span className="v3-ai-quote-attr">Grok · post-match commentary · voiced by <b>{vpLabel}</b></span>
+              </div>
+            ) : v3.aiQuote && isFree ? (
+              <div className="v3-ai-quote mt-6 v3-ai-quote-locked" title="AI pull-quote is a Pro feature on free profiles.">
+                <Lock className="w-3 h-3 inline-block mr-1" />
+                <span className="opacity-80">AI pull-quote unlocks with Pro.</span>
+                <span className="v3-ai-quote-attr">Grok · post-match commentary · voiced by <b>{vpLabel}</b></span>
+              </div>
+            ) : null;
+          })()}
         </article>
 
         {/* §2 — By The Numbers */}
@@ -934,6 +941,19 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
                 </button>
                 <span className="text-[var(--text-faint)]">No card placement on Discord — your call to share.</span>
               </div>
+              <div className="v3-wrapped-share">
+                <span className="v3-wrapped-share-lbl">Share:</span>
+                <button className="v3-wrapped-share-btn share-x" type="button" title="Share to X / Twitter">𝕏 Post to X</button>
+                <button className="v3-wrapped-share-btn share-r" type="button" title="Share to Reddit">▲ Reddit</button>
+                <label className="v3-wrapped-pin">
+                  <input
+                    type="checkbox"
+                    checked={wrappedPinForever}
+                    onChange={e => setWrappedPinForever(e.target.checked)}
+                  />
+                  <span>Pin forever (override the {v3.seasonWrapped.autoExpiresInDays}-day auto-hide)</span>
+                </label>
+              </div>
             </div>
           </article>
         )}
@@ -966,28 +986,39 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
               { id: "vanity",             label: "Vanity URLs" },
               { id: "season-wrapped",     label: "Season Wrapped" },
               { id: "verified",           label: "Verified" },
+              { id: "theme",              label: "Themes" },
+              { id: "founders",           label: "Founders" },
+              { id: "spotlight",          label: "Spotlight Credits" },
             ] as Array<{ id: ShopCat; label: string }>).map(t => (
               <button key={t.id} className={`v3-shop-tab ${shopCat === t.id ? "is-active" : ""}`} onClick={() => setShopCat(t.id)}>{t.label}</button>
             ))}
           </div>
 
           <div className="v3-shop-grid">
-            {filteredShop.map((s: ShopItem) => (
-              <div key={s.id} className={`v3-shop-card tier-${s.tier} ${s.owned ? "is-owned" : ""}`}>
-                <div className="v3-shop-name">{s.name}</div>
-                <div className="v3-shop-blurb">{s.blurb}</div>
-                {s.proGate && <div className="v3-shop-pro-flag">★ Requires active Pro</div>}
-                <div className="v3-shop-meta">
-                  <div>
-                    <div className="v3-shop-tier">{s.tier}</div>
-                    <div className="v3-shop-price">{s.price}</div>
+            {filteredShop.map((s: ShopItem) => {
+              // "Included with Pro" chip: Pro/OG personas viewing a proGate item that they don't own
+              // outright as a one-off get the bundled-with-Pro affordance instead of the gating warning.
+              const includedWithPro = !isFree && s.proGate && !s.owned;
+              return (
+                <div key={s.id} className={`v3-shop-card tier-${s.tier} ${s.owned ? "is-owned" : ""}`}>
+                  <div className="v3-shop-name">
+                    {s.name}
+                    {includedWithPro && <span className="v3-shop-included">★ Included with Pro</span>}
                   </div>
-                  <button className={`v3-shop-buy ${s.owned ? "is-disabled" : ""}`} disabled={s.owned}>
-                    {s.owned ? "Owned" : s.price === "Auction" ? "Bid" : "Buy"}
-                  </button>
+                  <div className="v3-shop-blurb">{s.blurb}</div>
+                  {s.proGate && !includedWithPro && <div className="v3-shop-pro-flag">★ Requires active Pro</div>}
+                  <div className="v3-shop-meta">
+                    <div>
+                      <div className="v3-shop-tier">{s.tier}</div>
+                      <div className="v3-shop-price">{s.price}</div>
+                    </div>
+                    <button className={`v3-shop-buy ${s.owned ? "is-disabled" : ""}`} disabled={s.owned}>
+                      {s.owned ? "Owned" : s.price === "Auction" ? "Bid" : includedWithPro ? "Use" : "Buy"}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </article>
 
@@ -997,46 +1028,123 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
           <h2 className="mag-title">Make It Yours</h2>
           <div className="v3-custom-grid">
 
-            {/* Theme accent + auto-tint */}
+            {/* Theme accent — A13: Free = auto-tint locked-on; Pro = manual hex picker */}
             <div className="v3-custom-cell">
               <span className="lbl">Theme Accent</span>
-              <div className="v3-swatch-row">
-                {["#3b82f6", "#f59e0b", "#ef4444", "#10b981", "#a78bfa", "#c5a975"].map(color => (
-                  <button key={color} className={`v3-swatch ${color === accent ? "is-active" : ""}`} style={{ background: color }} title={color} />
-                ))}
-                <button className="v3-swatch is-locked" title="Auto-tint from pinned hero portrait (PRO)">
-                  <Sparkles className="w-3 h-3" />
-                </button>
-              </div>
-              <div className="text-[10px] text-[var(--text-faint)]">Pro: auto-tint from pinned hero portrait, or pick custom hex.</div>
+              {isFree ? (
+                <>
+                  <div className="v3-autotint-row">
+                    <span className="v3-autotint-chip" style={{ background: accent }} />
+                    <div className="v3-autotint-meta">
+                      <div className="v3-autotint-ttl">
+                        <Sparkles className="w-3 h-3 inline-block mr-1" /> Auto-tint from pinned hero
+                      </div>
+                      <div className="v3-autotint-sub">Free profiles use an automatic accent sampled from your pinned hero portrait.</div>
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-[var(--text-faint)]">Upgrade to Pro to pick a custom hex or override the auto-tint.</div>
+                </>
+              ) : (
+                <>
+                  <div className="v3-swatch-row">
+                    {["#3b82f6", "#f59e0b", "#ef4444", "#10b981", "#a78bfa", "#c5a975"].map(color => (
+                      <button key={color} className={`v3-swatch ${color === accent ? "is-active" : ""}`} style={{ background: color }} title={color} />
+                    ))}
+                    <span className="v3-swatch v3-swatch-hex" title="Custom hex picker (Pro)">
+                      <span className="v3-hex-glyph">#</span>
+                    </span>
+                  </div>
+                  <div className="v3-hex-row">
+                    <span className="v3-hex-lbl">Custom</span>
+                    <input className="v3-hex-input" value={accent} readOnly />
+                    <span className="v3-hex-tag pro-chip"><Star className="w-3 h-3" /> PRO</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--text-faint)]">Pro: pick any hex. Auto-tint still available as a one-tap option.</div>
+                </>
+              )}
             </div>
 
-            {/* Profile frame */}
+            {/* Profile frame — B16: trophy/profile frame swatches with greyed price tags for unowned */}
             <div className="v3-custom-cell">
               <span className="lbl">Profile Frame</span>
-              <div className="v3-frame-row">
+              <div className="v3-frame-grid">
                 {([
-                  { id: "none",   label: "None",   pro: false, owned: true },
-                  { id: "silver", label: "Silver", pro: false, owned: true },
-                  { id: "gold",   label: "Gold",   pro: true,  owned: !isFree },
-                  { id: "cosmic", label: "Cosmic", pro: false, owned: !isFree, oneOff: true },
-                  { id: "fire",   label: "Fire",   pro: false, owned: isOG,    oneOff: true },
-                  { id: "neon",   label: "Neon",   pro: true,  owned: false,   oneOff: true },
+                  { id: "none",   label: "None",   price: "Free",  owned: true,    proGate: false },
+                  { id: "silver", label: "Silver", price: "Free",  owned: true,    proGate: false },
+                  { id: "gold",   label: "Gold",   price: "$3.99", owned: !isFree, proGate: true  },
+                  { id: "cosmic", label: "Cosmic", price: "$4.99", owned: !isFree, proGate: false },
+                  { id: "fire",   label: "Fire",   price: "$4.99", owned: isOG,    proGate: false },
+                  { id: "neon",   label: "Neon",   price: "$5.99", owned: false,   proGate: true  },
+                  { id: "regal",  label: "Regal",  price: "$6.99", owned: isOG,    proGate: true  },
+                  { id: "abyss",  label: "Abyss",  price: "$5.99", owned: false,   proGate: false },
                 ]).map(f => (
-                  <span key={f.id} className={`v3-frame-pill ${c.profile_frame === f.id ? "is-active" : ""} ${!f.owned ? "is-locked" : ""}`}>
-                    {f.label}{!f.owned && (f.pro ? " 🔒P" : " 🔒")}
-                  </span>
+                  <div key={f.id} className={`v3-frame-swatch ${c.profile_frame === f.id ? "is-active" : ""} ${!f.owned ? "is-locked" : ""}`}>
+                    <div className={`v3-frame-thumb frame-${f.id}`} aria-hidden />
+                    <div className="v3-frame-meta">
+                      <div className="v3-frame-name">{f.label}</div>
+                      <div className="v3-frame-price">
+                        {f.owned
+                          ? <span className="v3-frame-owned">Owned</span>
+                          : <>
+                              <span className="v3-frame-tag">{f.price}</span>
+                              {f.proGate && <span className="v3-frame-pro">★ Pro</span>}
+                            </>}
+                      </div>
+                    </div>
+                  </div>
                 ))}
+              </div>
+              <div className="text-[10px] text-[var(--text-faint)]">Greyed swatches show price tags; one-off + Pro frames purchasable in the OG Cosmetic Shop.</div>
+            </div>
+
+            {/* Founders Pass teaser (B19) */}
+            <div className={`v3-custom-cell v3-founders-teaser ${v3.foundersPass.eligible && v3.foundersPass.activeNow ? "is-active" : ""}`}>
+              <span className="lbl"><Star className="w-3 h-3 inline-block mr-1 text-[var(--accent-amber)]" /> Founders Pass · {v3.foundersPass.seasonLabel}</span>
+              <div className="v3-founders-card">
+                <div className="v3-founders-title">
+                  {v3.foundersPass.activeNow
+                    ? "★ Founders — active this season"
+                    : v3.foundersPass.eligible
+                      ? "Eligible — claim your Founders Pass"
+                      : "Sold out · S1 Founders cosmetics retired"}
+                </div>
+                <div className="v3-founders-body">
+                  Active Pro during {v3.foundersPass.seasonLabel} unlocks the permanent ★ Founders badge,
+                  the S1 trophy frame, and an exclusive entrance sting. After season end the pass retires
+                  forever — back-catalogue access is sold separately in the OG Shop.
+                </div>
+                <div className="v3-founders-actions">
+                  {v3.foundersPass.activeNow
+                    ? <span className="v3-founders-tag">Owned</span>
+                    : v3.foundersPass.eligible
+                      ? <button className="cta-primary text-xs px-3 py-1">Activate Founders Pass</button>
+                      : <button className="cta-secondary text-xs px-3 py-1">Buy Back-catalogue · $14.99</button>}
+                </div>
               </div>
             </div>
 
-            {/* Cover variant */}
-            <div className="v3-custom-cell">
-              <span className="lbl">Cover Layout</span>
+            {/* Cover variant — A12: Free locked to default ("backdrop"), Pro unlocks alternates */}
+            <div className={`v3-custom-cell ${isFree ? "is-pro-gated" : ""}`}>
+              <span className="lbl">Cover Layout {isFree && <Lock className="w-3 h-3 inline-block ml-1 text-[var(--accent-amber)]" />}</span>
               <div className="v3-cover-variant-picker">
-                {(["backdrop","split","minimal"] as CoverVariant[]).map(cv => (
-                  <button key={cv} className={`v3-cover-variant-btn ${coverVariant === cv ? "is-active" : ""}`} onClick={() => setCoverVariant(cv)}>{cv}</button>
-                ))}
+                {(["backdrop","split","minimal"] as CoverVariant[]).map(cv => {
+                  const locked = isFree && cv !== "backdrop";
+                  return (
+                    <button
+                      key={cv}
+                      className={`v3-cover-variant-btn ${coverVariant === cv ? "is-active" : ""} ${locked ? "is-locked" : ""}`}
+                      onClick={() => { if (!locked) setCoverVariant(cv); }}
+                      title={locked ? "Pro unlock" : ""}
+                    >
+                      {cv}{locked && " 🔒"}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="text-[10px] text-[var(--text-faint)]">
+                {isFree
+                  ? "Free profiles use the default backdrop cover. Pro unlocks Split and Minimal layouts."
+                  : "Pro unlocked — pick any cover layout."}
               </div>
             </div>
 
@@ -1081,12 +1189,18 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
               )}
             </div>
 
-            {/* Voice pack */}
+            {/* Voice pack — B24: selecting drives the cover sting + pull-quote attribution */}
             <div className="v3-custom-cell">
               <span className="lbl"><Music className="w-3 h-3 inline-block mr-1" /> Entrance Sting</span>
               <div className="v3-voice-list">
                 {v3.voicePacks.options.slice(0, 4).map(v => (
-                  <div key={v.id} className={`v3-voice-row ${v.id === v3.voicePacks.currentId ? "is-active" : ""}`}>
+                  <div
+                    key={v.id}
+                    className={`v3-voice-row ${v.id === voicePackId ? "is-active" : ""} ${v.locked ? "is-locked" : ""}`}
+                    onClick={() => { if (!v.locked) setVoicePackId(v.id); }}
+                    role="button"
+                    tabIndex={v.locked ? -1 : 0}
+                  >
                     <div>
                       <div className="v3-voice-label">{v.label}</div>
                       <div className="v3-voice-blurb">{v.blurb}</div>
@@ -1098,7 +1212,11 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
                     </div>
                   </div>
                 ))}
-                <div className="text-[10px] text-[var(--text-faint)]">Curated Dota voicelines + medieval stings only. No custom uploads.</div>
+                <div className="text-[10px] text-[var(--text-faint)]">
+                  Curated Dota voicelines + medieval stings only. No custom uploads.
+                  <br/>
+                  Currently playing on cover &amp; pull-quote: <b style={{ color: "var(--accent-amber)" }}>{v3.voicePacks.options.find(o => o.id === voicePackId)?.label || "Default"}</b>
+                </div>
               </div>
             </div>
 
