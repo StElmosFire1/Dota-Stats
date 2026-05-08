@@ -7072,6 +7072,41 @@ NOTES
     }
   });
 
+  // Task #168 — captain-callable retry. After a `server_failed` transition,
+  // the captains see a Retry button on /inhouse; this is the route it hits.
+  // Authorization: either captain of the session, OR a superuser. Same
+  // single-flight lock as the manual route — concurrent retries collapse.
+  router.post('/inhouse/:id/server/retry', express.json(), async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req, false);
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      const cap1 = Number(session.captain1_account_id);
+      const cap2 = Number(session.captain2_account_id);
+      const callerId = Number(actor.accountId);
+      const isCaptain = callerId && (callerId === cap1 || callerId === cap2);
+      if (!actor.isAdmin && !isCaptain) {
+        return res.status(403).json({ error: 'Only the captains or an admin can retry server provisioning.' });
+      }
+      if (session.status !== 'server_failed' && session.status !== 'drafting') {
+        return res.status(400).json({ error: `Cannot retry from status ${session.status}` });
+      }
+      const { provisionInhouseServer } = require('../inhouse/serverProvisioner');
+      const result = await provisionInhouseServer(req.params.id, {
+        trigger: actor.isAdmin ? 'manual' : 'captain_retry',
+      });
+      if (!result.ok) {
+        if (result.skipped === 'in_flight') return res.status(409).json({ error: 'Provisioning already in progress' });
+        if (result.skipped === 'wrong_status') return res.status(400).json({ error: result.error });
+        if (result.failed) return res.status(502).json({ error: result.error, session: result.session, rcon: result.rcon });
+        return res.status(500).json({ error: result.error || 'Provisioning failed' });
+      }
+      res.json({ session: result.session, rcon: result.rcon, skipped: result.skipped });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/inhouse/:id/server', requireSuperuser, express.json(), async (req, res) => {
     try {
       // Task #168 — delegated to the shared helper so the manual admin

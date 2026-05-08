@@ -40,7 +40,11 @@ async function provisionInhouseServer(sessionId, opts = {}) {
     const cur = await db.getInhouseSession(id);
     if (!cur) return { ok: false, error: 'Session not found' };
     if (_isProvisioned(cur)) return { ok: true, session: cur, skipped: 'already_provisioned' };
-    if (cur.status !== 'drafting') {
+    // Task #168 — `server_failed` is allowed so the captain-callable
+    // /server/retry route (and the recovery sweep) can re-run the helper
+    // after a transient RCON outage without forcing an admin to bounce
+    // the session back to drafting first.
+    if (cur.status !== 'drafting' && cur.status !== 'server_failed') {
       return { ok: false, error: `Cannot provision from status ${cur.status}`, skipped: 'wrong_status' };
     }
 
@@ -61,12 +65,44 @@ async function provisionInhouseServer(sessionId, opts = {}) {
       rconResult = { ok: false, error: rconErr.message };
     }
 
+    // Task #168 — when RCON is configured but the push fails (server
+    // offline / wrong password / network) we move the session to
+    // `server_failed` instead of silently flipping to `in_progress`. This
+    // surfaces a banner + Retry button on the inhouse UI and pings the
+    // admin Discord channel. RCON "not configured" (no RCON password set)
+    // is NOT a failure — that's the connect-link-only fallback path the
+    // existing manual route already supported.
+    const rconConfigured = !!(cfg.dota?.dedicatedServer?.rconPassword);
+    const rconFailed = rconConfigured && rconResult && rconResult.ok === false;
+    if (rconFailed) {
+      const reason = `Server provisioning failed at ${new Date().toISOString()}: ${rconResult.error}`;
+      const failedSession = await db.updateInhouseSession(id, {
+        status: 'server_failed',
+        notes: reason,
+      });
+      try {
+        const { getDiscordBot } = require('../discord/bot');
+        const bot = getDiscordBot();
+        if (bot) {
+          bot._notifyChannel(
+            `⚠️ **Inhouse server provisioning failed** — session #${id}\n` +
+            `Reason: \`${rconResult.error}\`\n` +
+            `Captains can press **Retry** on the lobby page, or a superuser can re-run from the admin panel.`
+          );
+        }
+      } catch (e) {
+        console.warn('[Inhouse] Could not notify Discord of provisioning failure:', e.message);
+      }
+      return { ok: false, session: failedSession, rcon: rconResult, error: rconResult.error, failed: true };
+    }
+
     const session = await db.updateInhouseSession(id, {
       match_password: safePwd,
       server_ip: ip,
       server_port: port,
       status: 'in_progress',
       started_at: new Date(),
+      notes: null,
     });
 
     // Discord announcement + voice-channel shuffle. Wrapped so a Discord

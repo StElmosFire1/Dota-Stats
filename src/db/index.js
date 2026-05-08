@@ -8611,7 +8611,7 @@ async function listInhouseSessions({ status = null, limit = 50 } = {}) {
 async function getActiveInhouseSession() {
   const p = getPool();
   const r = await p.query(
-    `SELECT * FROM inhouse_sessions WHERE status IN ('open','accepting','drafting','in_progress') ORDER BY created_at DESC LIMIT 1`
+    `SELECT * FROM inhouse_sessions WHERE status IN ('open','accepting','drafting','server_failed','in_progress') ORDER BY created_at DESC LIMIT 1`
   );
   return r.rows[0] || null;
 }
@@ -8632,7 +8632,7 @@ async function getOrCreateOpenInhouseSession(defaults = {}) {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('inhouse_session_create_v603'))");
     const existing = await client.query(
       `SELECT * FROM inhouse_sessions
-        WHERE status IN ('open','accepting','drafting','in_progress')
+        WHERE status IN ('open','accepting','drafting','server_failed','in_progress')
         ORDER BY created_at DESC LIMIT 1`
     );
     if (existing.rows[0]) {
@@ -9958,7 +9958,7 @@ async function getPlayerHomeData(accountId) {
     p.query(
       `SELECT id, status, captain_mode, notes, created_at, accept_phase_seconds
          FROM inhouse_sessions
-        WHERE status IN ('open','accepting','drafting','in_progress')
+        WHERE status IN ('open','accepting','drafting','server_failed','in_progress')
         ORDER BY created_at DESC
         LIMIT 1`
     ),
@@ -9968,7 +9968,7 @@ async function getPlayerHomeData(accountId) {
          FROM inhouse_session_players isp
          JOIN inhouse_sessions s ON s.id = isp.session_id
         WHERE isp.account_id = $1
-          AND s.status IN ('open','accepting','drafting','in_progress')
+          AND s.status IN ('open','accepting','drafting','server_failed','in_progress')
         LIMIT 1`,
       [accountId]
     ),

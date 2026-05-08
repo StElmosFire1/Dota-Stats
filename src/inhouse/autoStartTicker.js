@@ -97,7 +97,7 @@ async function tick(db, basePort) {
       // Task #168 — recovery sweep: pick up sessions that finished drafting
       // but never got their server provisioned (missed in-flight trigger,
       // server restart between the 8th pick and the helper firing, etc).
-      pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'drafting' AND match_password IS NULL ORDER BY id DESC LIMIT 20`),
+      pool.query(`SELECT * FROM inhouse_sessions WHERE status IN ('drafting','server_failed') AND match_password IS NULL ORDER BY id DESC LIMIT 20`),
     ]);
   } catch (e) {
     warn('listInhouseSessions failed:', e.message);

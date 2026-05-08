@@ -263,6 +263,7 @@ export default function Inhouse() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [serverStatus, setServerStatus] = useState(null);
+  const [retryingServer, setRetryingServer] = useState(false);
   const [creating, setCreating] = useState(false);
   const [captainMode, setCaptainMode] = useState('highest_rank');
   const [acceptSeconds, setAcceptSeconds] = useState(60);
@@ -298,7 +299,7 @@ export default function Inhouse() {
   const refreshPast = useCallback(async () => {
     try {
       const data = await api('/inhouse?limit=10');
-      setPastSessions((data.sessions || []).filter(s => !['open','accepting','drafting','in_progress'].includes(s.status)));
+      setPastSessions((data.sessions || []).filter(s => !['open','accepting','drafting','server_failed','in_progress'].includes(s.status)));
     } catch (_) {}
   }, []);
 
@@ -480,6 +481,26 @@ export default function Inhouse() {
       });
       await refresh();
     } catch (e) { alert(e.message); }
+  }
+
+  // Task #168 — captain-callable retry. After a `server_failed` transition
+  // we expose this on /inhouse for both captains and superusers; the route
+  // accepts captain session cookies as well as the superuser key.
+  async function retryServerProvisioning() {
+    if (!session) return;
+    setRetryingServer(true);
+    try {
+      const headers = isAdmin ? adminHeaders : { 'Content-Type': 'application/json' };
+      const r = await api(`/inhouse/${session.id}/server/retry`, { method: 'POST', headers, body: JSON.stringify({}) });
+      if (r.rcon && !r.rcon.ok) {
+        alert(`Retry sent — RCON push didn't go through (${r.rcon.error}). The lobby will stay in server_failed; try again or get a superuser to investigate.`);
+      }
+      await refresh();
+    } catch (e) {
+      alert('Retry failed: ' + e.message);
+    } finally {
+      setRetryingServer(false);
+    }
   }
 
   async function provisionServer() {
@@ -759,6 +780,7 @@ export default function Inhouse() {
           open:        { bg: 'rgba(76,175,80,0.14)',  fg: '#4caf50', label: 'OPEN' },
           accepting:   { bg: 'rgba(255,152,0,0.14)',  fg: '#ff9800', label: 'ACCEPT PHASE' },
           drafting:    { bg: 'rgba(33,150,243,0.14)', fg: '#2196f3', label: 'DRAFTING' },
+          server_failed: { bg: 'rgba(244,67,54,0.18)', fg: '#f44336', label: 'SERVER FAILED' },
           in_progress: { bg: 'rgba(197,169,117,0.18)', fg: 'var(--brass)', label: 'IN PROGRESS' },
           completed:   { bg: 'rgba(120,120,120,0.18)', fg: 'var(--text-muted)', label: 'COMPLETED' },
         })[session.status] || { bg: 'var(--bg)', fg: 'var(--text-muted)', label: String(session.status || '').toUpperCase() };
@@ -1043,6 +1065,37 @@ export default function Inhouse() {
                 <div>
                   <div style={{ color: '#aaa', marginBottom: 8 }}>Waiting for accept phase to start</div>
                   <button onClick={leaveSession} style={{ padding: '6px 12px', background: 'transparent', color: '#f44336', border: '1px solid #f44336', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Leave</button>
+                </div>
+              )}
+              {/* Task #168 — auto-provisioning indicator + failure banner.
+                  While the helper is in-flight (drafting + 8 picks) show a
+                  pill so players don't think the lobby is stuck. On
+                  server_failed show a red banner with a captain-visible
+                  Retry button (admins also see it). */}
+              {session.status === 'drafting' && undrafted.length === 0 && isInSession && (
+                <div style={{ marginTop: 8, padding: '10px 14px', background: 'rgba(33,150,243,0.12)', border: '1px solid rgba(33,150,243,0.4)', borderRadius: 6, fontSize: 13, color: '#66c0f4', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#66c0f4', animation: 'pulse 1.4s ease-in-out infinite' }} />
+                  Provisioning server…
+                </div>
+              )}
+              {session.status === 'server_failed' && isInSession && (
+                <div role="alert" style={{ marginTop: 8, padding: 14, background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.4)', borderRadius: 6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6, color: '#f44336' }}>⚠ Server provisioning failed</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+                    {session.notes || 'The dedicated server didn\'t accept the new password. Captains can retry below.'}
+                  </div>
+                  {(isAdmin || myAccountId === Number(session.captain1_account_id) || myAccountId === Number(session.captain2_account_id)) ? (
+                    <button
+                      type="button"
+                      onClick={retryServerProvisioning}
+                      disabled={retryingServer}
+                      style={{ padding: '8px 16px', background: '#f44336', color: '#fff', border: 'none', borderRadius: 4, cursor: retryingServer ? 'wait' : 'pointer', fontWeight: 600 }}
+                    >
+                      {retryingServer ? 'Retrying…' : '🔄 Retry provisioning'}
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Waiting for a captain or admin to retry…</span>
+                  )}
                 </div>
               )}
               {connectLink && session.status === 'in_progress' && isInSession && (
