@@ -70,7 +70,7 @@ const SANDBOX_BASE = (() => {
 const DESKTOP_W = 1280;
 const MOBILE_W = 390;
 const FRAME_H = 1800;
-const FRAME_H_V3 = 2700;
+const FRAME_H_V3 = 3000;
 const COL_GAP = 24;
 
 const eyebrow: React.CSSProperties = {
