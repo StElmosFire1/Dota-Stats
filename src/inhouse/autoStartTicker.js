@@ -21,6 +21,10 @@
 // guards via internal HTTP calls (so we don't duplicate transition logic).
 
 const TICK_MS = 5000;
+// Task #168 — backoff for `server_failed` sessions so a persistent RCON
+// outage doesn't fire the Discord admin-channel ping every 5s.
+const RECOVERY_BACKOFF_MS = (Number(process.env.INHOUSE_RECOVERY_BACKOFF_SECONDS) || 60) * 1000;
+const _lastFailedAttempt = new Map();
 // Task #136 — drop players whose last_seen_at is older than this (default
 // 45s, override via INHOUSE_HEARTBEAT_STALE_SECONDS). The frontend pings
 // every 15s, so 45s gives ~3 missed pings before reclaiming the slot.
@@ -212,8 +216,19 @@ async function tick(db, basePort) {
   // the in-flight auto-provision never landed (server restart, transient
   // DB blip, etc). The provisioner has its own per-session single-flight
   // lock, so this is safe to run alongside the /draft-pick trigger.
+  //
+  // For sessions already in `server_failed` we apply a per-session backoff
+  // (60s default, override via INHOUSE_RECOVERY_BACKOFF_SECONDS) so a
+  // persistent RCON outage doesn't spam the admin Discord channel every
+  // 5s. Captains can still hit the Retry button on /inhouse at any time
+  // (that path doesn't go through the ticker).
   for (const s of drafting) {
     try {
+      if (s.status === 'server_failed') {
+        const last = _lastFailedAttempt.get(s.id) || 0;
+        if (Date.now() - last < RECOVERY_BACKOFF_MS) continue;
+        _lastFailedAttempt.set(s.id, Date.now());
+      }
       const players = await db.getInhouseSessionPlayers(s.id);
       const cap1 = Number(s.captain1_account_id);
       const cap2 = Number(s.captain2_account_id);
@@ -225,6 +240,7 @@ async function tick(db, basePort) {
       const r = await provisionInhouseServer(s.id, { trigger: 'auto_recovery' });
       if (r.ok && !r.skipped) {
         log(`Session #${s.id}: recovery sweep auto-provisioned dedicated server`);
+        _lastFailedAttempt.delete(s.id);
       } else if (!r.ok && !r.skipped) {
         warn(`Session #${s.id}: recovery sweep provision failed:`, r.error);
       }
