@@ -193,6 +193,58 @@ test('server_failed → retry succeeds and flips to in_progress', async () => {
   assert.equal(r.session.status, 'in_progress');
 });
 
+test('integration-style: helper run on a freshly-completed draft flips to in_progress; an 11th-pick attempt would see status=in_progress and isDraftComplete still true', async () => {
+  // Simulate the 10-pick lifecycle: a session sitting in `drafting` with
+  // both captains + 8 picks placed (mirrors what /draft-pick has just
+  // INSERT'd). The auto-trigger fires the helper. We assert the final
+  // session row matches what the manual provision route used to produce,
+  // and that a hypothetical "11th pick" attempt would see in_progress
+  // status (which the route's "draft is complete" guard already rejects
+  // — covered separately in the route handler, not the helper).
+  const players = [
+    { account_id: 1, team: 1, pick_order: 0 },  // captain 1
+    { account_id: 2, team: 2, pick_order: 0 },  // captain 2
+    { account_id: 3, team: 1, pick_order: 1 },
+    { account_id: 4, team: 2, pick_order: 2 },
+    { account_id: 5, team: 2, pick_order: 3 },
+    { account_id: 6, team: 1, pick_order: 4 },
+    { account_id: 7, team: 1, pick_order: 5 },
+    { account_id: 8, team: 2, pick_order: 6 },
+    { account_id: 9, team: 2, pick_order: 7 },
+    { account_id: 10, team: 1, pick_order: 8 }, // 8th non-captain pick
+  ];
+  const db = makeDb({
+    initialSession: { id: 99, status: 'drafting', team1_is_radiant: true, captain1_account_id: 1, captain2_account_id: 2 },
+    players,
+  });
+  const helper = loadHelperWithStubs({
+    db, bot: makeBot(),
+    setMatchPassword: async () => {},
+    config: { dota: { dedicatedServer: { ip: '10.0.0.1', port: 27015, rconPassword: 'rcon' } } },
+  });
+
+  // Pre-condition: the predicate sees a complete draft.
+  assert.equal(helper.isDraftComplete(db.state.session, players), true);
+
+  // The auto-trigger from /draft-pick fires the helper.
+  const r = await helper.provisionInhouseServer(99, { trigger: 'auto_draft_complete' });
+  assert.equal(r.ok, true);
+  assert.equal(r.session.status, 'in_progress');
+  assert.ok(r.session.match_password);
+  assert.equal(r.session.server_ip, '10.0.0.1');
+  assert.equal(r.session.server_port, 27015);
+  assert.ok(r.session.started_at);
+
+  // A second call (mimicking a stray "11th pick" handler firing the
+  // auto-trigger again) is short-circuited as already_provisioned and
+  // does NOT rotate the password.
+  const pwd = r.session.match_password;
+  const r2 = await helper.provisionInhouseServer(99, { trigger: 'auto_draft_complete' });
+  assert.equal(r2.ok, true);
+  assert.equal(r2.skipped, 'already_provisioned');
+  assert.equal(r2.session.match_password, pwd);
+});
+
 test('isDraftComplete: true when 8 non-captain slots are placed', async () => {
   const helper = loadHelperWithStubs({
     db: makeDb({ initialSession: { id: 0, status: 'drafting' } }),

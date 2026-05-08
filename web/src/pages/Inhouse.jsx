@@ -857,9 +857,11 @@ export default function Inhouse() {
                   {session.status === 'accepting' && acceptedCount >= 2 && (
                     <button onClick={selectCaptains} style={{ padding: '6px 12px', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Select Captains ({acceptedCount} ready)</button>
                   )}
-                  {session.status === 'drafting' && undrafted.length === 0 && (
-                    <button onClick={provisionServer} style={{ padding: '6px 12px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Provision Server</button>
-                  )}
+                  {(session.status === 'drafting' && undrafted.length === 0) || session.status === 'server_failed' ? (
+                    <button onClick={provisionServer} style={{ padding: '6px 12px', background: session.status === 'server_failed' ? '#f44336' : '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>
+                      {session.status === 'server_failed' ? '🔄 Retry Provisioning' : 'Provision Server'}
+                    </button>
+                  ) : null}
                   {/* v5.89 — demo lobby controls (admin only). */}
                   {['open','accepting'].includes(session.status) && players.length < (session.min_players || 10) && (
                     <button onClick={seedBots} title="Fill empty slots with bot players for end-to-end demo" style={{ padding: '6px 12px', background: 'transparent', color: 'var(--brass)', border: '1px dashed var(--brass)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>🤖 Seed Bots</button>
@@ -1078,7 +1080,7 @@ export default function Inhouse() {
                   Provisioning server…
                 </div>
               )}
-              {session.status === 'server_failed' && isInSession && (
+              {session.status === 'server_failed' && (isInSession || isAdmin) && (
                 <div role="alert" style={{ marginTop: 8, padding: 14, background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.4)', borderRadius: 6 }}>
                   <div style={{ fontWeight: 700, marginBottom: 6, color: '#f44336' }}>⚠ Server provisioning failed</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
