@@ -1229,6 +1229,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.32",
+    "title": "Magazine v3 module split — one file per feature, public surface unchanged",
+    "published_at": "2026-05-08",
+    "content": "**Closing the loop on Task #159 — internal refactor only.** The ~2,600-line `src/monetization/magazineV3.js` monolith has been split into a directory of focused per-feature files under `src/monetization/magazineV3/`, with `index.js` re-exporting the exact same public surface. No behaviour changes; no consumer edits required.\n\n**Layout.** `constants.js` (prices/limits), `urlSafety.js` (`_isSafeHttpUrl` / `_assertPublicHttpUrl` / `_isPrivateIp` / `_esc`), `schema.js` (all `applyMagazineV3Schema` migrations grouped together as required), then one file per feature: `oneOffPerks.js`, `replayQuota.js`, `weeklyReport.js` (incl. `startWeeklyReportWorker` + `validateWeeklyReportJson` + email opt-in helpers), `coachPairing.js` (incl. `scoreCoachMatch`), `sponsorships.js` (incl. org-onboarding queue), `embed.js`, `pickem.js`, `verifiedBadge.js`, `stripeWebhook.js` (`handleStripeWebhookPurpose`). Two aggregators: `db.js` (`createMagazineV3Db` — merges every feature's DB helpers; `pickem` receives `hasOneOffPerk` from `oneOffPerks` for the season-champion award) and `routes.js` (`mountMagazineV3Routes` — keeps the same defensive wiring validation and shared `requireAuth` middleware, then delegates to each feature's `mountRoutes`).\n\n**Public surface.** `index.js` re-exports the same 15 names the old monolith did: `applyMagazineV3Schema`, `createMagazineV3Db`, `mountMagazineV3Routes`, `handleStripeWebhookPurpose`, `scoreCoachMatch`, `startWeeklyReportWorker`, `validateWeeklyReportJson`, `WEEKLY_REPORT_SCHEMA`, `REPLAY_RATE_LIMIT_PER_DAY`, `ALLOWED_VERIFIED_PROVIDERS`, `VERIFIED_BADGE_PRICE_CENTS`, `SPONSORSHIP_MONTHLY_PRICE_CENTS`, `_isSafeHttpUrl`, `_assertPublicHttpUrl`, `_isPrivateIp`. Every existing consumer (`src/db/index.js`, `src/web/server.js`, `tests/magazineV3.test.js`) continues to `require('../monetization/magazineV3')` unchanged — Node resolves the directory's `index.js`.\n\n**Verification.** All 27 tests in `tests/magazineV3.test.js` pass unmodified. Old monolithic `src/monetization/magazineV3.js` deleted (a directory with the same name would otherwise be shadowed by the file).",
+    "author": "System"
+  },
+  {
     "version": "6.28",
     "title": "Magazine v3 review-fix follow-up — Pickem Pro gate · verified badge trust model · weekly worker · org onboarding queue · perk catalogue",
     "published_at": "2026-05-08",
