@@ -92,6 +92,8 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
   const [muSort, setMuSort] = useState<MuSortKey>("delta");
   const [muDir, setMuDir] = useState<"asc" | "desc">("desc");
   const [activeTheme, setActiveTheme] = useState<ThemeId>(themeProp);
+  // Keep theme in sync when prop changes (wrapper-driven previews stay deterministic).
+  useEffect(() => { setActiveTheme(themeProp); }, [themeProp]);
   const [coverVariant, setCoverVariant] = useState<CoverVariant>("backdrop");
   const [coverFx, setCoverFx] = useState<CoverFx>("none");
   const [timeWindow, setTimeWindow] = useState<WindowKey>("30");
@@ -269,7 +271,7 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
               <span className="v3-founders" title={`Founders Pass · ${v3.foundersPass.seasonLabel}`}>★ Founders</span>
             )}
             {v3.hofPlaque.has && (
-              <a href="#hof" className="v3-hof-badge" title={`${v3.hofPlaque.year} · ${v3.hofPlaque.reason || ""}`}>
+              <a href="#trophies" className="v3-hof-badge" title={`${v3.hofPlaque.year} · ${v3.hofPlaque.reason || ""}`}>
                 🏛 Hall of Fame · {v3.hofPlaque.year}
               </a>
             )}
