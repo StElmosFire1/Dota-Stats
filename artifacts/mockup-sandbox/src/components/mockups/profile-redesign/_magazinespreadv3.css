@@ -855,7 +855,18 @@
   padding: 0.55rem 0.85rem 0.7rem;
   background: var(--bg-card-2);
 }
-.v3-hero-card:hover .v3-hero-hover { display: block; }
+.v3-hero-card:hover .v3-hero-hover,
+.v3-hero-card:focus .v3-hero-hover,
+.v3-hero-card:focus-within .v3-hero-hover { display: block; }
+.v3-hero-card { outline: none; }
+.v3-hero-card:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-amber);
+  border-radius: 4px;
+}
+/* Touch / small viewports: always show the detail panel since hover isn't reliable. */
+@media (max-width: 768px), (hover: none) {
+  .v3-hero-hover { display: block; }
+}
 .v3-hero-hover-row {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 0.35rem;
@@ -1105,6 +1116,21 @@
   position: relative;
   cursor: pointer;
   transition: background 0.18s;
+  /* Reset native button styling so role="switch" buttons render as the pill */
+  padding: 0;
+  border: none;
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-block;
+}
+.v3-toggle-switch:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 2px;
+}
+.v3-toggle-switch[disabled],
+.v3-toggle-switch[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 .v3-toggle-switch.is-on { background: var(--accent-brass); }
 .v3-toggle-knob {
@@ -1180,6 +1206,25 @@
   background: var(--bg-base);
   font-size: 12px;
 }
+.v3-voice-row-select {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.v3-voice-row-select:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.v3-voice-row-select[disabled],
+.v3-voice-row-select[aria-disabled="true"] { cursor: not-allowed; }
 .v3-voice-row.is-active { border-color: var(--accent-brass); background: rgba(197,169,117,0.10); }
 .v3-voice-row .v3-voice-label { font-family: 'Oswald', sans-serif; letter-spacing: 0.06em; color: var(--text-main); }
 .v3-voice-row .v3-voice-blurb { font-size: 10px; color: var(--text-muted); }

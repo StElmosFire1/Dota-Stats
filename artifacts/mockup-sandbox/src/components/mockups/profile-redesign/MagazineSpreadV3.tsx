@@ -104,6 +104,9 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
   const [wrappedVisible, setWrappedVisible] = useState(true);
 
   const coverRef = useRef<HTMLElement | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   const p = PERSONAS[persona];
   const x = EXTRAS[persona];
@@ -135,6 +138,43 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
     return ex.frame_animated; // proxy for "owns the one-off"
   };
   const [coverMuted, setCoverMuted] = useState(true);
+
+  // Compare drawer: dialog semantics — focus trap, Escape to close, focus return.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    previouslyFocusedRef.current = (document.activeElement as HTMLElement) || null;
+    // Focus the close button on open so screen readers land inside the dialog.
+    const focusTimer = window.setTimeout(() => drawerCloseRef.current?.focus(), 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setDrawerOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !drawerRef.current) return;
+      const focusables = drawerRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !drawerRef.current.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", onKey);
+      // Restore focus to whatever opened the drawer.
+      previouslyFocusedRef.current?.focus?.();
+    };
+  }, [drawerOpen]);
 
   // Sticky header reveal: hide while cover is in view; show once it's scrolled past.
   useEffect(() => {
@@ -592,8 +632,16 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
               {p.topHeroes.slice(0, 5).map(h => {
                 const wr = Math.round((h.wins / h.games) * 100);
                 const hover = v3.heroHover[h.hero_id];
+                const detailId = `v3-hero-detail-${h.hero_id}`;
                 return (
-                  <div key={h.hero_id} className="v3-hero-card">
+                  <div
+                    key={h.hero_id}
+                    className="v3-hero-card"
+                    tabIndex={0}
+                    role="group"
+                    aria-label={`${h.name} · ${wr}% win rate over ${h.games} games · KDA ${h.kda.toFixed(2)}`}
+                    aria-describedby={hover ? detailId : undefined}
+                  >
                     <img src={heroImg(h.hero_id)} alt={h.name} className="v3-hero-portrait" />
                     <div className="v3-hero-meta">
                       <div className="v3-hero-name">{h.name}</div>
@@ -604,7 +652,7 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
                       </div>
                     </div>
                     {hover && (
-                      <div className="v3-hero-hover">
+                      <div className="v3-hero-hover" id={detailId}>
                         <div className="v3-hero-hover-row">
                           <span className="v3-hero-hover-lbl">Recent</span>
                           <span className="v3-hero-dots">
@@ -1192,26 +1240,39 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
             {/* Voice pack — B24: selecting drives the cover sting + pull-quote attribution */}
             <div className="v3-custom-cell">
               <span className="lbl"><Music className="w-3 h-3 inline-block mr-1" /> Entrance Sting</span>
-              <div className="v3-voice-list">
-                {v3.voicePacks.options.slice(0, 4).map(v => (
-                  <div
-                    key={v.id}
-                    className={`v3-voice-row ${v.id === voicePackId ? "is-active" : ""} ${v.locked ? "is-locked" : ""}`}
-                    onClick={() => { if (!v.locked) setVoicePackId(v.id); }}
-                    role="button"
-                    tabIndex={v.locked ? -1 : 0}
-                  >
-                    <div>
-                      <div className="v3-voice-label">{v.label}</div>
-                      <div className="v3-voice-blurb">{v.blurb}</div>
+              <div className="v3-voice-list" role="radiogroup" aria-label="Entrance sting">
+                {v3.voicePacks.options.slice(0, 4).map(v => {
+                  const active = v.id === voicePackId;
+                  return (
+                    <div
+                      key={v.id}
+                      className={`v3-voice-row ${active ? "is-active" : ""} ${v.locked ? "is-locked" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        aria-disabled={v.locked}
+                        disabled={v.locked}
+                        className="v3-voice-row-select"
+                        onClick={() => { if (!v.locked) setVoicePackId(v.id); }}
+                      >
+                        <span className="v3-voice-label">{v.label}</span>
+                        <span className="v3-voice-blurb">{v.blurb}</span>
+                      </button>
+                      <div className="v3-voice-meta">
+                        <span className={`v3-voice-source source-${v.source}`}>{v.source}</span>
+                        {v.locked && <Lock className="w-3 h-3 text-[var(--accent-amber)]" aria-hidden="true" />}
+                        <button
+                          type="button"
+                          className="v3-voice-play"
+                          title={`Preview ${v.label}`}
+                          aria-label={`Preview ${v.label}`}
+                        ><Play className="w-2.5 h-2.5" aria-hidden="true" /></button>
+                      </div>
                     </div>
-                    <div className="v3-voice-meta">
-                      <span className={`v3-voice-source source-${v.source}`}>{v.source}</span>
-                      {v.locked && <Lock className="w-3 h-3 text-[var(--accent-amber)]" />}
-                      <button className="v3-voice-play" title="Preview"><Play className="w-2.5 h-2.5" /></button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div className="text-[10px] text-[var(--text-faint)]">
                   Curated Dota voicelines + medieval stings only. No custom uploads.
                   <br/>
@@ -1239,14 +1300,32 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
 
             {/* Background pattern */}
             <div className="v3-custom-cell v3-toggle">
-              <span className="lbl">Background Pattern</span>
-              <div className={`v3-toggle-switch ${ex.bg_pattern ? "is-on" : ""}`}><div className="v3-toggle-knob" /></div>
+              <span className="lbl" id="v3-toggle-bg-lbl">Background Pattern</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!ex.bg_pattern}
+                aria-labelledby="v3-toggle-bg-lbl"
+                className={`v3-toggle-switch ${ex.bg_pattern ? "is-on" : ""}`}
+              >
+                <span className="v3-toggle-knob" aria-hidden="true" />
+              </button>
             </div>
 
             {/* Animated frame */}
             <div className={`v3-custom-cell v3-toggle ${isFree ? "opacity-60" : ""}`}>
-              <span className="lbl">Animated Frame {isFree && <Lock className="w-3 h-3 inline-block ml-1" />}</span>
-              <div className={`v3-toggle-switch ${ex.frame_animated ? "is-on" : ""}`}><div className="v3-toggle-knob" /></div>
+              <span className="lbl" id="v3-toggle-frame-lbl">Animated Frame {isFree && <Lock className="w-3 h-3 inline-block ml-1" aria-hidden="true" />}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!ex.frame_animated}
+                aria-labelledby="v3-toggle-frame-lbl"
+                aria-disabled={isFree}
+                disabled={isFree}
+                className={`v3-toggle-switch ${ex.frame_animated ? "is-on" : ""}`}
+              >
+                <span className="v3-toggle-knob" aria-hidden="true" />
+              </button>
             </div>
 
             {/* Verified badge */}
@@ -1297,11 +1376,29 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
         <Swords className="w-3.5 h-3.5" /> Compare
         {isFree && <span className="v3-compare-quota">{compareQuotaLeft}/{v3.compare.freeDailyLimit} left</span>}
       </button>
-      <div className={`v3-drawer-backdrop ${drawerOpen ? "is-open" : ""}`} onClick={() => setDrawerOpen(false)} />
-      <aside className={`v3-drawer ${drawerOpen ? "is-open" : ""}`}>
+      <div
+        className={`v3-drawer-backdrop ${drawerOpen ? "is-open" : ""}`}
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden="true"
+      />
+      <aside
+        ref={drawerRef as React.RefObject<HTMLElement>}
+        className={`v3-drawer ${drawerOpen ? "is-open" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="v3-drawer-title"
+        aria-hidden={!drawerOpen}
+        {...(!drawerOpen ? { inert: "" as unknown as boolean } : {})}
+      >
         <div className="v3-drawer-head">
-          <div className="v3-drawer-title">Compare players</div>
-          <button className="v3-drawer-close" onClick={() => setDrawerOpen(false)}><X className="w-4 h-4" /></button>
+          <div className="v3-drawer-title" id="v3-drawer-title">Compare players</div>
+          <button
+            ref={drawerCloseRef}
+            className="v3-drawer-close"
+            onClick={() => setDrawerOpen(false)}
+            aria-label="Close compare players dialog"
+            type="button"
+          ><X className="w-4 h-4" /></button>
         </div>
         <div className="v3-drawer-body">
           <div className="v3-compare-input">
