@@ -70,7 +70,7 @@ export function MagazineSpreadV2() {
     muSort !== k ? null : (muDir === "asc" ? <ChevronUp className="w-3 h-3 v2-sort-arrow" /> : <ChevronDown className="w-3 h-3 v2-sort-arrow" />);
 
   return (
-    <div className={`pp-redesign magazine-layout ${themeClass}`} style={{ "--theme-accent": accent } as React.CSSProperties}>
+    <div className={`pp-redesign magazine-layout magazine-v2 ${themeClass}`} style={{ "--theme-accent": accent } as React.CSSProperties}>
       {/* Header Lockup */}
       <header className="magazine-header">
         <div className="flex items-center gap-6">
@@ -114,10 +114,11 @@ export function MagazineSpreadV2() {
             {p.is_pro && <div className="pro-corner" />}
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-start">
-                <div>
-                  <h1 className="font-serif text-4xl font-bold leading-none mb-1 text-[var(--text-main)]">{p.display_name}</h1>
+                <div className="min-w-0">
+                  <div className="font-condensed text-[10px] font-bold tracking-[0.3em] uppercase mb-2 text-[var(--text-faint)]">Player Profile</div>
+                  <h1 className="v2-player-name font-serif font-bold leading-[0.95] tracking-tight mb-1 text-[var(--text-main)]">{p.display_name}</h1>
                   {c.custom_title && (
-                    <div className="font-condensed text-sm font-semibold tracking-widest uppercase mt-2" style={{ color: accent }}>
+                    <div className="font-condensed text-sm font-semibold tracking-widest uppercase mt-3" style={{ color: accent }}>
                       {c.custom_title}
                     </div>
                   )}
@@ -168,17 +169,21 @@ export function MagazineSpreadV2() {
           {ex.show_top_heroes && p.topHeroes.length > 0 && (
             <div className="mt-2">
               <div className="mag-eyebrow mb-4"><Star className="w-3 h-3"/> Top Heroes</div>
-              <div className="mag-top-heroes-strip">
-                {p.topHeroes.map(h => (
-                  <div key={h.hero_id} className="mag-hero-card">
-                    <img src={heroImg(h.hero_id)} alt={h.name} />
-                    <div className="font-condensed text-xs font-bold truncate text-[var(--text-main)]">{h.name}</div>
-                    <div className="flex justify-between font-condensed text-[10px] text-[var(--text-muted)]">
-                      <span>{h.games}g</span>
-                      <span className={Math.round((h.wins / h.games) * 100) >= 55 ? "text-[var(--radiant)]" : ""}>{Math.round((h.wins / h.games) * 100)}%</span>
+              <div className="flex flex-col gap-2">
+                {p.topHeroes.slice(0, 5).map(h => {
+                  const wr = Math.round((h.wins / h.games) * 100);
+                  return (
+                    <div key={h.hero_id} className="v2-tw-hero-row">
+                      <img src={heroImg(h.hero_id)} alt={h.name} />
+                      <div className="v2-tw-hero-name">{h.name}</div>
+                      <div className="v2-tw-hero-stats">
+                        <span style={{ color: wr >= 55 ? 'var(--radiant)' : 'var(--text-muted)' }}>{wr}%</span>
+                        <span className="v2-tw-hero-sep">|</span>
+                        <span className="text-[var(--text-muted)]">{h.games}g</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -286,6 +291,53 @@ export function MagazineSpreadV2() {
               </div>
             </div>
 
+            {/* MMR + Rolling WR — moved up to break the page after the KPI grid */}
+            <div className="v2-block grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+              <div className="v2-rolling-card">
+                <div className="flex justify-between items-baseline mb-3">
+                  <div>
+                    <div className="font-serif font-bold text-base text-[var(--text-main)]">MMR Trajectory</div>
+                    <div className="font-condensed text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Peak: {p.rank.peak}</div>
+                  </div>
+                  <div className="font-condensed text-2xl font-bold text-[var(--accent-brass)]">{p.rank.mmr}</div>
+                </div>
+                <div className="h-[100px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={mmrData}>
+                      <Line type="monotone" dataKey="mmr" stroke={accent} strokeWidth={2.5} dot={false} />
+                      <Tooltip contentStyle={{ background: 'var(--bg-elev)', border: '1px solid var(--border-subtle)', borderRadius: 4 }} labelStyle={{ display: 'none' }} itemStyle={{ color: 'var(--text-main)', fontFamily: 'Oswald, sans-serif', fontWeight: 'bold' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="v2-rolling-card">
+                <div className="flex justify-between items-baseline mb-3">
+                  <div>
+                    <div className="font-serif font-bold text-base text-[var(--text-main)]">Rolling Win Rate</div>
+                    <div className="font-condensed text-[10px] text-[var(--text-muted)] uppercase tracking-widest">10-game window</div>
+                  </div>
+                  <div className="font-condensed text-2xl font-bold" style={{ color: x.rollingWR[x.rollingWR.length - 1] >= 50 ? 'var(--radiant)' : 'var(--dire)' }}>
+                    {x.rollingWR[x.rollingWR.length - 1]}%
+                  </div>
+                </div>
+                <div className="h-[100px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={wrData}>
+                      <defs>
+                        <linearGradient id="wrFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%"   stopColor="var(--radiant)" stopOpacity={0.45}/>
+                          <stop offset="100%" stopColor="var(--radiant)" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <Area type="monotone" dataKey="wr" stroke="var(--radiant)" strokeWidth={2} fill="url(#wrFill)" />
+                      <Tooltip contentStyle={{ background: 'var(--bg-elev)', border: '1px solid var(--border-subtle)', borderRadius: 4 }} labelStyle={{ display: 'none' }} itemStyle={{ color: 'var(--text-main)', fontFamily: 'Oswald, sans-serif', fontWeight: 'bold' }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
             {/* Per-position breakdown */}
             <div className="v2-block">
               <div className="v2-mini-eyebrow"><Layers className="w-3 h-3"/> Per-position breakdown</div>
@@ -349,52 +401,6 @@ export function MagazineSpreadV2() {
               </div>
             </div>
 
-            {/* MMR + Rolling WR */}
-            <div className="v2-block grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="v2-rolling-card">
-                <div className="flex justify-between items-baseline mb-3">
-                  <div>
-                    <div className="font-serif font-bold text-base text-[var(--text-main)]">MMR Trajectory</div>
-                    <div className="font-condensed text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Peak: {p.rank.peak}</div>
-                  </div>
-                  <div className="font-condensed text-2xl font-bold text-[var(--accent-brass)]">{p.rank.mmr}</div>
-                </div>
-                <div className="h-[100px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={mmrData}>
-                      <Line type="monotone" dataKey="mmr" stroke={accent} strokeWidth={2.5} dot={false} />
-                      <Tooltip contentStyle={{ background: 'var(--bg-elev)', border: '1px solid var(--border-subtle)', borderRadius: 4 }} labelStyle={{ display: 'none' }} itemStyle={{ color: 'var(--text-main)', fontFamily: 'Oswald, sans-serif', fontWeight: 'bold' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="v2-rolling-card">
-                <div className="flex justify-between items-baseline mb-3">
-                  <div>
-                    <div className="font-serif font-bold text-base text-[var(--text-main)]">Rolling Win Rate</div>
-                    <div className="font-condensed text-[10px] text-[var(--text-muted)] uppercase tracking-widest">10-game window</div>
-                  </div>
-                  <div className="font-condensed text-2xl font-bold" style={{ color: x.rollingWR[x.rollingWR.length - 1] >= 50 ? 'var(--radiant)' : 'var(--dire)' }}>
-                    {x.rollingWR[x.rollingWR.length - 1]}%
-                  </div>
-                </div>
-                <div className="h-[100px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={wrData}>
-                      <defs>
-                        <linearGradient id="wrFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%"   stopColor="var(--radiant)" stopOpacity={0.45}/>
-                          <stop offset="100%" stopColor="var(--radiant)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <Area type="monotone" dataKey="wr" stroke="var(--radiant)" strokeWidth={2} fill="url(#wrFill)" />
-                      <Tooltip contentStyle={{ background: 'var(--bg-elev)', border: '1px solid var(--border-subtle)', borderRadius: 4 }} labelStyle={{ display: 'none' }} itemStyle={{ color: 'var(--text-main)', fontFamily: 'Oswald, sans-serif', fontWeight: 'bold' }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
           </article>
 
           {/* §3 — Recent Matches */}

@@ -237,3 +237,28 @@
 .v2-rolling-card {
   background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0.9rem 1rem;
 }
+
+/* Player name as the main showpiece — bigger than any section title */
+.magazine-v2 .v2-player-name {
+  font-size: clamp(2.25rem, 4.5vw, 3.25rem);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.magazine-v2 .mag-story .mag-title { font-size: 1.85rem; }
+.magazine-v2 .mag-story .mag-eyebrow { font-size: 11px; letter-spacing: 0.18em; }
+
+/* TrophyWall-style top hero rows */
+.v2-tw-hero-row {
+  display: flex; align-items: center; gap: 0.85rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.v2-tw-hero-row:hover { background: var(--bg-card); }
+.v2-tw-hero-row img { width: 48px; height: 28px; object-fit: cover; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,0.4); flex-shrink: 0; }
+.v2-tw-hero-name { flex: 1; font-weight: 700; font-size: 13px; color: var(--text-main); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2-tw-hero-stats { font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; }
+.v2-tw-hero-sep { margin: 0 0.5rem; color: var(--border-subtle); }
