@@ -223,37 +223,140 @@
   to   { transform: scale(1.18) translate(-2%, -3%); }
 }
 
-.v3-cover.fx-grain::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0.18;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.7'/></svg>");
-  mix-blend-mode: overlay;
+/* Parallax Drift — slow horizontal pan on the backdrop */
+.v3-cover.fx-parallax .v3-cover-bg {
+  animation: v3Parallax 18s ease-in-out infinite alternate;
+}
+@keyframes v3Parallax {
+  from { transform: scale(1.08) translate(-2%, 0); }
+  to   { transform: scale(1.08) translate(2%, -1%); }
 }
 
-.v3-cover.fx-noir .v3-cover-bg { filter: grayscale(1) contrast(1.15); }
-.v3-cover.fx-noir .v3-cover-name { color: var(--accent-brass); }
-
-.v3-cover.fx-vignette::after {
+/* Particle Drift — drifting dot field above the backdrop */
+.v3-cover.fx-particle::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.6) 100%);
+  background-image:
+    radial-gradient(circle at 12% 28%, rgba(245,239,226,0.55) 0 1.2px, transparent 1.6px),
+    radial-gradient(circle at 78% 64%, rgba(245,158,11,0.45) 0 1.4px, transparent 1.8px),
+    radial-gradient(circle at 42% 84%, rgba(197,169,117,0.5) 0 1.1px, transparent 1.5px),
+    radial-gradient(circle at 60% 18%, rgba(255,255,255,0.4) 0 0.9px, transparent 1.3px);
+  background-size: 240px 240px, 320px 320px, 200px 200px, 280px 280px;
+  animation: v3Particle 22s linear infinite;
+  opacity: 0.9;
+}
+@keyframes v3Particle {
+  from { background-position: 0 0, 0 0, 0 0, 0 0; }
+  to   { background-position: 0 -480px, 0 -640px, 0 -400px, 0 -560px; }
 }
 
-.v3-cover.fx-scanlines::after {
+/* Vignette Pulse — slow breathing radial darkness */
+.v3-cover.fx-vignette-pulse::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px);
-  mix-blend-mode: overlay;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.65) 100%);
+  animation: v3VignettePulse 5.5s ease-in-out infinite;
+}
+@keyframes v3VignettePulse {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 1; }
+}
+
+/* Kill / Streak Glow — warm amber breathing edge glow (ties to hot streak) */
+.v3-cover.fx-streak-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: inset 0 0 120px 20px rgba(245, 158, 11, 0.45);
+  animation: v3StreakGlow 2.6s ease-in-out infinite;
+}
+@keyframes v3StreakGlow {
+  0%, 100% { box-shadow: inset 0 0 80px 14px rgba(245, 158, 11, 0.32); }
+  50%      { box-shadow: inset 0 0 160px 28px rgba(245, 158, 11, 0.55); }
+}
+
+/* Cover sting mute toggle (B18) */
+.v3-cover-mute {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(13, 20, 36, 0.65);
+  border: 1px solid rgba(245, 239, 226, 0.18);
+  color: var(--text-main);
+  font-family: var(--font-condensed);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.v3-cover-mute:hover { border-color: var(--accent-amber); }
+.v3-cover-mute-lbl { opacity: 0.85; }
+
+/* Sparkline "why" tooltip indicator */
+.v3-vital-why {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--accent-amber);
+  cursor: help;
+  vertical-align: super;
+}
+
+/* AI quote locked variant for free profiles */
+.v3-ai-quote-locked {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+/* HoF "View plaques" link in trophy header + plaque card */
+.v3-hof-link {
+  font-family: var(--font-condensed);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-amber);
+  text-decoration: none;
+  border-bottom: 1px dashed currentColor;
+}
+.v3-hof-link:hover { color: var(--gold); }
+.v3-hof-plaque {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 18px;
+  margin: 12px 0 18px;
+  border: 1px solid var(--accent-amber);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.10), transparent 65%);
+}
+.v3-hof-plaque-icon { font-size: 28px; }
+.v3-hof-plaque-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text-main);
+}
+.v3-hof-plaque-sub {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .v3-cover-inner {

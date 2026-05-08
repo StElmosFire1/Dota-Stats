@@ -33,7 +33,7 @@ function heatColor(wr: number): string {
 type MuSortKey = "delta" | "with_wr" | "vs_wr" | "name";
 type ThemeId = "default" | "newsprint" | "carbon" | "holo" | "heritage" | "broadcast";
 type CoverVariant = "backdrop" | "split" | "minimal";
-type CoverFx = "none" | "shimmer" | "kenburns" | "grain" | "noir" | "vignette" | "scanlines";
+type CoverFx = "none" | "kenburns" | "parallax" | "particle" | "shimmer" | "vignette-pulse" | "streak-glow";
 type WindowKey = "10" | "30" | "season" | "alltime";
 type ShopCat = "all" | "frame" | "voice" | "achievement-border" | "cover-fx" | "vanity" | "season-wrapped" | "verified";
 
@@ -47,13 +47,13 @@ const THEMES: Array<{ id: ThemeId; label: string }> = [
 ];
 
 const COVER_FX_OPTIONS: Array<{ id: CoverFx; label: string; pro?: boolean; oneOff?: boolean }> = [
-  { id: "none",      label: "None" },
-  { id: "shimmer",   label: "Shimmer (PRO + one-off)", pro: true,  oneOff: true },
-  { id: "kenburns",  label: "Ken Burns (PRO)",          pro: true },
-  { id: "grain",     label: "Film Grain (one-off)",     oneOff: true },
-  { id: "noir",      label: "Noir (PRO + one-off)",     pro: true, oneOff: true },
-  { id: "vignette",  label: "Vignette" },
-  { id: "scanlines", label: "Scanlines (PRO)",          pro: true },
+  { id: "none",            label: "None" },
+  { id: "kenburns",        label: "Ken Burns (PRO)",                 pro: true },
+  { id: "parallax",        label: "Parallax Drift (PRO)",            pro: true },
+  { id: "particle",        label: "Particle Drift (PRO + one-off)",  pro: true, oneOff: true },
+  { id: "shimmer",         label: "Shimmer (PRO + one-off)",         pro: true, oneOff: true },
+  { id: "vignette-pulse",  label: "Vignette Pulse (one-off)",        oneOff: true },
+  { id: "streak-glow",     label: "Kill / Streak Glow (PRO)",        pro: true },
 ];
 
 // Sparkline path generator — values can be in any range; we normalise.
@@ -118,6 +118,19 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
     else if (persona === "pro") setCoverFx(ex.frame_animated ? "shimmer" : "none");
     else setCoverFx("none");
   }, [persona, ex.frame_animated]);
+
+  // Cover FX gating — Free users can only pick "none"; one-off effects unlocked
+  // when persona has the matching cosmetic owned (modeled here on frame_animated for OG).
+  const fxOwned = (id: CoverFx): boolean => {
+    if (id === "none") return true;
+    if (isFree) return false;
+    if (isOG) return true;
+    // Pro: owns kenburns + parallax + streak-glow (subscription-included),
+    // shimmer/particle require additional one-off, vignette-pulse is a one-off.
+    if (id === "kenburns" || id === "parallax" || id === "streak-glow") return true;
+    return ex.frame_animated; // proxy for "owns the one-off"
+  };
+  const [coverMuted, setCoverMuted] = useState(true);
 
   // Sticky header reveal: hide while cover is in view; show once it's scrolled past.
   useEffect(() => {
@@ -283,9 +296,24 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
 
           {v3.vanitySlug.current && (
             <div className="v3-cover-slug">
-              oceinhouse.gg/u/<b>{v3.vanitySlug.current}</b>
+              oceinhouse.gg/p/<b>{v3.vanitySlug.current}</b>
               {v3.vanitySlug.isThreeLetter && <span className="v3-vanity-tag">3-letter</span>}
             </div>
+          )}
+
+          {/* Cover sting mute toggle (B18) — only meaningful when an entrance sting is configured */}
+          {v3.voicePacks?.currentId && v3.voicePacks.currentId !== "default" && (
+            <button
+              type="button"
+              className="v3-cover-mute"
+              aria-pressed={!coverMuted}
+              aria-label={coverMuted ? "Unmute entrance sting" : "Mute entrance sting"}
+              title={coverMuted ? "Unmute entrance sting" : "Mute entrance sting"}
+              onClick={() => setCoverMuted(m => !m)}
+            >
+              {coverMuted ? "🔇" : "🔊"}
+              <span className="v3-cover-mute-lbl">{coverMuted ? "Unmute" : "Mute"}</span>
+            </button>
           )}
 
           <div className="v3-cover-flair">
@@ -320,7 +348,15 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
             ]).map((v, i, arr) => (
               <React.Fragment key={v.lbl}>
                 <div className="v3-vital">
-                  <div className="v3-vital-lbl">{v.lbl}</div>
+                  <div className="v3-vital-lbl">
+                    {v.lbl}
+                    {!isFree && (
+                      <span
+                        className="v3-vital-why"
+                        title={`PRO · why this number — ${v.lbl} sparkline plots the last 10 datapoints normalised to its own range. Trend slope & PERF context come from your role baseline.`}
+                      >ⓘ</span>
+                    )}
+                  </div>
                   <div className="v3-vital-val" style={{ color: v.color }}>{v.val}</div>
                   <div className="v3-vital-sub">{v.sub}</div>
                   <Sparkline values={v.series} color={v.color} />
@@ -393,10 +429,17 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
             <img src={heroImg(p.pinnedMatch.hero_id)} alt="" className="w-16 h-16 object-cover rounded shadow-md" />
           </div>
 
-          {/* AI commentary pull-quote */}
-          {v3.aiQuote && (
+          {/* AI commentary pull-quote — Pro-only on free profiles */}
+          {v3.aiQuote && !isFree && (
             <div className="v3-ai-quote mt-6">
               {v3.aiQuote}
+              <span className="v3-ai-quote-attr">Grok · post-match commentary</span>
+            </div>
+          )}
+          {v3.aiQuote && isFree && (
+            <div className="v3-ai-quote mt-6 v3-ai-quote-locked" title="AI pull-quote is a Pro feature on free profiles.">
+              <Lock className="w-3 h-3 inline-block mr-1" />
+              <span className="opacity-80">AI pull-quote unlocks with Pro.</span>
               <span className="v3-ai-quote-attr">Grok · post-match commentary</span>
             </div>
           )}
@@ -821,9 +864,25 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
 
         {/* §8 — Trophy Cabinet */}
         <article id="trophies" className="mag-story">
-          <div className="mag-eyebrow"><Trophy className="w-4 h-4"/> Achievement Spotlight</div>
+          <div className="mag-eyebrow flex items-center justify-between gap-3 flex-wrap">
+            <span className="flex items-center gap-2"><Trophy className="w-4 h-4"/> Achievement Spotlight</span>
+            {v3.hofPlaque.has && (
+              <a href="#hof-plaques" className="v3-hof-link">
+                🏛 View Hall of Fame plaques →
+              </a>
+            )}
+          </div>
           <h2 className="mag-title">Trophy Cabinet</h2>
           <p className="mag-subtitle">Pinned and recent honors</p>
+          {v3.hofPlaque.has && (
+            <div id="hof-plaques" className="v3-hof-plaque">
+              <div className="v3-hof-plaque-icon">🏛</div>
+              <div>
+                <div className="v3-hof-plaque-title">Hall of Fame · {v3.hofPlaque.year}</div>
+                <div className="v3-hof-plaque-sub">{v3.hofPlaque.reason}</div>
+              </div>
+            </div>
+          )}
 
           {p.pinnedAchievement && (
             <div className="bg-gradient-to-r from-[var(--bg-card)] to-transparent border border-[var(--border-subtle)] border-l-4 border-l-[var(--accent-amber)] p-6 rounded mb-6 flex items-center gap-6">
@@ -987,20 +1046,32 @@ export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSprea
               <select
                 className="v3-fx-select"
                 value={coverFx}
-                onChange={e => setCoverFx(e.target.value as CoverFx)}
+                onChange={e => {
+                  const next = e.target.value as CoverFx;
+                  if (fxOwned(next)) setCoverFx(next);
+                }}
               >
-                {COVER_FX_OPTIONS.map(o => (
-                  <option key={o.id} value={o.id}>{o.label}</option>
-                ))}
+                {COVER_FX_OPTIONS.map(o => {
+                  const owned = fxOwned(o.id);
+                  return (
+                    <option key={o.id} value={o.id} disabled={!owned}>
+                      {o.label}{!owned ? " 🔒" : ""}
+                    </option>
+                  );
+                })}
               </select>
-              <div className="text-[10px] text-[var(--text-faint)]">Free has Vignette only. Other effects are Pro and/or one-off purchases.</div>
+              <div className="text-[10px] text-[var(--text-faint)]">
+                {isFree
+                  ? "Free profiles get None only. All cover FX require Pro and/or a one-off unlock."
+                  : "Locked options need either an active Pro subscription or the matching one-off unlock."}
+              </div>
             </div>
 
             {/* Vanity URL */}
             <div className="v3-custom-cell">
               <span className="lbl">Vanity URL <Link2 className="w-3 h-3 inline-block ml-1 text-[var(--text-faint)]" /></span>
               <div className="v3-vanity-row">
-                <span>oceinhouse.gg/u/</span>
+                <span>oceinhouse.gg/p/</span>
                 <input value={v3.vanitySlug.desired || ""} readOnly />
               </div>
               {v3.vanitySlug.isThreeLetter ? (
