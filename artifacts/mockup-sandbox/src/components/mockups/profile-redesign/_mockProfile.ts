@@ -560,3 +560,394 @@ const OGPRO_X: MockExtras = {
 
 export const EXTRAS: Record<Persona, MockExtras> = { free: FREE_X, pro: PRO_X, ogpro: OGPRO_X };
 
+// ---------------------------------------------------------------------------
+// V3 extras: only consumed by MagazineSpreadV3 + theme wrappers. Lives here so
+// the v3 mockup file stays presentational. None of this leaks to v1/v2.
+// ---------------------------------------------------------------------------
+
+export type CareerTileKind =
+  | "mk-double" | "mk-triple" | "mk-ultra" | "mk-rampage"
+  | "best-kda" | "longest-streak" | "biggest-comeback"
+  | "highest-gpm" | "mvp-votes" | "total-games" | "first-blood";
+
+export interface CareerTile {
+  kind: CareerTileKind;
+  label: string;
+  value: string;
+  sub?: string;
+  rare?: boolean;
+}
+
+export interface HeroHoverInfo {
+  hero_id: number;
+  recentResults: boolean[];      // newest-first, true=win
+  topItems: string[];            // 3 most-built items on this hero
+  withWr?: number;               // win rate when teammate plays this hero (Pro)
+  vsWr?: number;                 // win rate against this hero (Pro)
+}
+
+export interface PinnedAchievementInfo {
+  emoji: string; label: string; sub: string;
+  border?: "brass" | "amber" | "silver" | "cosmic" | "fire" | null;
+}
+
+export interface VoicePackOption {
+  id: string;
+  label: string;
+  blurb: string;
+  source: "voiceline" | "medieval" | "broadcast";
+  locked: boolean;       // free users see locked
+  ownedOneOff?: boolean; // OG one-off purchase
+}
+
+export interface ShopItem {
+  id: string;
+  name: string;
+  category: "frame" | "voice" | "achievement-border" | "cover-fx" | "season-wrapped" | "vanity" | "verified";
+  blurb: string;
+  price: string;          // display string only ("$3.99" / "$19" / "Auction")
+  tier: "common" | "rare" | "epic" | "legendary" | "mythic";
+  owned: boolean;
+  proGate: boolean;       // requires active Pro on top of one-off purchase
+}
+
+export interface SeasonWrappedItem { label: string; value: string; sub?: string; }
+
+export interface V3Extras {
+  // Live status chip
+  liveStatus: {
+    kind: "in_match" | "in_lobby" | "in_queue" | "idle";
+    label: string;
+    hero?: string;
+    sinceMin?: number;
+  };
+
+  // Career Highlights ribbon (replaces the orphan multi-kill row)
+  careerHighlights: CareerTile[];
+
+  // Tiny sparkline data per cover vital — last 10 values, normalised raw
+  formSparks: {
+    mmr: number[];
+    wr: number[];      // % per 10-game window
+    kda: number[];
+    gpm: number[];
+    perf: number[];    // 0..10
+  };
+
+  // Pinned achievement ribbon under the cover (1 for free, up to 3 for Pro)
+  pinnedAchievementsList: PinnedAchievementInfo[];
+
+  // Hero hover upgrades — keyed by hero_id, parallel to topHeroes
+  heroHover: Record<number, HeroHoverInfo>;
+
+  // Vanity URL state
+  vanitySlug: {
+    current: string | null;       // current /u/<slug>
+    desired?: string;             // pending in customization input
+    isThreeLetter: boolean;       // shown when current is 3 chars
+    auctionPrice?: string;        // shown for 3-letter slugs
+  };
+
+  // Founders Pass — gold ring on PRO chip while subscription is active
+  foundersPass: {
+    eligible: boolean;            // bought it during S1
+    activeNow: boolean;           // currently has Pro
+    seasonLabel: string;
+  };
+
+  // Verified badge (manual / earned)
+  verified: { has: boolean; reason?: string };
+
+  // Voice pack — entrance sting catalogue (Dota voicelines + medieval only)
+  voicePacks: {
+    currentId: string;
+    options: VoicePackOption[];
+  };
+
+  // Profile Spotlight — featured-on-front-page chip
+  spotlight: { active: boolean; placeOnLeaderboard?: number; viewersToday?: number; nextSlotPrice?: string };
+
+  // Hall of Fame plaque
+  hofPlaque: { has: boolean; year?: number; reason?: string };
+
+  // Season-wrapped year-in-review card
+  seasonWrapped: {
+    season: string;
+    visible: boolean;
+    autoExpiresInDays: number;     // 14
+    items: SeasonWrappedItem[];
+  };
+
+  // Time-window aware aggregates — selectable in By The Numbers
+  // 10 / 30 are free; season / alltime are Pro-gated
+  timeWindow: {
+    "10": { wr: number; kda: number; gpm: number; perf: number; games: number };
+    "30": { wr: number; kda: number; gpm: number; perf: number; games: number };
+    season: { wr: number; kda: number; gpm: number; perf: number; games: number };
+    alltime: { wr: number; kda: number; gpm: number; perf: number; games: number };
+  };
+
+  // Compare drawer state (Free = 3/day)
+  compare: { freeDailyLimit: number; freeUsedToday: number; suggestions: string[] };
+
+  // OG Cosmetic Shop
+  shop: ShopItem[];
+
+  // AI commentary pull-quote (mocked Grok one-liner about the latest game)
+  aiQuote?: string;
+}
+
+const sparks = (base: number, jitter: number, n = 10) =>
+  Array.from({ length: n }, (_, i) => Math.round(base + Math.sin(i * 1.3) * jitter * 0.7 + (Math.random() - 0.5) * jitter * 0.4));
+
+const FREE_V3: V3Extras = {
+  liveStatus: { kind: "idle", label: "Last seen 2h ago" },
+  careerHighlights: [
+    { kind: "total-games",     label: "Total Games",     value: "342" },
+    { kind: "best-kda",        label: "Best KDA",        value: "12.5", sub: "vs Ancients" },
+    { kind: "longest-streak",  label: "Longest W-Streak",value: "6",    sub: "Mar 2026" },
+    { kind: "biggest-comeback",label: "Biggest Comeback",value: "-19k → W", sub: "Anti-Mage carry" },
+    { kind: "highest-gpm",     label: "Highest GPM",     value: "892",  sub: "AM 28-min GG" },
+    { kind: "first-blood",     label: "First Bloods",    value: "27" },
+    { kind: "mk-rampage",      label: "Rampages",        value: "1", rare: true },
+    { kind: "mk-ultra",        label: "Ultras",          value: "1", rare: true },
+  ],
+  formSparks: {
+    mmr:  [4690, 4720, 4770, 4810, 4830, 4870, 4850, 4820, 4810, 4820],
+    wr:   [55, 58, 62, 60, 57, 60, 58, 56, 58, 60],
+    kda:  [3.1, 3.4, 3.8, 3.6, 3.2, 3.5, 3.4, 3.3, 3.5, 3.4],
+    gpm:  [580, 595, 612, 605, 590, 615, 608, 600, 615, 612],
+    perf: [5.4, 5.7, 6.1, 6.0, 5.6, 5.9, 5.8, 5.7, 5.9, 5.8],
+  },
+  pinnedAchievementsList: [
+    { emoji: "🩸", label: "First Blood Streak", sub: "5 games in a row", border: "silver" },
+  ],
+  heroHover: {
+    1:  { hero_id: 1,  recentResults: [true,true,false,true,true,false,true,true,false,true], topItems: ["Battle Fury", "Manta", "Abyssal"] },
+    7:  { hero_id: 7,  recentResults: [true,false,true,true,false,true,true], topItems: ["Blink", "Aghs", "Octarine"] },
+    11: { hero_id: 11, recentResults: [false,true,false,true,false], topItems: ["Bottle", "Shadow Blade", "BKB"] },
+    20: { hero_id: 20, recentResults: [true,true,false,true,true,true,false], topItems: ["Aether Lens", "Glimmer", "Force"] },
+    35: { hero_id: 35, recentResults: [true,false,false,true,false], topItems: ["Maelstrom", "Mjollnir", "Satanic"] },
+  },
+  vanitySlug: { current: null, desired: "shadowcarry", isThreeLetter: false },
+  foundersPass: { eligible: false, activeNow: false, seasonLabel: "S1 — Inaugural" },
+  verified: { has: false },
+  voicePacks: {
+    currentId: "default",
+    options: [
+      { id: "default",       label: "Default Stinger",     blurb: "Quiet brass tag",                source: "broadcast", locked: false },
+      { id: "io-relax",      label: "IO · Relax!",         blurb: "Wisp voiceline",                 source: "voiceline", locked: true },
+      { id: "pa-coup",       label: "PA · Coup de Grâce",  blurb: "Phantom Assassin voiceline",     source: "voiceline", locked: true },
+      { id: "medieval-horn", label: "Medieval · Battle Horn", blurb: "Bardic herald sting",         source: "medieval",  locked: true },
+      { id: "medieval-bell", label: "Medieval · Tower Bell",  blurb: "Tolling bell announce",       source: "medieval",  locked: true },
+      { id: "broadcast-1",   label: "Broadcast · ESL Hit",  blurb: "Studio sting — synth pad",      source: "broadcast", locked: true },
+    ],
+  },
+  spotlight: { active: false, placeOnLeaderboard: 287, nextSlotPrice: "$2.99 / 24h" },
+  hofPlaque: { has: false },
+  seasonWrapped: {
+    season: "Season 4 · 2026",
+    visible: true,
+    autoExpiresInDays: 14,
+    items: [
+      { label: "Most Played", value: "Anti-Mage", sub: "47 games · 60% WR" },
+      { label: "Best Streak", value: "6 wins",    sub: "March 2-7" },
+      { label: "Biggest Win", value: "+25 MMR",   sub: "vs Immortal stack" },
+      { label: "Hours In",    value: "42h",       sub: "across 30 nights" },
+      { label: "MMR Climb",   value: "+420",      sub: "season delta" },
+      { label: "Verdict",     value: "The Closer",sub: "wins late games" },
+    ],
+  },
+  timeWindow: {
+    "10":     { wr: 60, kda: 3.4, gpm: 612, perf: 5.8, games: 10 },
+    "30":     { wr: 60, kda: 3.4, gpm: 612, perf: 5.8, games: 30 },
+    season:   { wr: 0,  kda: 0,   gpm: 0,   perf: 0,   games: 0 },
+    alltime:  { wr: 0,  kda: 0,   gpm: 0,   perf: 0,   games: 0 },
+  },
+  compare: { freeDailyLimit: 3, freeUsedToday: 1, suggestions: ["BrassKnuckles", "OldManOffLane", "WardSlut"] },
+  shop: [
+    { id: "frame-cosmic",       name: "Cosmic Frame",          category: "frame",              blurb: "Animated nebula border around your portrait.",  price: "$4.99", tier: "epic",      owned: false, proGate: false },
+    { id: "frame-fire",         name: "Fire Frame",            category: "frame",              blurb: "Burning ember outline. Slow flicker.",          price: "$4.99", tier: "epic",      owned: false, proGate: false },
+    { id: "voice-io",           name: "Voice — IO Relax!",     category: "voice",              blurb: "Plays for opponents when you join lobby.",       price: "$1.99", tier: "rare",      owned: false, proGate: false },
+    { id: "border-rampage",     name: "Rampage Border",        category: "achievement-border", blurb: "Gold-on-blood border for any pinned trophy.",    price: "$2.99", tier: "epic",      owned: false, proGate: false },
+    { id: "fx-shimmer",         name: "Cover FX — Shimmer",    category: "cover-fx",           blurb: "Brass shimmer sweep across cover banner.",       price: "$3.99", tier: "rare",      owned: false, proGate: true },
+    { id: "fx-grain",           name: "Cover FX — Film Grain", category: "cover-fx",           blurb: "Subtle 16mm grain over cover.",                  price: "$2.99", tier: "common",    owned: false, proGate: false },
+    { id: "wrapped-export",     name: "Season Wrapped Export", category: "season-wrapped",     blurb: "Download your year-in-review as a poster PNG.",  price: "$1.99", tier: "common",    owned: false, proGate: false },
+    { id: "vanity-3",           name: "3-Letter Vanity URL",   category: "vanity",             blurb: "Auction. Highest bid wins for 12 months.",       price: "Auction",tier: "legendary",owned: false, proGate: true  },
+    { id: "vanity-custom",      name: "Custom Vanity URL",     category: "vanity",             blurb: "Pick any unused 4+ char slug.",                  price: "$9.99", tier: "rare",      owned: false, proGate: false },
+    { id: "verified",           name: "Verified Badge",        category: "verified",           blurb: "Earned via OCE staff review (free for confirmed pros).", price: "—", tier: "mythic", owned: false, proGate: false },
+  ],
+  aiQuote: "Solo-killed twice in lane, then closed before Pudge got Aghs. Textbook 'farm-and-finish' AM.",
+};
+
+const PRO_V3: V3Extras = {
+  liveStatus: { kind: "in_match", label: "In match — Pudge", hero: "Pudge", sinceMin: 18 },
+  careerHighlights: [
+    { kind: "total-games",     label: "Total Games",     value: "1,284" },
+    { kind: "best-kda",        label: "Best KDA",        value: "22.0", sub: "Pudge — Rampage" },
+    { kind: "longest-streak",  label: "Longest W-Streak",value: "10",   sub: "Apr 2026" },
+    { kind: "biggest-comeback",label: "Biggest Comeback",value: "-31k → W", sub: "Pudge mid heroics" },
+    { kind: "highest-gpm",     label: "Highest GPM",     value: "918" },
+    { kind: "first-blood",     label: "First Bloods",    value: "212" },
+    { kind: "mvp-votes",       label: "MVP Votes",       value: "138" },
+    { kind: "mk-rampage",      label: "Rampages",        value: "3", rare: true },
+  ],
+  formSparks: {
+    mmr:  [5670, 5720, 5740, 5770, 5800, 5830, 5860, 5840, 5870, 5860],
+    wr:   [70, 72, 75, 78, 76, 73, 70, 72, 75, 73],
+    kda:  [4.4, 4.6, 4.8, 5.0, 4.9, 4.7, 4.6, 4.5, 4.7, 4.7],
+    gpm:  [640, 650, 660, 670, 665, 660, 655, 658, 662, 658],
+    perf: [7.4, 7.6, 7.8, 8.1, 7.9, 7.7, 7.5, 7.6, 7.8, 7.6],
+  },
+  pinnedAchievementsList: [
+    { emoji: "👑", label: "Rampage", sub: "Pudge — vs Radiant carries", border: "amber" },
+    { emoji: "🏆", label: "MVP Magnet", sub: "12 MVP votes in 30 days", border: "brass" },
+    { emoji: "🔥", label: "10-game streak", sub: "May 2026", border: "amber" },
+  ],
+  heroHover: {
+    14: { hero_id: 14, recentResults: [true,true,false,true,true,true,false,true,true,false], topItems: ["Aether Lens", "Glimmer", "Aghs"], withWr: 79, vsWr: 33 },
+    8:  { hero_id: 8,  recentResults: [true,true,true,false,true,true,false,true,true,true],  topItems: ["BF", "Manta", "Abyssal"],         withWr: 67, vsWr: 55 },
+    11: { hero_id: 11, recentResults: [true,false,true,true,true,false,true,true,true,false], topItems: ["Bottle", "Shadow Blade", "BKB"], withWr: 72, vsWr: 64 },
+    64: { hero_id: 64, recentResults: [true,true,true,false,true,true,true,true,false,true],  topItems: ["Aghs", "Glimmer", "Force"],       withWr: 68, vsWr: 50 },
+    26: { hero_id: 26, recentResults: [true,false,true,true,false,true,true,false,true,true], topItems: ["Aether", "Blink", "Force"],       withWr: 65, vsWr: 48 },
+  },
+  vanitySlug: { current: "brass", desired: "brass", isThreeLetter: false, auctionPrice: undefined },
+  foundersPass: { eligible: false, activeNow: true, seasonLabel: "S2 · Member" },
+  verified: { has: true, reason: "Confirmed OCE captain" },
+  voicePacks: {
+    currentId: "pa-coup",
+    options: [
+      { id: "default",       label: "Default Stinger",     blurb: "Quiet brass tag",                source: "broadcast", locked: false },
+      { id: "io-relax",      label: "IO · Relax!",         blurb: "Wisp voiceline",                 source: "voiceline", locked: false },
+      { id: "pa-coup",       label: "PA · Coup de Grâce",  blurb: "Phantom Assassin voiceline",     source: "voiceline", locked: false, ownedOneOff: true },
+      { id: "medieval-horn", label: "Medieval · Battle Horn", blurb: "Bardic herald sting",         source: "medieval",  locked: false },
+      { id: "medieval-bell", label: "Medieval · Tower Bell",  blurb: "Tolling bell announce",       source: "medieval",  locked: false },
+      { id: "broadcast-1",   label: "Broadcast · ESL Hit",  blurb: "Studio sting — synth pad",      source: "broadcast", locked: false },
+    ],
+  },
+  spotlight: { active: false, placeOnLeaderboard: 8, viewersToday: 412, nextSlotPrice: "$2.99 / 24h" },
+  hofPlaque: { has: false },
+  seasonWrapped: {
+    season: "Season 4 · 2026",
+    visible: true,
+    autoExpiresInDays: 14,
+    items: [
+      { label: "Most Played", value: "Pudge",     sub: "86 games · 69% WR" },
+      { label: "Best Streak", value: "10 wins",   sub: "April 4-12" },
+      { label: "Biggest Win", value: "Rampage W", sub: "Pudge mid · vs immortal" },
+      { label: "Hours In",    value: "94h",       sub: "across 60 nights" },
+      { label: "MMR Climb",   value: "+540",      sub: "season delta" },
+      { label: "Verdict",     value: "Mid Lord",  sub: "team's win condition" },
+    ],
+  },
+  timeWindow: {
+    "10":    { wr: 73, kda: 4.7, gpm: 658, perf: 7.6, games: 10 },
+    "30":    { wr: 73, kda: 4.7, gpm: 658, perf: 7.6, games: 30 },
+    season:  { wr: 70, kda: 4.5, gpm: 642, perf: 7.4, games: 124 },
+    alltime: { wr: 64, kda: 4.1, gpm: 614, perf: 6.9, games: 1284 },
+  },
+  compare: { freeDailyLimit: 3, freeUsedToday: 0, suggestions: ["ShadowCarry", "OldManOffLane", "WardSlut", "WhipDelivery", "PingMachine"] },
+  shop: [
+    { id: "frame-cosmic",       name: "Cosmic Frame",          category: "frame",              blurb: "Animated nebula border around your portrait.",  price: "$4.99", tier: "epic",      owned: true,  proGate: false },
+    { id: "frame-fire",         name: "Fire Frame",            category: "frame",              blurb: "Burning ember outline. Slow flicker.",          price: "$4.99", tier: "epic",      owned: false, proGate: false },
+    { id: "voice-io",           name: "Voice — IO Relax!",     category: "voice",              blurb: "Plays for opponents when you join lobby.",       price: "$1.99", tier: "rare",      owned: true,  proGate: false },
+    { id: "voice-pa",           name: "Voice — PA Coup",       category: "voice",              blurb: "Phantom Assassin voiceline.",                    price: "$1.99", tier: "rare",      owned: true,  proGate: false },
+    { id: "border-rampage",     name: "Rampage Border",        category: "achievement-border", blurb: "Gold-on-blood border for any pinned trophy.",    price: "$2.99", tier: "epic",      owned: true,  proGate: false },
+    { id: "fx-shimmer",         name: "Cover FX — Shimmer",    category: "cover-fx",           blurb: "Brass shimmer sweep across cover banner.",       price: "$3.99", tier: "rare",      owned: true,  proGate: true },
+    { id: "fx-grain",           name: "Cover FX — Film Grain", category: "cover-fx",           blurb: "Subtle 16mm grain over cover.",                  price: "$2.99", tier: "common",    owned: false, proGate: false },
+    { id: "wrapped-export",     name: "Season Wrapped Export", category: "season-wrapped",     blurb: "Download your year-in-review as a poster PNG.",  price: "$1.99", tier: "common",    owned: false, proGate: false },
+    { id: "vanity-3",           name: "3-Letter Vanity URL",   category: "vanity",             blurb: "Auction. Highest bid wins for 12 months.",       price: "Auction",tier: "legendary",owned: false, proGate: true  },
+    { id: "vanity-custom",      name: "Custom Vanity URL",     category: "vanity",             blurb: "Pick any unused 4+ char slug.",                  price: "$9.99", tier: "rare",      owned: true,  proGate: false },
+    { id: "verified",           name: "Verified Badge",        category: "verified",           blurb: "Earned via OCE staff review (free for confirmed pros).", price: "—", tier: "mythic", owned: true,  proGate: false },
+  ],
+  aiQuote: "Six hooks, four kill participation, zero deaths. Pudge mid is back and BrassKnuckles is the proof.",
+};
+
+const OGPRO_V3: V3Extras = {
+  liveStatus: { kind: "in_lobby", label: "In inhouse lobby — captain phase", sinceMin: 4 },
+  careerHighlights: [
+    { kind: "total-games",     label: "Total Games",     value: "2,910" },
+    { kind: "best-kda",        label: "Best KDA",        value: "31.0", sub: "Centaur — 30 stuns" },
+    { kind: "longest-streak",  label: "Longest W-Streak",value: "11",   sub: "Feb 2024" },
+    { kind: "biggest-comeback",label: "Biggest Comeback",value: "-42k → W", sub: "Centaur Heart" },
+    { kind: "highest-gpm",     label: "Highest GPM",     value: "812" },
+    { kind: "mvp-votes",       label: "MVP Votes",       value: "327" },
+    { kind: "first-blood",     label: "First Bloods",    value: "184" },
+    { kind: "mk-rampage",      label: "Rampages",        value: "1", rare: true },
+  ],
+  formSparks: {
+    mmr:  [5510, 5480, 5510, 5470, 5440, 5410, 5380, 5410, 5430, 5410],
+    wr:   [68, 65, 62, 60, 63, 65, 68, 65, 63, 65],
+    kda:  [3.6, 3.7, 3.5, 3.4, 3.6, 3.8, 3.9, 3.7, 3.6, 3.8],
+    gpm:  [510, 515, 520, 522, 518, 521, 525, 520, 519, 521],
+    perf: [6.9, 7.0, 7.1, 6.9, 7.0, 7.2, 7.3, 7.1, 7.0, 7.1],
+  },
+  pinnedAchievementsList: [
+    { emoji: "🏛️", label: "Founder", sub: "Pro Tier — Day One", border: "fire" },
+    { emoji: "🐎", label: "100 Centaur Wins", sub: "Career", border: "amber" },
+    { emoji: "🛡️", label: "Most Damage Taken", sub: "Career — all heroes", border: "brass" },
+  ],
+  heroHover: {
+    96:  { hero_id: 96,  recentResults: [true,true,false,true,true,true,false,true,true,true], topItems: ["Blink", "Crimson", "Pipe"],   withWr: 71, vsWr: 50 },
+    47:  { hero_id: 47,  recentResults: [true,true,false,true,true,false,true,true,true,true], topItems: ["Blink", "Refresher", "Shiva"], withWr: 73, vsWr: 38 },
+    129: { hero_id: 129, recentResults: [true,false,true,true,false,true,true], topItems: ["Blink", "Aghs", "Heart"],                     withWr: 56, vsWr: 45 },
+    71:  { hero_id: 71,  recentResults: [true,true,true,false,true], topItems: ["Drums", "Yasha", "MoM"],                                  withWr: 64, vsWr: 52 },
+    28:  { hero_id: 28,  recentResults: [true,true,false,true,true], topItems: ["Blink", "Heaven's Halberd", "Shiva"],                     withWr: 70, vsWr: 40 },
+  },
+  vanitySlug: { current: "old", desired: "old", isThreeLetter: true, auctionPrice: "$240 — last winning bid" },
+  foundersPass: { eligible: true, activeNow: true, seasonLabel: "S1 · Founder" },
+  verified: { has: true, reason: "Founding member · OCE captain" },
+  voicePacks: {
+    currentId: "medieval-horn",
+    options: [
+      { id: "default",       label: "Default Stinger",     blurb: "Quiet brass tag",                source: "broadcast", locked: false },
+      { id: "io-relax",      label: "IO · Relax!",         blurb: "Wisp voiceline",                 source: "voiceline", locked: false },
+      { id: "pa-coup",       label: "PA · Coup de Grâce",  blurb: "Phantom Assassin voiceline",     source: "voiceline", locked: false },
+      { id: "medieval-horn", label: "Medieval · Battle Horn", blurb: "Bardic herald sting",         source: "medieval",  locked: false, ownedOneOff: true },
+      { id: "medieval-bell", label: "Medieval · Tower Bell",  blurb: "Tolling bell announce",       source: "medieval",  locked: false, ownedOneOff: true },
+      { id: "broadcast-1",   label: "Broadcast · ESL Hit",  blurb: "Studio sting — synth pad",      source: "broadcast", locked: false },
+    ],
+  },
+  spotlight: { active: true, placeOnLeaderboard: 22, viewersToday: 1284, nextSlotPrice: "Owned · refreshes 17h" },
+  hofPlaque: { has: true, year: 2024, reason: "Season 1 Champion · Off-Lane" },
+  seasonWrapped: {
+    season: "Season 4 · 2026",
+    visible: true,
+    autoExpiresInDays: 14,
+    items: [
+      { label: "Most Played", value: "Centaur",   sub: "119 games · 61% WR" },
+      { label: "Best Streak", value: "8 wins",    sub: "Mar 18-26" },
+      { label: "Biggest Win", value: "Captain W", sub: "OCE Cup S4 final" },
+      { label: "Hours In",    value: "118h",      sub: "across 71 nights" },
+      { label: "MMR Climb",   value: "+210",      sub: "season delta" },
+      { label: "Verdict",     value: "The Anchor",sub: "team's hardest to break" },
+    ],
+  },
+  timeWindow: {
+    "10":    { wr: 65, kda: 3.8, gpm: 521, perf: 7.1, games: 10 },
+    "30":    { wr: 65, kda: 3.8, gpm: 521, perf: 7.1, games: 30 },
+    season:  { wr: 62, kda: 3.6, gpm: 514, perf: 6.9, games: 142 },
+    alltime: { wr: 58, kda: 3.4, gpm: 498, perf: 6.7, games: 2910 },
+  },
+  compare: { freeDailyLimit: 3, freeUsedToday: 0, suggestions: ["BrassKnuckles", "ShadowCarry", "WardSlut", "WhipDelivery", "PingMachine"] },
+  shop: [
+    { id: "frame-cosmic",       name: "Cosmic Frame",          category: "frame",              blurb: "Animated nebula border around your portrait.",  price: "$4.99", tier: "epic",      owned: true,  proGate: false },
+    { id: "frame-fire",         name: "Fire Frame",            category: "frame",              blurb: "Burning ember outline. Slow flicker.",          price: "$4.99", tier: "epic",      owned: true,  proGate: false },
+    { id: "voice-io",           name: "Voice — IO Relax!",     category: "voice",              blurb: "Plays for opponents when you join lobby.",       price: "$1.99", tier: "rare",      owned: true,  proGate: false },
+    { id: "voice-pa",           name: "Voice — PA Coup",       category: "voice",              blurb: "Phantom Assassin voiceline.",                    price: "$1.99", tier: "rare",      owned: true,  proGate: false },
+    { id: "voice-horn",         name: "Voice — Medieval Horn", category: "voice",              blurb: "Bardic herald sting.",                           price: "$1.99", tier: "rare",      owned: true,  proGate: false },
+    { id: "border-rampage",     name: "Rampage Border",        category: "achievement-border", blurb: "Gold-on-blood border for any pinned trophy.",    price: "$2.99", tier: "epic",      owned: true,  proGate: false },
+    { id: "fx-shimmer",         name: "Cover FX — Shimmer",    category: "cover-fx",           blurb: "Brass shimmer sweep across cover banner.",       price: "$3.99", tier: "rare",      owned: true,  proGate: true },
+    { id: "fx-grain",           name: "Cover FX — Film Grain", category: "cover-fx",           blurb: "Subtle 16mm grain over cover.",                  price: "$2.99", tier: "common",    owned: true,  proGate: false },
+    { id: "fx-noir",            name: "Cover FX — Noir",       category: "cover-fx",           blurb: "Black & white cover with brass title.",          price: "$3.99", tier: "rare",      owned: false, proGate: true },
+    { id: "wrapped-export",     name: "Season Wrapped Export", category: "season-wrapped",     blurb: "Download your year-in-review as a poster PNG.",  price: "$1.99", tier: "common",    owned: true,  proGate: false },
+    { id: "vanity-3",           name: "3-Letter Vanity URL",   category: "vanity",             blurb: "Auction. You hold 'old' until 12 Aug 2026.",     price: "$240",  tier: "legendary",owned: true,  proGate: true  },
+    { id: "vanity-custom",      name: "Custom Vanity URL",     category: "vanity",             blurb: "Pick any unused 4+ char slug.",                  price: "$9.99", tier: "rare",      owned: false, proGate: false },
+    { id: "verified",           name: "Verified Badge",        category: "verified",           blurb: "Earned · founding captain.",                     price: "—",     tier: "mythic",   owned: true,  proGate: false },
+  ],
+  aiQuote: "Won the lane on stuns alone. 24 assists, 3 deaths, every fight initiated by him.",
+};
+
+void sparks;
+export const V3_EXTRAS: Record<Persona, V3Extras> = { free: FREE_V3, pro: PRO_V3, ogpro: OGPRO_V3 };
+

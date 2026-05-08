@@ -1,13 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import "./_profile.css";
 import "./_magazinespread.css";
 import "./_magazinespreadv2.css";
 import "./_magazinespreadv3.css";
-import { PERSONAS, EXTRAS, heroImg, fmtDuration, fmtDate, type Persona } from "./_mockProfile";
+import {
+  PERSONAS, EXTRAS, V3_EXTRAS, heroImg, fmtDuration, fmtDate,
+  type Persona, type ShopItem, type CareerTile,
+} from "./_mockProfile";
 import {
   Moon, Sun, ArrowLeft, Twitch, Youtube, Gamepad2, Settings2, Star, Unlock, Eye, Sparkles,
   Activity, Trophy, Gamepad, Layers, Users, Swords, Search, BarChart3, Clock, Package, ListOrdered,
-  TrendingUp, TrendingDown, Lock, Crosshair, ChevronRight, ChevronUp, ChevronDown,
+  TrendingUp, TrendingDown, Lock, Crosshair, ChevronRight, ChevronUp, ChevronDown, X, Play,
+  Megaphone, Award, ShoppingBag, Music, Brush, Link2,
 } from "lucide-react";
 import { LineChart, Line, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
 
@@ -27,26 +31,111 @@ function heatColor(wr: number): string {
 }
 
 type MuSortKey = "delta" | "with_wr" | "vs_wr" | "name";
+type ThemeId = "default" | "newsprint" | "carbon" | "holo" | "heritage" | "broadcast";
+type CoverVariant = "backdrop" | "split" | "minimal";
+type CoverFx = "none" | "shimmer" | "kenburns" | "grain" | "noir" | "vignette" | "scanlines";
+type WindowKey = "10" | "30" | "season" | "alltime";
+type ShopCat = "all" | "frame" | "voice" | "achievement-border" | "cover-fx" | "vanity" | "season-wrapped" | "verified";
 
-export function MagazineSpreadV3() {
+const THEMES: Array<{ id: ThemeId; label: string }> = [
+  { id: "default",   label: "Court & Pitch" },
+  { id: "newsprint", label: "Newsprint" },
+  { id: "carbon",    label: "Carbon" },
+  { id: "holo",      label: "Holographic" },
+  { id: "heritage",  label: "Heritage" },
+  { id: "broadcast", label: "Broadcast" },
+];
+
+const COVER_FX_OPTIONS: Array<{ id: CoverFx; label: string; pro?: boolean; oneOff?: boolean }> = [
+  { id: "none",      label: "None" },
+  { id: "shimmer",   label: "Shimmer (PRO + one-off)", pro: true,  oneOff: true },
+  { id: "kenburns",  label: "Ken Burns (PRO)",          pro: true },
+  { id: "grain",     label: "Film Grain (one-off)",     oneOff: true },
+  { id: "noir",      label: "Noir (PRO + one-off)",     pro: true, oneOff: true },
+  { id: "vignette",  label: "Vignette" },
+  { id: "scanlines", label: "Scanlines (PRO)",          pro: true },
+];
+
+// Sparkline path generator — values can be in any range; we normalise.
+function sparkPath(values: number[], width = 64, height = 22, pad = 2): { d: string; cx: number; cy: number } {
+  if (!values.length) return { d: "", cx: 0, cy: 0 };
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+  const points = values.map((v, i) => {
+    const x = pad + (i / Math.max(1, values.length - 1)) * innerW;
+    const y = pad + (1 - (v - min) / span) * innerH;
+    return [x, y] as const;
+  });
+  const d = points.reduce((acc, [x, y], i) => acc + `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)} `, "");
+  const [cx, cy] = points[points.length - 1];
+  return { d, cx, cy };
+}
+
+function Sparkline({ values, color }: { values: number[]; color?: string }) {
+  const { d, cx, cy } = sparkPath(values);
+  return (
+    <svg className="v3-vital-spark" viewBox="0 0 64 22" preserveAspectRatio="none" aria-hidden="true">
+      <path d={d} style={color ? { stroke: color } : undefined} />
+      <circle cx={cx} cy={cy} r={1.6} />
+    </svg>
+  );
+}
+
+interface MagazineSpreadV3Props { theme?: ThemeId }
+
+export function MagazineSpreadV3({ theme: themeProp = "default" }: MagazineSpreadV3Props = {}) {
   const [isLight, setIsLight] = useState(false);
   const [persona, setPersona] = useState<Persona>("pro");
   const [muSort, setMuSort] = useState<MuSortKey>("delta");
   const [muDir, setMuDir] = useState<"asc" | "desc">("desc");
+  const [activeTheme, setActiveTheme] = useState<ThemeId>(themeProp);
+  const [coverVariant, setCoverVariant] = useState<CoverVariant>("backdrop");
+  const [coverFx, setCoverFx] = useState<CoverFx>("none");
+  const [timeWindow, setTimeWindow] = useState<WindowKey>("30");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [shopCat, setShopCat] = useState<ShopCat>("all");
+  const [stickyVisible, setStickyVisible] = useState(false);
+  const [wrappedVisible, setWrappedVisible] = useState(true);
+
+  const coverRef = useRef<HTMLElement | null>(null);
 
   const p = PERSONAS[persona];
   const x = EXTRAS[persona];
+  const v3 = V3_EXTRAS[persona];
   const isFree = persona === "free";
+  const isOG = persona === "ogpro";
   const c = p.customization;
   const ex = c.extras;
 
+  // Reset cover-fx when persona changes so we honour per-persona owned/locked state cleanly.
+  useEffect(() => {
+    if (persona === "ogpro") setCoverFx(ex.frame_animated ? "shimmer" : "kenburns");
+    else if (persona === "pro") setCoverFx(ex.frame_animated ? "shimmer" : "none");
+    else setCoverFx("none");
+  }, [persona, ex.frame_animated]);
+
+  // Sticky header reveal: hide while cover is in view; show once it's scrolled past.
+  useEffect(() => {
+    if (!coverRef.current) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setStickyVisible(!entry.isIntersecting),
+      { threshold: 0, rootMargin: "-60px 0px 0px 0px" },
+    );
+    io.observe(coverRef.current);
+    return () => io.disconnect();
+  }, []);
+
   const themeClass = isLight ? "theme-light" : "theme-dark";
+  const themeVariantClass = activeTheme === "default" ? "" : `v3-theme-${activeTheme}`;
   const accent = c.theme_accent || "#c5a975";
 
   const mmrData = p.mmrHistory.map((val, idx) => ({ match: idx + 1, mmr: val }));
   const wrData = x.rollingWR.map((val, idx) => ({ match: idx + 1, wr: val }));
 
-  const sortedMatchups = [...x.heroMatchups].sort((a, b) => {
+  const sortedMatchups = useMemo(() => [...x.heroMatchups].sort((a, b) => {
     let av: number | string, bv: number | string;
     if (muSort === "delta")        { av = a.with_wr - a.vs_wr; bv = b.with_wr - b.vs_wr; }
     else if (muSort === "name")    { av = a.name; bv = b.name; }
@@ -55,7 +144,7 @@ export function MagazineSpreadV3() {
     if (av < bv) return muDir === "asc" ? -1 : 1;
     if (av > bv) return muDir === "asc" ? 1 : -1;
     return 0;
-  });
+  }), [x.heroMatchups, muSort, muDir]);
   const toggleMu = (k: MuSortKey) => {
     if (muSort === k) setMuDir(d => d === "asc" ? "desc" : "asc");
     else { setMuSort(k); setMuDir("desc"); }
@@ -66,9 +155,61 @@ export function MagazineSpreadV3() {
   const recentTotal = p.recent.wins + p.recent.losses;
   const recentWR = recentTotal ? Math.round((p.recent.wins / recentTotal) * 100) : 0;
   const lastWR = x.rollingWR[x.rollingWR.length - 1];
+  const tw = v3.timeWindow[timeWindow];
+
+  const visiblePins = isFree ? v3.pinnedAchievementsList.slice(0, 1) : v3.pinnedAchievementsList.slice(0, 3);
+  const pinSlots = (isFree ? 1 : 3) - visiblePins.length;
+
+  // Filter shop by tab
+  const filteredShop = useMemo(() => {
+    if (shopCat === "all") return v3.shop;
+    return v3.shop.filter(s => s.category === shopCat);
+  }, [v3.shop, shopCat]);
+
+  // Compare quota for free
+  const compareQuotaLeft = Math.max(0, v3.compare.freeDailyLimit - v3.compare.freeUsedToday);
+
+  // Anchor sections list (anchor nav)
+  const sections: Array<{ id: string; label: string; pro?: boolean }> = [
+    { id: "latest",      label: "Latest Game" },
+    { id: "numbers",     label: "By the Numbers" },
+    { id: "heroes",      label: "Hero Pool" },
+    { id: "matches",     label: "Recent Matches" },
+    { id: "scout",       label: "AI Scout", pro: true },
+    { id: "allies",      label: "Allies & Enemies", pro: true },
+    { id: "perf",        label: "Performance Lab", pro: true },
+    { id: "trophies",    label: "Trophy Cabinet" },
+    { id: "wrapped",     label: "Season Wrapped" },
+    { id: "shop",        label: "OG Shop" },
+    { id: "custom",      label: "Customization" },
+  ];
+
+  // Header vital sparklines: pull series from V3 extras
+  const sparkSeries: Record<string, number[]> = {
+    MMR: v3.formSparks.mmr,
+    "Recent WR": v3.formSparks.wr,
+    KDA: v3.formSparks.kda,
+    "GPM / XPM": v3.formSparks.gpm,
+    PERF: v3.formSparks.perf,
+  };
 
   return (
-    <div className={`pp-redesign magazine-layout magazine-v3 ${themeClass}`} style={{ "--theme-accent": accent } as React.CSSProperties}>
+    <div
+      className={`pp-redesign magazine-layout magazine-v3 ${themeClass} ${themeVariantClass}`}
+      style={{ "--theme-accent": accent } as React.CSSProperties}
+    >
+      {/* ───── Sticky mini-header (appears after cover scrolls away) ───── */}
+      <div className={`v3-sticky ${stickyVisible ? "is-visible" : ""}`}>
+        <img src={heroImg(p.pinnedHero.hero_id)} alt="" className="v3-sticky-portrait" />
+        <span className="v3-sticky-name">{p.display_name}</span>
+        <span className="v3-sticky-vital">MMR <b>{p.rank.mmr}</b></span>
+        <span className="v3-sticky-vital">WR <b style={{ color: recentWR >= 50 ? "var(--radiant)" : "var(--dire)" }}>{recentWR}%</b></span>
+        <span className="v3-sticky-vital hidden md:inline-flex">PERF <b>{p.perf_avg.toFixed(1)}</b></span>
+        <div className="v3-sticky-spacer" />
+        <button className="v3-sticky-cta" onClick={() => setDrawerOpen(true)}><Swords className="w-3 h-3" /> Compare</button>
+        {isFree && <button className="v3-sticky-cta is-primary"><Star className="w-3 h-3" /> Go Pro</button>}
+      </div>
+
       {/* Header Lockup */}
       <header className="magazine-header">
         <div className="flex items-center gap-6">
@@ -105,8 +246,8 @@ export function MagazineSpreadV3() {
         <button className={`mag-persona-btn ${persona === "ogpro" ? "active" : ""}`} onClick={() => setPersona("ogpro")}>OG Pro</button>
       </div>
 
-      {/* §0 — CINEMATIC COVER BANNER (full-width hero) */}
-      <section className={`v3-cover ${ex.frame_animated ? 'frame-animated' : ''}`}>
+      {/* §0 — CINEMATIC COVER BANNER */}
+      <section ref={coverRef as React.RefObject<HTMLElement>} className={`v3-cover cover-${coverVariant} fx-${coverFx}`}>
         <img src={heroImg(p.pinnedHero.hero_id)} alt="" className="v3-cover-bg" />
         <div className="v3-cover-overlay" />
         <div className="v3-cover-inner">
@@ -115,12 +256,34 @@ export function MagazineSpreadV3() {
             <span className="v3-dot">·</span>
             <span>Pinned Hero · {p.pinnedHero.name}</span>
             {p.is_pro && <><span className="v3-dot">·</span><span style={{ color: 'var(--accent-amber)' }}>★ PRO</span></>}
+            <span className={`v3-live-chip kind-${v3.liveStatus.kind}`}>
+              <span className="v3-live-dot" /> {v3.liveStatus.label}
+              {v3.liveStatus.sinceMin != null && <span style={{ opacity: 0.7 }}>· {v3.liveStatus.sinceMin}m</span>}
+            </span>
           </div>
 
-          <h1 className="v3-cover-name">{p.display_name}</h1>
+          <h1 className="v3-cover-name">
+            {p.display_name}
+            {v3.verified.has && <span className="v3-verified" title={v3.verified.reason || "Verified"}>✓</span>}
+            {v3.foundersPass.eligible && v3.foundersPass.activeNow && (
+              <span className="v3-founders" title={`Founders Pass · ${v3.foundersPass.seasonLabel}`}>★ Founders</span>
+            )}
+            {v3.hofPlaque.has && (
+              <a href="#hof" className="v3-hof-badge" title={`${v3.hofPlaque.year} · ${v3.hofPlaque.reason || ""}`}>
+                🏛 Hall of Fame · {v3.hofPlaque.year}
+              </a>
+            )}
+          </h1>
 
           {c.custom_title && (
             <div className="v3-cover-title" style={{ color: accent }}>{c.custom_title}</div>
+          )}
+
+          {v3.vanitySlug.current && (
+            <div className="v3-cover-slug">
+              oceinhouse.gg/u/<b>{v3.vanitySlug.current}</b>
+              {v3.vanitySlug.isThreeLetter && <span className="v3-vanity-tag">3-letter</span>}
+            </div>
           )}
 
           <div className="v3-cover-flair">
@@ -135,41 +298,34 @@ export function MagazineSpreadV3() {
                 {p.streak > 0 ? '🔥' : '❄️'} {Math.abs(p.streak)} {p.streak > 0 ? 'WIN STREAK' : 'LOSS STREAK'}
               </span>
             )}
+            {v3.spotlight.active && (
+              <span className="v3-flair-pill" style={{ background: "rgba(245,158,11,0.2)", color: "var(--accent-amber)", border: "1px solid var(--accent-amber)" }}>
+                <Megaphone className="w-3 h-3" /> Featured · {v3.spotlight.viewersToday?.toLocaleString()} views today
+              </span>
+            )}
           </div>
 
           {c.bio && <div className="v3-cover-bio">"{c.bio}"</div>}
 
-          {/* Vital stats strip — the headline numbers under the name */}
+          {/* Vital stats strip with sparklines */}
           <div className="v3-cover-vitals">
-            <div className="v3-vital">
-              <div className="v3-vital-lbl">MMR</div>
-              <div className="v3-vital-val" style={{ color: 'var(--accent-brass)' }}>{p.rank.mmr}</div>
-              <div className="v3-vital-sub">Peak {p.rank.peak}</div>
-            </div>
-            <div className="v3-vital-sep" />
-            <div className="v3-vital">
-              <div className="v3-vital-lbl">Recent WR</div>
-              <div className="v3-vital-val" style={{ color: recentWR >= 50 ? 'var(--radiant)' : 'var(--dire)' }}>{recentWR}%</div>
-              <div className="v3-vital-sub">{p.recent.wins}W · {p.recent.losses}L</div>
-            </div>
-            <div className="v3-vital-sep" />
-            <div className="v3-vital">
-              <div className="v3-vital-lbl">KDA</div>
-              <div className="v3-vital-val">{p.recent.kda.toFixed(2)}</div>
-              <div className="v3-vital-sub">last 30 games</div>
-            </div>
-            <div className="v3-vital-sep" />
-            <div className="v3-vital">
-              <div className="v3-vital-lbl">GPM / XPM</div>
-              <div className="v3-vital-val">{p.recent.gpm} / {p.recent.xpm}</div>
-              <div className="v3-vital-sub">avg per game</div>
-            </div>
-            <div className="v3-vital-sep" />
-            <div className="v3-vital">
-              <div className="v3-vital-lbl">PERF</div>
-              <div className="v3-vital-val" style={{ color: 'var(--accent-amber)' }}>{p.perf_avg.toFixed(1)}<span className="v3-vital-suffix">/10</span></div>
-              <div className="v3-vital-sub">role-adjusted</div>
-            </div>
+            {([
+              { lbl: "MMR",        val: p.rank.mmr.toLocaleString(),                                  sub: `Peak ${p.rank.peak}`,                                                  series: sparkSeries.MMR,        color: "var(--accent-brass)" },
+              { lbl: "Recent WR",  val: `${recentWR}%`,                                               sub: `${p.recent.wins}W · ${p.recent.losses}L`,                              series: sparkSeries["Recent WR"], color: recentWR >= 50 ? "var(--radiant)" : "var(--dire)" },
+              { lbl: "KDA",        val: p.recent.kda.toFixed(2),                                     sub: "last 30 games",                                                       series: sparkSeries.KDA,        color: "#fff" },
+              { lbl: "GPM / XPM",  val: `${p.recent.gpm} / ${p.recent.xpm}`,                          sub: "avg per game",                                                        series: sparkSeries["GPM / XPM"], color: "#fff" },
+              { lbl: "PERF",       val: <>{p.perf_avg.toFixed(1)}<span className="v3-vital-suffix">/10</span></>, sub: "role-adjusted",                                                    series: sparkSeries.PERF,       color: "var(--accent-amber)" },
+            ]).map((v, i, arr) => (
+              <React.Fragment key={v.lbl}>
+                <div className="v3-vital">
+                  <div className="v3-vital-lbl">{v.lbl}</div>
+                  <div className="v3-vital-val" style={{ color: v.color }}>{v.val}</div>
+                  <div className="v3-vital-sub">{v.sub}</div>
+                  <Sparkline values={v.series} color={v.color} />
+                </div>
+                {i < arr.length - 1 && <div className="v3-vital-sep" />}
+              </React.Fragment>
+            ))}
           </div>
 
           <div className="v3-cover-socials">
@@ -180,11 +336,42 @@ export function MagazineSpreadV3() {
         </div>
       </section>
 
+      {/* §0.5 — Pinned-achievement ribbon (1 free / 3 Pro) */}
+      <div className="v3-pin-ribbon">
+        <div className="v3-pin-ribbon-inner">
+          {visiblePins.map((pin, i) => (
+            <div key={i} className={`v3-pin-tile ${pin.border ? `border-${pin.border}` : ""}`}>
+              <div className="v3-pin-tile-icon">{pin.emoji}</div>
+              <div>
+                <div className="v3-pin-tile-label">{pin.label}</div>
+                <div className="v3-pin-tile-sub">{pin.sub}</div>
+              </div>
+            </div>
+          ))}
+          {Array.from({ length: pinSlots }).map((_, i) => (
+            <button key={`slot-${i}`} className={`v3-pin-tile v3-pin-tile-add ${isFree ? "is-locked" : ""}`}>
+              + Pin Achievement {isFree && i === 0 ? "· PRO unlocks 3 slots" : ""}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* §0.75 — Anchor nav */}
+      <nav className="v3-anchor-nav">
+        <div className="v3-anchor-nav-inner">
+          {sections.map(s => (
+            <a key={s.id} href={`#${s.id}`} className={`v3-anchor-pill ${s.pro ? "is-pro" : ""}`}>
+              {s.label}
+            </a>
+          ))}
+        </div>
+      </nav>
+
       {/* Stacked full-width body */}
       <div className="v3-body">
 
         {/* §1 — Latest Game */}
-        <article className="mag-story">
+        <article id="latest" className="mag-story">
           <div className="mag-eyebrow"><Gamepad2 className="w-4 h-4"/> Latest Game</div>
           <h2 className="mag-title">The Showdown</h2>
           <div className="mag-pinned-match mt-6">
@@ -203,15 +390,42 @@ export function MagazineSpreadV3() {
             </div>
             <img src={heroImg(p.pinnedMatch.hero_id)} alt="" className="w-16 h-16 object-cover rounded shadow-md" />
           </div>
+
+          {/* AI commentary pull-quote */}
+          {v3.aiQuote && (
+            <div className="v3-ai-quote mt-6">
+              {v3.aiQuote}
+              <span className="v3-ai-quote-attr">Grok · post-match commentary</span>
+            </div>
+          )}
         </article>
 
         {/* §2 — By The Numbers */}
-        <article className="mag-story">
-          <div className="mag-eyebrow"><Activity className="w-4 h-4"/> Current Form</div>
+        <article id="numbers" className="mag-story">
+          <div className="mag-eyebrow flex items-center gap-3 flex-wrap"><Activity className="w-4 h-4"/> Current Form
+            <span className="v3-window-pills">
+              {(["10","30","season","alltime"] as WindowKey[]).map(w => {
+                const isLockedW = isFree && (w === "season" || w === "alltime");
+                return (
+                  <button
+                    key={w}
+                    className={`v3-window-pill ${timeWindow === w ? "is-active" : ""} ${isLockedW ? "is-locked" : ""}`}
+                    onClick={() => { if (!isLockedW) setTimeWindow(w); }}
+                    title={isLockedW ? "Pro unlocks Season + All-time windows" : undefined}
+                  >
+                    {w === "10" ? "10g" : w === "30" ? "30g" : w === "season" ? "Season" : "All-time"}
+                  </button>
+                );
+              })}
+            </span>
+          </div>
           <h2 className="mag-title">By The Numbers</h2>
-          <p className="mag-subtitle">Recent performance over the last {recentTotal} matches</p>
+          <p className="mag-subtitle">
+            Window: <strong>{timeWindow === "10" ? "Last 10" : timeWindow === "30" ? "Last 30" : timeWindow === "season" ? `Season — ${tw.games}g` : `All-time — ${tw.games.toLocaleString()}g`}</strong>
+            {tw.games > 0 && <> · WR <strong>{tw.wr}%</strong> · KDA <strong>{tw.kda.toFixed(2)}</strong> · GPM <strong>{tw.gpm}</strong> · PERF <strong>{tw.perf.toFixed(1)}</strong></>}
+          </p>
 
-          {/* MMR + Rolling WR side by side, spans full width */}
+          {/* MMR + Rolling WR side by side */}
           <div className="v2-block grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="v2-rolling-card">
               <div className="flex justify-between items-baseline mb-3">
@@ -300,34 +514,32 @@ export function MagazineSpreadV3() {
             </div>
           </div>
 
+          {/* Career Highlights ribbon — replaces the orphan multi-kill row */}
           <div className="v2-block mt-4">
-            <div className="v2-mini-eyebrow"><Crosshair className="w-3 h-3"/> Multi-kill counts · career</div>
-            <div className="v2-mk-strip">
-              {([
-                { lbl: "Double",  v: x.multiKills.double,  rare: false },
-                { lbl: "Triple",  v: x.multiKills.triple,  rare: false },
-                { lbl: "Ultra",   v: x.multiKills.ultra,   rare: x.multiKills.ultra > 0 },
-                { lbl: "Rampage", v: x.multiKills.rampage, rare: x.multiKills.rampage > 0 },
-              ]).map(m => (
-                <div key={m.lbl} className={`v2-mk-pill ${m.rare ? 'is-rare' : ''}`}>
-                  <span className="num">{m.v}</span>
-                  <span className="lbl">{m.lbl}</span>
+            <div className="v2-mini-eyebrow"><Trophy className="w-3 h-3"/> Career Highlights · best of all time</div>
+            <div className="v3-highlight-grid">
+              {v3.careerHighlights.map((tile: CareerTile) => (
+                <div key={tile.kind} className={`v3-highlight-tile ${tile.rare ? "is-rare" : ""}`}>
+                  <div className="v3-highlight-val">{tile.value}</div>
+                  <div className="v3-highlight-lbl">{tile.label}</div>
+                  {tile.sub && <div className="v3-highlight-sub">{tile.sub}</div>}
                 </div>
               ))}
             </div>
           </div>
         </article>
 
-        {/* §3 — Top Heroes Showcase (horizontal cards, full-width) */}
+        {/* §3 — Top Heroes Showcase */}
         {ex.show_top_heroes && p.topHeroes.length > 0 && (
-          <article className="mag-story">
+          <article id="heroes" className="mag-story">
             <div className="mag-eyebrow"><Star className="w-4 h-4"/> Hero Pool</div>
             <h2 className="mag-title">Most Played</h2>
-            <p className="mag-subtitle">Top {Math.min(5, p.topHeroes.length)} most-played heroes · last 30 days</p>
+            <p className="mag-subtitle">Top {Math.min(5, p.topHeroes.length)} most-played heroes · last 30 days · hover for recent form{!isFree && " + matchup deltas"}</p>
 
             <div className="v3-hero-showcase">
               {p.topHeroes.slice(0, 5).map(h => {
                 const wr = Math.round((h.wins / h.games) * 100);
+                const hover = v3.heroHover[h.hero_id];
                 return (
                   <div key={h.hero_id} className="v3-hero-card">
                     <img src={heroImg(h.hero_id)} alt={h.name} className="v3-hero-portrait" />
@@ -339,6 +551,36 @@ export function MagazineSpreadV3() {
                         <span><span className="lbl">KDA</span><span className="val">{h.kda.toFixed(2)}</span></span>
                       </div>
                     </div>
+                    {hover && (
+                      <div className="v3-hero-hover">
+                        <div className="v3-hero-hover-row">
+                          <span className="v3-hero-hover-lbl">Recent</span>
+                          <span className="v3-hero-dots">
+                            {hover.recentResults.slice(0, 10).map((win, i) => (
+                              <span key={i} className={`v3-hero-dot ${win ? "win" : ""}`} />
+                            ))}
+                          </span>
+                        </div>
+                        <div className="v3-hero-hover-row">
+                          <span className="v3-hero-hover-lbl">Top items</span>
+                          <span className="v3-hero-hover-items">
+                            {hover.topItems.map(it => <span key={it} className="v3-hero-hover-item">{it}</span>)}
+                          </span>
+                        </div>
+                        {!isFree && hover.withWr != null && (
+                          <div className="v3-hero-hover-row">
+                            <span className="v3-hero-hover-lbl">Synergy</span>
+                            <span className="v3-hero-hover-pro">w/ <b>{hover.withWr}%</b> · vs <b>{hover.vsWr}%</b></span>
+                          </div>
+                        )}
+                        {isFree && (
+                          <div className="v3-hero-hover-row">
+                            <span className="v3-hero-hover-lbl">Synergy</span>
+                            <span className="v3-hero-hover-pro" style={{ color: "var(--text-faint)" }}>🔒 Pro unlocks w/vs</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -347,7 +589,7 @@ export function MagazineSpreadV3() {
         )}
 
         {/* §4 — Recent Matches */}
-        <article className="mag-story">
+        <article id="matches" className="mag-story">
           <div className="mag-eyebrow"><Gamepad className="w-4 h-4"/> Recent Matches</div>
           <h2 className="mag-title">The Last Ten</h2>
           <p className="mag-subtitle">Newest first · MMR change column shown for Pro viewers</p>
@@ -378,6 +620,7 @@ export function MagazineSpreadV3() {
 
         {/* §5 — AI Scout (Pro) */}
         <ProSection
+          id="scout"
           isFree={isFree}
           eyebrow={<><Eye className="w-4 h-4"/> AI Scout Report</>}
           title={`The Book on ${p.display_name}`}
@@ -415,6 +658,7 @@ export function MagazineSpreadV3() {
 
         {/* §6 — Allies & Enemies (Pro) */}
         <ProSection
+          id="allies"
           isFree={isFree}
           eyebrow={<><Users className="w-4 h-4"/> Allies & Enemies</>}
           title="Who Lifts You, Who Sinks You"
@@ -457,13 +701,14 @@ export function MagazineSpreadV3() {
             <div className="v2-h2h-search">
               <Search className="w-4 h-4" />
               <span className="v2-h2h-fake-input">Compare {p.display_name} vs another player…</span>
-              <button className="cta-secondary text-xs px-3 py-1">Compare</button>
+              <button className="cta-secondary text-xs px-3 py-1" onClick={() => setDrawerOpen(true)}>Compare</button>
             </div>
           </div>
         </ProSection>
 
         {/* §7 — Performance Lab (Pro) */}
         <ProSection
+          id="perf"
           isFree={isFree}
           eyebrow={<><Activity className="w-4 h-4"/> Performance Lab</>}
           title="Where Performance Comes From"
@@ -573,7 +818,7 @@ export function MagazineSpreadV3() {
         </ProSection>
 
         {/* §8 — Trophy Cabinet */}
-        <article className="mag-story">
+        <article id="trophies" className="mag-story">
           <div className="mag-eyebrow"><Trophy className="w-4 h-4"/> Achievement Spotlight</div>
           <h2 className="mag-title">Trophy Cabinet</h2>
           <p className="mag-subtitle">Pinned and recent honors</p>
@@ -600,45 +845,245 @@ export function MagazineSpreadV3() {
           </div>
         </article>
 
-        {/* §9 — Customization (moved to bottom; horizontal layout) */}
-        <article className="mag-story">
+        {/* §9 — Season Wrapped */}
+        {wrappedVisible && (
+          <article id="wrapped" className="mag-story">
+            <div className="mag-eyebrow"><Award className="w-4 h-4"/> Year in Review</div>
+            <div className="v3-wrapped">
+              <div className="v3-wrapped-head">
+                <div>
+                  <div className="v3-wrapped-title">{v3.seasonWrapped.season} · Wrapped</div>
+                  <div className="v3-wrapped-meta">Auto-hides {v3.seasonWrapped.autoExpiresInDays} days after season end · profile-only · no Discord post</div>
+                </div>
+                <button className="cta-secondary text-xs px-3 py-1" onClick={() => setWrappedVisible(false)}>Hide on my profile</button>
+              </div>
+              <div className="v3-wrapped-grid">
+                {v3.seasonWrapped.items.map(item => (
+                  <div key={item.label} className="v3-wrapped-item">
+                    <div className="v3-w-lbl">{item.label}</div>
+                    <div className="v3-w-val">{item.value}</div>
+                    {item.sub && <div className="v3-w-sub">{item.sub}</div>}
+                  </div>
+                ))}
+              </div>
+              <div className="v3-wrapped-foot">
+                <span>Export the poster:</span>
+                <button className="cta-secondary text-xs px-3 py-1">
+                  <Brush className="w-3 h-3" /> Download Wrapped poster · $1.99 one-off
+                </button>
+                <span className="text-[var(--text-faint)]">No card placement on Discord — your call to share.</span>
+              </div>
+            </div>
+          </article>
+        )}
+        {!wrappedVisible && (
+          <article className="mag-story" id="wrapped">
+            <div className="mag-eyebrow"><Award className="w-4 h-4"/> Year in Review</div>
+            <p className="mag-subtitle">
+              Hidden from your profile.{" "}
+              <button className="text-[var(--accent-amber)] underline underline-offset-2" onClick={() => setWrappedVisible(true)}>Show {v3.seasonWrapped.season} Wrapped</button>
+            </p>
+          </article>
+        )}
+
+        {/* §10 — OG Cosmetic Shop */}
+        <article id="shop" className="mag-story">
+          <div className="mag-eyebrow"><ShoppingBag className="w-4 h-4"/> Cosmetic Shop · One-off Purchases</div>
+          <h2 className="mag-title">OG Cosmetics</h2>
+          <p className="mag-subtitle">
+            Buy individual items without subscribing. Items marked <span className="text-[var(--accent-amber)] font-bold">PRO-only</span> need an active Pro subscription on top.
+            {isOG && " As an OG founder, you already own most of these — your collection is shown as Owned."}
+          </p>
+
+          <div className="v3-shop-tabs mt-3">
+            {([
+              { id: "all",                label: "All" },
+              { id: "frame",              label: "Frames" },
+              { id: "voice",              label: "Voice Packs" },
+              { id: "achievement-border", label: "Trophy Borders" },
+              { id: "cover-fx",           label: "Cover FX" },
+              { id: "vanity",             label: "Vanity URLs" },
+              { id: "season-wrapped",     label: "Season Wrapped" },
+              { id: "verified",           label: "Verified" },
+            ] as Array<{ id: ShopCat; label: string }>).map(t => (
+              <button key={t.id} className={`v3-shop-tab ${shopCat === t.id ? "is-active" : ""}`} onClick={() => setShopCat(t.id)}>{t.label}</button>
+            ))}
+          </div>
+
+          <div className="v3-shop-grid">
+            {filteredShop.map((s: ShopItem) => (
+              <div key={s.id} className={`v3-shop-card tier-${s.tier} ${s.owned ? "is-owned" : ""}`}>
+                <div className="v3-shop-name">{s.name}</div>
+                <div className="v3-shop-blurb">{s.blurb}</div>
+                {s.proGate && <div className="v3-shop-pro-flag">★ Requires active Pro</div>}
+                <div className="v3-shop-meta">
+                  <div>
+                    <div className="v3-shop-tier">{s.tier}</div>
+                    <div className="v3-shop-price">{s.price}</div>
+                  </div>
+                  <button className={`v3-shop-buy ${s.owned ? "is-disabled" : ""}`} disabled={s.owned}>
+                    {s.owned ? "Owned" : s.price === "Auction" ? "Bid" : "Buy"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        {/* §11 — Customization */}
+        <article id="custom" className="mag-story">
           <div className="mag-eyebrow"><Settings2 className="w-4 h-4"/> Customization</div>
           <h2 className="mag-title">Make It Yours</h2>
           <div className="v3-custom-grid">
+
+            {/* Theme accent + auto-tint */}
             <div className="v3-custom-cell">
-              <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] block mb-2">Theme Accent</label>
-              <div className="flex gap-2">
-                {['#3b82f6', '#f59e0b', '#ef4444', '#10b981'].map(color => (
-                  <div key={color} className={`w-6 h-6 rounded-full cursor-pointer border-2 ${color === accent ? 'border-white' : 'border-transparent'}`} style={{ background: color }} />
+              <span className="lbl">Theme Accent</span>
+              <div className="v3-swatch-row">
+                {["#3b82f6", "#f59e0b", "#ef4444", "#10b981", "#a78bfa", "#c5a975"].map(color => (
+                  <button key={color} className={`v3-swatch ${color === accent ? "is-active" : ""}`} style={{ background: color }} title={color} />
                 ))}
-                <div className="w-6 h-6 rounded-full cursor-not-allowed border border-[var(--border-subtle)] flex items-center justify-center bg-[var(--bg-card)]">
-                  <Unlock className="w-3 h-3 text-[var(--text-muted)]" />
-                </div>
+                <button className="v3-swatch is-locked" title="Auto-tint from pinned hero portrait (PRO)">
+                  <Sparkles className="w-3 h-3" />
+                </button>
               </div>
+              <div className="text-[10px] text-[var(--text-faint)]">Pro: auto-tint from pinned hero portrait, or pick custom hex.</div>
             </div>
 
+            {/* Profile frame */}
             <div className="v3-custom-cell">
-              <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] block mb-2">Profile Frame</label>
-              <div className="flex flex-wrap gap-2">
-                <span className="text-xs px-2 py-1 border border-[var(--border-strong)] rounded bg-[var(--bg-base)] text-[var(--text-main)]">None</span>
-                <span className="text-xs px-2 py-1 border border-gray-400 rounded bg-gray-500/10 text-gray-300">Silver</span>
-                <span className={`text-xs px-2 py-1 border border-amber-500 rounded bg-amber-500/10 text-amber-500 ${isFree ? 'opacity-50' : ''}`}>Gold {isFree && '🔒'}</span>
-                <span className={`text-xs px-2 py-1 border border-purple-500 rounded bg-purple-500/10 text-purple-400 ${isFree ? 'opacity-50' : ''}`}>Cosmic {isFree && '🔒'}</span>
+              <span className="lbl">Profile Frame</span>
+              <div className="v3-frame-row">
+                {([
+                  { id: "none",   label: "None",   pro: false, owned: true },
+                  { id: "silver", label: "Silver", pro: false, owned: true },
+                  { id: "gold",   label: "Gold",   pro: true,  owned: !isFree },
+                  { id: "cosmic", label: "Cosmic", pro: false, owned: !isFree, oneOff: true },
+                  { id: "fire",   label: "Fire",   pro: false, owned: isOG,    oneOff: true },
+                  { id: "neon",   label: "Neon",   pro: true,  owned: false,   oneOff: true },
+                ]).map(f => (
+                  <span key={f.id} className={`v3-frame-pill ${c.profile_frame === f.id ? "is-active" : ""} ${!f.owned ? "is-locked" : ""}`}>
+                    {f.label}{!f.owned && (f.pro ? " 🔒P" : " 🔒")}
+                  </span>
+                ))}
               </div>
             </div>
 
-            <div className="v3-custom-cell flex items-center justify-between">
-              <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Background Pattern</label>
-              <div className={`w-8 h-4 rounded-full ${ex.bg_pattern ? 'bg-[var(--accent-brass)]' : 'bg-[var(--border-strong)]'} relative`}>
-                <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 ${ex.bg_pattern ? 'right-0.5' : 'left-0.5'}`} />
+            {/* Cover variant */}
+            <div className="v3-custom-cell">
+              <span className="lbl">Cover Layout</span>
+              <div className="v3-cover-variant-picker">
+                {(["backdrop","split","minimal"] as CoverVariant[]).map(cv => (
+                  <button key={cv} className={`v3-cover-variant-btn ${coverVariant === cv ? "is-active" : ""}`} onClick={() => setCoverVariant(cv)}>{cv}</button>
+                ))}
               </div>
             </div>
 
-            <div className={`v3-custom-cell flex items-center justify-between ${isFree ? 'opacity-50' : ''}`}>
-              <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1">Animated Frame {isFree && <Unlock className="w-3 h-3"/>}</label>
-              <div className={`w-8 h-4 rounded-full ${ex.frame_animated ? 'bg-[var(--accent-brass)]' : 'bg-[var(--border-strong)]'} relative`}>
-                <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 ${ex.frame_animated ? 'right-0.5' : 'left-0.5'}`} />
+            {/* Cover FX */}
+            <div className="v3-custom-cell is-pro">
+              <span className="lbl">Cover FX</span>
+              <select
+                className="v3-fx-select"
+                value={coverFx}
+                onChange={e => setCoverFx(e.target.value as CoverFx)}
+              >
+                {COVER_FX_OPTIONS.map(o => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+              <div className="text-[10px] text-[var(--text-faint)]">Free has Vignette only. Other effects are Pro and/or one-off purchases.</div>
+            </div>
+
+            {/* Vanity URL */}
+            <div className="v3-custom-cell">
+              <span className="lbl">Vanity URL <Link2 className="w-3 h-3 inline-block ml-1 text-[var(--text-faint)]" /></span>
+              <div className="v3-vanity-row">
+                <span>oceinhouse.gg/u/</span>
+                <input value={v3.vanitySlug.desired || ""} readOnly />
               </div>
+              {v3.vanitySlug.isThreeLetter ? (
+                <div className="text-[10px] text-[var(--accent-amber)]">3-letter slugs are auctioned. {v3.vanitySlug.auctionPrice}</div>
+              ) : (
+                <div className="text-[10px] text-[var(--text-faint)]">4+ char slugs: $9.99 one-off. 3-letter slugs go up for auction.</div>
+              )}
+            </div>
+
+            {/* Voice pack */}
+            <div className="v3-custom-cell">
+              <span className="lbl"><Music className="w-3 h-3 inline-block mr-1" /> Entrance Sting</span>
+              <div className="v3-voice-list">
+                {v3.voicePacks.options.slice(0, 4).map(v => (
+                  <div key={v.id} className={`v3-voice-row ${v.id === v3.voicePacks.currentId ? "is-active" : ""}`}>
+                    <div>
+                      <div className="v3-voice-label">{v.label}</div>
+                      <div className="v3-voice-blurb">{v.blurb}</div>
+                    </div>
+                    <div className="v3-voice-meta">
+                      <span className={`v3-voice-source source-${v.source}`}>{v.source}</span>
+                      {v.locked && <Lock className="w-3 h-3 text-[var(--accent-amber)]" />}
+                      <button className="v3-voice-play" title="Preview"><Play className="w-2.5 h-2.5" /></button>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-[10px] text-[var(--text-faint)]">Curated Dota voicelines + medieval stings only. No custom uploads.</div>
+              </div>
+            </div>
+
+            {/* Profile Spotlight */}
+            <div className="v3-custom-cell">
+              <span className="lbl"><Megaphone className="w-3 h-3 inline-block mr-1" /> Profile Spotlight</span>
+              <div className={`v3-spotlight-card ${v3.spotlight.active ? "is-active" : ""}`}>
+                <div className="v3-spotlight-icon">★</div>
+                <div className="v3-spotlight-meta">
+                  <div className="ttl">{v3.spotlight.active ? "Featured on leaderboard" : "Not featured"}</div>
+                  <div className="sub">
+                    {v3.spotlight.active
+                      ? `${v3.spotlight.viewersToday?.toLocaleString()} views today · ${v3.spotlight.nextSlotPrice}`
+                      : `Next slot · ${v3.spotlight.nextSlotPrice}`}
+                  </div>
+                </div>
+                {!v3.spotlight.active && <button className="cta-secondary text-xs px-3 py-1">Buy</button>}
+              </div>
+            </div>
+
+            {/* Background pattern */}
+            <div className="v3-custom-cell v3-toggle">
+              <span className="lbl">Background Pattern</span>
+              <div className={`v3-toggle-switch ${ex.bg_pattern ? "is-on" : ""}`}><div className="v3-toggle-knob" /></div>
+            </div>
+
+            {/* Animated frame */}
+            <div className={`v3-custom-cell v3-toggle ${isFree ? "opacity-60" : ""}`}>
+              <span className="lbl">Animated Frame {isFree && <Lock className="w-3 h-3 inline-block ml-1" />}</span>
+              <div className={`v3-toggle-switch ${ex.frame_animated ? "is-on" : ""}`}><div className="v3-toggle-knob" /></div>
+            </div>
+
+            {/* Verified badge */}
+            <div className="v3-custom-cell">
+              <span className="lbl">Verified Badge</span>
+              <div className="text-xs text-[var(--text-muted)]">
+                {v3.verified.has
+                  ? <>✓ <span className="text-[var(--accent-amber)] font-bold">Verified</span> · {v3.verified.reason}</>
+                  : "Earned via OCE staff review. Free for confirmed pros & captains."}
+              </div>
+              {!v3.verified.has && <button className="cta-secondary text-xs px-3 py-1 mt-1">Request Verification</button>}
+            </div>
+
+            {/* Theme variant picker (canvas-only, also shown here so persona switcher can demo it) */}
+            <div className="v3-custom-cell">
+              <span className="lbl">Profile Theme</span>
+              <div className="v3-frame-row">
+                {THEMES.map(t => (
+                  <button
+                    key={t.id}
+                    className={`v3-frame-pill ${activeTheme === t.id ? "is-active" : ""}`}
+                    onClick={() => setActiveTheme(t.id)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px] text-[var(--text-faint)]">5 paid themes · default Court & Pitch is free.</div>
             </div>
           </div>
 
@@ -655,13 +1100,56 @@ export function MagazineSpreadV3() {
         </article>
 
       </div>
+
+      {/* ───── Compare drawer FAB + slide-over ───── */}
+      <button className="v3-compare-fab" onClick={() => setDrawerOpen(true)}>
+        <Swords className="w-3.5 h-3.5" /> Compare
+        {isFree && <span className="v3-compare-quota">{compareQuotaLeft}/{v3.compare.freeDailyLimit} left</span>}
+      </button>
+      <div className={`v3-drawer-backdrop ${drawerOpen ? "is-open" : ""}`} onClick={() => setDrawerOpen(false)} />
+      <aside className={`v3-drawer ${drawerOpen ? "is-open" : ""}`}>
+        <div className="v3-drawer-head">
+          <div className="v3-drawer-title">Compare players</div>
+          <button className="v3-drawer-close" onClick={() => setDrawerOpen(false)}><X className="w-4 h-4" /></button>
+        </div>
+        <div className="v3-drawer-body">
+          <div className="v3-compare-input">
+            <Search className="w-4 h-4" />
+            <span>{p.display_name} vs …</span>
+          </div>
+          <div>
+            <div className="v2-mini-eyebrow">Suggested</div>
+            <div className="v3-compare-suggest">
+              {v3.compare.suggestions.map(s => (
+                <button key={s} className="v3-compare-tag">{s}</button>
+              ))}
+            </div>
+          </div>
+          <div className="v3-compare-quota-bar">
+            {isFree
+              ? <>Free quota: <b>{compareQuotaLeft} of {v3.compare.freeDailyLimit}</b> comparisons left today. Pro gets unlimited.</>
+              : <>Pro · <b>unlimited</b> comparisons.</>}
+          </div>
+
+          {/* Sample comparison preview */}
+          <div className="v2-mini-eyebrow" style={{ marginTop: 8 }}>Preview · vs {v3.compare.suggestions[0]}</div>
+          <div className="v3-compare-results">
+            <div className="col-l win">{p.rank.mmr}</div>      <div className="col-mid">MMR</div>            <div className="col-r">5,420</div>
+            <div className="col-l">{p.recent.kda.toFixed(2)}</div> <div className="col-mid">KDA · L30</div> <div className="col-r win">4.91</div>
+            <div className="col-l win">{p.recent.gpm}</div>    <div className="col-mid">GPM</div>            <div className="col-r">588</div>
+            <div className="col-l">{p.perf_avg.toFixed(1)}</div> <div className="col-mid">PERF</div>          <div className="col-r win">7.8</div>
+            <div className="col-l win">14W · 6L</div>           <div className="col-mid">Together</div>      <div className="col-r">—</div>
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }
 
 function ProSection({
-  isFree, eyebrow, title, unlockTitle, unlockSub, children,
+  id, isFree, eyebrow, title, unlockTitle, unlockSub, children,
 }: {
+  id?: string;
   isFree: boolean;
   eyebrow: React.ReactNode;
   title: string;
@@ -670,7 +1158,7 @@ function ProSection({
   children: React.ReactNode;
 }) {
   return (
-    <article className={`mag-story ${!isFree ? 'is-pro' : ''}`}>
+    <article id={id} className={`mag-story ${!isFree ? 'is-pro' : ''}`}>
       <div className="mag-eyebrow flex items-center gap-2">
         {eyebrow}
         {!isFree
@@ -696,3 +1184,5 @@ function ProSection({
     </article>
   );
 }
+
+export default MagazineSpreadV3;
