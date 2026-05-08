@@ -1,8 +1,8 @@
 import "./_profile.css";
 
 type Variant = {
-  letter: "A" | "B" | "C" | "B2";
-  id: "TrophyWall" | "MagazineSpread" | "TacticalDossier" | "MagazineSpreadV2";
+  letter: "A" | "B" | "C" | "B2" | "B3";
+  id: "TrophyWall" | "MagazineSpread" | "TacticalDossier" | "MagazineSpreadV2" | "MagazineSpreadV3";
   title: string;
   tagline: string;
   rationale: string;
@@ -32,6 +32,14 @@ const VARIANTS: Variant[] = [
     tagline: "Editorial v1 — fuller, organised, free/Pro split",
     rationale:
       "Extends Variant B (the user's favourite). Right column reorganised into 7 mag-story sections with clear free vs Pro separation. Free: per-position breakdown, full stat averages, multi-kill chips, recent matches table (with date + link arrow), rolling 10-game WR area chart. Pro (visible to any Pro viewer on any profile): AI Scout, best/worst allies, head-to-head search, PERF helped/hurt bars, sortable hero matchup table (defaults to highest delta), time-of-day × weekday heatmap, item & skill build trends, and an MMR Δ column on Recent Matches. Uses v1's lock-overlay + lock-msg pattern verbatim for parity.",
+  },
+  {
+    letter: "B3",
+    id: "MagazineSpreadV3",
+    title: "Magazine Spread v3",
+    tagline: "Cinematic cover · single-column, no left rail",
+    rationale:
+      "Drops the two-column layout entirely. A full-width cinematic hero banner uses the player's pinned hero as a backdrop with a giant Playfair name overlaid, a glassy vital-stats strip (MMR, Recent WR, KDA, GPM/XPM, PERF), flair pills and socials. Every section beneath stacks full width: Latest Game, By The Numbers, Top Heroes (horizontal showcase cards), Recent Matches, AI Scout, Allies & Enemies, Performance Lab, Trophy Cabinet, and Customization at the bottom. Best for showcasing the player as the centerpiece without sidebar competition.",
   },
   {
     letter: "C",
@@ -77,7 +85,7 @@ export default function ProfileRedesignBoard() {
       </header>
 
       {/* Rationale row: A / B / C side by side */}
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: COL_GAP, marginBottom: 32 }}>
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: COL_GAP, marginBottom: 32 }}>
         {VARIANTS.map(v => (
           <div key={v.id} style={{
             border: "1px solid var(--border-strong)", borderRadius: 8, padding: 16,

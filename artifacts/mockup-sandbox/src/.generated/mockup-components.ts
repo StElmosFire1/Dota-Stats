@@ -15,6 +15,7 @@ export const modules: ModuleMap = {
   "./components/mockups/oa-revamp/TacticalRadiantDire.tsx": () => import("../components/mockups/oa-revamp/TacticalRadiantDire.tsx"),
   "./components/mockups/profile-redesign/MagazineSpread.tsx": () => import("../components/mockups/profile-redesign/MagazineSpread.tsx"),
   "./components/mockups/profile-redesign/MagazineSpreadV2.tsx": () => import("../components/mockups/profile-redesign/MagazineSpreadV2.tsx"),
+  "./components/mockups/profile-redesign/MagazineSpreadV3.tsx": () => import("../components/mockups/profile-redesign/MagazineSpreadV3.tsx"),
   "./components/mockups/profile-redesign/ProfileRedesignBoard.tsx": () => import("../components/mockups/profile-redesign/ProfileRedesignBoard.tsx"),
   "./components/mockups/profile-redesign/TacticalDossier.tsx": () => import("../components/mockups/profile-redesign/TacticalDossier.tsx"),
   "./components/mockups/profile-redesign/TrophyWall.tsx": () => import("../components/mockups/profile-redesign/TrophyWall.tsx")
