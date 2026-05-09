@@ -19,6 +19,8 @@ import { getOwnedFrames, purchaseFrameCheckout } from '../api';
 import VanitySlugPicker from '../components/VanitySlugPicker';
 import { oauthErrorMessage } from '../components/DiscordLinkModal';
 import ProfileCard from '../components/ProfileCard';
+import MagazineCover from '../components/MagazineCover';
+import '../components/MagazineCover.css';
 
 // Compact, dependency-free UI for editing /settings/profile. Renders three
 // sections (basics / cosmetics / pins) plus a live preview card. The premium
@@ -611,8 +613,34 @@ export default function SettingsProfile() {
               .settings-profile-preview in styles.css). Form column flows
               in the centre underneath. */}
           <aside className="settings-profile-preview">
-            {/* v6.18 — same <ProfileCard /> visitors see on /player/:id. */}
+            {/* Task #219 — Magazine v3 cover preview so Cover FX + Founders
+                ring + layout theme + custom title + bio + theme accent +
+                pinned hero choices respond live before saving. The
+                surrounding `magazine-v3 v3-theme-{slug}` div mirrors the
+                wrapper PlayerProfile uses so the theme-specific cover
+                styles activate. CSS already gates every animated FX behind
+                `prefers-reduced-motion: no-preference`. */}
             <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1.5, marginBottom: 6, textTransform: 'uppercase' }}>
+              Live preview · cover
+            </div>
+            <div className={`magazine-v3 v3-theme-${layoutTheme || 'court-pitch'}`}>
+              <MagazineCover
+                accountId={accountId}
+                displayName={displayName}
+                customTitle={customTitle || null}
+                bio={bio || null}
+                pinnedHero={previewPinnedHero}
+                topHero={ownHeroes[0] || null}
+                streak={streak}
+                themeAccent={themeAccent || null}
+                foundersRing={Array.isArray(ownedEntitlements) && ownedEntitlements.includes('founders_pass_ring')}
+                coverFx={Array.isArray(coverFx) ? coverFx : []}
+              />
+            </div>
+            {/* v6.18 — same <ProfileCard /> visitors see on /player/:id, kept
+                so pinned-match, pinned-achievement, top-heroes strip, social
+                chips, frames, and per-tile cosmetic knobs stay previewable. */}
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1.5, margin: '14px 0 6px', textTransform: 'uppercase' }}>
               Live preview · profile card
             </div>
             <ProfileCard

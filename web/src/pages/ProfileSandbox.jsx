@@ -11,6 +11,8 @@ import {
   COVER_FX_IDS, COVER_FX_META,
 } from '../profileCosmetics';
 import ProfileCard from '../components/ProfileCard';
+import MagazineCover from '../components/MagazineCover';
+import '../components/MagazineCover.css';
 
 // ---- Mock data ------------------------------------------------------------
 // All numbers below are fabricated for the sandbox preview only — nothing is
@@ -114,7 +116,7 @@ function fmtDuration(s) {
 // expects so the sandbox keeps acting as a one-stop visual harness for every
 // cosmetic knob.
 
-function FullPreviewCard({ displayName, c, frame }) {
+function FullPreviewCard({ displayName, c, frame, foundersRing, coverFx }) {
   const heroStats = getHeroStats(c.pinned_hero_id);
   const pinnedMatch = SAMPLE_RECENT_MATCHES.find(m => m.match_id === c.pinned_match_id) || null;
   const pinnedAch = SAMPLE_ACHIEVEMENTS.find(a => a.id === c.pinned_achievement_id) || null;
@@ -159,9 +161,30 @@ function FullPreviewCard({ displayName, c, frame }) {
     direScore: pinnedMatch.direScore,
   } : null;
 
+  const previewPinnedHero = pinnedHero;
   return (
     <div>
+      {/* Task #219 — Magazine v3 cover preview reacts live to Cover FX +
+          Founders ring toggles, matching what /players/:id renders. CSS
+          gates animations behind `prefers-reduced-motion: no-preference`. */}
       <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1.5, marginBottom: 6, textTransform: 'uppercase' }}>
+        Live Preview · cover
+      </div>
+      <div className="magazine-v3 v3-theme-court-pitch">
+        <MagazineCover
+          displayName={displayName}
+          customTitle={c.custom_title || null}
+          bio={c.bio || null}
+          pinnedHero={previewPinnedHero}
+          topHero={SAMPLE_TOP_HEROES[0] || null}
+          streak={c.show_streak ? SAMPLE_STREAK : 0}
+          themeAccent={c.theme_accent || null}
+          flair={c.flair_unlocked && c.flair_override ? c.flair_override : (c.flair_auto || null)}
+          foundersRing={!!foundersRing}
+          coverFx={Array.isArray(coverFx) ? coverFx : []}
+        />
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1.5, margin: '14px 0 6px', textTransform: 'uppercase' }}>
         Live Preview · profile card
       </div>
       <ProfileCard
@@ -356,7 +379,7 @@ export default function ProfileSandbox() {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(360px, 1fr) minmax(360px, 1fr)', gap: 20 }}>
         {/* PREVIEW */}
         <div style={{ position: 'sticky', top: 16, alignSelf: 'flex-start' }}>
-          <FullPreviewCard displayName={displayName} c={customization} frame={profileFrame} />
+          <FullPreviewCard displayName={displayName} c={customization} frame={profileFrame} foundersRing={foundersRing} coverFx={coverFx} />
           <div style={{
             marginTop: 14, padding: 12, borderRadius: 8,
             background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)',
@@ -507,9 +530,9 @@ export default function ProfileSandbox() {
           <section style={{ padding: 12, border: '1px dashed var(--border)', borderRadius: 8, background: 'rgba(245,158,11,0.04)' }}>
             <h2 style={{ marginBottom: 8, fontSize: 16 }}>Founders Pass + Cover FX (Magazine v3 only)</h2>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-              These layer onto the live <code>MagazineCover</code> on <code>/players/:id</code> — the
-              sandbox preview here uses the legacy <code>ProfileCard</code>, so the toggles are
-              shown for state simulation (and to verify the a11y wiring of the switch buttons).
+              These layer onto the live <code>MagazineCover</code> on <code>/players/:id</code>.
+              Task #219 — the cover preview at the top of this page now reflects every
+              toggle in real time. Animations respect <em>prefers-reduced-motion</em>.
             </p>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 10 }}>
               <input type="checkbox" checked={foundersRing} onChange={e => setFoundersRing(e.target.checked)} />
