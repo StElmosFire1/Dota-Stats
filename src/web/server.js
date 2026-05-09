@@ -6992,9 +6992,8 @@ NOTES
   });
 
   // Snake-draft pick sequence for the 8 non-captain slots (4 each side).
-  // Order: T1, T2, T2, T1, T1, T2, T2, T1 — the captain who picks first only
-  // gets one back-to-back at the very end so it's roughly even on tempo.
-  const DRAFT_PICK_SEQUENCE = [1, 2, 2, 1, 1, 2, 2, 1];
+  // Single source of truth lives in src/inhouse/draftSequence.js (Task #192).
+  const { DRAFT_PICK_SEQUENCE } = require('../inhouse/draftSequence');
 
   function _currentPickerTeam(players, session) {
     // Count drafted players, excluding the two captains by account_id (more

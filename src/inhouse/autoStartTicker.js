@@ -21,10 +21,10 @@
 // guards via internal HTTP calls (so we don't duplicate transition logic).
 
 const TICK_MS = 5000;
-// Task #172 — snake-draft pick sequence. Mirrored from server.js so the
-// ticker can pick the right team on the captain's behalf when the per-pick
-// deadline expires. Keep in sync if the server ever changes the order.
-const DRAFT_PICK_SEQUENCE = [1, 2, 2, 1, 1, 2, 2, 1];
+// Task #172 — snake-draft pick sequence used to pick the right team on the
+// captain's behalf when the per-pick deadline expires. Single source of
+// truth lives in src/inhouse/draftSequence.js (Task #192).
+const { DRAFT_PICK_SEQUENCE } = require('./draftSequence');
 // Hybrid skill scoring used to pick the highest-MMR remaining player —
 // mirrors the score() helper in /select-captains so the auto-pick lands
 // on the same player a captain following the leaderboard would have

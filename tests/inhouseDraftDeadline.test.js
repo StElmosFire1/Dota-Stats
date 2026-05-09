@@ -291,7 +291,10 @@ test('ticker auto-pick: rank-tier fallback is preferred over the unranked floor'
 // 0..7 and assert it picks onto the right team.
 // ===========================================================================
 
-const _PICK_TEAM_BY_IDX = [1, 2, 2, 1, 1, 2, 2, 1];
+// Task #192 — pull the canonical sequence from the shared module so this
+// test fails if the production order ever changes, instead of asserting
+// against a stale local copy.
+const { DRAFT_PICK_SEQUENCE: _PICK_TEAM_BY_IDX } = require('../src/inhouse/draftSequence');
 for (let pickIdx = 0; pickIdx < 8; pickIdx++) {
   test(`ticker auto-pick: pickIdx=${pickIdx} → team ${_PICK_TEAM_BY_IDX[pickIdx]}`, async () => {
     const session = {
