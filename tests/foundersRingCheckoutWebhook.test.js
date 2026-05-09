@@ -186,6 +186,10 @@ async function _invokeHandler(route, req) {
       try {
         const ret = layer.handle(req, res, (err) => { if (err) nextErr = err; resolve(); });
         if (ret && typeof ret.then === 'function') ret.then(() => resolve(), reject);
+        // Sync middleware that ends the response without calling next()
+        // (e.g. requireSuperuser returning res.status(401).json(...)) would
+        // otherwise leave this promise unresolved and hang the test loop.
+        else if (res.headersSent) resolve();
       } catch (err) { reject(err); }
     });
     if (nextErr) throw nextErr;
@@ -559,3 +563,168 @@ test('stripe webhook: founders_ring branch is idempotent on replay', _withUnreff
     harness.restoreEnv();
   }
 }));
+
+// ── 4. Superuser-only admin routes (Task #257) ───────────────────────────
+//
+// Three admin routes back the Founders Pass operator console. Each MUST
+// reject anonymous and signed-in non-superuser callers, and accept a
+// superuser. If a future refactor accidentally drops `requireSuperuser`,
+// any signed-in (or even anonymous) user could mint or revoke founders
+// rings on demand — exactly the elevation-of-privilege failure the threat
+// model is built to catch.
+//
+//   GET    /api/admin/founders-ring          (list holders)
+//   POST   /api/admin/founders-ring          (manual grant)
+//   DELETE /api/admin/founders-ring/:accountId (revoke)
+//
+// requireSuperuser short-circuits with 503 when SUPERUSER_PASSWORD isn't
+// configured, so we set it for the lifetime of each test and restore on
+// exit. The "anonymous" and "non-superuser signed-in" callers must NOT
+// receive 200 (they get 401 with no header, 403 with a wrong header).
+
+function _withSuperuserPassword(fn) {
+  return async (...args) => {
+    const prev = process.env.SUPERUSER_PASSWORD;
+    process.env.SUPERUSER_PASSWORD = 'test-superuser-secret';
+    try { return await fn(...args); }
+    finally {
+      if (prev === undefined) delete process.env.SUPERUSER_PASSWORD;
+      else process.env.SUPERUSER_PASSWORD = prev;
+    }
+  };
+}
+
+const _ADMIN_FR_ROUTES = [
+  { method: 'get',    path: '/admin/founders-ring',           label: 'GET /admin/founders-ring' },
+  { method: 'post',   path: '/admin/founders-ring',           label: 'POST /admin/founders-ring' },
+  { method: 'delete', path: '/admin/founders-ring/:accountId', label: 'DELETE /admin/founders-ring/:accountId' },
+];
+
+for (const r of _ADMIN_FR_ROUTES) {
+  test(`${r.label}: 401 for anonymous caller`, _withUnreffedIntervals(_withSuperuserPassword(async () => {
+    const { captured } = _stubServerDeps();
+    const { createApiRouter } = _loadServerFresh();
+    const router = createApiRouter({}, null);
+    const route = _findRoute(router, r.method, r.path);
+    const result = await _invokeHandler(route, {
+      session: {}, body: { account_id: 1 }, headers: {}, params: { accountId: '1' }, query: {},
+    });
+    assert.ok(result.status === 401 || result.status === 403,
+      `anonymous caller must be rejected (got ${result.status})`);
+    assert.equal(captured.grantCalls.length, 0, 'grant must not run for anonymous caller');
+  })));
+
+  test(`${r.label}: 401/403 for signed-in non-superuser`, _withUnreffedIntervals(_withSuperuserPassword(async () => {
+    const { captured } = _stubServerDeps();
+    const { createApiRouter } = _loadServerFresh();
+    const router = createApiRouter({}, null);
+    const route = _findRoute(router, r.method, r.path);
+    // Signed-in user with NO isSuperuser flag, presenting a wrong header.
+    const result = await _invokeHandler(route, {
+      session: { accountId: 4242 },
+      body: { account_id: 1 },
+      headers: { 'x-superuser-key': 'wrong-secret' },
+      params: { accountId: '1' },
+      query: {},
+    });
+    assert.ok(result.status === 401 || result.status === 403,
+      `signed-in non-superuser must be rejected (got ${result.status})`);
+    assert.equal(captured.grantCalls.length, 0, 'grant must not run for non-superuser caller');
+  })));
+}
+
+test('GET /admin/founders-ring: 200 for superuser session, returns sku/cap/sold/holders', _withUnreffedIntervals(_withSuperuserPassword(async () => {
+  const fakeHolders = [{ account_id: '1', granted_at: '2026-01-01' }, { account_id: '2', granted_at: '2026-01-02' }];
+  _stubServerDeps({
+    listEntitlementHolders: async () => fakeHolders,
+  });
+  const { createApiRouter } = _loadServerFresh();
+  const router = createApiRouter({}, null);
+  const route = _findRoute(router, 'get', '/admin/founders-ring');
+  const result = await _invokeHandler(route, {
+    session: { isSuperuser: true }, body: {}, headers: {}, query: {}, params: {},
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.sku, 'founders_pass_ring');
+  assert.equal(result.body.sold, 2);
+  assert.deepEqual(result.body.holders, fakeHolders);
+  assert.ok(result.body.cap > 0);
+})));
+
+test('POST /admin/founders-ring: 200 for superuser, calls grantEntitlementWithCap with grantedBy=superuser and reason in metadata', _withUnreffedIntervals(_withSuperuserPassword(async () => {
+  const { captured } = _stubServerDeps({
+    grantEntitlementWithCap: async () => ({ ok: true, granted: true, reason: null }),
+  });
+  const { createApiRouter } = _loadServerFresh();
+  const router = createApiRouter({}, null);
+  const route = _findRoute(router, 'post', '/admin/founders-ring');
+  const result = await _invokeHandler(route, {
+    session: { isSuperuser: true },
+    body: { account_id: '5151', reason: 'community_giveaway' },
+    headers: {},
+    params: {},
+    query: {},
+  });
+  assert.equal(result.status, 200);
+  assert.equal(captured.grantCalls.length, 1);
+  const call = captured.grantCalls[0];
+  assert.equal(call.accountId, '5151');
+  assert.equal(call.sku, 'founders_pass_ring');
+  assert.equal(call.grantedBy, 'superuser',
+    "grantedBy MUST be 'superuser' so the audit trail distinguishes manual grants from Stripe");
+  assert.ok(call.cap > 0);
+  assert.equal(call.metadata.reason, 'community_giveaway',
+    'metadata.reason MUST forward the operator-supplied reason');
+})));
+
+test('POST /admin/founders-ring: defaults metadata.reason to admin_grant when none supplied', _withUnreffedIntervals(_withSuperuserPassword(async () => {
+  const { captured } = _stubServerDeps({
+    grantEntitlementWithCap: async () => ({ ok: true, granted: true, reason: null }),
+  });
+  const { createApiRouter } = _loadServerFresh();
+  const router = createApiRouter({}, null);
+  const route = _findRoute(router, 'post', '/admin/founders-ring');
+  const result = await _invokeHandler(route, {
+    session: { isSuperuser: true },
+    body: { account_id: '99' },
+    headers: {}, params: {}, query: {},
+  });
+  assert.equal(result.status, 200);
+  assert.equal(captured.grantCalls[0].metadata.reason, 'admin_grant');
+})));
+
+test('POST /admin/founders-ring: 400 when account_id missing (superuser)', _withUnreffedIntervals(_withSuperuserPassword(async () => {
+  const { captured } = _stubServerDeps();
+  const { createApiRouter } = _loadServerFresh();
+  const router = createApiRouter({}, null);
+  const route = _findRoute(router, 'post', '/admin/founders-ring');
+  const result = await _invokeHandler(route, {
+    session: { isSuperuser: true }, body: {}, headers: {}, params: {}, query: {},
+  });
+  assert.equal(result.status, 400);
+  assert.equal(captured.grantCalls.length, 0);
+})));
+
+test('DELETE /admin/founders-ring/:accountId: 200 for superuser, calls revokeEntitlement with right account+sku', _withUnreffedIntervals(_withSuperuserPassword(async () => {
+  const revokeCalls = [];
+  _stubServerDeps({
+    revokeEntitlement: async (accountId, sku) => {
+      revokeCalls.push({ accountId, sku });
+      return 1;
+    },
+  });
+  const { createApiRouter } = _loadServerFresh();
+  const router = createApiRouter({}, null);
+  const route = _findRoute(router, 'delete', '/admin/founders-ring/:accountId');
+  const result = await _invokeHandler(route, {
+    session: { isSuperuser: true },
+    body: {}, headers: {}, query: {},
+    params: { accountId: '7777' },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.removed, 1);
+  assert.equal(revokeCalls.length, 1);
+  assert.equal(revokeCalls[0].accountId, '7777');
+  assert.equal(revokeCalls[0].sku, 'founders_pass_ring');
+})));

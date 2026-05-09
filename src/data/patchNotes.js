@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.96",
+    "title": "Founders Pass admin routes — superuser-only authorization locked in by tests",
+    "published_at": "2026-05-09",
+    "content": "Task #257: v6.95 (Task #240) covered the public Founders Pass checkout route and the Stripe webhook, but the three superuser admin routes — `GET /api/admin/founders-ring` (list holders), `POST /api/admin/founders-ring` (manual grant), `DELETE /api/admin/founders-ring/:accountId` (revoke) — had zero automated coverage. If a future refactor accidentally dropped `requireSuperuser` from any of them, any signed-in (or even anonymous) user could mint or revoke founders rings on demand — the elevation-of-privilege failure shape the threat model is built to catch.\n\n`tests/foundersRingCheckoutWebhook.test.js` got 11 new cases (now 19 total, all green): for each of the three routes, an anonymous caller (no session, no header) is rejected (401/403) and the underlying db helper is NOT called; a signed-in non-superuser presenting a wrong `x-superuser-key` header is rejected (401/403) and the db helper is NOT called. Three superuser happy-path cases then assert: GET returns `{sku, cap, sold, holders}` from `db.listEntitlementHolders`; POST calls `db.grantEntitlementWithCap` with `grantedBy: 'superuser'` and the operator-supplied `metadata.reason` (plus a default-to-'admin_grant' case and a 400 missing-account_id case); DELETE calls `db.revokeEntitlement` with the right `accountId` + sku and returns `{ok:true, removed}`. A new `_withSuperuserPassword` helper sets `SUPERUSER_PASSWORD` for the lifetime of each test (since `requireSuperuser` short-circuits with 503 when unset).\n\nAlso patched a latent hang in the shared `_invokeHandler` test helper: it only resolved its inner promise via the `next()` callback or a returned Promise, so a sync middleware that ends the response without calling `next()` (exactly the `requireSuperuser` reject path: `return res.status(401).json(...)`) used to leave the test loop pending. It now also resolves when `res.headersSent` is true after a sync middleware returns. No production code changes — pure test additions + harness fix.",
+    "author": "System"
+  },
+  {
     "version": "6.95",
     "title": "Founders Pass cap-race buyers are now auto-refunded",
     "published_at": "2026-05-09",
