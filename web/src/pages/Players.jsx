@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
+import HeroIcon from '../components/HeroIcon';
 import { getAllPlayers, setNickname, setPlayerDiscordId, getLivePresences } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -346,6 +347,58 @@ const LIVE_LABELS = {
   in_queue: { label: 'In queue', color: '#a78bfa', bg: 'rgba(167,139,250,0.18)' },
   in_voice: { label: 'In voice', color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
 };
+// Format a short "Xm" / "Xh Ym" duration since an ISO timestamp.
+function formatSince(iso) {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'less than a minute';
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  const remM = mins % 60;
+  return remM ? `${hrs}h ${remM}m` : `${hrs}h`;
+}
+
+function CopyWatchIdButton({ matchId }) {
+  const [copied, setCopied] = useState(false);
+  const onClick = async () => {
+    try {
+      const text = `watch_server ${matchId}`;
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // swallow — user can still click the Watch link
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={copied ? 'Watch command copied' : 'Copy Dota 2 watch_server console command'}
+      title="Copy console command (paste into Dota 2 console)"
+      style={{
+        background: 'transparent', color: 'var(--text-muted)',
+        border: '1px solid var(--border)', borderRadius: 4,
+        padding: '2px 6px', fontSize: 10, cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {copied ? 'Copied!' : 'Copy ID'}
+    </button>
+  );
+}
+
 function LiveNowList({ loading, players }) {
   if (loading && players.length === 0) {
     return <div className="loading">Loading live presence…</div>;
@@ -362,47 +415,83 @@ function LiveNowList({ loading, players }) {
     );
   }
   return (
-    <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+    <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
       {players.map(p => {
         const cfg = LIVE_LABELS[p.status];
         if (!cfg) return null;
         let label = cfg.label;
         if (p.status === 'in_game' && p.hero) label = `In game · ${p.hero}`;
         const profileUrl = p.account_id ? `/player/${p.account_id}` : null;
-        const inner = (
-          <div style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderLeft: `3px solid ${cfg.color}`, borderRadius: 6,
-            padding: '10px 12px', display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', gap: 12,
-          }}>
+        const rawWatchable = p.status === 'in_game' ? p.match_id : null;
+        const watchableId = rawWatchable && String(rawWatchable) !== '0' ? rawWatchable : null;
+        // Build a friendly tooltip. For in_queue we have joined_at and want
+        // "In queue for 4m"; for the other live states we keep the existing
+        // "Updated …" hint so visitors know how fresh the row is.
+        let cardTitle = label;
+        if (p.status === 'in_queue') {
+          const since = formatSince(p.joined_at || p.updated_at);
+          if (since) cardTitle = `In queue for ${since}`;
+        } else if (p.updated_at) {
+          cardTitle = `Updated ${new Date(p.updated_at).toLocaleTimeString()}`;
+        }
+        const cardKey = profileUrl || `${p.display_name}-${p.status}`;
+        return (
+          <div
+            key={cardKey}
+            title={cardTitle}
+            style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderLeft: `3px solid ${cfg.color}`, borderRadius: 6,
+              padding: '10px 12px', display: 'flex', alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            {p.status === 'in_game' && p.hero ? (
+              <HeroIcon heroName={p.hero} heroId={p.hero_id} size="md" />
+            ) : null}
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{
                 color: 'var(--text-primary)', fontWeight: 600, fontSize: 14,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
-                {p.display_name || `Player ${p.account_id}`}
+                {profileUrl ? (
+                  <Link
+                    to={profileUrl}
+                    style={{ color: 'inherit', textDecoration: 'none' }}
+                  >
+                    {p.display_name || `Player ${p.account_id}`}
+                  </Link>
+                ) : (p.display_name || `Player ${p.account_id}`)}
               </div>
-              <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{label}</div>
+              <div style={{
+                color: 'var(--text-muted)', fontSize: 12,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{label}</div>
             </div>
-            <span style={{
-              background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}55`,
-              borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 600,
-              whiteSpace: 'nowrap',
-            }}>{cfg.label}</span>
+            {watchableId ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <a
+                  href={`steam://rungame/570//+watch_server%20${encodeURIComponent(watchableId)}`}
+                  style={{
+                    background: cfg.bg, color: cfg.color,
+                    border: `1px solid ${cfg.color}55`, borderRadius: 4,
+                    padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                    textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}
+                  title="Open in Dota 2 as a spectator"
+                >
+                  Watch
+                </a>
+                <CopyWatchIdButton matchId={watchableId} />
+              </div>
+            ) : (
+              <span style={{
+                background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}55`,
+                borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 600,
+                whiteSpace: 'nowrap',
+              }}>{cfg.label}</span>
+            )}
           </div>
-        );
-        return profileUrl ? (
-          <Link
-            key={p.account_id}
-            to={profileUrl}
-            style={{ textDecoration: 'none' }}
-            title={p.updated_at ? `Updated ${new Date(p.updated_at).toLocaleTimeString()}` : label}
-          >
-            {inner}
-          </Link>
-        ) : (
-          <div key={`${p.display_name}-${p.status}`}>{inner}</div>
         );
       })}
     </div>

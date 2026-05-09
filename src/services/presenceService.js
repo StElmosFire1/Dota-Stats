@@ -233,12 +233,14 @@ async function getAllLivePresences() {
     }
   }
 
-  // Step 2: pull current inhouse queue once and merge as in_queue.
-  let queueAccountIds = new Set();
+  // Step 2: pull current inhouse queue once and merge as in_queue. We also
+  // grab joined_at so the UI can show an "In queue for 4m" tooltip.
+  let queueAccountIds = new Map(); // account_id -> joined_at ISO string
   try {
-    const r = await pool.query(`SELECT account_id::text AS account_id FROM inhouse_queue WHERE account_id IS NOT NULL`);
+    const r = await pool.query(`SELECT account_id::text AS account_id, joined_at FROM inhouse_queue WHERE account_id IS NOT NULL`);
     for (const row of r.rows) {
-      queueAccountIds.add(row.account_id);
+      const joinedAt = row.joined_at ? new Date(row.joined_at).toISOString() : null;
+      queueAccountIds.set(row.account_id, joinedAt);
       if (!candidates.has(row.account_id)) candidates.set(row.account_id, {});
     }
   } catch {}
@@ -299,19 +301,29 @@ async function getAllLivePresences() {
     const steam = slot.steam;
     const discord = slot.discord;
     const inQueue = queueAccountIds.has(accountId);
+    const queueJoinedAt = inQueue ? queueAccountIds.get(accountId) : null;
     let row = null;
     if (steam?.state === 'in_game') {
+      // Normalise WatchableGameID: rich_presence sometimes carries '0' for an
+      // in-game player whose server hasn't published a watchable id yet.
+      // Treat that as no spectator hook so clients don't render a broken
+      // Watch link.
+      const matchId = steam.matchId && String(steam.matchId) !== '0' ? steam.matchId : null;
       row = {
         status: 'in_game',
         hero_id: steam.heroId || null,
         hero: steam.heroName || null,
-        match_id: steam.matchId || null,
+        match_id: matchId,
         updated_at: new Date(steam.updatedAt).toISOString(),
       };
     } else if (steam?.state === 'in_lobby') {
       row = { status: 'in_lobby', updated_at: new Date(steam.updatedAt).toISOString() };
     } else if (inQueue) {
-      row = { status: 'in_queue', updated_at: new Date().toISOString() };
+      row = {
+        status: 'in_queue',
+        joined_at: queueJoinedAt,
+        updated_at: queueJoinedAt || new Date().toISOString(),
+      };
     } else if (discord?.voice) {
       row = { status: 'in_voice', updated_at: new Date(discord.updatedAt).toISOString() };
     }
