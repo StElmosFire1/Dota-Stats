@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.04",
+    "title": "Home page — Most Improved / Player of the Week panel matches What's Hot height",
+    "published_at": "2026-05-09",
+    "content": "The home page two-up row (`PlayerOfTheWeek` / `MostImprovedFiller` on the left, `HotHeroes` on the right) used `gridTemplateColumns: '1fr 1fr'` so the columns were equal width, but the cards inside each grid cell weren't stretching to the row height — the left card was content-sized (one player line, ~80px tall) while the right card grew to fit four hero tiles (~160px tall). The visual result was an uneven row where the left card floated with empty space below it.\n\nFix in `web/src/components/HomeWidgets.jsx`: the wrapping `<Link>` for `PlayerOfTheWeek` and `MostImprovedFiller` now sets `display: 'block', height: '100%'`, and all three card containers (PlayerOfTheWeek, MostImprovedFiller, HotHeroes) get `height: '100%'` on the inner card div in place of the previous `marginBottom: 16`. With `align-items: stretch` (the grid default), both columns now grow to the taller card's height and the row reads as a single even band.\n\nNo content changes — same data, same colour gradients, same links. a11y gate green (153 JSX / 3 CSS files scanned), web bundle builds cleanly. Full edition only — community edition has no `HotHeroes` widget.",
+    "author": "System"
+  },
+  {
     "version": "7.03",
     "title": "Sign-in self-heal sweep, profile cover top padding, paywall card clears the navbar",
     "published_at": "2026-05-09",

@@ -246,10 +246,10 @@ export function PlayerOfTheWeek() {
   const rarity = p.perf >= 9 ? 'Top 1%' : p.perf >= 8 ? 'Elite' : p.perf >= 7 ? 'Excellent' : 'Strong';
 
   return (
-    <Link to={`/match/${p.match_id}`} style={{ textDecoration: 'none' }}>
+    <Link to={`/match/${p.match_id}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
       <div style={{
         ...cardStyle,
-        marginBottom: 16,
+        height: '100%',
         background: 'linear-gradient(135deg, rgba(245,158,11,0.10) 0%, rgba(197,169,117,0.05) 100%)',
         borderColor: 'rgba(245,158,11,0.35)',
       }}>
@@ -300,10 +300,10 @@ function MostImprovedFiller({ row }) {
   const newMmr = row.current_mmr ?? row.new_mmr ?? row.mmr ?? null;
   const games = row.games_in_period ?? row.games_played ?? row.games ?? null;
   return (
-    <Link to={`/player/${accountId}`} style={{ textDecoration: 'none' }}>
+    <Link to={`/player/${accountId}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
       <div style={{
         ...cardStyle,
-        marginBottom: 16,
+        height: '100%',
         background: 'linear-gradient(135deg, rgba(74,222,128,0.10) 0%, rgba(245,158,11,0.04) 100%)',
         borderColor: 'rgba(74,222,128,0.35)',
       }}>
@@ -356,7 +356,7 @@ export function HotHeroes() {
   if (!loaded || !data?.heroes?.length) return null;
 
   return (
-    <div style={{ ...cardStyle, marginBottom: 16 }}>
+    <div style={{ ...cardStyle, height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={eyebrowStyle}>🔥 What's hot — past 7 days</div>
         <Link to="/heroes" style={{
