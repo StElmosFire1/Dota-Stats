@@ -39,6 +39,26 @@ test('scoreCoachMatch: ignores position field that is not an array', () => {
   assert.ok(score >= 0 && score <= 100);
 });
 
+test('scoreCoachMatch: tolerates non-array hero_pool / top_heroes (legacy rows)', () => {
+  // Legacy DB rows can deliver these fields as JSON-encoded strings,
+  // null-ish sentinels, or other non-array shapes. The scorer must not
+  // throw — a single bad row would otherwise take down the whole
+  // recommendation request.
+  const badShapes = [
+    null, undefined, '', '[1,2,3]', '1,2,3', 0, 42, true, {}, { 0: 1 },
+  ];
+  const s = { mmr: 3000, primary_position: 1 };
+  const c = { mmr: 3500, positions: [1], review_count: 5 };
+  for (const shape of badShapes) {
+    const score = scoreCoachMatch(
+      { ...s, top_heroes: shape },
+      { ...c, hero_pool: shape },
+    );
+    assert.ok(Number.isInteger(score), `integer for ${JSON.stringify(shape)}`);
+    assert.ok(score >= 0 && score <= 100, `0..100 for ${JSON.stringify(shape)}, got ${score}`);
+  }
+});
+
 test('scoreCoachMatch: zero reviews penalises slightly vs many reviews', () => {
   const s = { mmr: 3000, top_heroes: [1], primary_position: 1 };
   const noReviews = scoreCoachMatch(s, { mmr: 3500, hero_pool: [1], positions: [1], review_count: 0 });

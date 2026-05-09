@@ -19,13 +19,15 @@ function scoreCoachMatch(student, coach) {
     else score -= Math.min(15, (delta - 1500) / 200);
   }
   // Hero overlap (coach.hero_pool is array of hero_ids, student.top_heroes too).
-  const studentHeroes = new Set((student.top_heroes || []).map(Number));
-  const coachHeroes = new Set((coach.hero_pool || []).map(Number));
+  // Defensive: legacy rows may have these fields as JSON-encoded strings or
+  // other non-array shapes. Treat anything that isn't an array as empty.
+  const studentHeroes = new Set((Array.isArray(student.top_heroes) ? student.top_heroes : []).map(Number));
+  const coachHeroes = new Set((Array.isArray(coach.hero_pool) ? coach.hero_pool : []).map(Number));
   let heroOverlap = 0;
   for (const h of studentHeroes) if (coachHeroes.has(h)) heroOverlap++;
   score += Math.min(20, heroOverlap * 5);
   // Position match.
-  if (student.primary_position != null && coach.positions
+  if (student.primary_position != null
       && Array.isArray(coach.positions)
       && coach.positions.map(Number).includes(Number(student.primary_position))) {
     score += 10;
@@ -224,8 +226,9 @@ function mountRoutes({ router, deps, requireAuth }) {
     const sm = Number(student.mmr) || 0;
     const cm = Number(coach.mmr) || 0;
     if (sm && cm && cm > sm && cm - sm < 1500) reasons.push(`+${cm - sm} MMR above you`);
-    const overlap = (student.top_heroes || []).filter(h =>
-      (coach.hero_pool || []).map(Number).includes(Number(h))).length;
+    const studentTop = Array.isArray(student.top_heroes) ? student.top_heroes : [];
+    const coachPool = Array.isArray(coach.hero_pool) ? coach.hero_pool.map(Number) : [];
+    const overlap = studentTop.filter(h => coachPool.includes(Number(h))).length;
     if (overlap > 0) reasons.push(`${overlap} of your top 5 heroes`);
     if (student.primary_position != null && Array.isArray(coach.positions)
         && coach.positions.map(Number).includes(Number(student.primary_position))) {

@@ -1271,6 +1271,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.38",
+    "title": "Coach pairing scorer hardened against legacy non-array hero pools",
+    "published_at": "2026-05-09",
+    "content": "**Task #167 — fixing a `TypeError: (coach.hero_pool || []).map is not a function` in `scoreCoachMatch` that could take down a whole coach-recommendation request whenever a single legacy DB row had `hero_pool` (or the student's `top_heroes`) stored as a JSON-encoded string instead of a real array.** The previous `(x || []).map(Number)` only protected against null/undefined, not against malformed shapes. Both fields — and the `_coachMatchReasons` helper that mirrors the same overlap math — now coerce non-arrays to `[]` via `Array.isArray(...) ? ... : []` before calling `.map`, so a bad row is silently scored as zero hero overlap rather than crashing the whole `_buildCoachRecommendations` pipeline. The unit test in `tests/magazineV3/coachPairing.test.js` that I had narrowed to \"realistic shapes\" while writing Task #163's per-feature suite is widened back to a property-style sweep over 10 non-array shapes (null, undefined, empty string, JSON string, CSV string, 0, 42, true, plain object, array-like) for both fields simultaneously, asserting the helper still returns an integer in 0..100 for every combination. All 6 coach-pairing tests pass.",
+    "author": "System"
+  },
+  {
     "version": "6.34",
     "title": "Per-feature unit tests for Magazine v3 — 95 new tests covering perks, pickem, verified badges, weekly reports, sponsorships, URL safety, and coach pairing",
     "published_at": "2026-05-08",
