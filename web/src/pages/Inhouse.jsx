@@ -5,7 +5,7 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
 import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
-import { superuserFetch } from '../api';
+import { superuserFetch, getCaptainAutoPickStats } from '../api';
 
 const POSITIONS = [
   { id: 1, label: 'P1 — Carry' },
@@ -307,6 +307,10 @@ export default function Inhouse() {
   const [draftPickSeconds, setDraftPickSeconds] = useState(30);
   const [myPositions, setMyPositions] = useState([]);
   const [draftStatus, setDraftStatus] = useState(null);
+  // Task #190 — per-captain auto-pick rate over the last N completed sessions.
+  // Keyed by accountId. Populated lazily when captains are known on the active
+  // session, so we can flag chronic AFK captains in-lobby with a small badge.
+  const [captainAutoStats, setCaptainAutoStats] = useState({});
   const isAdmin = !!superuserKey;
   // v5.84 — was `steamUser?.steamAccountId` (typo); the `/api/auth/me`
   // payload exposes the field as `accountId`. The mismatch made the lobby
@@ -318,6 +322,27 @@ export default function Inhouse() {
   // v5.92 — sound + browser-notification alerts on every event that needs
   // a human input. Mute toggle in the lobby header persists in localStorage.
   const { muted, toggleMute } = useInhouseAlerts({ session, players, myAccountId, draftStatus });
+
+  // Task #190 — fetch each captain's auto-pick rate when the session has
+  // captains assigned. Cached per-accountId so re-polls don't refetch.
+  useEffect(() => {
+    const ids = [];
+    if (session?.captain1_account_id) ids.push(String(session.captain1_account_id));
+    if (session?.captain2_account_id) ids.push(String(session.captain2_account_id));
+    const missing = ids.filter(id => !(id in captainAutoStats));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    Promise.all(missing.map(id => getCaptainAutoPickStats(id, 5).catch(() => null)))
+      .then(results => {
+        if (cancelled) return;
+        setCaptainAutoStats(prev => {
+          const next = { ...prev };
+          missing.forEach((id, i) => { next[id] = results[i] || null; });
+          return next;
+        });
+      });
+    return () => { cancelled = true; };
+  }, [session?.captain1_account_id, session?.captain2_account_id]);
 
   const refresh = useCallback(async () => {
     try {
@@ -1242,6 +1267,26 @@ export default function Inhouse() {
                     <span style={{ color: accent }}>★</span>
                     <span>{capName}</span>
                     <span style={{ fontSize: 10, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 1, color: 'var(--text-muted)' }}>CAPTAIN</span>
+                    {(() => {
+                      // Task #190 — flag chronic AFK captains in-lobby. Only
+                      // surfaces when ratio crosses a noticeable threshold.
+                      const capId = teamNum === 1 ? cap1Id : cap2Id;
+                      const stats = captainAutoStats[String(capId)];
+                      if (!stats || !(stats.picks > 0)) return null;
+                      const ratioPct = stats.ratio * 100;
+                      if (ratioPct < 25) return null;
+                      const tone = ratioPct >= 50 ? '#f87171' : '#fbbf24';
+                      return (
+                        <span
+                          title={`Auto-picked ${stats.autoPicks} of ${stats.picks} picks across last ${stats.sessionsConsidered} captain ${stats.sessionsConsidered === 1 ? 'run' : 'runs'}`}
+                          style={{
+                            fontSize: 10, fontFamily: 'var(--font-condensed, var(--font))',
+                            letterSpacing: 1, color: tone, border: `1px solid ${tone}`,
+                            borderRadius: 4, padding: '1px 6px', fontWeight: 700,
+                          }}
+                        >⏱ {ratioPct.toFixed(0)}% AUTO</span>
+                      );
+                    })()}
                   </div>
                 </div>
                 {picks.length === 0

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard } from '../api';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
@@ -580,6 +580,7 @@ export default function PlayerProfile() {
   const [predictionStats, setPredictionStats] = useState(null);
   const [heroCounters, setHeroCounters] = useState([]);
   const [streak, setStreak] = useState(null);
+  const [captainAutoPick, setCaptainAutoPick] = useState(null);
   const [durationStats, setDurationStats] = useState([]);
   const [communityRatings, setCommunityRatings] = useState(null);
   const [positionAverages, setPositionAverages] = useState([]);
@@ -615,6 +616,15 @@ export default function PlayerProfile() {
         setPlayerRank(match || null);
       })
       .catch(() => {});
+  }, [accountId]);
+
+  useEffect(() => {
+    if (!accountId) { setCaptainAutoPick(null); return; }
+    let cancelled = false;
+    getCaptainAutoPickStats(accountId, 5)
+      .then(d => { if (!cancelled) setCaptainAutoPick(d || null); })
+      .catch(() => { if (!cancelled) setCaptainAutoPick(null); });
+    return () => { cancelled = true; };
   }, [accountId]);
 
   useEffect(() => {
@@ -1297,6 +1307,40 @@ export default function PlayerProfile() {
       {showProfileChartV2 && !trendPaywall && matchStatsHistory.length >= 5 && (
         <ProfileChartV2 history={matchStatsHistory} />
       )}
+
+      {/* Task #190 — captain auto-pick streak. Surfaces chronic AFK captains
+          who let the per-pick deadline expire on every pick. Only renders when
+          the player has actually captained at least one completed session. */}
+      {captainAutoPick && captainAutoPick.sessionsConsidered > 0 && captainAutoPick.picks > 0 && (() => {
+        const ratioPct = (captainAutoPick.ratio * 100);
+        const tone = ratioPct >= 50 ? '#f87171' : ratioPct >= 25 ? '#fbbf24' : 'var(--text-muted)';
+        const label = ratioPct >= 50 ? 'Frequent AFK captain'
+          : ratioPct >= 25 ? 'Some auto-picks'
+          : 'Active captain';
+        return (
+          <section style={{ marginBottom: 16 }}>
+            <div style={{
+              border: '1px solid var(--border)',
+              borderLeft: `3px solid ${tone}`,
+              background: 'var(--bg-card)',
+              borderRadius: 8,
+              padding: '10px 14px',
+              display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 10,
+            }}>
+              <span style={{ fontFamily: 'var(--font-condensed, var(--font))', textTransform: 'uppercase', letterSpacing: 1, fontSize: 11, color: 'var(--text-muted)' }}>
+                Captain Auto-Pick Rate
+              </span>
+              <strong style={{ fontFamily: 'var(--font-serif)', fontSize: 18, color: tone }}>
+                {ratioPct.toFixed(0)}%
+              </strong>
+              <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                Auto-picked {captainAutoPick.autoPicks} of {captainAutoPick.picks} picks across last {captainAutoPick.sessionsConsidered} captain {captainAutoPick.sessionsConsidered === 1 ? 'run' : 'runs'}.
+              </span>
+              <span style={{ fontSize: 11, color: tone, fontWeight: 600 }}>{label}</span>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* AUDIT (v5.91 parity pass): PUBLIC — rolling win-rate chart with 5/10/20/All
           window selector. /player/:id/win-rate-history is open. */}

@@ -907,6 +907,13 @@ export async function getPlayerStreak(accountId) {
   return fetchJson(`/players/${accountId}/streak`);
 }
 
+// Task #190 — captain auto-pick stats across last N completed sessions where
+// this account was a captain. Returns { sessionsConsidered, picks, autoPicks,
+// ratio, perSession }.
+export async function getCaptainAutoPickStats(accountId, limit = 5) {
+  return fetchJson(`/inhouse/captain-stats/${accountId}?limit=${limit}`);
+}
+
 export async function getDraftStats(seasonId = null) {
   const q = seasonId ? `?season_id=${seasonId}` : '';
   return fetchJson(`/draft-stats${q}`);

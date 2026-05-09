@@ -8970,6 +8970,73 @@ async function getInhouseSessionPlayers(sessionId) {
   return r.rows;
 }
 
+// Task #190 — captain auto-pick streak counter. Aggregates the captain's
+// pick_source values across the last N completed sessions in which they were
+// captain1 or captain2. A pick counts when isp.pick_order IS NOT NULL (i.e.
+// the row represents an actual draft pick, not the captain's own seat or an
+// auto-balanced player). `auto_deadline` picks are surfaced as the auto-pick
+// streak signal so chronic AFK captains can be spotted.
+async function getCaptainAutoPickStats(accountId, lastN = 5) {
+  const p = getPool();
+  const acct = String(accountId);
+  const limit = Math.max(1, Math.min(50, parseInt(lastN, 10) || 5));
+  // Most recent N sessions where this account was a captain and the session
+  // actually went through the draft (status = completed, OR has any picks).
+  const sessRes = await p.query(
+    `SELECT s.id, s.created_at, s.completed_at, s.status,
+            s.captain1_account_id, s.captain2_account_id, s.match_id
+       FROM inhouse_sessions s
+      WHERE (s.captain1_account_id = $1 OR s.captain2_account_id = $1)
+        AND s.status IN ('completed','server_failed')
+      ORDER BY COALESCE(s.completed_at, s.created_at) DESC
+      LIMIT $2`,
+    [acct, limit]
+  );
+  const sessions = sessRes.rows;
+  if (sessions.length === 0) {
+    return { accountId: acct, sessionsConsidered: 0, picks: 0, autoPicks: 0, ratio: 0, perSession: [] };
+  }
+  const sessionIds = sessions.map(s => s.id);
+  // Pull all draft picks across those sessions in one query, then bucket per
+  // session by which team belonged to this captain.
+  const picksRes = await p.query(
+    `SELECT isp.session_id, isp.team, isp.pick_source
+       FROM inhouse_session_players isp
+      WHERE isp.session_id = ANY($1::int[])
+        AND isp.pick_order IS NOT NULL`,
+    [sessionIds]
+  );
+  let totalPicks = 0;
+  let totalAuto = 0;
+  const perSession = sessions.map(s => {
+    // Convention used elsewhere: captain1 leads team 1, captain2 leads team 2.
+    const myTeam = String(s.captain1_account_id) === acct ? 1
+      : String(s.captain2_account_id) === acct ? 2 : null;
+    const rows = picksRes.rows.filter(r => r.session_id === s.id && Number(r.team) === myTeam);
+    const picks = rows.length;
+    const autoPicks = rows.filter(r => r.pick_source === 'auto_deadline').length;
+    totalPicks += picks;
+    totalAuto += autoPicks;
+    return {
+      session_id: s.id,
+      created_at: s.created_at,
+      completed_at: s.completed_at,
+      status: s.status,
+      match_id: s.match_id,
+      picks,
+      autoPicks,
+    };
+  });
+  return {
+    accountId: acct,
+    sessionsConsidered: sessions.length,
+    picks: totalPicks,
+    autoPicks: totalAuto,
+    ratio: totalPicks > 0 ? totalAuto / totalPicks : 0,
+    perSession,
+  };
+}
+
 async function updateInhouseSessionPlayer(sessionId, accountId, fields) {
   const p = getPool();
   const allowed = ['status','team','pick_order','preferred_positions','roll','accepted_at','voice_verified','not_in_dota','joined_server','pick_source'];
@@ -11557,6 +11624,7 @@ module.exports = {
   listInhousePlayerSessionTokens,
   dropInhousePlayerSeat,
   getInhouseSessionPlayers,
+  getCaptainAutoPickStats,
   updateInhouseSessionPlayer,
   setInhousePlayerAccepted,
   setInhousePlayerDeclined,

@@ -6229,6 +6229,19 @@ NOTES
     }
   });
 
+  // Task #190 — captain auto-pick rate over the last N completed sessions in
+  // which this account was a captain. Public read; the underlying inhouse
+  // session/player rows are already public.
+  router.get('/inhouse/captain-stats/:accountId', async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit || '5', 10);
+      const stats = await db.getCaptainAutoPickStats(req.params.accountId, limit);
+      res.json(stats);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Helper: derive caller account from authenticated Steam session, with admin override.
   // Admins (superuser session or valid x-superuser-key) may pass an explicit accountId in the body.
   function _resolveInhouseActor(req, requireAuth = true) {
