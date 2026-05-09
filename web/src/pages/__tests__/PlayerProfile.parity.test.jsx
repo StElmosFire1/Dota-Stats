@@ -61,7 +61,8 @@ const PLAYER = {
   ],
 };
 
-vi.mock('../../api', () => ({
+vi.mock('../../api', async (importOriginal) => ({
+  ...(await importOriginal()),
   // PlayerProfile imports
   getPlayer: vi.fn().mockResolvedValue(PLAYER),
   getPlayerPositions: vi.fn().mockResolvedValue({ positions: [
@@ -125,6 +126,7 @@ vi.mock('../../api', () => ({
   getLeaderboard: vi.fn().mockResolvedValue([{ player_id: 'someone-else' }]),
   // Pulled by hooks/contexts we don't mock
   getProMembers: vi.fn().mockResolvedValue({ member_ids: [] }),
+  getPlayerVerifiedBadges: vi.fn().mockResolvedValue({ badges: [] }),
 }));
 
 // ── Mock contexts ─────────────────────────────────────────────────────────
