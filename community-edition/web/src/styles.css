@@ -166,7 +166,8 @@ a:hover {
   line-height: 1;
 }
 
-.indicator-dismiss:hover {
+.indicator-dismiss:hover,
+.indicator-dismiss:focus-visible {
   opacity: 1;
 }
 

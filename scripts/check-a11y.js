@@ -17,6 +17,13 @@
  *     but missing the matching ARIA role + state attribute
  *     (`role="switch"`+`aria-checked`, `role="radio"`+`aria-checked`, or a
  *     `role="radiogroup"` container). Task #169.
+ *   - CSS `:hover` rules that REVEAL content (descendant/sibling combinator
+ *     after `:hover`, OR a hover body that sets `display`/`opacity`/
+ *     `visibility`/`pointer-events`/`clip-path`/`max-height`/`height`) without
+ *     a matching `:focus`/`:focus-within`/`:focus-visible` rule on the same
+ *     base selector. Catches hover-only tooltips, detail panels, and
+ *     expanded-card-face reveals (Task #170, see the v3 magazine hero cards
+ *     reference pattern from Task #158).
  *
  * Exits 0 when clean, 1 when violations are found. Wired into deploy.sh,
  * scripts/post-merge.sh, and `npm run check:a11y` so a regression fails fast
@@ -35,6 +42,20 @@ const SCAN_ROOTS = [
   path.join(ROOT, 'community-edition', 'web', 'src'),
 ];
 
+// Reveal-y CSS properties — when one of these appears in a `:hover` body it's
+// treated as content actually appearing/disappearing (vs. a pure cosmetic
+// color/border tweak), and so must be matched by a `:focus`-family rule on
+// the same base selector. Task #170.
+const REVEAL_PROPS = [
+  'display',
+  'opacity',
+  'visibility',
+  'pointer-events',
+  'clip-path',
+  'max-height',
+  'height',
+];
+
 // Non-interactive HTML elements we do not want naked onClick handlers on.
 // Native interactive elements (button, a, input, select, textarea, label,
 // summary, details) are intentionally omitted.
@@ -46,8 +67,9 @@ const NON_INTERACTIVE = new Set([
 ]);
 
 const FILE_EXTS = new Set(['.jsx', '.tsx', '.js', '.ts']);
+const CSS_EXTS = new Set(['.css']);
 
-function walk(dir, out = []) {
+function walk(dir, exts, out = []) {
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -58,8 +80,8 @@ function walk(dir, out = []) {
   for (const ent of entries) {
     if (ent.name === 'node_modules' || ent.name === 'dist' || ent.name.startsWith('.')) continue;
     const full = path.join(dir, ent.name);
-    if (ent.isDirectory()) walk(full, out);
-    else if (FILE_EXTS.has(path.extname(ent.name))) out.push(full);
+    if (ent.isDirectory()) walk(full, exts, out);
+    else if (exts.has(path.extname(ent.name))) out.push(full);
   }
   return out;
 }
@@ -275,10 +297,233 @@ function scanFile(file) {
   return issues;
 }
 
+// ---------------------------------------------------------------------------
+// CSS hover-reveal scan (Task #170).
+//
+// The house rule "Hover-only reveals are forbidden" in replit.md says any
+// content that appears on `:hover` (tooltips, detail panels, expanded card
+// faces) must also appear on `:focus` / `:focus-within`. The earlier passes
+// here only see JSX, so a CSS-only `:hover .child { display: block }` reveal
+// would slip through. This pass closes that gap.
+//
+// What gets flagged:
+//   1. A `:hover` selector with a combinator AFTER `:hover` revealing a
+//      different element, e.g. `.card:hover .panel`, `.card:hover > .face`,
+//      `.card:hover + .tip`, `.card:hover ~ .x` — the canonical "hover-only
+//      reveal" shape (v3 magazine hero cards reference, Task #158).
+//   2. A `:hover` rule whose body sets one of REVEAL_PROPS (`display`,
+//      `opacity`, `visibility`, `pointer-events`, `clip-path`, `max-height`,
+//      `height`) — these properties make content actually appear/disappear,
+//      vs. a pure cosmetic color/border tweak which is intentionally not
+//      flagged.
+//
+// What's accepted as parity:
+//   - Any rule whose selector list contains the same selector with `:hover`
+//     replaced by `:focus`, `:focus-within`, or `:focus-visible` is treated
+//     as the matching counterpart. The matching is done on a normalized form
+//     (whitespace-collapsed) so multi-line selector lists work.
+// ---------------------------------------------------------------------------
+
+function stripCssComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
+/**
+ * Recursively parse a CSS source string into a flat list of declaration-block
+ * rules: `{ selector, body, line }`. At-rules with blocks (`@media`,
+ * `@supports`) are descended into; non-block at-rules (`@keyframes`,
+ * `@font-face`, etc.) and their inner blocks are skipped because they have
+ * no bearing on focus/hover parity.
+ */
+function parseCssRules(src, lineOffset = 0) {
+  const rules = [];
+  let i = 0;
+  let buf = '';
+  let bufStart = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '{') {
+      const sel = buf.trim();
+      const selStart = bufStart;
+      buf = '';
+      bufStart = -1;
+      // Find matching close brace.
+      let depth = 1;
+      let j = i + 1;
+      while (j < src.length && depth > 0) {
+        const cj = src[j];
+        if (cj === '{') depth++;
+        else if (cj === '}') depth--;
+        if (depth > 0) j++;
+      }
+      const body = src.slice(i + 1, j);
+      const line = lineOffsetOf(src, selStart) + lineOffset;
+      if (sel.startsWith('@')) {
+        const head = sel.split(/\s/, 1)[0];
+        if (head === '@media' || head === '@supports') {
+          // Descend so inner rules participate in the focus/hover matching.
+          // Pass through line offset so reported line numbers line up with
+          // the original file.
+          const innerOffset = lineOffsetOf(src, i + 1) + lineOffset;
+          for (const r of parseCssRules(body, innerOffset)) {
+            rules.push(r);
+          }
+        }
+        // Otherwise: skip (@keyframes / @font-face / @import / etc.)
+      } else if (sel) {
+        rules.push({ selector: sel, body, line });
+      }
+      i = j + 1;
+      bufStart = i;
+      continue;
+    }
+    if (c === '}') {
+      // Stray brace (shouldn't happen for valid CSS); reset buffer.
+      buf = '';
+      bufStart = i + 1;
+      i++;
+      continue;
+    }
+    if (buf === '') bufStart = i;
+    buf += c;
+    i++;
+  }
+  return rules;
+}
+
+function lineOffsetOf(src, idx) {
+  let line = 1;
+  for (let i = 0; i < idx && i < src.length; i++) if (src[i] === '\n') line++;
+  return line;
+}
+
+function splitSelectorList(selector) {
+  // Split on top-level commas (commas not inside parentheses or brackets —
+  // e.g. :is(.a, .b) or [attr="a,b"]). CSS doesn't have braces inside
+  // selectors so we only need to track () and [].
+  const out = [];
+  let depth = 0;
+  let buf = '';
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    if (c === ',' && depth === 0) { out.push(buf.trim()); buf = ''; continue; }
+    buf += c;
+  }
+  if (buf.trim()) out.push(buf.trim());
+  return out;
+}
+
+function normalizeSelector(sel) {
+  return sel.replace(/\s+/g, ' ').replace(/\s*([>+~])\s*/g, '$1').trim();
+}
+
+/**
+ * Returns true when the single selector has a combinator AFTER `:hover`,
+ * meaning the rule reveals a different element (the canonical hover-only
+ * reveal shape). Examples that match:
+ *   .card:hover .panel
+ *   .card:hover > .face
+ *   .card:hover+.tip
+ *   .card:hover ~ .x
+ * Examples that do NOT match (self-style on the hovered element):
+ *   .btn:hover
+ *   .btn:hover:not(:disabled)
+ *   .row td:hover
+ */
+function hasCombinatorAfterHover(sel) {
+  // Find each `:hover` that's not part of a longer pseudo (e.g. there's no
+  // `:hovered` but be defensive). Look at the remaining tail; if any
+  // combinator (whitespace, >, +, ~) appears at the top level of the tail
+  // before the next pseudo/attribute boundary, it's a reveal.
+  const re = /:hover\b/g;
+  let m;
+  while ((m = re.exec(sel)) !== null) {
+    const tail = sel.slice(m.index + ':hover'.length);
+    let depth = 0;
+    for (let i = 0; i < tail.length; i++) {
+      const c = tail[i];
+      if (c === '(' || c === '[') { depth++; continue; }
+      if (c === ')' || c === ']') { depth--; continue; }
+      if (depth > 0) continue;
+      if (c === ' ' || c === '\t' || c === '\n' || c === '>' || c === '+' || c === '~') return true;
+      // Anything else (`.`, `:`, `#`, `[`, alphanumeric) is a same-element
+      // continuation — keep scanning the tail in case the next `:hover` is
+      // followed by a combinator.
+      break;
+    }
+  }
+  return false;
+}
+
+function bodyHasRevealProperty(body) {
+  for (const prop of REVEAL_PROPS) {
+    // Match the property only when it appears as a declaration name
+    // (start of line / after `;` / after `{`). Use a simple regex anchored
+    // on a non-name char before the property.
+    const re = new RegExp(`(?:^|[;{\\s])${prop}\\s*:`, 'i');
+    if (re.test(body)) return true;
+  }
+  return false;
+}
+
+function scanCssFile(file) {
+  const src = fs.readFileSync(file, 'utf8');
+  const stripped = stripCssComments(src);
+  const rules = parseCssRules(stripped);
+
+  // Build a set of normalized selectors that exist in the file (across all
+  // rules and all comma-separated parts) so we can quickly look up whether
+  // a `:focus`-family counterpart is defined.
+  const selectorSet = new Set();
+  for (const r of rules) {
+    for (const part of splitSelectorList(r.selector)) {
+      selectorSet.add(normalizeSelector(part));
+    }
+  }
+
+  const issues = [];
+  for (const r of rules) {
+    const parts = splitSelectorList(r.selector);
+    for (const sel of parts) {
+      if (!/:hover\b/.test(sel)) continue;
+
+      const isCombinatorReveal = hasCombinatorAfterHover(sel);
+      const isPropertyReveal = !isCombinatorReveal && bodyHasRevealProperty(r.body);
+      if (!isCombinatorReveal && !isPropertyReveal) continue;
+
+      const focusVariants = [
+        sel.replace(/:hover\b/g, ':focus-within'),
+        sel.replace(/:hover\b/g, ':focus-visible'),
+        sel.replace(/:hover\b/g, ':focus'),
+      ].map(normalizeSelector);
+
+      const hasFocusCounterpart = focusVariants.some((v) => selectorSet.has(v));
+      if (hasFocusCounterpart) continue;
+
+      const reason = isCombinatorReveal
+        ? 'reveals a descendant/sibling element'
+        : `sets a reveal property (${REVEAL_PROPS.filter((p) => new RegExp(`(?:^|[;{\\s])${p}\\s*:`, 'i').test(r.body)).join(', ')})`;
+      issues.push({
+        file,
+        line: r.line,
+        selector: sel,
+        message:
+          `\`${sel}\` ${reason} but has no matching \`:focus\`/\`:focus-within\`/\`:focus-visible\` rule on the same target. ` +
+          'Hover-only reveals are forbidden — add a focus counterpart so keyboard users can see the same content. ' +
+          'See replit.md → "Frontend accessibility house rule" → "Hover-only reveals are forbidden."',
+      });
+    }
+  }
+  return issues;
+}
+
 function main() {
-  const files = SCAN_ROOTS.flatMap((r) => walk(r));
+  const jsxFiles = SCAN_ROOTS.flatMap((r) => walk(r, FILE_EXTS));
+  const cssFiles = SCAN_ROOTS.flatMap((r) => walk(r, CSS_EXTS));
   const all = [];
-  for (const f of files) {
+  for (const f of jsxFiles) {
     try {
       all.push(...scanFile(f));
     } catch (err) {
@@ -286,16 +531,28 @@ function main() {
       process.exitCode = 1;
     }
   }
+  for (const f of cssFiles) {
+    try {
+      all.push(...scanCssFile(f));
+    } catch (err) {
+      console.error(`[check-a11y] failed to scan ${f}: ${err.message}`);
+      process.exitCode = 1;
+    }
+  }
 
   if (all.length === 0) {
-    console.log(`[check-a11y] OK — scanned ${files.length} files, no accessibility regressions found.`);
+    console.log(`[check-a11y] OK — scanned ${jsxFiles.length} JSX/TS file(s) and ${cssFiles.length} CSS file(s), no accessibility regressions found.`);
     return;
   }
 
   console.error(`[check-a11y] FAIL — ${all.length} accessibility regression(s) detected:\n`);
   for (const i of all) {
     const rel = path.relative(ROOT, i.file);
-    console.error(`  ${rel}:${i.line}  <${i.tag}>`);
+    if (i.tag) {
+      console.error(`  ${rel}:${i.line}  <${i.tag}>`);
+    } else {
+      console.error(`  ${rel}:${i.line}  ${i.selector}`);
+    }
     console.error(`    ${i.message}\n`);
   }
   console.error('See the "Frontend accessibility house rule" section in replit.md for the required shapes.');
