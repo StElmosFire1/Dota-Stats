@@ -533,12 +533,14 @@
   font-variant-numeric: tabular-nums;
   padding: 2px 6px;
   border-radius: 3px;
-  background: rgba(96, 165, 250, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(13, 20, 36, 0.6);
+  border: 1px solid rgba(197, 169, 117, 0.25);
 }
 
-/* Heatmap legend — explains both axes (colour = win rate, opacity = volume).
-   Sits beneath the grid so the panel sub-line stays compact. */
+/* Heatmap legend — explains both signals: text colour inside the cell encodes
+   wins (green) vs losses (red), and a whisper-soft brass tint on the cell
+   background gives a scan pattern of which hours are busiest (the W+L numbers
+   give the precise count). Sits beneath the grid so the sub-line stays compact. */
 .magazine-v3 .v3-tod-legend {
   display: flex;
   flex-wrap: wrap;

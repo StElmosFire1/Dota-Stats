@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.88",
+    "title": "Time-of-day heatmap — brass tint, whisper-soft volume ramp",
+    "published_at": "2026-05-09",
+    "content": "Two follow-up adjustments to the v6.82 heatmap on /player/:id (Magazine v3) after live use.\n\n1. **Dropped the neutral blue background.** Blue is the only colour on the magazine page that wasn't from the brand palette (Hybrid · Court & Pitch is ink-navy + brass + amber + parchment), so it stuck out against the rest of the layout. Cell tint switched from `rgba(96, 165, 250, X)` to `rgba(197, 169, 117, X)` — the brass token (`--brass = #c5a975`) — which matches the rest of the magazine accents and reads as warm 'court parquet' rather than introducing a third dominant hue. The W (green) and L (red) text inside the cell still pop the same way against the warmer background.\n\n2. **Made the volume ramp barely-there.** Now that each cell shows the actual `WW-LL` tally inside, the brightness ramp was redundant — anyone who wants to know how busy an hour was just reads `wins + losses`. Dropped opacity range from `0.18 → 1.0` down to `0.05 → 0.15` so the ramp is just enough to give the grid a 'scan pattern' (hot zones spottable from a distance) without claiming a precise volume scale the numbers already give. Legend swatch row recoloured to brass and rescaled to the new range so the legend matches what the cells actually look like. Sample W-L chip background switched from blue to a brass-bordered ink-navy to match.\n\nFull-edition only — community edition has no Magazine v3 panels. A11y gate green (153 JSX / 3 CSS), web bundle builds cleanly.",
+    "author": "System"
+  },
+  {
     "version": "6.87",
     "title": "One-click share to Twitter/X and Discord from your profile",
     "published_at": "2026-05-09",

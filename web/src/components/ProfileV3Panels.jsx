@@ -65,10 +65,13 @@ export function TimeOfDayPanel({ data }) {
                 const wins = cell.wins;
                 const losses = games - wins;
                 const wr = games > 0 ? wins / games : 0;
-                // Single-channel volume signal in neutral blue. 0.18 floor so a
-                // single-game cell is still visible against the panel background;
-                // 1.0 ceiling on the busiest hour.
-                const opacity = games > 0 ? 0.18 + 0.82 * (games / maxGames) : 0;
+                // Whisper-of-texture volume tint in brass (the magazine accent
+                // colour, --brass = #c5a975). The W-L numbers inside the cell
+                // already tell you exactly how busy the hour was, so the ramp
+                // is intentionally barely visible — just enough to give the
+                // grid a "scan pattern" so hot zones are spottable from a
+                // distance. 0.05 floor / 0.15 ceiling instead of 0.18 / 1.0.
+                const opacity = games > 0 ? 0.05 + 0.10 * (games / maxGames) : 0;
                 const titleStr = games > 0
                   ? `${DAY_LABELS[di]} ${hi}:00 — ${games} games, ${wins}W/${losses}L (${Math.round(wr * 100)}% WR)`
                   : `${DAY_LABELS[di]} ${hi}:00 — no games`;
@@ -76,7 +79,7 @@ export function TimeOfDayPanel({ data }) {
                   <div
                     key={`c${di}-${hi}`}
                     className="v3-tod-cell"
-                    style={games > 0 ? { background: `rgba(96, 165, 250, ${opacity})` } : undefined}
+                    style={games > 0 ? { background: `rgba(197, 169, 117, ${opacity})` } : undefined}
                     title={titleStr}
                     aria-label={titleStr}
                   >
@@ -103,11 +106,11 @@ export function TimeOfDayPanel({ data }) {
           </div>
           <div className="v3-tod-legend-row">
             <span className="v3-tod-legend-lbl">Games played</span>
-            {[0.18, 0.4, 0.65, 1].map((op, i) => (
+            {[0.05, 0.083, 0.117, 0.15].map((op, i) => (
               <span
                 key={i}
                 className="v3-tod-legend-swatch"
-                style={{ background: `rgba(96, 165, 250, ${op})` }}
+                style={{ background: `rgba(197, 169, 117, ${op})` }}
                 title={i === 0 ? '1 game' : i === 3 ? 'Most games' : `${i + 1} of 4`}
               />
             ))}
