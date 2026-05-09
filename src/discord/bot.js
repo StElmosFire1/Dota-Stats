@@ -616,6 +616,7 @@ class DiscordBot {
         switch (command) {
           case 'help': await this._cmdHelp(msg); break;
           case 'perf-backfill': case 'perfbackfill': await this._cmdPerfBackfill(msg, args); break;
+          case 'backfill-pick-source': case 'backfillpicksource': await this._cmdBackfillPickSource(msg, args); break;
           case 'recompute-baselines': case 'recomputebaselines': await this._cmdRecomputeBaselines(msg, args); break;
           case 'top': await this._cmdTop(msg, args); break;
           case 'stats': await this._cmdStats(msg, args); break;
@@ -1992,6 +1993,32 @@ class DiscordBot {
       );
     } catch (err) {
       await msg.reply(`PERF backfill failed: ${err.message}`);
+    }
+  }
+
+  async _cmdBackfillPickSource(msg, args) {
+    if (msg.author.id !== OWNER_DISCORD_ID) {
+      return msg.reply('You don\'t have permission to use this command.');
+    }
+    // Args: optional 'dry-run' / '--dry-run' to preview without committing,
+    // optional repeated '--log=<path>' to override the default PM2 log
+    // sources (defaults to ~/.pm2/logs/{oi,inhouse}-bot-{out,error}.log).
+    const dryRun = args.some(a => /^(--)?dry-?run$/i.test(a));
+    const logPaths = args
+      .filter(a => a && a.toLowerCase().startsWith('--log='))
+      .map(a => a.slice('--log='.length));
+    await msg.reply(`Pick-source backfill starting (mode: ${dryRun ? 'DRY RUN (no writes)' : 'committing'}, logs: ${logPaths.length || 'defaults'}). See bot logs for per-row detail.`);
+    try {
+      const { backfillPickSource } = require('../inhouse/backfillPickSource');
+      const r = await backfillPickSource(db.getPool, { dryRun, logPaths });
+      await msg.reply(
+        `Pick-source backfill ${dryRun ? '(dry run) ' : ''}complete. ` +
+        `Files: ${r.filesScanned}, candidates: ${r.candidates}, ` +
+        `proposed: ${r.proposed}, stamped: ${r.stamped}, ` +
+        `already-stamped: ${r.alreadyStamped}, missing rows: ${r.missing}.`
+      );
+    } catch (err) {
+      await msg.reply(`Pick-source backfill failed: ${err.message}`);
     }
   }
 
