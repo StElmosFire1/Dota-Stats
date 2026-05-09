@@ -618,3 +618,146 @@ test('/draft-pick: clears the deadline AND fires the auto-provision trigger on t
     'final pick must fire the Task #168 auto-provision trigger exactly once');
   assert.equal(provisionCalls[0][1].trigger, 'auto_draft_complete');
 });
+
+// ===========================================================================
+// Task #193 — captain-vs-admin authorization rules on /draft-pick.
+//
+// The handler in src/web/server.js enforces (for non-admin callers):
+//   • signed-out                     → 401
+//   • signed in, not a captain       → 403
+//   • captain picking onto wrong team → 403
+//   • captain picking out of turn    → 409
+//   • draft already complete         → 400
+// And for the Task #179 pick-source rule:
+//   • only an admin caller may claim pickSource:'auto_deadline'; any other
+//     caller (including a captain) silently maps to 'captain'.
+// ===========================================================================
+
+// Builds a /draft-pick db harness reusable across the captain-auth tests.
+// `nonCaptainPicks` is the count of non-captain seats already drafted, so
+// the next pick lands at pickIdx === nonCaptainPicks. Pick params are
+// captured on the returned `state.pickParams` array.
+function _makePickAuthDb({ sessionId = 41, nonCaptainPicks = 0, pickSeconds = 30 } = {}) {
+  const session = {
+    id: sessionId, status: 'drafting',
+    captain1_account_id: 1, captain2_account_id: 2,
+    draft_pick_seconds: pickSeconds,
+    draft_pick_deadline_at: new Date(Date.now() + 10_000),
+  };
+  const players = [
+    { account_id: 1, team: 1, status: 'drafted' },
+    { account_id: 2, team: 2, status: 'drafted' },
+  ];
+  for (let i = 0; i < nonCaptainPicks; i++) {
+    players.push({ account_id: 100 + i, team: (i % 2) + 1, pick_order: i + 1, status: 'drafted' });
+  }
+  // A pool of undrafted candidates for the test to pick from.
+  for (let i = 0; i < 5; i++) {
+    players.push({ account_id: 200 + i, team: 0, status: 'registered' });
+  }
+  const state = { pickParams: [], updateCalls: [] };
+  const db = {
+    getPool: () => ({
+      query: async (sql, params) => {
+        const t = String(sql);
+        if (t.startsWith('UPDATE inhouse_session_players')) {
+          state.pickParams.push(params);
+          const target = players.find(p => p.account_id === params[3]);
+          if (!target || target.team !== 0) return { rowCount: 0, rows: [] };
+          target.team = params[0]; target.pick_order = params[1];
+          target.status = 'drafted'; target.pick_source = params[4];
+          return { rowCount: 1, rows: [target] };
+        }
+        return { rowCount: 0, rows: [] };
+      },
+    }),
+    getInhouseSession: async () => ({ ...session }),
+    getInhouseSessionPlayers: async () => players,
+    updateInhouseSession: async (_id, fields) => { state.updateCalls.push(fields); Object.assign(session, fields); return { ...session }; },
+    getDiscordIdByAccountId: async () => null,
+    getDiscordAutoJoinFailureForAccount: async () => null,
+  };
+  const provisioner = {
+    isDraftComplete: (_s, ps) => ps.filter(p => p.status === 'drafted' && p.account_id !== 1 && p.account_id !== 2).length >= 8,
+    provisionInhouseServer: async () => ({ ok: true, skipped: 'noop' }),
+  };
+  return { db, provisioner, state, sessionId };
+}
+
+test('/draft-pick: signed-out caller is rejected with 401', async () => {
+  const { db, provisioner, state, sessionId } = _makePickAuthDb({ sessionId: 41 });
+  const app = _loadServer({ db, provisioner });
+  const r = await _request(app, 'POST', `/api/inhouse/${sessionId}/draft-pick`, {
+    body: { accountId: 200, team: 1, pickOrder: 1 },
+    // No x-test-session header → req.session is empty.
+  });
+  assert.equal(r.status, 401);
+  assert.equal(state.pickParams.length, 0, 'no UPDATE should have been issued');
+});
+
+test('/draft-pick: signed-in non-captain caller is rejected with 403', async () => {
+  const { db, provisioner, state, sessionId } = _makePickAuthDb({ sessionId: 42 });
+  const app = _loadServer({ db, provisioner });
+  const r = await _request(app, 'POST', `/api/inhouse/${sessionId}/draft-pick`, {
+    body: { accountId: 200, team: 1, pickOrder: 1 },
+    headers: { 'x-test-session': JSON.stringify({ accountId: 999 }) },
+  });
+  assert.equal(r.status, 403);
+  assert.match(r.body.error, /captains/i);
+  assert.equal(state.pickParams.length, 0);
+});
+
+test('/draft-pick: captain picking onto the OTHER team is rejected with 403', async () => {
+  // Captain 1 (team 1) tries to pick onto team 2.
+  const { db, provisioner, state, sessionId } = _makePickAuthDb({ sessionId: 43, nonCaptainPicks: 0 });
+  const app = _loadServer({ db, provisioner });
+  const r = await _request(app, 'POST', `/api/inhouse/${sessionId}/draft-pick`, {
+    body: { accountId: 200, team: 2, pickOrder: 1 },
+    headers: { 'x-test-session': JSON.stringify({ accountId: 1 }) },
+  });
+  assert.equal(r.status, 403);
+  assert.match(r.body.error, /your own team/i);
+  assert.equal(state.pickParams.length, 0);
+});
+
+test('/draft-pick: captain picking out of turn is rejected with 409', async () => {
+  // pickIdx 0 → sequence[0] = team 1. Captain 2 trying to pick is out of turn.
+  const { db, provisioner, state, sessionId } = _makePickAuthDb({ sessionId: 44, nonCaptainPicks: 0 });
+  const app = _loadServer({ db, provisioner });
+  const r = await _request(app, 'POST', `/api/inhouse/${sessionId}/draft-pick`, {
+    body: { accountId: 200, team: 2, pickOrder: 1 },
+    headers: { 'x-test-session': JSON.stringify({ accountId: 2 }) },
+  });
+  assert.equal(r.status, 409);
+  assert.match(r.body.error, /not your turn/i);
+  assert.equal(state.pickParams.length, 0);
+});
+
+test('/draft-pick: captain pick after the draft is already complete is rejected with 400', async () => {
+  // 8 non-captain picks already placed → _currentPickerTeam returns null.
+  const { db, provisioner, state, sessionId } = _makePickAuthDb({ sessionId: 45, nonCaptainPicks: 8 });
+  const app = _loadServer({ db, provisioner });
+  const r = await _request(app, 'POST', `/api/inhouse/${sessionId}/draft-pick`, {
+    body: { accountId: 200, team: 1, pickOrder: 9 },
+    headers: { 'x-test-session': JSON.stringify({ accountId: 1 }) },
+  });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /complete/i);
+  assert.equal(state.pickParams.length, 0);
+});
+
+test('/draft-pick: captain caller passing pickSource:auto_deadline is silently downgraded to captain', async () => {
+  // Captain 1 at pickIdx 0 (team 1's turn) picks legitimately, but tries to
+  // claim the ticker-only 'auto_deadline' source. Should land as 'captain'.
+  const { db, provisioner, state, sessionId } = _makePickAuthDb({ sessionId: 46, nonCaptainPicks: 0 });
+  const app = _loadServer({ db, provisioner });
+  const r = await _request(app, 'POST', `/api/inhouse/${sessionId}/draft-pick`, {
+    body: { accountId: 200, team: 1, pickOrder: 1, pickSource: 'auto_deadline' },
+    headers: { 'x-test-session': JSON.stringify({ accountId: 1 }) },
+  });
+  assert.equal(r.status, 200);
+  assert.equal(state.pickParams.length, 1, 'one UPDATE should have been issued');
+  // UPDATE params: [team, pickOrder, sessionId, accountId, pickSource]
+  assert.equal(state.pickParams[0][4], 'captain',
+    'captain caller must NOT be able to claim auto_deadline');
+});
