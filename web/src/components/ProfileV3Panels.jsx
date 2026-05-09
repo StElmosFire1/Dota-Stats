@@ -65,13 +65,14 @@ export function TimeOfDayPanel({ data }) {
                 const wins = cell.wins;
                 const losses = games - wins;
                 const wr = games > 0 ? wins / games : 0;
-                // Whisper-of-texture volume tint in brass (the magazine accent
-                // colour, --brass = #c5a975). The W-L numbers inside the cell
-                // already tell you exactly how busy the hour was, so the ramp
-                // is intentionally barely visible — just enough to give the
-                // grid a "scan pattern" so hot zones are spottable from a
-                // distance. 0.05 floor / 0.15 ceiling instead of 0.18 / 1.0.
-                const opacity = games > 0 ? 0.05 + 0.10 * (games / maxGames) : 0;
+                // Single-channel volume tint in brass (the magazine accent
+                // colour, --brass = #c5a975). Low games = transparent,
+                // many games = solid brass, so the grid reads as a real
+                // heatmap at a glance. 0.15 floor so a single-game cell is
+                // clearly visible against the panel background; 0.90 ceiling
+                // (not 1.0) so the W (green) / L (red) text inside the
+                // busiest cells still has enough contrast to read.
+                const opacity = games > 0 ? 0.15 + 0.75 * (games / maxGames) : 0;
                 const titleStr = games > 0
                   ? `${DAY_LABELS[di]} ${hi}:00 — ${games} games, ${wins}W/${losses}L (${Math.round(wr * 100)}% WR)`
                   : `${DAY_LABELS[di]} ${hi}:00 — no games`;
@@ -106,7 +107,7 @@ export function TimeOfDayPanel({ data }) {
           </div>
           <div className="v3-tod-legend-row">
             <span className="v3-tod-legend-lbl">Games played</span>
-            {[0.05, 0.083, 0.117, 0.15].map((op, i) => (
+            {[0.15, 0.4, 0.65, 0.9].map((op, i) => (
               <span
                 key={i}
                 className="v3-tod-legend-swatch"

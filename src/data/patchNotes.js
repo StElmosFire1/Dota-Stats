@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.90",
+    "title": "Time-of-day heatmap — restore the proper volume ramp (still in brass)",
+    "published_at": "2026-05-09",
+    "content": "v6.88 dropped the heatmap's brightness ramp to 'whisper-soft' (0.05 → 0.15) on the theory that the W-L tally inside each cell made the volume signal redundant. In live use that read as 'every cell looks the same' — the scan-pattern of busy vs quiet hours was lost and the grid stopped feeling like a heatmap at all. v6.90 restores the proper ramp.\n\nCell tint stays brass (`rgba(197, 169, 117, X)` — `--brass = #c5a975`, on-palette with the rest of the magazine, no return to the off-palette blue of v6.82). Opacity range goes from `0.15 → 0.90`: the floor is high enough that even a 1-game cell is clearly visible against the panel background, the ceiling stops just short of fully solid (0.90 instead of 1.0) so the W (green) / L (red) text inside the busiest cells still has enough contrast to read against the brass. Legend swatch row rescaled to the same `[0.15, 0.4, 0.65, 0.9]` stops so the legend accurately previews what cells look like.\n\nNet: low games = transparent, many games = nearly solid brass — the heatmap reads as a heatmap again, while the W-L numbers inside still tell you the precise count.",
+    "author": "System"
+  },
+  {
     "version": "6.89",
     "title": "Test coverage for the vanity-link unfurl card and !whois lookup",
     "published_at": "2026-05-09",
