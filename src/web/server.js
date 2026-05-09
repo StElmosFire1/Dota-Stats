@@ -139,6 +139,18 @@ const publicWriteLimiter = rateLimit({
   message: { error: 'Too many requests from this address, please wait and try again.' },
 });
 
+// v7.13 — Auth-token map lives at module scope so both createServer() (which
+// writes tokens in /auth/steam/return) and createApiRouter() (which reads them
+// in /api/auth/complete) share the same reference.  A Map inside createServer()
+// is invisible to the separate createApiRouter() closure — that was the bug.
+const steamAuthTokens = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of steamAuthTokens) {
+    if (v.expires < now) steamAuthTokens.delete(k);
+  }
+}, 60_000).unref();
+
 function createServer(startupStatus = {}) {
   const app = express();
 
@@ -300,20 +312,6 @@ function createServer(startupStatus = {}) {
     }
     return requestUrl;
   }
-
-  // v7.12 — Auth-token handshake: after Steam validates the user we create a
-  // short-lived single-use token (2 min TTL) and embed it in the redirect URL.
-  // The SPA calls GET /api/auth/complete?t=<token> as a same-origin fetch;
-  // the server sets the session cookie in THAT response, not on the 302 from
-  // /auth/steam/return.  This eliminates every SameSite=Lax / Secure /
-  // browser-redirect Set-Cookie edge case that kept leaving users signed out.
-  const steamAuthTokens = new Map();
-  setInterval(() => {
-    const now = Date.now();
-    for (const [k, v] of steamAuthTokens) {
-      if (v.expires < now) steamAuthTokens.delete(k);
-    }
-  }, 60_000).unref();
 
   app.get('/auth/steam', authLimiter, (req, res) => {
     const baseUrl = steamBaseUrl(req);
@@ -6105,7 +6103,7 @@ NOTES
 
   // Allowlist of settings keys writable via this endpoint — prevents the
   // generic key/value store from being abused as a free-form admin scratchpad.
-  const ALLOWED_SETTING_KEYS = new Set(['engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker', 'home_banner']);
+  const ALLOWED_SETTING_KEYS = new Set(['engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker', 'home_banner', 'side_banners']);
 
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.
@@ -6130,6 +6128,17 @@ NOTES
     } catch (err) {
       console.error('[API] settings/broadcast-ticker GET error:', err.message);
       res.status(500).json({ error: 'Failed to fetch broadcast ticker' });
+    }
+  });
+
+  // Public — side banners CMS payload (rendered by App.jsx <SideBanners/>).
+  router.get('/settings/side-banners', async (req, res) => {
+    try {
+      const value = await db.getSetting('side_banners').catch(() => null);
+      res.json({ value: value || null });
+    } catch (err) {
+      console.error('[API] settings/side-banners GET error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch side banners' });
     }
   });
 
@@ -6417,6 +6426,25 @@ NOTES
           return res.status(400).json({ error: 'broadcast_ticker must be a JSON object with { enabled, items[] }' });
         }
       }
+      if (key === 'side_banners') {
+        try {
+          const obj = typeof value === 'string' ? JSON.parse(value) : value;
+          if (!obj || typeof obj !== 'object') throw new Error('not an object');
+          const sanitiseSide = (side) => ({
+            enabled: !!side?.enabled,
+            imageUrl: String(side?.imageUrl || '').trim().slice(0, 500),
+            title: String(side?.title || '').trim().slice(0, 80),
+            subtitle: String(side?.subtitle || '').trim().slice(0, 120),
+            linkUrl: String(side?.linkUrl || '').trim().slice(0, 300),
+          });
+          req.body.value = JSON.stringify({
+            left: sanitiseSide(obj.left),
+            right: sanitiseSide(obj.right),
+          });
+        } catch {
+          return res.status(400).json({ error: 'side_banners must be a JSON object with { left, right }' });
+        }
+      }
       if (key === 'home_banner') {
         try {
           const obj = typeof value === 'string' ? JSON.parse(value) : value;
@@ -6438,7 +6466,7 @@ NOTES
           return res.status(400).json({ error: 'home_banner must be a JSON object with at least { title }' });
         }
       }
-      const stored = await db.setSetting(key, (key === 'welcome_modal' || key === 'broadcast_ticker' || key === 'home_banner') ? req.body.value : value);
+      const stored = await db.setSetting(key, (key === 'welcome_modal' || key === 'broadcast_ticker' || key === 'home_banner' || key === 'side_banners') ? req.body.value : value);
       res.json({ setting: stored });
     } catch (err) {
       console.error('[API] admin/settings POST error:', err.message);

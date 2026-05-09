@@ -14,6 +14,7 @@ import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
 import DiscordLinkModal from './components/DiscordLinkModal';
 import DiscordRetryBanner from './components/DiscordRetryBanner';
+import SideBanners from './components/SideBanner';
 import { getLivePresenceCount } from './api';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
@@ -952,6 +953,7 @@ export default function App() {
             <DiscordLinkModal />
             <DiscordRetryBanner />
             <SignInRetryBanner />
+            <SideBanners />
             <main className="container">
               <Suspense fallback={<div className="loading">Loading…</div>}>
               <Routes>

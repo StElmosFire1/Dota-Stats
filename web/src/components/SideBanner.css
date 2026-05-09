@@ -1,0 +1,95 @@
+/* Side banner slots — fixed to the left/right edges of the viewport.
+   Only visible on screens >= 1600px wide (where there is guaranteed space
+   outside the 1200px main content column). Hidden on anything smaller so
+   they never overlap the main content. */
+.side-banner-slot {
+  display: none;
+  position: fixed;
+  top: var(--nav-h, 88px);
+  width: 150px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+@media (min-width: 1600px) {
+  .side-banner-slot { display: block; }
+}
+
+.side-banner-slot-left  { left: 10px; }
+.side-banner-slot-right { right: 10px; }
+
+/* Anchor / wrapper link — no underline, full-width */
+.side-banner-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  pointer-events: auto;
+}
+
+/* The visible card */
+.side-banner-card {
+  background: rgba(13, 20, 36, 0.92);
+  border: 1px solid var(--border-subtle, rgba(197,169,117,0.18));
+  border-radius: 10px;
+  overflow: hidden;
+  pointer-events: auto;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.side-banner-link:hover .side-banner-card,
+.side-banner-link:focus .side-banner-card {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+  border-color: var(--brass, #c5a975);
+  outline: none;
+}
+
+.side-banner-link:focus-visible .side-banner-card {
+  outline: 2px solid var(--brass, #c5a975);
+  outline-offset: 2px;
+}
+
+/* Banner image — fills the card width */
+.side-banner-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+}
+
+/* Fallback placeholder when no image is supplied */
+.side-banner-placeholder {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(160deg, rgba(197,169,117,0.12), rgba(13,20,36,0.5));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.side-banner-placeholder-icon {
+  font-size: 2.5rem;
+  opacity: 0.4;
+}
+
+/* Text block below image */
+.side-banner-title {
+  margin: 0;
+  padding: 8px 10px 2px;
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brass, #c5a975);
+  line-height: 1.2;
+}
+
+.side-banner-subtitle {
+  margin: 0;
+  padding: 2px 10px 10px;
+  font-size: 0.7rem;
+  color: var(--text-muted, rgba(245,239,226,0.55));
+  line-height: 1.3;
+}

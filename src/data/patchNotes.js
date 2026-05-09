@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.13",
+    "title": "Steam sign-in fixed (scope bug), profile sticky bar restored, side banners with admin CMS",
+    "published_at": "2026-05-09",
+    "content": "Three targeted fixes plus a new feature.\n\n**Steam sign-in — definitive scope fix:** The auth-token Map introduced in v7.12 was defined inside `createServer()` but consumed inside the separate `createApiRouter()` closure. Because both are independent module-level functions, the Map reference was invisible to the router — every `/api/auth/complete` exchange threw a silent ReferenceError and returned 401. Fixed by moving `steamAuthTokens` (and its cleanup `setInterval`) to module scope, where both functions can reach it.\n\n**Profile cover sticky bar — reverted to position:sticky:** Changing to `position:fixed` in v7.12 removed the bar from the stacking context of the page, placing it behind the navbar (z-index 60 vs 100) and making it invisible when triggered. Reverted to `position:sticky; top:var(--nav-h,52px)`. The `NavbarHeightSync` ResizeObserver from v7.12 that writes `--nav-h` is retained so the top offset tracks the real navbar height.\n\n**Side banners — new CMS feature:** Fixed-position left and right banner slots appear on screens ≥ 1600 px wide (where there is guaranteed space outside the 1200 px main column). Each slot independently supports: on/off toggle, image URL (displayed 2:3 aspect ratio), title, subtitle, and an optional link. Banners update live without a page reload via a `side-banners-updated` CustomEvent. Admin panel (Config tab → Side Banners) provides the full editor with image preview. Server-side: new `GET /api/settings/side-banners` (public) + `POST /api/admin/settings` with key `side_banners` (superuser-gated, input sanitised).",
+    "author": "System"
+  },
+  {
     "version": "7.12",
     "title": "Steam sign-in auth-token handshake, profile sticky bar fixed to viewport, hero portrait context labels",
     "published_at": "2026-05-09",
