@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.83",
+    "title": "Test coverage for the Stripe async-payment webhook flow",
+    "published_at": "2026-05-09",
+    "content": "Task #237: Task #235 enabled BECS Direct Debit and other async payment methods at Stripe Checkout, then refactored the webhook in src/web/server.js to defer fulfillment until checkout.session.async_payment_succeeded — but the BECS branch is reachable only with real direct-debit traffic in production, so a regression (e.g. accidentally re-fulfilling on an `unpaid` checkout.session.completed) would silently grant entitlements before the funds settle.\n\nNew tests/stripeWebhookAsyncPayment.test.js (27 cases, all green) locks the contract in synthetically. For every supported purpose — tournament_entry, pro_lifetime, coaching_booking, founders_ring, frame_purchase, gift_pro, gift_season_pass, and the default buyin path with no purpose metadata — three scenarios fire end-to-end through the real /api/stripe/webhook handler: (1) checkout.session.completed with payment_status='paid' triggers the matching db.* fulfilment helper exactly once, (2) the SAME event with payment_status='unpaid' (the BECS pending state) MUST NOT touch any fulfilment helper — this is the security guarantee the deferral was built for, (3) checkout.session.async_payment_succeeded fulfils the same way as a sync paid completion. Plus payment_status='no_payment_required' (100% promo / fully discounted) is asserted to fulfil, and async_payment_failed is asserted to (a) free the coaching slot via markBookingCancelledBySession for coaching_booking and (b) be a strict no-op for non-coaching purposes (a failed BECS payment must NEVER hit the paid-fulfilment helper).\n\nThe harness stubs the stripe SDK so webhooks.constructEvent ignores body+signature and returns the test-supplied event, stubs the ../db module via require.cache with capturing spy methods (Proxy returns no-op async stubs for unrelated helpers so server.js boots cleanly), stubs heavy transitive modules (replay parser, stats service, groq, discord bot, voice queue, monetization/magazineV3, profileCosmetics, connect-pg-simple), invokes only the route's async handler layer to skip express.raw, and unref()'s the long-running setIntervals so node:test exits cleanly. Full suite: 394/394 green.",
+    "author": "System"
+  },
+  {
     "version": "6.82",
     "title": "Time-of-day heatmap — neutral blue cells with W-L numbers inside",
     "published_at": "2026-05-09",
