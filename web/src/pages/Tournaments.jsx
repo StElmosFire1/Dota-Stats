@@ -1025,15 +1025,31 @@ function TournamentSelfSignupPanel({ tournament, onChange }) {
     const status = params.get('signup');
     const sid = params.get('session_id');
     if (status === 'success' && sid) {
-      confirmTournamentEntry(tournament.id, sid).catch(() => {}).finally(() => {
-        // Strip the query so a refresh doesn't re-confirm.
-        const url = new URL(window.location.href);
-        url.searchParams.delete('signup');
-        url.searchParams.delete('session_id');
-        window.history.replaceState({}, '', url.toString());
-        if (typeof onChange === 'function') onChange();
-      });
-      setMsg({ kind: 'ok', text: 'Payment confirmed — you are entered!' });
+      // Optimistic transitional message — replaced once the server confirms.
+      setMsg({ kind: 'info', text: 'Confirming payment…' });
+      confirmTournamentEntry(tournament.id, sid)
+        .then(() => {
+          setMsg({ kind: 'ok', text: 'Payment confirmed — you are entered!' });
+        })
+        .catch((err) => {
+          // 402 = Stripe says payment is not yet 'paid'. With Task #235's
+          // automatic_payment_methods this can mean an async method (BECS
+          // Direct Debit, etc.) is still settling — the entry will be
+          // confirmed by the async_payment_succeeded webhook.
+          if (err?.status === 402) {
+            setMsg({ kind: 'warn', text: 'Payment is still processing — your entry will be confirmed automatically once it settles.' });
+          } else {
+            setMsg({ kind: 'warn', text: 'Could not confirm entry yet — please refresh in a moment.' });
+          }
+        })
+        .finally(() => {
+          // Strip the query so a refresh doesn't re-confirm.
+          const url = new URL(window.location.href);
+          url.searchParams.delete('signup');
+          url.searchParams.delete('session_id');
+          window.history.replaceState({}, '', url.toString());
+          if (typeof onChange === 'function') onChange();
+        });
     } else if (status === 'cancelled') {
       setMsg({ kind: 'warn', text: 'Checkout cancelled — you have not been charged.' });
     }

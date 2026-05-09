@@ -21,8 +21,16 @@ export default function BuyinSuccess() {
         setState('success');
       })
       .catch(err => {
-        setState('error');
-        setError(err.message || 'Failed to confirm payment.');
+        // 402 = Stripe reports the session is not yet paid. With Task #235's
+        // automatic_payment_methods this can mean an async method (BECS
+        // Direct Debit, etc.) is still settling — show a friendly pending
+        // state instead of a generic error.
+        if (err?.status === 402) {
+          setState('pending');
+        } else {
+          setState('error');
+          setError(err.message || 'Failed to confirm payment.');
+        }
       });
   }, [sessionId]);
 
@@ -48,6 +56,18 @@ export default function BuyinSuccess() {
           <Link to="/seasons" className="btn btn-primary">
             View Prize Pool
           </Link>
+        </div>
+      )}
+
+      {state === 'pending' && (
+        <div className="card">
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+          <h2 style={{ marginTop: 0, marginBottom: 8 }}>Payment is processing…</h2>
+          <p style={{ color: 'var(--muted)', marginBottom: 24 }}>
+            Bank transfers (BECS Direct Debit) take a few business days to settle. Your buy-in will be confirmed
+            automatically the moment Stripe reports the funds have cleared — no further action needed.
+          </p>
+          <Link to="/seasons" className="btn">Back to Seasons</Link>
         </div>
       )}
 

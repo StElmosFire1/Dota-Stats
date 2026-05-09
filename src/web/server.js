@@ -667,8 +667,16 @@ function createServer(startupStatus = {}) {
       const sig = req.headers['stripe-signature'];
       if (!sig) return res.status(400).send('Missing stripe-signature header');
       const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-      if (event.type === 'checkout.session.completed') {
-        const session = event.data.object;
+      // Extracted so both `checkout.session.completed` (sync card payments)
+      // and `checkout.session.async_payment_succeeded` (BECS / other async
+      // methods enabled by Task #235's automatic_payment_methods swap) run
+      // the same fulfillment path. Card payments arrive on
+      // `checkout.session.completed` already paid; BECS / Direct Debit lands
+      // here with `payment_status === 'unpaid'` first and only flips to
+      // 'paid' on a later `checkout.session.async_payment_succeeded`. We
+      // MUST NOT fulfil unpaid sessions or we grant entitlements before
+      // the funds settle.
+      const fulfillCompletedSession = async (session) => {
         const purpose = session.metadata?.purpose;
         if (purpose === 'tournament_entry') {
           // 1.7 — per-tournament Stripe self-signup. v5.92 also stashes the
@@ -889,6 +897,34 @@ function createServer(startupStatus = {}) {
         } else {
           await db.confirmBuyin(session.id);
           console.log('[Stripe] Confirmed buyin for session', session.id);
+        }
+      };
+
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const ps = session.payment_status;
+        // Card / wallet payments arrive here already 'paid'. Async methods
+        // (BECS Direct Debit, etc.) arrive 'unpaid' and we MUST defer
+        // fulfillment until `checkout.session.async_payment_succeeded`.
+        if (ps === 'paid' || ps === 'no_payment_required') {
+          await fulfillCompletedSession(session);
+        } else {
+          console.log('[Stripe] checkout.session.completed deferred (async settlement)',
+            'session=', session.id, 'status=', ps, 'purpose=', session.metadata?.purpose);
+        }
+      } else if (event.type === 'checkout.session.async_payment_succeeded') {
+        // BECS / async method has settled — run the same fulfillment now.
+        await fulfillCompletedSession(event.data.object);
+      } else if (event.type === 'checkout.session.async_payment_failed') {
+        // BECS / async method failed to settle. Free coaching slots so the
+        // pending row doesn't block future bookings; other purposes have
+        // no pre-fulfillment side effects, so logging is enough.
+        const session = event.data.object;
+        const purpose = session.metadata?.purpose;
+        console.warn('[Stripe] async payment failed', 'session=', session.id, 'purpose=', purpose);
+        if (purpose === 'coaching_booking') {
+          const cancelled = await db.markBookingCancelledBySession(session.id).catch(() => null);
+          if (cancelled) console.log('[Stripe] Coaching booking async payment failed (slot freed)', cancelled.id);
         }
       } else if (event.type === 'charge.refunded') {
         // Refund handler — match by payment_intent so we revoke the right
@@ -2920,7 +2956,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
       const baseUrl = process.env.SITE_URL || `http://170.64.182.110:5000`;
 
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
+        automatic_payment_methods: { enabled: true },
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -5013,7 +5049,7 @@ NOTES
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
       const baseUrl = process.env.SITE_URL || `http://170.64.182.110:5000`;
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
+        automatic_payment_methods: { enabled: true },
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -8587,7 +8623,7 @@ NOTES
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const frameLabelMap = { gold: 'Gold', 'neon-blue': 'Neon Blue', cosmic: 'Cosmic', fire: 'Fire' };
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
+        automatic_payment_methods: { enabled: true },
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -8681,7 +8717,7 @@ NOTES
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
+        automatic_payment_methods: { enabled: true },
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -8777,7 +8813,7 @@ NOTES
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const priceCents = _proPriceCents();
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
+        automatic_payment_methods: { enabled: true },
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -8841,7 +8877,7 @@ NOTES
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const SEASON_PASS_GIFT_CENTS = 799;
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
+        automatic_payment_methods: { enabled: true },
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -9039,7 +9075,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const priceCents = _proPriceCents();
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
+        automatic_payment_methods: { enabled: true },
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -9440,6 +9476,11 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
       const checkout = await stripe.checkout.sessions.create({
+        // Card-only here (NOT automatic_payment_methods) because the
+        // payment_intent_data.capture_method below is 'manual' (escrow).
+        // BECS Direct Debit and most wallet methods don't support manual
+        // capture, so Stripe would reject the session if we let them
+        // through. Every other checkout site uses automatic_payment_methods.
         payment_method_types: ['card'],
         mode: 'payment',
         line_items: [{
