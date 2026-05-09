@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.79",
+    "title": "Live-presence rollup is locked down by unit tests",
+    "published_at": "2026-05-09",
+    "content": "Task #228: the bulk live-presence rollup added in Task #213 (`getAllLivePresences()` in src/services/presenceService.js, the engine behind both the /players Live now tab and the new global-nav green badge from Task #227) was non-trivial — it merges the in-memory _steam + _discord caches with the inhouse_queue table, applies a five-tier priority ladder (in_game > in_lobby > in_queue > in_voice > online), honours player_profiles.presence_visible, and silently drops cache entries older than 5 minutes. Until now none of that was exercised by an automated test, so a future presence tweak could silently regress the spectator hook with no CI signal.\n\nNew tests/presenceService.test.js (node --test, runs as part of `npm test`) seeds the _steam/_discord caches directly via the existing `_caches` test export and stubs db.getPool() with a tiny dispatcher that matches the three SQL strings the rollup issues (discord-id resolve, inhouse_queue scan, visibility/display-name lookup). Four assertions:\n\n- Status priority: a four-player scenario (in_game steam, in_lobby steam, queue-only, voice-only discord) returns rows in the documented in_game → in_lobby → in_queue → in_voice order with hero/match_id/joined_at fields populated correctly.\n- Online-exclusion: a separate case asserts that a Discord candidate with state='online' but voice=false is dropped from the rollup entirely (the rollup is scoped to actively-doing-something statuses), while voice=true still produces an in_voice row — closing the priority chain at the 'online' tier.\n- Visibility: presence_visible=false on the player_profiles join hides that account from the rollup even when the steam cache shows them in_game.\n- Stale-skip: cache entries with updatedAt > 5 minutes ago are dropped from both the steam and discord candidate sets.\n- Queue-only path: an inhouse_queue row with no steam/discord cache hit still produces an in_queue row with joined_at populated, matching the Task #213 'queue-only user appears in Live now' guarantee.\n\nFull suite: 361/361 green. Full-edition only — community edition has no presence service.",
+    "author": "System"
+  },
+  {
     "version": "6.78",
     "title": "Global nav surfaces a 'Live now' badge when players are in game",
     "published_at": "2026-05-09",
