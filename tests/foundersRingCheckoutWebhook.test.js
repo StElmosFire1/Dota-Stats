@@ -120,12 +120,22 @@ function _stubServerDeps(dbOverrides = {}) {
   // returns a controlled synthetic event.
   const stripeStub = {
     __nextEvent: null,
+    __refundResult: null,    // override return value of refunds.create
+    __refundShouldThrow: null, // Error to throw from refunds.create
+    __refundCalls: [],
     checkout: {
       sessions: {
         create: async (args) => {
           captured.stripeCreateCalls.push(args);
           return { id: 'cs_test_fake', url: 'https://stripe.test/checkout/cs_test_fake' };
         },
+      },
+    },
+    refunds: {
+      create: async (args) => {
+        stripeStub.__refundCalls.push(args);
+        if (stripeStub.__refundShouldThrow) throw stripeStub.__refundShouldThrow;
+        return stripeStub.__refundResult || { id: 're_test_fake', status: 'succeeded' };
       },
     },
     webhooks: {
@@ -388,6 +398,117 @@ test('stripe webhook: founders_ring branch calls grantEntitlementWithCap with co
     assert.equal(call.metadata.stripe_session_id, 'cs_live_fake_1');
     assert.equal(call.metadata.amount_cents, 999);
     assert.equal(call.metadata.currency, 'aud');
+  } finally {
+    harness.restoreEnv();
+  }
+}));
+
+// ── 3. Cap-race auto-refund (Task #256) ──────────────────────────────────
+//
+// When grantEntitlementWithCap returns reason='cap_reached' AFTER a paid
+// checkout (the cap was hit between session-init and webhook delivery), the
+// webhook MUST:
+//   a. issue stripe.refunds.create({ payment_intent }),
+//   b. persist the outcome via db.recordFoundersRingRefund (status, refund_id),
+//   c. dispatch a Discord DM to the buyer via the bot's notifyFoundersRingRefund.
+// The test drives all three by stubbing grantEntitlementWithCap to return
+// cap_reached and asserting the side effects via the captured stub state.
+
+test('stripe webhook: cap-race loser is auto-refunded, audited, and DM\'d', _withUnreffedIntervals(async () => {
+  const refundAuditCalls = [];
+  const harness = await _bootServerWithStubs({
+    grantEntitlementWithCap: async () => ({ ok: false, granted: false, reason: 'cap_reached' }),
+    recordFoundersRingRefund: async (args) => {
+      refundAuditCalls.push(args);
+      return { id: 1, ...args };
+    },
+  });
+  // The default stubbed bot exposes only isInLeagueGuild; swap it for one
+  // that captures notifyFoundersRingRefund calls so the assertion is real.
+  const dmCalls = [];
+  stubModule('../src/discord/bot', {
+    getDiscordBot: () => ({
+      isInLeagueGuild: async () => ({ inGuild: null }),
+      notifyFoundersRingRefund: async (args) => { dmCalls.push(args); return true; },
+    }),
+  });
+  // Re-load server.js so the new bot stub is picked up.
+  delete require.cache[require.resolve('../src/web/server')];
+  const { createServer } = require('../src/web/server');
+  const app = createServer({});
+  try {
+    const { stripeStub } = harness;
+    const route = _findAppRoute(app, 'post', '/api/stripe/webhook');
+    stripeStub.__nextEvent = _makeFoundersRingEvent(5151, 'cs_live_caprace_1');
+    stripeStub.__refundResult = { id: 're_test_caprace_1', status: 'succeeded' };
+    const req = { body: Buffer.from('{}'), headers: { 'stripe-signature': 't=1,v1=fake' } };
+    const result = await _invokeHandler(route, req);
+    assert.equal(result.status, 200, 'webhook must ack 200 once the auto-refund succeeds');
+
+    // (a) Stripe refund was issued against the right payment_intent.
+    assert.equal(stripeStub.__refundCalls.length, 1, 'stripe.refunds.create must be called exactly once');
+    assert.equal(stripeStub.__refundCalls[0].payment_intent, 'pi_test_1');
+    assert.equal(stripeStub.__refundCalls[0].metadata.reason, 'founders_ring_cap_race');
+    assert.equal(stripeStub.__refundCalls[0].metadata.account_id, '5151');
+    assert.equal(stripeStub.__refundCalls[0].metadata.stripe_session_id, 'cs_live_caprace_1');
+
+    // (b) Audit row persisted with status=refunded + refund id.
+    assert.equal(refundAuditCalls.length, 1, 'recordFoundersRingRefund must be called exactly once');
+    const audit = refundAuditCalls[0];
+    assert.equal(audit.accountId, '5151');
+    assert.equal(audit.sku, 'founders_pass_ring');
+    assert.equal(audit.stripeSessionId, 'cs_live_caprace_1');
+    assert.equal(audit.stripePaymentIntent, 'pi_test_1');
+    assert.equal(audit.stripeRefundId, 're_test_caprace_1');
+    assert.equal(audit.amountCents, 999);
+    assert.equal(audit.currency, 'aud');
+    assert.equal(audit.status, 'refunded');
+    assert.equal(audit.errorMessage, null);
+
+    // (c) DM dispatched. Note the dispatch is fire-and-forget on the
+    // webhook side; node:test's microtask queue runs the awaited
+    // .catch(() => {}) chain before _invokeHandler resolves, so the call
+    // is captured by the time we assert here.
+    assert.equal(dmCalls.length, 1, 'notifyFoundersRingRefund must be called exactly once');
+    assert.equal(dmCalls[0].accountId, '5151');
+    assert.equal(dmCalls[0].amountCents, 999);
+    assert.equal(dmCalls[0].refundId, 're_test_caprace_1');
+  } finally {
+    harness.restoreEnv();
+  }
+}));
+
+test('stripe webhook: cap-race refund FAILURE is audited and webhook re-throws for Stripe retry', _withUnreffedIntervals(async () => {
+  const refundAuditCalls = [];
+  const harness = await _bootServerWithStubs({
+    grantEntitlementWithCap: async () => ({ ok: false, granted: false, reason: 'cap_reached' }),
+    recordFoundersRingRefund: async (args) => { refundAuditCalls.push(args); return { id: 2, ...args }; },
+  });
+  stubModule('../src/discord/bot', {
+    getDiscordBot: () => ({
+      isInLeagueGuild: async () => ({ inGuild: null }),
+      notifyFoundersRingRefund: async () => true,
+    }),
+  });
+  delete require.cache[require.resolve('../src/web/server')];
+  const { createServer } = require('../src/web/server');
+  const app = createServer({});
+  try {
+    const { stripeStub } = harness;
+    const route = _findAppRoute(app, 'post', '/api/stripe/webhook');
+    stripeStub.__nextEvent = _makeFoundersRingEvent(6262, 'cs_live_caprace_fail_1');
+    stripeStub.__refundShouldThrow = new Error('stripe upstream rejected');
+    const req = { body: Buffer.from('{}'), headers: { 'stripe-signature': 't=1,v1=fake' } };
+    // The outer Stripe webhook handler catches the throw and returns 400 so
+    // Stripe re-delivers — that's the retry signal we want.
+    const result = await _invokeHandler(route, req);
+    assert.equal(result.status, 400, 'webhook must return 4xx when refund fails so Stripe retries');
+
+    // Audit row recorded with status='refund_failed' BEFORE the throw.
+    assert.equal(refundAuditCalls.length, 1);
+    assert.equal(refundAuditCalls[0].status, 'refund_failed');
+    assert.equal(refundAuditCalls[0].stripeRefundId, null);
+    assert.match(refundAuditCalls[0].errorMessage, /stripe upstream rejected/);
   } finally {
     harness.restoreEnv();
   }

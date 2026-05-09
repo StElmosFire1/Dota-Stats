@@ -6357,6 +6357,31 @@ class DiscordBot {
     }
   }
 
+  // Task #256 — DM a Founders Pass buyer who lost the cap race. Best-effort:
+  // a missing/unlinked Discord ID, a closed-DMs setting, or a fetch failure
+  // must NOT block the webhook. Returns true on confirmed send, false otherwise.
+  async notifyFoundersRingRefund({ accountId, amountCents, currency, refundId }) {
+    try {
+      const db = require('../db');
+      const discordId = await db.getDiscordIdByAccountId(accountId).catch(() => null);
+      if (!discordId) return false;
+      const user = await this.client.users.fetch(discordId).catch(() => null);
+      if (!user) return false;
+      const amount = (Number(amountCents || 0) / 100).toFixed(2);
+      const cur = (currency || 'aud').toUpperCase();
+      const refundLine = refundId ? `\nRefund reference: \`${refundId}\`` : '';
+      await user.send(
+        `Sorry — the **Founders Pass** sold out before your payment cleared. ` +
+        `You've been automatically refunded **$${amount} ${cur}** ` +
+        `(should appear in your account within a few business days).${refundLine}`
+      );
+      return true;
+    } catch (err) {
+      console.warn('[Discord] notifyFoundersRingRefund failed:', err.message);
+      return false;
+    }
+  }
+
   async shutdown() {
     if (this._coachingReminderTimer) clearInterval(this._coachingReminderTimer);
     if (this._coachingAutoReleaseTimer) clearInterval(this._coachingAutoReleaseTimer);

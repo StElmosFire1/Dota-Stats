@@ -1202,6 +1202,30 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_entitlements_account ON entitlements(account_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_entitlements_sku ON entitlements(sku)`);
 
+    // Task #256 — audit trail for Founders Pass cap-race refunds. When a paid
+    // checkout loses the cap race (grantEntitlementWithCap returns
+    // reason='cap_reached' AFTER funds settled) the webhook auto-issues a
+    // Stripe refund and persists the outcome here so superusers can verify
+    // every losing buyer was actually refunded. UNIQUE(stripe_session_id)
+    // makes the insert idempotent across Stripe webhook retries.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS founders_ring_refunds (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        sku TEXT NOT NULL,
+        stripe_session_id TEXT NOT NULL UNIQUE,
+        stripe_payment_intent TEXT,
+        stripe_refund_id TEXT,
+        amount_cents INTEGER,
+        currency TEXT,
+        status TEXT NOT NULL,
+        error_message TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_founders_ring_refunds_account ON founders_ring_refunds(account_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_founders_ring_refunds_status ON founders_ring_refunds(status)`);
+
     // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
     // status: 'pending' (checkout created), 'active' (paid via webhook),
     // 'refunded' (charge.refunded webhook). isProMember() looks for an
@@ -11125,6 +11149,50 @@ async function grantEntitlementWithCap({ accountId, sku, cap, grantedBy = null, 
   }
 }
 
+// Task #256 — persist a Founders Pass cap-race refund attempt. Idempotent on
+// stripe_session_id so a Stripe webhook retry won't duplicate the audit row.
+// `status` is one of 'refunded' (refund succeeded) or 'refund_failed' (Stripe
+// rejected the refund — operator must intervene).
+async function recordFoundersRingRefund({
+  accountId,
+  sku,
+  stripeSessionId,
+  stripePaymentIntent = null,
+  stripeRefundId = null,
+  amountCents = null,
+  currency = null,
+  status,
+  errorMessage = null,
+}) {
+  if (!accountId || !sku || !stripeSessionId || !status) {
+    throw new Error('recordFoundersRingRefund: accountId, sku, stripeSessionId, status required');
+  }
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO founders_ring_refunds
+       (account_id, sku, stripe_session_id, stripe_payment_intent, stripe_refund_id,
+        amount_cents, currency, status, error_message)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (stripe_session_id) DO UPDATE SET
+       stripe_refund_id = COALESCE(EXCLUDED.stripe_refund_id, founders_ring_refunds.stripe_refund_id),
+       status = EXCLUDED.status,
+       error_message = EXCLUDED.error_message
+     RETURNING *`,
+    [accountId, sku, stripeSessionId, stripePaymentIntent, stripeRefundId,
+     amountCents, currency, status, errorMessage]
+  );
+  return r.rows[0] || null;
+}
+
+async function listFoundersRingRefunds({ limit = 200 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM founders_ring_refunds ORDER BY created_at DESC LIMIT $1`,
+    [Math.min(Math.max(parseInt(limit, 10) || 200, 1), 1000)]
+  );
+  return r.rows;
+}
+
 async function revokeEntitlement(accountId, sku) {
   if (!accountId || !sku) return false;
   const p = getPool();
@@ -12621,6 +12689,8 @@ module.exports = {
   countEntitlementHolders,
   listEntitlementHolders,
   grantEntitlementWithCap,
+  recordFoundersRingRefund,
+  listFoundersRingRefunds,
   revokeEntitlement,
   createGiftCheckout,
   confirmGiftCheckout,

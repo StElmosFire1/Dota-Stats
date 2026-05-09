@@ -763,7 +763,71 @@ function createServer(startupStatus = {}) {
               },
             });
             if (!result.ok && result.reason === 'cap_reached') {
-              console.error('[Stripe] founders_ring CAP RACE — paid session', session.id, 'for account', ringAccountId, 'rejected: cap reached. REFUND REQUIRED.');
+              // Task #256 — auto-refund the cap-race loser. The funds have
+              // already settled on Stripe's side; we issue a refund against
+              // the payment_intent, persist the outcome (success/failure +
+              // refund id) so superusers can audit, and DM the buyer via
+              // the Discord bot. recordFoundersRingRefund is idempotent on
+              // stripe_session_id so a Stripe webhook retry is safe.
+              console.error('[Stripe] founders_ring CAP RACE — paid session', session.id, 'for account', ringAccountId, 'rejected: cap reached. Auto-refunding.');
+              const refundStripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+              let refundId = null;
+              let refundStatus = 'refund_failed';
+              let refundError = null;
+              try {
+                if (!session.payment_intent) {
+                  throw new Error('no payment_intent on cap-race session');
+                }
+                const refund = await refundStripe.refunds.create({
+                  payment_intent: session.payment_intent,
+                  metadata: {
+                    reason: 'founders_ring_cap_race',
+                    account_id: String(ringAccountId),
+                    stripe_session_id: session.id,
+                  },
+                });
+                refundId = refund?.id || null;
+                refundStatus = 'refunded';
+                console.log('[Stripe] founders_ring auto-refund OK:', refundId, 'session', session.id);
+              } catch (refundErr) {
+                refundError = refundErr.message || String(refundErr);
+                console.error('[Stripe] founders_ring auto-refund FAILED for session', session.id, '—', refundError);
+              }
+              // Persist audit row (best-effort: a DB failure here must not
+              // block the webhook from acking, but we still log loudly).
+              try {
+                await db.recordFoundersRingRefund({
+                  accountId: ringAccountId,
+                  sku: cosm.FOUNDERS_RING_SKU,
+                  stripeSessionId: session.id,
+                  stripePaymentIntent: session.payment_intent || null,
+                  stripeRefundId: refundId,
+                  amountCents: session.amount_total || null,
+                  currency: session.currency || 'aud',
+                  status: refundStatus,
+                  errorMessage: refundError,
+                });
+              } catch (auditErr) {
+                console.error('[Stripe] founders_ring refund audit-row insert failed:', auditErr.message);
+              }
+              // DM the buyer (best-effort — never blocks the webhook ack).
+              try {
+                const bot = getDiscordBot();
+                if (bot && typeof bot.notifyFoundersRingRefund === 'function') {
+                  bot.notifyFoundersRingRefund({
+                    accountId: ringAccountId,
+                    amountCents: session.amount_total || null,
+                    currency: session.currency || 'aud',
+                    refundId,
+                  }).catch(() => {});
+                }
+              } catch (_) { /* DM dispatch is best-effort */ }
+              // If the refund itself failed (Stripe rejected), re-throw so
+              // Stripe retries the webhook — the audit row's UNIQUE on
+              // stripe_session_id keeps the record idempotent.
+              if (refundStatus !== 'refunded') {
+                throw new Error(`founders_ring auto-refund failed: ${refundError}`);
+              }
             } else {
               console.log('[Stripe] Founders Pass ring granted:', ringAccountId, 'reason=', result.reason);
             }
