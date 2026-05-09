@@ -1246,6 +1246,13 @@ function createServer(startupStatus = {}) {
   // canonical profile target. Mounted BEFORE the SPA catch-all below so
   // it wins over the index.html fallback. Falls through to the SPA on
   // unknown slugs so the React 404 page can take over.
+  //
+  // Task #221 — When a known social-media unfurler / crawler hits this
+  // route (Discordbot, Twitterbot, Slackbot, facebookexternalhit, etc.),
+  // serve a tiny HTML response with Open Graph + Twitter card meta tags
+  // so the link unfurls into a real card instead of bare text. Real
+  // browsers continue to get the fast 302 redirect to the canonical
+  // profile URL.
   app.get('/p/:slug', async (req, res, next) => {
     try {
       const db = require('../db');
@@ -1256,12 +1263,111 @@ function createServer(startupStatus = {}) {
       const accountId = await db.getAccountIdByVanitySlug(slug);
       if (!accountId) return _sendVanityNotFound(res, slug);
       res.set('Cache-Control', 'no-store');
+
+      const ua = String(req.get('user-agent') || '');
+      if (_isSocialUnfurler(ua)) {
+        return _sendVanityOgCard(req, res, db, slug, accountId);
+      }
       return res.redirect(302, `/player/${encodeURIComponent(accountId)}`);
     } catch (err) {
       console.error('[vanity-slug] redirect error:', err.message);
       return _sendVanityNotFound(res, req.params.slug || '');
     }
   });
+
+  // Task #221 — User-agent sniff for the well-known social-media unfurler
+  // bots. We deliberately keep this list narrow (matched as a substring of
+  // the UA, case-insensitive) so a real Chrome/Safari/Firefox visit always
+  // takes the fast 302 path. The OG-card response is only for crawlers.
+  function _isSocialUnfurler(ua) {
+    if (!ua) return false;
+    const u = ua.toLowerCase();
+    return (
+      u.includes('discordbot') ||
+      u.includes('twitterbot') ||
+      u.includes('slackbot') ||
+      u.includes('facebookexternalhit') ||
+      u.includes('linkedinbot') ||
+      u.includes('telegrambot') ||
+      u.includes('whatsapp') ||
+      u.includes('redditbot') ||
+      u.includes('skypeuripreview') ||
+      u.includes('embedly') ||
+      u.includes('iframely') ||
+      u.includes('googlebot')
+    );
+  }
+
+  function _escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async function _sendVanityOgCard(req, res, db, slug, accountId) {
+    let displayName = `Player ${accountId}`;
+    let descriptionParts = [];
+    try {
+      const [nick, rating] = await Promise.all([
+        db.getNickname(accountId).catch(() => null),
+        db.getPlayerRating(accountId).catch(() => null),
+      ]);
+      displayName = nick || rating?.display_name || displayName;
+      if (rating) {
+        const wins = parseInt(rating.wins) || 0;
+        const losses = parseInt(rating.losses) || 0;
+        const total = wins + losses;
+        const wr = total > 0 ? Math.round((wins / total) * 100) : null;
+        const mmr = parseInt(rating.mmr);
+        if (Number.isFinite(mmr)) descriptionParts.push(`${mmr} MMR`);
+        if (total > 0) descriptionParts.push(`${wins}W ${losses}L`);
+        if (wr != null) descriptionParts.push(`${wr}% win rate`);
+      }
+    } catch (err) {
+      console.warn('[vanity-slug] OG meta fetch failed:', err.message);
+    }
+    const description = descriptionParts.length
+      ? descriptionParts.join(' · ')
+      : 'View this player\'s profile on OCE Inhouse.';
+    const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+    const host = req.get('host') || 'oceinhouse.gg';
+    const origin = `${proto}://${host}`;
+    const canonical = `${origin}/p/${encodeURIComponent(slug)}`;
+    const profileUrl = `${origin}/player/${encodeURIComponent(accountId)}`;
+    const imageUrl = `${origin}/oa-logo.png`;
+
+    const title = `${displayName} · OCE Inhouse`;
+    const eTitle = _escapeHtml(title);
+    const eDesc = _escapeHtml(description);
+    const eCanonical = _escapeHtml(canonical);
+    const eImage = _escapeHtml(imageUrl);
+    const eProfile = _escapeHtml(profileUrl);
+    const eName = _escapeHtml(displayName);
+
+    res.status(200).set('Cache-Control', 'public, max-age=300').type('html').send(
+      `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+      `<title>${eTitle}</title>` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<meta name="description" content="${eDesc}">` +
+      `<link rel="canonical" href="${eCanonical}">` +
+      `<meta property="og:type" content="profile">` +
+      `<meta property="og:site_name" content="OCE Inhouse">` +
+      `<meta property="og:title" content="${eTitle}">` +
+      `<meta property="og:description" content="${eDesc}">` +
+      `<meta property="og:url" content="${eCanonical}">` +
+      `<meta property="og:image" content="${eImage}">` +
+      `<meta property="profile:username" content="${_escapeHtml(slug)}">` +
+      `<meta name="twitter:card" content="summary">` +
+      `<meta name="twitter:title" content="${eTitle}">` +
+      `<meta name="twitter:description" content="${eDesc}">` +
+      `<meta name="twitter:image" content="${eImage}">` +
+      `<meta http-equiv="refresh" content="0; url=${eProfile}">` +
+      `</head><body><p><a href="${eProfile}">${eName} on OCE Inhouse</a></p></body></html>`
+    );
+  }
 
   // Tiny self-contained 404 page so unknown vanity slugs return a real
   // HTTP 404 (not the SPA shell at 200, which would mislead crawlers and
@@ -7939,6 +8045,22 @@ NOTES
     } catch (err) {
       console.error('[API] vanity-slug/availability:', err.message);
       res.status(500).json({ error: 'availability check failed' });
+    }
+  });
+
+  // Task #221 — Public read of any player's currently-claimed vanity slug,
+  // so the profile page's Share button can copy the short `/p/<slug>` URL
+  // when one exists. Returns `{ slug: null }` for unclaimed accounts so
+  // the client can fall back to the canonical `/player/<id>` URL without
+  // a 404. No auth required — slugs are already public via `/p/<slug>`.
+  router.get('/player/:id/vanity-slug', async (req, res) => {
+    try {
+      const cur = await db.getVanitySlugByAccount(req.params.id).catch(() => null);
+      res.set('Cache-Control', 'public, max-age=60');
+      res.json({ slug: cur?.slug || null });
+    } catch (err) {
+      console.error('[API] player/:id/vanity-slug:', err.message);
+      res.status(500).json({ error: 'Failed to load vanity slug' });
     }
   });
 

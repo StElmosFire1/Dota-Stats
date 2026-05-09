@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, EmbedBuilder, AttachmentBuilder, SlashCommandBuilder, REST, Routes } = require('discord.js');
 const cron = require('node-cron');
 const { config, getMmrTier } = require('../config');
 const { getStatsService } = require('../stats/statsService');
@@ -501,6 +501,15 @@ class DiscordBot {
     this.client.on('ready', async () => {
       console.log(`[Discord] Bot online as ${this.client.user.tag}`);
       this.client.user.setActivity('Dota 2 Inhouse | !help', { type: 3 });
+      // Task #221 — register `/whois` and `/profile` Discord application
+      // commands so vanity-slug lookups are first-class slash commands
+      // (not just the `!whois` prefix alias). Registers as guild commands
+      // when DISCORD_GUILD_ID is set (instant rollout; no 1-hour global
+      // propagation), otherwise globally. Failures are logged but never
+      // crash the bot — the prefix command still works either way.
+      this._registerSlashCommands().catch(err =>
+        console.warn('[Discord] Slash command registration failed:', err.message)
+      );
       // Restore queue from DB so players don't lose their spot after a restart
       try {
         const rows = await db.getQueue();
@@ -609,6 +618,34 @@ class DiscordBot {
       } catch (e) { /* swallow */ }
     });
 
+    // Task #221 — Discord application command (slash command) handler.
+    // `/whois <slug>` and `/profile <slug>` resolve a vanity slug to a
+    // player profile via the same shared helper as the prefix alias.
+    this.client.on('interactionCreate', async (interaction) => {
+      if (!interaction.isChatInputCommand?.()) return;
+      if (this._commandsDisabled) return;
+      const name = interaction.commandName;
+      if (name !== 'whois' && name !== 'profile') return;
+      try {
+        const slugArg = interaction.options.getString('slug', true);
+        const result = await this._resolveVanityLookup(slugArg);
+        if (result.error) {
+          await interaction.reply({ content: result.error, ephemeral: true });
+          return;
+        }
+        await interaction.reply({ embeds: [result.embed] });
+      } catch (err) {
+        console.error('[Discord] Slash command error:', err.message);
+        try {
+          if (interaction.deferred || interaction.replied) {
+            await interaction.followUp({ content: `Error: ${err.message}`, ephemeral: true });
+          } else {
+            await interaction.reply({ content: `Error: ${err.message}`, ephemeral: true });
+          }
+        } catch {}
+      }
+    });
+
     this.client.on('messageCreate', async (msg) => {
       if (msg.author.bot) return;
       if (this._commandsDisabled) return;
@@ -688,6 +725,7 @@ class DiscordBot {
           case 'captains': await this._cmdCaptains(msg); break;
           case 'roll': await this._cmdRoll(msg); break;
           case 'hrcaptains': await this._cmdHrCaptains(msg); break;
+          case 'whois': case 'profile': await this._cmdWhois(msg, args); break;
           default: break;
         }
       } catch (err) {
@@ -732,6 +770,7 @@ class DiscordBot {
             '`!meta [days]` - Top 10 most-picked heroes this week (or last N days)',
             '`!vs @user` - Your head-to-head record against someone',
             '`!recap` - This week\'s highlights, Player of Week & fun stats',
+            '`!whois <slug>` - Look up a player by their `/p/<slug>` vanity link',
           ].join('\n'),
         },
         {
@@ -1901,6 +1940,111 @@ class DiscordBot {
     const roll = Math.floor(Math.random() * 100) + 1;
     const name = msg.member?.displayName || msg.author.username;
     await msg.reply(`🎲 **${name}** rolled **${roll}** (1–100)`);
+  }
+
+  // Task #221 — Vanity slug → player embed. Shared by both the
+  // `!whois`/`!profile` prefix command and the `/whois`/`/profile`
+  // Discord application (slash) command, so they always render the same
+  // embed and stay in sync. Returns either `{embed}` on success or
+  // `{error}` with a user-facing string.
+  async _resolveVanityLookup(rawInput) {
+    const raw = String(rawInput || '').trim();
+    if (!raw) {
+      return { error: 'Usage: provide a vanity slug — e.g. `/whois foo` or `/whois /p/foo`.' };
+    }
+    // Accept the full URL, the `/p/<slug>` shorthand, or just the slug.
+    let slug = raw;
+    const m = raw.match(/(?:\/p\/|^p\/)([A-Za-z0-9-]+)/);
+    if (m) slug = m[1];
+    slug = slug.replace(/^\/+|\/+$/g, '').toLowerCase();
+
+    if (!db.isWellFormedVanitySlug(slug)) {
+      return { error: `\`${raw}\` doesn't look like a valid vanity slug (3–24 chars, lowercase a–z, 0–9, hyphen).` };
+    }
+    const accountId = await db.getAccountIdByVanitySlug(slug).catch(() => null);
+    if (!accountId) {
+      return { error: `No player has claimed \`/p/${slug}\` yet.` };
+    }
+
+    const [nick, rating] = await Promise.all([
+      db.getNickname(accountId).catch(() => null),
+      db.getPlayerRating(accountId).catch(() => null),
+    ]);
+    const displayName = nick || rating?.display_name || `Player ${accountId}`;
+    const mmr = rating ? parseInt(rating.mmr) : null;
+    const wins = rating ? (parseInt(rating.wins) || 0) : 0;
+    const losses = rating ? (parseInt(rating.losses) || 0) : 0;
+    const total = wins + losses;
+    const wr = total > 0 ? `${Math.round((wins / total) * 100)}%` : '—';
+    const tier = Number.isFinite(mmr) ? getMmrTier(mmr) : null;
+    const tierBadge = tier ? `${tier.emoji} ${tier.name}` : 'Unranked';
+
+    const baseUrl = (process.env.SITE_URL || 'https://oceinhouse.gg').replace(/\/+$/, '');
+    const shareUrl = `${baseUrl}/p/${slug}`;
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🔗 ${displayName}`)
+      .setURL(shareUrl)
+      .setColor(0xc5a975)
+      .setDescription(`Vanity link: [${shareUrl}](${shareUrl})`)
+      .addFields(
+        { name: 'Rank', value: tierBadge, inline: true },
+        { name: 'MMR', value: Number.isFinite(mmr) ? String(mmr) : '—', inline: true },
+        { name: 'W / L', value: total > 0 ? `${wins} / ${losses} (${wr})` : 'No matches yet', inline: true },
+      )
+      .setFooter({ text: `Account ID: ${accountId}` });
+    return { embed };
+  }
+
+  // Prefix-command alias for the slash command — keeps backward compat
+  // for users who already type `!whois` / `!profile` out of habit.
+  async _cmdWhois(msg, args) {
+    const result = await this._resolveVanityLookup((args[0] || '').trim());
+    if (result.error) return msg.reply(result.error);
+    await msg.reply({ embeds: [result.embed] });
+  }
+
+  // Task #221 — Register the `/whois` and `/profile` Discord application
+  // commands on bot ready. Uses guild-scoped registration when
+  // DISCORD_GUILD_ID is set (changes are visible immediately, no global
+  // 1-hour propagation), otherwise falls back to a global command. Safe
+  // to call repeatedly — Discord deduplicates by name + scope.
+  async _registerSlashCommands() {
+    const token = config.discord.token;
+    const clientId = this.client?.user?.id;
+    if (!token || !clientId) {
+      console.warn('[Discord] Skipping slash command registration — missing token or client id.');
+      return;
+    }
+    const slugOption = (opt) => opt
+      .setName('slug')
+      .setDescription('The vanity slug — e.g. "foo" or "/p/foo"')
+      .setRequired(true);
+    const commands = [
+      new SlashCommandBuilder()
+        .setName('whois')
+        .setDescription('Look up a player by their /p/<slug> vanity link')
+        .addStringOption(slugOption)
+        .toJSON(),
+      new SlashCommandBuilder()
+        .setName('profile')
+        .setDescription('Look up a player profile by their /p/<slug> vanity link')
+        .addStringOption(slugOption)
+        .toJSON(),
+    ];
+    const rest = new REST({ version: '10' }).setToken(token);
+    const guildId = process.env.DISCORD_GUILD_ID || null;
+    try {
+      if (guildId) {
+        await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+        console.log(`[Discord] Registered ${commands.length} slash command(s) to guild ${guildId}.`);
+      } else {
+        await rest.put(Routes.applicationCommands(clientId), { body: commands });
+        console.log(`[Discord] Registered ${commands.length} global slash command(s) (may take up to 1 hour to appear).`);
+      }
+    } catch (err) {
+      console.warn('[Discord] Slash command REST registration failed:', err.message);
+    }
   }
 
   async _cmdHrCaptains(msg) {

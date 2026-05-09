@@ -584,6 +584,19 @@ export default function PlayerProfile() {
   const [streak, setStreak] = useState(null);
   // Task #205 — live presence chip. Polled every 30s while the tab is visible.
   const [presence, setPresence] = useState(null);
+  // Task #221 — vanity slug for this profile (if claimed). Used by the Share
+  // button to prefer the short `/p/<slug>` URL over the canonical
+  // `/player/<accountId>` URL when one exists.
+  const [vanitySlug, setVanitySlug] = useState(null);
+  useEffect(() => {
+    if (!accountId) { setVanitySlug(null); return; }
+    let cancelled = false;
+    fetch(`/api/player/${accountId}/vanity-slug`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setVanitySlug(d?.slug || null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [accountId]);
   useEffect(() => {
     if (!accountId) return undefined;
     let cancelled = false;
@@ -890,15 +903,23 @@ export default function PlayerProfile() {
     <>
       <button
         onClick={() => {
-          const url = window.location.href;
+          // Task #221 — Prefer the short `/p/<slug>` vanity URL when this
+          // player has claimed one. Falls back to the canonical
+          // `/player/<accountId>` URL (the current page) otherwise so the
+          // button keeps working for unclaimed accounts.
+          const url = vanitySlug
+            ? `${window.location.origin}/p/${vanitySlug}`
+            : window.location.href;
           navigator.clipboard?.writeText(url).then(() => {
             const btn = document.getElementById('share-btn');
-            if (btn) { btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = '🔗 Share'; }, 2000); }
+            if (btn) { btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = vanitySlug ? '🔗 Share /p/' + vanitySlug : '🔗 Share'; }, 2000); }
           }).catch(() => {
             window.prompt('Copy this link:', url);
           });
         }}
         id="share-btn"
+        title={vanitySlug ? `Copy ${window.location.origin}/p/${vanitySlug}` : 'Copy this profile URL'}
+        aria-label={vanitySlug ? `Copy share link /p/${vanitySlug}` : 'Copy share link'}
         style={{
           background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
           borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
