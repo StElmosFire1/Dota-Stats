@@ -164,6 +164,11 @@ function _cacheKey(opts) {
     opts.wins ?? '',
     opts.losses ?? '',
     opts.tierName || '',
+    // Task #270 — tagline + showMmr toggle change the rendered output and
+    // therefore must be part of the cache key, otherwise two players with
+    // the same name + hero would collide on the in-memory buffer cache.
+    opts.tagline || '',
+    opts.showMmr === false ? '0' : '1',
   ].join('|');
 }
 
@@ -260,16 +265,35 @@ async function generateProfileOgCard(opts = {}) {
     nameY += 104;
   }
 
-  // Stat strip.
+  // Stat strip. Task #270 — when the player has set a tagline override on
+  // /settings/profile, render it in italic serif on its own line in place
+  // of the auto-generated stat pills. share_card_show_mmr=false hides the
+  // MMR pill (and the tier badge, since the tier name reveals MMR bracket)
+  // even when the auto stats line is showing.
+  const tagline = opts.tagline ? String(opts.tagline).slice(0, 80) : '';
+  const showMmr = opts.showMmr !== false;
+  if (tagline) {
+    const stripY = Math.max(nameY + 24, H - 200);
+    ctx.fillStyle = '#f5efe2';
+    ctx.font = 'italic 600 40px "Playfair Display", Georgia, serif';
+    const tlLines = _wrapText(ctx, `“${tagline}”`, W - 200).slice(0, 2);
+    let ty = stripY;
+    for (const line of tlLines) {
+      ctx.fillText(line, 100, ty);
+      ty += 48;
+    }
+  }
   const stats = [];
-  if (opts.tierName) stats.push(String(opts.tierName));
-  if (Number.isFinite(opts.mmr)) stats.push(`${opts.mmr} MMR`);
-  if (Number.isFinite(opts.wins) && Number.isFinite(opts.losses)) {
-    const total = opts.wins + opts.losses;
-    stats.push(`${opts.wins}W ${opts.losses}L`);
-    if (total > 0) {
-      const wr = Math.round((opts.wins / total) * 100);
-      stats.push(`${wr}% WR`);
+  if (!tagline) {
+    if (showMmr && opts.tierName) stats.push(String(opts.tierName));
+    if (showMmr && Number.isFinite(opts.mmr)) stats.push(`${opts.mmr} MMR`);
+    if (Number.isFinite(opts.wins) && Number.isFinite(opts.losses)) {
+      const total = opts.wins + opts.losses;
+      stats.push(`${opts.wins}W ${opts.losses}L`);
+      if (total > 0) {
+        const wr = Math.round((opts.wins / total) * 100);
+        stats.push(`${wr}% WR`);
+      }
     }
   }
   if (stats.length) {

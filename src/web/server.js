@@ -1472,6 +1472,21 @@ function createServer(startupStatus = {}) {
         }
       } catch (_) { /* tier lookup optional */ }
 
+      // Task #270 — pull saved share-card tagline + show_mmr from extras,
+      // unless the owner-only preview overrides have been provided.
+      let tagline = null;
+      let showMmr = true;
+      try {
+        const cust = await db.getPlayerProfileCustomization(accountId).catch(() => null);
+        const ex = cust && cust.extras ? cust.extras : {};
+        if (ex.share_card_tagline != null && ex.share_card_tagline !== '') {
+          tagline = String(ex.share_card_tagline).slice(0, 40);
+        }
+        if (ex.share_card_show_mmr === false) showMmr = false;
+      } catch (_) { /* ignore — defaults are safe */ }
+      if (opts.previewTagline != null) tagline = opts.previewTagline || null;
+      if (opts.previewShowMmr != null) showMmr = !!opts.previewShowMmr;
+
       const { generateProfileOgCard } = require('../services/profileOgCard');
       const buf = await generateProfileOgCard({
         displayName,
@@ -1482,6 +1497,8 @@ function createServer(startupStatus = {}) {
         heroId: hero.heroId,
         heroName: hero.heroName,
         heroDisplayName: hero.heroDisplayName,
+        tagline,
+        showMmr,
       });
       if (!buf) return res.redirect(302, '/oa-logo.png');
       res.set('Content-Type', 'image/png');
@@ -1549,6 +1566,20 @@ function createServer(startupStatus = {}) {
           opts.isPreview = true;
           opts.overrideHeroId = n;
         }
+      }
+      // Task #270 — owner-only preview of unsaved tagline + show_mmr
+      // toggle. `preview_tagline` is a free-form string (capped at 40
+      // chars after trim); `preview_tagline=` (empty) explicitly forces
+      // "no tagline" so the picker can preview removing the override
+      // before save. `preview_show_mmr` is '0' or '1'.
+      if (Object.prototype.hasOwnProperty.call(req.query, 'preview_tagline')) {
+        opts.isPreview = true;
+        const t = String(req.query.preview_tagline || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+        opts.previewTagline = t;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.query, 'preview_show_mmr')) {
+        opts.isPreview = true;
+        opts.previewShowMmr = req.query.preview_show_mmr === '1' || req.query.preview_show_mmr === 'true';
       }
     }
     return _renderProfileOgCard(res, db, accountId, opts);

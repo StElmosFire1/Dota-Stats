@@ -13,6 +13,7 @@ import {
   DEFAULT_LAYOUT_THEME, LAYOUT_THEME_META, isPremiumLayoutTheme,
   ALL_VOICE_PACKS, VOICE_PACK_META, isPremiumVoicePack,
   COVER_FX_IDS, COVER_FX_META,
+  SHARE_CARD_TAGLINE_MAX,
 } from '../profileCosmetics';
 import { Link } from 'react-router-dom';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
@@ -84,8 +85,25 @@ function ShareCardHeroPicker({ accountId, extras, setExtra, ownHeroes, pinnedHer
   const [search, setSearch] = useState('');
   const [previewBust, setPreviewBust] = useState(() => Date.now());
 
+  // Task #270 — tagline + show_mmr local debounce. The text input would
+  // otherwise re-fetch the preview <img> on every keystroke, which is
+  // wasteful (each render is a server-side canvas job). Debounce the
+  // preview-busting URL by 350ms; the saved extras object still updates
+  // immediately via setExtra so onSave persists the latest value.
+  const tagline = extras.share_card_tagline || '';
+  const showMmr = extras.share_card_show_mmr !== false;
+  const [previewTagline, setPreviewTagline] = useState(tagline);
+  const [previewShowMmr, setPreviewShowMmr] = useState(showMmr);
+  React.useEffect(() => {
+    const id = setTimeout(() => {
+      setPreviewTagline(tagline);
+      setPreviewShowMmr(showMmr);
+    }, 350);
+    return () => clearTimeout(id);
+  }, [tagline, showMmr]);
+
   // Re-bust the preview whenever the override changes so the <img> reloads.
-  React.useEffect(() => { setPreviewBust(Date.now()); }, [raw]);
+  React.useEffect(() => { setPreviewBust(Date.now()); }, [raw, previewTagline, previewShowMmr]);
 
   // Restrict the picker to heroes the player has actually played — same
   // pool the server-side validation enforces on save. Build a {id, name}
@@ -113,9 +131,17 @@ function ShareCardHeroPicker({ accountId, extras, setExtra, ownHeroes, pinnedHer
   //   - 'most_played' → force the most-played fallback even if pinned exists
   //   - <id> → render that specific hero
   const previewQuery = (() => {
-    if (mode === 'most_played') return `?preview_hero_id=most_played&t=${previewBust}`;
-    if (mode === 'custom' && customHeroId) return `?preview_hero_id=${customHeroId}&t=${previewBust}`;
-    return `?preview_hero_id=pinned&t=${previewBust}`;
+    const params = new URLSearchParams();
+    if (mode === 'most_played') params.set('preview_hero_id', 'most_played');
+    else if (mode === 'custom' && customHeroId) params.set('preview_hero_id', String(customHeroId));
+    else params.set('preview_hero_id', 'pinned');
+    // Task #270 — always pass the debounced tagline + show_mmr so the
+    // preview honours unsaved edits. Empty tagline explicitly clears the
+    // override so "delete the text" previews the auto stats line.
+    params.set('preview_tagline', previewTagline || '');
+    params.set('preview_show_mmr', previewShowMmr ? '1' : '0');
+    params.set('t', String(previewBust));
+    return `?${params.toString()}`;
   })();
   const previewSrc = `/og/profile/by-id/${encodeURIComponent(accountId)}.png${previewQuery}`;
 
@@ -218,6 +244,48 @@ function ShareCardHeroPicker({ accountId, extras, setExtra, ownHeroes, pinnedHer
             </button>
           )}
         </div>
+      </div>
+
+      {/* Task #270 — tagline + show_mmr controls. Tagline is capped at
+          SHARE_CARD_TAGLINE_MAX (40) chars; an empty tagline keeps the
+          auto MMR / W-L stats line. show_mmr=false hides the MMR + tier
+          pills regardless of whether a tagline is set. */}
+      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>
+          <label
+            htmlFor="share-card-tagline-input"
+            style={{ display: 'block', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}
+          >
+            Tagline ({tagline.length}/{SHARE_CARD_TAGLINE_MAX})
+            <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.8 }}>
+              — replaces the auto MMR / W-L line
+            </span>
+          </label>
+          <input
+            id="share-card-tagline-input"
+            type="text"
+            value={tagline}
+            onChange={(e) => {
+              const next = e.target.value.slice(0, SHARE_CARD_TAGLINE_MAX);
+              setExtra('share_card_tagline', next || null);
+            }}
+            placeholder="e.g. Self-proclaimed Pos 5 GOAT"
+            maxLength={SHARE_CARD_TAGLINE_MAX}
+            style={{
+              width: '100%', padding: '8px 10px', borderRadius: 8,
+              border: '1px solid var(--border)', background: 'var(--bg-card)',
+              color: 'var(--text-primary)', fontSize: 14,
+            }}
+          />
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showMmr}
+            onChange={(e) => setExtra('share_card_show_mmr', e.target.checked)}
+          />
+          <span style={{ fontSize: 14 }}>Show my MMR &amp; tier on the card</span>
+        </label>
       </div>
 
       <div style={{ marginTop: 14 }}>

@@ -169,6 +169,8 @@ function isValidFrame(frame) {
 
 const BIO_MAX = 300;
 const PINNED_HERO_CAPTION_MAX = 80;
+// Task #270 — share-card tagline override (replaces the auto stats line).
+const SHARE_CARD_TAGLINE_MAX = 40;
 
 // ---------- v5.81 extras (mockup-graduated knobs) ----------
 // All extras live in player_profiles.extras (JSONB). Validated by
@@ -242,6 +244,16 @@ function validateExtras(raw) {
     const n = parseInt(rawShare, 10);
     if (Number.isFinite(n) && n > 0 && n < 1000000) shareCardHeroId = n;
   }
+  // Task #270 — share-card tagline override (≤40 chars after trim) and
+  // show_mmr toggle. The OG card renderer prefers the tagline over the
+  // auto MMR/W-L stats line when present; show_mmr=false hides the MMR
+  // pill regardless. No Pro-gating — every signed-in player can use them.
+  let shareCardTagline = null;
+  if (e.share_card_tagline != null && e.share_card_tagline !== '') {
+    const t = String(e.share_card_tagline).replace(/\s+/g, ' ').trim().slice(0, SHARE_CARD_TAGLINE_MAX);
+    if (t) shareCardTagline = t;
+  }
+  const shareCardShowMmr = e.share_card_show_mmr == null ? true : !!e.share_card_show_mmr;
   const out = {
     pinned_hero_border: e.pinned_hero_border == null || e.pinned_hero_border === '' ? null : String(e.pinned_hero_border),
     pinned_achievement_id: e.pinned_achievement_id == null || e.pinned_achievement_id === '' ? null : String(e.pinned_achievement_id).slice(0, 64),
@@ -255,6 +267,8 @@ function validateExtras(raw) {
     social_youtube: e.social_youtube == null || e.social_youtube === '' ? null : String(e.social_youtube),
     social_steam:   e.social_steam   == null || e.social_steam   === '' ? null : String(e.social_steam),
     share_card_hero_id: shareCardHeroId,
+    share_card_tagline: shareCardTagline,
+    share_card_show_mmr: shareCardShowMmr,
   };
   if (!isValidHeroBorder(out.pinned_hero_border)) return { ok: false, error: 'Unknown pinned-hero border colour' };
   if (!isValidFlair(out.flair_override)) return { ok: false, error: 'Unknown flair override' };
@@ -301,6 +315,7 @@ module.exports = {
   FOUNDERS_RING_SKU,
   BIO_MAX,
   PINNED_HERO_CAPTION_MAX,
+  SHARE_CARD_TAGLINE_MAX,
   // v5.81 extras
   HERO_BORDER_COLORS,
   FREE_FLAIRS,

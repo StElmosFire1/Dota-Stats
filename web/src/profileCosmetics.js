@@ -73,6 +73,8 @@ export const FRAME_META = {
 
 export const BIO_MAX = 300;
 export const PINNED_HERO_CAPTION_MAX = 80;
+// Task #270 — share-card tagline override (replaces the auto stats line).
+export const SHARE_CARD_TAGLINE_MAX = 40;
 
 export function isPremiumTitle(t) { return PREMIUM_TITLES.includes(t); }
 export function isPremiumTheme(t) { return PREMIUM_THEMES.includes(t); }
@@ -199,4 +201,8 @@ export const DEFAULT_EXTRAS = {
   // Task #259 — null = use pinned → most-played fallback;
   // 'most_played' = force most-played; or a positive integer hero id.
   share_card_hero_id: null,
+  // Task #270 — optional tagline override (≤40 chars) shown in place of the
+  // auto MMR / W-L stats line, and a toggle for the MMR pill.
+  share_card_tagline: null,
+  share_card_show_mmr: true,
 };
