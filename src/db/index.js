@@ -1110,6 +1110,12 @@ async function init() {
     // one JSONB so adding/removing knobs in the future doesn't need a
     // migration. See src/profileCosmetics.js for validation + defaults.
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS extras JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    // Task #204 / v6.60 — Magazine v3 pinned-achievement ribbon. Array of
+    // achievement keys (max 3, server-validated against the player's earned
+    // non-secret achievements). Free tier pins 1; Pro pins up to 3. Stored
+    // as its own JSONB column rather than inside `extras` so the route can
+    // strictly array-validate it without touching the validateExtras shape.
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS pinned_achievements JSONB NOT NULL DEFAULT '[]'::jsonb`);
 
     // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
     // status: 'pending' (checkout created), 'active' (paid via webhook),
@@ -10274,12 +10280,15 @@ async function getPlayerProfileCustomization(accountId) {
   const r = await p.query(
     `SELECT id, account_id, bio, custom_title, theme_accent,
             pinned_hero_id, pinned_hero_caption, pinned_match_id,
-            profile_frame, profile_layout_theme, extras, created_at, updated_at
+            profile_frame, profile_layout_theme, extras,
+            pinned_achievements, created_at, updated_at
        FROM player_profiles
       WHERE account_id = $1`,
     [accountId]
   );
-  return r.rows[0] || null;
+  const row = r.rows[0] || null;
+  if (row && !Array.isArray(row.pinned_achievements)) row.pinned_achievements = [];
+  return row;
 }
 
 // Upsert. All fields are optional; pass null to clear an individual field.
@@ -10297,13 +10306,20 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
     profile_frame = null,
     profile_layout_theme = null,
     extras = null,
+    pinned_achievements = null,
   } = fields;
+  const pinnedAchJson = Array.isArray(pinned_achievements)
+    ? JSON.stringify(pinned_achievements)
+    : null;
   const r = await p.query(
     `INSERT INTO player_profiles
        (account_id, bio, custom_title, theme_accent,
         pinned_hero_id, pinned_hero_caption, pinned_match_id,
-        profile_frame, profile_layout_theme, extras, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::jsonb, '{}'::jsonb), NOW())
+        profile_frame, profile_layout_theme, extras,
+        pinned_achievements, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+             COALESCE($10::jsonb, '{}'::jsonb),
+             COALESCE($11::jsonb, '[]'::jsonb), NOW())
      ON CONFLICT (account_id) DO UPDATE
        SET bio = EXCLUDED.bio,
            custom_title = EXCLUDED.custom_title,
@@ -10314,13 +10330,17 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
            profile_frame = EXCLUDED.profile_frame,
            profile_layout_theme = EXCLUDED.profile_layout_theme,
            extras = EXCLUDED.extras,
+           pinned_achievements = EXCLUDED.pinned_achievements,
            updated_at = NOW()
      RETURNING id, account_id, bio, custom_title, theme_accent,
                pinned_hero_id, pinned_hero_caption, pinned_match_id,
-               profile_frame, profile_layout_theme, extras, created_at, updated_at`,
-    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, profile_layout_theme, extras ? JSON.stringify(extras) : null]
+               profile_frame, profile_layout_theme, extras,
+               pinned_achievements, created_at, updated_at`,
+    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, profile_layout_theme, extras ? JSON.stringify(extras) : null, pinnedAchJson]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  if (row && !Array.isArray(row.pinned_achievements)) row.pinned_achievements = [];
+  return row;
 }
 
 // ---------- Onboarding ----------

@@ -316,6 +316,9 @@ export default function SettingsProfile() {
   const [extras, setExtras] = useState(DEFAULT_EXTRAS);
   const setExtra = (k, v) => setExtras(prev => ({ ...prev, [k]: v }));
   const [achievementsList, setAchievementsList] = useState([]);
+  // Task #204 / v6.60 — Magazine v3 pinned-achievement ribbon. Free tier
+  // pins 1; Pro pins up to 3. Server validates against earned achievements.
+  const [pinnedAchievements, setPinnedAchievements] = useState([]);
 
   const [ownMatches, setOwnMatches] = useState([]);
   const [ownHeroes, setOwnHeroes] = useState([]);
@@ -343,6 +346,7 @@ export default function SettingsProfile() {
       setProfileFrame(c.profile_frame || DEFAULT_FRAME);
       setLayoutTheme(c.profile_layout_theme || DEFAULT_LAYOUT_THEME);
       setExtras({ ...DEFAULT_EXTRAS, ...(c.extras || {}) });
+      setPinnedAchievements(Array.isArray(c.pinned_achievements) ? c.pinned_achievements.map(String) : []);
       if (c.pinned_hero_id) {
         setPinnedHeroSearch(getHeroName(c.pinned_hero_id) || '');
       }
@@ -423,6 +427,7 @@ export default function SettingsProfile() {
         profile_frame: profileFrame || null,
         profile_layout_theme: layoutTheme || null,
         extras,
+        pinned_achievements: pinnedAchievements,
       };
       const res = await fetch('/api/me/profile', {
         method: 'POST', credentials: 'include',
@@ -942,9 +947,10 @@ export default function SettingsProfile() {
               </div>
             )}
 
-            {/* Pinned achievement */}
+            {/* Pinned achievement (legacy single-pin, kept for the avatar
+                 corner badge on the classic profile card). */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>Pinned achievement</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>Pinned achievement (avatar badge)</div>
               {achievementsList.length === 0 ? (
                 <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>You haven't earned any pinnable achievements yet.</p>
               ) : (
@@ -956,6 +962,67 @@ export default function SettingsProfile() {
                     <option key={a.key || a.id} value={a.key || a.id}>{a.label || a.title || a.key}</option>
                   ))}
                 </select>
+              )}
+            </div>
+
+            {/* Task #204 / v6.60 — Magazine v3 pinned-achievement ribbon.
+                 Free pins 1; Pro pins up to 3. Real <button> with
+                 aria-pressed so the a11y gate passes and screen readers
+                 announce the toggle state. Server validates against earned
+                 achievements before persisting. */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+                Pinned ribbon ({pinnedAchievements.length}/{isPro ? 3 : 1})
+                {!isPro && <LockedPill />}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 0, marginBottom: 8 }}>
+                {isPro
+                  ? 'Pin up to 3 achievements to display in the v3 magazine ribbon under your cover.'
+                  : 'Pin 1 achievement to display in the v3 magazine ribbon. Pro members can pin 3.'}
+              </p>
+              {achievementsList.length === 0 ? (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>You haven't earned any pinnable achievements yet.</p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {achievementsList.map(a => {
+                    const id = String(a.key || a.id);
+                    const pinned = pinnedAchievements.includes(id);
+                    const cap = isPro ? 3 : 1;
+                    const atCap = !pinned && pinnedAchievements.length >= cap;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        aria-pressed={pinned}
+                        disabled={atCap}
+                        onClick={() => {
+                          setPinnedAchievements(prev => {
+                            if (prev.includes(id)) return prev.filter(x => x !== id);
+                            if (prev.length >= cap) return prev;
+                            return [...prev, id];
+                          });
+                        }}
+                        title={a.description || a.sub || (a.label || a.title || id)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 999,
+                          border: pinned ? '1px solid var(--accent, #c5a975)' : '1px solid var(--border)',
+                          background: pinned ? 'var(--accent, #c5a975)' : 'var(--bg-card)',
+                          color: pinned ? '#0d1424' : 'var(--text-primary)',
+                          fontSize: 12,
+                          cursor: atCap ? 'not-allowed' : 'pointer',
+                          opacity: atCap ? 0.45 : 1,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <span aria-hidden="true">{a.emoji || a.icon || '🏆'}</span>
+                        <span>{a.label || a.title || id}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
 

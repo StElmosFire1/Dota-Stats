@@ -7901,6 +7901,52 @@ NOTES
         return res.status(403).json({ error: 'That flair is reserved for Pro members' });
       }
 
+      // Task #204 / v6.60 — pinned-achievement ribbon. Free tier pins 1,
+      // Pro pins up to 3. Each id must match an achievement the player has
+      // actually earned (and is not secret), so a malicious client can't
+      // ribbon a hidden / unearned badge. Omitting the field leaves the
+      // existing array untouched (preserved server-side via fallback).
+      let pinnedAchievements = null;
+      if (Array.isArray(body.pinned_achievements)) {
+        const raw = body.pinned_achievements
+          .filter(v => v != null && v !== '')
+          .map(v => String(v).slice(0, 64));
+        const cap = isPro ? 3 : 1;
+        if (raw.length > cap) {
+          return res.status(400).json({
+            error: isPro
+              ? 'You can pin at most 3 achievements'
+              : 'Free accounts can pin 1 achievement — upgrade to Pro for 3 slots',
+          });
+        }
+        // De-duplicate while preserving order.
+        const seen = new Set();
+        const unique = [];
+        for (const id of raw) { if (!seen.has(id)) { seen.add(id); unique.push(id); } }
+        if (unique.length > 0) {
+          const mergedIds = await db.getMergedAccountIds(accountId);
+          const earned = await db.getPlayerAchievements(mergedIds);
+          const earnedKeys = new Set(
+            (earned || [])
+              .filter(a => a.earned && !a.secret)
+              .map(a => String(a.key || a.id))
+          );
+          const bad = unique.find(id => !earnedKeys.has(id));
+          if (bad) {
+            return res.status(400).json({ error: `You haven't earned that achievement: ${bad}` });
+          }
+        }
+        pinnedAchievements = unique;
+      } else {
+        // No field supplied → preserve whatever is currently stored so a
+        // pre-#204 settings save (which doesn't send the field) doesn't
+        // silently wipe the ribbon.
+        const current = await db.getPlayerProfileCustomization(accountId);
+        pinnedAchievements = Array.isArray(current?.pinned_achievements)
+          ? current.pinned_achievements
+          : [];
+      }
+
       const saved = await db.setPlayerProfileCustomization(accountId, {
         bio,
         custom_title: customTitle,
@@ -7911,6 +7957,7 @@ NOTES
         profile_frame: profileFrameRaw,
         profile_layout_theme: profileLayoutThemeRaw,
         extras,
+        pinned_achievements: pinnedAchievements,
       });
       res.json({ ok: true, customization: saved, is_pro: isPro });
     } catch (err) {

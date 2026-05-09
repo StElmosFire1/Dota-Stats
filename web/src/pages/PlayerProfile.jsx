@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques } from '../api';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison } from '../api';
+import Dialog from '../components/Dialog';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
@@ -597,6 +598,38 @@ export default function PlayerProfile() {
   const [heroItems, setHeroItems] = useState(null);
   const [seasonWrapped, setSeasonWrapped] = useState(null);
   const [hofPlaques, setHofPlaques] = useState(null);
+  // Task #204 / v6.60 — Magazine v3 compare drawer.
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareList, setCompareList] = useState([]);
+  const [compareB, setCompareB] = useState('');
+  const [compareData, setCompareData] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Single close path for the compare drawer — also strips ?compare so
+  // browser back-nav doesn't immediately re-open it.
+  const closeCompareDrawer = React.useCallback(() => {
+    setCompareOpen(false);
+    if (searchParams.get('compare')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('compare');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+  // ?compare=<id> preselects the opponent and opens the drawer on mount.
+  useEffect(() => {
+    const cmp = searchParams.get('compare');
+    if (!cmp || !accountId) return;
+    if (Number(cmp) === Number(accountId)) return;
+    setCompareB(String(cmp));
+    setCompareOpen(true);
+    if (compareList.length === 0) {
+      getAllPlayers(seasonId).then(rows => {
+        setCompareList((rows || []).filter(r => Number(r.account_id) !== Number(accountId)));
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, searchParams]);
   useEffect(() => {
     if (!accountId) return;
     let cancelled = false;
@@ -760,6 +793,23 @@ export default function PlayerProfile() {
     caption: profileCard.pinned_hero_caption || null,
     borderColor: ex.pinned_hero_border || null,
   } : null;
+  // Task #204 / v6.60 — Magazine v3 pinned-achievement ribbon. Hydrated
+  // from `profileCard.pinned_achievements` (server-validated against
+  // earned + non-secret keys). Free tier shows up to 1, Pro shows up to 3.
+  const ribbonAchievements = (showProfileCustomization && Array.isArray(profileCard?.pinned_achievements))
+    ? profileCard.pinned_achievements
+        .map(id => {
+          const a = (achievements || []).find(x => String(x.key || x.id) === String(id));
+          if (!a) return null;
+          return {
+            id: String(a.key || a.id),
+            emoji: a.emoji || a.icon || '🏆',
+            label: a.label || a.title || a.key,
+            sub: a.description || a.sub || null,
+          };
+        })
+        .filter(Boolean)
+    : [];
   const pinnedAchievement = (showProfileCustomization && ex.pinned_achievement_id)
     ? (() => {
         const a = (achievements || []).find(x => (x.key || x.id) === ex.pinned_achievement_id);
@@ -832,6 +882,23 @@ export default function PlayerProfile() {
           borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
         }}
       >🔗 Share</button>
+      {/* Task #204 / v6.60 — Magazine v3 compare drawer trigger. Public,
+          uses the shared <Dialog> primitive (a11y gate compliant). */}
+      <button
+        type="button"
+        onClick={() => {
+          setCompareOpen(true);
+          if (compareList.length === 0) {
+            getAllPlayers(seasonId).then(rows => {
+              setCompareList((rows || []).filter(r => Number(r.account_id) !== Number(accountId)));
+            }).catch(() => {});
+          }
+        }}
+        style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+          borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+        }}
+      >⚖️ Compare</button>
       <button
         onClick={async () => {
           try {
@@ -982,6 +1049,7 @@ export default function PlayerProfile() {
   const coverFlair = (showProfileCustomization && ex.flair_unlocked && ex.flair_override) || null;
   return (
     <div className={`magazine-v3 v3-theme-${layoutTheme}`}>
+      <div id="cover" />
       <MagazineCover
         accountId={accountId}
         displayName={displayName}
@@ -1003,6 +1071,39 @@ export default function PlayerProfile() {
         nameAdornments={headerNameAdornments}
       />
       <Link to="/players" className="back-link">&larr; Back to players</Link>
+
+      {/* Task #204 / v6.60 — Magazine v3 pinned-achievement ribbon. Free
+          tier surfaces 1 slot; Pro surfaces up to 3. Server (`POST
+          /api/me/profile`) validates the keys against the player's earned
+          non-secret achievements before persisting, so this list is safe
+          to render directly. Hidden for free profiles with nothing pinned
+          (and for the v3 cover when customization is off). */}
+      {ribbonAchievements.length > 0 && (
+        <div className="v3-pinned-ribbon" aria-label="Pinned achievements">
+          {ribbonAchievements.map(a => (
+            <div key={a.id} className="v3-pinned-ribbon-item" title={a.sub || a.label}>
+              <span className="v3-pinned-ribbon-emoji" aria-hidden="true">{a.emoji}</span>
+              <div className="v3-pinned-ribbon-text">
+                <div className="v3-pinned-ribbon-label">{a.label}</div>
+                {a.sub && <div className="v3-pinned-ribbon-sub">{a.sub}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Task #204 / v6.60 — sticky anchor nav rail. Desktop only (CSS
+          hides it under 1100px). Each link jumps to a section anchor
+          mounted further down. Real <a href="#…"> elements so keyboard
+          and screen-reader users get the same affordance as mouse users. */}
+      <nav className="v3-anchor-nav" aria-label="Profile sections">
+        <a href="#cover" data-dot="●"><span className="v3-anchor-label">Cover</span></a>
+        <a href="#stats" data-dot="●"><span className="v3-anchor-label">Stats</span></a>
+        <a href="#heroes" data-dot="●"><span className="v3-anchor-label">Heroes</span></a>
+        <a href="#achievements" data-dot="●"><span className="v3-anchor-label">Achievements</span></a>
+        <a href="#records" data-dot="●"><span className="v3-anchor-label">Records</span></a>
+        <a href="#recent" data-dot="●"><span className="v3-anchor-label">Recent Matches</span></a>
+      </nav>
 
       {/* AUDIT (v6.18): PUBLIC — single shared <ProfileCard /> renders the polished
           serif name lockup, theme accent rule, optional flair + streak chips, pinned
@@ -1029,6 +1130,7 @@ export default function PlayerProfile() {
       {/* Task #203 — Magazine v3 stat panels: time-of-day heatmap, hero-hover
           item builds, Season Wrapped recap, and Hall-of-Fame plaques. All free
           for everyone, with empty-state copy when a player has no eligible data. */}
+      <div id="records" />
       <ProfileV3Panels
         tod={todHeatmap}
         heroItems={heroItems}
@@ -1212,7 +1314,7 @@ export default function PlayerProfile() {
           Attitude). Renders for any visitor; data comes from the open /players/:id and
           related public endpoints. */}
       {rating && (
-        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
+        <div id="stats" className="stats-grid" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
           {/* Row 1 */}
           <div className="stat-card">
             <div className="stat-value mmr">{seasonMmr != null ? seasonMmr : rating.mmr}</div>
@@ -1414,6 +1516,7 @@ export default function PlayerProfile() {
 
       {/* AUDIT (v5.91 parity pass): PUBLIC — achievement badges grid (with category
           filter + show-locked toggle). /players/:id/achievements is open. */}
+      <div id="achievements" />
       <AchievementBadges achievements={achievements} />
 
       {/* AUDIT (v5.91 parity pass): PUBLIC — Season Pass tier + XP progress bar.
@@ -1787,7 +1890,7 @@ export default function PlayerProfile() {
       {/* AUDIT (v5.91 parity pass): PUBLIC — Most Played Heroes table (top 20 by
           games). Sourced from the open /players/:id payload. */}
       {heroes && heroes.length > 0 && (
-        <section>
+        <section id="heroes">
           <h2 className="section-title">Most Played Heroes</h2>
           <div className="scoreboard-wrapper">
             <table className="scoreboard">
@@ -1913,7 +2016,7 @@ export default function PlayerProfile() {
       {/* AUDIT (v5.91 parity pass): PUBLIC — Recent Matches table with optional MVP
           star marker (mvp_match_badges flag). Sourced from the open /players/:id payload. */}
       {recentMatches && recentMatches.length > 0 && (
-        <section>
+        <section id="recent">
           <h2 className="section-title">Recent Matches</h2>
           <div className="scoreboard-wrapper">
             <table className="scoreboard">
@@ -2016,6 +2119,95 @@ export default function PlayerProfile() {
           </div>
         </section>
       )}
+
+      {/* Task #204 / v6.60 — Magazine v3 Compare drawer. Uses the shared
+          <Dialog> primitive (focus trap, Escape, body scroll lock — gates
+          the hand-rolled-modal a11y check). Picks any other player from
+          the season-scoped player list and renders a compact head-to-head
+          stat strip via /api/compare. The drawer is keyboard-driven end
+          to end: select → "Compare", server fetch, results panel. The
+          ?compare=<id> URL param preselects the opponent on first open. */}
+      <Dialog
+        open={compareOpen}
+        onClose={closeCompareDrawer}
+        labelledBy="v3-compare-title"
+        initialFocusRef={null}
+      >
+        <div className="v3-compare-drawer">
+          <h2 id="v3-compare-title" className="v3-compare-title">⚖️ Compare {displayName}</h2>
+          <p className="v3-compare-sub">Pick any player to see a side-by-side stat strip.</p>
+          <div className="v3-compare-row">
+            <label htmlFor="v3-compare-select" className="v3-compare-label">Versus</label>
+            <select
+              id="v3-compare-select"
+              value={compareB}
+              onChange={(e) => setCompareB(e.target.value)}
+              className="v3-compare-select"
+            >
+              <option value="">— Choose a player —</option>
+              {compareList.map(p => (
+                <option key={p.account_id} value={p.account_id}>
+                  {p.nickname || p.persona_name || `Player ${p.account_id}`}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="v3-compare-go"
+              disabled={!compareB || compareLoading}
+              onClick={async () => {
+                if (!compareB) return;
+                setCompareLoading(true);
+                setCompareError(null);
+                setCompareData(null);
+                try {
+                  const d = await getPlayerComparison(accountId, compareB, seasonId);
+                  setCompareData(d);
+                } catch (err) {
+                  setCompareError(err.message || 'Compare failed');
+                } finally {
+                  setCompareLoading(false);
+                }
+              }}
+            >
+              {compareLoading ? 'Loading…' : 'Compare'}
+            </button>
+          </div>
+          {compareError && <p className="v3-compare-error">{compareError}</p>}
+          {compareData && Array.isArray(compareData.rows) && compareData.rows.length > 0 && (
+            <div className="v3-compare-results">
+              <table className="v3-compare-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Stat</th>
+                    <th scope="col">{compareData.a?.name || displayName}</th>
+                    <th scope="col">{compareData.b?.name || 'Opponent'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {compareData.rows.map((r, i) => (
+                    <tr key={i}>
+                      <th scope="row">{r.label}</th>
+                      <td className={r.a_wins ? 'v3-compare-win' : ''}>{r.a}</td>
+                      <td className={r.b_wins ? 'v3-compare-win' : ''}>{r.b}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {compareData && (!compareData.rows || compareData.rows.length === 0) && (
+            <p className="v3-compare-empty">No comparable stats yet — both players need a few games this season.</p>
+          )}
+          <div className="v3-compare-actions">
+            <button
+              type="button"
+              className="v3-compare-close"
+              onClick={closeCompareDrawer}
+            >Close</button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
