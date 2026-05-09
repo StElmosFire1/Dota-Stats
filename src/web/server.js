@@ -4481,7 +4481,7 @@ NOTES
     }
   });
 
-  router.get('/players/:id/season-wrapped/:seasonId?', async (req, res) => {
+  const seasonWrappedHandler = async (req, res) => {
     try {
       const accountId = BigInt(req.params.id);
       const seasonId = req.params.seasonId || null;
@@ -4492,7 +4492,9 @@ NOTES
       console.error('[API] season-wrapped error:', err.message);
       res.status(500).json({ error: 'Failed to fetch season wrapped' });
     }
-  });
+  };
+  router.get('/players/:id/season-wrapped', seasonWrappedHandler);
+  router.get('/players/:id/season-wrapped/:seasonId', seasonWrappedHandler);
 
   router.get('/players/:id/hall-of-fame', async (req, res) => {
     try {
