@@ -8156,6 +8156,9 @@ NOTES
           starts_at: row.starts_at,
           ends_at: row.ends_at,
           display_name: row.display_name || null,
+          // v6.76 / Task #222 — surface 'admin' vs 'auto' so the home page
+          // card can show an "Auto-selected" pill instead of "spotlight".
+          source: row.source || 'admin',
         },
       } : { spotlight: null };
       _spotlightCache = { value: payload, expiresAt: now + 60_000 };

@@ -1172,6 +1172,14 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_profile_spotlight_active ON profile_spotlight (starts_at DESC) WHERE ended_at IS NULL`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_profile_spotlight_account ON profile_spotlight (account_id)`);
+    // Task #222 / v6.76 — `source` distinguishes admin-curated rows from
+    // weekly auto-picks (PERF leader / hot streak / most-improved fallback
+    // chain). Added as a backwards-compatible ALTER so existing rows
+    // default to 'admin'. Admin rows always take precedence over auto
+    // rows in getCurrentSpotlight + ensureAutoSpotlight skips when an
+    // active row already covers `NOW()`.
+    await p.query(`ALTER TABLE profile_spotlight ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'admin'`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_profile_spotlight_source ON profile_spotlight (source)`);
 
     // Task #207 / v6.63 — Generic one-time entitlements table. First SKU is
     // 'founders_pass_ring' (limited-edition cover ornament). The cap is
@@ -10625,9 +10633,12 @@ async function releaseVanitySlug(accountId) {
 // can show "Featured: <displayName>" without a second round trip.
 async function getCurrentSpotlight() {
   const p = getPool();
+  // Task #222 / v6.76 — Admin-curated rows always win over auto-picks when
+  // both happen to be active (defence in depth: createSpotlight also ends
+  // any conflicting auto rows up front).
   const r = await p.query(
     `SELECT s.id, s.account_id, s.headline, s.blurb,
-            s.starts_at, s.ends_at, s.created_by, s.created_at,
+            s.starts_at, s.ends_at, s.created_by, s.created_at, s.source,
             COALESCE(n.nickname, latest.persona_name) AS display_name
        FROM profile_spotlight s
        LEFT JOIN nicknames n ON n.account_id = s.account_id
@@ -10640,7 +10651,7 @@ async function getCurrentSpotlight() {
       WHERE s.ended_at IS NULL
         AND s.starts_at <= NOW()
         AND (s.ends_at IS NULL OR s.ends_at > NOW())
-      ORDER BY s.starts_at DESC
+      ORDER BY (s.source = 'admin') DESC, s.starts_at DESC
       LIMIT 1`
   );
   return r.rows[0] || null;
@@ -10650,7 +10661,7 @@ async function listSpotlights(limit = 50) {
   const p = getPool();
   const r = await p.query(
     `SELECT s.id, s.account_id, s.headline, s.blurb,
-            s.starts_at, s.ends_at, s.created_by, s.created_at, s.ended_at,
+            s.starts_at, s.ends_at, s.created_by, s.created_at, s.ended_at, s.source,
             COALESCE(n.nickname, latest.persona_name) AS display_name
        FROM profile_spotlight s
        LEFT JOIN nicknames n ON n.account_id = s.account_id
@@ -10690,22 +10701,41 @@ async function _spotlightOverlaps(startsAt, endsAt, excludeId = null) {
   return r.rows[0]?.id || null;
 }
 
-async function createSpotlight({ accountId, headline, blurb, startsAt, endsAt, createdBy }) {
+async function createSpotlight({ accountId, headline, blurb, startsAt, endsAt, createdBy, source = 'admin' }) {
   if (!accountId) throw new Error('createSpotlight: account_id required');
   if (!headline || typeof headline !== 'string') throw new Error('createSpotlight: headline required');
   const start = startsAt ? new Date(startsAt) : new Date();
   const end = endsAt ? new Date(endsAt) : null;
   if (end && end <= start) throw new Error('ends_at must be after starts_at');
+  const p = getPool();
+  // Task #222 / v6.76 — Admin rows take precedence over auto-picks: if an
+  // admin row is being inserted, end any conflicting auto rows up front so
+  // the new row's window is conflict-free. Auto inserts still respect the
+  // overlap guard (they only run when no row currently covers NOW()).
+  if (source === 'admin') {
+    await p.query(
+      `UPDATE profile_spotlight
+          SET ended_at = NOW()
+        WHERE ended_at IS NULL
+          AND source = 'auto'
+          AND (
+            ($2::timestamptz IS NULL AND ends_at IS NULL)
+            OR (ends_at IS NULL AND $2::timestamptz > starts_at)
+            OR ($2::timestamptz IS NULL AND $1::timestamptz < ends_at)
+            OR ($1::timestamptz < ends_at AND $2::timestamptz > starts_at)
+          )`,
+      [start.toISOString(), end ? end.toISOString() : null]
+    );
+  }
   const conflictId = await _spotlightOverlaps(start.toISOString(), end ? end.toISOString() : null, null);
   if (conflictId) {
     const err = new Error(`Spotlight window overlaps existing entry #${conflictId}. End or delete the conflicting entry first.`);
     err.code = 'SPOTLIGHT_OVERLAP';
     throw err;
   }
-  const p = getPool();
   const r = await p.query(
-    `INSERT INTO profile_spotlight (account_id, headline, blurb, starts_at, ends_at, created_by)
-       VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6)
+    `INSERT INTO profile_spotlight (account_id, headline, blurb, starts_at, ends_at, created_by, source)
+       VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6, $7)
        RETURNING *`,
     [
       String(accountId),
@@ -10714,6 +10744,7 @@ async function createSpotlight({ accountId, headline, blurb, startsAt, endsAt, c
       start.toISOString(),
       end ? end.toISOString() : null,
       createdBy || null,
+      source === 'auto' ? 'auto' : 'admin',
     ]
   );
   return r.rows[0];
@@ -10782,6 +10813,199 @@ async function advanceSpotlight() {
       RETURNING id`
   );
   return r.rowCount || 0;
+}
+
+// ---------- Auto Spotlight (Task #222 / v6.76) ----------
+// Picks an "Auto-selected" featured player from existing leaderboards when
+// no admin-curated row currently covers `NOW()`. Fallback chain:
+//   1. PERF leader of the past 7 days (highest persisted PERF score on a
+//      match in the last 7 days, requiring perf >= 6.0 so we don't crown
+//      a mediocre week).
+//   2. Hottest current win streak (length >= 3 wins).
+//   3. Most-improved MMR over the past 7 days (largest positive delta).
+// Returns null if every source is empty so the cron logs a no-op.
+//
+// `excludeAccountIds` lets callers skip recent auto-picks so the same
+// player doesn't re-feature week-over-week. Passed through as a bigint[]
+// where supported, falls back to ANY('{}') when empty.
+async function pickAutoSpotlightCandidate({ days = 7, excludeAccountIds = [] } = {}) {
+  const p = getPool();
+  const exclude = (excludeAccountIds || []).map(String).filter(Boolean);
+  const excludeArr = exclude.length ? exclude : ['0'];
+
+  // 1. PERF leader.
+  const perfRes = await p.query(
+    `SELECT ps.account_id::text AS account_id, ps.perf, ps.match_id, ps.hero_name, ps.position,
+            COALESCE(n.nickname, ps.persona_name) AS display_name
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       LEFT JOIN nicknames n ON n.account_id = ps.account_id
+      WHERE ps.perf IS NOT NULL
+        AND ps.perf >= 6.0
+        AND ps.account_id > 0
+        AND m.is_legacy = false
+        AND m.date > NOW() - INTERVAL '1 day' * $1
+        AND ps.account_id <> ALL($2::bigint[])
+      ORDER BY ps.perf DESC NULLS LAST, m.date DESC
+      LIMIT 1`,
+    [days, excludeArr]
+  );
+  if (perfRes.rows[0]) {
+    const r = perfRes.rows[0];
+    const perf = Number(r.perf || 0).toFixed(1);
+    return {
+      accountId: r.account_id,
+      headline: `PERF leader of the week — ${perf}`,
+      blurb: `${r.display_name || `Player #${r.account_id}`} posted a ${perf} PERF score this week, the highest across every recorded match in the last ${days} days.`,
+      reason: 'perf_leader',
+    };
+  }
+
+  // 2. Hot streak. Pull the most recent ~30 matches per recently-active
+  // player and count consecutive wins from the latest game backwards.
+  const streakRes = await p.query(
+    `WITH recent_players AS (
+       SELECT DISTINCT ps.account_id
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id > 0
+          AND m.is_legacy = false
+          AND m.date > NOW() - INTERVAL '1 day' * $1
+          AND ps.account_id <> ALL($2::bigint[])
+     ),
+     ordered AS (
+       SELECT ps.account_id,
+              m.match_id,
+              ROW_NUMBER() OVER (PARTITION BY ps.account_id ORDER BY m.match_id DESC) AS rn,
+              ((ps.team = 'radiant') = m.radiant_win) AS won
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id IN (SELECT account_id FROM recent_players)
+          AND m.is_legacy = false
+     ),
+     latest AS (
+       SELECT account_id, won AS latest_won FROM ordered WHERE rn = 1
+     ),
+     loss_break AS (
+       SELECT o.account_id, MIN(o.rn) AS first_loss_rn
+         FROM ordered o
+         JOIN latest l ON l.account_id = o.account_id
+        WHERE l.latest_won = true AND o.won = false
+        GROUP BY o.account_id
+     )
+     SELECT l.account_id::text AS account_id,
+            COALESCE(lb.first_loss_rn - 1, (SELECT MAX(rn) FROM ordered o2 WHERE o2.account_id = l.account_id)) AS streak,
+            COALESCE(n.nickname, MAX(ps.persona_name)) AS display_name
+       FROM latest l
+       LEFT JOIN loss_break lb ON lb.account_id = l.account_id
+       LEFT JOIN nicknames n ON n.account_id = l.account_id
+       LEFT JOIN player_stats ps ON ps.account_id = l.account_id
+      WHERE l.latest_won = true
+      GROUP BY l.account_id, lb.first_loss_rn, n.nickname
+     HAVING COALESCE(lb.first_loss_rn - 1, (SELECT MAX(rn) FROM ordered o3 WHERE o3.account_id = l.account_id)) >= 3
+      ORDER BY streak DESC
+      LIMIT 1`,
+    [days, excludeArr]
+  );
+  if (streakRes.rows[0]) {
+    const r = streakRes.rows[0];
+    const n = Number(r.streak) || 0;
+    return {
+      accountId: r.account_id,
+      headline: `🔥 ${n}-win heater`,
+      blurb: `${r.display_name || `Player #${r.account_id}`} is riding a ${n}-game win streak — the hottest active run in the league this week.`,
+      reason: 'hot_streak',
+    };
+  }
+
+  // 3. Most-improved MMR over the same window.
+  const improved = await getMostImproved(days, null);
+  for (const row of improved) {
+    if (exclude.includes(String(row.account_id))) continue;
+    const delta = Number(row.mmr_delta) || 0;
+    if (delta <= 0) break;
+    return {
+      accountId: String(row.account_id),
+      headline: `Most improved — +${delta} MMR`,
+      blurb: `${row.display_name || `Player #${row.account_id}`} climbed +${delta} MMR over the last ${days} days across ${row.games_in_period || 0} game(s) — the biggest jump in the league.`,
+      reason: 'most_improved',
+    };
+  }
+
+  return null;
+}
+
+// Idempotent weekly job. If an active spotlight already covers `NOW()`,
+// returns `{ created: false, reason: 'already_active' }` and does nothing.
+// Otherwise picks a candidate via pickAutoSpotlightCandidate() and inserts
+// a `source='auto'` row spanning [NOW(), NOW()+windowDays). When no
+// candidate exists (empty week, brand-new instance) returns
+// `{ created: false, reason: 'no_candidate' }`. The lookback list of
+// recent auto-picks (last `recentLookbackDays`) is fed back into the
+// candidate query so the same player doesn't re-feature week after week.
+async function ensureAutoSpotlight({ windowDays = 7, recentLookbackDays = 28, minWindowMs = 3600 * 1000 } = {}) {
+  const active = await getCurrentSpotlight();
+  if (active) return { created: false, reason: 'already_active', current: active };
+
+  const p = getPool();
+  const recent = await p.query(
+    `SELECT DISTINCT account_id::text AS account_id
+       FROM profile_spotlight
+      WHERE source = 'auto'
+        AND created_at > NOW() - INTERVAL '1 day' * $1`,
+    [recentLookbackDays]
+  );
+  const exclude = recent.rows.map(r => r.account_id);
+
+  const candidate = await pickAutoSpotlightCandidate({ days: windowDays, excludeAccountIds: exclude });
+  if (!candidate) return { created: false, reason: 'no_candidate' };
+
+  // Clamp the auto window to the next queued admin row's `starts_at` so a
+  // partially-overlapping admin schedule doesn't force us to skip the
+  // whole week — fill the gap with a shortened auto pick instead. Only
+  // skip when the resulting window is shorter than `minWindowMs` (default
+  // 1h), since a sub-hour spotlight isn't worth the churn.
+  const start = new Date();
+  let end = new Date(start.getTime() + windowDays * 24 * 3600 * 1000);
+  const nextAdmin = await p.query(
+    `SELECT starts_at FROM profile_spotlight
+      WHERE ended_at IS NULL
+        AND source = 'admin'
+        AND starts_at > $1::timestamptz
+      ORDER BY starts_at ASC
+      LIMIT 1`,
+    [start.toISOString()]
+  );
+  if (nextAdmin.rows[0]?.starts_at) {
+    const adminStart = new Date(nextAdmin.rows[0].starts_at);
+    if (adminStart.getTime() < end.getTime()) {
+      end = adminStart;
+    }
+  }
+  if (end.getTime() - start.getTime() < minWindowMs) {
+    return { created: false, reason: 'overlap_with_admin' };
+  }
+
+  try {
+    const row = await createSpotlight({
+      accountId: candidate.accountId,
+      headline: candidate.headline,
+      blurb: candidate.blurb,
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      createdBy: `auto:${candidate.reason}`,
+      source: 'auto',
+    });
+    return { created: true, reason: candidate.reason, spotlight: row };
+  } catch (err) {
+    if (err.code === 'SPOTLIGHT_OVERLAP') {
+      // Defence in depth: createSpotlight's overlap guard still wins if
+      // a race inserted an overlapping row between our clamp query and
+      // the INSERT. Next tick will retry.
+      return { created: false, reason: 'overlap_with_admin' };
+    }
+    throw err;
+  }
 }
 
 // ---------- Entitlements (Task #207 / v6.63) ----------
@@ -12374,6 +12598,9 @@ module.exports = {
   updateSpotlight,
   deleteSpotlight,
   advanceSpotlight,
+  // v6.76 / Task #222 — auto-pick weekly Featured Player
+  pickAutoSpotlightCandidate,
+  ensureAutoSpotlight,
   // v6.63 / Task #207 — entitlements
   getOwnedEntitlements,
   hasEntitlement,

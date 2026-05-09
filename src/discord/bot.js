@@ -5307,11 +5307,38 @@ class DiscordBot {
         try {
           const ended = await db.advanceSpotlight();
           if (ended > 0) console.log(`[Spotlight] Rotated ${ended} expired spotlight(s).`);
+          // Task #222 / v6.76 — fill any gap left by a just-ended row with
+          // an auto-pick so the Featured Player card never goes empty for
+          // a full week between admin curations. No-op when an active row
+          // (admin OR auto) already covers NOW().
+          const auto = await db.ensureAutoSpotlight({ windowDays: 7 });
+          if (auto?.created) {
+            console.log(`[Spotlight] Auto-picked spotlight via ${auto.reason} (id=${auto.spotlight?.id}).`);
+          }
         } catch (err) {
           console.error('[Spotlight] Rotation error:', err.message);
         }
       }, { timezone: 'UTC' });
       console.log('[Discord] Profile Spotlight rotation scheduled (hourly).');
+
+      // Task #222 / v6.76 — Weekly auto-pick. Mondays 09:00 UTC: if no
+      // admin-curated row covers the start of the week, drop in an
+      // auto-pick (PERF leader → hot streak → most-improved fallback).
+      // Hourly job above also fills mid-week gaps; this weekly tick is
+      // the canonical "fresh week, fresh featured player" beat.
+      cron.schedule('0 9 * * 1', async () => {
+        try {
+          const auto = await db.ensureAutoSpotlight({ windowDays: 7 });
+          if (auto?.created) {
+            console.log(`[Spotlight] Weekly auto-pick via ${auto.reason} (id=${auto.spotlight?.id}).`);
+          } else {
+            console.log(`[Spotlight] Weekly auto-pick skipped: ${auto?.reason || 'unknown'}.`);
+          }
+        } catch (err) {
+          console.error('[Spotlight] Weekly auto-pick error:', err.message);
+        }
+      }, { timezone: 'UTC' });
+      console.log('[Discord] Profile Spotlight weekly auto-pick scheduled (Mondays 09:00 UTC).');
 
       // Coaching marketplace reminders (T13) — hourly cron, no-ops while flag is off
       this.startCoachingReminderCron();

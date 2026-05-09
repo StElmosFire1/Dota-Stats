@@ -206,6 +206,7 @@ export default function AdminSpotlight() {
               <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
                 <th style={th}>Account</th>
                 <th style={th}>Headline</th>
+                <th style={th}>Source</th>
                 <th style={th}>Starts</th>
                 <th style={th}>Ends</th>
                 <th style={th}>Status</th>
@@ -225,6 +226,14 @@ export default function AdminSpotlight() {
                   <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={td}>{r.display_name || `#${r.account_id}`}</td>
                     <td style={td}>{r.headline}</td>
+                    <td style={td}>
+                      <span style={{
+                        fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                        background: r.source === 'auto' ? 'rgba(245,158,11,0.18)' : 'rgba(197,169,117,0.18)',
+                        color: r.source === 'auto' ? '#f59e0b' : 'var(--brass, var(--accent))',
+                        textTransform: 'uppercase', letterSpacing: 0.6,
+                      }}>{r.source === 'auto' ? 'Auto' : 'Admin'}</span>
+                    </td>
                     <td style={td}>{r.starts_at ? new Date(r.starts_at).toLocaleString() : '—'}</td>
                     <td style={td}>{r.ends_at ? new Date(r.ends_at).toLocaleString() : '—'}</td>
                     <td style={td}>

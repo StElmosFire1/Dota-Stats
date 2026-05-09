@@ -149,6 +149,11 @@ export function FeaturedPlayer() {
     });
   }, []);
   if (!loaded || !s) return null;
+  // v6.76 / Task #222 — auto-picks (PERF leader / hot streak / most-improved
+  // fallback chain) get an "Auto-selected" pill so visitors can tell the
+  // rotation is algorithmic rather than admin-curated. Admin rows keep the
+  // original "spotlight" pill.
+  const isAuto = s.source === 'auto';
   return (
     <Link to={`/player/${s.account_id}`} style={{ textDecoration: 'none' }}>
       <div style={{
@@ -159,11 +164,14 @@ export function FeaturedPlayer() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <div style={eyebrowStyle}>🌟 Featured Player</div>
-          <span style={{
-            fontSize: 10, fontFamily: 'var(--font-condensed, inherit)',
-            color: 'var(--brass, var(--accent))',
-            textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700,
-          }}>spotlight</span>
+          <span
+            title={isAuto ? 'Auto-selected from this week\'s leaderboards' : 'Curated by an admin'}
+            style={{
+              fontSize: 10, fontFamily: 'var(--font-condensed, inherit)',
+              color: isAuto ? '#f59e0b' : 'var(--brass, var(--accent))',
+              textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700,
+            }}
+          >{isAuto ? '⚙ Auto-selected' : 'spotlight'}</span>
         </div>
         <div className="font-serif" style={{
           fontSize: 22, fontWeight: 700, color: 'var(--text-primary)',
