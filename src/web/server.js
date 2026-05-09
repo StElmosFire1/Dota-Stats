@@ -31,6 +31,7 @@ const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
 const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/groqService');
 const { getDiscordBot } = require('../discord/bot');
+const voiceEventQueue = require('./voiceEventQueue');
 
 // Pro Tier membership cache (module-scope so the Stripe webhook handler
 // in createServer() and the _isProAccount() helper inside createApiRouter()
@@ -6270,10 +6271,12 @@ NOTES
                         if (referrerId) {
                           db.checkAndGrantAchievements([referrerId], null).then(newOnes => {
                             if (newOnes.length) {
+                              const grants = [{ player: { accountId: referrerId, personaname: '' }, newOnes }];
                               try {
-                                getDiscordBot()._notifyAchievementsUnlocked([{ player: { accountId: referrerId, personaname: '' }, newOnes }])
-                                  .catch(() => {});
+                                getDiscordBot()._notifyAchievementsUnlocked(grants).catch(() => {});
                               } catch (_) {}
+                              // Task #217 — voice-pack achievement-unlock event for the referrer.
+                              try { voiceEventQueue.pushAchievementVoiceEvents(grants); } catch (_) {}
                             }
                           }).catch(() => {});
                         }
@@ -7727,6 +7730,22 @@ NOTES
     } catch (err) {
       console.error('[API] me/notifications POST:', err.message);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #217 — drain pending voice-pack lifecycle events for the
+  // signed-in user. The frontend's useVoicePackEvents hook polls this
+  // every few seconds and plays the matching <pack>/<event>.mp3 (with
+  // the same 404 → church-bell fallback as useInhouseAlerts).
+  router.get('/me/voice-events', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const events = voiceEventQueue.drainVoiceEvents(accountId);
+      res.json({ events });
+    } catch (err) {
+      console.error('[API] me/voice-events GET:', err.message);
+      res.status(500).json({ error: 'Failed to fetch voice events' });
     }
   });
 
@@ -10216,7 +10235,14 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
           console.error('[Achievements] Web upload notify error:', e.message)
         );
       } catch (_) {}
+      // Task #217 — voice-pack achievement-unlock event for each granted player.
+      try { voiceEventQueue.pushAchievementVoiceEvents(recordResult.achievementGrants); } catch (_) {}
     }
+
+    // Task #217 — voice-pack win/loss + first-blood for every player in
+    // the freshly recorded match. Mirrors the post-match DM trigger
+    // pattern; the browser drains via GET /api/me/voice-events.
+    try { voiceEventQueue.pushMatchVoiceEvents(matchStats); } catch (_) {}
 
     updateJobStep(jobId, 'Updating ratings...');
 

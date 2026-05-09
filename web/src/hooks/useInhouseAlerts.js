@@ -14,6 +14,7 @@
 // `draftStatus` and we diff state across renders to detect transitions.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createVoicePackPlayer } from '../lib/voicePack';
 
 const STORAGE_KEY = 'inhouse:muted';
 
@@ -38,10 +39,9 @@ const VOICE_PACK_EVENT_FOR_KIND = {
   'match-ready':  'match-start',
   'pick-warning': 'level-up',
 };
-function voicePackUrl(pack, event) {
-  if (!pack || !event) return null;
-  return `/voice-packs/${encodeURIComponent(pack)}/${encodeURIComponent(event)}.mp3`;
-}
+// Per-event audio cache + 404-fallback shape lives in `lib/voicePack.js`
+// (Task #217 extracted it so the new global useVoicePackEvents hook can
+// share the exact same cache semantics).
 
 const NOTIF_TITLES = {
   accept:         'Inhouse — accept phase open',
@@ -129,12 +129,15 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
   // etc) so an alert always fires when not muted.
   const audioElRef = useRef(null);
   const audioElFailedRef = useRef(false);
-  // v6.62 / Task #206 — per-event voice-pack HTMLAudioElement cache, keyed
-  // by `${pack}|${event}`. Failed entries (404, decode error) are recorded
-  // in voiceFailedRef so we don't keep retrying the same broken URL — the
-  // next fire() for that kind silently falls back to the church bell.
-  const voiceElsRef = useRef(new Map());
-  const voiceFailedRef = useRef(new Set());
+  // v6.62 / Task #206 — per-event voice-pack player. Task #217 extracted
+  // the cache + 404-fallback into a shared helper (`lib/voicePack.js`)
+  // so the new global useVoicePackEvents hook reuses the same shape.
+  // Failed slots are remembered inside the player so the next fire()
+  // for that kind silently falls back to the church bell.
+  const voicePlayerRef = useRef(null);
+  if (typeof window !== 'undefined' && !voicePlayerRef.current) {
+    voicePlayerRef.current = createVoicePackPlayer();
+  }
   const [voicePackId, setVoicePackId] = useState(null);
   // Track previous values so we only fire on transitions, not every poll.
   const prev = useRef({
@@ -178,40 +181,18 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     // notifications still fire so a player who muted the page tab can
     // still see the OS-level toast for an accept/draft/match-ready event.
     if (!muted && typeof window !== 'undefined') {
-      // v6.62 / Task #206 — try the user's selected Pro voice pack first,
-      // if any. Falls through to the church bell on any failure.
+      // Task #217 — try the user's selected Pro voice pack first via the
+      // shared player (lib/voicePack.js). If it played successfully, skip
+      // the church bell so we don't layer two sounds.
       const vEvent = VOICE_PACK_EVENT_FOR_KIND[kind];
-      const vUrl = voicePackUrl(voicePackId, vEvent);
-      const vKey = vUrl ? `${voicePackId}|${vEvent}` : null;
-      if (vUrl && vKey && !voiceFailedRef.current.has(vKey)) {
-        try {
-          let el = voiceElsRef.current.get(vKey);
-          if (!el) {
-            el = new Audio(vUrl);
-            el.preload = 'auto';
-            el.volume = 0.85;
-            el.addEventListener('error', () => { voiceFailedRef.current.add(vKey); });
-            voiceElsRef.current.set(vKey, el);
-          }
-          el.currentTime = 0;
-          const vp = el.play();
-          if (vp && typeof vp.then === 'function') {
-            vp.catch(() => { voiceFailedRef.current.add(vKey); });
-          }
-          // Voice pack played (or is in flight) — skip the bell so we
-          // don't layer two sounds on top of each other.
-          if (typeof window !== 'undefined' && 'Notification' in window) {
-            // fall through to notification block below
-          }
-          // Continue past the bell branch to the notification block.
-          // Use a labeled escape via early return-of-bell-block pattern:
-        } catch (_) { voiceFailedRef.current.add(vKey); }
+      let voicePlayed = false;
+      if (voicePackId && vEvent && voicePlayerRef.current) {
+        voicePlayed = voicePlayerRef.current.play({ pack: voicePackId, event: vEvent });
       }
-      // Default chime path — runs when no voice pack is selected, the
-      // selected pack file failed, or there's no event mapping for this
-      // kind. The voice-pack branch above sets a "played" flag implicitly
-      // by NOT marking failure; if it succeeded, skip the bell.
-      const skipBell = vUrl && vKey && !voiceFailedRef.current.has(vKey);
+      const skipBell = voicePlayed
+        && voicePackId
+        && vEvent
+        && !voicePlayerRef.current.hasFailed({ pack: voicePackId, event: vEvent });
       if (!skipBell) {
       // Try the shipped church-bell mp3 first. Web Audio synthesis is the
       // fallback — but ONLY runs from the play() promise's .catch() so a

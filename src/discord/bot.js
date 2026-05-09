@@ -2491,6 +2491,18 @@ class DiscordBot {
           console.error('[Achievements] Notify error:', e.message)
         );
       }
+      // Task #217 — voice-pack lifecycle events (win/loss + first-blood
+      // for every player; achievement-unlock for granted players). The
+      // browser drains via GET /api/me/voice-events.
+      try {
+        const voiceEventQueue = require('../web/voiceEventQueue');
+        voiceEventQueue.pushMatchVoiceEvents(matchStats);
+        if (recordResult && recordResult.achievementGrants) {
+          voiceEventQueue.pushAchievementVoiceEvents(recordResult.achievementGrants);
+        }
+      } catch (e) {
+        console.warn('[VoiceEvents] push failed:', e.message);
+      }
     } catch (err) {
       console.error('[DB] Record match error:', err.message);
     }
