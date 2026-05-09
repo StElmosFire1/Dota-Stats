@@ -12,6 +12,11 @@
  *     style click-outside handlers are allowed when the element carries
  *     role="presentation" or role="none".
  *   - <th onClick> — must use the shared <SortableTh> component instead.
+ *   - <div>/<span> styled as a custom switch/toggle/radio (className contains
+ *     a `switch`/`toggle`/`radio` token) and wired to a click/change handler
+ *     but missing the matching ARIA role + state attribute
+ *     (`role="switch"`+`aria-checked`, `role="radio"`+`aria-checked`, or a
+ *     `role="radiogroup"` container). Task #169.
  *
  * Exits 0 when clean, 1 when violations are found. Wired into deploy.sh,
  * scripts/post-merge.sh, and `npm run check:a11y` so a regression fails fast
@@ -171,6 +176,100 @@ function scanFile(file) {
         message: `<${lower} onClick> is missing ${missing.join(' + ')}. Either use a real <button type="button">, or add the documented role+tabIndex+onKeyDown triad (replit.md → "Frontend accessibility house rule"). Backdrop-style click handlers may use role="presentation".`,
       });
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Second pass (Task #169): catch <div>/<span> styled as a custom
+  // switch/toggle/radio that ships without the matching ARIA role + state.
+  //
+  // The house rule in replit.md ("Custom toggle/switch/radio shapes must use
+  // the matching ARIA role …") is currently only enforced by code review.
+  // This pass flags a future regression where someone styles a non-interactive
+  // element as a switch/toggle/radio and wires it up to a click or change
+  // handler without the proper ARIA semantics.
+  //
+  // Heuristic: only flag when BOTH conditions hold, to keep false positives low
+  //   1. className contains a class token that strongly implies the element
+  //      *is* an interactive switch/toggle/radio control:
+  //        - exact tokens: switch, toggle, radio
+  //        - any token ending in -switch / -toggle / -radio (e.g. dark-toggle)
+  //      Container/wrapper class tokens (e.g. "toggle-row", "switch-group",
+  //      "radio-list") are intentionally NOT matched because they typically
+  //      wrap real interactive children.
+  //   2. The element is interactive on its own — it carries onClick, onChange,
+  //      or onKeyDown. A purely decorative div with one of those class names
+  //      is not a regression.
+  //
+  // Required shapes:
+  //   - role="switch"     → must also carry aria-checked
+  //   - role="radio"      → must also carry aria-checked
+  //   - role="radiogroup" → accepted (container; child radios are checked
+  //                         independently when they themselves match the
+  //                         heuristic above)
+  // Anything else (including role="button" or no role at all) is flagged.
+  // ---------------------------------------------------------------------------
+  const re2 = /<([A-Za-z][A-Za-z0-9]*)(?=[\s/>])/g;
+  let m2;
+  while ((m2 = re2.exec(src)) !== null) {
+    const tag = m2[1];
+    const lower = tag.toLowerCase();
+    if (tag !== lower) continue;
+    if (lower !== 'div' && lower !== 'span') continue;
+
+    const tagStart = m2.index;
+    const tagEnd = findTagEnd(src, m2.index + m2[0].length);
+    if (tagEnd < 0) continue;
+    const opening = src.slice(tagStart, tagEnd + 1);
+
+    // Pull className value (string literal form only; expression-form
+    // classNames like className={cls} are out of scope for the static check
+    // — there's nothing to inspect).
+    const classMatch = opening.match(/\bclassName\s*=\s*["']([^"']+)["']/);
+    if (!classMatch) continue;
+    const tokens = classMatch[1].split(/\s+/).filter(Boolean);
+
+    let kind = null; // 'switch' | 'radio'
+    for (const t of tokens) {
+      if (t === 'switch' || t === 'toggle' || /-(?:switch|toggle)$/.test(t)) {
+        kind = 'switch';
+        break;
+      }
+      if (t === 'radio' || /-radio$/.test(t)) {
+        kind = 'radio';
+        break;
+      }
+    }
+    if (!kind) continue;
+
+    const isInteractive =
+      /\bonClick\s*=/.test(opening) ||
+      /\bonChange\s*=/.test(opening) ||
+      /\bonKeyDown\s*=/.test(opening);
+    if (!isInteractive) continue;
+
+    const roleMatch = opening.match(/\brole\s*=\s*["']([a-z]+)["']/);
+    const role = roleMatch ? roleMatch[1] : null;
+    const hasAriaChecked = /\baria-checked\s*=/.test(opening);
+
+    let ok = false;
+    if (kind === 'switch') {
+      ok = role === 'switch' && hasAriaChecked;
+    } else {
+      // radio
+      ok = (role === 'radio' && hasAriaChecked) || role === 'radiogroup';
+    }
+
+    if (ok) continue;
+
+    const line = lineOf(src, tagStart);
+    const want =
+      kind === 'switch'
+        ? 'role="switch" + aria-checked={…}'
+        : 'role="radio" + aria-checked={…} (or role="radiogroup" for the container)';
+    issues.push({
+      file, line, tag,
+      message: `<${lower}> looks like a custom ${kind} (className "${classMatch[1]}") with an interactive handler but is missing ${want}. See replit.md → "Frontend accessibility house rule" → "Custom toggle/switch/radio shapes". Prefer a real <input type="checkbox"/"radio"> or <button role="switch">.`,
+    });
   }
 
   return issues;
