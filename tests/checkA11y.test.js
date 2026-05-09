@@ -13,6 +13,7 @@ const {
   isSingleBraceExpression,
   scanFile,
   scanCssFile,
+  getJsxAttrExpr,
 } = require('../scripts/check-a11y');
 
 // -----------------------------------------------------------------------------
@@ -479,4 +480,95 @@ test('pass5: each :hover combinator shape (descendant, child, +, ~) is detected'
       `${sel} { display: block; }`);
     assert.strictEqual(issues.length, 1, `expected ${sel} to be flagged`);
   }
+});
+
+// =============================================================================
+// Pass 6 — mouse-handler focus parity (Task #185).
+// =============================================================================
+test('getJsxAttrExpr: extracts a balanced {…} expression value', () => {
+  assert.strictEqual(
+    getJsxAttrExpr('<div onMouseEnter={() => setShow(true)} />', 'onMouseEnter'),
+    '() => setShow(true)'
+  );
+  // Nested braces and quoted strings.
+  assert.strictEqual(
+    getJsxAttrExpr('<div onMouseEnter={(e) => { e.foo = "}{"; setX(1); }} />', 'onMouseEnter'),
+    '(e) => { e.foo = "}{"; setX(1); }'
+  );
+  assert.strictEqual(getJsxAttrExpr('<div onMouseEnter="x" />', 'onMouseEnter'), null);
+  assert.strictEqual(getJsxAttrExpr('<div />', 'onMouseEnter'), null);
+});
+
+test('pass6: flags onMouseEnter+setShow without onFocus', () => {
+  const issues = scanJsx('p6_naked', `
+export default function X() {
+  const [show, setShow] = React.useState(false);
+  return <div onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>tip</div>;
+}
+`);
+  const focus = issues.filter((i) => /focus/i.test(i.message));
+  assert.strictEqual(focus.length, 2, 'expected one issue per missing focus handler');
+  assert.match(messages(focus), /onFocus/);
+  assert.match(messages(focus), /onBlur/);
+});
+
+test('pass6: accepts onMouseEnter+onMouseLeave with onFocus+onBlur parity', () => {
+  const issues = scanJsx('p6_ok', `
+export default function X() {
+  const [show, setShow] = React.useState(false);
+  return (
+    <div
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onFocus={() => setShow(true)}
+      onBlur={() => setShow(false)}
+    >tip</div>
+  );
+}
+`);
+  assert.deepStrictEqual(issues.filter((i) => /focus/i.test(i.message)), []);
+});
+
+test('pass6: ignores cosmetic-only style mutations', () => {
+  const issues = scanJsx('p6_cosmetic', `
+export default function X() {
+  return (
+    <div
+      onMouseEnter={(e) => e.currentTarget.style.background = 'red'}
+      onMouseLeave={(e) => e.currentTarget.style.background = ''}
+    />
+  );
+}
+`);
+  assert.deepStrictEqual(issues.filter((i) => /focus/i.test(i.message)), []);
+});
+
+test('pass6: ignores reference-form handlers (no inline body to inspect)', () => {
+  const issues = scanJsx('p6_ref', `
+export default function X({ onItemHover }) {
+  return <div onMouseEnter={onItemHover} onMouseLeave={onItemHover} />;
+}
+`);
+  assert.deepStrictEqual(issues.filter((i) => /focus/i.test(i.message)), []);
+});
+
+test('pass6: detects onMouseOver/onMouseOut variants too', () => {
+  const issues = scanJsx('p6_over_out', `
+export default function X() {
+  const [, setOpen] = React.useState(false);
+  return <div onMouseOver={() => setOpen(true)} onMouseOut={() => setOpen(false)} />;
+}
+`);
+  const focus = issues.filter((i) => /focus/i.test(i.message));
+  assert.strictEqual(focus.length, 2);
+});
+
+test('pass6: flags PascalCase component tags as well as native elements', () => {
+  const issues = scanJsx('p6_component', `
+export default function X() {
+  const [, setHover] = React.useState(false);
+  return <Card onMouseEnter={() => setHover(true)} />;
+}
+`);
+  assert.strictEqual(issues.filter((i) => /focus/i.test(i.message)).length, 1);
 });

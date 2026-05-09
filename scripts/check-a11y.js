@@ -26,6 +26,12 @@
  *     (`web/src/components/Dialog.jsx` / `community-edition/web/src/components/
  *     Dialog.jsx`). Modals MUST go through the shared primitive — hand-rolled
  *     `<div role="dialog">`+ad-hoc `onKeyDown` is forbidden. Task #182.
+ *   - JSX mouse handlers (onMouseEnter/onMouseLeave/onMouseOver/onMouseOut)
+ *     that drive a state change (handler body invokes a `set...(...)` call)
+ *     but ship without the matching onFocus/onBlur — keyboard users would
+ *     never see the same reveal. Cosmetic-only handlers (e.g. inline
+ *     `e.currentTarget.style.background = …`) are intentionally allowed.
+ *     Task #185.
  *   - CSS `:hover` rules that REVEAL content (descendant/sibling combinator
  *     after `:hover`, OR a hover body that sets `display`/`opacity`/
  *     `visibility`/`pointer-events`/`clip-path`/`max-height`/`height`) without
@@ -395,6 +401,9 @@ function scanFile(file) {
     });
   }
 
+  // Sixth pass (Task #185): mouse handlers without focus parity.
+  issues.push(...scanFocusParity(file, src));
+
   return issues;
 }
 
@@ -758,6 +767,102 @@ function bodyHasRevealProperty(body) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Mouse-handler focus-parity scan (Task #185).
+//
+// The house rule "Hover-only reveals are forbidden" already covers CSS-only
+// reveals (Task #170), but a JSX-side equivalent exists: a tooltip / popover /
+// detail panel can be wired up with `onMouseEnter={() => setShow(true)}`
+// and `onMouseLeave={() => setShow(false)}` and ship without the matching
+// `onFocus`/`onBlur` handlers, so keyboard users never see it. Task #176 hand-
+// fixed every offender; this pass closes the gap so a future PR can't
+// silently regress with the gate green.
+//
+// Pairs we care about:
+//   onMouseEnter / onMouseOver  ↔  onFocus
+//   onMouseLeave / onMouseOut   ↔  onBlur
+//
+// Cosmetic-only handlers (e.g. inline `e.currentTarget.style.background = …`)
+// are intentionally allowed — focus-only mouseover styling is fine, and
+// requiring focus parity for every hover color tweak would be noise. The
+// heuristic: only flag when the handler body invokes a state setter call
+// matching `\bset[A-Z]\w*\s*\(` (e.g. `setOpen(true)`, `setHovered(idx)`).
+// Reference-form handlers (`onMouseEnter={handleEnter}`) are intentionally
+// not flagged — there's nothing inspectable inline.
+// ---------------------------------------------------------------------------
+
+const MOUSE_FOCUS_PAIRS = [
+  ['onMouseEnter', 'onFocus'],
+  ['onMouseLeave', 'onBlur'],
+  ['onMouseOver', 'onFocus'],
+  ['onMouseOut', 'onBlur'],
+];
+
+const STATE_SETTER_RE = /\bset[A-Z]\w*\s*\(/;
+
+/**
+ * Extract the raw text of a JSX expression-form attribute value
+ * (`name={...}`) from an opening-tag string. Returns null if the attribute
+ * is absent or uses a string-literal value (`name="..."`). Handles nested
+ * braces and quoted strings.
+ */
+function getJsxAttrExpr(opening, attrName) {
+  const re = new RegExp(`\\b${attrName}\\s*=\\s*\\{`);
+  const m = opening.match(re);
+  if (!m) return null;
+  const start = m.index + m[0].length;
+  let depth = 1;
+  let quote = null;
+  for (let i = start; i < opening.length; i++) {
+    const c = opening[i];
+    if (quote) {
+      if (c === '\\') { i++; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+    if (c === '{') { depth++; continue; }
+    if (c === '}') {
+      depth--;
+      if (depth === 0) return opening.slice(start, i);
+    }
+  }
+  return null;
+}
+
+function scanFocusParity(file, src) {
+  const issues = [];
+  const re = /<([A-Za-z][A-Za-z0-9_.]*)(?=[\s/>])/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const tag = m[1];
+    const tagStart = m.index;
+    const tagEnd = findTagEnd(src, m.index + m[0].length);
+    if (tagEnd < 0) continue;
+    const opening = src.slice(tagStart, tagEnd + 1);
+
+    for (const [mouseAttr, focusAttr] of MOUSE_FOCUS_PAIRS) {
+      const expr = getJsxAttrExpr(opening, mouseAttr);
+      if (expr === null) continue;
+      // Cosmetic-only or reference-form handlers — skip to keep false
+      // positives low.
+      if (!STATE_SETTER_RE.test(expr)) continue;
+      // Already has focus parity — accept.
+      if (new RegExp(`\\b${focusAttr}\\s*=`).test(opening)) continue;
+
+      const line = lineOf(src, tagStart);
+      issues.push({
+        file, line, tag,
+        message:
+          `<${tag}> uses ${mouseAttr} to drive a state change but has no matching ${focusAttr} handler. ` +
+          `Keyboard users (Tab focus) will never see the same reveal — add ${focusAttr} parity (and ${focusAttr === 'onFocus' ? 'onBlur' : 'onFocus'} for the inverse). ` +
+          'See replit.md → "Frontend accessibility house rule" → "Hover-only reveals are forbidden".',
+      });
+    }
+  }
+  return issues;
+}
+
 function scanCssFile(file) {
   const src = fs.readFileSync(file, 'utf8');
   const stripped = stripCssComments(src);
@@ -861,4 +966,6 @@ module.exports = {
   isSingleBraceExpression,
   scanFile,
   scanCssFile,
+  scanFocusParity,
+  getJsxAttrExpr,
 };
