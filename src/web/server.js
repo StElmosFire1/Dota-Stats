@@ -7883,7 +7883,7 @@ NOTES
     try {
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
-      const events = voiceEventQueue.drainVoiceEvents(accountId);
+      const events = await voiceEventQueue.drainVoiceEvents(accountId);
       res.json({ events });
     } catch (err) {
       console.error('[API] me/voice-events GET:', err.message);

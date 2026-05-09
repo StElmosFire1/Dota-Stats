@@ -1595,6 +1595,20 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_scouting_reports_account ON scouting_reports(account_id)`);
 
+    // Task #233 — Persist voice-pack lifecycle events (Task #217) so they
+    // survive a deploy/PM2 restart. The browser drains via
+    // GET /api/me/voice-events; the persistent queue uses the same 5-minute
+    // TTL as the in-memory original.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS voice_events (
+        id BIGSERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        event TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_voice_events_account_created ON voice_events (account_id, created_at)`);
+
     // Task #157 — Magazine v3 monetization features (replay paywall log,
     // weekly AI reports, org sponsorships, pickem, verified badges, one-off
     // perks). Schema lives in src/monetization/magazineV3.js so the diff in
