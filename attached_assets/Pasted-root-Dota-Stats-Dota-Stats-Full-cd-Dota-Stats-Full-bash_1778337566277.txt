@@ -1,0 +1,112 @@
+root@Dota-Stats:~/Dota-Stats-Full# cd ~/Dota-Stats-Full && bash deploy.sh
+==> Pulling latest code...
+remote: Enumerating objects: 19, done.
+remote: Counting objects: 100% (19/19), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 10 (delta 8), reused 10 (delta 8), pack-reused 0 (from 0)
+Unpacking objects: 100% (10/10), 3.63 KiB | 57.00 KiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   75e4480..91d1143  main       -> origin/main
+HEAD is now at 91d1143 Task #269: Show share-card preview on the profile page
+==> Verifying committed replay parser jar is in sync with sources...
+[build-parser] OK: odota-parser/target/stats-0.1.0.jar is up to date with sources.
+==> Verifying frontend accessibility (Task #164 — house rule gate)...
+[check-a11y] OK — scanned 153 JSX/TS file(s) and 3 CSS file(s), no accessibility regressions found.
+==> Installing frontend dependencies...
+==> Building frontend...
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 833 modules transformed.
+dist/index.html                                  0.82 kB │ gzip:   0.44 kB
+dist/assets/MagazineCover-fhwz3LLn.css          24.08 kB │ gzip:   5.20 kB
+dist/assets/index-DYwtUuzQ.css                  30.32 kB │ gzip:   6.80 kB
+dist/assets/useProMembers-D2Wat7_X.js            0.35 kB │ gzip:   0.27 kB
+dist/assets/SortableTh-BRAd4kZz.js               0.53 kB │ gzip:   0.35 kB
+dist/assets/ProBadge-ITpqAlOJ.js                 0.53 kB │ gzip:   0.41 kB
+dist/assets/useProStatus-aiC9TcLo.js             0.61 kB │ gzip:   0.39 kB
+dist/assets/HeroIcon-x4l24Xmw.js                 0.77 kB │ gzip:   0.52 kB
+dist/assets/VerifiedBadge-Byh5Z4mi.js            0.99 kB │ gzip:   0.65 kB
+dist/assets/ImpactBadge-BuOGuCHD.js              1.37 kB │ gzip:   0.68 kB
+dist/assets/SponsorshipInbox-Da7Oiw-z.js         1.39 kB │ gzip:   0.72 kB
+dist/assets/PlayerInsights-BpYUL5Pc.js           1.43 kB │ gzip:   0.82 kB
+dist/assets/heroes-B4IkSDsk.js                   1.55 kB │ gzip:   0.88 kB
+dist/assets/PaywallCard-YL7dcCXA.js              1.78 kB │ gzip:   0.98 kB
+dist/assets/PaywallBlur-B53GKhvM.js              2.36 kB │ gzip:   1.17 kB
+dist/assets/BuyinSuccess-OUVogijD.js             2.43 kB │ gzip:   1.03 kB
+dist/assets/CoachOnboarding-BaVlVnKN.js          2.67 kB │ gzip:   1.32 kB
+dist/assets/profileCosmetics-D90pZm-2.js         3.60 kB │ gzip:   1.68 kB
+dist/assets/VanitySlugPicker-BnoNhjeQ.js         3.72 kB │ gzip:   1.63 kB
+dist/assets/RankBadge-C3A9EBL8.js                3.97 kB │ gzip:   1.83 kB
+dist/assets/PlayerBenchmarks-Chee3XVv.js         4.00 kB │ gzip:   1.75 kB
+dist/assets/Pickem-BrqCZ2LO.js                   4.25 kB │ gzip:   1.71 kB
+dist/assets/Synergy-C0j8_t2w.js                  4.34 kB │ gzip:   1.78 kB
+dist/assets/MultiKills-C4Mx9SBm.js               4.78 kB │ gzip:   1.72 kB
+dist/assets/OverallStats-Dgbnl2MF.js             5.19 kB │ gzip:   1.82 kB
+dist/assets/Coaches-Bs-BsQ1W.js                  6.00 kB │ gzip:   2.18 kB
+dist/assets/SettingsBilling-BYljDmTc.js          6.21 kB │ gzip:   2.03 kB
+dist/assets/PatchNotes-D9MR0o9v.js               6.61 kB │ gzip:   2.48 kB
+dist/assets/Join-BR5ra-hM.js                     6.67 kB │ gzip:   2.50 kB
+dist/assets/Pro-D2SP4TdU.js                      6.75 kB │ gzip:   2.72 kB
+dist/assets/MyBookings-BT-PePam.js               6.78 kB │ gzip:   2.24 kB
+dist/assets/SeasonSummary-DdB1_ow-.js            6.89 kB │ gzip:   2.13 kB
+dist/assets/DraftAssistant-D0OFIeAB.js           7.07 kB │ gzip:   2.32 kB
+dist/assets/heroNames-DWlJ7OzF.js                7.14 kB │ gzip:   3.40 kB
+dist/assets/RecordMatch-1w2q4v1g.js              7.78 kB │ gzip:   2.80 kB
+dist/assets/HallOfFame-2EEblCGY.js               7.86 kB │ gzip:   2.50 kB
+dist/assets/AdminSpotlight-2FvQp_vj.js           7.88 kB │ gzip:   2.66 kB
+dist/assets/Social-CxiYbLHM.js                   8.13 kB │ gzip:   2.63 kB
+dist/assets/SettingsNotifications-B3O9T5Ui.js    8.72 kB │ gzip:   3.18 kB
+dist/assets/MatchList-CnCsESUm.js                8.90 kB │ gzip:   3.28 kB
+dist/assets/CoachEdit-okqAsLta.js                9.28 kB │ gzip:   2.79 kB
+dist/assets/CosmeticsShop-B6aQlHRe.js            9.43 kB │ gzip:   3.05 kB
+dist/assets/CoachProfile-CrdCAHAB.js             9.77 kB │ gzip:   3.51 kB
+dist/assets/WardMap-91rjcCrc.js                 10.22 kB │ gzip:   3.47 kB
+dist/assets/Schedule-B8Lj8ROg.js                10.81 kB │ gzip:   3.59 kB
+dist/assets/PudgeStats-uglOgCs9.js              10.96 kB │ gzip:   3.43 kB
+dist/assets/PositionStats-RM7SCpv9.js           11.05 kB │ gzip:   3.03 kB
+dist/assets/Upload-9D-Sx6Nt.js                  11.42 kB │ gzip:   4.05 kB
+dist/assets/PlayerTools-QkpqZZrM.js             11.93 kB │ gzip:   3.46 kB
+dist/assets/Predictions-BMdOjWJF.js             12.98 kB │ gzip:   4.10 kB
+dist/assets/StatsEditor-BE43LgK2.js             13.33 kB │ gzip:   4.06 kB
+dist/assets/WeekendTournament-CggroQhO.js       14.01 kB │ gzip:   4.80 kB
+dist/assets/ProfileDemo-5aUHv6bS.js             14.55 kB │ gzip:   4.13 kB
+dist/assets/Records-D5DJTtPy.js                 15.37 kB │ gzip:   4.61 kB
+dist/assets/DraftSandbox-Dg35JbDp.js            16.83 kB │ gzip:   4.99 kB
+dist/assets/Players-D5GWr8pc.js                 16.91 kB │ gzip:   5.33 kB
+dist/assets/MagazineCover-DpqbSVr4.js           17.90 kB │ gzip:   5.65 kB
+dist/assets/Draft-Cr48rw7X.js                   20.07 kB │ gzip:   5.07 kB
+dist/assets/Leaderboard-DgKIJn2o.js             20.20 kB │ gzip:   5.93 kB
+dist/assets/ProfileSandbox-BgL7TF7i.js          23.05 kB │ gzip:   6.81 kB
+dist/assets/Seasons-DijTeSmS.js                 25.45 kB │ gzip:   6.51 kB
+dist/assets/Heroes-Dmme6HuH.js                  28.77 kB │ gzip:   8.61 kB
+dist/assets/Home-NwYkdXSu.js                    33.90 kB │ gzip:   8.31 kB
+dist/assets/SettingsProfile-D_XBrGX3.js         36.17 kB │ gzip:   9.50 kB
+dist/assets/Tournaments-C3Ajv-Mb.js             37.69 kB │ gzip:   9.91 kB
+dist/assets/Inhouse-Cnd_PnFl.js                 56.85 kB │ gzip:  14.76 kB
+dist/assets/PlayerProfile-io4BEPp2.js           87.81 kB │ gzip:  22.22 kB
+dist/assets/MatchDetail-BDKHcP_I.js            114.08 kB │ gzip:  32.02 kB
+dist/assets/AdminPanel-W4WeW64Z.js             149.86 kB │ gzip:  35.40 kB
+dist/assets/index-BNH3vo77.js                  255.92 kB │ gzip:  77.63 kB
+dist/assets/LineChart-BKLFdGe-.js              350.83 kB │ gzip: 104.50 kB
+✓ built in 22.49s
+==> Restarting bot...
+[PM2] Applying action restartProcessId on app [oi-bot](ids: [ 1 ])
+[PM2] [oi-bot](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ inhouse-bot        │ fork     │ 4    │ online    │ 4.5%     │ 288.0mb  │
+│ 1  │ oi-bot             │ fork     │ 112  │ online    │ 0%       │ 18.4mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+
+✓ Deploy complete.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ inhouse-bot        │ fork     │ 4    │ online    │ 0%       │ 288.1mb  │
+│ 1  │ oi-bot             │ fork     │ 112  │ online    │ 200%     │ 59.9mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+root@Dota-Stats:~/Dota-Stats-Full# 
