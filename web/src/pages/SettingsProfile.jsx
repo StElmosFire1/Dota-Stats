@@ -16,11 +16,23 @@ import {
 } from '../profileCosmetics';
 import { Link } from 'react-router-dom';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
+import { createVoicePackPlayer, VOICE_PACK_EVENTS } from '../lib/voicePack';
 import VanitySlugPicker from '../components/VanitySlugPicker';
 import { oauthErrorMessage } from '../components/DiscordLinkModal';
 import ProfileCard from '../components/ProfileCard';
 import MagazineCover from '../components/MagazineCover';
 import '../components/MagazineCover.css';
+
+// Task #232 — short labels for each event slot used by the per-event
+// "Play sample" buttons under each voice pack on the cosmetics picker.
+const VOICE_EVENT_LABELS = {
+  'match-start': 'Match start',
+  'first-blood': 'First blood',
+  'win': 'Win',
+  'loss': 'Loss',
+  'level-up': 'Level up',
+  'achievement-unlock': 'Achievement',
+};
 
 // Compact, dependency-free UI for editing /settings/profile. Renders three
 // sections (basics / cosmetics / pins) plus a live preview card. The premium
@@ -333,8 +345,15 @@ export default function SettingsProfile() {
   // v6.62 / Task #206 — selected Pro voice pack (or '' for the default
   // church-bell chime).
   const [selectedVoicePack, setSelectedVoicePack] = useState('');
-  // Per-pack <Audio> cache used by the "Preview" button below the picker.
-  const voicePreviewElsRef = useRef(new Map());
+  // Task #232 — shared voice-pack player. One instance per page mount; the
+  // helper keeps a per-`${pack}|${event}` audio cache + 404-fallback so the
+  // per-event "Play sample" buttons below behave identically to the live
+  // inhouse-lobby + post-match cues. Honours the `inhouse:muted` localStorage
+  // toggle (read on each click) so a muted user doesn't get surprise audio.
+  const voicePlayerRef = useRef(null);
+  if (typeof window !== 'undefined' && !voicePlayerRef.current) {
+    voicePlayerRef.current = createVoicePackPlayer();
+  }
   const [ownedFrames, setOwnedFrames] = useState([]);
   const [framePurchaseLoading, setFramePurchaseLoading] = useState(null);
   const [framePurchaseError, setFramePurchaseError] = useState(null);
@@ -818,32 +837,43 @@ export default function SettingsProfile() {
                         {meta.sub}
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      aria-label={`Preview ${meta.label} voice pack`}
-                      onClick={() => {
-                        try {
-                          const key = `${p}|match-start`;
-                          let el = voicePreviewElsRef.current.get(key);
-                          if (!el) {
-                            el = new Audio(`/voice-packs/${encodeURIComponent(p)}/match-start.mp3`);
-                            el.preload = 'auto';
-                            el.volume = 0.85;
-                            voicePreviewElsRef.current.set(key, el);
-                          }
-                          el.currentTime = 0;
-                          const pr = el.play();
-                          if (pr && typeof pr.then === 'function') pr.catch(() => {});
-                        } catch (_) { /* ignore */ }
-                      }}
-                      style={{
-                        fontSize: 11, padding: '4px 8px', borderRadius: 6,
-                        background: 'transparent', border: '1px solid var(--border)',
-                        color: 'var(--text-muted)', cursor: 'pointer',
-                      }}
-                    >
-                      ▶ Preview
-                    </button>
+                    {/* Task #232 — one "Play sample" button per event slot
+                        so a user can audition the full pack from the picker
+                        without joining a real lobby or playing a match.
+                        Previews stay enabled for Pro-locked packs so non-Pro
+                        users can audition before buying — only the SELECT
+                        button above is gated. Honours the inhouse:muted
+                        toggle (read at click time) and routes through the
+                        shared createVoicePackPlayer from lib/voicePack so
+                        behaviour stays identical to the live inhouse +
+                        post-match cues. */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {VOICE_PACK_EVENTS.map(ev => (
+                        <button
+                          key={ev}
+                          type="button"
+                          aria-label={`Play ${meta.label} ${VOICE_EVENT_LABELS[ev] || ev} sample`}
+                          title={`Play ${VOICE_EVENT_LABELS[ev] || ev} sample`}
+                          onClick={() => {
+                            try {
+                              const muted = typeof window !== 'undefined'
+                                && window.localStorage
+                                && window.localStorage.getItem('inhouse:muted') === '1';
+                              if (muted) return;
+                              if (!voicePlayerRef.current) return;
+                              voicePlayerRef.current.play({ pack: p, event: ev });
+                            } catch (_) { /* ignore — preview is best-effort */ }
+                          }}
+                          style={{
+                            fontSize: 11, padding: '3px 7px', borderRadius: 6,
+                            background: 'transparent', border: '1px solid var(--border)',
+                            color: 'var(--text-muted)', cursor: 'pointer',
+                          }}
+                        >
+                          ▶ {VOICE_EVENT_LABELS[ev] || ev}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 );
               })}

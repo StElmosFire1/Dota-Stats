@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.80",
+    "title": "Audition every voice-pack line from your profile settings",
+    "published_at": "2026-05-09",
+    "content": "Task #232: the voice-pack picker on /settings/profile only let you preview the `match-start.mp3` cue per pack — every other slot (first-blood, win, loss, level-up, achievement-unlock) was effectively a black box until you joined a real inhouse lobby (for match-start) or actually played a match (for the post-match cues from Task #217). That made the Pro voice-pack upsell hard to evaluate without committing.\n\nv6.80 swaps the single ▶ Preview button under each pack for a row of six per-event ▶ buttons, one for each slot in `VOICE_PACK_EVENTS` (Match start / First blood / Win / Loss / Level up / Achievement). Click any button to hear the corresponding `web/public/voice-packs/<pack>/<event>.mp3` for that pack. Preview buttons stay enabled even on Pro-locked packs so non-Pro users can audition the full lineup before buying — only the SELECT button above each pack remains gated by the Pro entitlement check.\n\nPlayback routes through the shared `createVoicePackPlayer()` helper from `web/src/lib/voicePack.js` (Task #217), so the page reuses the exact per-`${pack}|${event}` audio cache + 404-fallback shape used by the live inhouse-lobby cues (`useInhouseAlerts.js`) and the global post-match cues (`useVoicePackEvents.js`) — a missing slot fails once and is silently skipped on subsequent clicks. Each button reads `localStorage['inhouse:muted']` at click time so a muted user doesn't get surprise audio from the picker, mirroring the rest of the voice-pack pipeline. Buttons are real `<button type=\"button\">` elements with explicit `aria-label` (e.g. 'Play Captain Calls First blood sample'), so they pass the keyboard-reachability + a11y house rule and the existing `npm run check:a11y` gate stays green.",
+    "author": "System"
+  },
+  {
     "version": "6.79",
     "title": "Live-presence rollup is locked down by unit tests",
     "published_at": "2026-05-09",
