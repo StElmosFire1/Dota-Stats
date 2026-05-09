@@ -7561,12 +7561,24 @@ NOTES
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       const updates = req.body?.updates;
-      if (!Array.isArray(updates)) return res.status(400).json({ error: 'updates must be an array of {category, enabled}' });
+      if (!Array.isArray(updates)) return res.status(400).json({ error: 'updates must be an array of {category, enabled, value?}' });
       for (const u of updates) {
         if (!u || typeof u.category !== 'string' || typeof u.enabled !== 'boolean') {
-          return res.status(400).json({ error: 'each update must be {category: string, enabled: boolean}' });
+          return res.status(400).json({ error: 'each update must be {category: string, enabled: boolean, value?: number}' });
         }
-        await db.setNotificationPref(accountId, u.category, u.enabled);
+        // Task #189 — optional `value` for tunable categories (e.g. the
+        // inhouse_pick_warning lead-time). Validation happens inside
+        // db.setNotificationPref() against the category's value_options.
+        try {
+          await db.setNotificationPref(accountId, u.category, u.enabled, u.value);
+        } catch (e) {
+          // Task #189 — only client-input errors come back as 400; let
+          // unexpected DB/internal failures bubble to the outer 500.
+          if (e instanceof db.NotificationPrefValidationError) {
+            return res.status(400).json({ error: e.message });
+          }
+          throw e;
+        }
       }
       const prefs = await db.getNotificationPrefs(accountId);
       res.json({ ok: true, categories: prefs });

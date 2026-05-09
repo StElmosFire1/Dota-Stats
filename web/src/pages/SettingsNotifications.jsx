@@ -16,7 +16,7 @@ const CATEGORY_LABELS = {
   coaching_booking_confirmed: { title: 'Coaching: booking confirmed', desc: 'DM when one of your coaching bookings is paid and locked in.' },
   coaching_session_reminder:  { title: 'Coaching: session reminder',  desc: 'DM ~1 hour before a scheduled coaching session.' },
   coaching_review_request:    { title: 'Coaching: review request',    desc: 'DM after a completed session asking you to leave a review.' },
-  inhouse_pick_warning:       { title: 'Inhouse: 10s pick warning',  desc: 'Chime + browser notification when you\u2019re the captain on the clock and the per-pick timer is about to auto-pick for you.' },
+  inhouse_pick_warning:       { title: 'Inhouse: pick warning',     desc: 'Chime + browser notification when you\u2019re the captain on the clock and the per-pick timer is about to auto-pick for you. Use the lead-time selector to control how early it fires.' },
 };
 
 function humaniseCategory(key) {
@@ -92,6 +92,28 @@ export default function SettingsNotifications() {
         body: JSON.stringify({ updates: [{ category, enabled: nextEnabled }] }),
       });
       if (!res.ok) throw new Error('Save failed');
+      const data = await res.json();
+      setPrefs(data.categories || []);
+    } catch (e) { setError(e.message); }
+    setSaving(false);
+  };
+
+  // Task #189 — persist a tunable value (e.g. inhouse_pick_warning lead
+  // time in seconds) without changing the on/off state. The server merges
+  // the value into the existing row, so passing the current `enabled`
+  // here keeps the toggle untouched.
+  const setPrefValue = async (category, currentEnabled, nextValue) => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/me/notifications', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: [{ category, enabled: currentEnabled, value: nextValue }] }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || 'Save failed');
+      }
       const data = await res.json();
       setPrefs(data.categories || []);
     } catch (e) { setError(e.message); }
@@ -191,26 +213,47 @@ export default function SettingsNotifications() {
       {!loading && prefs.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
           {prefs.map(p => {
-            const meta = CATEGORY_LABELS[p.category] || { title: humaniseCategory(p.category), desc: '' };
+            // Server returns { key, label, enabled, ... }; tolerate the
+            // legacy `category` shape too just in case.
+            const cat = p.key || p.category;
+            const meta = CATEGORY_LABELS[cat] || { title: humaniseCategory(cat), desc: '' };
             return (
-              <div key={p.category} style={{
+              <div key={cat} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '12px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)',
-                borderRadius: 8,
+                borderRadius: 8, gap: 12, flexWrap: 'wrap',
               }}>
-                <div>
+                <div style={{ minWidth: 0, flex: '1 1 240px' }}>
                   <div style={{ fontWeight: 600 }}>{meta.title}</div>
                   <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{meta.desc}</div>
                 </div>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!p.enabled}
-                    disabled={saving}
-                    onChange={(e) => togglePref(p.category, e.target.checked)}
-                  />
-                  <span style={{ fontSize: 13 }}>{p.enabled ? 'On' : 'Off'}</span>
-                </label>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  {/* Task #189 — tunable-value selector (e.g. pick-warning lead time). */}
+                  {Array.isArray(p.value_options) && p.value_options.length > 0 && (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Lead time</span>
+                      <select
+                        value={p.value ?? p.value_default ?? p.value_options[0]}
+                        disabled={saving || !p.enabled}
+                        onChange={(e) => setPrefValue(cat, p.enabled, Number(e.target.value))}
+                        aria-label={`${meta.title} lead time`}
+                      >
+                        {p.value_options.map(v => (
+                          <option key={v} value={v}>{v}{p.value_unit || ''}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!p.enabled}
+                      disabled={saving}
+                      onChange={(e) => togglePref(cat, e.target.checked)}
+                    />
+                    <span style={{ fontSize: 13 }}>{p.enabled ? 'On' : 'Off'}</span>
+                  </label>
+                </div>
               </div>
             );
           })}

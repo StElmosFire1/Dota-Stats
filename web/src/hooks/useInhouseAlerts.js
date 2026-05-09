@@ -30,10 +30,11 @@ const NOTIF_TITLES = {
   captain:        'Inhouse — you are a captain',
   'your-pick':    'Inhouse — your pick',
   'match-ready':  'Inhouse — match is ready',
-  // Task #178 — fired ~10s before the per-pick auto-pick deadline so a
-  // captain who tabbed away has a chance to come back before the ticker
-  // picks for them.
-  'pick-warning': 'Inhouse — 10s left to pick',
+  // Task #178 — fired before the per-pick auto-pick deadline so a captain
+  // who tabbed away has a chance to come back before the ticker picks
+  // for them. Title's lead-time digit is filled in dynamically from the
+  // user's pref (Task #189).
+  'pick-warning': 'Inhouse — pick warning',
 };
 
 const NOTIF_BODIES = {
@@ -44,9 +45,11 @@ const NOTIF_BODIES = {
   'pick-warning': 'Pick now or the timer will auto-pick for you.',
 };
 
-// Task #178 — fire the pre-deadline warning when the on-the-clock captain
-// has this many milliseconds (or fewer) left on their per-pick budget.
-const PICK_WARNING_LEAD_MS = 10000;
+// Task #178 — default pre-deadline lead time (ms) when the captain has
+// not chosen a custom value via /settings/notifications. Task #189 lets
+// users override this per account from {5, 10, 15, 20} seconds.
+const DEFAULT_PICK_WARNING_LEAD_MS = 10000;
+const ALLOWED_PICK_WARNING_LEADS_MS = [5000, 10000, 15000, 20000];
 
 function readMuted() {
   try { return window.localStorage.getItem(STORAGE_KEY) === '1'; }
@@ -135,13 +138,17 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
   const [pickWarningEnabled, setPickWarningEnabled] = useState(
     () => (typeof window === 'undefined' ? true : null)
   );
+  // Task #189 — user-tunable lead time (ms) for the pick warning. Loaded
+  // alongside the on/off pref; defaults to 10s when the pref is missing
+  // or out of range.
+  const [pickWarningLeadMs, setPickWarningLeadMs] = useState(DEFAULT_PICK_WARNING_LEAD_MS);
 
   const setMuted = useCallback((v) => {
     setMutedState(v);
     writeMuted(v);
   }, []);
 
-  const fire = useCallback((kind) => {
+  const fire = useCallback((kind, opts) => {
     // v5.92: the mute toggle ONLY silences the audible chime — browser
     // notifications still fire so a player who muted the page tab can
     // still see the OS-level toast for an accept/draft/match-ready event.
@@ -193,9 +200,10 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     }
     // Browser notification (best-effort, always attempted).
     if (typeof window !== 'undefined' && 'Notification' in window) {
+      const title = (opts && opts.title) || NOTIF_TITLES[kind] || 'Inhouse alert';
       const send = () => {
         try {
-          new Notification(NOTIF_TITLES[kind] || 'Inhouse alert', {
+          new Notification(title, {
             body: NOTIF_BODIES[kind] || '',
             tag: `inhouse-${kind}`,
             icon: '/favicon.png',
@@ -248,13 +256,21 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     // Anonymous viewers can't be a captain, so leave the gate open
     // (matches the server-side fail-open behaviour of
     // `db.isNotificationEnabled`).
-    if (!myAccountId) { setPickWarningEnabled(true); return; }
+    if (!myAccountId) {
+      setPickWarningEnabled(true);
+      setPickWarningLeadMs(DEFAULT_PICK_WARNING_LEAD_MS);
+      return;
+    }
     let alive = true;
     fetch('/api/me/notifications', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (!alive) return;
-        if (!data?.categories) { setPickWarningEnabled(true); return; }
+        if (!data?.categories) {
+          setPickWarningEnabled(true);
+          setPickWarningLeadMs(DEFAULT_PICK_WARNING_LEAD_MS);
+          return;
+        }
         const row = data.categories.find(c =>
           (c.key || c.category) === 'inhouse_pick_warning'
         );
@@ -262,8 +278,19 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
         // overrides with its boolean. Either way we now have a
         // definitive answer and the tri-state flips off `null`.
         setPickWarningEnabled(row ? !!row.enabled : true);
+        // Task #189 — pick up the user-tunable lead time. Server returns
+        // it as `value` (seconds) for tunable categories; we clamp to
+        // the allowed set and fall back to 10s otherwise.
+        const secs = row && row.value != null ? Number(row.value) * 1000 : DEFAULT_PICK_WARNING_LEAD_MS;
+        setPickWarningLeadMs(
+          ALLOWED_PICK_WARNING_LEADS_MS.includes(secs) ? secs : DEFAULT_PICK_WARNING_LEAD_MS
+        );
       })
-      .catch(() => { if (alive) setPickWarningEnabled(true); });
+      .catch(() => {
+        if (!alive) return;
+        setPickWarningEnabled(true);
+        setPickWarningLeadMs(DEFAULT_PICK_WARNING_LEAD_MS);
+      });
     return () => { alive = false; };
   }, [myAccountId]);
 
@@ -331,16 +358,17 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     if (!Number.isFinite(deadlineMs)) return;
     const deadlineKey = `${session.id}|${deadlineRaw}`;
     if (pickWarningFiredFor.current === deadlineKey) return;
-    const fireAt = deadlineMs - PICK_WARNING_LEAD_MS;
+    const fireAt = deadlineMs - pickWarningLeadMs;
     const delay = fireAt - Date.now();
     // Skip if the deadline is already past or so close that the
     // auto-pick is essentially imminent (<1s) — at that point the
     // ticker is about to take the turn and a warning is just noise.
     if (deadlineMs - Date.now() < 1500) return;
+    const leadSecs = Math.round(pickWarningLeadMs / 1000);
     const trigger = () => {
       pickWarningTimerRef.current = null;
       pickWarningFiredFor.current = deadlineKey;
-      fire('pick-warning');
+      fire('pick-warning', { title: `Inhouse — ${leadSecs}s left to pick` });
     };
     if (delay <= 0) {
       // Already inside the warning window (page just loaded with <10s
@@ -355,7 +383,7 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
         pickWarningTimerRef.current = null;
       }
     };
-  }, [session, myAccountId, draftStatus, pickWarningEnabled, fire]);
+  }, [session, myAccountId, draftStatus, pickWarningEnabled, pickWarningLeadMs, fire]);
 
   return useMemo(
     () => ({ muted, setMuted, toggleMute: () => setMuted(!muted), testChime }),

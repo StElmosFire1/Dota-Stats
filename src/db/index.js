@@ -1393,6 +1393,11 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_notif_prefs_account ON notification_prefs (account_id)`);
+    // Task #189 — optional integer-valued tuning for a notification pref
+    // (currently used by `inhouse_pick_warning` to let captains pick the
+    // pre-deadline lead time in seconds: 5 / 10 / 15 / 20). Nullable so
+    // toggle-only categories continue to ignore it.
+    await p.query(`ALTER TABLE notification_prefs ADD COLUMN IF NOT EXISTS value_int INTEGER`);
 
     // F7 — Web push subscriptions: one row per (account_id, endpoint).
     // Endpoint is unique across the whole table because a single push
@@ -9564,8 +9569,25 @@ const NOTIFICATION_CATEGORIES = [
   // ticker takes their turn. No bot path consults this; the page reads
   // the pref over /api/me/notifications and silences the chime + browser
   // notification when the user has opted out.
-  { key: 'inhouse_pick_warning',       label: 'Inhouse: 10s pick warning (on the clock)', default: true },
+  // Task #189 — `value` extension: lead-time seconds before the per-pick
+  // deadline at which the warning fires. Allowed: 5/10/15/20. Default 10.
+  { key: 'inhouse_pick_warning',       label: 'Inhouse: pick warning (on the clock)', default: true,
+    value_default: 10, value_options: [5, 10, 15, 20], value_unit: 's' },
 ];
+
+function categoryDef(key) {
+  return NOTIFICATION_CATEGORIES.find(c => c.key === key) || null;
+}
+
+function coerceCategoryValue(category, raw) {
+  const def = categoryDef(category);
+  if (!def || !Array.isArray(def.value_options)) return null;
+  const n = Number(raw);
+  // Strict: only accept integer equality against the allowed option set.
+  // 10.9 is rejected rather than silently truncated to 10.
+  if (!Number.isInteger(n)) return null;
+  return def.value_options.includes(n) ? n : null;
+}
 
 async function isNotificationEnabled(accountId, category) {
   if (!accountId || !category) return true; // fail-open
@@ -9585,28 +9607,66 @@ async function isNotificationEnabled(accountId, category) {
 async function getNotificationPrefs(accountId) {
   const p = getPool();
   const r = await p.query(
-    `SELECT category, enabled FROM notification_prefs WHERE account_id = $1`,
+    `SELECT category, enabled, value_int FROM notification_prefs WHERE account_id = $1`,
     [accountId]
   );
   const map = {};
-  for (const row of r.rows) map[row.category] = !!row.enabled;
-  return NOTIFICATION_CATEGORIES.map(c => ({
-    key: c.key,
-    label: c.label,
-    enabled: c.key in map ? map[c.key] : c.default,
-  }));
+  for (const row of r.rows) map[row.category] = row;
+  return NOTIFICATION_CATEGORIES.map(c => {
+    const row = map[c.key];
+    const out = {
+      key: c.key,
+      // Back-compat alias: older clients keyed off `category` rather than
+      // `key`. Both fields are emitted during the compatibility window
+      // introduced in Task #189 so any unknown caller keeps working.
+      category: c.key,
+      label: c.label,
+      enabled: row ? !!row.enabled : c.default,
+    };
+    if (Array.isArray(c.value_options)) {
+      // Task #189 — surface tunable-value categories. The stored value
+      // wins if present and still legal; otherwise fall back to the
+      // category's documented default so old rows (no value_int) keep
+      // working transparently.
+      const stored = row && row.value_int != null ? Number(row.value_int) : null;
+      out.value = (stored != null && c.value_options.includes(stored))
+        ? stored
+        : c.value_default;
+      out.value_default = c.value_default;
+      out.value_options = c.value_options;
+      out.value_unit = c.value_unit || null;
+    }
+    return out;
+  });
 }
 
-async function setNotificationPref(accountId, category, enabled) {
+// Task #189 — error class so the HTTP layer can distinguish bad-input
+// failures (return 400) from transient/internal DB faults (bubble to 500).
+class NotificationPrefValidationError extends Error {
+  constructor(message) { super(message); this.name = 'NotificationPrefValidationError'; }
+}
+
+async function setNotificationPref(accountId, category, enabled, value) {
   const p = getPool();
   const known = NOTIFICATION_CATEGORIES.find(c => c.key === category);
-  if (!known) throw new Error(`Unknown notification category: ${category}`);
+  if (!known) throw new NotificationPrefValidationError(`Unknown notification category: ${category}`);
+  // Task #189 — only persist a `value_int` for categories that opt in to
+  // a tunable value via `value_options`. For other categories the column
+  // stays NULL so the existing toggle-only semantics are unchanged.
+  const coerced = (value === undefined || value === null)
+    ? null
+    : coerceCategoryValue(category, value);
+  if (value !== undefined && value !== null && coerced === null) {
+    throw new NotificationPrefValidationError(`Invalid value for notification category ${category}`);
+  }
   await p.query(
-    `INSERT INTO notification_prefs (account_id, category, enabled, updated_at)
-     VALUES ($1,$2,$3,NOW())
+    `INSERT INTO notification_prefs (account_id, category, enabled, value_int, updated_at)
+     VALUES ($1,$2,$3,$4,NOW())
      ON CONFLICT (account_id, category)
-     DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()`,
-    [accountId, category, !!enabled]
+     DO UPDATE SET enabled = EXCLUDED.enabled,
+                   value_int = COALESCE(EXCLUDED.value_int, notification_prefs.value_int),
+                   updated_at = NOW()`,
+    [accountId, category, !!enabled, coerced]
   );
   return true;
 }
@@ -11352,6 +11412,7 @@ module.exports = {
   isNotificationEnabled,
   getNotificationPrefs,
   setNotificationPref,
+  NotificationPrefValidationError,
   getTournamentLive,
   setTournamentPrizeSplit,
   getMvpAttitudeTrends,
