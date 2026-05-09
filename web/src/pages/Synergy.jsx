@@ -64,20 +64,26 @@ function Heatmap({ data, mode, tooltip, setTooltip }) {
                     return <td key={ci} className="heatmap-cell empty"></td>;
                   }
                   const wr = Math.round((cell.wins / cell.games) * 100);
+                  const cellData = {
+                    playerA: rowPlayer.name,
+                    playerB: colPlayer.name,
+                    wins: cell.wins,
+                    games: cell.games,
+                    winRate: wr,
+                    mode,
+                  };
+                  const ariaLabel = `${rowPlayer.name} ${mode === 'enemies' ? 'vs' : 'with'} ${colPlayer.name}: ${cell.wins} wins of ${cell.games} games, ${wr}% win rate`;
                   return (
                     <td
                       key={ci}
                       className="heatmap-cell"
                       style={{ backgroundColor: getWinRateColor(wr), color: getTextColor(wr) }}
-                      onMouseEnter={(e) => handleMouseEnter(e, {
-                        playerA: rowPlayer.name,
-                        playerB: colPlayer.name,
-                        wins: cell.wins,
-                        games: cell.games,
-                        winRate: wr,
-                        mode,
-                      })}
+                      tabIndex={0}
+                      aria-label={ariaLabel}
+                      onMouseEnter={(e) => handleMouseEnter(e, cellData)}
                       onMouseLeave={handleMouseLeave}
+                      onFocus={(e) => handleMouseEnter(e, cellData)}
+                      onBlur={handleMouseLeave}
                     >
                       {wr}%
                     </td>

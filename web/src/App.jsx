@@ -102,8 +102,15 @@ function HealthDot() {
   return (
     <span
       style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 10, cursor: 'default' }}
+      tabIndex={0}
+      role="button"
+      aria-label={`System status: ${tooltip || 'No data'}`}
+      aria-expanded={show}
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
+      onFocus={() => setShow(true)}
+      onBlur={() => setShow(false)}
+      onKeyDown={(e) => { if (e.key === 'Escape') setShow(false); }}
     >
       <span style={{
         width: 9, height: 9, borderRadius: '50%',
@@ -353,17 +360,30 @@ function DropdownMenu({ label, children }) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   useEffect(() => setOpen(false), [location]);
+  const handleBlur = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+  };
   return (
     <span
       style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={handleBlur}
+      onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
     >
-      <span className="nav-link" style={{ cursor: 'pointer', userSelect: 'none', display: 'inline-flex', alignItems: 'center' }}>
+      <span
+        className="nav-link"
+        role="button"
+        tabIndex={0}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        style={{ cursor: 'pointer', userSelect: 'none', display: 'inline-flex', alignItems: 'center' }}
+      >
         {label} <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
       </span>
       {open && (
-        <div style={{
+        <div role="menu" style={{
           position: 'absolute', top: '100%', left: 0,
           background: 'var(--bg-card)', border: '1px solid var(--border)',
           borderRadius: 8, padding: '6px 0', minWidth: 160, zIndex: 1000,

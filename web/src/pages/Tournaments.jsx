@@ -203,6 +203,8 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin, participants 
           key={idx}
           onMouseEnter={() => setHoveredIdx(idx)}
           onMouseLeave={() => setHoveredIdx(null)}
+          onFocus={() => setHoveredIdx(idx)}
+          onBlur={() => setHoveredIdx(null)}
           onClick={pickWinner}
           onKeyDown={(e) => {
             if (canPickWinner && (e.key === 'Enter' || e.key === ' ')) {

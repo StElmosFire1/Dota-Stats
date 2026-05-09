@@ -118,6 +118,8 @@ function PlayerCard({ p, onPick, disabled, picked, team }) {
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={() => setHover(true)}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setHover(false); }}
       style={{
       position: 'relative',
       display: 'flex', alignItems: 'center', gap: 12,
