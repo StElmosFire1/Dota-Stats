@@ -1123,6 +1123,31 @@ async function init() {
     // Task #205 — live presence chip opt-out. Default true (opt-in for all
     // Discord-linked accounts). Honoured server-side by presenceService.
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS presence_visible BOOLEAN NOT NULL DEFAULT TRUE`);
+    // Task #207 / v6.63 — Magazine v3 Cover FX (Pro). JSONB array of
+    // allow-listed effect ids (see COVER_FX_IDS in src/profileCosmetics.js).
+    // Validated + Pro-gated server-side at /api/me/profile.
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS cover_fx JSONB NOT NULL DEFAULT '[]'::jsonb`);
+
+    // Task #207 / v6.63 — Generic one-time entitlements table. First SKU is
+    // 'founders_pass_ring' (limited-edition cover ornament). The cap is
+    // enforced server-side at checkout init AND re-checked under a
+    // transaction in the Stripe webhook so concurrent buys can't exceed it.
+    // metadata JSONB carries optional extras (e.g. stripe_session_id, grant
+    // reason for admin-issued rows). UNIQUE(account_id, sku) makes the
+    // INSERT … ON CONFLICT DO NOTHING idempotent across retries.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS entitlements (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        sku TEXT NOT NULL,
+        granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        granted_by TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        UNIQUE(account_id, sku)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_entitlements_account ON entitlements(account_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_entitlements_sku ON entitlements(sku)`);
 
     // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
     // status: 'pending' (checkout created), 'active' (paid via webhook),
@@ -10288,13 +10313,14 @@ async function getPlayerProfileCustomization(accountId) {
     `SELECT id, account_id, bio, custom_title, theme_accent,
             pinned_hero_id, pinned_hero_caption, pinned_match_id,
             profile_frame, profile_layout_theme, selected_voice_pack, extras,
-            pinned_achievements, created_at, updated_at
+            pinned_achievements, cover_fx, created_at, updated_at
        FROM player_profiles
       WHERE account_id = $1`,
     [accountId]
   );
   const row = r.rows[0] || null;
   if (row && !Array.isArray(row.pinned_achievements)) row.pinned_achievements = [];
+  if (row && !Array.isArray(row.cover_fx)) row.cover_fx = [];
   return row;
 }
 
@@ -10315,19 +10341,22 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
     selected_voice_pack = null,
     extras = null,
     pinned_achievements = null,
+    cover_fx = null,
   } = fields;
   const pinnedAchJson = Array.isArray(pinned_achievements)
     ? JSON.stringify(pinned_achievements)
     : null;
+  const coverFxJson = Array.isArray(cover_fx) ? JSON.stringify(cover_fx) : null;
   const r = await p.query(
     `INSERT INTO player_profiles
        (account_id, bio, custom_title, theme_accent,
         pinned_hero_id, pinned_hero_caption, pinned_match_id,
         profile_frame, profile_layout_theme, selected_voice_pack, extras,
-        pinned_achievements, updated_at)
+        pinned_achievements, cover_fx, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
              COALESCE($11::jsonb, '{}'::jsonb),
-             COALESCE($12::jsonb, '[]'::jsonb), NOW())
+             COALESCE($12::jsonb, '[]'::jsonb),
+             COALESCE($13::jsonb, '[]'::jsonb), NOW())
      ON CONFLICT (account_id) DO UPDATE
        SET bio = EXCLUDED.bio,
            custom_title = EXCLUDED.custom_title,
@@ -10340,16 +10369,131 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
            selected_voice_pack = EXCLUDED.selected_voice_pack,
            extras = EXCLUDED.extras,
            pinned_achievements = EXCLUDED.pinned_achievements,
+           cover_fx = EXCLUDED.cover_fx,
            updated_at = NOW()
      RETURNING id, account_id, bio, custom_title, theme_accent,
                pinned_hero_id, pinned_hero_caption, pinned_match_id,
                profile_frame, profile_layout_theme, selected_voice_pack, extras,
-               pinned_achievements, created_at, updated_at`,
-    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, profile_layout_theme, selected_voice_pack, extras ? JSON.stringify(extras) : null, pinnedAchJson]
+               pinned_achievements, cover_fx, created_at, updated_at`,
+    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, profile_layout_theme, selected_voice_pack, extras ? JSON.stringify(extras) : null, pinnedAchJson, coverFxJson]
   );
   const row = r.rows[0];
   if (row && !Array.isArray(row.pinned_achievements)) row.pinned_achievements = [];
+  if (row && !Array.isArray(row.cover_fx)) row.cover_fx = [];
   return row;
+}
+
+// ---------- Entitlements (Task #207 / v6.63) ----------
+// Generic one-time entitlement table. First SKU is 'founders_pass_ring'.
+async function getOwnedEntitlements(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT sku FROM entitlements WHERE account_id = $1`,
+    [accountId]
+  );
+  return r.rows.map(row => row.sku);
+}
+
+async function hasEntitlement(accountId, sku) {
+  if (!accountId || !sku) return false;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT 1 FROM entitlements WHERE account_id = $1 AND sku = $2 LIMIT 1`,
+    [accountId, sku]
+  );
+  return r.rows.length > 0;
+}
+
+async function countEntitlementHolders(sku) {
+  if (!sku) return 0;
+  const p = getPool();
+  const r = await p.query(`SELECT COUNT(*)::int AS n FROM entitlements WHERE sku = $1`, [sku]);
+  return r.rows[0]?.n || 0;
+}
+
+async function listEntitlementHolders(sku, limit = 500) {
+  if (!sku) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT account_id, granted_at, granted_by, metadata
+       FROM entitlements
+      WHERE sku = $1
+      ORDER BY granted_at ASC
+      LIMIT $2`,
+    [sku, Math.min(Math.max(parseInt(limit, 10) || 500, 1), 5000)]
+  );
+  return r.rows;
+}
+
+// Cap-aware grant. Returns { ok, granted, reason }. Wraps the cap check and
+// the insert in a single transaction so concurrent buys can't exceed `cap`.
+// `cap = 0` (or null) means uncapped.
+async function grantEntitlementWithCap({ accountId, sku, cap, grantedBy = null, metadata = null }) {
+  if (!accountId || !sku) throw new Error('grantEntitlementWithCap: accountId + sku required');
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    // v6.63 / Task #207 — concurrency-safe cap enforcement.
+    //
+    // PostgreSQL uses snapshot isolation by default, so a naive
+    // `SELECT COUNT(*) ... ; INSERT ...` pair inside a transaction is
+    // STILL racy: two concurrent webhook fires can both observe
+    // count=199 and both insert, blowing past the cap. The fix is a
+    // per-SKU `pg_advisory_xact_lock` taken at the very top of the tx.
+    // The lock is keyed on `hashtext(sku)` so each SKU gets its own
+    // serialization point (no contention across SKUs), is held until
+    // COMMIT/ROLLBACK, and is automatically released on connection
+    // drop — so a crashed worker can never wedge the cap forever.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [sku]);
+    // Idempotent — if the user already owns it, succeed without touching cap.
+    const ex = await client.query(
+      `SELECT 1 FROM entitlements WHERE account_id = $1 AND sku = $2 LIMIT 1`,
+      [accountId, sku]
+    );
+    if (ex.rows.length > 0) {
+      await client.query('COMMIT');
+      return { ok: true, granted: false, reason: 'already_owned' };
+    }
+    if (cap && cap > 0) {
+      // The COUNT runs while we hold the per-SKU advisory lock, so
+      // any concurrent grant for the same SKU is blocked here until
+      // we COMMIT/ROLLBACK — the count + insert pair is now atomic
+      // with respect to other grant_with_cap callers.
+      const cnt = await client.query(
+        `SELECT COUNT(*)::int AS n FROM entitlements WHERE sku = $1`,
+        [sku]
+      );
+      if ((cnt.rows[0]?.n || 0) >= cap) {
+        await client.query('ROLLBACK');
+        return { ok: false, granted: false, reason: 'cap_reached' };
+      }
+    }
+    await client.query(
+      `INSERT INTO entitlements (account_id, sku, granted_by, metadata)
+       VALUES ($1, $2, $3, COALESCE($4::jsonb, '{}'::jsonb))
+       ON CONFLICT (account_id, sku) DO NOTHING`,
+      [accountId, sku, grantedBy, metadata ? JSON.stringify(metadata) : null]
+    );
+    await client.query('COMMIT');
+    return { ok: true, granted: true, reason: null };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function revokeEntitlement(accountId, sku) {
+  if (!accountId || !sku) return false;
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM entitlements WHERE account_id = $1 AND sku = $2`,
+    [accountId, sku]
+  );
+  return r.rowCount > 0;
 }
 
 // ---------- Onboarding ----------
@@ -10546,9 +10690,14 @@ async function getPlayerProfileCard(accountId) {
     }
   }
 
+  // v6.63 / Task #207 — surface owned one-time entitlements (e.g. founders
+  // pass ring) so the profile renderer can decide whether to draw the cover
+  // ring ornament.
+  const owned_entitlements = await getOwnedEntitlements(accountId);
   return {
     ...base,
     pinned_match: pinnedMatch,
+    owned_entitlements,
   };
 }
 
@@ -11810,6 +11959,13 @@ module.exports = {
   getPlayerProfileCustomization,
   setPlayerProfileCustomization,
   getPlayerProfileCard,
+  // v6.63 / Task #207 — entitlements
+  getOwnedEntitlements,
+  hasEntitlement,
+  countEntitlementHolders,
+  listEntitlementHolders,
+  grantEntitlementWithCap,
+  revokeEntitlement,
   createGiftCheckout,
   confirmGiftCheckout,
   getGiftHistory,

@@ -1574,3 +1574,9 @@ export const setMyPresenceVisibility = (visible) =>
 export const createVerifiedBadgeCheckout = (provider, handle) =>
   _postJson('/verified/checkout', { provider, handle });
 
+
+// v6.63 / Task #207 — Founders Pass ring (one-time SKU, capped).
+export const getFoundersRingStatus = () =>
+  _getJson('/shop/founders-ring/status').catch(() => ({ owned: false, sold_out: true }));
+export const buyFoundersRingCheckout = () =>
+  _postJson('/shop/founders-ring/checkout');

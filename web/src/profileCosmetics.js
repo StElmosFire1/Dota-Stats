@@ -125,6 +125,39 @@ export function isValidVoicePack(p) {
   return ALL_VOICE_PACKS.includes(p);
 }
 
+// v6.63 / Task #207 — Cover FX (Pro). Six animated effects mirror the
+// server-side catalogue in src/profileCosmetics.js. Stored as a JSONB array
+// on player_profiles.cover_fx; settings UI calls validateCoverFx() to
+// canonicalise the array before saving.
+export const COVER_FX_IDS = ['shimmer', 'kenburns', 'parallax', 'particle', 'vignette-pulse', 'streak-glow'];
+export const COVER_FX_META = {
+  shimmer:          { label: 'Shimmer sweep',     sub: 'Slow gold light pass over the cover',          motion: true  },
+  kenburns:         { label: 'Ken Burns',         sub: 'Subtle zoom + drift on the hero backdrop',     motion: true  },
+  parallax:         { label: 'Parallax depth',    sub: 'Background layer drifts on scroll',            motion: true  },
+  particle:         { label: 'Particle drift',    sub: 'Soft amber motes float upward',                motion: true  },
+  'vignette-pulse': { label: 'Vignette pulse',    sub: 'Edge vignette breathes around the cover',      motion: true  },
+  'streak-glow':    { label: 'Streak glow',       sub: 'Accent halo around the streak / flair pills',  motion: false },
+};
+export function isValidCoverFxId(id) { return COVER_FX_IDS.includes(id); }
+export function validateCoverFx(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const v of raw) {
+    if (typeof v !== 'string') continue;
+    if (!isValidCoverFxId(v)) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+    if (out.length >= COVER_FX_IDS.length) break;
+  }
+  return out;
+}
+
+// v6.63 / Task #207 — Founders Pass entitlement SKU id used by the shop
+// and the cover ring renderer. Mirror of src/profileCosmetics.js.
+export const FOUNDERS_RING_SKU = 'founders_pass_ring';
+
 export const DEFAULT_THEME = FREE_THEMES[0];
 export const DEFAULT_FRAME = 'none';
 

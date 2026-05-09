@@ -101,6 +101,9 @@ export default function MagazineCover({
   flair,
   nameAdornments,
   presence,
+  // v6.63 / Task #207 — Founders Pass ring + Cover FX (Pro toggles).
+  foundersRing = false,
+  coverFx = [],
 }) {
   // Sticky header visibility — driven by IntersectionObserver on the cover.
   const coverRef = useRef(null);
@@ -180,11 +183,39 @@ export default function MagazineCover({
         {stuck && <Link to="/players" className="v3-sticky-cta">All players</Link>}
       </div>
 
-      <div ref={coverRef} className="v3-cover" data-account-id={accountId}>
+      <div
+        ref={coverRef}
+        className={`v3-cover${foundersRing ? ' v3-cover-founders' : ''}`}
+        data-account-id={accountId}
+        data-cover-fx={(Array.isArray(coverFx) ? coverFx : []).join(' ') || null}
+      >
         {bgUrl && (
-          <img className="v3-cover-bg" src={bgUrl} alt={heroName ? `${heroName} backdrop` : ''} />
+          <img
+            className={`v3-cover-bg${(coverFx || []).includes('kenburns') ? ' v3-fx-kenburns' : ''}${(coverFx || []).includes('parallax') ? ' v3-fx-parallax' : ''}`}
+            src={bgUrl}
+            alt={heroName ? `${heroName} backdrop` : ''}
+          />
         )}
         <div className="v3-cover-overlay" />
+        {foundersRing && (
+          // v6.63 / Task #207 — purely decorative Founders Pass ring. The
+          // <span> sits above the overlay but below the cover content so
+          // pointer-events stay on the underlying CTAs. aria-hidden because
+          // the ownership status is already surfaced elsewhere (shop page +
+          // settings panel) and an extra "ring" announcement adds no value.
+          <span className="v3-founders-ring" aria-hidden="true" />
+        )}
+        {(coverFx || []).includes('vignette-pulse') && (
+          <span className="v3-fx-vignette" aria-hidden="true" />
+        )}
+        {(coverFx || []).includes('shimmer') && (
+          <span className="v3-fx-shimmer" aria-hidden="true" />
+        )}
+        {(coverFx || []).includes('particle') && (
+          <span className="v3-fx-particles" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i /><i /><i />
+          </span>
+        )}
         <div className="v3-cover-inner">
           <div className="v3-cover-eyebrow">
             <span>Player Profile</span>
@@ -208,7 +239,7 @@ export default function MagazineCover({
             )}
             {flair && <span className="v3-flair-pill" style={accent ? { background: `${accent}33`, color: accent, border: `1px solid ${accent}55` } : undefined}>{flair}</span>}
             {streak != null && Math.abs(streak) >= 3 && (
-              <span className="v3-flair-pill" style={{
+              <span className={`v3-flair-pill${(coverFx || []).includes('streak-glow') && streak > 0 ? ' v3-fx-streak-glow' : ''}`} style={{
                 background: streak > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(248,113,113,0.18)',
                 color: streak > 0 ? '#f59e0b' : '#f87171',
                 border: `1px solid ${streak > 0 ? '#f59e0b66' : '#f8717166'}`,

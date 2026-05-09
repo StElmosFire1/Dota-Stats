@@ -12,6 +12,7 @@ import {
   FREE_LAYOUT_THEMES, PREMIUM_LAYOUT_THEMES, ALL_LAYOUT_THEMES,
   DEFAULT_LAYOUT_THEME, LAYOUT_THEME_META, isPremiumLayoutTheme,
   ALL_VOICE_PACKS, VOICE_PACK_META, isPremiumVoicePack,
+  COVER_FX_IDS, COVER_FX_META,
 } from '../profileCosmetics';
 import { Link } from 'react-router-dom';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
@@ -310,6 +311,10 @@ export default function SettingsProfile() {
   const [profileFrame, setProfileFrame] = useState(DEFAULT_FRAME);
   // v6.52 / Task #195 — Magazine v3 layout theme.
   const [layoutTheme, setLayoutTheme] = useState(DEFAULT_LAYOUT_THEME);
+  // v6.63 / Task #207 — Magazine v3 Cover FX (Pro toggles). Six allow-listed
+  // animated effects layered onto the cover. Server-side gated to Pro.
+  const [coverFx, setCoverFx] = useState([]);
+  const [ownedEntitlements, setOwnedEntitlements] = useState([]);
   // v6.62 / Task #206 — selected Pro voice pack (or '' for the default
   // church-bell chime).
   const [selectedVoicePack, setSelectedVoicePack] = useState('');
@@ -355,6 +360,8 @@ export default function SettingsProfile() {
       setSelectedVoicePack(c.selected_voice_pack || '');
       setExtras({ ...DEFAULT_EXTRAS, ...(c.extras || {}) });
       setPinnedAchievements(Array.isArray(c.pinned_achievements) ? c.pinned_achievements.map(String) : []);
+      setCoverFx(Array.isArray(c.cover_fx) ? c.cover_fx : []);
+      setOwnedEntitlements(Array.isArray(data.owned_entitlements) ? data.owned_entitlements : []);
       if (c.pinned_hero_id) {
         setPinnedHeroSearch(getHeroName(c.pinned_hero_id) || '');
       }
@@ -437,6 +444,7 @@ export default function SettingsProfile() {
         selected_voice_pack: selectedVoicePack || null,
         extras,
         pinned_achievements: pinnedAchievements,
+        cover_fx: coverFx,
       };
       const res = await fetch('/api/me/profile', {
         method: 'POST', credentials: 'include',
@@ -797,6 +805,64 @@ export default function SettingsProfile() {
                 );
               })}
             </div>
+          </section>
+
+          {/* v6.63 / Task #207 — Cover FX (Pro). Six allow-listed effects
+              that layer onto the Magazine v3 cover. Server validates against
+              `cosm.validateCoverFx` and Pro-gates them on save. */}
+          <section style={{ marginTop: 24 }}>
+            <h2 style={{ marginBottom: 8 }}>Cover effects (Pro)</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+              Animated polish layered onto your Magazine v3 cover banner. All effects respect
+              your system's <em>reduced motion</em> preference. Pro-only.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {COVER_FX_IDS.map(id => {
+                const meta = COVER_FX_META[id] || { label: id, sub: '' };
+                const on = coverFx.includes(id);
+                const locked = !isPro;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={`${meta.label} cover effect`}
+                    disabled={locked}
+                    onClick={() => {
+                      if (locked) return;
+                      setCoverFx(prev => prev.includes(id)
+                        ? prev.filter(x => x !== id)
+                        : [...prev, id]);
+                    }}
+                    title={locked ? 'Reserved for Pro members' : meta.sub}
+                    style={{
+                      textAlign: 'left', padding: '8px 14px', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600,
+                      cursor: locked ? 'not-allowed' : 'pointer',
+                      opacity: locked ? 0.5 : 1,
+                      background: on ? 'rgba(245,158,11,0.18)' : 'var(--bg-card)',
+                      border: on ? '2px solid #f59e0b' : '1px solid var(--border)',
+                      color: on ? '#f59e0b' : 'var(--text-primary)',
+                      minWidth: 180,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {meta.label}
+                      {locked && <LockedPill />}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {meta.sub}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {ownedEntitlements.includes('founders_pass_ring') && (
+              <p style={{ marginTop: 10, fontSize: 12, color: 'var(--accent)' }}>
+                ✓ Founders Pass ring is active around your cover banner.
+              </p>
+            )}
           </section>
 
           <section style={{ marginTop: 24 }}>

@@ -8,6 +8,7 @@ import {
   FREE_FRAMES, PREMIUM_FRAMES,
   BIO_MAX, PINNED_HERO_CAPTION_MAX, DEFAULT_THEME, DEFAULT_FRAME, FRAME_META,
   ALL_VOICE_PACKS, VOICE_PACK_META, isPremiumVoicePack,
+  COVER_FX_IDS, COVER_FX_META,
 } from '../profileCosmetics';
 import ProfileCard from '../components/ProfileCard';
 
@@ -262,6 +263,12 @@ export default function ProfileSandbox() {
   const [flairUnlocked, setFlairUnlocked] = useState(true);
   const [flairOverride, setFlairOverride] = useState('Mid Lord');
 
+  // v6.63 / Task #207 — Founders Pass ring + Cover FX simulation. The
+  // sandbox doesn't render MagazineCover, so this section just toggles
+  // the simulated state and surfaces it in the preview footer below.
+  const [foundersRing, setFoundersRing] = useState(true);
+  const [coverFx, setCoverFx] = useState([]);
+
   const heroOptions = (() => {
     const q = pinnedHeroSearch.trim().toLowerCase();
     if (!q) return [];
@@ -494,6 +501,52 @@ export default function ProfileSandbox() {
               <input type="checkbox" disabled={!proPreview} checked={bgPattern} onChange={e => setBgPattern(e.target.checked)} />
               Heraldic diagonal background pattern {proLabel}
             </label>
+          </section>
+
+          {/* v6.63 / Task #207 — Founders Pass ring + Cover FX sandbox. */}
+          <section style={{ padding: 12, border: '1px dashed var(--border)', borderRadius: 8, background: 'rgba(245,158,11,0.04)' }}>
+            <h2 style={{ marginBottom: 8, fontSize: 16 }}>Founders Pass + Cover FX (Magazine v3 only)</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              These layer onto the live <code>MagazineCover</code> on <code>/players/:id</code> — the
+              sandbox preview here uses the legacy <code>ProfileCard</code>, so the toggles are
+              shown for state simulation (and to verify the a11y wiring of the switch buttons).
+            </p>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 10 }}>
+              <input type="checkbox" checked={foundersRing} onChange={e => setFoundersRing(e.target.checked)} />
+              Simulate Founders Pass ring around the cover
+            </label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {COVER_FX_IDS.map(id => {
+                const meta = COVER_FX_META[id] || { label: id, sub: '' };
+                const on = coverFx.includes(id);
+                const locked = !proPreview;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={`${meta.label} cover effect`}
+                    disabled={locked}
+                    onClick={() => {
+                      if (locked) return;
+                      setCoverFx(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+                    }}
+                    style={{
+                      padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      cursor: locked ? 'not-allowed' : 'pointer',
+                      opacity: locked ? 0.5 : 1,
+                      background: on ? 'rgba(168,85,247,0.18)' : 'rgba(168,85,247,0.05)',
+                      border: on ? '2px solid #a855f7' : '1px dashed rgba(168,85,247,0.5)',
+                      color: '#a855f7',
+                    }}
+                  >{meta.label} ★</button>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+              Active FX: {coverFx.length === 0 ? '(none)' : coverFx.join(', ')} · Founders ring: {foundersRing ? 'on' : 'off'}
+            </div>
           </section>
 
           <section>

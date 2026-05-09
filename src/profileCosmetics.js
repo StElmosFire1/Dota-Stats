@@ -116,6 +116,41 @@ function isValidVoicePack(p) {
   return ALL_VOICE_PACKS.includes(p);
 }
 
+// v6.63 / Task #207 — Cover FX (Pro). Six animated effects applied as a
+// layer over the Magazine v3 cover via data-fx-* attributes. Stored as a
+// JSONB array on player_profiles.cover_fx; validateCoverFx() canonicalises
+// the input (dedupes, drops unknowns, caps at COVER_FX_IDS.length).
+const COVER_FX_IDS = ['shimmer', 'kenburns', 'parallax', 'particle', 'vignette-pulse', 'streak-glow'];
+const COVER_FX_META = {
+  shimmer:          { label: 'Shimmer sweep',     sub: 'Slow gold light pass over the cover',          motion: true  },
+  kenburns:         { label: 'Ken Burns',         sub: 'Subtle zoom + drift on the hero backdrop',     motion: true  },
+  parallax:         { label: 'Parallax depth',    sub: 'Background layer drifts on scroll',            motion: true  },
+  particle:         { label: 'Particle drift',    sub: 'Soft amber motes float upward',                motion: true  },
+  'vignette-pulse': { label: 'Vignette pulse',    sub: 'Edge vignette breathes around the cover',      motion: true  },
+  'streak-glow':    { label: 'Streak glow',       sub: 'Accent halo around the streak / flair pills',  motion: false },
+};
+// One-time entitlement SKU for the Founders Pass cover ring. Used as the
+// `sku` value on the `entitlements` table.
+const FOUNDERS_RING_SKU = 'founders_pass_ring';
+function isValidCoverFxId(id) { return COVER_FX_IDS.includes(id); }
+// Returns a canonical array (deduped, allow-listed). Accepts any input
+// shape and never throws — empty array on garbage input. Cap at
+// COVER_FX_IDS.length (6) so a malicious client can't flood the column.
+function validateCoverFx(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const v of raw) {
+    if (typeof v !== 'string') continue;
+    if (!isValidCoverFxId(v)) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+    if (out.length >= COVER_FX_IDS.length) break;
+  }
+  return out;
+}
+
 function isPremiumFrame(frame) {
   return PREMIUM_FRAMES.includes(frame);
 }
@@ -242,6 +277,12 @@ module.exports = {
   isValidFrame,
   isValidLayoutTheme,
   isValidVoicePack,
+  // v6.63 / Task #207 — Cover FX
+  COVER_FX_IDS,
+  COVER_FX_META,
+  isValidCoverFxId,
+  validateCoverFx,
+  FOUNDERS_RING_SKU,
   BIO_MAX,
   PINNED_HERO_CAPTION_MAX,
   // v5.81 extras

@@ -930,3 +930,159 @@ html:has(.magazine-v3) {
 @media (prefers-reduced-motion: reduce) {
   .v3-presence-pill > span[aria-hidden="true"] { animation: none !important; }
 }
+
+/* ───────── v6.63 / Task #207 — Founders Pass ring + Cover FX ─────────
+   All animation-driven effects below live inside an
+   @media (prefers-reduced-motion: no-preference) block so users with
+   reduced-motion preferences see the static cover unchanged. The static
+   ring outline (.v3-founders-ring) is always shown — only its breathing
+   animation gates on motion preference. */
+
+.v3-cover {
+  position: relative;
+  overflow: hidden;
+}
+.v3-cover-bg { will-change: transform; }
+
+/* Static brass→amber decorative outline. Sits above the cover overlay
+   but is purely decorative (aria-hidden), so pointer-events:none. */
+.v3-founders-ring {
+  position: absolute;
+  inset: 6px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 3;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--bg-card, #0d1424), var(--bg-card, #0d1424)) padding-box,
+    linear-gradient(135deg, #c5a975 0%, #f59e0b 50%, #c5a975 100%) border-box;
+  box-shadow:
+    0 0 0 3px rgba(197, 169, 117, 0.25),
+    0 0 22px rgba(245, 158, 11, 0.35) inset;
+}
+
+/* Cover FX shared base. */
+.v3-fx-shimmer,
+.v3-fx-vignette,
+.v3-fx-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Vignette pulse — always visible (subtle), pulse is motion-gated below. */
+.v3-fx-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+  mix-blend-mode: multiply;
+}
+
+/* Streak-glow halo on the win-streak pill. Static border baseline so
+   the glow is visible even with reduced motion; pulse animation gates
+   on motion preference. */
+.v3-fx-streak-glow {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+}
+
+/* Particles — entire layer is reduced-motion-gated. Under reduced motion
+   we hide the container completely (static dots without drift would
+   still register as motion-implying noise on the cover). The dot
+   positions + visuals therefore only mount inside the no-preference
+   block below. */
+.v3-fx-particles { display: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Particles — only mount the dot layer when motion is allowed. */
+  .v3-fx-particles { display: block; }
+  .v3-fx-particles i {
+    position: absolute;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #f59e0b 0%, transparent 70%);
+    opacity: 0.7;
+  }
+  .v3-fx-particles i:nth-child(1) { top: 12%; left: 8%; }
+  .v3-fx-particles i:nth-child(2) { top: 28%; left: 72%; }
+  .v3-fx-particles i:nth-child(3) { top: 50%; left: 18%; }
+  .v3-fx-particles i:nth-child(4) { top: 64%; left: 55%; }
+  .v3-fx-particles i:nth-child(5) { top: 78%; left: 88%; }
+  .v3-fx-particles i:nth-child(6) { top: 18%; left: 42%; }
+  .v3-fx-particles i:nth-child(7) { top: 88%; left: 32%; }
+  .v3-fx-particles i:nth-child(8) { top: 38%; left: 92%; }
+
+  /* Founders ring breathing glow. */
+  @keyframes v3-founders-ring-pulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(197, 169, 117, 0.25), 0 0 22px rgba(245, 158, 11, 0.35) inset; }
+    50%      { box-shadow: 0 0 0 4px rgba(197, 169, 117, 0.45), 0 0 38px rgba(245, 158, 11, 0.55) inset; }
+  }
+  .v3-cover-founders .v3-founders-ring {
+    animation: v3-founders-ring-pulse 4.5s ease-in-out infinite;
+  }
+
+  /* Shimmer — diagonal sheen sweeping across the cover. */
+  @keyframes v3-fx-shimmer-sweep {
+    0%   { transform: translateX(-120%); }
+    100% { transform: translateX(120%); }
+  }
+  .v3-fx-shimmer {
+    background: linear-gradient(
+      120deg,
+      transparent 0%, transparent 40%,
+      rgba(245, 158, 11, 0.18) 50%,
+      transparent 60%, transparent 100%
+    );
+    animation: v3-fx-shimmer-sweep 6s linear infinite;
+  }
+
+  /* Ken Burns — slow zoom + pan on the cover background image. */
+  @keyframes v3-fx-kenburns {
+    0%   { transform: scale(1)    translate(0, 0); }
+    50%  { transform: scale(1.08) translate(-2%, -1%); }
+    100% { transform: scale(1)    translate(0, 0); }
+  }
+  .v3-cover-bg.v3-fx-kenburns {
+    animation: v3-fx-kenburns 22s ease-in-out infinite;
+  }
+
+  /* Parallax — gentle vertical drift. (Pointer-driven parallax would
+     need JS; this is the motion-only ambient version.) */
+  @keyframes v3-fx-parallax {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-12px); }
+  }
+  .v3-cover-bg.v3-fx-parallax {
+    animation: v3-fx-parallax 14s ease-in-out infinite;
+  }
+
+  /* Vignette pulse breathing. */
+  @keyframes v3-fx-vignette-pulse {
+    0%, 100% { opacity: 0.8; }
+    50%      { opacity: 1;   }
+  }
+  .v3-fx-vignette { animation: v3-fx-vignette-pulse 5s ease-in-out infinite; }
+
+  /* Particle drift. */
+  @keyframes v3-fx-particle-drift {
+    0%, 100% { transform: translate(0, 0);   opacity: 0.7; }
+    50%      { transform: translate(6px, -8px); opacity: 1; }
+  }
+  .v3-fx-particles i { animation: v3-fx-particle-drift 7s ease-in-out infinite; }
+  .v3-fx-particles i:nth-child(2) { animation-duration: 9s;  animation-delay: -1s; }
+  .v3-fx-particles i:nth-child(3) { animation-duration: 8s;  animation-delay: -2s; }
+  .v3-fx-particles i:nth-child(4) { animation-duration: 10s; animation-delay: -3s; }
+  .v3-fx-particles i:nth-child(5) { animation-duration: 7.5s;animation-delay: -4s; }
+  .v3-fx-particles i:nth-child(6) { animation-duration: 9.5s;animation-delay: -1.5s; }
+  .v3-fx-particles i:nth-child(7) { animation-duration: 8.5s;animation-delay: -2.5s; }
+  .v3-fx-particles i:nth-child(8) { animation-duration: 11s; animation-delay: -3.5s; }
+
+  /* Streak-glow pulse. */
+  @keyframes v3-fx-streak-pulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.6); }
+    50%      { box-shadow: 0 0 22px rgba(245, 158, 11, 0.95); }
+  }
+  .v3-fx-streak-glow { animation: v3-fx-streak-pulse 2.5s ease-in-out infinite; }
+}

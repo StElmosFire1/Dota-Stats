@@ -1085,6 +1085,12 @@ export default function PlayerProfile() {
         socials={coverSocials}
         flair={coverFlair}
         nameAdornments={headerNameAdornments}
+        // v6.63 / Task #207 — Founders Pass ring + Cover FX. Both are
+        // server-gated: the ring requires the `founders_pass_ring`
+        // entitlement (one-time SKU, capped); the FX list is Pro-only and
+        // already validated server-side before persistence.
+        foundersRing={showProfileCustomization && Array.isArray(profileCard?.owned_entitlements) && profileCard.owned_entitlements.includes('founders_pass_ring')}
+        coverFx={showProfileCustomization && Array.isArray(profileCard?.cover_fx) ? profileCard.cover_fx : []}
       />
       <Link to="/players" className="back-link">&larr; Back to players</Link>
 

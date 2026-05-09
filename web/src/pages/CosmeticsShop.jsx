@@ -25,7 +25,7 @@ import {
   VOICE_PACK_META,
 } from '../profileCosmetics';
 import { useSteamAuth } from '../context/SteamAuthContext';
-import { getOwnedFrames, purchaseFrameCheckout } from '../api';
+import { getOwnedFrames, purchaseFrameCheckout, getFoundersRingStatus, buyFoundersRingCheckout } from '../api';
 
 // Mirrors FRAME_PRICES in src/web/server.js. Keep in sync.
 const FRAME_PRICES_CENTS = {
@@ -131,10 +131,20 @@ export default function CosmeticsShop() {
   const [ownedFrames, setOwnedFrames] = useState([]);
   const [purchasingFrame, setPurchasingFrame] = useState(null);
   const [purchaseError, setPurchaseError] = useState(null);
+  // v6.63 / Task #207 — Founders Pass ring (one-time, capped SKU).
+  const [foundersStatus, setFoundersStatus] = useState(null);
+  const [foundersBuying, setFoundersBuying] = useState(false);
 
   useEffect(() => {
-    if (!signedIn) { setIsPro(false); setOwnedFrames([]); return; }
     let alive = true;
+    // v6.63 / Task #207 — founders ring availability is public so the
+    // "X / 200 claimed · Y remaining" copy always renders, even when the
+    // visitor is signed out (they still see "limited" before they have
+    // to sign in to actually buy).
+    getFoundersRingStatus()
+      .then(s => { if (alive) setFoundersStatus(s || null); })
+      .catch(() => {});
+    if (!signedIn) { setIsPro(false); setOwnedFrames([]); return () => { alive = false; }; }
     fetch('/api/me/profile', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (alive) setIsPro(!!(d && d.is_pro)); })
@@ -144,6 +154,19 @@ export default function CosmeticsShop() {
       .catch(() => {});
     return () => { alive = false; };
   }, [signedIn]);
+
+  async function buyFoundersRing() {
+    setFoundersBuying(true);
+    setPurchaseError(null);
+    try {
+      const res = await buyFoundersRingCheckout();
+      if (res?.url) window.location.href = res.url;
+      else setPurchaseError(res?.error || 'Could not start checkout.');
+    } catch (e) {
+      setPurchaseError(e?.message || 'Could not start checkout.');
+    }
+    setFoundersBuying(false);
+  }
 
   async function buyFrame(frameId) {
     setPurchasingFrame(frameId);
@@ -241,6 +264,55 @@ export default function CosmeticsShop() {
           >{purchaseError}</div>
         ) : null}
       </div>
+
+      {/* v6.63 / Task #207 — Founders Pass ring. One-time SKU, capped at
+          FOUNDERS_RING_CAP (default 200). Server enforces the cap inside
+          a single transaction; the status payload here is purely
+          informational ("X / 200 sold"). */}
+      <section style={{ marginBottom: 32 }}>
+        <SectionHeader
+          title="Founders Pass"
+          sub="A limited, one-time founder badge: a brass→amber ring around your Magazine v3 cover banner, forever. Strictly capped — once they're gone, they're gone."
+        />
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <CosmeticCard
+            label="Founders Pass — cover ring"
+            sub={
+              foundersStatus
+                ? `${foundersStatus.sold ?? 0} / ${foundersStatus.cap ?? 200} sold · ${Math.max(0, (foundersStatus.cap ?? 200) - (foundersStatus.sold ?? 0))} remaining`
+                : 'Loading availability…'
+            }
+            badges={
+              !signedIn ? <ProPill />
+                : foundersStatus?.owned ? <OwnedPill />
+                : foundersStatus?.sold_out ? <LockedPill />
+                : null
+            }
+            action={
+              !signedIn ? (
+                <Link to="/login" style={actionButtonStyle('pro')}>Sign in to purchase →</Link>
+              ) : foundersStatus?.owned ? (
+                <span style={actionButtonStyle('owned')}>✓ Owned</span>
+              ) : foundersStatus?.sold_out ? (
+                <span style={{ ...actionButtonStyle('owned'), background: 'rgba(75,85,99,0.18)', color: '#9ca3af', border: '1px solid #4b556355' }}>
+                  Sold out
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={foundersBuying || !foundersStatus}
+                  onClick={buyFoundersRing}
+                  style={{ ...actionButtonStyle('buy'), opacity: foundersBuying ? 0.6 : 1 }}
+                >
+                  {foundersBuying
+                    ? 'Starting checkout…'
+                    : `Buy ${formatPrice(foundersStatus?.price_cents ?? 999)}`}
+                </button>
+              )
+            }
+          />
+        </div>
+      </section>
 
       <section style={{ marginBottom: 32 }}>
         <SectionHeader

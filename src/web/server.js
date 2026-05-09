@@ -732,6 +732,33 @@ function createServer(startupStatus = {}) {
             // Re-throw so Stripe retries on transient DB failures.
             throw e;
           }
+        } else if (purpose === 'founders_ring') {
+          // v6.63 / Task #207 — fulfil the limited Founders Pass cover ring.
+          // Cap is re-checked under transaction; if the cap has been hit
+          // between checkout-init and webhook (concurrent buyer race) we
+          // log loudly so an operator can refund. Errors propagate so
+          // Stripe retries on transient DB failures.
+          const cosm = require('../profileCosmetics');
+          const ringAccountId = session.metadata?.account_id;
+          if (ringAccountId) {
+            const cap = parseInt(process.env.FOUNDERS_RING_CAP || '200', 10);
+            const result = await db.grantEntitlementWithCap({
+              accountId: ringAccountId,
+              sku: cosm.FOUNDERS_RING_SKU,
+              cap: Number.isFinite(cap) && cap > 0 ? cap : 200,
+              grantedBy: 'stripe',
+              metadata: {
+                stripe_session_id: session.id,
+                amount_cents: session.amount_total || null,
+                currency: session.currency || 'aud',
+              },
+            });
+            if (!result.ok && result.reason === 'cap_reached') {
+              console.error('[Stripe] founders_ring CAP RACE — paid session', session.id, 'for account', ringAccountId, 'rejected: cap reached. REFUND REQUIRED.');
+            } else {
+              console.log('[Stripe] Founders Pass ring granted:', ringAccountId, 'reason=', result.reason);
+            }
+          }
         } else if (purpose === 'frame_purchase') {
           const frameId = session.metadata?.frame_id;
           const frameAccountId = session.metadata?.account_id;
@@ -7838,7 +7865,9 @@ NOTES
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       const customization = await db.getPlayerProfileCustomization(accountId);
       const isPro = await _isProAccount(accountId);
-      res.json({ customization: customization || null, is_pro: isPro });
+      // v6.63 / Task #207 — surface owned one-time entitlements (founders ring etc.)
+      const owned_entitlements = await db.getOwnedEntitlements(accountId).catch(() => []);
+      res.json({ customization: customization || null, is_pro: isPro, owned_entitlements });
     } catch (err) {
       console.error('[API] me/profile GET:', err.message);
       res.status(500).json({ error: 'Failed to fetch profile customization' });
@@ -8010,6 +8039,22 @@ NOTES
           : [];
       }
 
+      // v6.63 / Task #207 — cover FX (Pro-only). Each effect is opt-in;
+      // omitting the field preserves whatever the player previously had so a
+      // pre-#207 client save doesn't silently wipe the selection. Empty
+      // array clears all effects. Validation allow-lists ids and caps to 6.
+      let coverFx = null;
+      if (Array.isArray(body.cover_fx)) {
+        coverFx = cosm.validateCoverFx(body.cover_fx);
+        if (!isPro && coverFx.length > 0) {
+          return res.status(403).json({ error: 'Cover effects are reserved for Pro members' });
+        }
+      } else {
+        const current = await db.getPlayerProfileCustomization(accountId);
+        coverFx = Array.isArray(current?.cover_fx) ? current.cover_fx : [];
+        if (!isPro) coverFx = [];
+      }
+
       const saved = await db.setPlayerProfileCustomization(accountId, {
         bio,
         custom_title: customTitle,
@@ -8022,6 +8067,7 @@ NOTES
         selected_voice_pack: selectedVoicePackRaw,
         extras,
         pinned_achievements: pinnedAchievements,
+        cover_fx: coverFx,
       });
       res.json({ ok: true, customization: saved, is_pro: isPro });
     } catch (err) {
@@ -8260,6 +8306,139 @@ NOTES
     } catch (err) {
       console.error('[API] frames/checkout:', err.message);
       res.status(500).json({ error: err.message || 'Failed to create frame checkout' });
+    }
+  });
+
+  // ── Founders Pass ring (v6.63 / Task #207) ──────────────────────────────
+  // Limited-edition one-time entitlement. Cap is configurable via
+  // FOUNDERS_RING_CAP env (default 200). The cap is checked here at
+  // checkout-init time AND re-checked under a transaction in the webhook
+  // (grantEntitlementWithCap), so concurrent buys can't exceed it.
+  function _foundersRingCap() {
+    const n = parseInt(process.env.FOUNDERS_RING_CAP || '200', 10);
+    return Number.isFinite(n) && n > 0 ? n : 200;
+  }
+  function _foundersRingPriceCents() {
+    const n = parseInt(process.env.FOUNDERS_RING_PRICE_CENTS || '999', 10);
+    return Number.isFinite(n) && n > 0 ? n : 999;
+  }
+
+  // GET /api/shop/founders-ring/status — public read for the shop card.
+  router.get('/shop/founders-ring/status', async (req, res) => {
+    try {
+      const cosm = require('../profileCosmetics');
+      const cap = _foundersRingCap();
+      const sold = await db.countEntitlementHolders(cosm.FOUNDERS_RING_SKU);
+      const remaining = Math.max(cap - sold, 0);
+      const accountId = req.session?.accountId || null;
+      const owned = accountId ? await db.hasEntitlement(accountId, cosm.FOUNDERS_RING_SKU) : false;
+      res.json({
+        sku: cosm.FOUNDERS_RING_SKU,
+        cap, sold, remaining,
+        sold_out: remaining <= 0,
+        price_cents: _foundersRingPriceCents(),
+        currency: 'aud',
+        owned,
+        signed_in: Boolean(accountId),
+      });
+    } catch (err) {
+      console.error('[API] shop/founders-ring/status:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/shop/founders-ring/checkout — Stripe checkout init.
+  router.post('/shop/founders-ring/checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to purchase the Founders Pass.' });
+      const cosm = require('../profileCosmetics');
+      if (await db.hasEntitlement(accountId, cosm.FOUNDERS_RING_SKU)) {
+        return res.status(409).json({ error: 'You already own the Founders Pass ring.', already_owned: true });
+      }
+      const cap = _foundersRingCap();
+      const sold = await db.countEntitlementHolders(cosm.FOUNDERS_RING_SKU);
+      if (sold >= cap) {
+        return res.status(409).json({ error: 'The Founders Pass has sold out.', sold_out: true });
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments are not configured.' });
+      }
+      const priceCents = _foundersRingPriceCents();
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: {
+              name: 'OCE Inhouse — Founders Pass (Limited)',
+              description: `Limited to ${cap} owners — adds a decorative ring around your Magazine v3 cover, in perpetuity.`,
+            },
+            unit_amount: priceCents,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/shop?founders_ring=success`,
+        cancel_url: `${baseUrl}/shop?founders_ring=cancelled`,
+        metadata: {
+          purpose: 'founders_ring',
+          account_id: String(accountId),
+          sku: cosm.FOUNDERS_RING_SKU,
+        },
+      });
+      res.json({ url: session.url });
+    } catch (err) {
+      console.error('[API] shop/founders-ring/checkout:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create checkout' });
+    }
+  });
+
+  // GET /api/admin/founders-ring — list holders + cap status (superuser).
+  router.get('/admin/founders-ring', requireSuperuser, async (req, res) => {
+    try {
+      const cosm = require('../profileCosmetics');
+      const cap = _foundersRingCap();
+      const holders = await db.listEntitlementHolders(cosm.FOUNDERS_RING_SKU, 1000);
+      res.json({ sku: cosm.FOUNDERS_RING_SKU, cap, sold: holders.length, holders });
+    } catch (err) {
+      console.error('[API] admin/founders-ring GET:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/founders-ring — manually grant (superuser, e.g. comp).
+  router.post('/admin/founders-ring', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const cosm = require('../profileCosmetics');
+      const accountId = req.body?.account_id;
+      if (!accountId) return res.status(400).json({ error: 'account_id required' });
+      const result = await db.grantEntitlementWithCap({
+        accountId,
+        sku: cosm.FOUNDERS_RING_SKU,
+        cap: _foundersRingCap(),
+        grantedBy: 'superuser',
+        metadata: { reason: req.body?.reason || 'admin_grant' },
+      });
+      if (!result.ok) return res.status(409).json(result);
+      res.json(result);
+    } catch (err) {
+      console.error('[API] admin/founders-ring POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/admin/founders-ring/:accountId — revoke (superuser).
+  router.delete('/admin/founders-ring/:accountId', requireSuperuser, async (req, res) => {
+    try {
+      const cosm = require('../profileCosmetics');
+      const removed = await db.revokeEntitlement(req.params.accountId, cosm.FOUNDERS_RING_SKU);
+      res.json({ ok: true, removed });
+    } catch (err) {
+      console.error('[API] admin/founders-ring DELETE:', err.message);
+      res.status(500).json({ error: err.message });
     }
   });
 
