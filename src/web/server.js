@@ -8098,9 +8098,10 @@ NOTES
 
   // Task #213 — bulk live-presence rollup powering the /players "Live now"
   // tab. One call returns every visible account whose presence is in_game,
-  // in_lobby, in_queue, in_voice, or online — so the page renders without
-  // fanning out N profile pings. Same no-store + soft-fail semantics as the
-  // per-profile chip endpoint above.
+  // in_lobby, in_queue, or in_voice — so the page renders without fanning
+  // out N profile pings. Plain Discord-online is intentionally excluded
+  // (the rollup is scoped to actively-doing-something statuses). Same
+  // no-store + soft-fail semantics as the per-profile chip endpoint above.
   router.get('/presence/live', async (req, res) => {
     try {
       const { getAllLivePresences } = require('../services/presenceService');

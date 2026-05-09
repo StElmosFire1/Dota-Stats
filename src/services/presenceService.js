@@ -245,22 +245,34 @@ async function getAllLivePresences() {
 
   if (candidates.size === 0) return [];
 
-  // Step 3: bulk visibility + display-name lookup.
+  // Step 3: bulk visibility + display-name lookup. We DRIVE this from the
+  // candidate account-id list (not from player_stats), so a queue-only or
+  // brand-new live user with no player_stats row yet still appears in the
+  // rollup. Visibility defaults to TRUE when no player_profiles row exists,
+  // matching the per-profile getPlayerPresence() semantics. Display name
+  // falls back across nicknames → latest player_stats.persona_name →
+  // players.discord_name → null.
   const accountIds = Array.from(candidates.keys());
   let infoByAccount = new Map();
   try {
     const r = await pool.query(
-      `SELECT ps.account_id::text AS account_id,
-              COALESCE(n.nickname, ps.persona_name) AS display_name,
+      `WITH ids AS (
+         SELECT UNNEST($1::text[]) AS account_id
+       ),
+       latest_ps AS (
+         SELECT DISTINCT ON (account_id) account_id::text AS account_id, persona_name
+           FROM player_stats
+          WHERE account_id::text = ANY($1::text[])
+          ORDER BY account_id, id DESC
+       )
+       SELECT ids.account_id,
+              COALESCE(n.nickname, latest_ps.persona_name, pl.discord_name) AS display_name,
               COALESCE(pp.presence_visible, TRUE) AS presence_visible
-         FROM (
-           SELECT DISTINCT ON (account_id) account_id, persona_name
-             FROM player_stats
-            WHERE account_id::text = ANY($1::text[])
-            ORDER BY account_id, id DESC
-         ) ps
-         LEFT JOIN nicknames n ON n.account_id = ps.account_id
-         LEFT JOIN player_profiles pp ON pp.account_id = ps.account_id`,
+         FROM ids
+         LEFT JOIN nicknames n ON n.account_id::text = ids.account_id
+         LEFT JOIN latest_ps ON latest_ps.account_id = ids.account_id
+         LEFT JOIN player_profiles pp ON pp.account_id::text = ids.account_id
+         LEFT JOIN players pl ON pl.account_id_32 = ids.account_id`,
       [accountIds]
     );
     for (const row of r.rows) {
@@ -270,9 +282,16 @@ async function getAllLivePresences() {
       });
     }
   } catch {}
+  // Soft-fail fallback: if the lookup query failed entirely, default every
+  // candidate to visible with no display name rather than dropping them all.
+  for (const accountId of accountIds) {
+    if (!infoByAccount.has(accountId)) {
+      infoByAccount.set(accountId, { display_name: null, presence_visible: true });
+    }
+  }
 
   // Step 4: build the final rows, applying the same priority as
-  // getPlayerPresence (in_game > in_lobby > in_queue > in_voice > online).
+  // getPlayerPresence (in_game > in_lobby > in_queue > in_voice).
   const out = [];
   for (const [accountId, slot] of candidates.entries()) {
     const info = infoByAccount.get(accountId);
