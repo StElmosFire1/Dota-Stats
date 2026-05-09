@@ -1313,6 +1313,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.47",
+    "title": "Auto-picked draft slots now show an ⏱ Auto-pick badge so players can see who got picked by the timer",
+    "published_at": "2026-05-09",
+    "content": "**Task #179 — surfacing auto-pick history on the inhouse draft board.** Task #172 added the per-pick deadline sweep that auto-picks the highest-MMR remaining player onto the picking captain's team when the captain stalls, but once the match started there was no record of which slots were captain picks vs ticker picks. Useful for post-game review (\"why did I get stuck on pos 5?\") and for spotting captains who repeatedly let the timer run.\n\n**1. Schema (`src/db/index.js`).** New nullable `pick_source TEXT` column on `inhouse_session_players` (`'captain'` | `'auto_deadline'`). Added to the `updateInhouseSessionPlayer` allow-list. Nullable for legacy rows and rows that never went through the captain draft (auto-balance teams, admin overrides, etc).\n\n**2. Server (`src/web/server.js`).** `POST /inhouse/:id/draft-pick` now accepts an optional `pickSource` field in the request body. Only callers carrying the superuser key (i.e. the autoStartTicker's internal POST) are allowed to claim `'auto_deadline'`; every other caller — captain clicks and admin overrides from the UI — is silently mapped to `'captain'` so a malicious browser can't backdate its own picks as ticker-driven. Persisted via the same atomic conditional `UPDATE` that already gates the pick.\n\n**3. Ticker (`src/inhouse/autoStartTicker.js`).** The per-pick deadline sweep now sends `pickSource: 'auto_deadline'` on its internal `POST /api/inhouse/:id/draft-pick`, so the same handler still runs (Task #168 auto-provision on the 8th pick, Task #172 deadline reset for the next captain) but the row gets stamped with the correct source.\n\n**4. UI (`web/src/pages/Inhouse.jsx`).** New amber `⏱ Auto-pick` badge on `PlayerRow`, rendered only when `player.pick_source === 'auto_deadline'`. Sits next to the existing CAPTAIN / Team N badges so it's visible on both the live draft board (in-progress sessions) and the post-draft session view (completed/started/server_failed sessions all reuse the same roster panels). Title attribute spells out \"Auto-picked by the deadline timer (captain didn't pick in time)\" for hover context. Captain picks render no badge — auto-picks are the exceptional, eye-catching shape.",
+    "author": "System"
+  },
+  {
     "version": "6.46",
     "title": "Captain on the clock now gets a 10-second pre-deadline warning before the auto-pick fires",
     "published_at": "2026-05-09",

@@ -99,6 +99,24 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
           </Link>
           {isCaptain && <span style={{ fontSize: 11, padding: '2px 6px', background: '#ff9800', color: '#000', borderRadius: 3, fontWeight: 700 }}>CAPTAIN</span>}
           {player.team > 0 && <span style={{ fontSize: 11, padding: '2px 6px', background: player.team === 1 ? '#2e7d32' : '#c62828', color: '#fff', borderRadius: 3 }}>Team {player.team}</span>}
+          {/* Task #179 — flag picks made by the autoStartTicker deadline sweep
+              so players can tell at a glance which slots their captain let
+              the timer run on. Captain picks render no badge (the default). */}
+          {player.pick_source === 'auto_deadline' && (
+            <span
+              title="Auto-picked by the deadline timer (captain didn't pick in time)"
+              style={{
+                fontSize: 10, padding: '2px 6px',
+                background: 'color-mix(in srgb, var(--amber) 22%, transparent)',
+                color: 'var(--amber)',
+                border: '1px solid color-mix(in srgb, var(--amber) 55%, transparent)',
+                borderRadius: 3, fontWeight: 700, letterSpacing: 0.5,
+                fontFamily: 'var(--font-condensed, var(--font))', textTransform: 'uppercase',
+              }}
+            >
+              ⏱ Auto-pick
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
           MMR {mmr}

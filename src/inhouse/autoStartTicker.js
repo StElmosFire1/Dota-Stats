@@ -279,7 +279,7 @@ async function tick(db, basePort) {
       const r = await fetch(`http://127.0.0.1:${port}/api/inhouse/${s.id}/draft-pick`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-superuser-key': key },
-        body: JSON.stringify({ accountId: pick.account_id, team, pickOrder: teamPlayersBefore }),
+        body: JSON.stringify({ accountId: pick.account_id, team, pickOrder: teamPlayersBefore, pickSource: 'auto_deadline' }),
       });
       if (r.ok) {
         log(`Session #${s.id}: pick deadline expired, auto-picked ${pick.account_id} onto team ${team} (pick ${drafted + 1}/${DRAFT_PICK_SEQUENCE.length})`);

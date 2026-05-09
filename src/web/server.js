@@ -6998,8 +6998,14 @@ NOTES
 
   router.post('/inhouse/:id/draft-pick', express.json(), async (req, res) => {
     try {
-      const { accountId, team, pickOrder } = req.body || {};
+      const { accountId, team, pickOrder, pickSource } = req.body || {};
       if (!accountId || ![1,2].includes(team)) return res.status(400).json({ error: 'accountId and team (1|2) required' });
+      // Task #179 — record whether this pick was made by a captain or by the
+      // autoStartTicker deadline sweep. Only the deadline sweep is allowed to
+      // claim 'auto_deadline'; any other caller silently maps to 'captain'.
+      const _isAdminForSource = !!(req.session && req.session.isSuperuser) ||
+        !!(process.env.SUPERUSER_PASSWORD && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD);
+      const _pickSource = (_isAdminForSource && pickSource === 'auto_deadline') ? 'auto_deadline' : 'captain';
       const cur = await db.getInhouseSession(req.params.id);
       if (!cur) return res.status(404).json({ error: 'Session not found' });
       if (cur.status !== 'drafting') return res.status(400).json({ error: 'Not in drafting phase' });
@@ -7029,10 +7035,10 @@ NOTES
       const pool = db.getPool();
       const guard = await pool.query(
         `UPDATE inhouse_session_players
-            SET team = $1, pick_order = $2, status = 'drafted'
+            SET team = $1, pick_order = $2, status = 'drafted', pick_source = $5
           WHERE session_id = $3 AND account_id = $4 AND team = 0 AND status <> 'declined'
        RETURNING *`,
-        [team, pickOrder ?? null, req.params.id, accountId]
+        [team, pickOrder ?? null, req.params.id, accountId, _pickSource]
       );
       if (guard.rowCount === 0) {
         return res.status(409).json({ error: 'Player already picked or no longer eligible' });

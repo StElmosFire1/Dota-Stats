@@ -1316,6 +1316,11 @@ async function init() {
     // destroyed (logout, cookie expiry, store-side eviction) without waiting
     // for the heartbeat-staleness window. Nullable for legacy / bot rows.
     await p.query(`ALTER TABLE inhouse_session_players ADD COLUMN IF NOT EXISTS last_session_id TEXT`);
+    // Task #179 — record whether a draft pick was made by the captain or by
+    // the autoStartTicker deadline sweep. Values: 'captain' | 'auto_deadline'.
+    // Nullable for legacy rows and for rows that never went through the draft
+    // (auto-balance teams, admin overrides without explicit source, etc).
+    await p.query(`ALTER TABLE inhouse_session_players ADD COLUMN IF NOT EXISTS pick_source TEXT`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_session_players_session ON inhouse_session_players (session_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_inhouse_sessions_status ON inhouse_sessions (status)`);
     // v5.75: auto-start gating once min_players is reached, plus lobby_fill_seconds
@@ -8954,7 +8959,7 @@ async function getInhouseSessionPlayers(sessionId) {
 
 async function updateInhouseSessionPlayer(sessionId, accountId, fields) {
   const p = getPool();
-  const allowed = ['status','team','pick_order','preferred_positions','roll','accepted_at','voice_verified','not_in_dota','joined_server'];
+  const allowed = ['status','team','pick_order','preferred_positions','roll','accepted_at','voice_verified','not_in_dota','joined_server','pick_source'];
   const sets = [];
   const vals = [];
   for (const k of Object.keys(fields)) {
