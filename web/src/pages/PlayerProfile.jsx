@@ -375,6 +375,67 @@ function ProfileChartV2({ history }) {
   );
 }
 
+// Task #269 — Owner-only preview of the rendered share card on the profile
+// page itself, so players can sanity-check what crawlers unfurl without
+// having to open Settings → Profile. Click-through deep-links to the
+// share-card picker section there.
+function ShareCardPreviewTile({ accountId }) {
+  const [bust] = React.useState(() => Date.now());
+  const [failed, setFailed] = React.useState(false);
+  if (!accountId) return null;
+  const previewSrc = `/og/profile/by-id/${encodeURIComponent(accountId)}.png?t=${bust}`;
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, var(--bg-card) 100%)',
+      border: '1px solid rgba(245,158,11,0.3)', borderRadius: 12,
+      padding: '14px 18px', marginTop: 12, marginBottom: 8,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginBottom: 3 }}>
+            🖼️ How your share link looks
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            This is the card that unfurls when your profile link is pasted into Discord, Twitter, Slack, etc.
+          </div>
+        </div>
+        <Link
+          to="/settings/profile#share-card"
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid rgba(245,158,11,0.4)',
+            color: '#f59e0b',
+            borderRadius: 8, padding: '7px 14px',
+            fontSize: 13, fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap',
+            textDecoration: 'none',
+          }}
+        >
+          Customize →
+        </Link>
+      </div>
+      {failed ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '20px 0', textAlign: 'center' }}>
+          Preview unavailable right now.
+        </div>
+      ) : (
+        <div style={{
+          width: '100%', maxWidth: 600,
+          aspectRatio: '1200 / 630',
+          borderRadius: 8, overflow: 'hidden',
+          border: '1px solid var(--border)', background: 'var(--bg-secondary)',
+        }}>
+          <img
+            src={previewSrc}
+            alt="Your profile share card preview"
+            onError={() => setFailed(true)}
+            style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InviteLinkCard({ accountId }) {
   const [inviteData, setInviteData] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
@@ -1226,6 +1287,9 @@ export default function PlayerProfile() {
       {/* AUDIT (v5.91 parity pass): OWNER-ONLY — invite/referral link is only meaningful
           to the profile owner (it grants them XP for referrals). Public viewers see nothing. */}
       {isOwnProfile && <InviteLinkCard accountId={accountId} />}
+      {/* Task #269 — owner-only share-card preview tile, click-through to
+          Settings → Profile § share-card picker. */}
+      {isOwnProfile && <ShareCardPreviewTile accountId={accountId} />}
 
       {/* AUDIT (v5.91 parity pass): PRO-PAYWALLED — AI Scouting Report. Trigger
           button shows for any signed-in viewer; the actual /player/:id/scouting-report

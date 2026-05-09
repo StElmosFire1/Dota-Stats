@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.07",
+    "title": "See your share-card preview right on your own profile page",
+    "published_at": "2026-05-09",
+    "content": "Task #269: the share-card hero picker shipped in v6.78 (Task #259) only showed the rendered card on the picker itself in Settings → Profile, so players had to dig into settings to sanity-check what their /p/<slug> or /player/<id> link unfurled into. v7.07 surfaces the preview directly on /player/<accountId> for the profile owner.\n\nNew owner-only `<ShareCardPreviewTile>` component in web/src/pages/PlayerProfile.jsx renders a small 1200×630 aspect-ratio thumbnail of `/og/profile/by-id/<accountId>.png` with a brass-accented header ('🖼️ How your share link looks') explaining what the card is and a prominent 'Customize →' button that deep-links to `/settings/profile#share-card` for one-click access to the picker. The tile is gated on the existing `isOwnProfile` check (line 572) so public viewers see nothing — same scoping as InviteLinkCard which it sits next to in the render tree. Image failures fall back to a quiet 'Preview unavailable right now' message via onError so a transient OG-render hiccup doesn't break the rest of the page. A cache-buster `?t=<mount-time>` is appended so the preview always re-fetches on profile-page reload (the OG endpoint marks unauthed responses with a 10-minute public cache, so without the buster a recent share-card hero change wouldn't show up immediately).\n\nSettings → Profile gains an `id=\"share-card\"` anchor on the existing 'Share card hero' section with `scrollMarginTop: 80` so the deep-link from the preview tile lands cleanly under the sticky header instead of being hidden behind it. No other Settings changes — the picker, save flow, validation and OG endpoint are unchanged.\n\nFull edition only — community edition has no profile customization or OG card surface. A11y gate green (153 JSX / 3 CSS files scanned).",
+    "author": "System"
+  },
+  {
     "version": "7.06",
     "title": "Match links unfurl with a real preview card (winner · score · MVP · top fragger)",
     "published_at": "2026-05-09",

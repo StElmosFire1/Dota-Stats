@@ -1285,7 +1285,7 @@ export default function SettingsProfile() {
               fetch when /p/<slug> or /player/<id> is pasted into Discord /
               Twitter. Defaults to the existing pinned → most-played fallback
               chain so doing nothing here keeps current behaviour. */}
-          <section style={{ marginTop: 24 }}>
+          <section id="share-card" style={{ marginTop: 24, scrollMarginTop: 80 }}>
             <h2 style={{ marginBottom: 8 }}>Share card hero</h2>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
               Hero portrait shown when your profile link is pasted into Discord, Twitter,
