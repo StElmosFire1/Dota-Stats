@@ -541,6 +541,67 @@ function isSingleBraceExpression(trimmed) {
  * The bias is intentionally conservative: when in doubt, skip. We only
  * flag shapes that clearly reference an icon component or an inline SVG.
  */
+/**
+ * Walk a string that begins immediately after `(` of a call expression and
+ * return the substring of the first argument (up to the first top-level `,`
+ * or the matching `)`), respecting nested parens/brackets/braces and
+ * quoted strings. Returns null if the call's closing `)` cannot be found.
+ * Used by classifyBraceExpression to pick the first argument out of a
+ * `cloneElement(arg, …)` call. Task #194.
+ */
+function extractFirstCallArg(rest) {
+  let depth = 0;
+  let quote = null;
+  let buf = '';
+  for (let i = 0; i < rest.length; i++) {
+    const c = rest[i];
+    if (quote) {
+      if (c === '\\') { buf += c + (rest[i + 1] || ''); i++; continue; }
+      if (c === quote) quote = null;
+      buf += c;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; buf += c; continue; }
+    if (c === '(' || c === '[' || c === '{') { depth++; buf += c; continue; }
+    if (c === ')' || c === ']' || c === '}') {
+      if (depth === 0) {
+        // End of the cloneElement(...) call with a single arg.
+        return buf;
+      }
+      depth--;
+      buf += c;
+      continue;
+    }
+    if (c === ',' && depth === 0) return buf;
+    buf += c;
+  }
+  return null;
+}
+
+/**
+ * True when `inside` (the contents of an array literal or arg list) contains
+ * a top-level `,` — i.e. has more than one element. Honors nested
+ * brackets/parens/braces and quoted strings. Used by classifyBraceExpression
+ * to confirm a `[expr]` array literal is single-element. Task #194.
+ */
+function hasTopLevelComma(inside) {
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < inside.length; i++) {
+    const c = inside[i];
+    if (quote) {
+      if (c === '\\') { i++; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+    if (c === '(' || c === '[' || c === '{') { depth++; continue; }
+    if (c === ')' || c === ']' || c === '}') { depth--; continue; }
+    if (c === ',' && depth === 0) return true;
+  }
+  return false;
+}
+
 function classifyBraceExpression(expr) {
   if (!expr) return null;
 
@@ -551,6 +612,37 @@ function classifyBraceExpression(expr) {
     const tag = m[1];
     if (tag === 'svg' || /Icon$/.test(tag) || /Svg$/.test(tag)) {
       return `single child <${tag}> in {…} expression`;
+    }
+    return null;
+  }
+
+  // React.cloneElement(...) / cloneElement(...) — Task #194. Shared button
+  // wrappers commonly forward a passed-in icon node through cloneElement to
+  // attach className/size props. The first argument is the element being
+  // cloned; if that argument itself looks like an icon, the wrapping button
+  // is effectively icon-only and needs an aria-label.
+  const cloneMatch = expr.match(/^(?:React\.)?cloneElement\s*\(\s*/);
+  if (cloneMatch) {
+    const rest = expr.slice(cloneMatch[0].length);
+    const firstArg = extractFirstCallArg(rest);
+    if (firstArg !== null) {
+      const inner = classifyBraceExpression(firstArg.trim());
+      if (inner) return `cloneElement of ${inner}`;
+    }
+    return null;
+  }
+
+  // Single-element array literal: `{[icon]}`, `{[<CloseIcon/>]}` — Task #194.
+  // Wrapper buttons sometimes splat children into an array (e.g. when
+  // composing optional icon slots). A one-element array containing only an
+  // icon ref is the same hazard as the bare-identifier case above. Trailing
+  // commas (`[icon,]`) are tolerated as still single-element.
+  if (expr[0] === '[' && expr[expr.length - 1] === ']') {
+    let inside = expr.slice(1, -1).trim();
+    if (inside.endsWith(',')) inside = inside.slice(0, -1).trim();
+    if (inside && !hasTopLevelComma(inside)) {
+      const inner = classifyBraceExpression(inside);
+      if (inner) return `single-element array containing ${inner}`;
     }
     return null;
   }

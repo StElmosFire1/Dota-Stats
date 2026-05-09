@@ -112,6 +112,69 @@ test('classifyIconOnly: flags member-access references ending in Icon/Svg', () =
 });
 
 // -----------------------------------------------------------------------------
+// Task #194 — React.cloneElement and single-element array shapes.
+// -----------------------------------------------------------------------------
+test('classifyIconOnly: flags React.cloneElement of an icon ref', () => {
+  assert.match(
+    classifyIconOnly('{React.cloneElement(CloseIcon, { className: "x" })}') || '',
+    /cloneElement.*icon component reference/
+  );
+  assert.match(
+    classifyIconOnly('{cloneElement(<CloseIcon/>)}') || '',
+    /cloneElement.*<CloseIcon>/
+  );
+  assert.match(
+    classifyIconOnly('{React.cloneElement(props.dismissSvg, { size: 12 })}') || '',
+    /cloneElement.*icon component reference/
+  );
+});
+
+test('classifyIconOnly: skips React.cloneElement of an ambiguous ref', () => {
+  // Lowercase `icon`, `child`, `label` style → still ambiguous, stay lenient
+  // (mirrors the bare-identifier rule for the non-cloneElement case).
+  assert.strictEqual(classifyIconOnly('{React.cloneElement(icon)}'), null);
+  assert.strictEqual(classifyIconOnly('{React.cloneElement(child)}'), null);
+  assert.strictEqual(classifyIconOnly('{cloneElement(label, props)}'), null);
+});
+
+test('classifyIconOnly: flags single-element array containing an icon', () => {
+  assert.match(
+    classifyIconOnly('{[<CloseIcon/>]}') || '',
+    /single-element array.*<CloseIcon>/
+  );
+  assert.match(
+    classifyIconOnly('{[CloseIcon]}') || '',
+    /single-element array.*icon component reference/
+  );
+  assert.match(
+    classifyIconOnly('{[Icons.closeSvg]}') || '',
+    /single-element array.*icon component reference/
+  );
+});
+
+test('classifyIconOnly: skips multi-element array (likely visible content)', () => {
+  // Multiple children → not a pure icon-only button.
+  assert.strictEqual(classifyIconOnly('{[<CloseIcon/>, "Save"]}'), null);
+  assert.strictEqual(classifyIconOnly('{[a, b]}'), null);
+});
+
+test('classifyIconOnly: tolerates trailing comma in single-element array (Task #194)', () => {
+  assert.match(
+    classifyIconOnly('{[<CloseIcon/>,]}') || '',
+    /single-element array.*<CloseIcon>/
+  );
+  assert.match(
+    classifyIconOnly('{[CloseIcon,]}') || '',
+    /single-element array.*icon component reference/
+  );
+});
+
+test('classifyIconOnly: skips single-element array of an ambiguous identifier', () => {
+  assert.strictEqual(classifyIconOnly('{[label]}'), null);
+  assert.strictEqual(classifyIconOnly('{[children]}'), null);
+});
+
+// -----------------------------------------------------------------------------
 // Existing shapes still work as before.
 // -----------------------------------------------------------------------------
 test('classifyIconOnly: still flags single-glyph buttons (×, ⌄, →)', () => {
@@ -356,6 +419,48 @@ export default function X() { return <button onClick={() => {}}>{<CloseIcon/>}</
 `);
   assert.strictEqual(issues.length, 1);
   assert.match(issues[0].message, /icon-only/);
+});
+
+test('pass3: skips <button>{React.cloneElement(icon)}</button> wrapper with ambiguous arg (Task #194)', () => {
+  const issues = scanJsx('p3_clone_element', `
+export default function IconButton({ icon, onClick }) {
+  return <button onClick={onClick}>{React.cloneElement(icon, { className: 'x' })}</button>;
+}
+`);
+  // `icon` is a lowercase ambiguous identifier — should NOT flag (lenient,
+  // mirrors the bare-identifier rule).
+  assert.deepStrictEqual(issues.filter((i) => /icon-only/.test(i.message)), []);
+});
+
+test('pass3: flags <button>{React.cloneElement(<Icon/>)}</button> (Task #194)', () => {
+  const issues = scanJsx('p3_clone_jsx', `
+export default function X() {
+  return <button onClick={() => {}}>{React.cloneElement(<CloseIcon/>, { size: 12 })}</button>;
+}
+`);
+  const iconIssues = issues.filter((i) => /icon-only/.test(i.message));
+  assert.strictEqual(iconIssues.length, 1);
+  assert.match(iconIssues[0].message, /cloneElement/);
+});
+
+test('pass3: flags <button>{[<Icon/>]}</button> single-element array (Task #194)', () => {
+  const issues = scanJsx('p3_array_icon', `
+export default function X() {
+  return <button onClick={() => {}}>{[<CloseIcon key="x" />]}</button>;
+}
+`);
+  const iconIssues = issues.filter((i) => /icon-only/.test(i.message));
+  assert.strictEqual(iconIssues.length, 1);
+  assert.match(iconIssues[0].message, /single-element array/);
+});
+
+test('pass3: accepts aria-label on a cloneElement icon button (Task #194)', () => {
+  const issues = scanJsx('p3_clone_labeled', `
+export default function X() {
+  return <button aria-label="Close" onClick={() => {}}>{React.cloneElement(<CloseIcon/>)}</button>;
+}
+`);
+  assert.deepStrictEqual(issues.filter((i) => /icon-only/.test(i.message)), []);
 });
 
 test('pass3: skips title attribute (not an accessible name substitute)', () => {
