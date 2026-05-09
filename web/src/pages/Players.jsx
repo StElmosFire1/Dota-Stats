@@ -24,11 +24,14 @@ export default function Players() {
   const [search, setSearch] = useState('');
 
   // Task #213 — "Live now" tab. Polls /api/presence/live every 30s while
-  // the tab is visible, mirroring the per-profile chip's polling shape.
+  // the tab is visible AND the Live now tab is selected, mirroring the
+  // per-profile chip's polling shape but tab-gated to avoid unnecessary
+  // traffic while the visitor is on the All players view.
   const [tab, setTab] = useState('all'); // 'all' | 'live'
   const [livePlayers, setLivePlayers] = useState([]);
   const [liveLoading, setLiveLoading] = useState(false);
   useEffect(() => {
+    if (tab !== 'live') return undefined;
     let cancelled = false;
     const tick = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
@@ -43,7 +46,7 @@ export default function Players() {
     const onVis = () => { if (document.visibilityState === 'visible') tick(); };
     document.addEventListener('visibilitychange', onVis);
     return () => { cancelled = true; clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
-  }, []);
+  }, [tab]);
 
   const loadPlayers = () => {
     setLoading(true);
@@ -354,7 +357,7 @@ function LiveNowList({ loading, players }) {
         borderRadius: 8, padding: '24px 16px', color: 'var(--text-muted)',
         textAlign: 'center',
       }}>
-        Nobody's in a Dota game, lobby, or queue right now. Check back soon.
+        Nobody's in a Dota game, lobby, queue, or voice channel right now. Check back soon.
       </div>
     );
   }
