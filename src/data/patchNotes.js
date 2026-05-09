@@ -1299,6 +1299,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.42",
+    "title": "Automated tests lock in the shared modal primitive's keyboard contract",
+    "published_at": "2026-05-09",
+    "content": "**Task #173 — adding Vitest + Testing Library coverage for `web/src/components/Dialog.jsx` (also mirrored to `community-edition/web/src/components/Dialog.jsx`).** The shared Dialog primitive introduced in Task #165 is now used by every modal in the app, but it had zero tests — a future refactor of its focus-trap or scroll-lock could have silently broken every login / onboarding / booking / coach modal at once. This pass adds `web/src/components/__tests__/Dialog.test.jsx` (9 tests, all green) covering the documented contracts: Escape closes by default and is suppressed by `closeOnEscape={false}`; Tab from the last focusable wraps to the first, Shift+Tab from the first wraps to the last, and a Tab from outside the dialog content (focus escaped to `<body>`) is pulled back inside; backdrop click closes by default while clicks on the dialog content do NOT (verifying the `e.stopPropagation()` on the content wrapper) and `closeOnBackdrop={false}` suppresses backdrop closing; body `overflow` is locked to `hidden` while open and restored to its previous value on close; focus is captured on open and restored to the original trigger element on close; and `initialFocusRef` overrides the auto-first-focusable behaviour. Tests run as part of `web/` `npm test` (full suite: 11 passing). Uses fake timers to advance the deferred initial-focus `setTimeout(0)` deterministically.",
+    "author": "System"
+  },
+  {
     "version": "6.41",
     "title": "Per-pick countdown on the captain draft — AFK captains can no longer stall the lobby",
     "published_at": "2026-05-09",
