@@ -65,13 +65,15 @@ export function TimeOfDayPanel({ data }) {
                 const wins = cell.wins;
                 const losses = games - wins;
                 const wr = games > 0 ? wins / games : 0;
-                // Single-channel volume tint in brass (the magazine accent
-                // colour, --brass = #c5a975). Low games = transparent,
-                // many games = solid brass, so the grid reads as a real
-                // heatmap at a glance. 0.15 floor so a single-game cell is
-                // clearly visible against the panel background; 0.90 ceiling
-                // (not 1.0) so the W (green) / L (red) text inside the
-                // busiest cells still has enough contrast to read.
+                // Single-channel volume tint in slate (cool desaturated grey,
+                // rgb(148, 163, 184) — the canonical "neutral background for
+                // a coloured-text heatmap" choice). Sits on the cool axis so
+                // it doesn't compete with either the green (wins) or the red
+                // (losses) text inside the cell — both warm hues pop equally.
+                // Low games = transparent, many games = nearly solid slate,
+                // so the grid reads as a real heatmap at a glance. 0.15 floor
+                // so a single-game cell is clearly visible; 0.90 ceiling (not
+                // 1.0) so the W / L text inside the busiest cells stays readable.
                 const opacity = games > 0 ? 0.15 + 0.75 * (games / maxGames) : 0;
                 const titleStr = games > 0
                   ? `${DAY_LABELS[di]} ${hi}:00 — ${games} games, ${wins}W/${losses}L (${Math.round(wr * 100)}% WR)`
@@ -80,7 +82,7 @@ export function TimeOfDayPanel({ data }) {
                   <div
                     key={`c${di}-${hi}`}
                     className="v3-tod-cell"
-                    style={games > 0 ? { background: `rgba(197, 169, 117, ${opacity})` } : undefined}
+                    style={games > 0 ? { background: `rgba(148, 163, 184, ${opacity})` } : undefined}
                     title={titleStr}
                     aria-label={titleStr}
                   >
@@ -111,7 +113,7 @@ export function TimeOfDayPanel({ data }) {
               <span
                 key={i}
                 className="v3-tod-legend-swatch"
-                style={{ background: `rgba(197, 169, 117, ${op})` }}
+                style={{ background: `rgba(148, 163, 184, ${op})` }}
                 title={i === 0 ? '1 game' : i === 3 ? 'Most games' : `${i + 1} of 4`}
               />
             ))}

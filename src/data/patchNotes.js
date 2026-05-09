@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "6.93",
+    "title": "Time-of-day heatmap — slate background so green/red W-L pop",
+    "published_at": "2026-05-09",
+    "content": "v6.90's brass cell tint sat too close to red on the colour wheel — the L (red) text inside busy cells started to clash against the warm background. v6.93 swaps the cell tint to slate (rgb(148, 163, 184) — cool desaturated grey, the canonical 'neutral background for a coloured-text heatmap' choice). Slate sits on the cool axis perpendicular to both red and green, so neither hue competes for attention; the W (green) and L (red) numbers now pop cleanly against any cell density. Same 0.15 → 0.90 opacity ramp as v6.90, legend swatch row recoloured to match. Brass remains the magazine-wide accent (panel borders, hero-card glow, etc.) — only the heatmap cell + its legend swatches changed.",
+    "author": "System"
+  },
+  {
+    "version": "6.92",
+    "title": "Test coverage for Stripe refunds, KYC, and PI safety-net webhooks",
+    "published_at": "2026-05-09",
+    "content": "Task #255: Task #237 (v6.78-era) locked in checkout.session.completed (paid/unpaid) and the BECS async-payment branches of the /api/stripe/webhook handler, but the *other* branches in the same handler (src/web/server.js ~lines 920-1000) were untested — a future refactor of any of refunds, KYC promotion, or the manual-capture safety nets could silently break payouts and the deploy gate would stay green.\n\nNew tests/stripeWebhookRefundsKyc.test.js (14 cases, all green) reuses the same require.cache stub harness shape from tests/stripeWebhookAsyncPayment.test.js (stubs stripe, db, replay parser, stats service, groq, discord bot, voice queue, monetization/magazineV3, profileCosmetics, connect-pg-simple; reads the route off app._router; invokes only the final route handler so it skips express.raw streaming) and asserts five branches end-to-end:\n\n(1) `charge.refunded` with a payment_intent calls BOTH `db.markProRefunded(pi)` AND `db.markBookingRefundedByIntent(pi)` so a single Stripe refund flips whichever row matches; a charge WITHOUT a payment_intent triggers neither. (2) `payment_intent.succeeded` with `metadata.purpose='coaching_booking'` calls `db.markBookingCompletedByIntent(intent.id)` (PI safety net for manual capture); other purposes / missing metadata are no-ops. (3) `payment_intent.canceled` with the same coaching purpose calls `db.markBookingRefundedByIntent(intent.id)` (PI safety net for refunds); other purposes are no-ops. (4) `account.updated` promotes the coach via `db.setCoachKycActive(acct.id)` ONLY when BOTH `charges_enabled` AND `payouts_enabled` are true — three negative cases (charges-only, payouts-only, neither) confirm the AND gate, locking in the documented 'don't take bookings we can't pay out' rule. (5) `checkout.session.expired` with `purpose='coaching_booking'` calls `db.markBookingCancelledBySession(session.id)` to free the slot; other purposes / missing metadata are no-ops.\n\nNo production code changes — pure test additions. Keeps the manual-refund / dispute-refund / no-show-refund flows from regressing without a deploy-time signal.",
+    "author": "System"
+  },
+  {
     "version": "6.91",
     "title": "Live-now badge now shows on phones too",
     "published_at": "2026-05-09",
