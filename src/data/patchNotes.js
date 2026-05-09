@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.00",
+    "title": "Match pages get a Share button so players can post big wins",
+    "published_at": "2026-05-09",
+    "content": "Task #260: Task #242 added a Share popover to the player profile page; the same shape was missing on individual match pages, so a player who just popped a 25-2 game had no one-click way to brag with a link that unfurls back to the match scoreboard.\n\nMatchDetail.jsx now renders a `🔗 Share` button next to the existing `← Back to matches` / Edit Stats / Download Replay header controls, and clicking it opens a small anchored popover via the shared `<Dialog>` primitive (focus trap, Escape to close, body-scroll lock, focus restore — same a11y gate compliance as the profile share button). The popover offers three actions identical in shape to the profile version: **Share on Twitter / X** (opens the X intent with prefilled text + the canonical match URL), **Copy for Discord** (Discord-friendly markdown with the URL wrapped in `<…>` to suppress the bare unfurl when desired), and **Copy link**.\n\nThe prefill text is match-aware. When the signed-in viewer was actually one of the ten players in the match (looked up by matching `steamUser.accountId` against `match.players[].account_id`), the tweet/Discord text reads `Just won: 25/2/14 on Anti-Mage — Radiant wins on OCE Inhouse:` (or `Match recap:` if their side lost) — pulling KDA + the formatted hero name + the actual winning side. For signed-out viewers or spectators not in the match, it falls back to `Radiant wins inhouse match <matchId> on OCE Inhouse:`. Hero name uses the existing `formatHeroName(getHeroName(hero_id))` pipeline already imported by the page so there's no new dependency.\n\nButton has `aria-label='Share this match'`, `aria-haspopup='dialog'`, and `aria-expanded` reflecting popover state; the popover heading is `id='match-share-popover-title'` and wired via `labelledBy` so the dialog announces itself correctly. Copy actions show a brief `✅ Copied!` flash then auto-close. a11y gate green (153 JSX / 3 CSS files scanned).",
+    "author": "System"
+  },
+  {
     "version": "6.99",
     "title": "Match list shows hero icons + top fragger, Pro paywall card sticks to top, sign-in banner self-heals",
     "published_at": "2026-05-09",

@@ -29,6 +29,7 @@ import ImpactBadge from '../components/ImpactBadge';
 import { useSeason } from '../context/SeasonContext';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
+import { useSteamAuth } from '../context/SteamAuthContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import useProStatus from '../hooks/useProStatus';
 import VerifiedBadge from '../components/VerifiedBadge';
@@ -2740,7 +2741,15 @@ function MatchDetailInner() {
   const { seasons } = useSeason();
   const { isAdmin, adminKey, setShowModal } = useAdmin();
   const { isSuperuser } = useSuperuser();
+  const { steamUser } = useSteamAuth();
   const showMvpBadges = useFeatureFlag('mvp_match_badges');
+  // Task #260 — Share popover state. Mirrors the profile-page Share button
+  // (Task #242): same Dialog primitive, same Twitter / Discord / Copy-link
+  // shape. Anchored next to the Share button in the match-detail header.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(null); // 'link' | 'discord' | null
+  const [shareAnchor, setShareAnchor] = useState(null); // { top, left } | null
+  const shareBtnRef = useRef(null);
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -2941,6 +2950,27 @@ function MatchDetailInner() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
         <Link to="/matches" className="back-link">&larr; Back to matches</Link>
+        {/* Task #260 — Share button. Mirrors the Player Profile Share popover
+            (Task #242). Always visible, no auth required to share. */}
+        <button
+          ref={shareBtnRef}
+          type="button"
+          onClick={() => {
+            setShareCopied(null);
+            const r = shareBtnRef.current?.getBoundingClientRect();
+            setShareAnchor(r ? { top: r.bottom + 8, left: r.left } : null);
+            setShareOpen(true);
+          }}
+          id="match-share-btn"
+          aria-label="Share this match"
+          aria-haspopup="dialog"
+          aria-expanded={shareOpen}
+          style={{
+            background: 'transparent', color: '#94a3b8', border: '1px solid #334155',
+            padding: '3px 12px', borderRadius: 4, fontSize: '0.8rem', fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >🔗 Share</button>
         {isSuperuser && (
           <Link
             to={`/match/${matchId}/edit`}
@@ -3253,6 +3283,128 @@ function MatchDetailInner() {
         </div>
       )}
 
+      {/* Task #260 — Share popover. Same shape as the PlayerProfile Share
+          popover (Task #242): shared <Dialog> primitive (focus trap, Escape,
+          body scroll lock, focus restore — gates the hand-rolled-modal a11y
+          check) with one-click intents for Twitter/X, Discord-friendly
+          markdown, and copy-link. Tweet text bakes in the winning side and
+          the viewer's KDA when they were in the match. */}
+      <Dialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        labelledBy="match-share-popover-title"
+        backdropStyle={{
+          position: 'fixed', inset: 0, zIndex: 9000,
+          background: 'transparent',
+        }}
+        contentStyle={shareAnchor ? {
+          position: 'fixed',
+          top: Math.min(shareAnchor.top, (typeof window !== 'undefined' ? window.innerHeight - 360 : shareAnchor.top)),
+          left: Math.min(shareAnchor.left, (typeof window !== 'undefined' ? window.innerWidth - 380 : shareAnchor.left)),
+        } : undefined}
+      >
+        {(() => {
+          const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+          const winningSide = match.radiant_win ? 'Radiant' : 'Dire';
+          const viewerAcct = steamUser?.accountId != null ? String(steamUser.accountId) : null;
+          const viewer = viewerAcct
+            ? allPlayers.find(p => String(p.account_id) === viewerAcct)
+            : null;
+          let prefix;
+          if (viewer) {
+            const heroName = formatHeroName(getHeroName(viewer.hero_id)) || 'their hero';
+            const won = (viewer.team === 'radiant') === !!match.radiant_win;
+            const k = viewer.kills || 0;
+            const d = viewer.deaths || 0;
+            const a = viewer.assists || 0;
+            prefix = `${won ? 'Just won' : 'Match recap'} #${matchId}: ${k}/${d}/${a} on ${heroName} — ${winningSide} wins`;
+          } else {
+            prefix = `${winningSide} wins inhouse match #${matchId}`;
+          }
+          const tweetText = `${prefix} on OCE Inhouse:`;
+          const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent(shareUrl)}`;
+          const discordMarkdown = `**${prefix}** on OCE Inhouse: <${shareUrl}>`;
+          const copyText = (text, kind) => {
+            const done = () => {
+              setShareCopied(kind);
+              window.setTimeout(() => {
+                setShareCopied(prev => prev === kind ? null : prev);
+                setShareOpen(false);
+              }, 900);
+            };
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(text).then(done).catch(() => {
+                window.prompt('Copy this:', text);
+                setShareOpen(false);
+              });
+            } else {
+              window.prompt('Copy this:', text);
+              setShareOpen(false);
+            }
+          };
+          const btnStyle = {
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            color: 'var(--text)', borderRadius: 8, padding: '10px 14px',
+            fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+            textDecoration: 'none',
+          };
+          return (
+            <div style={{
+              background: 'var(--bg-secondary, #111)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: 18, minWidth: 280, maxWidth: 360,
+              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+            }}>
+              <h2
+                id="match-share-popover-title"
+                style={{ margin: '0 0 4px 0', fontSize: 16, fontWeight: 700, color: 'var(--text)' }}
+              >Share this match</h2>
+              <p style={{ margin: '0 0 14px 0', fontSize: 12, color: 'var(--text-muted)', wordBreak: 'break-all' }}>
+                {shareUrl}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <a
+                  href={twitterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={btnStyle}
+                  onClick={() => setShareOpen(false)}
+                >
+                  <span aria-hidden="true">🐦</span>
+                  <span>Share on Twitter / X</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => copyText(discordMarkdown, 'discord')}
+                  style={btnStyle}
+                >
+                  <span aria-hidden="true">💬</span>
+                  <span>{shareCopied === 'discord' ? '✅ Copied for Discord!' : 'Copy for Discord'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyText(shareUrl, 'link')}
+                  style={btnStyle}
+                >
+                  <span aria-hidden="true">🔗</span>
+                  <span>{shareCopied === 'link' ? '✅ Link copied!' : 'Copy link'}</span>
+                </button>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => setShareOpen(false)}
+                  style={{
+                    background: 'transparent', border: '1px solid var(--border)',
+                    color: 'var(--text-muted)', borderRadius: 8, padding: '6px 14px',
+                    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >Close</button>
+              </div>
+            </div>
+          );
+        })()}
+      </Dialog>
     </div>
   );
 }
