@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.03",
+    "title": "Sign-in self-heal sweep, profile cover top padding, paywall card clears the navbar",
+    "published_at": "2026-05-09",
+    "content": "Three small but visible polish fixes from prod feedback:\n\n**Sign-in retry self-heal — 4-shot backoff sweep.** v6.99 added a single `refreshMe()` retry before showing the 'Sign in didn't complete' banner, on the theory that the SteamAuthProvider mount-time fetch was racing the Set-Cookie header by a few ms. Users reported the banner still firing on slower devices / connections, so v7.03 widens the window: `web/src/App.jsx` `SignInRetryBanner` now sweeps `refreshMe()` at 200ms / 600ms / 1.2s / 2s before falling through to the banner + `/auth/diagnose` ping. Total budget ~2 seconds — short enough that a genuine failure still surfaces promptly, long enough to absorb the cookie-commit gap on slow Set-Cookie commits. The existing `selfHealRef` one-shot guard is preserved (no re-entry loop on React re-renders), and the effect cleanup cancels the in-flight sweep on unmount/navigate.\n\n**Profile cover top padding — bumped 5rem → 7.5rem (mobile 2 → 4.5rem).** `web/src/components/MagazineCover.css` `.v3-cover-inner` was getting visually clipped against the stacked sticky bars (global navbar ~52px + the v3-sticky mini-header ~50px that drops in once the user scrolls past the cover top). The eyebrow row ('PLAYER PROFILE · SIGNATURE: PUCK · MID') and the player name title were sliding under those two bars. New top padding leaves room for both stacked sticky bars + a breathing gap.\n\n**Pro upgrade card sticky offset — bumped `top: 24` → `top: 76`.** `web/src/components/PaywallBlur.jsx`. v6.99 made the upgrade card `position: sticky` so it follows the viewport down a long gated table, but the sticky offset was `top: 24` which meant once you scrolled past the start of the gated section, the card slid under the global sticky navbar (52px tall, z-index 100). New offset = navbar height + 24px gap so the card always parks just below the navbar tabs.\n\nAffects all gated panels (Position Player Profiles, Hero Position Meta, Hero Breakdown, Player Insights, Head-to-Head, Compare Players, Ward Heatmap). a11y gate green (153 JSX / 3 CSS files scanned), web bundle builds cleanly.",
+    "author": "System"
+  },
+  {
     "version": "7.02",
     "title": "Superuser audit page for Founders Pass cap-race refunds",
     "published_at": "2026-05-09",

@@ -65,7 +65,11 @@ export default function PaywallBlur({ feature, children, blurStrength = 6, minHe
         <div
           className="oa-card oa-card-rule"
           style={{
-            position: 'sticky', top: 24,
+            // Sticky offset must clear the global navbar (sticky, ~52px tall,
+            // z-index 100) plus a small breathing gap. Without this, the
+            // upgrade card slides under the navbar tabs as you scroll down
+            // through the gated table and the heading gets visually clipped.
+            position: 'sticky', top: 76,
             alignSelf: 'flex-start',
             maxWidth: 460, width: '100%',
             padding: '24px 28px', textAlign: 'center',

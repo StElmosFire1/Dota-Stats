@@ -800,31 +800,40 @@ function SignInRetryBanner() {
       return;
     }
     // ?auth=success but no session as far as the SPA knows. Before
-    // surfacing the scary retry banner, do ONE self-heal refetch of
-    // /api/auth/me. Prod logs (May 2026) prove the server-side session
-    // does land correctly — `/auth/diagnose` consistently reports
+    // surfacing the scary retry banner, do a SHORT BACKOFF SWEEP of
+    // /api/auth/me retries. Prod logs (May 2026) prove the server-side
+    // session does land correctly — `/auth/diagnose` consistently reports
     // session-exists=true session-accountId=… on the same browser that
     // is showing this banner — so the most likely cause of the false
     // positive is the SteamAuthProvider's mount-time fetch racing the
-    // session-cookie write by a few ms (the redirect from /auth/steam/
-    // return → /?auth=success can arrive at the SPA fractionally before
-    // the Set-Cookie header is committed by some browsers/proxies). A
-    // single retry through refreshMe() catches that race; if it still
-    // returns null we fall through to the diagnose ping + banner as
-    // before so a real failure is still surfaced.
+    // session-cookie write (the redirect from /auth/steam/return →
+    // /?auth=success can arrive at the SPA fractionally before the
+    // Set-Cookie header is committed by some browsers/proxies, and on
+    // slower devices the gap can be 1-2 seconds, not just a few ms).
+    // v6.99 tried a single retry; users reported the banner still firing,
+    // so v7.03 sweeps at 200ms / 600ms / 1.2s / 2s before giving up.
+    // Total budget ~2s — short enough that the banner still appears
+    // promptly on a genuine failure. The selfHealRef guard prevents a
+    // re-entry loop if React re-runs the effect during the sweep.
     if (!selfHealRef.current) {
       selfHealRef.current = true;
-      refreshMe()
-        .then(user => {
-          if (user && user.accountId) {
-            setShow(false);
-            return;
-          }
-          // Genuine miss — keep the existing diagnose-then-banner path.
-          surfaceBanner();
-        })
-        .catch(() => surfaceBanner());
-      return;
+      const delays = [200, 600, 1200, 2000];
+      let cancelled = false;
+      (async () => {
+        for (const d of delays) {
+          await new Promise(r => setTimeout(r, d));
+          if (cancelled) return;
+          try {
+            const user = await refreshMe();
+            if (user && user.accountId) {
+              setShow(false);
+              return;
+            }
+          } catch { /* keep retrying */ }
+        }
+        if (!cancelled) surfaceBanner();
+      })();
+      return () => { cancelled = true; };
     }
     surfaceBanner();
 
