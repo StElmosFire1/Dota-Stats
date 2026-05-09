@@ -7779,6 +7779,17 @@ NOTES
         }
       }
 
+      // v6.52 / Task #195 — Magazine v3 layout theme. Court & Pitch is free;
+      // the other five are Pro-only cosmetics. Empty/null is treated as the
+      // default. Validate against the catalogue, then Pro-gate.
+      const profileLayoutThemeRaw = norm(body.profile_layout_theme);
+      if (!cosm.isValidLayoutTheme(profileLayoutThemeRaw)) {
+        return res.status(400).json({ error: 'Unknown profile layout theme' });
+      }
+      if (!isPro && cosm.isPremiumLayoutTheme(profileLayoutThemeRaw)) {
+        return res.status(403).json({ error: 'That profile theme is reserved for Pro members' });
+      }
+
       // v5.81 — extras (8 mockup-graduated knobs). Validated + Pro-gated.
       const extrasResult = cosm.validateExtras(body.extras);
       if (!extrasResult.ok) return res.status(400).json({ error: extrasResult.error });
@@ -7810,6 +7821,7 @@ NOTES
         pinned_hero_caption: pinnedHeroCaption,
         pinned_match_id: pinnedMatchId,
         profile_frame: profileFrameRaw,
+        profile_layout_theme: profileLayoutThemeRaw,
         extras,
       });
       res.json({ ok: true, customization: saved, is_pro: isPro });

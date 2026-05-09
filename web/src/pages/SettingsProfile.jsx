@@ -9,6 +9,8 @@ import {
   FREE_FRAMES, PREMIUM_FRAMES,
   BIO_MAX, PINNED_HERO_CAPTION_MAX, DEFAULT_THEME, DEFAULT_FRAME, FRAME_META,
   HERO_BORDER_COLORS, FREE_FLAIRS, PREMIUM_FLAIRS, SOCIAL_URL_MAX, DEFAULT_EXTRAS,
+  FREE_LAYOUT_THEMES, PREMIUM_LAYOUT_THEMES, ALL_LAYOUT_THEMES,
+  DEFAULT_LAYOUT_THEME, LAYOUT_THEME_META, isPremiumLayoutTheme,
 } from '../profileCosmetics';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
 import { oauthErrorMessage } from '../components/DiscordLinkModal';
@@ -304,6 +306,8 @@ export default function SettingsProfile() {
   const [pinnedHeroCaption, setPinnedHeroCaption] = useState('');
   const [pinnedMatchId, setPinnedMatchId] = useState('');
   const [profileFrame, setProfileFrame] = useState(DEFAULT_FRAME);
+  // v6.52 / Task #195 — Magazine v3 layout theme.
+  const [layoutTheme, setLayoutTheme] = useState(DEFAULT_LAYOUT_THEME);
   const [ownedFrames, setOwnedFrames] = useState([]);
   const [framePurchaseLoading, setFramePurchaseLoading] = useState(null);
   const [framePurchaseError, setFramePurchaseError] = useState(null);
@@ -337,6 +341,7 @@ export default function SettingsProfile() {
       setPinnedHeroCaption(c.pinned_hero_caption || '');
       setPinnedMatchId(c.pinned_match_id ? String(c.pinned_match_id) : '');
       setProfileFrame(c.profile_frame || DEFAULT_FRAME);
+      setLayoutTheme(c.profile_layout_theme || DEFAULT_LAYOUT_THEME);
       setExtras({ ...DEFAULT_EXTRAS, ...(c.extras || {}) });
       if (c.pinned_hero_id) {
         setPinnedHeroSearch(getHeroName(c.pinned_hero_id) || '');
@@ -416,6 +421,7 @@ export default function SettingsProfile() {
         pinned_hero_caption: pinnedHeroCaption || null,
         pinned_match_id: pinnedMatchId || null,
         profile_frame: profileFrame || null,
+        profile_layout_theme: layoutTheme || null,
         extras,
       };
       const res = await fetch('/api/me/profile', {
@@ -644,6 +650,49 @@ export default function SettingsProfile() {
                   locked={!isPro}
                   onClick={() => setThemeAccent(c)} />
               ))}
+            </div>
+          </section>
+
+          <section style={{ marginTop: 24 }}>
+            <h2 style={{ marginBottom: 8 }}>Profile layout theme</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+              Restyles the new Magazine v3 cover banner on your public profile. Court &amp; Pitch
+              ships free; the other five layout themes are Pro cosmetics.
+            </p>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {ALL_LAYOUT_THEMES.map(t => {
+                const meta = LAYOUT_THEME_META[t] || { label: t, sub: '' };
+                const premium = isPremiumLayoutTheme(t);
+                const locked = premium && !isPro;
+                const selected = layoutTheme === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={locked ? undefined : () => setLayoutTheme(t)}
+                    disabled={locked}
+                    title={locked ? 'Reserved for Pro members' : meta.sub}
+                    style={{
+                      textAlign: 'left',
+                      padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                      cursor: locked ? 'not-allowed' : 'pointer',
+                      opacity: locked ? 0.5 : 1,
+                      background: selected ? 'rgba(245,158,11,0.18)' : 'var(--bg-card)',
+                      border: selected ? '2px solid #f59e0b' : '1px solid var(--border)',
+                      color: selected ? '#f59e0b' : 'var(--text-primary)',
+                      minWidth: 160,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {meta.label}
+                      {premium && <LockedPill />}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {meta.sub}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </section>
 

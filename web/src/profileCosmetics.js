@@ -78,6 +78,26 @@ export function isPremiumTitle(t) { return PREMIUM_TITLES.includes(t); }
 export function isPremiumTheme(t) { return PREMIUM_THEMES.includes(t); }
 export function isPremiumFrame(f) { return PREMIUM_FRAMES.includes(f); }
 
+// v6.52 / Task #195 — Magazine v3 layout themes (mirror of src/profileCosmetics.js).
+// Court & Pitch is the free default; the rest are Pro-only paid cosmetics.
+export const FREE_LAYOUT_THEMES = ['court-pitch'];
+export const PREMIUM_LAYOUT_THEMES = ['newsprint', 'carbon', 'holo', 'heritage', 'broadcast'];
+export const ALL_LAYOUT_THEMES = [...FREE_LAYOUT_THEMES, ...PREMIUM_LAYOUT_THEMES];
+export const DEFAULT_LAYOUT_THEME = 'court-pitch';
+export const LAYOUT_THEME_META = {
+  'court-pitch': { label: 'Court & Pitch', sub: 'Ink-navy + brass · default' },
+  'newsprint':   { label: 'Newsprint',     sub: 'Sepia broadsheet' },
+  'carbon':      { label: 'Carbon',        sub: 'Pitch-black + amber' },
+  'holo':        { label: 'Holo',          sub: 'Iridescent purple/cyan' },
+  'heritage':    { label: 'Heritage',      sub: 'Warm cigar + gold' },
+  'broadcast':   { label: 'Broadcast',     sub: 'Sport-channel orange' },
+};
+export function isPremiumLayoutTheme(t) { return PREMIUM_LAYOUT_THEMES.includes(t); }
+export function isValidLayoutTheme(t) {
+  if (t == null || t === '') return true;
+  return ALL_LAYOUT_THEMES.includes(t);
+}
+
 export const DEFAULT_THEME = FREE_THEMES[0];
 export const DEFAULT_FRAME = 'none';
 

@@ -5,6 +5,7 @@ import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import ProfileCard from '../components/ProfileCard';
+import MagazineCover from '../components/MagazineCover';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -926,8 +927,47 @@ export default function PlayerProfile() {
     </>
   );
 
+  // v6.52 / Task #195 — Magazine v3 cover graduation. The cover banner +
+  // sticky mini-header are mounted ABOVE the existing ProfileCard / sections
+  // so the deep section ports (anchor nav, time-of-day heatmap, OG shop,
+  // founders pass, Hall-of-Fame plaque, Profile Spotlight) can land in
+  // follow-up tasks without reshuffling this page. The wrapping
+  // `magazine-v3 v3-theme-{slug}` class drives the Court & Pitch / Newsprint
+  // / Carbon / Holo / Heritage / Broadcast palettes — only Court & Pitch is
+  // free; the other five mirror the PREMIUM_THEMES Pro cosmetic gating.
+  // Sanitize against the known catalogue so a stale/malformed DB value can
+  // never compose a malformed className token (architect review on Task #195).
+  const ALLOWED_LAYOUT_THEMES = new Set(['court-pitch', 'newsprint', 'carbon', 'holo', 'heritage', 'broadcast']);
+  const rawLayoutTheme = (showProfileCustomization && profileCard?.profile_layout_theme) || 'court-pitch';
+  const layoutTheme = ALLOWED_LAYOUT_THEMES.has(rawLayoutTheme) ? rawLayoutTheme : 'court-pitch';
+  const coverSocials = {
+    twitch: ex.social_twitch || null,
+    youtube: ex.social_youtube || null,
+    steam: ex.social_steam || null,
+  };
+  const coverFlair = (showProfileCustomization && ex.flair_unlocked && ex.flair_override) || null;
   return (
-    <div>
+    <div className={`magazine-v3 v3-theme-${layoutTheme}`}>
+      <MagazineCover
+        accountId={accountId}
+        displayName={displayName}
+        customTitle={profileCard?.custom_title || null}
+        bio={profileCard?.bio || null}
+        pinnedHero={pinnedHero}
+        topHero={allHeroes[0] || null}
+        rating={rating}
+        averages={averages}
+        recentMatches={recentMatches}
+        ratingHistory={ratingHistory}
+        winRateHistory={winRateHistory}
+        positions={positions}
+        streak={streak}
+        impactScore={impactScore}
+        themeAccent={profileCard?.theme_accent || null}
+        socials={coverSocials}
+        flair={coverFlair}
+        nameAdornments={headerNameAdornments}
+      />
       <Link to="/players" className="back-link">&larr; Back to players</Link>
 
       {/* AUDIT (v6.18): PUBLIC — single shared <ProfileCard /> renders the polished

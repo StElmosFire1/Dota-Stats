@@ -1,0 +1,415 @@
+/* Magazine v3 cover — graduated from
+   artifacts/mockup-sandbox/.../profile-redesign/_magazinespreadv3.css
+   into the production PlayerProfile (Task #195, v6.52).
+
+   The mockup uses --bg-base / --bg-card-2 / --text-main / --border-subtle
+   / --accent-brass / --accent-amber tokens. Production styles.css uses
+   --bg-primary / --bg-card / --text-primary / --border / --brass / --amber.
+   We alias the mockup tokens to the production ones inside .magazine-v3 so
+   theme-variant overrides further down can redefine them in one place. */
+
+.magazine-v3 {
+  --bg-base: var(--bg-primary);
+  --bg-card-2: var(--bg-secondary, var(--bg-card));
+  --bg-elev: var(--bg-card);
+  --text-main: var(--text-primary);
+  --text-faint: var(--text-muted);
+  --border-subtle: var(--border);
+  --border-strong: var(--border);
+  --accent-brass: var(--brass);
+  --accent-amber: var(--amber);
+  --accent-amber-2: var(--amber);
+  --radiant: var(--radiant-color);
+  --dire: var(--dire-color);
+  display: block;
+}
+
+/* ───────── Sticky mini-header ───────── */
+.v3-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: rgba(13, 20, 36, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0.55rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  transform: translateY(-100%);
+  transition: transform 0.18s ease-out;
+}
+.v3-sticky.is-visible { transform: translateY(0); }
+/* When the sticky shell is off-screen, also hide it from pointer events so
+   nothing under the page header can be hover-captured by the invisible bar. */
+.v3-sticky:not(.is-visible) { pointer-events: none; }
+.v3-sticky-portrait {
+  width: 30px; height: 30px; border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid var(--border-subtle);
+}
+.v3-sticky-name {
+  font-family: var(--font-serif, 'Playfair Display', serif);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+.v3-sticky-vital {
+  display: inline-flex; align-items: baseline; gap: 0.3rem;
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.v3-sticky-vital b {
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.v3-sticky-spacer { flex: 1; }
+.v3-sticky-cta {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  text-decoration: none;
+}
+.v3-sticky-cta:hover { border-color: var(--accent-amber); color: var(--accent-amber); }
+
+/* ───────── Cinematic cover banner ───────── */
+.v3-cover {
+  position: relative;
+  width: 100%;
+  min-height: 460px;
+  overflow: hidden;
+  isolation: isolate;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 1.25rem;
+}
+.v3-cover-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 35%;
+  filter: saturate(1.1) contrast(1.05);
+  z-index: 0;
+}
+.v3-cover-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(13, 20, 36, 0.45) 0%, rgba(13, 20, 36, 0.85) 55%, var(--bg-base) 100%),
+    linear-gradient(90deg, rgba(13, 20, 36, 0.78) 0%, rgba(13, 20, 36, 0.4) 60%, rgba(13, 20, 36, 0.55) 100%);
+  z-index: 1;
+}
+.v3-cover-inner {
+  position: relative;
+  z-index: 3;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 3rem 2rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.v3-cover-eyebrow {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.v3-cover-eyebrow .v3-dot { color: rgba(255, 255, 255, 0.35); }
+
+.v3-cover-name {
+  font-family: var(--font-serif, 'Playfair Display', serif);
+  font-weight: 800;
+  font-size: clamp(2.4rem, 6vw, 5rem);
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+  color: #fff;
+  margin: 0;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.v3-cover-title {
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--accent-amber);
+  margin-top: 0.15rem;
+}
+
+.v3-cover-flair {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+.v3-cover-flair .v3-pos-pill {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.v3-cover-flair .v3-flair-pill,
+.v3-cover-socials .v3-flair-pill {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(245, 158, 11, 0.18);
+  color: var(--accent-amber);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  text-decoration: none;
+}
+.v3-cover-socials .v3-flair-pill:hover { background: rgba(245, 158, 11, 0.32); }
+
+.v3-cover-bio {
+  font-family: var(--font-serif, 'Playfair Display', serif);
+  font-style: italic;
+  font-size: 1.05rem;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 680px;
+  margin-top: 0.5rem;
+  border-left: 3px solid var(--accent-brass);
+  padding-left: 1rem;
+}
+
+/* Vital stats strip */
+.v3-cover-vitals {
+  display: flex;
+  align-items: stretch;
+  gap: 1.25rem;
+  margin-top: 1.1rem;
+  padding: 1.05rem 1.4rem;
+  background: rgba(13, 20, 36, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  flex-wrap: wrap;
+}
+.v3-vital {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  min-width: 110px;
+  flex: 1 1 120px;
+}
+.v3-vital-lbl {
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.v3-vital-val {
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.v3-vital-suffix {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: 2px;
+}
+.v3-vital-sub {
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+}
+.v3-vital-sep {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  align-self: stretch;
+}
+.v3-vital-spark {
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin-top: 4px;
+  overflow: visible;
+}
+.v3-vital-spark path {
+  fill: none;
+  stroke: var(--accent-brass);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+.v3-vital-spark-empty { height: 22px; }
+
+.v3-cover-socials {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .v3-cover { min-height: 420px; }
+  .v3-cover-inner { padding: 2rem 1.25rem 1.5rem; }
+  .v3-cover-vitals { padding: 0.85rem 1rem; gap: 0.85rem; }
+  .v3-vital { min-width: 95px; }
+  .v3-vital-val { font-size: 1.25rem; }
+  .v3-vital-sep { display: none; }
+}
+
+/* ───────── Theme variants (Pro cosmetics, Task #195) ─────────
+   Court & Pitch is the default — no override needed. The other five
+   are paid layout themes mirroring the catalogue in profileCosmetics.js.
+   They override the aliased --bg-base / --text-main / --accent-* vars
+   set up at the top of this file, so just changing the wrapping class
+   cascades through cover + sticky + future v3 sections. */
+
+.magazine-v3.v3-theme-newsprint {
+  --bg-base: #f1ece1;
+  --bg-card-2: #ece4cf;
+  --text-main: #1a1612;
+  --text-faint: #5b554f;
+  --border-subtle: #c9bfa6;
+  --accent-brass: #6b4f1d;
+  --accent-amber: #b34a00;
+  --radiant: #1d6b3d;
+  --dire: #8a1c1c;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.magazine-v3.v3-theme-newsprint .v3-cover { background: #e8e0c8; }
+.magazine-v3.v3-theme-newsprint .v3-cover-bg { filter: grayscale(0.85) contrast(1.1); }
+.magazine-v3.v3-theme-newsprint .v3-cover-overlay {
+  background: linear-gradient(180deg, rgba(241,236,225,0.4), rgba(241,236,225,0.95));
+}
+.magazine-v3.v3-theme-newsprint .v3-cover-name { color: #111; text-shadow: none; }
+.magazine-v3.v3-theme-newsprint .v3-cover-eyebrow,
+.magazine-v3.v3-theme-newsprint .v3-cover-bio { color: #2a2520; }
+.magazine-v3.v3-theme-newsprint .v3-cover-flair .v3-pos-pill {
+  background: #fff8e7; color: #1a1612; border-color: #6b4f1d;
+}
+.magazine-v3.v3-theme-newsprint .v3-cover-vitals {
+  background: rgba(255, 248, 231, 0.75); border-color: #c9bfa6;
+}
+.magazine-v3.v3-theme-newsprint .v3-vital-val { color: #1a1612; }
+.magazine-v3.v3-theme-newsprint .v3-vital-lbl,
+.magazine-v3.v3-theme-newsprint .v3-vital-sub { color: #5b554f; }
+.magazine-v3.v3-theme-newsprint .v3-sticky { background: rgba(245, 239, 226, 0.92); }
+
+.magazine-v3.v3-theme-carbon {
+  --bg-base: #0a0a0c;
+  --bg-card-2: #1c1c22;
+  --text-main: #f3f4f6;
+  --text-faint: #9ca3af;
+  --border-subtle: #2a2a32;
+  --accent-brass: #d4af6b;
+  --accent-amber: #fbbf24;
+}
+.magazine-v3.v3-theme-carbon .v3-cover-overlay {
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.92) 60%, var(--bg-base) 100%),
+    linear-gradient(90deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%);
+}
+
+.magazine-v3.v3-theme-holo {
+  --bg-base: #07071a;
+  --bg-card-2: #16163d;
+  --text-main: #e0d4ff;
+  --text-faint: #a299c7;
+  --border-subtle: #2a2552;
+  --accent-brass: #c084fc;
+  --accent-amber: #f0abfc;
+}
+.magazine-v3.v3-theme-holo .v3-cover-name {
+  background: linear-gradient(135deg, #c084fc 0%, #67e8f9 50%, #f0abfc 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 30px rgba(192, 132, 252, 0.45);
+}
+.magazine-v3.v3-theme-holo .v3-cover-overlay {
+  background:
+    linear-gradient(180deg, rgba(7,7,26,0.4) 0%, rgba(7,7,26,0.92) 60%, var(--bg-base) 100%),
+    radial-gradient(circle at 30% 30%, rgba(103,232,249,0.18), transparent 50%);
+}
+
+.magazine-v3.v3-theme-heritage {
+  --bg-base: #0d0a08;
+  --bg-card-2: #221b15;
+  --text-main: #f5e9d3;
+  --text-faint: #a8957a;
+  --border-subtle: #3a2e22;
+  --accent-brass: #c8a06a;
+  --accent-amber: #d97706;
+}
+.magazine-v3.v3-theme-heritage .v3-cover {
+  border-bottom: 4px double var(--accent-brass);
+}
+.magazine-v3.v3-theme-heritage .v3-cover-overlay {
+  background:
+    linear-gradient(180deg, rgba(13,10,8,0.55) 0%, rgba(13,10,8,0.9) 55%, var(--bg-base) 100%),
+    linear-gradient(90deg, rgba(13,10,8,0.7) 0%, rgba(13,10,8,0.3) 70%);
+}
+
+.magazine-v3.v3-theme-broadcast {
+  --bg-base: #0a0e16;
+  --bg-card-2: #142031;
+  --text-main: #ffffff;
+  --text-faint: #94a3b8;
+  --border-subtle: #1e293b;
+  --accent-brass: #f97316;
+  --accent-amber: #ea580c;
+}
+.magazine-v3.v3-theme-broadcast .v3-cover-name {
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+.magazine-v3.v3-theme-broadcast .v3-cover {
+  border-bottom: 3px solid var(--accent-brass);
+}
+.magazine-v3.v3-theme-broadcast .v3-cover-overlay {
+  background:
+    linear-gradient(180deg, rgba(10,14,22,0.4) 0%, rgba(10,14,22,0.92) 55%, var(--bg-base) 100%),
+    linear-gradient(90deg, rgba(249,115,22,0.18) 0%, transparent 40%);
+}
+.magazine-v3.v3-theme-broadcast .v3-cover::before {
+  content: "";
+  position: absolute; left: 0; right: 0; top: 0;
+  height: 4px;
+  background: repeating-linear-gradient(90deg, var(--accent-brass) 0 12px, var(--bg-base) 12px 14px);
+  z-index: 4;
+}

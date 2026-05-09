@@ -63,6 +63,15 @@ const PREMIUM_FRAMES = [
   'fire',
 ];
 
+// v6.52 / Task #195 — Magazine v3 layout themes. Court & Pitch is the default
+// (free) ink-navy/brass look that ships with the v3 cover graduation. The
+// other five are paid cosmetic-shop themes gated behind the existing Pro
+// flag, mirroring the PREMIUM_THEMES / PREMIUM_FRAMES pattern. Stored in
+// player_profiles.profile_layout_theme; null/empty means "court-pitch".
+const FREE_LAYOUT_THEMES = ['court-pitch'];
+const PREMIUM_LAYOUT_THEMES = ['newsprint', 'carbon', 'holo', 'heritage', 'broadcast'];
+const ALL_LAYOUT_THEMES = [...FREE_LAYOUT_THEMES, ...PREMIUM_LAYOUT_THEMES];
+
 const ALL_TITLES = [...FREE_TITLES, ...PREMIUM_TITLES];
 const ALL_THEMES = [...FREE_THEMES, ...PREMIUM_THEMES];
 const ALL_FRAMES = [...FREE_FRAMES, ...PREMIUM_FRAMES];
@@ -73,6 +82,15 @@ function isPremiumTitle(title) {
 function isPremiumTheme(theme) {
   return PREMIUM_THEMES.includes(theme);
 }
+function isPremiumLayoutTheme(t) {
+  return PREMIUM_LAYOUT_THEMES.includes(t);
+}
+
+function isValidLayoutTheme(t) {
+  if (t == null || t === '') return true;
+  return ALL_LAYOUT_THEMES.includes(t);
+}
+
 function isPremiumFrame(frame) {
   return PREMIUM_FRAMES.includes(frame);
 }
@@ -182,12 +200,17 @@ module.exports = {
   ALL_TITLES,
   ALL_THEMES,
   ALL_FRAMES,
+  FREE_LAYOUT_THEMES,
+  PREMIUM_LAYOUT_THEMES,
+  ALL_LAYOUT_THEMES,
   isPremiumTitle,
   isPremiumTheme,
   isPremiumFrame,
+  isPremiumLayoutTheme,
   isValidTitle,
   isValidTheme,
   isValidFrame,
+  isValidLayoutTheme,
   BIO_MAX,
   PINNED_HERO_CAPTION_MAX,
   // v5.81 extras
