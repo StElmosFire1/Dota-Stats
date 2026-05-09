@@ -16,6 +16,7 @@ const CATEGORY_LABELS = {
   coaching_booking_confirmed: { title: 'Coaching: booking confirmed', desc: 'DM when one of your coaching bookings is paid and locked in.' },
   coaching_session_reminder:  { title: 'Coaching: session reminder',  desc: 'DM ~1 hour before a scheduled coaching session.' },
   coaching_review_request:    { title: 'Coaching: review request',    desc: 'DM after a completed session asking you to leave a review.' },
+  inhouse_pick_warning:       { title: 'Inhouse: 10s pick warning',  desc: 'Chime + browser notification when you\u2019re the captain on the clock and the per-pick timer is about to auto-pick for you.' },
 };
 
 function humaniseCategory(key) {

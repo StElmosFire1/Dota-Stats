@@ -9546,6 +9546,12 @@ const NOTIFICATION_CATEGORIES = [
   { key: 'coaching_booking_confirmed', label: 'Coaching: booking confirmed DM', default: true },
   { key: 'coaching_session_reminder',  label: 'Coaching: 1-hour session reminder DM', default: true },
   { key: 'coaching_review_request',    label: 'Coaching: post-session review prompt DM', default: true },
+  // Task #178 — fired purely client-side by `useInhouseAlerts` when the
+  // captain on the clock has <=10s left before the per-pick auto-pick
+  // ticker takes their turn. No bot path consults this; the page reads
+  // the pref over /api/me/notifications and silences the chime + browser
+  // notification when the user has opted out.
+  { key: 'inhouse_pick_warning',       label: 'Inhouse: 10s pick warning (on the clock)', default: true },
 ];
 
 async function isNotificationEnabled(accountId, category) {

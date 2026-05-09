@@ -26,18 +26,27 @@ const STORAGE_KEY = 'inhouse:muted';
 const SOUND_URL = '/sounds/church-bell-v603.mp3';
 
 const NOTIF_TITLES = {
-  accept:        'Inhouse — accept phase open',
-  captain:       'Inhouse — you are a captain',
-  'your-pick':   'Inhouse — your pick',
-  'match-ready': 'Inhouse — match is ready',
+  accept:         'Inhouse — accept phase open',
+  captain:        'Inhouse — you are a captain',
+  'your-pick':    'Inhouse — your pick',
+  'match-ready':  'Inhouse — match is ready',
+  // Task #178 — fired ~10s before the per-pick auto-pick deadline so a
+  // captain who tabbed away has a chance to come back before the ticker
+  // picks for them.
+  'pick-warning': 'Inhouse — 10s left to pick',
 };
 
 const NOTIF_BODIES = {
-  accept:        'Click Accept in the lobby (60s window).',
-  captain:       'Lobby filled — you are captaining a team.',
-  'your-pick':   'It is your turn to draft a player.',
-  'match-ready': 'Connect link is live — join the server now.',
+  accept:         'Click Accept in the lobby (60s window).',
+  captain:        'Lobby filled — you are captaining a team.',
+  'your-pick':    'It is your turn to draft a player.',
+  'match-ready':  'Connect link is live — join the server now.',
+  'pick-warning': 'Pick now or the timer will auto-pick for you.',
 };
+
+// Task #178 — fire the pre-deadline warning when the on-the-clock captain
+// has this many milliseconds (or fewer) left on their per-pick budget.
+const PICK_WARNING_LEAD_MS = 10000;
 
 function readMuted() {
   try { return window.localStorage.getItem(STORAGE_KEY) === '1'; }
@@ -107,6 +116,25 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     pickerTeam: null,
     serverReady: false,
   });
+  // Task #178 — pick-warning bookkeeping. We schedule a one-shot timer
+  // when the user is on the clock so the warning fires even if no poll
+  // happens between now and T-10s. `pickWarningTimerRef` holds the
+  // pending setTimeout id; `pickWarningFiredFor` tracks the deadline ISO
+  // we already fired for so we never double-warn the same pick (e.g.
+  // when /draft-status re-emits the same deadline).
+  const pickWarningTimerRef = useRef(null);
+  const pickWarningFiredFor = useRef(null);
+  // Task #178 — user's opt-in/out pref for the pick warning. Tri-state:
+  //   null  = pref not yet loaded for the signed-in user (suppress
+  //           warning until we know — avoids firing for an opted-out
+  //           captain whose page lands inside the warning window
+  //           before /api/me/notifications resolves)
+  //   true  = enabled (server-side default; also the value for
+  //           anonymous viewers who can't be the captain anyway)
+  //   false = explicit opt-out
+  const [pickWarningEnabled, setPickWarningEnabled] = useState(
+    () => (typeof window === 'undefined' ? true : null)
+  );
 
   const setMuted = useCallback((v) => {
     setMutedState(v);
@@ -211,6 +239,34 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     } catch (_) { /* ignore */ }
   }, []);
 
+  // Task #178 — load the user's pick-warning pref once we know the
+  // signed-in account. Defaults to true on any failure (404 if the route
+  // is missing, 401 if the session expired between renders, network
+  // error, …) so we fail open like the server-side helper does.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // Anonymous viewers can't be a captain, so leave the gate open
+    // (matches the server-side fail-open behaviour of
+    // `db.isNotificationEnabled`).
+    if (!myAccountId) { setPickWarningEnabled(true); return; }
+    let alive = true;
+    fetch('/api/me/notifications', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!alive) return;
+        if (!data?.categories) { setPickWarningEnabled(true); return; }
+        const row = data.categories.find(c =>
+          (c.key || c.category) === 'inhouse_pick_warning'
+        );
+        // Missing row = server-side default (enabled). Explicit row
+        // overrides with its boolean. Either way we now have a
+        // definitive answer and the tri-state flips off `null`.
+        setPickWarningEnabled(row ? !!row.enabled : true);
+      })
+      .catch(() => { if (alive) setPickWarningEnabled(true); });
+    return () => { alive = false; };
+  }, [myAccountId]);
+
   useEffect(() => {
     if (!session || !myAccountId) {
       prev.current = { status: null, sessionId: null, capForMe: false, pickerTeam: null, serverReady: false };
@@ -249,6 +305,57 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
 
     prev.current = { status: session.status, sessionId: session.id, capForMe: isCaptain, pickerTeam, serverReady };
   }, [session, players, myAccountId, draftStatus, fire]);
+
+  // Task #178 — schedule a one-shot pre-deadline warning for the captain
+  // on the clock. Runs whenever the deadline / picker / pref changes;
+  // any stale timer is cleared first so a re-render after a fresh
+  // /draft-status poll never stacks duplicate warnings.
+  useEffect(() => {
+    if (pickWarningTimerRef.current) {
+      clearTimeout(pickWarningTimerRef.current);
+      pickWarningTimerRef.current = null;
+    }
+    // Tri-state gate: null = pref not yet loaded, suppress until known.
+    if (pickWarningEnabled !== true) return;
+    if (!session || session.status !== 'drafting') return;
+    if (!myAccountId) return;
+    const cap1 = Number(session.captain1_account_id) || 0;
+    const cap2 = Number(session.captain2_account_id) || 0;
+    const myCapTeam = myAccountId === cap1 ? 1 : myAccountId === cap2 ? 2 : null;
+    if (myCapTeam === null) return;
+    const pickerTeam = draftStatus?.currentPickerTeam ?? null;
+    if (pickerTeam !== myCapTeam) return;
+    const deadlineRaw = draftStatus?.pickDeadlineAt;
+    if (!deadlineRaw) return;
+    const deadlineMs = new Date(deadlineRaw).getTime();
+    if (!Number.isFinite(deadlineMs)) return;
+    const deadlineKey = `${session.id}|${deadlineRaw}`;
+    if (pickWarningFiredFor.current === deadlineKey) return;
+    const fireAt = deadlineMs - PICK_WARNING_LEAD_MS;
+    const delay = fireAt - Date.now();
+    // Skip if the deadline is already past or so close that the
+    // auto-pick is essentially imminent (<1s) — at that point the
+    // ticker is about to take the turn and a warning is just noise.
+    if (deadlineMs - Date.now() < 1500) return;
+    const trigger = () => {
+      pickWarningTimerRef.current = null;
+      pickWarningFiredFor.current = deadlineKey;
+      fire('pick-warning');
+    };
+    if (delay <= 0) {
+      // Already inside the warning window (page just loaded with <10s
+      // left, or the user re-tabbed in late). Fire immediately.
+      trigger();
+    } else {
+      pickWarningTimerRef.current = setTimeout(trigger, delay);
+    }
+    return () => {
+      if (pickWarningTimerRef.current) {
+        clearTimeout(pickWarningTimerRef.current);
+        pickWarningTimerRef.current = null;
+      }
+    };
+  }, [session, myAccountId, draftStatus, pickWarningEnabled, fire]);
 
   return useMemo(
     () => ({ muted, setMuted, toggleMute: () => setMuted(!muted), testChime }),
