@@ -1569,6 +1569,12 @@ export const getPlayerPresence = (accountId) =>
 // Task #213 — bulk live-presence rollup for the /players "Live now" tab.
 export const getLivePresences = () =>
   _getJson('/presence/live').catch(() => ({ players: [] }));
+
+// Task #227 — cheap count-only variant powering the global nav "Live now"
+// badge. Soft-fails to { count: 0 } so a missing endpoint or transient
+// error never breaks navigation.
+export const getLivePresenceCount = () =>
+  _getJson('/presence/live/count').catch(() => ({ count: 0 }));
 export const getMyPresenceVisibility = () =>
   _getJson('/me/presence-visibility').catch(() => ({ presence_visible: true }));
 export const setMyPresenceVisibility = (visible) =>

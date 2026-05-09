@@ -14,6 +14,7 @@ import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
 import DiscordLinkModal from './components/DiscordLinkModal';
 import DiscordRetryBanner from './components/DiscordRetryBanner';
+import { getLivePresenceCount } from './api';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
@@ -457,6 +458,74 @@ function ThemeToggle() {
   );
 }
 
+// Task #227 — "Players" nav link with a small "Live now" pulse-dot + count
+// badge. Polls the cheap /api/presence/live/count endpoint every 30s while
+// the tab is visible, mirroring the per-profile chip's polling shape. The
+// link itself deep-links into the Live now tab via ?tab=live so visitors
+// land directly on the spectator hook from anywhere on the site.
+function NavPlayersLink({ isActive }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      getLivePresenceCount()
+        .then(d => { if (!cancelled) setCount(Number(d?.count) || 0); })
+        .catch(() => {});
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    const onVis = () => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { cancelled = true; clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }, []);
+  const hasLive = count > 0;
+  // Class isActive() matches by exact pathname, so /players stays active
+  // regardless of the ?tab=live query string.
+  const to = hasLive ? '/players?tab=live' : '/players';
+  return (
+    <Link
+      to={to}
+      className={isActive('/players')}
+      aria-label={hasLive ? `Players — ${count} live now` : 'Players'}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+    >
+      <span>Players</span>
+      {hasLive && (
+        <span
+          aria-hidden="true"
+          title={`${count} player${count === 1 ? '' : 's'} live now`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '1px 6px 1px 5px',
+            borderRadius: 999,
+            background: 'rgba(34,197,94,0.14)',
+            border: '1px solid rgba(34,197,94,0.45)',
+            color: '#22c55e',
+            fontSize: 11,
+            fontWeight: 700,
+            lineHeight: 1.2,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: '#22c55e',
+              boxShadow: '0 0 0 0 rgba(34,197,94,0.7)',
+              animation: 'oi-live-pulse 1.6s ease-out infinite',
+            }}
+          />
+          {count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 function Nav() {
   const location = useLocation();
   const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
@@ -481,6 +550,7 @@ function Nav() {
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
+        <NavPlayersLink isActive={isActive} />
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>

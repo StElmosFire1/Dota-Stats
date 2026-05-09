@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SortableTh from '../components/SortableTh';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import HeroIcon from '../components/HeroIcon';
 import { getAllPlayers, setNickname, setPlayerDiscordId, getLivePresences } from '../api';
 import { useSeason } from '../context/SeasonContext';
@@ -28,7 +28,26 @@ export default function Players() {
   // the tab is visible AND the Live now tab is selected, mirroring the
   // per-profile chip's polling shape but tab-gated to avoid unnecessary
   // traffic while the visitor is on the All players view.
-  const [tab, setTab] = useState('all'); // 'all' | 'live'
+  // Task #227 — allow deep-linking to the Live now tab via ?tab=live so the
+  // global nav badge can land directly on the right view. Falls back to
+  // 'all' when the param is absent or unrecognised.
+  const location = useLocation();
+  const initialTab = (() => {
+    try {
+      const sp = new URLSearchParams(location.search);
+      return sp.get('tab') === 'live' ? 'live' : 'all';
+    } catch { return 'all'; }
+  })();
+  const [tab, setTab] = useState(initialTab); // 'all' | 'live'
+  // Keep tab in sync if the user navigates with a different ?tab= value
+  // while the page is already mounted (e.g. clicks the nav link again).
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(location.search);
+      const wanted = sp.get('tab') === 'live' ? 'live' : 'all';
+      setTab(prev => (prev === wanted ? prev : wanted));
+    } catch { /* noop */ }
+  }, [location.search]);
   const [livePlayers, setLivePlayers] = useState([]);
   const [liveLoading, setLiveLoading] = useState(false);
   useEffect(() => {

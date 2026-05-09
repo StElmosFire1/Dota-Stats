@@ -185,6 +185,15 @@ a:hover {
   50% { opacity: 0.3; }
 }
 
+/* Task #227 — pulse-dot used by the global nav "Live now" badge. Mirrors
+   the Discord-style green online glow so the spectator hook reads as
+   "something is happening right now" without being visually loud. */
+@keyframes oi-live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
+
 /* v5.92 — Inhouse captain-draft board: stack the three columns
    (roster · pool · roster) on narrow screens so the centre pool
    doesn't get crushed below ~880px. */

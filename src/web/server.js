@@ -8295,6 +8295,21 @@ NOTES
     }
   });
 
+  // Task #227 — count-only fast path used by the global nav badge. Same
+  // soft-fail semantics as /presence/live; the badge polls this every 30s
+  // gated on document.visibilityState, so it must stay cheap and never
+  // throw on the public path.
+  router.get('/presence/live/count', async (req, res) => {
+    try {
+      const { getAllLivePresences } = require('../services/presenceService');
+      const rows = await getAllLivePresences();
+      res.set('Cache-Control', 'no-store');
+      res.json({ count: Array.isArray(rows) ? rows.length : 0 });
+    } catch (err) {
+      res.json({ count: 0 });
+    }
+  });
+
   // Task #205 — visibility toggle for the live presence chip. Stored on
   // player_profiles.presence_visible (default TRUE). Same auth shape as
   // the other /me/* notification endpoints.
