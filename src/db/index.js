@@ -723,6 +723,10 @@ async function init() {
 
     // announced_at: NULL = not yet announced to Discord; existing rows backfilled with NOW()
     await p.query(`ALTER TABLE patch_notes ADD COLUMN IF NOT EXISTS announced_at TIMESTAMPTZ DEFAULT NOW()`);
+    // Patch-note titles can exceed the original 200-char cap (e.g. v6.30 review-fix
+    // entries summarise 8+ sub-changes). Widen to TEXT so the seeder never hits
+    // "value too long for type character varying(200)" again.
+    await p.query(`ALTER TABLE patch_notes ALTER COLUMN title TYPE TEXT`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS schedule_rsvps (
