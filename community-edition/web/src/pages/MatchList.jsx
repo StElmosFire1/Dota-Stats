@@ -234,6 +234,7 @@ export default function MatchList() {
                             </button>
                             <button
                               onClick={cancelEdit}
+                              aria-label="Cancel edit"
                               style={{ fontSize: '0.72rem', padding: '1px 6px', background: '#374151', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}
                             >
                               ✕

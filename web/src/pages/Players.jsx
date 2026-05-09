@@ -134,6 +134,7 @@ export default function Players() {
       >Save</button>
       <button
         onClick={onCancel}
+        aria-label="Cancel edit"
         style={{ background: 'transparent', color: '#888', border: '1px solid #444', padding: '0.2rem 0.5rem', borderRadius: '3px', cursor: 'pointer', fontSize: '0.8rem' }}
       >✕</button>
     </div>

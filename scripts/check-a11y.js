@@ -17,6 +17,11 @@
  *     but missing the matching ARIA role + state attribute
  *     (`role="switch"`+`aria-checked`, `role="radio"`+`aria-checked`, or a
  *     `role="radiogroup"` container). Task #169.
+ *   - <button>/<a> elements whose only visible content is a single non-letter
+ *     glyph (×, ✕, ✖, ⌄, etc.) or a single icon component (e.g. <Icon …/>,
+ *     <svg …/>) and that are missing both `aria-label` and `aria-labelledby`.
+ *     The house rule names "Button-as-icon-only must carry an aria-label"
+ *     explicitly. Task #175.
  *   - CSS `:hover` rules that REVEAL content (descendant/sibling combinator
  *     after `:hover`, OR a hover body that sets `display`/`opacity`/
  *     `visibility`/`pointer-events`/`clip-path`/`max-height`/`height`) without
@@ -294,7 +299,139 @@ function scanFile(file) {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Third pass (Task #175): catch <button> / <a> elements whose only visible
+  // content is a single non-letter glyph (×, ✕, ✖, ⌄, …) or a single icon
+  // component (<svg …/>, <FooIcon …/>, …) and that are missing both
+  // `aria-label` and `aria-labelledby`.
+  //
+  // The house rule's "Button-as-icon-only must carry an aria-label" line is
+  // currently only enforced by code review; without this gate, a future PR
+  // adding a close button with just `×` or just an SVG icon would silently
+  // regress.
+  //
+  // Heuristic — only flag when ALL of these hold, to keep false positives low:
+  //   1. The element is a real <button> or <a> (interactive native element).
+  //   2. It is NOT self-closing (otherwise there are no children to inspect).
+  //   3. Neither `aria-label` nor `aria-labelledby` is present on the opening
+  //      tag. `title` is intentionally not accepted because screen readers
+  //      treat it inconsistently.
+  //   4. The trimmed inner content is one of:
+  //        a. A single non-letter, non-digit, non-whitespace character
+  //           (×, ✕, ✖, ⌄, →, …).
+  //        b. A single child JSX element whose tag name is `svg`, ends in
+  //           `Icon` (e.g. <CloseIcon/>, <ChevronIcon/>), or ends in `Svg`.
+  //   5. The inner content contains no `{…}` JSX expression — those can carry
+  //      a dynamic visible label and are out of scope for the static check.
+  // ---------------------------------------------------------------------------
+  const re3 = /<(button|a)(?=[\s/>])/g;
+  let m3;
+  while ((m3 = re3.exec(src)) !== null) {
+    const tag = m3[1];
+    const tagStart = m3.index;
+    const tagEnd = findTagEnd(src, m3.index + m3[0].length);
+    if (tagEnd < 0) continue;
+    const opening = src.slice(tagStart, tagEnd + 1);
+
+    // Self-closing — no children to inspect.
+    if (opening.endsWith('/>')) continue;
+
+    // Already has an accessible name.
+    if (/\baria-label(?:ledby)?\s*=/.test(opening)) continue;
+
+    const closeIdx = findMatchingClose(src, tagEnd + 1, tag);
+    if (closeIdx < 0) continue;
+    const inner = src.slice(tagEnd + 1, closeIdx);
+
+    const verdict = classifyIconOnly(inner);
+    if (!verdict) continue;
+
+    const line = lineOf(src, tagStart);
+    issues.push({
+      file, line, tag,
+      message: `<${tag}> appears to be icon-only (${verdict}) but is missing aria-label / aria-labelledby. Icon-only buttons must carry an accessible name so screen readers can announce the action. See replit.md → "Frontend accessibility house rule" → "Button-as-icon-only must carry an aria-label".`,
+    });
+  }
+
   return issues;
+}
+
+/**
+ * Find the index of the matching `</tag>` for an opening tag of `tag`,
+ * starting the search at `start`. Tracks nested same-name tags and respects
+ * self-closing `<tag .../>` forms (those don't increase depth).
+ * Returns the index of the `<` of the matching close tag, or -1.
+ */
+function findMatchingClose(src, start, tag) {
+  const re = new RegExp(`<\\/?${tag}(?=[\\s/>])`, 'g');
+  re.lastIndex = start;
+  let depth = 1;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const isClose = src[m.index + 1] === '/';
+    if (isClose) {
+      depth--;
+      if (depth === 0) return m.index;
+      re.lastIndex = m.index + m[0].length;
+      continue;
+    }
+    // Opening tag — find its end to detect self-closing.
+    const end = findTagEnd(src, m.index + m[0].length);
+    if (end < 0) return -1;
+    const tagStr = src.slice(m.index, end + 1);
+    if (!tagStr.endsWith('/>')) depth++;
+    re.lastIndex = end + 1;
+  }
+  return -1;
+}
+
+/**
+ * Returns a short human-readable string describing why the inner content
+ * looks icon-only, or null if it doesn't qualify. Used by the icon-only
+ * button/anchor pass.
+ */
+function classifyIconOnly(inner) {
+  const trimmed = inner.trim();
+  if (!trimmed) return null;
+
+  // Skip dynamic content — `{label}` could be a visible label or an icon
+  // component; we can't tell statically.
+  if (/\{/.test(trimmed)) return null;
+
+  // Single-glyph case (×, ✕, ✖, ⌄, →, …). Use Array.from to count code
+  // points (a single emoji can be multiple UTF-16 units).
+  const codePoints = Array.from(trimmed);
+  if (codePoints.length === 1) {
+    const ch = codePoints[0];
+    if (/[\p{L}\p{N}]/u.test(ch)) return null;
+    return `single glyph "${ch}"`;
+  }
+
+  // Single child element: must start with `<` and end with `>`.
+  if (trimmed[0] !== '<' || trimmed[trimmed.length - 1] !== '>') return null;
+  const openMatch = trimmed.match(/^<([A-Za-z][A-Za-z0-9]*)/);
+  if (!openMatch) return null;
+  const childTag = openMatch[1];
+  const isIconTag =
+    childTag === 'svg' || /Icon$/.test(childTag) || /Svg$/.test(childTag);
+  if (!isIconTag) return null;
+
+  const childTagEnd = findTagEnd(trimmed, openMatch[0].length);
+  if (childTagEnd < 0) return null;
+  const childOpening = trimmed.slice(0, childTagEnd + 1);
+
+  if (childOpening.endsWith('/>')) {
+    if (childTagEnd + 1 !== trimmed.length) return null;
+    return `single child <${childTag}/>`;
+  }
+
+  // Non-self-closing — find its matching close and require it terminates
+  // the trimmed inner exactly.
+  const childClose = findMatchingClose(trimmed, childTagEnd + 1, childTag);
+  if (childClose < 0) return null;
+  const tail = trimmed.slice(childClose).replace(/\s+/g, '');
+  if (tail !== `</${childTag}>`) return null;
+  return `single child <${childTag}>…</${childTag}>`;
 }
 
 // ---------------------------------------------------------------------------

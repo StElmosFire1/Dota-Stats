@@ -1852,6 +1852,7 @@ export default function PlayerProfile() {
                           <a
                             href={`/api/matches/${m.match_id}/replay`}
                             title="Download replay"
+                            aria-label="Download replay"
                             onClick={async (e) => {
                               e.preventDefault();
                               try {

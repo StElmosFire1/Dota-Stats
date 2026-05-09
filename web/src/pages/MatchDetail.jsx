@@ -2590,6 +2590,7 @@ function MatchNotes({ matchId, isAdmin, adminKey }) {
                   onClick={() => handleDelete(note.id)}
                   disabled={deleting === note.id}
                   title="Delete note"
+                  aria-label="Delete note"
                   style={{
                     background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer',
                     fontSize: 16, padding: '2px 6px', lineHeight: 1, flexShrink: 0,

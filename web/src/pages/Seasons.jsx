@@ -469,6 +469,7 @@ function PayoutsModal({ season, players, adminKey, onClose }) {
                     <td>
                       <button
                         className="btn btn-small btn-danger"
+                        aria-label="Delete prize"
                         style={{ fontSize: 11 }}
                         onClick={() => handleDelete(p.id)}
                       >

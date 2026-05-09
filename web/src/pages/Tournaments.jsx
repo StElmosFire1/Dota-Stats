@@ -278,7 +278,7 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin, participants 
               <Link to={`/match/${match.inhouse_match_id}`} style={{ color: 'var(--accent-blue)', textDecoration: 'none' }}>
                 🔗 Match #{match.inhouse_match_id}
               </Link>
-              <button onClick={handleUnlinkMatch} disabled={linkLoading}
+              <button onClick={handleUnlinkMatch} disabled={linkLoading} aria-label="Unlink match"
                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11, padding: 0 }}>✕</button>
             </div>
           ) : showLink ? (
@@ -294,7 +294,7 @@ function BracketMatch({ match, superuserKey, onWinnerSet, isAdmin, participants 
                 style={{ fontSize: 11, padding: '2px 6px', background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
                 {linkLoading ? '…' : 'Link'}
               </button>
-              <button onClick={() => { setShowLink(false); setLinkInput(''); }}
+              <button onClick={() => { setShowLink(false); setLinkInput(''); }} aria-label="Cancel link match"
                 style={{ fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕</button>
             </div>
           ) : (
@@ -594,7 +594,7 @@ function TournamentDetail() {
                   </span>
                 )}
                 {isAdmin && (
-                  <button onClick={() => handleRemoveParticipant(p.account_id)}
+                  <button onClick={() => handleRemoveParticipant(p.account_id)} aria-label="Remove participant"
                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, padding: 0 }}>✕</button>
                 )}
               </div>

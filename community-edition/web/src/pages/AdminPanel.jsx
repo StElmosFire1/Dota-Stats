@@ -1621,6 +1621,7 @@ export default function AdminPanel() {
                           {r.dota_rank_tier && (
                             <button
                               className="btn btn-sm btn-danger"
+                              aria-label={`Clear rank for ${r.nickname || r.account_id}`}
                               onClick={async () => {
                                 if (!confirm(`Clear rank for ${r.nickname || r.account_id}?`)) return;
                                 try {

@@ -468,6 +468,7 @@ export default function StatsEditor() {
                     onClick={() => removeDraftEntry(idx)}
                     style={{ background: 'transparent', color: '#666', border: '1px solid #333', borderRadius: 3, padding: '1px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
                     title="Remove entry"
+                    aria-label="Remove entry"
                   >
                     ✕
                   </button>

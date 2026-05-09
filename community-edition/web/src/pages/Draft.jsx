@@ -289,7 +289,7 @@ function PlayerPoolPanel({ label, color, players, allPlayers, heroPool, pickedHe
           <div key={p.account_id} style={{ marginBottom: 10, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{name}</span>
-              <button onClick={() => onRemovePlayer(p.account_id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>✕</button>
+              <button onClick={() => onRemovePlayer(p.account_id)} aria-label={`Remove ${name}`} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {heroes.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Loading hero pool…</span>}

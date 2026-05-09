@@ -228,6 +228,7 @@ export default function AiChat() {
             <button
               onClick={() => handleSend()}
               disabled={!input.trim() || loading}
+              aria-label="Send message"
               style={{
                 padding: '8px 14px', borderRadius: 10,
                 background: input.trim() && !loading ? 'var(--accent)' : 'var(--bg-hover)',
