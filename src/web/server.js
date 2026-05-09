@@ -8096,6 +8096,22 @@ NOTES
     }
   });
 
+  // Task #213 — bulk live-presence rollup powering the /players "Live now"
+  // tab. One call returns every visible account whose presence is in_game,
+  // in_lobby, in_queue, in_voice, or online — so the page renders without
+  // fanning out N profile pings. Same no-store + soft-fail semantics as the
+  // per-profile chip endpoint above.
+  router.get('/presence/live', async (req, res) => {
+    try {
+      const { getAllLivePresences } = require('../services/presenceService');
+      const rows = await getAllLivePresences();
+      res.set('Cache-Control', 'no-store');
+      res.json({ players: Array.isArray(rows) ? rows : [] });
+    } catch (err) {
+      res.json({ players: [] });
+    }
+  });
+
   // Task #205 — visibility toggle for the live presence chip. Stored on
   // player_profiles.presence_visible (default TRUE). Same auth shape as
   // the other /me/* notification endpoints.

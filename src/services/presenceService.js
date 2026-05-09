@@ -171,12 +171,156 @@ function parseDotaRichPresence(rp) {
   return { state, heroName, heroId, matchId: state === 'in_game' ? watchableId || null : null };
 }
 
+// Task #213 — bulk live-presence rollup for the /players "Live now" tab.
+// Walks the in-memory _steam and _discord caches, joins them with the
+// inhouse_queue table, applies the same priority + visibility rules as
+// getPlayerPresence(), and returns one row per visible live account so
+// the page can render with a single API call instead of N profile pings.
+async function getAllLivePresences() {
+  const now = _now();
+  // Step 1: collect candidate (accountId, source) pairs from each cache.
+  // Steam cache is keyed by steamId64, which we can convert to a 32-bit
+  // account id locally with no DB round-trip.
+  const candidates = new Map(); // accountId32 -> { steam, discord }
+
+  for (const [steamId64, rec] of _steam.entries()) {
+    if (!rec || !rec.state) continue;
+    if (now - (rec.updatedAt || 0) > STALE_MS) continue;
+    if (rec.state !== 'in_game' && rec.state !== 'in_lobby') continue;
+    let accountId32;
+    try { accountId32 = (BigInt(steamId64) - STEAM64_OFFSET).toString(); } catch { continue; }
+    const slot = candidates.get(accountId32) || {};
+    slot.steam = rec;
+    candidates.set(accountId32, slot);
+  }
+
+  // Discord cache is keyed by discordId; resolve to account_id in one query.
+  const discordIds = [];
+  for (const [discordId, rec] of _discord.entries()) {
+    if (!rec) continue;
+    if (now - (rec.updatedAt || 0) > STALE_MS) continue;
+    if (!rec.voice && (!rec.state || rec.state === 'offline')) continue;
+    discordIds.push(String(discordId));
+  }
+
+  let pool;
+  try { pool = db.getPool(); } catch { return []; }
+
+  if (discordIds.length > 0) {
+    try {
+      const r = await pool.query(
+        `SELECT account_id::text AS account_id, discord_id
+           FROM nicknames
+          WHERE discord_id = ANY($1::text[]) AND account_id IS NOT NULL
+          UNION
+         SELECT account_id_32 AS account_id, discord_id
+           FROM players
+          WHERE discord_id = ANY($1::text[]) AND account_id_32 IS NOT NULL AND account_id_32 != ''`,
+        [discordIds]
+      );
+      for (const row of r.rows) {
+        const rec = _discord.get(row.discord_id);
+        if (!rec) continue;
+        const slot = candidates.get(row.account_id) || {};
+        if (!slot.discord) slot.discord = rec;
+        candidates.set(row.account_id, slot);
+      }
+    } catch (err) {
+      // Non-fatal: skip discord-derived rows on DB hiccup.
+    }
+  }
+
+  // Step 2: pull current inhouse queue once and merge as in_queue.
+  let queueAccountIds = new Set();
+  try {
+    const r = await pool.query(`SELECT account_id::text AS account_id FROM inhouse_queue WHERE account_id IS NOT NULL`);
+    for (const row of r.rows) {
+      queueAccountIds.add(row.account_id);
+      if (!candidates.has(row.account_id)) candidates.set(row.account_id, {});
+    }
+  } catch {}
+
+  if (candidates.size === 0) return [];
+
+  // Step 3: bulk visibility + display-name lookup.
+  const accountIds = Array.from(candidates.keys());
+  let infoByAccount = new Map();
+  try {
+    const r = await pool.query(
+      `SELECT ps.account_id::text AS account_id,
+              COALESCE(n.nickname, ps.persona_name) AS display_name,
+              COALESCE(pp.presence_visible, TRUE) AS presence_visible
+         FROM (
+           SELECT DISTINCT ON (account_id) account_id, persona_name
+             FROM player_stats
+            WHERE account_id::text = ANY($1::text[])
+            ORDER BY account_id, id DESC
+         ) ps
+         LEFT JOIN nicknames n ON n.account_id = ps.account_id
+         LEFT JOIN player_profiles pp ON pp.account_id = ps.account_id`,
+      [accountIds]
+    );
+    for (const row of r.rows) {
+      infoByAccount.set(row.account_id, {
+        display_name: row.display_name || null,
+        presence_visible: row.presence_visible !== false,
+      });
+    }
+  } catch {}
+
+  // Step 4: build the final rows, applying the same priority as
+  // getPlayerPresence (in_game > in_lobby > in_queue > in_voice > online).
+  const out = [];
+  for (const [accountId, slot] of candidates.entries()) {
+    const info = infoByAccount.get(accountId);
+    if (!info || info.presence_visible === false) continue;
+    const steam = slot.steam;
+    const discord = slot.discord;
+    const inQueue = queueAccountIds.has(accountId);
+    let row = null;
+    if (steam?.state === 'in_game') {
+      row = {
+        status: 'in_game',
+        hero_id: steam.heroId || null,
+        hero: steam.heroName || null,
+        match_id: steam.matchId || null,
+        updated_at: new Date(steam.updatedAt).toISOString(),
+      };
+    } else if (steam?.state === 'in_lobby') {
+      row = { status: 'in_lobby', updated_at: new Date(steam.updatedAt).toISOString() };
+    } else if (inQueue) {
+      row = { status: 'in_queue', updated_at: new Date().toISOString() };
+    } else if (discord?.voice) {
+      row = { status: 'in_voice', updated_at: new Date(discord.updatedAt).toISOString() };
+    } else if (discord?.state && discord.state !== 'offline') {
+      row = { status: 'online', updated_at: new Date(discord.updatedAt).toISOString() };
+    }
+    if (!row) continue;
+    out.push({
+      account_id: accountId,
+      display_name: info.display_name,
+      ...row,
+    });
+  }
+
+  // Sort by status priority then display name for a stable UI.
+  const order = { in_game: 0, in_lobby: 1, in_queue: 2, in_voice: 3, online: 4 };
+  out.sort((a, b) => {
+    const da = order[a.status] ?? 99;
+    const db_ = order[b.status] ?? 99;
+    if (da !== db_) return da - db_;
+    return String(a.display_name || '').localeCompare(String(b.display_name || ''));
+  });
+  return out;
+}
+
 module.exports = {
   setDiscordPresence,
   clearDiscordPresence,
   setSteamPresence,
   clearSteamPresence,
   getPlayerPresence,
+  getAllLivePresences,
   parseDotaRichPresence,
   // exposed for tests
   _caches: { _discord, _steam },

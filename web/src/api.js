@@ -1566,6 +1566,9 @@ export const createSponsorshipCheckout = (payload) =>
 // Task #205 — live presence chip for /players/:id v3 cover.
 export const getPlayerPresence = (accountId) =>
   _getJson(`/players/${accountId}/presence`).catch(() => ({ status: 'offline' }));
+// Task #213 — bulk live-presence rollup for the /players "Live now" tab.
+export const getLivePresences = () =>
+  _getJson('/presence/live').catch(() => ({ players: [] }));
 export const getMyPresenceVisibility = () =>
   _getJson('/me/presence-visibility').catch(() => ({ presence_visible: true }));
 export const setMyPresenceVisibility = (visible) =>
