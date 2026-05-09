@@ -773,51 +773,56 @@ function SignInRetryBanner() {
   const { steamUser, loading, refreshMe } = useSteamAuth();
   const location = useLocation();
   const [show, setShow] = useState(false);
-  // One-shot guard: only POST /api/auth/diagnose once per mount, even if
-  // the auth context briefly re-renders or the URL/search changes while
-  // the banner is up.
   const diagnoseFiredRef = React.useRef(false);
-  // Same one-shot guard for the self-heal refetch — prevents an infinite
-  // refresh loop if /api/auth/me genuinely keeps returning null.
+  // Guards so the token exchange and retry sweep each run at most once.
+  const tokenExchangedRef = React.useRef(false);
   const selfHealRef = React.useRef(false);
 
   useEffect(() => {
-    // Always self-clear when the trigger conditions no longer apply —
-    // otherwise the banner would persist after the user navigated away
-    // from /?auth=success or the session finally landed (e.g. via the
-    // refreshMe poll in another tab).
-    if (loading) {
-      setShow(false);
-      return;
-    }
+    if (loading) { setShow(false); return; }
     const params = new URLSearchParams(location.search);
-    if (params.get('auth') !== 'success') {
-      setShow(false);
-      return;
+    if (params.get('auth') !== 'success') { setShow(false); return; }
+    if (steamUser && steamUser.accountId) { setShow(false); return; }
+
+    // v7.12 — Auth-token handshake.  The server now embeds a short-lived
+    // single-use token in the ?t= query param.  Exchange it via a same-origin
+    // fetch so the Set-Cookie in the RESPONSE (not a redirect header) is
+    // guaranteed to be applied by every browser, regardless of SameSite/Secure
+    // policy.  This replaces the retry-sweep approach for new logins.
+    const token = params.get('t');
+    if (token && !tokenExchangedRef.current) {
+      tokenExchangedRef.current = true;
+      // Strip the auth/token params from the URL immediately so they don't
+      // persist on refresh or linger in browser history.
+      const clean = new URLSearchParams(params);
+      clean.delete('auth');
+      clean.delete('t');
+      const cleanSearch = clean.toString() ? `?${clean.toString()}` : '';
+      window.history.replaceState(null, '', window.location.pathname + cleanSearch);
+      let cancelled = false;
+      (async () => {
+        try {
+          const r = await fetch(`/api/auth/complete?t=${encodeURIComponent(token)}`, {
+            credentials: 'include',
+            cache: 'no-store',
+          });
+          if (cancelled) return;
+          if (r.ok) {
+            // Session cookie is now set.  Refresh the auth context.
+            const user = await refreshMe();
+            if (user && user.accountId) { setShow(false); return; }
+          }
+        } catch { /* fall through to retry sweep */ }
+        if (!cancelled) startRetrySweep();
+      })();
+      return () => { cancelled = true; };
     }
-    if (steamUser && steamUser.accountId) {
-      setShow(false);
-      return;
-    }
-    // ?auth=success but no session as far as the SPA knows. Before
-    // surfacing the scary retry banner, do a SHORT BACKOFF SWEEP of
-    // /api/auth/me retries. Prod logs (May 2026) prove the server-side
-    // session does land correctly — `/auth/diagnose` consistently reports
-    // session-exists=true session-accountId=… on the same browser that
-    // is showing this banner — so the most likely cause of the false
-    // positive is the SteamAuthProvider's mount-time fetch racing the
-    // session-cookie write (the redirect from /auth/steam/return →
-    // /?auth=success can arrive at the SPA fractionally before the
-    // Set-Cookie header is committed by some browsers/proxies, and on
-    // slower devices the gap can be 1-2 seconds, not just a few ms).
-    // v6.99 tried a single retry; users reported the banner still firing,
-    // so v7.03 sweeps at 200ms / 600ms / 1.2s / 2s before giving up.
-    // Total budget ~2s — short enough that the banner still appears
-    // promptly on a genuine failure. The selfHealRef guard prevents a
-    // re-entry loop if React re-runs the effect during the sweep.
+
+    // Fallback retry sweep (no token present — old login in progress, or token
+    // already consumed on a previous render).
     if (!selfHealRef.current) {
       selfHealRef.current = true;
-      const delays = [200, 600, 1200, 2000, 3500, 5500];
+      const delays = [300, 900, 2000, 4000];
       let cancelled = false;
       (async () => {
         for (const d of delays) {
@@ -825,10 +830,7 @@ function SignInRetryBanner() {
           if (cancelled) return;
           try {
             const user = await refreshMe();
-            if (user && user.accountId) {
-              setShow(false);
-              return;
-            }
+            if (user && user.accountId) { setShow(false); return; }
           } catch { /* keep retrying */ }
         }
         if (!cancelled) surfaceBanner();
@@ -836,6 +838,22 @@ function SignInRetryBanner() {
       return () => { cancelled = true; };
     }
     surfaceBanner();
+
+    function startRetrySweep() {
+      if (selfHealRef.current) return;
+      selfHealRef.current = true;
+      const delays = [500, 1500, 3000];
+      (async () => {
+        for (const d of delays) {
+          await new Promise(r => setTimeout(r, d));
+          try {
+            const user = await refreshMe();
+            if (user && user.accountId) { setShow(false); return; }
+          } catch { /* keep retrying */ }
+        }
+        surfaceBanner();
+      })();
+    }
 
     function surfaceBanner() {
       setShow(true);
@@ -898,6 +916,23 @@ function GlobalVoicePackEvents() {
   return null;
 }
 
+// Sets --nav-h on :root whenever the .navbar changes height so CSS
+// consumers (e.g. .v3-sticky { top: var(--nav-h, 52px) }) always have
+// the correct value without a hardcoded pixel guess.
+function NavbarHeightSync() {
+  React.useEffect(() => {
+    const nav = document.querySelector('.navbar');
+    if (!nav) return undefined;
+    const update = () =>
+      document.documentElement.style.setProperty('--nav-h', nav.offsetHeight + 'px');
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(nav);
+    return () => ro.disconnect();
+  }, []);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -906,6 +941,7 @@ export default function App() {
         <SuperuserProvider>
           <FeatureFlagsProvider>
           <SeasonProvider>
+            <NavbarHeightSync />
             <BroadcastTicker />
             <Nav />
             <AdminLoginModal />

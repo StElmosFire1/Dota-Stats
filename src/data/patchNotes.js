@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.12",
+    "title": "Steam sign-in auth-token handshake, profile sticky bar fixed to viewport, hero portrait context labels",
+    "published_at": "2026-05-09",
+    "content": "Three targeted fixes shipped together.\n\n**Steam sign-in — definitive fix via auth-token handshake:** The root cause of every 'session-exists=true but session-accountId=null' failure was that Set-Cookie headers on HTTP 302 redirect responses are silently dropped by some browser+proxy combinations under SameSite=Lax or Secure rules. No amount of session.regenerate() on the redirect response can fix a browser that refuses to apply it. The new approach: after Steam OpenID validates the user, the server mints a short-lived (2-minute) single-use 40-hex-char token, stores it in an in-process Map, and redirects to /?auth=success&t=<token>. The SPA detects ?t=, calls GET /api/auth/complete?t=<token> as a same-origin fetch (credentials: include), and the server exchanges the token for a real session cookie in that fetch response. Because the cookie is set in a fetch response (not a 302), every browser applies it without exception. The token Map is cleaned up on expiry; the URL param is stripped via history.replaceState immediately after exchange.\n\n**Profile cover v3-sticky bar — fixed to viewport:** The mini sticky header (player name + MMR + WR) was position:sticky which kept a ~46px flow-space gap before .v3-cover, causing a phantom empty band between the navbar and the cover background at scroll=0. Changed to position:fixed so the element is fully removed from the document flow; the cover now starts exactly where it should. A ResizeObserver in NavbarHeightSync (new App.jsx component) measures the real .navbar offsetHeight on every resize and writes it to --nav-h on :root; the sticky bar uses top: var(--nav-h, 52px) so it always sits flush below the navbar regardless of screen size or content wrapping.\n\n**Hero portrait context labels:** All three home-page spotlight hero portraits now carry a brass-coloured context label above the hero name — 'Most played' for the Featured Player and Most Improved cards, 'PERF match' (amber) for the Player of the Week card — so visitors know why that hero is shown.\n\nA11y gate green (153 JSX / 3 CSS). Build clean.",
+    "author": "System"
+  },
+  {
     "version": "7.11",
     "title": "Profile sticky bar below navbar, hero portraits on home cards, Steam login fixed",
     "published_at": "2026-05-09",

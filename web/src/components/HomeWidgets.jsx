@@ -215,12 +215,17 @@ export function FeaturedPlayer() {
             ) : null}
           </div>
           {s.top_hero && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
               <HeroPortrait heroName={s.top_hero} size={64} />
+              <div style={{
+                fontSize: 9, color: 'var(--brass, var(--accent))', textAlign: 'center',
+                fontFamily: 'var(--font-condensed, inherit)',
+                textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700,
+              }}>Most played</div>
               <div style={{
                 fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
                 fontFamily: 'var(--font-condensed, inherit)',
-                textTransform: 'uppercase', letterSpacing: '0.1em',
+                textTransform: 'uppercase', letterSpacing: '0.08em',
                 maxWidth: 114, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{formatHeroName(s.top_hero)}</div>
             </div>
@@ -322,12 +327,17 @@ export function PlayerOfTheWeek() {
             }}>{rarity} PERF · view match →</div>
           </div>
           {p.hero_name && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
               <HeroPortrait heroName={p.hero_name} size={64} />
+              <div style={{
+                fontSize: 9, color: '#f59e0b', textAlign: 'center',
+                fontFamily: 'var(--font-condensed, inherit)',
+                textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700,
+              }}>PERF match</div>
               <div style={{
                 fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
                 fontFamily: 'var(--font-condensed, inherit)',
-                textTransform: 'uppercase', letterSpacing: '0.1em',
+                textTransform: 'uppercase', letterSpacing: '0.08em',
                 maxWidth: 114, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{formatHeroName(p.hero_name)}</div>
             </div>
@@ -388,12 +398,17 @@ function MostImprovedFiller({ row }) {
             }}>biggest climber · view profile →</div>
           </div>
           {topHero && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
               <HeroPortrait heroName={topHero} size={64} />
+              <div style={{
+                fontSize: 9, color: 'var(--brass, var(--accent))', textAlign: 'center',
+                fontFamily: 'var(--font-condensed, inherit)',
+                textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700,
+              }}>Most played</div>
               <div style={{
                 fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
                 fontFamily: 'var(--font-condensed, inherit)',
-                textTransform: 'uppercase', letterSpacing: '0.1em',
+                textTransform: 'uppercase', letterSpacing: '0.08em',
                 maxWidth: 114, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{formatHeroName(topHero)}</div>
             </div>

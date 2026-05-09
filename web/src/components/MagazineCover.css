@@ -25,9 +25,16 @@
 }
 
 /* ───────── Sticky mini-header ───────── */
+/* position:fixed removes it from the document flow so .v3-cover starts
+   immediately below the navbar with no phantom gap. --nav-h is set by
+   NavbarHeightSync in App.jsx (ResizeObserver on .navbar); 52px is the
+   CSS fallback. The bar is invisible at scroll=0 (translateY(-100%)),
+   so it never overlaps the ticker or nav on first load. */
 .v3-sticky {
-  position: sticky;
-  top: 52px;
+  position: fixed;
+  top: var(--nav-h, 52px);
+  left: 0;
+  right: 0;
   z-index: 60;
   background: rgba(13, 20, 36, 0.92);
   backdrop-filter: blur(14px);

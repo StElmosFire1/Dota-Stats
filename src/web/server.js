@@ -301,6 +301,20 @@ function createServer(startupStatus = {}) {
     return requestUrl;
   }
 
+  // v7.12 — Auth-token handshake: after Steam validates the user we create a
+  // short-lived single-use token (2 min TTL) and embed it in the redirect URL.
+  // The SPA calls GET /api/auth/complete?t=<token> as a same-origin fetch;
+  // the server sets the session cookie in THAT response, not on the 302 from
+  // /auth/steam/return.  This eliminates every SameSite=Lax / Secure /
+  // browser-redirect Set-Cookie edge case that kept leaving users signed out.
+  const steamAuthTokens = new Map();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of steamAuthTokens) {
+      if (v.expires < now) steamAuthTokens.delete(k);
+    }
+  }, 60_000).unref();
+
   app.get('/auth/steam', authLimiter, (req, res) => {
     const baseUrl = steamBaseUrl(req);
     const returnUrl = `${baseUrl}/auth/steam/return`;
@@ -370,33 +384,17 @@ function createServer(startupStatus = {}) {
 
       const displayName = lookup.rows[0]?.display_name || null;
 
-      // v7.10 — Session regeneration is the definitive fix for "signed-in
-      // nowhere". Before this, if the browser already had an anonymous session
-      // cookie (e.g. from a previous page load before logging in), we mutated
-      // that existing session and re-saved it. Some browsers + SameSite=Lax
-      // combinations silently dropped the updated Set-Cookie on the Steam
-      // redirect response, leaving the old anonymous session ID in the cookie
-      // jar. The next /api/auth/me request sent the old ID, found an empty
-      // session, and returned null.
-      //
-      // session.regenerate() issues a brand-new session ID, writes the fresh
-      // row to the Postgres store, and the redirect response carries the new
-      // Set-Cookie. The browser has no stale ID to fall back to, so auth/me
-      // reliably sees the accountId on the very first attempt.
-      req.session.regenerate((regErr) => {
-        if (regErr) {
-          console.error('[Steam Auth] session.regenerate failed:', regErr);
-          return res.redirect('/?auth=error');
-        }
-        req.session.steamId64 = steamId64;
-        req.session.accountId = accountId;
-        req.session.displayName = displayName;
-        req.session.save((err) => {
-          if (err) console.error('[Steam Auth] session.save failed:', err);
-          console.log('[Steam Auth] success — accountId:', accountId, 'new sid:', (req.sessionID || '').slice(0, 8) + '…');
-          res.redirect('/?auth=success');
-        });
+      // Issue a short-lived single-use token so the SPA can exchange it via
+      // a same-origin fetch (/api/auth/complete).  The session is then set in
+      // that fetch response rather than on this 302, sidestepping every
+      // SameSite/Secure/redirect Set-Cookie edge-case we have been chasing.
+      const token = crypto.randomBytes(20).toString('hex');
+      steamAuthTokens.set(token, {
+        accountId, steamId64, displayName,
+        expires: Date.now() + 120_000,
       });
+      console.log('[Steam Auth] success — accountId:', accountId, 'token issued');
+      res.redirect(`/?auth=success&t=${token}`);
     } catch (err) {
       // SECURITY: log full error server-side, redirect with a generic flag so
       // we never echo upstream Steam OpenID failure details (which can include
@@ -2049,6 +2047,41 @@ function createApiRouter(startupStatus = {}, _app = null) {
     } else {
       res.json(null);
     }
+  });
+
+  // v7.12 — Token exchange: the SPA calls this immediately after landing on
+  // /?auth=success&t=<token>.  Because it's a same-origin fetch (not a cross-
+  // site redirect), the Set-Cookie response header is always applied by the
+  // browser without SameSite / Secure caveats.  Token is single-use with a
+  // 2-minute TTL; it carries the minimal auth payload needed to start the
+  // session (accountId, steamId64, displayName).
+  router.get('/auth/complete', authLimiter, (req, res) => {
+    const token = (req.query.t || '').trim();
+    if (!token) return res.status(400).json({ error: 'missing token' });
+    const data = steamAuthTokens.get(token);
+    if (!data || data.expires < Date.now()) {
+      steamAuthTokens.delete(token);
+      return res.status(401).json({ error: 'invalid or expired token' });
+    }
+    steamAuthTokens.delete(token); // single-use
+    const { accountId, steamId64, displayName } = data;
+    req.session.regenerate((regErr) => {
+      if (regErr) {
+        console.error('[Auth Complete] session.regenerate failed:', regErr);
+        return res.status(500).json({ error: 'session error' });
+      }
+      req.session.accountId = accountId;
+      req.session.steamId64 = steamId64;
+      req.session.displayName = displayName;
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error('[Auth Complete] session.save failed:', saveErr);
+          return res.status(500).json({ error: 'session save error' });
+        }
+        console.log('[Auth Complete] session established — accountId:', accountId, 'sid:', (req.sessionID || '').slice(0, 8) + '…');
+        res.json({ accountId, steamId64, displayName });
+      });
+    });
   });
 
   // Task #151 (v6.26) — POST /api/auth/diagnose
