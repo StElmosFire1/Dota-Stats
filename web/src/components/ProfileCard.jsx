@@ -279,29 +279,86 @@ export default function ProfileCard({
         </div>
       )}
 
-      {/* Top heroes auto-strip */}
+      {/* Top heroes auto-strip — chips are sized to fill the card width on a
+          single row at desktop widths, with a hero portrait, name, KDA when
+          available, games-played, and a thin win-rate progress bar so the
+          strip carries actual signal instead of just listing five names. */}
       {showTopHeroes && (
         <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
-            Most-played heroes
+          <div style={{
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+            marginBottom: 8, gap: 8, flexWrap: 'wrap',
+          }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>
+              Most-played heroes
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 0.5 }}>
+              Top {topHeroes.length} · ranked by games played
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {topHeroes.map(h => {
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(auto-fit, minmax(160px, 1fr))`,
+            gap: 10,
+          }}>
+            {topHeroes.map((h, idx) => {
               const games = h.games || 0;
               const wins = h.wins || 0;
+              const losses = Math.max(0, games - wins);
               const wr = games ? Math.round((wins / games) * 100) : 0;
+              const kda = h.kda != null && Number.isFinite(Number(h.kda)) ? Number(h.kda).toFixed(2) : null;
+              const wrColor = wr >= 60 ? '#22c55e' : wr >= 50 ? '#84cc16' : wr >= 40 ? '#f59e0b' : '#ef4444';
               return (
                 <div key={h.hero_id} style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '4px 10px', borderRadius: 6,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                  padding: '8px 10px', borderRadius: 8,
+                  background: 'var(--bg-card)', border: `1px solid ${accent}33`,
+                  position: 'relative',
                 }}>
-                  <img src={getHeroImageUrl(h.hero_id)} alt="" style={{ width: 36, height: 20, borderRadius: 2 }} />
-                  <div style={{ fontSize: 12 }}>
-                    <div style={{ fontWeight: 700 }}>{getHeroName(h.hero_id) || `#${h.hero_id}`}</div>
-                    <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {games}g · <span style={{ color: wr >= 55 ? '#22c55e' : '#f59e0b' }}>{wr}% WR</span>
+                  <span style={{
+                    position: 'absolute', top: 4, right: 6,
+                    fontSize: 9, fontWeight: 700, color: 'var(--text-muted)',
+                    fontFamily: 'monospace', letterSpacing: 0.5,
+                  }}>#{idx + 1}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <img
+                      src={getHeroImageUrl(h.hero_id)}
+                      alt=""
+                      style={{ width: 52, height: 30, borderRadius: 3, flexShrink: 0 }}
+                    />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{
+                        fontSize: 13, fontWeight: 700, color: 'var(--text-primary)',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {getHeroName(h.hero_id) || `#${h.hero_id}`}
+                      </div>
+                      <div style={{
+                        fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace',
+                        marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap',
+                      }}>
+                        <span>{games}g</span>
+                        <span>{wins}W·{losses}L</span>
+                        {kda && <span>{kda} KDA</span>}
+                      </div>
                     </div>
+                  </div>
+                  <div title={`${wr}% win rate over ${games} games`} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
+                    <div style={{
+                      flex: 1, height: 4, borderRadius: 2,
+                      background: 'rgba(255,255,255,0.06)', overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        width: `${wr}%`, height: '100%', background: wrColor,
+                        transition: 'width 0.3s ease',
+                      }} />
+                    </div>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: wrColor,
+                      fontFamily: 'monospace', minWidth: 30, textAlign: 'right',
+                    }}>{wr}%</span>
                   </div>
                 </div>
               );

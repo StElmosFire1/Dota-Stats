@@ -206,6 +206,26 @@
   padding-left: 1rem;
 }
 
+/* Adornment chips beside the player name (RankBadge / MmrBadge / verified
+   tick / Pro badge). Wrapped in a backdrop-blurred slab so the rank/MMR
+   pills don't appear blurry against the hero portrait behind them — the
+   pills themselves use translucent backgrounds, so without this backing
+   the blurred hero art bleeds through and softens the text. */
+.v3-cover-adornments {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-self: center;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(13, 20, 36, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
 /* Vital stats strip */
 .v3-cover-vitals {
   display: flex;
@@ -213,11 +233,12 @@
   gap: 1.25rem;
   margin-top: 1.1rem;
   padding: 1.05rem 1.4rem;
-  background: rgba(13, 20, 36, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(13, 20, 36, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
   flex-wrap: wrap;
 }
 .v3-vital {
@@ -482,6 +503,43 @@
   height: 18px;
   border-radius: 2px;
   background: rgba(197, 169, 117, 0.06);
+}
+
+/* Heatmap legend — explains both axes (colour = win rate, opacity = volume).
+   Sits beneath the grid so the panel sub-line stays compact. */
+.magazine-v3 .v3-tod-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 24px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.magazine-v3 .v3-tod-legend-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.magazine-v3 .v3-tod-legend-lbl {
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8a8074);
+  margin-right: 4px;
+}
+.magazine-v3 .v3-tod-legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.magazine-v3 .v3-tod-legend-mini {
+  font-size: 11px;
+  color: var(--text-muted, #8a8074);
+  margin-right: 6px;
 }
 
 /* Hero-hover items grid. */

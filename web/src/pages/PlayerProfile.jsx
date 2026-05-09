@@ -840,11 +840,18 @@ export default function PlayerProfile() {
   // so the free-tier baseline (no flag, or flag off) renders just the name +
   // adornments + headerExtras, exactly matching the pre-refactor behaviour.
   const topHeroesForCard = showProfileCustomization
-    ? allHeroes.slice(0, 5).map(h => ({
-        hero_id: h.hero_id || h.heroId,
-        games: parseInt(h.games || h.matches || 0),
-        wins: parseInt(h.wins || 0),
-      }))
+    ? allHeroes.slice(0, 5).map(h => {
+        const k = parseFloat(h.avg_kills || 0);
+        const d = parseFloat(h.avg_deaths || 0);
+        const a = parseFloat(h.avg_assists || 0);
+        const kda = (k + a) / Math.max(d, 1);
+        return {
+          hero_id: h.hero_id || h.heroId,
+          games: parseInt(h.games || h.matches || 0),
+          wins: parseInt(h.wins || 0),
+          kda: Number.isFinite(kda) && (k || a || d) ? kda : null,
+        };
+      })
     : [];
   const pinnedMatchForCard = showProfileCustomization ? (profileCard?.pinnedMatch || null) : null;
   const streakForCard = showProfileCustomization ? streak : null;
@@ -1118,12 +1125,19 @@ export default function PlayerProfile() {
           hides it under 1100px). Each link jumps to a section anchor
           mounted further down. Real <a href="#…"> elements so keyboard
           and screen-reader users get the same affordance as mouse users. */}
+      {/* Anchor order MUST match the actual DOM order of the corresponding
+          `id="…"` divs further down the page. Page order is:
+          cover → records (v3 panels) → stats → achievements → heroes → recent.
+          The `#records` anchor is mounted right above <ProfileV3Panels> which
+          renders the time-of-day heatmap, hero builds, season wrapped, and
+          hall-of-fame plaques — collectively surfaced as "Highlights" in the
+          rail to be honest about what the link actually scrolls to. */}
       <nav className="v3-anchor-nav" aria-label="Profile sections">
         <a href="#cover" data-dot="●"><span className="v3-anchor-label">Cover</span></a>
+        <a href="#records" data-dot="●"><span className="v3-anchor-label">Highlights</span></a>
         <a href="#stats" data-dot="●"><span className="v3-anchor-label">Stats</span></a>
-        <a href="#heroes" data-dot="●"><span className="v3-anchor-label">Heroes</span></a>
         <a href="#achievements" data-dot="●"><span className="v3-anchor-label">Achievements</span></a>
-        <a href="#records" data-dot="●"><span className="v3-anchor-label">Records</span></a>
+        <a href="#heroes" data-dot="●"><span className="v3-anchor-label">Heroes</span></a>
         <a href="#recent" data-dot="●"><span className="v3-anchor-label">Recent Matches</span></a>
       </nav>
 

@@ -225,7 +225,9 @@ export default function MagazineCover({
 
           <h1 className="v3-cover-name">
             <span>{displayName}</span>
-            {nameAdornments}
+            {nameAdornments && (
+              <span className="v3-cover-adornments">{nameAdornments}</span>
+            )}
           </h1>
 
           {customTitle && (

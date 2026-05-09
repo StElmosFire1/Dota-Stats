@@ -5,8 +5,19 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
+import { formatHeroName } from '../utils/heroes';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// Resolve a clean display name regardless of whether the API returned a
+// raw `npc_dota_hero_*` slug, an internal short slug, a pretty name, or
+// only a hero_id. Hero builds previously rendered raw `npc_dota_hero_mars`
+// strings straight from the API; this helper centralises the formatting.
+function prettyHero(rawName, heroId) {
+  if (rawName && /^npc_dota_hero_/i.test(rawName)) return formatHeroName(rawName);
+  if (rawName && /_/.test(rawName)) return formatHeroName(rawName);
+  return rawName || getHeroName(heroId) || `#${heroId}`;
+}
 
 function PanelShell({ eyebrow, title, children }) {
   return (
@@ -33,7 +44,11 @@ export function TimeOfDayPanel({ data }) {
   for (const row of grid) for (const c of row) if (c.games > maxGames) maxGames = c.games;
   return (
     <PanelShell eyebrow="When you play" title="Time-of-day heatmap">
-      <div className="v3-panel-sub">All times in Australia/Sydney. Opacity = games played, hue = win rate.</div>
+      <div className="v3-panel-sub">
+        Each cell is one hour of one day in Australia/Sydney time. <strong>Colour</strong> shows whether you usually win in that slot
+        (green = mostly wins, red = mostly losses). <strong>Brightness</strong> shows how often you play it
+        (faint = a single game, solid = your busiest hour).
+      </div>
       <div className="v3-tod-wrap">
         <div className="v3-tod-grid" role="img" aria-label={`Match heatmap across day-of-week and hour-of-day, ${totalGames} games total`}>
           <div className="v3-tod-corner" aria-hidden="true"></div>
@@ -65,6 +80,27 @@ export function TimeOfDayPanel({ data }) {
             </React.Fragment>
           ))}
         </div>
+        <div className="v3-tod-legend" aria-hidden="true">
+          <div className="v3-tod-legend-row">
+            <span className="v3-tod-legend-lbl">Win rate</span>
+            <span className="v3-tod-legend-swatch" style={{ background: 'var(--accent-red, #f87171)' }} title="Mostly losses" />
+            <span className="v3-tod-legend-mini">losses</span>
+            <span className="v3-tod-legend-swatch" style={{ background: 'var(--accent-green, #4ade80)' }} title="Mostly wins" />
+            <span className="v3-tod-legend-mini">wins</span>
+          </div>
+          <div className="v3-tod-legend-row">
+            <span className="v3-tod-legend-lbl">Games played</span>
+            {[0.18, 0.4, 0.65, 1].map((op, i) => (
+              <span
+                key={i}
+                className="v3-tod-legend-swatch"
+                style={{ background: 'var(--accent-green, #4ade80)', opacity: op }}
+                title={i === 0 ? '1 game' : i === 3 ? 'Most games' : `${i + 1} of 4`}
+              />
+            ))}
+            <span className="v3-tod-legend-mini">few → many</span>
+          </div>
+        </div>
       </div>
     </PanelShell>
   );
@@ -91,7 +127,7 @@ export function HeroItemsPanel({ data }) {
         <div className="v3-hero-items-portraits" role="tablist" aria-label="Pick a hero to view items">
           {heroes.map((h, idx) => {
             const wr = h.games > 0 ? Math.round((h.wins / h.games) * 100) : 0;
-            const name = h.hero_name || getHeroName(h.hero_id);
+            const name = prettyHero(h.hero_name, h.hero_id);
             const isActive = idx === hoveredIdx;
             return (
               <button
@@ -121,7 +157,7 @@ export function HeroItemsPanel({ data }) {
           })}
         </div>
         <div className="v3-hero-items-detail" aria-live="polite">
-          <div className="v3-hero-items-detail-name">{active.hero_name || getHeroName(active.hero_id)}</div>
+          <div className="v3-hero-items-detail-name">{prettyHero(active.hero_name, active.hero_id)}</div>
           {active.items && active.items.length > 0 ? (
             <ul className="v3-hero-items-list">
               {active.items.map(it => (
