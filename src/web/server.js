@@ -1330,7 +1330,7 @@ function createServer(startupStatus = {}) {
 
       const ua = String(req.get('user-agent') || '');
       if (_isSocialUnfurler(ua)) {
-        return _sendVanityOgCard(req, res, db, slug, accountId);
+        return _sendProfileOgMeta(req, res, db, accountId, slug);
       }
       return res.redirect(302, `/player/${encodeURIComponent(accountId)}`);
     } catch (err) {
@@ -1428,16 +1428,8 @@ function createServer(startupStatus = {}) {
   // when they unfurl `/p/<slug>`; we render the player's pinned/most-played
   // hero portrait with name + MMR + W/L overlay. Falls back to the static
   // OA logo when canvas is unavailable or generation fails.
-  app.get('/og/profile/:slug.png', async (req, res) => {
+  async function _renderProfileOgCard(res, db, accountId) {
     try {
-      const db = require('../db');
-      const slug = req.params.slug || '';
-      if (!db.isWellFormedVanitySlug(slug)) {
-        return res.redirect(302, '/oa-logo.png');
-      }
-      const accountId = await db.getAccountIdByVanitySlug(slug);
-      if (!accountId) return res.redirect(302, '/oa-logo.png');
-
       const [nick, rating, hero] = await Promise.all([
         db.getNickname(accountId).catch(() => null),
         db.getPlayerRating(accountId).catch(() => null),
@@ -1475,9 +1467,42 @@ function createServer(startupStatus = {}) {
       console.warn('[vanity-slug] OG card render failed:', err.message);
       return res.redirect(302, '/oa-logo.png');
     }
+  }
+
+  app.get('/og/profile/:slug.png', async (req, res) => {
+    const db = require('../db');
+    const slug = req.params.slug || '';
+    if (!db.isWellFormedVanitySlug(slug)) {
+      return res.redirect(302, '/oa-logo.png');
+    }
+    try {
+      const accountId = await db.getAccountIdByVanitySlug(slug);
+      if (!accountId) return res.redirect(302, '/oa-logo.png');
+      return _renderProfileOgCard(res, db, accountId);
+    } catch (err) {
+      console.warn('[vanity-slug] OG card slug lookup failed:', err.message);
+      return res.redirect(302, '/oa-logo.png');
+    }
   });
 
-  async function _sendVanityOgCard(req, res, db, slug, accountId) {
+  // Task #258 — Sister endpoint for canonical `/player/:accountId` unfurls.
+  // Same generator + cache as the slug variant; the cache key in
+  // profileOgCard.js is keyed off display name + hero so both URL shapes
+  // for the same player reuse a single rendered buffer.
+  app.get('/og/profile/by-id/:accountId.png', async (req, res) => {
+    const db = require('../db');
+    const accountId = String(req.params.accountId || '');
+    if (!/^\d{1,20}$/.test(accountId)) {
+      return res.redirect(302, '/oa-logo.png');
+    }
+    return _renderProfileOgCard(res, db, accountId);
+  });
+
+  // Task #221 / #258 — Shared OG meta-tag responder. Used for both
+  // `/p/<slug>` and `/player/<accountId>` unfurls so both URL shapes
+  // produce identical cards. `slug` may be null for the account-id path,
+  // in which case the canonical URL points at `/player/<accountId>`.
+  async function _sendProfileOgMeta(req, res, db, accountId, slug) {
     let displayName = `Player ${accountId}`;
     let descriptionParts = [];
     let hasHero = false;
@@ -1511,12 +1536,21 @@ function createServer(startupStatus = {}) {
     const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
     const host = req.get('host') || 'oceinhouse.gg';
     const origin = `${proto}://${host}`;
-    const canonical = `${origin}/p/${encodeURIComponent(slug)}`;
     const profileUrl = `${origin}/player/${encodeURIComponent(accountId)}`;
-    // Task #241 — point unfurlers at the per-player generated card. The
-    // endpoint itself falls back to /oa-logo.png if rendering fails, so
-    // crawlers always get a real image even on the error path.
-    const imageUrl = `${origin}/og/profile/${encodeURIComponent(slug)}.png`;
+    // Canonical URL prefers the short `/p/<slug>` shape when one exists so
+    // crawlers de-duplicate both URL shapes onto the same page; for the
+    // account-id-only path we point canonical at the long URL itself.
+    const canonical = slug
+      ? `${origin}/p/${encodeURIComponent(slug)}`
+      : profileUrl;
+    // Task #241 / #258 — point unfurlers at the per-player generated card.
+    // The endpoint itself falls back to /oa-logo.png if rendering fails, so
+    // crawlers always get a real image even on the error path. Both URL
+    // shapes share the same generator + cache, so the same player produces
+    // a single rendered buffer regardless of which path we render from.
+    const imageUrl = slug
+      ? `${origin}/og/profile/${encodeURIComponent(slug)}.png`
+      : `${origin}/og/profile/by-id/${encodeURIComponent(accountId)}.png`;
     const twitterCard = 'summary_large_image';
 
     const title = `${displayName} · OCE Inhouse`;
@@ -1542,7 +1576,7 @@ function createServer(startupStatus = {}) {
       `<meta property="og:image:width" content="1200">` +
       `<meta property="og:image:height" content="630">` +
       `<meta property="og:image:alt" content="${eName} — OCE Inhouse profile card">` +
-      `<meta property="profile:username" content="${_escapeHtml(slug)}">` +
+      (slug ? `<meta property="profile:username" content="${_escapeHtml(slug)}">` : '') +
       `<meta name="twitter:card" content="${twitterCard}">` +
       `<meta name="twitter:title" content="${eTitle}">` +
       `<meta name="twitter:description" content="${eDesc}">` +
@@ -1572,6 +1606,34 @@ function createServer(startupStatus = {}) {
       `<p><a href="/">← Back to OCE Inhouse</a></p></div></body></html>`
     );
   }
+
+  // Task #258 — Canonical `/player/:accountId` unfurl handler. Crawlers
+  // get the same hero-portrait OG card as `/p/<slug>`; real browsers fall
+  // through (next()) to the SPA catch-all so the React app boots normally.
+  // Mounted BEFORE the static asset serve + SPA catch-all so we can
+  // intercept the bot UAs first.
+  app.get('/player/:accountId', async (req, res, next) => {
+    const accountId = String(req.params.accountId || '');
+    if (!/^\d{1,20}$/.test(accountId)) return next();
+    const ua = String(req.get('user-agent') || '');
+    if (!_isSocialUnfurler(ua)) return next();
+    try {
+      const db = require('../db');
+      // Prefer the short canonical URL when the player has claimed a slug
+      // so both URL shapes de-duplicate to the same canonical link.
+      let slug = null;
+      try {
+        if (typeof db.getVanitySlugByAccount === 'function') {
+          const row = await db.getVanitySlugByAccount(accountId);
+          slug = row && row.slug ? row.slug : null;
+        }
+      } catch (_) { /* best-effort */ }
+      return _sendProfileOgMeta(req, res, db, accountId, slug || null);
+    } catch (err) {
+      console.warn('[player-og] unfurl failed:', err.message);
+      return next();
+    }
+  });
 
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {

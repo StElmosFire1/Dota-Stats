@@ -245,6 +245,93 @@ test('GET /p/:slug redirects a real browser UA (Chrome) to /player/<id>',
   })
 );
 
+// ── 2b. Task #258 — /player/:accountId unfurler parity ───────────────────
+
+test('GET /player/:accountId serves an OG card to Discordbot UA with the same hero meta tags',
+  _withUnreffedIntervals(async () => {
+    _stubServerDeps({
+      getVanitySlugByAccount: async (id) => String(id) === '12345' ? { slug: 'testpro' } : null,
+      getNickname: async () => 'TestPro',
+      getPlayerRating: async () => ({
+        display_name: 'TestPro', mmr: 4200, wins: 70, losses: 30,
+      }),
+      getPlayerProfileCustomization: async () => null,
+      getPool: () => ({
+        query: async () => ({ rows: [{ hero_id: 1, hero_name: 'npc_dota_hero_antimage', games: 5 }] }),
+      }),
+    });
+    const { createServer } = _loadServerFresh();
+    const app = createServer({});
+    const route = _findAppRoute(app, 'get', '/player/:accountId');
+    const req = _makeReq({
+      params: { accountId: '12345' },
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)' },
+    });
+    const res = await _invokeHandler(route, req);
+
+    assert.equal(res.statusCode, 200, 'unfurler must get 200 OK on the canonical /player/<id> URL too');
+    assert.ok(typeof res.body === 'string', 'response body must be HTML string');
+    const html = res.body;
+    assert.match(html, /<meta property="og:title" content="[^"]*TestPro[^"]*"/, 'og:title must include displayName');
+    assert.match(html, /<meta property="og:image" content="[^"]+\/og\/profile\/testpro\.png"/, 'og:image must reuse the slug card when a slug is claimed');
+    assert.match(html, /<link rel="canonical" href="[^"]+\/p\/testpro"/, 'canonical must point at the short /p/<slug> URL when a slug exists');
+    assert.match(html, /<meta name="twitter:card" content="summary_large_image"/);
+  })
+);
+
+test('GET /player/:accountId falls through to the SPA for real browser UAs',
+  _withUnreffedIntervals(async () => {
+    _stubServerDeps();
+    const { createServer } = _loadServerFresh();
+    const app = createServer({});
+    const route = _findAppRoute(app, 'get', '/player/:accountId');
+    const req = _makeReq({
+      params: { accountId: '12345' },
+      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' },
+    });
+    const res = await _invokeHandler(route, req);
+    assert.equal(res.headersSent, false, 'real browsers must fall through to the SPA, not get an OG response');
+    assert.equal(res.redirectedTo, null, 'real browsers must NOT be redirected — the SPA owns this URL');
+  })
+);
+
+test('GET /player/:accountId uses the by-id card when no slug is claimed',
+  _withUnreffedIntervals(async () => {
+    _stubServerDeps({
+      getVanitySlugByAccount: async () => ({ slug: null }),
+      getNickname: async () => 'NoSlugPlayer',
+      getPlayerRating: async () => ({ display_name: 'NoSlugPlayer', mmr: 3000, wins: 10, losses: 10 }),
+    });
+    const { createServer } = _loadServerFresh();
+    const app = createServer({});
+    const route = _findAppRoute(app, 'get', '/player/:accountId');
+    const req = _makeReq({
+      params: { accountId: '99999' },
+      headers: { 'user-agent': 'Discordbot/2.0' },
+    });
+    const res = await _invokeHandler(route, req);
+    assert.equal(res.statusCode, 200);
+    assert.match(res.body, /<meta property="og:image" content="[^"]+\/og\/profile\/by-id\/99999\.png"/, 'og:image must use the by-id card when no slug is claimed');
+    assert.match(res.body, /<link rel="canonical" href="[^"]+\/player\/99999"/, 'canonical points at the long URL when no slug exists');
+    assert.doesNotMatch(res.body, /profile:username/, 'profile:username must be omitted when there is no slug');
+  })
+);
+
+test('GET /player/:accountId rejects non-numeric IDs (falls through to SPA)',
+  _withUnreffedIntervals(async () => {
+    _stubServerDeps();
+    const { createServer } = _loadServerFresh();
+    const app = createServer({});
+    const route = _findAppRoute(app, 'get', '/player/:accountId');
+    const req = _makeReq({
+      params: { accountId: 'not-a-number' },
+      headers: { 'user-agent': 'Discordbot/2.0' },
+    });
+    const res = await _invokeHandler(route, req);
+    assert.equal(res.headersSent, false, 'invalid accountId must fall through, not render an OG card');
+  })
+);
+
 // ── 3. /api/player/:id/vanity-slug ───────────────────────────────────────
 
 test('GET /api/player/:id/vanity-slug returns slug for a claimed account',
