@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import Dialog from './Dialog';
 
 const TRUST_POINTS = [
   {
@@ -34,131 +35,109 @@ const TRUST_POINTS = [
 ];
 
 export function SteamTrustModal({ open, onClose }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="steam-trust-modal-title"
-      onClick={onClose}
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 10000,
+    <Dialog
+      open={open}
+      onClose={onClose}
+      labelledBy="steam-trust-modal-title"
+      backdropStyle={{
+        zIndex: 10000,
         background: 'rgba(0,0,0,0.78)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16, overflow: 'auto',
+        overflow: 'auto',
+      }}
+      contentStyle={{
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        borderRadius: 12,
+        maxWidth: 640, width: '100%',
+        maxHeight: '90vh', overflow: 'auto',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
       }}
     >
-      <div
-        role="presentation"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 12,
-          maxWidth: 640, width: '100%',
-          maxHeight: '90vh', overflow: 'auto',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          padding: '20px 24px',
-          borderBottom: '1px solid var(--border)',
-          background: 'linear-gradient(180deg, #1b2838 0%, #152030 100%)',
-          borderRadius: '12px 12px 0 0',
-        }}>
-          <img
-            src="https://store.steampowered.com/favicon.ico"
-            alt=""
-            style={{ width: 28, height: 28 }}
-          />
-          <div style={{ flex: 1 }}>
-            <h2
-              id="steam-trust-modal-title"
-              style={{ margin: 0, fontSize: 18, color: '#d6ff7a' }}
-            >
-              Signing in with Steam — what actually happens
-            </h2>
-            <div style={{ fontSize: 12, color: '#8ba7bf', marginTop: 2 }}>
-              OpenID 2.0 · the same protocol used by every Steam-authenticated site
-            </div>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '20px 24px',
+        borderBottom: '1px solid var(--border)',
+        background: 'linear-gradient(180deg, #1b2838 0%, #152030 100%)',
+        borderRadius: '12px 12px 0 0',
+      }}>
+        <img
+          src="https://store.steampowered.com/favicon.ico"
+          alt=""
+          style={{ width: 28, height: 28 }}
+        />
+        <div style={{ flex: 1 }}>
+          <h2
+            id="steam-trust-modal-title"
+            style={{ margin: 0, fontSize: 18, color: '#d6ff7a' }}
+          >
+            Signing in with Steam — what actually happens
+          </h2>
+          <div style={{ fontSize: 12, color: '#8ba7bf', marginTop: 2 }}>
+            OpenID 2.0 · the same protocol used by every Steam-authenticated site
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              background: 'transparent', border: 'none',
-              color: 'var(--text-muted)', fontSize: 22, cursor: 'pointer',
-              padding: '0 4px', lineHeight: 1,
-            }}
-          >×</button>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            background: 'transparent', border: 'none',
+            color: 'var(--text-muted)', fontSize: 22, cursor: 'pointer',
+            padding: '0 4px', lineHeight: 1,
+          }}
+        >×</button>
+      </div>
 
-        {/* Bullets */}
-        <div style={{ padding: '16px 24px' }}>
-          {TRUST_POINTS.map((p) => (
-            <div key={p.title} style={{
-              display: 'flex', gap: 14,
-              padding: '14px 0',
-              borderBottom: '1px solid var(--border)',
-            }}>
-              <div style={{ fontSize: 22, lineHeight: 1.2, flexShrink: 0 }}>{p.icon}</div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  {p.title}
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  {p.body}
-                </div>
+      {/* Bullets */}
+      <div style={{ padding: '16px 24px' }}>
+        {TRUST_POINTS.map((p) => (
+          <div key={p.title} style={{
+            display: 'flex', gap: 14,
+            padding: '14px 0',
+            borderBottom: '1px solid var(--border)',
+          }}>
+            <div style={{ fontSize: 22, lineHeight: 1.2, flexShrink: 0 }}>{p.icon}</div>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 4 }}>
+                {p.title}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {p.body}
               </div>
             </div>
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div style={{
-          padding: '14px 24px',
-          background: 'var(--bg-secondary, rgba(0,0,0,0.2))',
-          borderTop: '1px solid var(--border)',
-          borderRadius: '0 0 12px 12px',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          flexWrap: 'wrap', gap: 12,
-        }}>
-          <a
-            href="https://partner.steamgames.com/doc/features/auth#website"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ fontSize: 12, color: 'var(--text-muted)' }}
-          >
-            Read Valve's official docs on Steam authentication →
-          </a>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn btn-small"
-            style={{ background: 'var(--accent)', color: 'var(--bg-primary)', border: 'none' }}
-          >
-            Got it
-          </button>
-        </div>
+          </div>
+        ))}
       </div>
-    </div>
+
+      {/* Footer */}
+      <div style={{
+        padding: '14px 24px',
+        background: 'var(--bg-secondary, rgba(0,0,0,0.2))',
+        borderTop: '1px solid var(--border)',
+        borderRadius: '0 0 12px 12px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        flexWrap: 'wrap', gap: 12,
+      }}>
+        <a
+          href="https://partner.steamgames.com/doc/features/auth#website"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: 12, color: 'var(--text-muted)' }}
+        >
+          Read Valve's official docs on Steam authentication →
+        </a>
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn btn-small"
+          style={{ background: 'var(--accent)', color: 'var(--bg-primary)', border: 'none' }}
+        >
+          Got it
+        </button>
+      </div>
+    </Dialog>
   );
 }
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createVerifiedBadgeCheckout, getPlayerVerifiedBadges } from '../api';
+import Dialog from './Dialog';
 
 // Must stay in sync with ALLOWED_VERIFIED_PROVIDERS in
 // src/monetization/magazineV3.js — /api/verified/checkout will 400 on
@@ -60,8 +61,6 @@ export default function VerifiedBadgePurchaseModal({ open, onClose }) {
   const [error, setError] = useState(null);
   const [paywall, setPaywall] = useState(false);
 
-  if (!open) return null;
-
   async function onSubmit(e) {
     e.preventDefault();
     setError(null); setPaywall(false); setSubmitting(true);
@@ -87,82 +86,71 @@ export default function VerifiedBadgePurchaseModal({ open, onClose }) {
   }
 
   return (
-    <div
-      role="presentation"
-      onClick={onClose}
-      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1000, padding: 16,
+    <Dialog
+      open={open}
+      onClose={onClose}
+      label="Purchase verified badge"
+      backdropStyle={{ background: 'rgba(0,0,0,.55)', zIndex: 1000 }}
+      contentStyle={{
+        background: 'var(--bg-secondary, #11192b)',
+        color: 'var(--text-primary, #f5efe2)',
+        border: '1px solid var(--brass, #c5a975)',
+        borderRadius: 8, maxWidth: 480, width: '100%', padding: 20,
+        boxShadow: '0 12px 32px rgba(0,0,0,.5)',
       }}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Purchase verified badge"
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: 'var(--bg-secondary, #11192b)',
-          color: 'var(--text-primary, #f5efe2)',
-          border: '1px solid var(--brass, #c5a975)',
-          borderRadius: 8, maxWidth: 480, width: '100%', padding: 20,
-          boxShadow: '0 12px 32px rgba(0,0,0,.5)',
-        }}
-      >
-        <h3 style={{ margin: '0 0 8px', fontFamily: 'var(--font-condensed, Oswald), sans-serif' }}>
-          Get verified
-        </h3>
-        <p style={{ marginTop: 0, color: 'var(--text-muted, #9ca3af)', fontSize: 13 }}>
-          Prove ownership of a public account so your profile shows the verified
-          checkmark. After payment your verification request enters the moderation
-          queue — an admin reviews it and your badge is granted on approval. Want
-          to skip payment? You can also use the free code-challenge proof flow
-          (paste a one-time code into your public profile bio).
-        </p>
-        <form onSubmit={onSubmit} style={{ display: 'grid', gap: 10 }}>
-          <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-            Provider
-            <select
-              value={provider} onChange={e => setProvider(e.target.value)}
-              style={{ padding: 6 }}
-            >
-              {PROVIDERS.map(p => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
-          </label>
-          <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-            Handle on that platform
-            <input
-              value={handle} onChange={e => setHandle(e.target.value)}
-              placeholder="e.g. your_username (no @)"
-              required maxLength={64}
-              style={{ padding: 6 }}
-            />
-          </label>
-          {error && (
-            <div style={{ color: paywall ? 'var(--amber, #f59e0b)' : 'crimson', fontSize: 13 }}>
-              {error}
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={onClose} disabled={submitting}>
-              Cancel
-            </button>
-            <button
-              type="submit" disabled={submitting || !handle.trim()}
-              style={{
-                background: 'var(--brass, #c5a975)', color: 'var(--ink-navy, #0d1424)',
-                border: 'none', padding: '6px 14px', fontWeight: 600, borderRadius: 4,
-                cursor: 'pointer',
-              }}
-            >
-              {submitting ? 'Opening checkout…' : 'Continue to payment'}
-            </button>
+      <h3 style={{ margin: '0 0 8px', fontFamily: 'var(--font-condensed, Oswald), sans-serif' }}>
+        Get verified
+      </h3>
+      <p style={{ marginTop: 0, color: 'var(--text-muted, #9ca3af)', fontSize: 13 }}>
+        Prove ownership of a public account so your profile shows the verified
+        checkmark. After payment your verification request enters the moderation
+        queue — an admin reviews it and your badge is granted on approval. Want
+        to skip payment? You can also use the free code-challenge proof flow
+        (paste a one-time code into your public profile bio).
+      </p>
+      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 10 }}>
+        <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+          Provider
+          <select
+            value={provider} onChange={e => setProvider(e.target.value)}
+            style={{ padding: 6 }}
+          >
+            {PROVIDERS.map(p => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+          Handle on that platform
+          <input
+            value={handle} onChange={e => setHandle(e.target.value)}
+            placeholder="e.g. your_username (no @)"
+            required maxLength={64}
+            style={{ padding: 6 }}
+          />
+        </label>
+        {error && (
+          <div style={{ color: paywall ? 'var(--amber, #f59e0b)' : 'crimson', fontSize: 13 }}>
+            {error}
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
+          <button
+            type="submit" disabled={submitting || !handle.trim()}
+            style={{
+              background: 'var(--brass, #c5a975)', color: 'var(--ink-navy, #0d1424)',
+              border: 'none', padding: '6px 14px', fontWeight: 600, borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            {submitting ? 'Opening checkout…' : 'Continue to payment'}
+          </button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

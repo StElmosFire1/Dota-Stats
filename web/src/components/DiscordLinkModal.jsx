@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import Dialog from './Dialog';
 
 // First-login Discord ID onboarding modal (task 89).
 //
@@ -172,31 +173,21 @@ export default function DiscordLinkModal() {
 
   return (
     <>
-      {open && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="discord-link-title"
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9000,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget) onSkip(); }}
-        >
-          <div
-            style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-              borderTop: '3px solid var(--accent, #c5a975)',
-              borderRadius: 10,
-              maxWidth: 460, width: '100%',
-              padding: '22px 22px 18px',
-              boxShadow: '0 18px 48px rgba(0,0,0,0.55)',
-              color: 'var(--text-primary)',
-            }}
-          >
+      <Dialog
+        open={open}
+        onClose={onSkip}
+        labelledBy="discord-link-title"
+        contentStyle={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderTop: '3px solid var(--accent, #c5a975)',
+          borderRadius: 10,
+          maxWidth: 460, width: '100%',
+          padding: '22px 22px 18px',
+          boxShadow: '0 18px 48px rgba(0,0,0,0.55)',
+          color: 'var(--text-primary)',
+        }}
+      >
             <h2 id="discord-link-title" style={{ margin: '0 0 6px', fontSize: 20 }}>
               One last step — link your Discord
             </h2>
@@ -296,9 +287,7 @@ export default function DiscordLinkModal() {
                 {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Dialog>
 
       {toast && (
         <div

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import Dialog from '../components/Dialog';
 
 const BASE = '/api';
 
@@ -135,20 +136,15 @@ export default function MyBookings() {
         </>
       )}
 
-      {reviewModal && (
-        <div
-          role="presentation"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
-          onClick={() => setReviewModal(null)}
-          onKeyDown={(e) => { if (e.key === 'Escape') setReviewModal(null); }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="review-modal-title"
-            onClick={e => e.stopPropagation()}
-            style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 10, maxWidth: 500, width: '90%' }}
-          >
+      <Dialog
+        open={!!reviewModal}
+        onClose={() => setReviewModal(null)}
+        labelledBy="review-modal-title"
+        backdropStyle={{ background: 'rgba(0,0,0,0.7)', zIndex: 100 }}
+        contentStyle={{ background: 'var(--bg-card)', padding: 24, borderRadius: 10, maxWidth: 500, width: '90%' }}
+      >
+        {reviewModal && (
+          <>
             <h3 id="review-modal-title" style={{ marginTop: 0 }}>Review {reviewModal.coach_name}</h3>
             <label>Rating:&nbsp;
               <select value={reviewModal.rating} onChange={e => setReviewModal(m => ({ ...m, rating: parseInt(e.target.value) }))}
@@ -163,9 +159,9 @@ export default function MyBookings() {
               <button onClick={() => setReviewModal(null)} style={{ padding: '6px 14px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
               <button onClick={submitReview} style={{ padding: '6px 14px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700 }}>Submit</button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Dialog>
     </div>
   );
 }

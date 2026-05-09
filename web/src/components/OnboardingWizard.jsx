@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import Dialog from './Dialog';
 
 const NOTIFICATION_LABELS = {
   post_match_dm:     { title: 'Post-match summary',       desc: 'DM with your stats after each game.' },
@@ -75,12 +76,6 @@ export default function OnboardingWizard({ onComplete, onDismiss }) {
     setSaving(false);
   };
 
-  const backdrop = {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-    zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: '16px',
-  };
-
   const modal = {
     background: 'var(--bg-card)', border: '1px solid var(--border)',
     borderRadius: 16, padding: '32px 36px', maxWidth: 520, width: '100%',
@@ -101,13 +96,13 @@ export default function OnboardingWizard({ onComplete, onDismiss }) {
   );
 
   return (
-    <div
-      style={backdrop}
-      role="presentation"
-      onClick={e => { if (e.target === e.currentTarget) onDismiss?.(); }}
-      onKeyDown={e => { if (e.key === 'Escape') onDismiss?.(); }}
+    <Dialog
+      open={true}
+      onClose={() => onDismiss?.()}
+      label="Welcome to OCE Inhouse"
+      backdropStyle={{ background: 'rgba(0,0,0,0.7)' }}
+      contentStyle={modal}
     >
-      <div style={modal} role="dialog" aria-modal="true" aria-label="Welcome to OCE Inhouse">
         <button
           onClick={onDismiss}
           style={{
@@ -288,7 +283,6 @@ export default function OnboardingWizard({ onComplete, onDismiss }) {
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </Dialog>
   );
 }
