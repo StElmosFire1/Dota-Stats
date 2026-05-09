@@ -1116,6 +1116,9 @@ async function init() {
     // as its own JSONB column rather than inside `extras` so the route can
     // strictly array-validate it without touching the validateExtras shape.
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS pinned_achievements JSONB NOT NULL DEFAULT '[]'::jsonb`);
+    // Task #205 — live presence chip opt-out. Default true (opt-in for all
+    // Discord-linked accounts). Honoured server-side by presenceService.
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS presence_visible BOOLEAN NOT NULL DEFAULT TRUE`);
 
     // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
     // status: 'pending' (checkout created), 'active' (paid via webhook),

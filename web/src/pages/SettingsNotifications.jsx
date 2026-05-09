@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
+import { getMyPresenceVisibility, setMyPresenceVisibility } from '../api';
 
 // v5.90 — added the missing labels (match_ready + the three coaching
 // categories) and a smarter fallback so any future server-side category
@@ -82,6 +83,21 @@ export default function SettingsNotifications() {
       } catch {}
     })();
   }, [pushSupported, pushEnabled]);
+
+  // Task #205 — live presence chip visibility toggle.
+  const [presenceVisible, setPresenceVisible] = useState(true);
+  const [presenceLoaded, setPresenceLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getMyPresenceVisibility()
+      .then(r => { if (!cancelled) { setPresenceVisible(r?.presence_visible !== false); setPresenceLoaded(true); } })
+      .catch(() => { if (!cancelled) setPresenceLoaded(true); });
+    return () => { cancelled = true; };
+  }, []);
+  const togglePresenceVisible = async (next) => {
+    setPresenceVisible(next);
+    try { await setMyPresenceVisibility(next); } catch { /* leave optimistic state */ }
+  };
 
   const togglePref = async (category, nextEnabled) => {
     setSaving(true);
@@ -259,6 +275,25 @@ export default function SettingsNotifications() {
           })}
         </div>
       )}
+
+      <section style={{ marginTop: 28 }}>
+        <h2 style={{ marginBottom: 8 }}>Live status chip</h2>
+        <p style={{ color: 'var(--text-muted)', marginTop: 0 }}>
+          Show a small live status pill on your public profile cover (in game,
+          in lobby, in queue, in voice, online). Powered by Discord and Dota 2
+          presence — no extra data is stored. Toggle off to keep your profile
+          showing only static stats.
+        </p>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: presenceLoaded ? 'pointer' : 'wait' }}>
+          <input
+            type="checkbox"
+            checked={!!presenceVisible}
+            disabled={!presenceLoaded}
+            onChange={(e) => togglePresenceVisible(e.target.checked)}
+          />
+          <span style={{ fontSize: 14 }}>{presenceVisible ? 'Live status chip visible' : 'Live status chip hidden'}</span>
+        </label>
+      </section>
 
       {pushEnabled && (
         <section style={{ marginTop: 28 }}>

@@ -1563,6 +1563,14 @@ export const declineSponsorship = (id) => _postJson(`/sponsorships/${id}/decline
 export const createSponsorshipCheckout = (payload) =>
   _postJson('/sponsorships/checkout', payload);
 
+// Task #205 — live presence chip for /players/:id v3 cover.
+export const getPlayerPresence = (accountId) =>
+  _getJson(`/players/${accountId}/presence`).catch(() => ({ status: 'offline' }));
+export const getMyPresenceVisibility = () =>
+  _getJson('/me/presence-visibility').catch(() => ({ presence_visible: true }));
+export const setMyPresenceVisibility = (visible) =>
+  _postJson('/me/presence-visibility', { presence_visible: !!visible });
+
 export const createVerifiedBadgeCheckout = (provider, handle) =>
   _postJson('/verified/checkout', { provider, handle });
 

@@ -7779,6 +7779,59 @@ NOTES
     return value;
   }
 
+  // Task #205 — public live presence chip for /players/:id v3 cover.
+  // Always returns 200 with a `{ status, ... }` payload so the cover never
+  // breaks. Defaults to `offline` on any error, missing data, or visibility
+  // opt-out. Polled client-side every 30s while the tab is visible.
+  router.get('/players/:id/presence', async (req, res) => {
+    try {
+      const { getPlayerPresence } = require('../services/presenceService');
+      const data = await getPlayerPresence(req.params.id);
+      res.set('Cache-Control', 'no-store');
+      res.json(data || { status: 'offline', updated_at: null });
+    } catch (err) {
+      res.json({ status: 'offline', updated_at: null });
+    }
+  });
+
+  // Task #205 — visibility toggle for the live presence chip. Stored on
+  // player_profiles.presence_visible (default TRUE). Same auth shape as
+  // the other /me/* notification endpoints.
+  router.get('/me/presence-visibility', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const pool = db.getPool();
+      const r = await pool.query(
+        `SELECT presence_visible FROM player_profiles WHERE account_id = $1`,
+        [String(accountId)]
+      );
+      const visible = r.rows.length === 0 ? true : r.rows[0].presence_visible !== false;
+      res.json({ presence_visible: visible });
+    } catch (err) {
+      console.error('[API] presence-visibility GET:', err.message);
+      res.status(500).json({ error: 'Failed to fetch presence visibility' });
+    }
+  });
+  router.post('/me/presence-visibility', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const visible = req.body?.presence_visible !== false;
+      const pool = db.getPool();
+      await pool.query(
+        `INSERT INTO player_profiles (account_id, presence_visible)
+           VALUES ($1, $2)
+         ON CONFLICT (account_id) DO UPDATE SET presence_visible = EXCLUDED.presence_visible, updated_at = NOW()`,
+        [String(accountId), visible]
+      );
+      res.json({ presence_visible: visible });
+    } catch (err) {
+      console.error('[API] presence-visibility POST:', err.message);
+      res.status(500).json({ error: 'Failed to update presence visibility' });
+    }
+  });
+
   router.get('/me/profile', async (req, res) => {
     try {
       const accountId = req.session?.accountId;

@@ -919,3 +919,14 @@ html:has(.magazine-v3) {
   font-size: 13px;
   cursor: pointer;
 }
+
+/* Task #205 — live presence chip pulse animation. Static border/colour are
+   driven via inline style so the chip palette stays close to its config map. */
+@keyframes v3-presence-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.35); opacity: 0.55; }
+}
+.v3-presence-pill { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  .v3-presence-pill > span[aria-hidden="true"] { animation: none !important; }
+}

@@ -61,6 +61,31 @@ class SteamDotaClient extends EventEmitter {
     });
 
     this.steamClient.on('user', (sid, persona) => {
+      // Task #205 — feed every Dota 2 rich-presence update we observe into
+      // the live presence service, even when the friend lobby monitor is off.
+      // The handler is fully wrapped in try/catch so it can never break the
+      // existing friend-lobby auto-detect path below.
+      try {
+        if (persona && sid?.getSteamID64) {
+          const sid64 = sid.getSteamID64();
+          const gameApp = persona.gameid || persona.game_played_app_id;
+          if (gameApp && gameApp.toString() === '570') {
+            const _presence = require('../services/presenceService');
+            const parsed = _presence.parseDotaRichPresence(persona.rich_presence) || {};
+            if (parsed.state) {
+              _presence.setSteamPresence(sid64, parsed);
+            } else {
+              // In Dota client but no parseable state — treat as in_lobby so
+              // the chip at least shows "Online · Dota 2".
+              _presence.setSteamPresence(sid64, { state: 'in_lobby' });
+            }
+          } else {
+            const _presence = require('../services/presenceService');
+            _presence.clearSteamPresence(sid64);
+          }
+        }
+      } catch (_) { /* swallow */ }
+
       if (!this._friendMonitorEnabled) return;
       if (!persona || !persona.rich_presence) return;
 

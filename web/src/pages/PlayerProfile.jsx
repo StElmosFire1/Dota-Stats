@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence } from '../api';
 import Dialog from '../components/Dialog';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
@@ -582,6 +582,21 @@ export default function PlayerProfile() {
   const [predictionStats, setPredictionStats] = useState(null);
   const [heroCounters, setHeroCounters] = useState([]);
   const [streak, setStreak] = useState(null);
+  // Task #205 — live presence chip. Polled every 30s while the tab is visible.
+  const [presence, setPresence] = useState(null);
+  useEffect(() => {
+    if (!accountId) return undefined;
+    let cancelled = false;
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      getPlayerPresence(accountId).then(p => { if (!cancelled) setPresence(p || null); }).catch(() => {});
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    const onVis = () => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { cancelled = true; clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }, [accountId]);
   const [captainAutoPick, setCaptainAutoPick] = useState(null);
   const [durationStats, setDurationStats] = useState([]);
   const [communityRatings, setCommunityRatings] = useState(null);
@@ -1052,6 +1067,7 @@ export default function PlayerProfile() {
       <div id="cover" />
       <MagazineCover
         accountId={accountId}
+        presence={presence}
         displayName={displayName}
         customTitle={profileCard?.custom_title || null}
         bio={profileCard?.bio || null}

@@ -40,6 +40,12 @@ class DiscordBot {
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildVoiceStates,
+        // Task #205 — live presence chip needs gateway presence + member events.
+        // Both intents are privileged in the Discord developer portal; if they
+        // aren't enabled the gateway connection fails outright. The chip
+        // gracefully degrades to `online`/`offline` without these events.
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildMembers,
       ],
       partials: [Partials.Message, Partials.Channel, Partials.Reaction],
     });
@@ -583,6 +589,24 @@ class DiscordBot {
       } catch (err) {
         console.error('[RSVP] reactionRemove error:', err.message);
       }
+    });
+
+    // Task #205 — live presence chip wiring. We keep the work in
+    // presenceService and just feed events into it here. Errors are swallowed
+    // so a misbehaving handler never crashes the bot.
+    const _presence = require('../services/presenceService');
+    this.client.on('presenceUpdate', (_old, next) => {
+      try {
+        if (!next?.userId) return;
+        const status = next.status || 'offline'; // online|idle|dnd|offline
+        _presence.setDiscordPresence(next.userId, { state: status });
+      } catch (e) { /* swallow */ }
+    });
+    this.client.on('voiceStateUpdate', (_old, next) => {
+      try {
+        if (!next?.id) return;
+        _presence.setDiscordPresence(next.id, { voice: !!next.channelId });
+      } catch (e) { /* swallow */ }
     });
 
     this.client.on('messageCreate', async (msg) => {

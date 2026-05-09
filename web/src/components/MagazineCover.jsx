@@ -21,6 +21,37 @@ function buildSparkPath(values, w = 100, h = 22) {
   return d;
 }
 
+// Task #205 — Live presence chip rendered on the v3 cover. Pure presentation;
+// the parent polls /api/players/:id/presence and passes the latest payload in.
+const PRESENCE_LABELS = {
+  in_game: { label: 'In game', color: '#f59e0b', bg: 'rgba(245,158,11,0.18)', dot: '#f59e0b' },
+  in_lobby: { label: 'In lobby', color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', dot: '#fbbf24' },
+  in_queue: { label: 'In queue', color: '#a78bfa', bg: 'rgba(167,139,250,0.18)', dot: '#a78bfa' },
+  in_voice: { label: 'In voice', color: '#34d399', bg: 'rgba(52,211,153,0.18)', dot: '#34d399' },
+  online:   { label: 'Online',   color: '#9ca3af', bg: 'rgba(156,163,175,0.18)', dot: '#9ca3af' },
+};
+function PresenceChip({ presence }) {
+  const cfg = PRESENCE_LABELS[presence?.status];
+  if (!cfg) return null;
+  let label = cfg.label;
+  if (presence.status === 'in_game' && presence.hero) label = `In game · ${presence.hero}`;
+  return (
+    <span
+      className="v3-flair-pill v3-presence-pill"
+      title={presence.updated_at ? `Updated ${new Date(presence.updated_at).toLocaleTimeString()}` : label}
+      aria-label={`Live status: ${label}`}
+      style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}55`, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+    >
+      <span aria-hidden="true" style={{
+        width: 8, height: 8, borderRadius: '50%', background: cfg.dot,
+        boxShadow: `0 0 6px ${cfg.dot}`, display: 'inline-block',
+        animation: presence.status === 'in_game' || presence.status === 'in_lobby' ? 'v3-presence-pulse 1.6s ease-in-out infinite' : 'none',
+      }} />
+      {label}
+    </span>
+  );
+}
+
 function Sparkline({ values, label }) {
   const path = useMemo(() => buildSparkPath(values), [values]);
   if (!path) return <div className="v3-vital-spark-empty" />;
@@ -69,6 +100,7 @@ export default function MagazineCover({
   socials,
   flair,
   nameAdornments,
+  presence,
 }) {
   // Sticky header visibility — driven by IntersectionObserver on the cover.
   const coverRef = useRef(null);
@@ -171,6 +203,9 @@ export default function MagazineCover({
 
           <div className="v3-cover-flair">
             {primaryPos && <span className="v3-pos-pill">{primaryPos}</span>}
+            {presence && presence.status && presence.status !== 'offline' && (
+              <PresenceChip presence={presence} />
+            )}
             {flair && <span className="v3-flair-pill" style={accent ? { background: `${accent}33`, color: accent, border: `1px solid ${accent}55` } : undefined}>{flair}</span>}
             {streak != null && Math.abs(streak) >= 3 && (
               <span className="v3-flair-pill" style={{
