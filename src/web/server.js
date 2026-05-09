@@ -6469,7 +6469,7 @@ NOTES
     try {
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
-      const allowed = ['captain_mode','accept_phase_seconds','min_players','lobby_fill_seconds'];
+      const allowed = ['captain_mode','accept_phase_seconds','min_players','lobby_fill_seconds','draft_pick_seconds'];
       const fields = {};
       for (const k of allowed) {
         if (req.body && Object.prototype.hasOwnProperty.call(req.body, k)) fields[k] = req.body[k];
@@ -6478,10 +6478,15 @@ NOTES
       if (fields.captain_mode && !['highest_rank','random','highest_roll','auto_balance','volunteer'].includes(fields.captain_mode)) {
         return res.status(400).json({ error: 'Invalid captain mode' });
       }
-      for (const numKey of ['accept_phase_seconds','min_players','lobby_fill_seconds']) {
+      for (const numKey of ['accept_phase_seconds','min_players','lobby_fill_seconds','draft_pick_seconds']) {
         if (fields[numKey] != null) {
           const n = Number(fields[numKey]);
-          if (!Number.isFinite(n) || n < 0 || n > 600) return res.status(400).json({ error: `Invalid ${numKey}` });
+          // Task #172 — align server bounds for draft_pick_seconds with the
+          // UI controls (5..300). The other three fields keep the existing
+          // 0..600 envelope they shipped with.
+          const min = numKey === 'draft_pick_seconds' ? 5 : 0;
+          const max = numKey === 'draft_pick_seconds' ? 300 : 600;
+          if (!Number.isFinite(n) || n < min || n > max) return res.status(400).json({ error: `Invalid ${numKey}` });
           fields[numKey] = Math.floor(n);
         }
       }
@@ -6495,12 +6500,13 @@ NOTES
 
   router.post('/inhouse', requireSuperuser, express.json(), async (req, res) => {
     try {
-      const { captainMode, acceptPhaseSeconds, notes, minPlayers, lobbyFillSeconds } = req.body || {};
+      const { captainMode, acceptPhaseSeconds, notes, minPlayers, lobbyFillSeconds, draftPickSeconds } = req.body || {};
       const session = await db.createInhouseSession({
         captainMode: captainMode || 'highest_rank',
         acceptPhaseSeconds: parseInt(acceptPhaseSeconds || '60', 10),
         minPlayers: parseInt(minPlayers || '10', 10),
         lobbyFillSeconds: parseInt(lobbyFillSeconds || '30', 10),
+        draftPickSeconds: parseInt(draftPickSeconds || '30', 10),
         notes: notes || null,
         createdBy: req.session?.displayName || 'admin',
       });
@@ -6922,6 +6928,13 @@ NOTES
         return res.status(400).json({ error: 'Unknown captain mode' });
       }
 
+      // Task #172 — start the per-pick countdown the moment captains are
+      // chosen. Skipped for the auto_balance 10-player path because that
+      // mode pre-assigns every team and the draft is already complete; the
+      // post-assignment block below clears the deadline for that case.
+      const _initialPickDeadline = (typeof _autoBalanceAssignments !== 'undefined' && _autoBalanceAssignments)
+        ? null
+        : new Date(Date.now() + (Number(session.draft_pick_seconds) || 30) * 1000);
       const updated = await db.updateInhouseSession(session.id, {
         captain1_account_id: cap1.account_id,
         captain2_account_id: cap2.account_id,
@@ -6930,6 +6943,7 @@ NOTES
         // frontend can render the "Projected balance" card. Cleared for any
         // other mode so a re-run doesn't surface stale numbers.
         auto_balance_meta: (typeof _autoBalanceMeta !== 'undefined' ? _autoBalanceMeta : null),
+        draft_pick_deadline_at: _initialPickDeadline,
       });
       if (typeof _autoBalanceAssignments !== 'undefined' && _autoBalanceAssignments) {
         // Auto-balance produced a complete 5v5 split — assign every player
@@ -7025,14 +7039,32 @@ NOTES
       }
       res.json({ player: guard.rows[0] });
 
+      // Task #172 — reset the per-pick countdown. If the draft is now
+      // complete clear the deadline; otherwise restart the budget for the
+      // next captain on the clock. Best-effort — failures here don't fail
+      // the pick (the response has already been sent).
+      let _allPlayers = null;
+      let _draftComplete = false;
+      try {
+        _allPlayers = await db.getInhouseSessionPlayers(req.params.id);
+        const { isDraftComplete } = require('../inhouse/serverProvisioner');
+        _draftComplete = isDraftComplete(cur, _allPlayers);
+        const next = _draftComplete
+          ? null
+          : new Date(Date.now() + (Number(cur.draft_pick_seconds) || 30) * 1000);
+        await db.updateInhouseSession(req.params.id, { draft_pick_deadline_at: next });
+      } catch (e) {
+        console.warn('[Inhouse] draft-pick deadline update failed:', e.message);
+      }
+
       // Task #168 — fire-and-forget auto-provision the dedicated server the
       // moment the 8th non-captain pick lands. No admin click required. The
       // helper has its own per-session single-flight lock, so a concurrent
       // tick from autoStartTicker won't double-provision.
       try {
-        const allPlayers = await db.getInhouseSessionPlayers(req.params.id);
+        const allPlayers = _allPlayers || await db.getInhouseSessionPlayers(req.params.id);
         const { provisionInhouseServer, isDraftComplete } = require('../inhouse/serverProvisioner');
-        if (isDraftComplete(cur, allPlayers)) {
+        if (_draftComplete || isDraftComplete(cur, allPlayers)) {
           provisionInhouseServer(req.params.id, { trigger: 'auto_draft_complete' })
             .then(r => {
               if (r && r.ok) console.log(`[Inhouse] Auto-provisioned session #${req.params.id} after draft completion`);
@@ -7066,6 +7098,12 @@ NOTES
         pickIdx: drafted,
         currentPickerTeam: drafted < seq.length ? seq[drafted] : null,
         complete: drafted >= seq.length,
+        // Task #172 — per-pick countdown payload. `pickDeadlineAt` is the
+        // ISO timestamp at which the autoStartTicker will auto-pick for the
+        // captain on the clock; `pickSeconds` is the configured budget
+        // (default 30s) that the frontend uses to render the progress bar.
+        pickDeadlineAt: cur.draft_pick_deadline_at || null,
+        pickSeconds: Number(cur.draft_pick_seconds) || 30,
       });
     } catch (err) {
       res.status(500).json({ error: err.message });

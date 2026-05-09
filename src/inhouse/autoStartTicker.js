@@ -21,6 +21,34 @@
 // guards via internal HTTP calls (so we don't duplicate transition logic).
 
 const TICK_MS = 5000;
+// Task #172 — snake-draft pick sequence. Mirrored from server.js so the
+// ticker can pick the right team on the captain's behalf when the per-pick
+// deadline expires. Keep in sync if the server ever changes the order.
+const DRAFT_PICK_SEQUENCE = [1, 2, 2, 1, 1, 2, 2, 1];
+// Hybrid skill scoring used to pick the highest-MMR remaining player —
+// mirrors the score() helper in /select-captains so the auto-pick lands
+// on the same player a captain following the leaderboard would have
+// taken. TS MMR for ≥20-game players, dota leaderboard rank / rank tier
+// otherwise, with a fallback for completely-unrated newbies.
+const RANK_TIER_TO_MMR = {
+  11: 200, 12: 400, 13: 600, 14: 800, 15: 1000,
+  21: 1200, 22: 1400, 23: 1600, 24: 1800, 25: 2000,
+  31: 2200, 32: 2400, 33: 2600, 34: 2800, 35: 3000,
+  41: 3200, 42: 3400, 43: 3600, 44: 3800, 45: 4000,
+  51: 4200, 52: 4400, 53: 4600, 54: 4800, 55: 5000,
+  61: 5300, 62: 5600, 63: 5900, 64: 6200, 65: 6500,
+  71: 6800, 72: 7200, 73: 7600, 74: 8000, 75: 8500,
+  80: 9500,
+};
+function _scoreInhousePlayer(p) {
+  const games = Number(p.games_played) || 0;
+  if (games >= 20) return Number(p.trueskill_mmr || 0) * 100;
+  if (p.dota_leaderboard_rank && Number(p.dota_leaderboard_rank) > 0) {
+    return 12000 - Math.min(2500, Math.log2(Number(p.dota_leaderboard_rank)) * 250);
+  }
+  if (p.dota_rank_tier && RANK_TIER_TO_MMR[p.dota_rank_tier]) return RANK_TIER_TO_MMR[p.dota_rank_tier];
+  return Number(p.trueskill_mmr || 0) * 100 - 1000;
+}
 // Task #168 — backoff for `server_failed` sessions so a persistent RCON
 // outage doesn't fire the Discord admin-channel ping every 5s.
 const RECOVERY_BACKOFF_MS = (Number(process.env.INHOUSE_RECOVERY_BACKOFF_SECONDS) || 60) * 1000;
@@ -209,6 +237,58 @@ async function tick(db, basePort) {
       }
     } catch (e) {
       warn(`Session #${s.id} (accepting) tick failed:`, e.message);
+    }
+  }
+
+  // Task #172 — per-pick deadline sweep. For drafting sessions whose
+  // current captain has run out the clock, auto-pick the highest-MMR
+  // remaining player onto the picking team via an internal POST to
+  // /draft-pick (with the superuser key) so the same handler runs that a
+  // captain click would — including the Task #168 auto-provision trigger
+  // when the auto-pick happens to be the 8th non-captain pick.
+  for (const s of drafting) {
+    try {
+      if (s.status !== 'drafting') continue;
+      if (!s.draft_pick_deadline_at) continue;
+      if (new Date(s.draft_pick_deadline_at).getTime() > Date.now()) continue;
+      const players = await db.getInhouseSessionPlayers(s.id);
+      const cap1 = Number(s.captain1_account_id);
+      const cap2 = Number(s.captain2_account_id);
+      const isCap = (p) => Number(p.account_id) === cap1 || Number(p.account_id) === cap2;
+      const drafted = players.filter(p => p.team !== 0 && !isCap(p)).length;
+      if (drafted >= DRAFT_PICK_SEQUENCE.length) {
+        // Draft is already complete — just clear the stale deadline so we
+        // stop tripping this branch on every tick.
+        await db.updateInhouseSession(s.id, { draft_pick_deadline_at: null }).catch(() => {});
+        continue;
+      }
+      const team = DRAFT_PICK_SEQUENCE[drafted];
+      const undrafted = players
+        .filter(p => (p.team === 0 || p.team == null) && p.status !== 'declined' && !isCap(p))
+        .map(p => ({ p, s: _scoreInhousePlayer(p) }))
+        .sort((a, b) => b.s - a.s);
+      if (undrafted.length === 0) continue;
+      const pick = undrafted[0].p;
+      const port = basePort || process.env.PORT || 5000;
+      const key = process.env.SUPERUSER_PASSWORD;
+      if (!key) {
+        warn(`Session #${s.id}: cannot auto-pick on deadline, SUPERUSER_PASSWORD not set`);
+        continue;
+      }
+      const teamPlayersBefore = players.filter(p => p.team === team).length;
+      const r = await fetch(`http://127.0.0.1:${port}/api/inhouse/${s.id}/draft-pick`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-superuser-key': key },
+        body: JSON.stringify({ accountId: pick.account_id, team, pickOrder: teamPlayersBefore }),
+      });
+      if (r.ok) {
+        log(`Session #${s.id}: pick deadline expired, auto-picked ${pick.account_id} onto team ${team} (pick ${drafted + 1}/${DRAFT_PICK_SEQUENCE.length})`);
+      } else {
+        const txt = await r.text().catch(() => '');
+        warn(`Session #${s.id}: deadline auto-pick call failed (${r.status}):`, txt.slice(0, 200));
+      }
+    } catch (e) {
+      warn(`Session #${s.id} (drafting deadline) tick failed:`, e.message);
     }
   }
 

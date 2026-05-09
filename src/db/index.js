@@ -1337,6 +1337,14 @@ async function init() {
     // exactly how balanced the auto-picked teams are.
     // Shape: { team1Sum, team2Sum, delta, winProbTeam1, scores: { "<accountId>": number } }
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS auto_balance_meta JSONB`);
+    // Task #172 — per-pick countdown for the captain draft. `draft_pick_seconds`
+    // is the configurable budget per pick (default 30s); `draft_pick_deadline_at`
+    // is set to NOW() + budget every time it becomes a captain's turn, and
+    // cleared when the draft completes. The autoStartTicker polls drafting
+    // sessions and auto-picks the highest-MMR remaining player when the
+    // deadline expires, so an AFK captain can no longer stall the lobby.
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS draft_pick_seconds INTEGER DEFAULT 30`);
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS draft_pick_deadline_at TIMESTAMPTZ`);
 
     // ===== Wave 2 / 3 schema =====
     // F3 — Season Pass: per-event XP ledger. account_id + season_number +
@@ -8582,12 +8590,12 @@ async function updateSignupRequest(id, { status, adminNotes, reviewedBy }) {
 // Inhouse Sessions (FACEIT-style match accept + draft + DS flow)
 // ============================================================
 
-async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60, minPlayers = 10, lobbyFillSeconds = 30 } = {}) {
+async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60, minPlayers = 10, lobbyFillSeconds = 30, draftPickSeconds = 30 } = {}) {
   const p = getPool();
   const r = await p.query(
-    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds, min_players, lobby_fill_seconds)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [captainMode, createdBy, notes, acceptPhaseSeconds, minPlayers, lobbyFillSeconds]
+    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds, min_players, lobby_fill_seconds, draft_pick_seconds)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [captainMode, createdBy, notes, acceptPhaseSeconds, minPlayers, lobbyFillSeconds, draftPickSeconds]
   );
   return r.rows[0];
 }
@@ -8786,7 +8794,7 @@ function listVolunteerAccountIds(volunteersObj, validAccountIdSet = null) {
 
 async function updateInhouseSession(id, fields) {
   const p = getPool();
-  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes','captain_volunteers','auto_balance_meta'];
+  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes','captain_volunteers','auto_balance_meta','draft_pick_seconds','draft_pick_deadline_at'];
   const sets = [];
   const vals = [];
   for (const k of Object.keys(fields)) {

@@ -25,11 +25,18 @@ async function api(path, opts = {}) {
   return data;
 }
 
-function Countdown({ startsAt, seconds, onExpire }) {
+// Task #172 — accepts an `endsAt` ISO timestamp directly so callers
+// (like the per-pick draft countdown) that already know the deadline
+// don't have to fake a `startsAt`. Falls back to `startsAt + seconds`
+// for the legacy accept-phase usage. `label` overrides the default
+// "Accept phase" caption so the same component can render both timers.
+function Countdown({ startsAt, seconds, onExpire, endsAt, label }) {
   const [remaining, setRemaining] = useState(0);
   useEffect(() => {
-    if (!startsAt) return;
-    const end = new Date(startsAt).getTime() + seconds * 1000;
+    if (!endsAt && !startsAt) return;
+    const end = endsAt
+      ? new Date(endsAt).getTime()
+      : new Date(startsAt).getTime() + seconds * 1000;
     const tick = () => {
       const r = Math.max(0, Math.ceil((end - Date.now()) / 1000));
       setRemaining(r);
@@ -38,12 +45,12 @@ function Countdown({ startsAt, seconds, onExpire }) {
     tick();
     const t = setInterval(tick, 500);
     return () => clearInterval(t);
-  }, [startsAt, seconds, onExpire]);
+  }, [startsAt, seconds, onExpire, endsAt]);
   const pct = seconds > 0 ? (remaining / seconds) * 100 : 0;
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-        <span style={{ color: 'var(--text-muted)' }}>Accept phase</span>
+        <span style={{ color: 'var(--text-muted)' }}>{label || 'Accept phase'}</span>
         <span style={{ fontWeight: 700, color: remaining < 10 ? '#f44336' : 'var(--text)' }}>{remaining}s</span>
       </div>
       <div style={{ height: 6, background: 'var(--bg-elevated)', borderRadius: 3, overflow: 'hidden' }}>
@@ -123,13 +130,17 @@ function LiveConfigEditor({ session, onSaved }) {
   const [acceptSec, setAcceptSec] = useState(session.accept_phase_seconds || 60);
   const [minPl, setMinPl] = useState(session.min_players || 10);
   const [grace, setGrace] = useState(session.lobby_fill_seconds || 30);
+  // Task #172 — per-pick draft countdown budget. Default 30s if a legacy
+  // session row predates the column.
+  const [pickSec, setPickSec] = useState(session.draft_pick_seconds || 30);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
   const dirty = (
     captainMode !== (session.captain_mode || 'highest_rank') ||
     Number(acceptSec) !== Number(session.accept_phase_seconds || 60) ||
     Number(minPl) !== Number(session.min_players || 10) ||
-    Number(grace) !== Number(session.lobby_fill_seconds || 30)
+    Number(grace) !== Number(session.lobby_fill_seconds || 30) ||
+    Number(pickSec) !== Number(session.draft_pick_seconds || 30)
   );
   async function save() {
     setSaving(true); setErr(null);
@@ -141,6 +152,7 @@ function LiveConfigEditor({ session, onSaved }) {
           accept_phase_seconds: Number(acceptSec),
           min_players: Number(minPl),
           lobby_fill_seconds: Number(grace),
+          draft_pick_seconds: Number(pickSec),
         }),
       });
       if (onSaved) await onSaved();
@@ -167,6 +179,10 @@ function LiveConfigEditor({ session, onSaved }) {
       </label>
       <label style={{ fontSize: 12 }}>Lobby fill grace:&nbsp;
         <input type="number" min={0} max={300} value={grace} onChange={e => setGrace(parseInt(e.target.value || '30', 10))} style={{ padding: 3, width: 50, fontSize: 12 }} /> sec
+      </label>
+      <label style={{ fontSize: 12 }}>Per-pick draft timer:&nbsp;
+        <input type="number" min={5} max={300} value={pickSec} onChange={e => setPickSec(parseInt(e.target.value || '30', 10))} style={{ padding: 3, width: 50, fontSize: 12 }} /> sec
+        <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)' }}>auto-picks highest-MMR remaining if captain stalls</span>
       </label>
       {err && <div style={{ fontSize: 11, color: '#f44336' }}>{err}</div>}
       <button onClick={save} disabled={!dirty || saving} style={{ alignSelf: 'flex-start', padding: '5px 12px', background: dirty ? 'var(--brass)' : 'var(--bg)', color: dirty ? '#0d1424' : 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 3, cursor: dirty && !saving ? 'pointer' : 'not-allowed', fontWeight: 600, fontSize: 12 }}>
@@ -269,6 +285,8 @@ export default function Inhouse() {
   const [acceptSeconds, setAcceptSeconds] = useState(60);
   const [minPlayers, setMinPlayers] = useState(10);
   const [lobbyFillSeconds, setLobbyFillSeconds] = useState(30);
+  // Task #172 — per-pick draft countdown budget (seconds). Default 30s.
+  const [draftPickSeconds, setDraftPickSeconds] = useState(30);
   const [myPositions, setMyPositions] = useState([]);
   const [draftStatus, setDraftStatus] = useState(null);
   const isAdmin = !!superuserKey;
@@ -343,7 +361,7 @@ export default function Inhouse() {
     if (!isAdmin) return;
     setCreating(true);
     try {
-      await api('/inhouse', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ captainMode, acceptPhaseSeconds: acceptSeconds, minPlayers, lobbyFillSeconds }) });
+      await api('/inhouse', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ captainMode, acceptPhaseSeconds: acceptSeconds, minPlayers, lobbyFillSeconds, draftPickSeconds }) });
       await refresh();
     } catch (e) { alert(e.message); }
     finally { setCreating(false); }
@@ -754,6 +772,11 @@ export default function Inhouse() {
                 <label style={{ fontSize: 13 }}>
                   Lobby fill grace period:&nbsp;
                   <input type="number" min={0} max={300} value={lobbyFillSeconds} onChange={e => setLobbyFillSeconds(parseInt(e.target.value || '30', 10))} style={{ padding: 4, width: 60 }} /> sec
+                </label>
+                <label style={{ fontSize: 13 }}>
+                  Per-pick draft timer:&nbsp;
+                  <input type="number" min={5} max={300} value={draftPickSeconds} onChange={e => setDraftPickSeconds(parseInt(e.target.value || '30', 10))} style={{ padding: 4, width: 60 }} /> sec
+                  <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)' }}>auto-picks highest-MMR remaining if captain stalls</span>
                 </label>
                 <button onClick={createSession} disabled={creating} style={{ padding: '8px 16px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>
                   {creating ? 'Creating…' : 'Open Session With These Settings'}
@@ -1252,6 +1275,20 @@ export default function Inhouse() {
                         fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 0.6, textTransform: 'uppercase',
                       }}>
                         {isMyTurn ? '⚡ Your pick' : `On the clock · ${turnName} (Team ${turn})`}
+                      </div>
+                    )}
+                    {/* Task #172 — per-pick countdown. When the deadline
+                        elapses, the autoStartTicker auto-picks the highest-MMR
+                        remaining player onto the picking captain's team via
+                        the same /draft-pick handler (so the Task #168
+                        auto-provision still fires on the 8th pick). */}
+                    {undrafted.length > 0 && draftStatus?.pickDeadlineAt && (
+                      <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                        <Countdown
+                          endsAt={draftStatus.pickDeadlineAt}
+                          seconds={draftStatus.pickSeconds || 30}
+                          label={isMyTurn ? 'Pick or get auto-picked' : 'Pick timer'}
+                        />
                       </div>
                     )}
                   </div>
