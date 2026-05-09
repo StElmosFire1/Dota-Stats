@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.11",
+    "title": "Profile sticky bar below navbar, hero portraits on home cards, Steam login fixed",
+    "published_at": "2026-05-09",
+    "content": "Three targeted fixes for long-standing visual and auth issues.\n\nProfile cover sticky bar: the v3-sticky mini-header (player name + MMR + WR pill that appears once you scroll past the cover) was pinned at `top: 0`, which placed it behind the main navbar (z-index 100) so the bar content was clipped. Changed to `top: 52px` so the sticky bar sits flush below the navbar when visible.\n\nHome page hero portraits on all spotlight cards: the Player of the Week card (v7.09) already had a hero portrait, but the Featured Player card and the Most Improved filler card were still text-only. Both cards now show a Dota CDN hero portrait with a label beneath it. The spotlight API (`/api/spotlight/current`) now fetches the featured player's most-played hero and includes `top_hero` in the response. The most-improved DB query (`getMostImproved`) now includes a correlated subquery that returns each player's most-played hero as `top_hero`. Both portrait slots fall back gracefully (invisible) when no hero data exists.\n\nSteam sign-in — definitive fix via session regeneration: the root cause of the persistent 'signed in nowhere' failure was stale session ID reuse. When a user had previously loaded any page (creating an anonymous session), the login flow mutated and re-saved that existing session. Some browsers with SameSite=Lax drop the updated Set-Cookie on cross-origin redirects, leaving the old anonymous session ID in the cookie jar. The next `/api/auth/me` request sent the stale ID, found no accountId, and returned null. The fix is `req.session.regenerate()` before writing steamId64/accountId/displayName — express-session destroys the old session, creates a fresh ID, saves it to Postgres, and the redirect response carries only the new Set-Cookie. The browser has no stale ID to fall back to.\n\nA11y gate green (153 JSX / 3 CSS). Build clean.",
+    "author": "System"
+  },
+  {
     "version": "7.09",
     "title": "Featured player hero portrait, paywall centred, watch button hint, sign-in reliability",
     "published_at": "2026-05-09",

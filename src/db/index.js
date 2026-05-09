@@ -8117,7 +8117,10 @@ async function getMostImproved(days = 30, seasonId = null) {
       ROUND((l.mu - 3*l.sigma)*100 + 5000) AS current_mmr,
       ROUND((e.mu - 3*e.sigma)*100 + 5000) AS start_mmr,
       ROUND(((l.mu - 3*l.sigma) - (e.mu - 3*e.sigma))*100) AS mmr_delta,
-      COUNT(ps.match_id) AS games_in_period
+      COUNT(ps.match_id) AS games_in_period,
+      (SELECT ps2.hero_name FROM player_stats ps2
+       WHERE ps2.account_id = l.player_id AND ps2.hero_name IS NOT NULL AND ps2.hero_name != ''
+       GROUP BY ps2.hero_name ORDER BY COUNT(*) DESC LIMIT 1) AS top_hero
     FROM latest l
     JOIN earliest e ON e.player_id = l.player_id
     LEFT JOIN nicknames n ON n.account_id = l.player_id

@@ -368,19 +368,34 @@ function createServer(startupStatus = {}) {
         [accountId]
       );
 
-      req.session.steamId64 = steamId64;
-      req.session.accountId = accountId;
-      req.session.displayName = lookup.rows[0]?.display_name || null;
+      const displayName = lookup.rows[0]?.display_name || null;
 
-      // Force the session row to be persisted to the store before we redirect.
-      // Without this, the express-session "save on response end" hook can race
-      // with the 302 redirect — the browser may follow the redirect and hit
-      // /api/auth/me before the new session has actually been written, leaving
-      // the user in a "signed in nowhere" state.
-      req.session.save((err) => {
-        if (err) console.error('[Steam Auth] session.save failed:', err);
-        console.log('[Steam Auth] success — accountId:', accountId);
-        res.redirect('/?auth=success');
+      // v7.10 — Session regeneration is the definitive fix for "signed-in
+      // nowhere". Before this, if the browser already had an anonymous session
+      // cookie (e.g. from a previous page load before logging in), we mutated
+      // that existing session and re-saved it. Some browsers + SameSite=Lax
+      // combinations silently dropped the updated Set-Cookie on the Steam
+      // redirect response, leaving the old anonymous session ID in the cookie
+      // jar. The next /api/auth/me request sent the old ID, found an empty
+      // session, and returned null.
+      //
+      // session.regenerate() issues a brand-new session ID, writes the fresh
+      // row to the Postgres store, and the redirect response carries the new
+      // Set-Cookie. The browser has no stale ID to fall back to, so auth/me
+      // reliably sees the accountId on the very first attempt.
+      req.session.regenerate((regErr) => {
+        if (regErr) {
+          console.error('[Steam Auth] session.regenerate failed:', regErr);
+          return res.redirect('/?auth=error');
+        }
+        req.session.steamId64 = steamId64;
+        req.session.accountId = accountId;
+        req.session.displayName = displayName;
+        req.session.save((err) => {
+          if (err) console.error('[Steam Auth] session.save failed:', err);
+          console.log('[Steam Auth] success — accountId:', accountId, 'new sid:', (req.sessionID || '').slice(0, 8) + '…');
+          res.redirect('/?auth=success');
+        });
       });
     } catch (err) {
       // SECURITY: log full error server-side, redirect with a generic flag so
@@ -8694,20 +8709,39 @@ NOTES
         return res.json(_spotlightCache.value);
       }
       const row = await db.getCurrentSpotlight();
-      const payload = row ? {
-        spotlight: {
-          id: row.id,
-          account_id: String(row.account_id),
-          headline: row.headline,
-          blurb: row.blurb,
-          starts_at: row.starts_at,
-          ends_at: row.ends_at,
-          display_name: row.display_name || null,
-          // v6.76 / Task #222 — surface 'admin' vs 'auto' so the home page
-          // card can show an "Auto-selected" pill instead of "spotlight".
-          source: row.source || 'admin',
-        },
-      } : { spotlight: null };
+      let payload;
+      if (row) {
+        // Fetch the player's most-played hero so the home card can show a
+        // hero portrait alongside the spotlight (v7.10).
+        let topHero = null;
+        try {
+          const pool = db.getPool();
+          const heroRow = await pool.query(
+            `SELECT hero_name FROM player_stats
+             WHERE account_id = $1 AND hero_name IS NOT NULL AND hero_name != ''
+             GROUP BY hero_name ORDER BY COUNT(*) DESC LIMIT 1`,
+            [row.account_id]
+          );
+          topHero = heroRow.rows[0]?.hero_name || null;
+        } catch (_) {}
+        payload = {
+          spotlight: {
+            id: row.id,
+            account_id: String(row.account_id),
+            headline: row.headline,
+            blurb: row.blurb,
+            starts_at: row.starts_at,
+            ends_at: row.ends_at,
+            display_name: row.display_name || null,
+            top_hero: topHero,
+            // v6.76 / Task #222 — surface 'admin' vs 'auto' so the home page
+            // card can show an "Auto-selected" pill instead of "spotlight".
+            source: row.source || 'admin',
+          },
+        };
+      } else {
+        payload = { spotlight: null };
+      }
       _spotlightCache = { value: payload, expiresAt: now + 60_000 };
       res.set('Cache-Control', 'public, max-age=60');
       res.json(payload);

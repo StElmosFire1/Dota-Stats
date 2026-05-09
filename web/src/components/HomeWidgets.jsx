@@ -197,20 +197,35 @@ export function FeaturedPlayer() {
             }}
           >{isAuto ? '⚙ Auto-selected' : 'spotlight'}</span>
         </div>
-        <div className="font-serif" style={{
-          fontSize: 22, fontWeight: 700, color: 'var(--text-primary)',
-          fontFamily: 'var(--font-serif, serif)', lineHeight: 1.15, marginBottom: 4,
-        }}>
-          {s.display_name || `Player #${s.account_id}`}
-        </div>
-        <div style={{
-          fontSize: 14, fontWeight: 600, color: 'var(--accent)', marginBottom: 6,
-        }}>{s.headline}</div>
-        {s.blurb ? (
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-            {s.blurb}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="font-serif" style={{
+              fontSize: 22, fontWeight: 700, color: 'var(--text-primary)',
+              fontFamily: 'var(--font-serif, serif)', lineHeight: 1.15, marginBottom: 4,
+            }}>
+              {s.display_name || `Player #${s.account_id}`}
+            </div>
+            <div style={{
+              fontSize: 14, fontWeight: 600, color: 'var(--accent)', marginBottom: 6,
+            }}>{s.headline}</div>
+            {s.blurb ? (
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                {s.blurb}
+              </div>
+            ) : null}
           </div>
-        ) : null}
+          {s.top_hero && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <HeroPortrait heroName={s.top_hero} size={64} />
+              <div style={{
+                fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
+                fontFamily: 'var(--font-condensed, inherit)',
+                textTransform: 'uppercase', letterSpacing: '0.1em',
+                maxWidth: 114, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{formatHeroName(s.top_hero)}</div>
+            </div>
+          )}
+        </div>
       </div>
     </Link>
   );
@@ -328,12 +343,13 @@ export function PlayerOfTheWeek() {
 // Surfaces the biggest 7-day MMR climber so the slot still earns its space.
 function MostImprovedFiller({ row }) {
   const accountId = row.account_id || row.player_id;
-  // Server returns `mmr_delta` / `current_mmr` / `games_in_period` from
-  // db.getMostImproved (src/db/index.js). Keep legacy aliases so a name
+  // Server returns `mmr_delta` / `current_mmr` / `games_in_period` / `top_hero`
+  // from db.getMostImproved (src/db/index.js). Keep legacy aliases so a name
   // change on either side doesn't silently break the filler.
   const change = Number(row.mmr_delta ?? row.mmr_change ?? 0);
   const newMmr = row.current_mmr ?? row.new_mmr ?? row.mmr ?? null;
   const games = row.games_in_period ?? row.games_played ?? row.games ?? null;
+  const topHero = row.top_hero || null;
   return (
     <Link to={`/player/${accountId}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
       <div style={{
@@ -371,6 +387,17 @@ function MostImprovedFiller({ row }) {
               textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600, marginTop: 4,
             }}>biggest climber · view profile →</div>
           </div>
+          {topHero && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <HeroPortrait heroName={topHero} size={64} />
+              <div style={{
+                fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
+                fontFamily: 'var(--font-condensed, inherit)',
+                textTransform: 'uppercase', letterSpacing: '0.1em',
+                maxWidth: 114, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{formatHeroName(topHero)}</div>
+            </div>
+          )}
         </div>
       </div>
     </Link>
