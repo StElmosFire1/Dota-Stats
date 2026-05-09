@@ -1520,6 +1520,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.74",
+    "title": "Test coverage for the Founders Pass cap and Cover FX gating",
+    "published_at": "2026-05-09",
+    "content": "Tests (Task #220): the two security-sensitive guarantees v6.63 / Task #207 added — the Founders Pass SKU is hard-capped at FOUNDERS_RING_CAP (default 200) inside a single transaction, and POST /api/me/profile strips cover_fx for non-Pro members + canonicalises the array via validateCoverFx — shipped without automated coverage, so a future refactor of the entitlements ledger or the cosmetics validation block could quietly weaken the cap or drop the Pro-gate and shipping would still pass.\n\nNew tests/foundersRingCap.test.js exercises five scenarios end-to-end: (1) 5 concurrent grantEntitlementWithCap() calls vs cap=3 → exactly 3 succeed and 2 fail with reason='cap_reached', backed by a fake pg.Pool that simulates pg_advisory_xact_lock(hashtext(sku)) by serialising transactions per-SKU through a Promise chain so the test actually races the concurrency-safe path rather than the happy-path; (2) the same helper is idempotent — repeat grant for the same account returns {granted:false, reason:'already_owned'} without rotating the ledger; (3) validateCoverFx() dedupes, drops unknowns, drops non-strings, returns [] for non-array input, and caps the array at COVER_FX_IDS.length (6) even when flooded with 50 valid+repeat entries; (4) POST /api/me/profile with a populated cover_fx selection from a non-Pro caller never reaches the persistence helper with a non-empty array (asserts both the 403-reject shape and the silent-strip shape so the security guarantee, not the response shape, is what's pinned); (5) omitting the field as a Pro caller preserves the previously stored value (mirrors pinned_achievements semantics so a pre-#207 client save can't silently wipe the selection).\n\nThe route tests mount the real createApiRouter() against a session-injecting harness, stub the heavy non-route requires (db, replay parser, stats, groq, discord, voice queue) via require.cache, and unref() the long-running setInterval timers in server.js so node:test exits cleanly. All 348 tests in the suite pass.",
+    "author": "System"
+  },
+  {
     "version": "6.73",
     "title": "Live Magazine-v3 cover preview in Settings → Profile and the sandbox",
     "published_at": "2026-05-09",
