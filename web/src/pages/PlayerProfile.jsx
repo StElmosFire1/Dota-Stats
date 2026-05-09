@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques } from '../api';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import ProfileCard from '../components/ProfileCard';
+import ProfileV3Panels from '../components/ProfileV3Panels';
 import MagazineCover from '../components/MagazineCover';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
@@ -591,6 +592,29 @@ export default function PlayerProfile() {
   const [trendPaywall, setTrendPaywall] = useState(null);
   const [heroSuggestions, setHeroSuggestions] = useState(null);
 
+  // Task #203 — Magazine v3 stat panels.
+  const [todHeatmap, setTodHeatmap] = useState(null);
+  const [heroItems, setHeroItems] = useState(null);
+  const [seasonWrapped, setSeasonWrapped] = useState(null);
+  const [hofPlaques, setHofPlaques] = useState(null);
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    getPlayerTimeOfDay(accountId, seasonId)
+      .then(d => { if (!cancelled) setTodHeatmap(d); })
+      .catch(() => { if (!cancelled) setTodHeatmap(null); });
+    getPlayerHeroItems(accountId)
+      .then(d => { if (!cancelled) setHeroItems(d); })
+      .catch(() => { if (!cancelled) setHeroItems(null); });
+    getPlayerSeasonWrapped(accountId)
+      .then(d => { if (!cancelled) setSeasonWrapped(d); })
+      .catch(() => { if (!cancelled) setSeasonWrapped(null); });
+    getPlayerHallOfFamePlaques(accountId)
+      .then(d => { if (!cancelled) setHofPlaques(d); })
+      .catch(() => { if (!cancelled) setHofPlaques(null); });
+    return () => { cancelled = true; };
+  }, [accountId, seasonId]);
+
   useEffect(() => {
     // v5.89 — Performance Trend chart is no longer owner-only. Any signed-in
     // viewer (subject to the existing pro/paywall server check) can see it on
@@ -1000,6 +1024,16 @@ export default function PlayerProfile() {
         frame={frameForCard}
         nameAdornments={headerNameAdornments}
         headerExtras={headerExtras}
+      />
+
+      {/* Task #203 — Magazine v3 stat panels: time-of-day heatmap, hero-hover
+          item builds, Season Wrapped recap, and Hall-of-Fame plaques. All free
+          for everyone, with empty-state copy when a player has no eligible data. */}
+      <ProfileV3Panels
+        tod={todHeatmap}
+        heroItems={heroItems}
+        seasonWrapped={seasonWrapped}
+        hofPlaques={hofPlaques}
       />
 
       {/* Magazine v3 (Task #157): public sponsor chip on every profile;

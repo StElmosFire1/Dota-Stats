@@ -340,6 +340,21 @@ export async function getPlayerHeroSuggestions(accountId, seasonId = null) {
   return fetchJson(`/player/${accountId}/hero-suggestions${q}`);
 }
 
+// Task #203 — Magazine v3 stat panels (full edition only).
+export async function getPlayerTimeOfDay(accountId, seasonId = null) {
+  const q = seasonId ? `?season=${seasonId}` : '';
+  return fetchJson(`/players/${accountId}/time-of-day${q}`);
+}
+export async function getPlayerHeroItems(accountId) {
+  return fetchJson(`/players/${accountId}/hero-items`);
+}
+export async function getPlayerSeasonWrapped(accountId, seasonId = null) {
+  return fetchJson(`/players/${accountId}/season-wrapped${seasonId ? `/${seasonId}` : ''}`);
+}
+export async function getPlayerHallOfFamePlaques(accountId) {
+  return fetchJson(`/players/${accountId}/hall-of-fame`);
+}
+
 export async function getAdminHeroTierOverrides(seasonId, superuserKey) {
   const q = seasonId ? `?season=${seasonId}` : '';
   const res = await superuserFetch(BASE + `/admin/heroes/tier-overrides${q}`, {

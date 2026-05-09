@@ -7191,6 +7191,301 @@ async function getPlayerNemesis(accountId) {
   return res.rows;
 }
 
+// Task #203 — Magazine v3 stat panels.
+// 24×7 weekday × hour win-rate heatmap, anchored to Australia/Sydney
+// (the OCE community's timezone). matches.date is TIMESTAMPTZ so AT TIME ZONE
+// gives a local timestamp we can extract DOW (0=Sun..6=Sat) and HOUR (0..23) from.
+async function getPlayerTimeOfDayHeatmap(accountId, seasonId = null) {
+  const p = getPool();
+  const params = [accountId];
+  const sc = _sc(seasonId, params, 'm');
+  const res = await p.query(`
+    SELECT
+      EXTRACT(DOW FROM (m.date AT TIME ZONE 'Australia/Sydney'))::int  AS dow,
+      EXTRACT(HOUR FROM (m.date AT TIME ZONE 'Australia/Sydney'))::int AS hour,
+      COUNT(*)::int AS games,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                 OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = $1 AND m.date IS NOT NULL${sc}
+    GROUP BY dow, hour
+  `, params);
+  // Mon..Sun grid (matches the v3 mockup convention) × 24 hours; -1 = no games.
+  const grid = Array.from({ length: 7 }, () => Array(24).fill(null).map(() => ({ games: 0, wins: 0 })));
+  for (const r of res.rows) {
+    // PG DOW: Sun=0, Mon=1..Sat=6 → Mon=0..Sun=6.
+    const di = (r.dow + 6) % 7;
+    grid[di][r.hour] = { games: r.games, wins: r.wins };
+  }
+  let totalGames = 0;
+  for (const row of grid) for (const c of row) totalGames += c.games;
+  return { grid, totalGames };
+}
+
+// Top-N items per signature hero (most-played heroes for this player), filtering
+// out consumables / wards / bottle so we surface real build choices.
+async function getPlayerHeroItems(accountId, { topHeroes = 6, topItems = 6 } = {}) {
+  const p = getPool();
+  const SKIP_ITEMS = new Set([
+    'tango', 'flask', 'clarity', 'tpscroll', 'ward_observer', 'ward_sentry',
+    'smoke_of_deceit', 'dust', 'bottle', 'enchanted_mango', 'faerie_fire',
+    'ward_dispenser', 'tango_single', 'magic_stick', 'branches', 'gauntlets',
+    'slippers', 'mantle', 'circlet', 'belt_of_strength', 'boots_of_elves',
+    'robe', 'crown', 'recipe_phase_boots', 'recipe_power_treads',
+  ]);
+  const heroesRes = await p.query(`
+    SELECT
+      ps.hero_id,
+      MAX(ps.hero_name) AS hero_name,
+      COUNT(*)::int AS games,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                 OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = $1 AND ps.hero_id > 0 AND m.is_legacy = false
+    GROUP BY ps.hero_id
+    ORDER BY games DESC
+    LIMIT $2
+  `, [accountId, topHeroes]);
+
+  const heroes = [];
+  for (const h of heroesRes.rows) {
+    const itemsRes = await p.query(`
+      SELECT pi.item_name, COUNT(*)::int AS uses
+      FROM player_items pi
+      JOIN player_stats ps ON ps.match_id = pi.match_id AND ps.slot = pi.slot
+      JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.account_id = $1 AND ps.hero_id = $2 AND m.is_legacy = false
+        AND pi.item_name IS NOT NULL AND pi.item_name <> ''
+      GROUP BY pi.item_name
+      ORDER BY uses DESC
+      LIMIT 30
+    `, [accountId, h.hero_id]);
+    const items = itemsRes.rows
+      .filter(r => !SKIP_ITEMS.has(r.item_name))
+      .slice(0, topItems)
+      .map(r => ({ name: r.item_name, uses: r.uses }));
+    heroes.push({
+      hero_id: h.hero_id,
+      hero_name: h.hero_name,
+      games: h.games,
+      wins: h.wins,
+      items,
+    });
+  }
+  return { heroes };
+}
+
+// Season Wrapped — a year-in-review card for the most recent finished season
+// (or the explicit seasonId when supplied).
+async function getPlayerSeasonWrapped(accountId, seasonId = null) {
+  const p = getPool();
+  let season;
+  if (seasonId) {
+    const r = await p.query(`SELECT id, name, active, season_status, start_date, end_date FROM seasons WHERE id = $1`, [parseInt(seasonId)]);
+    season = r.rows[0] || null;
+  } else {
+    // Most recent archived/legacy season.
+    const r = await p.query(`
+      SELECT id, name, active, season_status, start_date, end_date
+      FROM seasons
+      WHERE active = false AND (is_legacy = true OR season_status = 'archived')
+      ORDER BY id DESC LIMIT 1
+    `);
+    season = r.rows[0] || null;
+  }
+  if (!season) return { season: null, items: [] };
+
+  const aggR = await p.query(`
+    SELECT
+      COUNT(*)::int AS games,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                 OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins,
+      ROUND(AVG(ps.kills)::numeric, 1) AS avg_kills,
+      ROUND(AVG(ps.deaths)::numeric, 1) AS avg_deaths,
+      ROUND(AVG(ps.assists)::numeric, 1) AS avg_assists,
+      ROUND(AVG(ps.gpm)::numeric) AS avg_gpm,
+      MAX(ps.kills) AS best_kills,
+      ROUND(AVG(ps.perf)::numeric, 1) AS avg_perf,
+      MAX(ps.perf) AS best_perf
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = $1 AND m.season_id = $2
+  `, [accountId, season.id]);
+  const agg = aggR.rows[0] || {};
+  const games = parseInt(agg.games) || 0;
+  if (games === 0) return { season, items: [] };
+
+  const heroR = await p.query(`
+    SELECT ps.hero_id, MAX(ps.hero_name) AS hero_name, COUNT(*)::int AS games,
+           SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                      OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id = $1 AND m.season_id = $2 AND ps.hero_id > 0
+    GROUP BY ps.hero_id
+    ORDER BY games DESC
+    LIMIT 1
+  `, [accountId, season.id]);
+  const topHero = heroR.rows[0] || null;
+
+  // MMR delta across the season window (rating_history rows whose match falls in this season).
+  const mmrR = await p.query(`
+    WITH rh AS (
+      SELECT rh.mmr, rh.recorded_at
+      FROM rating_history rh
+      JOIN matches m ON m.match_id = rh.match_id
+      WHERE rh.player_id = $1 AND m.season_id = $2
+      ORDER BY rh.recorded_at ASC
+    )
+    SELECT
+      (SELECT mmr FROM rh ORDER BY recorded_at ASC LIMIT 1) AS first_mmr,
+      (SELECT mmr FROM rh ORDER BY recorded_at DESC LIMIT 1) AS last_mmr
+  `, [accountId, season.id]);
+  const firstMmr = mmrR.rows[0]?.first_mmr;
+  const lastMmr = mmrR.rows[0]?.last_mmr;
+  const mmrDelta = (firstMmr != null && lastMmr != null)
+    ? Math.round(parseFloat(lastMmr) - parseFloat(firstMmr))
+    : null;
+
+  // Achievements unlocked in the season window.
+  let achievementCount = 0;
+  if (season.start_date) {
+    const achR = await p.query(`
+      SELECT COUNT(*)::int AS cnt FROM achievements
+      WHERE player_id = $1 AND unlocked_at IS NOT NULL
+        AND unlocked_at >= $2
+        ${season.end_date ? 'AND unlocked_at <= $3' : ''}
+    `, season.end_date ? [accountId, season.start_date, season.end_date] : [accountId, season.start_date]);
+    achievementCount = achR.rows[0]?.cnt || 0;
+  }
+
+  const wins = parseInt(agg.wins) || 0;
+  const losses = games - wins;
+  const wrPct = games > 0 ? Math.round((wins / games) * 1000) / 10 : 0;
+
+  const items = [
+    { label: 'Matches', value: String(games), sub: `${wins}W · ${losses}L` },
+    { label: 'Win rate', value: `${wrPct}%`, sub: null },
+    {
+      label: 'Avg KDA',
+      value: `${agg.avg_kills ?? '—'}/${agg.avg_deaths ?? '—'}/${agg.avg_assists ?? '—'}`,
+      sub: agg.avg_gpm != null ? `${agg.avg_gpm} GPM` : null,
+    },
+  ];
+  if (topHero) {
+    const hwr = topHero.games > 0 ? Math.round((topHero.wins / topHero.games) * 100) : 0;
+    items.push({
+      label: 'Signature hero',
+      value: topHero.hero_name || `Hero ${topHero.hero_id}`,
+      sub: `${topHero.games}g · ${hwr}% WR`,
+    });
+  }
+  if (agg.avg_perf != null) {
+    items.push({
+      label: 'Avg PERF',
+      value: Number(agg.avg_perf).toFixed(1),
+      sub: agg.best_perf != null ? `Best ${Number(agg.best_perf).toFixed(1)}` : null,
+    });
+  }
+  if (mmrDelta != null) {
+    items.push({
+      label: 'MMR change',
+      value: `${mmrDelta >= 0 ? '+' : ''}${mmrDelta}`,
+      sub: `${firstMmr ? Math.round(firstMmr) : '—'} → ${lastMmr ? Math.round(lastMmr) : '—'}`,
+    });
+  }
+  if (achievementCount > 0) {
+    items.push({ label: 'Achievements', value: String(achievementCount), sub: 'unlocked this season' });
+  }
+  if (agg.best_kills != null) {
+    items.push({ label: 'Best game', value: `${agg.best_kills} kills`, sub: null });
+  }
+  return { season, items };
+}
+
+// Hall-of-Fame plaques for a single player: any career stat where they are the
+// all-time #1 or top-1% holder. We reuse getPersonalRecords (per-match record
+// holders) and getHallOfFameCareerStats (career totals) so the plaque always
+// agrees with the global Hall-of-Fame page.
+async function getPlayerHallOfFamePlaques(accountId) {
+  const idStr = String(accountId);
+  const [records, career] = await Promise.all([
+    getPersonalRecords(null),
+    getHallOfFameCareerStats(null),
+  ]);
+
+  const plaques = [];
+
+  for (const [key, rec] of Object.entries(records)) {
+    if (rec && String(rec.account_id) === idStr) {
+      plaques.push({
+        kind: 'record',
+        key,
+        title: rec.label,
+        value: rec.value,
+        sub: rec.hero_name ? `on ${rec.hero_name}` : null,
+        match_id: rec.match_id,
+      });
+    }
+  }
+
+  // Career percentile callouts across the all-time metrics returned by
+  // getHallOfFameCareerStats. Only players with at least 20 career games are
+  // ranked — singletons would otherwise dominate average-based metrics. A
+  // metric earns a plaque if the player is #1 OR top-1% (with at least 100
+  // ranked players so the percentile is statistically meaningful).
+  const eligible = career.filter(r => parseInt(r.games || 0) >= 20);
+  const total = eligible.length;
+  const METRICS = [
+    { key: 'wins',             field: 'wins',             label: 'career wins',            fmt: v => `${v} wins` },
+    { key: 'games',            field: 'games',            label: 'games played',           fmt: v => `${v} games` },
+    { key: 'avg_gpm',          field: 'avg_gpm',          label: 'avg GPM',                fmt: v => `${Math.round(v)} GPM` },
+    { key: 'avg_kda',          field: 'avg_kda',          label: 'avg KDA',                fmt: v => `${Number(v).toFixed(2)} KDA` },
+    { key: 'total_kills',      field: 'total_kills',      label: 'total kills',            fmt: v => `${v} kills` },
+    { key: 'achievement_count',field: 'achievement_count',label: 'achievements unlocked',  fmt: v => `${v} unlocked` },
+  ];
+  const careerPlaques = [];
+  if (total >= 1) {
+    for (const m of METRICS) {
+      const sorted = eligible.slice().sort((a, b) => parseFloat(b[m.field] || 0) - parseFloat(a[m.field] || 0));
+      const idx = sorted.findIndex(r => String(r.account_id) === idStr);
+      if (idx < 0) continue;
+      const me = sorted[idx];
+      const value = parseFloat(me[m.field] || 0);
+      if (!isFinite(value) || value <= 0) continue;
+      const percentile = ((idx + 1) / total) * 100;
+      if (idx === 0) {
+        careerPlaques.push({
+          kind: 'career',
+          key: `${m.key}_leader`,
+          title: `All-time ${m.label} leader`,
+          value: m.fmt(value),
+          sub: `${me.games} games`,
+          match_id: null,
+          rank: 1,
+        });
+      } else if (percentile <= 1 && total >= 100) {
+        careerPlaques.push({
+          kind: 'career',
+          key: `${m.key}_top_1pct`,
+          title: `Top 1% ${m.label}`,
+          value: `#${idx + 1} · ${m.fmt(value)}`,
+          sub: `${me.games} games`,
+          match_id: null,
+          rank: idx + 1,
+        });
+      }
+    }
+  }
+  // Prefer #1 plaques over top-1% plaques, then better ranks first.
+  careerPlaques.sort((a, b) => a.rank - b.rank);
+  for (const p of careerPlaques) plaques.push(p);
+
+  return { plaques: plaques.slice(0, 3) };
+}
+
 async function getPlayerRecentResults(accountId, limit = 10) {
   const p = getPool();
   const res = await p.query(`
@@ -11550,6 +11845,10 @@ module.exports = {
   getPushSubscriptionsForAccounts,
   touchPushSubscription,
   getPlayerNemesis,
+  getPlayerTimeOfDayHeatmap,
+  getPlayerHeroItems,
+  getPlayerSeasonWrapped,
+  getPlayerHallOfFamePlaques,
   getHomeStats,
   saveWeeklyRecap,
   getLatestWeeklyRecap,

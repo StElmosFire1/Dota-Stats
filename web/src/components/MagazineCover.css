@@ -413,3 +413,240 @@
   background: repeating-linear-gradient(90deg, var(--accent-brass) 0 12px, var(--bg-base) 12px 14px);
   z-index: 4;
 }
+
+/* ===========================================================================
+   Task #203 — Magazine v3 stat panels (PlayerProfile)
+   Time-of-day heatmap, hero-hover items, Season Wrapped, Hall-of-Fame plaques
+   =========================================================================== */
+.magazine-v3 .v3-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 22px;
+}
+.magazine-v3 .v3-panel {
+  background: var(--bg-card, rgba(20, 26, 40, 0.6));
+  border: 1px solid var(--border-color, rgba(197, 169, 117, 0.18));
+  border-radius: 10px;
+  padding: 18px 22px;
+}
+.magazine-v3 .v3-panel-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent-brass, #c5a975);
+  margin-bottom: 4px;
+}
+.magazine-v3 .v3-panel-title {
+  font-family: var(--font-serif, 'Playfair Display', serif);
+  font-size: 22px;
+  margin: 0 0 6px 0;
+  color: var(--text-primary, #f5efe2);
+}
+.magazine-v3 .v3-panel-sub {
+  font-size: 12px;
+  color: var(--text-muted, #8a8074);
+  margin-bottom: 14px;
+}
+.magazine-v3 .v3-panel-empty {
+  font-size: 13px;
+  color: var(--text-muted, #8a8074);
+  font-style: italic;
+  padding: 14px 0 4px;
+}
+
+/* Time-of-day heatmap — 25 columns (1 day-label + 24 hours) × 8 rows. */
+.magazine-v3 .v3-tod-wrap { overflow-x: auto; }
+.magazine-v3 .v3-tod-grid {
+  display: grid;
+  grid-template-columns: 36px repeat(24, minmax(14px, 1fr));
+  gap: 2px;
+  min-width: 480px;
+}
+.magazine-v3 .v3-tod-corner { width: 36px; height: 14px; }
+.magazine-v3 .v3-tod-hour-label {
+  font-size: 9px;
+  color: var(--text-muted, #8a8074);
+  text-align: center;
+  height: 14px;
+  line-height: 14px;
+}
+.magazine-v3 .v3-tod-day-label {
+  font-size: 11px;
+  color: var(--text-muted, #8a8074);
+  text-align: right;
+  padding-right: 6px;
+  line-height: 18px;
+}
+.magazine-v3 .v3-tod-cell {
+  height: 18px;
+  border-radius: 2px;
+  background: rgba(197, 169, 117, 0.06);
+}
+
+/* Hero-hover items grid. */
+.magazine-v3 .v3-hero-items-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 18px;
+}
+@media (max-width: 720px) {
+  .magazine-v3 .v3-hero-items-row { grid-template-columns: 1fr; }
+}
+.magazine-v3 .v3-hero-items-portraits {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.magazine-v3 .v3-hero-items-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-primary, #f5efe2);
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.magazine-v3 .v3-hero-items-btn:hover,
+.magazine-v3 .v3-hero-items-btn:focus-visible,
+.magazine-v3 .v3-hero-items-btn.is-active {
+  background: rgba(197, 169, 117, 0.08);
+  border-color: rgba(197, 169, 117, 0.35);
+  outline: none;
+}
+.magazine-v3 .v3-hero-items-portrait {
+  width: 44px; height: 24px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.magazine-v3 .v3-hero-items-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.magazine-v3 .v3-hero-items-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.magazine-v3 .v3-hero-items-stat {
+  font-size: 11px;
+  color: var(--text-muted, #8a8074);
+}
+.magazine-v3 .v3-hero-items-detail {
+  background: rgba(13, 20, 36, 0.4);
+  border: 1px solid var(--border-color, rgba(197, 169, 117, 0.15));
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.magazine-v3 .v3-hero-items-detail-name {
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-brass, #c5a975);
+  margin-bottom: 8px;
+}
+.magazine-v3 .v3-hero-items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px 12px;
+}
+.magazine-v3 .v3-hero-items-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-primary, #f5efe2);
+  padding: 2px 0;
+}
+.magazine-v3 .v3-hero-items-itemname {
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+}
+.magazine-v3 .v3-hero-items-itemcount {
+  color: var(--text-muted, #8a8074);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Season Wrapped grid. */
+.magazine-v3 .v3-wrapped-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.magazine-v3 .v3-wrapped-item {
+  background: rgba(13, 20, 36, 0.4);
+  border: 1px solid var(--border-color, rgba(197, 169, 117, 0.15));
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.magazine-v3 .v3-wrapped-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8a8074);
+  margin-bottom: 4px;
+}
+.magazine-v3 .v3-wrapped-value {
+  font-family: var(--font-serif, 'Playfair Display', serif);
+  font-size: 20px;
+  color: var(--text-primary, #f5efe2);
+  line-height: 1.2;
+}
+.magazine-v3 .v3-wrapped-sub {
+  font-size: 11px;
+  color: var(--text-muted, #8a8074);
+  margin-top: 2px;
+}
+
+/* Hall-of-Fame plaques. */
+.magazine-v3 .v3-hof-plaques {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.magazine-v3 .v3-hof-plaque-card {
+  background: linear-gradient(135deg, rgba(197, 169, 117, 0.12) 0%, rgba(13, 20, 36, 0.6) 100%);
+  border: 1px solid var(--accent-brass, #c5a975);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.magazine-v3 .v3-hof-plaque-link:hover,
+.magazine-v3 .v3-hof-plaque-link:focus-visible {
+  border-color: var(--accent-amber, #f59e0b);
+  outline: none;
+}
+.magazine-v3 .v3-hof-plaque-title {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-brass, #c5a975);
+  margin-bottom: 4px;
+}
+.magazine-v3 .v3-hof-plaque-value {
+  font-family: var(--font-serif, 'Playfair Display', serif);
+  font-size: 22px;
+  color: var(--text-primary, #f5efe2);
+  line-height: 1.2;
+}
+.magazine-v3 .v3-hof-plaque-sub {
+  font-size: 11px;
+  color: var(--text-muted, #8a8074);
+  margin-top: 4px;
+}

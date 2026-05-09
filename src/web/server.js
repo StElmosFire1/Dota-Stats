@@ -4372,6 +4372,70 @@ NOTES
     }
   });
 
+  // Task #203 — Magazine v3 stat panels (full edition only).
+  // Lightweight in-memory TTL cache so repeat profile loads don't re-aggregate
+  // these on every request. Keyed by `<endpoint>:<accountId>:<seasonId|''>`.
+  const _v3PanelCache = new Map();
+  const V3_PANEL_TTL_MS = 5 * 60 * 1000;
+  const _v3PanelGet = async (key, fn) => {
+    const now = Date.now();
+    const hit = _v3PanelCache.get(key);
+    if (hit && hit.exp > now) return hit.value;
+    const value = await fn();
+    _v3PanelCache.set(key, { value, exp: now + V3_PANEL_TTL_MS });
+    return value;
+  };
+
+  router.get('/players/:id/time-of-day', async (req, res) => {
+    try {
+      const accountId = BigInt(req.params.id);
+      const seasonId = req.query.season || null;
+      const data = await _v3PanelGet(`tod:${accountId}:${seasonId || ''}`,
+        () => db.getPlayerTimeOfDayHeatmap(accountId, seasonId));
+      res.json(data);
+    } catch (err) {
+      console.error('[API] time-of-day error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch time-of-day heatmap' });
+    }
+  });
+
+  router.get('/players/:id/hero-items', async (req, res) => {
+    try {
+      const accountId = BigInt(req.params.id);
+      const data = await _v3PanelGet(`heroitems:${accountId}`,
+        () => db.getPlayerHeroItems(accountId));
+      res.json(data);
+    } catch (err) {
+      console.error('[API] hero-items error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero items' });
+    }
+  });
+
+  router.get('/players/:id/season-wrapped/:seasonId?', async (req, res) => {
+    try {
+      const accountId = BigInt(req.params.id);
+      const seasonId = req.params.seasonId || null;
+      const data = await _v3PanelGet(`wrapped:${accountId}:${seasonId || ''}`,
+        () => db.getPlayerSeasonWrapped(accountId, seasonId));
+      res.json(data);
+    } catch (err) {
+      console.error('[API] season-wrapped error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch season wrapped' });
+    }
+  });
+
+  router.get('/players/:id/hall-of-fame', async (req, res) => {
+    try {
+      const accountId = BigInt(req.params.id);
+      const data = await _v3PanelGet(`hof:${accountId}`,
+        () => db.getPlayerHallOfFamePlaques(accountId));
+      res.json(data);
+    } catch (err) {
+      console.error('[API] player hall-of-fame error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hall-of-fame plaques' });
+    }
+  });
+
   router.get('/hall-of-fame', async (req, res) => {
     try {
       const seasonId = req.query.season || null;
