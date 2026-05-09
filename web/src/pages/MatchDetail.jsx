@@ -32,6 +32,7 @@ import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import useProStatus from '../hooks/useProStatus';
 import VerifiedBadge from '../components/VerifiedBadge';
+import Dialog from '../components/Dialog';
 import {
   LineChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts';
@@ -2694,44 +2695,41 @@ function RemoteReplayButton({ match }) {
       >
         {downloading ? '⏳ Downloading…' : !isPro ? '★ Download Replay (Pro)' : '⬇ Download Replay (Archive)'}
       </button>
-      {paywallVisible && (
-        <div role="presentation" style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setPaywallVisible(false)}
-           onKeyDown={(e) => { if (e.key === 'Escape') setPaywallVisible(false); }}>
-          <div role="dialog" aria-modal="true" aria-label="Replay download — Pro feature" style={{
-            background: 'var(--bg-card, #1e293b)', border: '1px solid rgba(245,158,11,0.4)',
-            borderRadius: 12, padding: '28px 32px', maxWidth: 420, width: '90vw',
-            textAlign: 'center',
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>★</div>
-            <h3 style={{ margin: '0 0 8px', color: 'var(--text-primary, #f1f5f9)' }}>Replay Download is a Pro Feature</h3>
-            <p style={{ margin: '0 0 18px', color: 'var(--text-muted, #64748b)', fontSize: 13 }}>
-              Download .dem replay files for any archived match — one-time Pro membership, yours forever.
-            </p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <Link to="/pro" style={{
-                display: 'inline-block', padding: '8px 18px',
-                background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
-                color: '#1a1a1a', borderRadius: 6, fontWeight: 700,
-                textDecoration: 'none', fontSize: 13,
-              }}>
-                See Pro Tier
-              </Link>
-              <button onClick={() => setPaywallVisible(false)} style={{
-                padding: '8px 18px', borderRadius: 6, fontWeight: 600,
-                fontSize: 13, cursor: 'pointer',
-                background: 'transparent', border: '1px solid var(--border, #334155)',
-                color: 'var(--text-muted, #64748b)',
-              }}>
-                Close
-              </button>
-            </div>
-          </div>
+      <Dialog
+        open={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        label="Replay download — Pro feature"
+        backdropStyle={{ zIndex: 9999, background: 'rgba(0,0,0,0.7)' }}
+        contentStyle={{
+          background: 'var(--bg-card, #1e293b)', border: '1px solid rgba(245,158,11,0.4)',
+          borderRadius: 12, padding: '28px 32px', maxWidth: 420, width: '90vw',
+          textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: 36, marginBottom: 10 }}>★</div>
+        <h3 style={{ margin: '0 0 8px', color: 'var(--text-primary, #f1f5f9)' }}>Replay Download is a Pro Feature</h3>
+        <p style={{ margin: '0 0 18px', color: 'var(--text-muted, #64748b)', fontSize: 13 }}>
+          Download .dem replay files for any archived match — one-time Pro membership, yours forever.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Link to="/pro" style={{
+            display: 'inline-block', padding: '8px 18px',
+            background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+            color: '#1a1a1a', borderRadius: 6, fontWeight: 700,
+            textDecoration: 'none', fontSize: 13,
+          }}>
+            See Pro Tier
+          </Link>
+          <button onClick={() => setPaywallVisible(false)} style={{
+            padding: '8px 18px', borderRadius: 6, fontWeight: 600,
+            fontSize: 13, cursor: 'pointer',
+            background: 'transparent', border: '1px solid var(--border, #334155)',
+            color: 'var(--text-muted, #64748b)',
+          }}>
+            Close
+          </button>
         </div>
-      )}
+      </Dialog>
     </>
   );
 }

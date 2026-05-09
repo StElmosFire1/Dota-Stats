@@ -22,6 +22,10 @@
  *     <svg …/>) and that are missing both `aria-label` and `aria-labelledby`.
  *     The house rule names "Button-as-icon-only must carry an aria-label"
  *     explicitly. Task #175.
+ *   - JSX `role="dialog"` outside the canonical <Dialog> primitive
+ *     (`web/src/components/Dialog.jsx` / `community-edition/web/src/components/
+ *     Dialog.jsx`). Modals MUST go through the shared primitive — hand-rolled
+ *     `<div role="dialog">`+ad-hoc `onKeyDown` is forbidden. Task #182.
  *   - CSS `:hover` rules that REVEAL content (descendant/sibling combinator
  *     after `:hover`, OR a hover body that sets `display`/`opacity`/
  *     `visibility`/`pointer-events`/`clip-path`/`max-height`/`height`) without
@@ -73,6 +77,14 @@ const NON_INTERACTIVE = new Set([
 
 const FILE_EXTS = new Set(['.jsx', '.tsx', '.js', '.ts']);
 const CSS_EXTS = new Set(['.css']);
+
+// Files allowed to ship `role="dialog"` directly. Both editions' canonical
+// Dialog primitives are the only intentional sources — every other modal
+// must go through them. Task #182.
+const DIALOG_ALLOWLIST = new Set([
+  path.join(ROOT, 'web', 'src', 'components', 'Dialog.jsx'),
+  path.join(ROOT, 'community-edition', 'web', 'src', 'components', 'Dialog.jsx'),
+]);
 
 function walk(dir, exts, out = []) {
   let entries;
@@ -324,6 +336,36 @@ function scanFile(file) {
   //   5. The inner content contains no `{…}` JSX expression — those can carry
   //      a dynamic visible label and are out of scope for the static check.
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Hand-rolled-modal gate (Task #182): catch any JSX that ships its own
+  // `role="dialog"` instead of going through the shared <Dialog> primitive
+  // (`web/src/components/Dialog.jsx` / `community-edition/web/src/components/
+  // Dialog.jsx`). The house rule in replit.md ("Modals/dialogs must use the
+  // shared <Dialog> primitive") is otherwise only enforced by code review,
+  // so a future PR copy-pasting the old `<div role="dialog" aria-modal>` +
+  // ad-hoc `onKeyDown` shape would silently regress.
+  //
+  // Heuristic: flag every `role="dialog"` (string-literal form) that appears
+  // anywhere in the file. Allow-listed files are the canonical Dialog
+  // primitives themselves. Expression-form `role={…}` is intentionally not
+  // matched — there's nothing useful to inspect statically.
+  // ---------------------------------------------------------------------------
+  if (!DIALOG_ALLOWLIST.has(path.resolve(file))) {
+    const reDlg = /\brole\s*=\s*["']dialog["']/g;
+    let mDlg;
+    while ((mDlg = reDlg.exec(src)) !== null) {
+      const line = lineOf(src, mDlg.index);
+      issues.push({
+        file, line, tag: 'role="dialog"',
+        message:
+          'Hand-rolled `role="dialog"` is forbidden — modals must use the shared <Dialog> primitive (`web/src/components/Dialog.jsx`). ' +
+          'It handles backdrop, role+aria-modal, focus trap/restore, body-scroll lock, and Escape-to-close in one place. ' +
+          'See replit.md → "Frontend accessibility house rule" → "Modals/dialogs must use the shared <Dialog> primitive".',
+      });
+    }
+  }
+
   const re3 = /<(button|a)(?=[\s/>])/g;
   let m3;
   while ((m3 = re3.exec(src)) !== null) {
