@@ -199,7 +199,9 @@ export default function Players() {
               <SortableTh className="col-stat" active={sortField === 'most_played_position'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('most_played_position')}>Most Played{si('most_played_position')}</SortableTh>
               <SortableTh className="col-stat" active={sortField === 'best_position_score'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('best_position_score')}>Best Pos{si('best_position_score')}</SortableTh>
               <th className="col-stat">Nickname</th>
-              <th className="col-stat" title="Discord User ID — used for bot DMs">Discord ID</th>
+              {isSuperuser && (
+                <th className="col-stat" title="Discord User ID — used for bot DMs (superuser only)">Discord ID</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -245,19 +247,21 @@ export default function Players() {
                     }
                   </td>
 
-                  <td className="col-stat">
-                    {editingDiscordKey === key
-                      ? inlineInput(editDiscordValue, setEditDiscordValue, () => saveDiscordId(p), () => setEditingDiscordKey(null), 'Discord User ID…')
-                      : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <span style={{ color: p.discord_id ? '#7289da' : '#555', fontFamily: 'monospace', fontSize: 12 }} title={p.discord_id || 'Not set'}>
-                            {p.discord_id ? `${p.discord_id.slice(0, 8)}…` : '--'}
-                          </span>
-                          {isSuperuser && editBtn(() => startEditDiscord(p))}
-                        </div>
-                      )
-                    }
-                  </td>
+                  {isSuperuser && (
+                    <td className="col-stat">
+                      {editingDiscordKey === key
+                        ? inlineInput(editDiscordValue, setEditDiscordValue, () => saveDiscordId(p), () => setEditingDiscordKey(null), 'Discord User ID…')
+                        : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span style={{ color: p.discord_id ? '#7289da' : '#555', fontFamily: 'monospace', fontSize: 12 }} title={p.discord_id || 'Not set'}>
+                              {p.discord_id ? `${p.discord_id.slice(0, 8)}…` : '--'}
+                            </span>
+                            {editBtn(() => startEditDiscord(p))}
+                          </div>
+                        )
+                      }
+                    </td>
+                  )}
                 </tr>
               );
             })}

@@ -599,7 +599,15 @@ function createApiRouter(startupStatus = {}) {
     try {
       const seasonId = req.query.season_id || null;
       const players = await db.getAllPlayers(seasonId);
-      res.json({ players });
+      // Scrub discord_id from the public response — operator-only identifier
+      // (used for bot DMs), must not leak to anonymous visitors or signed-in
+      // non-superusers. Mirrored from src/web/server.js.
+      const isSuperuser = !!(req.session && req.session.isSuperuser);
+      const safe = isSuperuser ? players : players.map(p => {
+        const { discord_id, ...rest } = p;
+        return rest;
+      });
+      res.json({ players: safe });
     } catch (err) {
       console.error('[API] Error fetching players:', err.message);
       res.status(500).json({ error: 'Failed to fetch players' });

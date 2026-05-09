@@ -771,11 +771,17 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {top5.map((p, i) => {
                 const rank = i + 1;
-                const name = p.player_name || p.nickname || p.persona_name || `Player ${p.account_id}`;
+                // getComputedLeaderboard returns { player_id, display_name,
+                // nickname, mmr, wins, losses, ... }. Old field names
+                // (player_name / persona_name / account_id) never existed
+                // here, so the fallback chain always landed on
+                // "Player undefined". Use the real fields.
+                const accountId = p.player_id || p.account_id;
+                const name = p.nickname || p.display_name || `Player ${accountId}`;
                 return (
                   <Link
-                    key={p.account_id}
-                    to={`/player/${p.account_id}`}
+                    key={accountId}
+                    to={`/player/${accountId}`}
                     className="oa-card oa-card-rule"
                     style={{
                       display: 'flex', alignItems: 'center',

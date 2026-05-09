@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.97",
+    "title": "Players page Discord ID leak closed + Top 5 sidebar no longer shows 'Player undefined'",
+    "published_at": "2026-05-09",
+    "content": "Two fixes prompted by a quick prod walk-through.\n\n1) **Security — Discord IDs no longer leak on the public Players page.** `GET /api/players` was returning every signed-up player's `discord_id` in the JSON payload (used internally for bot DMs), and the Players table rendered the first 8 chars to anyone who loaded the page — anonymous visitors included. The IDs were also visible in DevTools as full strings. Discord IDs are not catastrophic on their own but they're a stalking-aid (anyone could DM the user out-of-band) and the threat model explicitly forbids leaking operator-only identifiers to unauthenticated callers. Fixed both editions: the route now strips `discord_id` from every row unless `req.session.isSuperuser`, and the table column is hidden for non-superusers. Superusers see and edit it exactly as before. Mirrored to `community-edition/` (same surface).\n\n2) **Bug — Home page \"Top 5 Players\" sidebar showed 'Player undefined' for every entry.** The widget was using `p.player_name || p.nickname || p.persona_name || \\`Player ${p.account_id}\\`` but `getComputedLeaderboard()` returns `{ player_id, display_name, nickname, ... }` — none of `player_name`/`persona_name`/`account_id` ever existed on those rows, so the fallback always landed on the `account_id`-undefined branch. Switched to `p.nickname || p.display_name || \\`Player ${p.player_id}\\`` and rewired the profile link to use `p.player_id`. The sidebar now reads correctly (e.g. \"MajinDabura · 16W–2L · 7265 MMR\").",
+    "author": "System"
+  },
+  {
     "version": "6.96",
     "title": "Founders Pass admin routes — superuser-only authorization locked in by tests",
     "published_at": "2026-05-09",
