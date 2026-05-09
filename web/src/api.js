@@ -282,6 +282,26 @@ export async function getMatch(matchId) {
   return fetchJson(`/matches/${matchId}`);
 }
 
+// Task #272 — one-click "Post to #highlights" from the match share popover.
+// Server gates by signed-in + viewer-was-in-match + Discord-linked, and
+// rate-limits per-user-per-match.
+export async function postMatchToDiscord(matchId) {
+  const res = await fetch(BASE + `/matches/${encodeURIComponent(matchId)}/share-to-discord`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `Request failed: ${res.status}`);
+    err.status = res.status;
+    err.code = data.code || null;
+    throw err;
+  }
+  return data;
+}
+
 export async function deleteMatch(matchId, uploadKey, reason) {
   const res = await fetch(BASE + `/matches/${matchId}`, {
     method: 'DELETE',

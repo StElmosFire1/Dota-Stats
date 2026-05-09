@@ -2558,6 +2558,110 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #272 — let players post their match share straight to the league's
+  // #highlights Discord channel with a single click from the share popover.
+  // Gating: signed-in Steam user, viewer must have actually played in the
+  // match (their account_id appears among match.players), and they must have
+  // a linked Discord ID (so a real human owns the post). Per-user-per-match
+  // rate-limit (in-memory Map, 24h window) prevents the same person spamming
+  // the channel by re-clicking. Falls back to ANNOUNCE_CHANNEL_ID when
+  // HIGHLIGHTS_CHANNEL_ID isn't configured.
+  if (!global.__matchShareDiscordRateLimit) global.__matchShareDiscordRateLimit = new Map();
+  const _shareToDiscordRateLimit = global.__matchShareDiscordRateLimit;
+  router.post('/matches/:matchId/share-to-discord', express.json(), async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'Sign in with Steam to post to Discord.' });
+      }
+      const accountId = String(req.session.accountId);
+      const matchId = String(req.params.matchId);
+
+      const match = await db.getMatch(matchId).catch(() => null);
+      if (!match) return res.status(404).json({ error: 'Match not found' });
+      const players = Array.isArray(match.players) ? match.players : [];
+      const viewer = players.find(p => String(p.account_id) === accountId);
+      if (!viewer) {
+        return res.status(403).json({ error: 'Only players who were in this match can post it to Discord.' });
+      }
+
+      const discordId = await db.getDiscordIdByAccountId(accountId).catch(() => null);
+      if (!discordId) {
+        return res.status(400).json({
+          error: 'Link your Discord account first to post to the league channel.',
+          code: 'discord_not_linked',
+        });
+      }
+
+      // Pre-reserve the rate-limit slot BEFORE the bot send so two concurrent
+      // requests can't both pass the pre-check and double-post. We roll the
+      // reservation back if the bot send ultimately fails so a real failure
+      // doesn't lock the user out for 24h.
+      const rateKey = `${accountId}:${matchId}`;
+      const now = Date.now();
+      const last = _shareToDiscordRateLimit.get(rateKey);
+      if (last && (now - last) < 24 * 60 * 60 * 1000) {
+        return res.status(429).json({
+          error: "You've already posted this match to Discord. Try again tomorrow.",
+          code: 'already_posted',
+        });
+      }
+      _shareToDiscordRateLimit.set(rateKey, now);
+      // Opportunistic GC so the Map doesn't grow forever on long-running procs.
+      if (_shareToDiscordRateLimit.size > 5000) {
+        for (const [k, ts] of _shareToDiscordRateLimit) {
+          if (now - ts > 24 * 60 * 60 * 1000) _shareToDiscordRateLimit.delete(k);
+        }
+      }
+
+      // Build the public match URL from a trusted source. Prefer the
+      // operator-configured SITE_URL (used elsewhere in this server for
+      // Steam OpenID + Discord OAuth callback assembly) so a spoofed Host
+      // header on the inbound request can't poison the link we post into
+      // Discord. Fall back to a relative path if SITE_URL is unset.
+      const siteUrl = (process.env.SITE_URL || '').toString().trim().replace(/\/+$/, '');
+      const matchUrl = siteUrl
+        ? `${siteUrl}/matches/${encodeURIComponent(matchId)}`
+        : `/matches/${encodeURIComponent(matchId)}`;
+
+      const winningSide = match.radiant_win ? 'Radiant' : 'Dire';
+      const won = (viewer.team === 'radiant') === !!match.radiant_win;
+      const k = viewer.kills || 0;
+      const d = viewer.deaths || 0;
+      const a = viewer.assists || 0;
+      const heroIdNum = Number(viewer.hero_id);
+      const heroName = (viewer.hero_localized_name || viewer.hero_name || '').toString().replace(/^npc_dota_hero_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || `Hero ${heroIdNum || '?'}`;
+      const displayName = (req.session.displayName || `Player ${accountId}`).toString().slice(0, 64);
+      const blurb = won
+        ? `🏆 **${displayName}** just won inhouse #${matchId} — ${k}/${d}/${a} on ${heroName} (${winningSide} wins)`
+        : `📜 **${displayName}** — match recap #${matchId}: ${k}/${d}/${a} on ${heroName} (${winningSide} wins)`;
+      const content = `${blurb}\n${matchUrl}`;
+
+      const bot = getDiscordBot();
+      let result;
+      try {
+        result = await bot.postMatchShareToHighlights({ content });
+      } catch (sendErr) {
+        // Hard failure inside the bot helper — release the reservation so
+        // a flaky bot doesn't lock the user out for 24h.
+        _shareToDiscordRateLimit.delete(rateKey);
+        throw sendErr;
+      }
+      if (!result.ok) {
+        _shareToDiscordRateLimit.delete(rateKey);
+        const status = result.code === 'not_configured' ? 503
+          : result.code === 'not_ready' ? 503
+          : result.code === 'not_found' ? 502
+          : 502;
+        return res.status(status).json({ error: result.error, code: result.code });
+      }
+
+      return res.json({ ok: true, channelId: result.channelId });
+    } catch (err) {
+      console.error('[API] share-to-discord failed:', err.message);
+      return res.status(500).json({ error: 'Failed to post to Discord.' });
+    }
+  });
+
   router.delete('/matches/:matchId', authMiddleware, async (req, res) => {
     try {
       const { reason } = req.body || {};

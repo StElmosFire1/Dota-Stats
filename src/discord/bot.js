@@ -6382,6 +6382,44 @@ class DiscordBot {
     }
   }
 
+  // Task #272 — post a player's match-share blurb to the league's #highlights
+  // channel. Channel resolution: HIGHLIGHTS_CHANNEL_ID, falling back to
+  // ANNOUNCE_CHANNEL_ID, so leagues that haven't carved out a separate channel
+  // still get the post in their main announce feed. Returns:
+  //   { ok: true,  channelId, messageId }
+  //   { ok: false, code, error }
+  // Codes:
+  //   not_ready       — bot client isn't logged in yet
+  //   not_configured  — neither env var set, nothing to post to
+  //   not_found       — channel ID set but bot can't fetch it
+  //   send_failed     — Discord rejected the send (perms, etc.)
+  async postMatchShareToHighlights({ content }) {
+    if (!this.client || !this.client.readyAt) {
+      return { ok: false, code: 'not_ready', error: 'Discord bot is starting up. Try again in a moment.' };
+    }
+    const channelId = process.env.HIGHLIGHTS_CHANNEL_ID || config.discord.announceChannelId;
+    if (!channelId) {
+      return { ok: false, code: 'not_configured', error: 'No #highlights channel is configured for this league.' };
+    }
+    let channel = this.client.channels.cache.get(channelId);
+    if (!channel) {
+      channel = await this.client.channels.fetch(channelId).catch(() => null);
+    }
+    if (!channel || typeof channel.send !== 'function') {
+      return { ok: false, code: 'not_found', error: 'Configured highlights channel is unreachable.' };
+    }
+    try {
+      const sent = await channel.send({
+        content: String(content || '').slice(0, 1900),
+        allowedMentions: { parse: [] }, // never ping anyone from a player-submitted post
+      });
+      return { ok: true, channelId, messageId: sent?.id || null };
+    } catch (err) {
+      console.warn('[Discord] postMatchShareToHighlights failed:', err.message);
+      return { ok: false, code: 'send_failed', error: err.message || 'Failed to post to channel.' };
+    }
+  }
+
   async shutdown() {
     if (this._coachingReminderTimer) clearInterval(this._coachingReminderTimer);
     if (this._coachingAutoReleaseTimer) clearInterval(this._coachingAutoReleaseTimer);

@@ -22,7 +22,7 @@ class MatchErrorBoundary extends Component {
   }
 }
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord } from '../api';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import ImpactBadge from '../components/ImpactBadge';
@@ -2750,6 +2750,12 @@ function MatchDetailInner() {
   const [shareCopied, setShareCopied] = useState(null); // 'link' | 'discord' | null
   const [shareAnchor, setShareAnchor] = useState(null); // { top, left } | null
   const shareBtnRef = useRef(null);
+  // Task #272 — one-click post-to-#highlights state. `posting` blocks dupes
+  // mid-flight; `posted` flips to a success label; `postError` surfaces the
+  // server's friendly message (rate-limited / not linked / bot down) inline.
+  const [postingDiscord, setPostingDiscord] = useState(false);
+  const [postedDiscord, setPostedDiscord] = useState(false);
+  const [postDiscordError, setPostDiscordError] = useState(null);
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -2957,6 +2963,10 @@ function MatchDetailInner() {
           type="button"
           onClick={() => {
             setShareCopied(null);
+            // Reset Task #272 post-to-Discord button each time the popover
+            // re-opens so a previous "Posted!" / error state doesn't linger.
+            setPostedDiscord(false);
+            setPostDiscordError(null);
             const r = shareBtnRef.current?.getBoundingClientRect();
             setShareAnchor(r ? { top: r.bottom + 8, left: r.left } : null);
             setShareOpen(true);
@@ -3381,6 +3391,55 @@ function MatchDetailInner() {
                   <span aria-hidden="true">💬</span>
                   <span>{shareCopied === 'discord' ? '✅ Copied for Discord!' : 'Copy for Discord'}</span>
                 </button>
+                {/* Task #272 — Post to #highlights. Only shown to signed-in
+                    players who actually played in this match AND have a
+                    linked Discord account; the server enforces the same
+                    gating + a per-user-per-match rate-limit. The button
+                    label flips to a success / error state inline so the
+                    user gets feedback without a separate toast. */}
+                {viewer && steamUser && steamUser.discord_id ? (
+                  <button
+                    type="button"
+                    disabled={postingDiscord || postedDiscord}
+                    onClick={async () => {
+                      setPostDiscordError(null);
+                      setPostingDiscord(true);
+                      try {
+                        await postMatchToDiscord(matchId);
+                        setPostedDiscord(true);
+                        window.setTimeout(() => setShareOpen(false), 1100);
+                      } catch (err) {
+                        setPostDiscordError(err.message || 'Failed to post to Discord.');
+                      } finally {
+                        setPostingDiscord(false);
+                      }
+                    }}
+                    aria-label={postedDiscord ? 'Posted to highlights channel' : 'Post this match to the league #highlights Discord channel'}
+                    style={{
+                      ...btnStyle,
+                      opacity: (postingDiscord || postedDiscord) ? 0.75 : 1,
+                      cursor: (postingDiscord || postedDiscord) ? 'default' : 'pointer',
+                    }}
+                  >
+                    <span aria-hidden="true">📣</span>
+                    <span>
+                      {postedDiscord
+                        ? '✅ Posted to #highlights!'
+                        : postingDiscord
+                          ? 'Posting…'
+                          : 'Post to #highlights'}
+                    </span>
+                  </button>
+                ) : null}
+                {postDiscordError ? (
+                  <p
+                    role="alert"
+                    style={{
+                      margin: '2px 4px 0', fontSize: 12, color: 'var(--danger, #f87171)',
+                      lineHeight: 1.35,
+                    }}
+                  >{postDiscordError}</p>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => copyText(shareUrl, 'link')}
