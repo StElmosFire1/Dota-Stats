@@ -7931,6 +7931,16 @@ NOTES
         return res.status(403).json({ error: 'That profile theme is reserved for Pro members' });
       }
 
+      // v6.62 / Task #206 — Voice Packs Pro SKU. All packs are Pro-only paid
+      // cosmetics; null/empty selects the default church-bell chime.
+      const selectedVoicePackRaw = norm(body.selected_voice_pack);
+      if (!cosm.isValidVoicePack(selectedVoicePackRaw)) {
+        return res.status(400).json({ error: 'Unknown voice pack' });
+      }
+      if (!isPro && cosm.isPremiumVoicePack(selectedVoicePackRaw)) {
+        return res.status(403).json({ error: 'Voice packs are reserved for Pro members' });
+      }
+
       // v5.81 — extras (8 mockup-graduated knobs). Validated + Pro-gated.
       const extrasResult = cosm.validateExtras(body.extras);
       if (!extrasResult.ok) return res.status(400).json({ error: extrasResult.error });
@@ -8009,6 +8019,7 @@ NOTES
         pinned_match_id: pinnedMatchId,
         profile_frame: profileFrameRaw,
         profile_layout_theme: profileLayoutThemeRaw,
+        selected_voice_pack: selectedVoicePackRaw,
         extras,
         pinned_achievements: pinnedAchievements,
       });

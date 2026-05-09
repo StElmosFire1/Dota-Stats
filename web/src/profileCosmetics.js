@@ -98,6 +98,33 @@ export function isValidLayoutTheme(t) {
   return ALL_LAYOUT_THEMES.includes(t);
 }
 
+// v6.62 / Task #206 — Voice Packs Pro SKU (mirror of src/profileCosmetics.js).
+// All five packs are Pro-only paid cosmetics. There is NO free pack — the
+// existing church-bell chime in useInhouseAlerts.js IS the free default.
+export const FREE_VOICE_PACKS = [];
+export const PREMIUM_VOICE_PACKS = ['captain', 'hype', 'calm', 'roast', 'cinematic'];
+export const ALL_VOICE_PACKS = [...FREE_VOICE_PACKS, ...PREMIUM_VOICE_PACKS];
+export const VOICE_PACK_EVENTS = [
+  'match-start',
+  'first-blood',
+  'win',
+  'loss',
+  'level-up',
+  'achievement-unlock',
+];
+export const VOICE_PACK_META = {
+  captain:   { label: 'Captain Calls',  sub: 'Authoritative team-caller barks' },
+  hype:      { label: 'Hype Train',     sub: 'High-energy esports caster' },
+  calm:      { label: 'Calm Coach',     sub: 'Measured, strategic tone' },
+  roast:     { label: 'Trash Talk',     sub: 'Friendly smack-talk one-liners' },
+  cinematic: { label: 'Cinematic Epic', sub: 'Movie-trailer voice-over' },
+};
+export function isPremiumVoicePack(p) { return PREMIUM_VOICE_PACKS.includes(p); }
+export function isValidVoicePack(p) {
+  if (p == null || p === '') return true;
+  return ALL_VOICE_PACKS.includes(p);
+}
+
 export const DEFAULT_THEME = FREE_THEMES[0];
 export const DEFAULT_FRAME = 'none';
 

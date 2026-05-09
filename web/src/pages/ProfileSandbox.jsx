@@ -7,6 +7,7 @@ import {
   FREE_THEMES, PREMIUM_THEMES,
   FREE_FRAMES, PREMIUM_FRAMES,
   BIO_MAX, PINNED_HERO_CAPTION_MAX, DEFAULT_THEME, DEFAULT_FRAME, FRAME_META,
+  ALL_VOICE_PACKS, VOICE_PACK_META, isPremiumVoicePack,
 } from '../profileCosmetics';
 import ProfileCard from '../components/ProfileCard';
 
@@ -235,6 +236,11 @@ export default function ProfileSandbox() {
   const [customTitle, setCustomTitle] = useState(FREE_TITLES[1] || '');
   const [themeAccent, setThemeAccent] = useState(DEFAULT_THEME);
   const [profileFrame, setProfileFrame] = useState(DEFAULT_FRAME);
+  // v6.62 / Task #206 — voice pack sandbox picker (Pro-only). Mirrors the
+  // production picker in /settings/profile so superusers can audition the
+  // pack catalogue without flipping their own row.
+  const [selectedVoicePack, setSelectedVoicePack] = useState('');
+  const voicePreviewElsRef = React.useRef(new Map());
   const [pinnedHeroId, setPinnedHeroId] = useState('14');
   const [pinnedHeroSearch, setPinnedHeroSearch] = useState('Pudge');
   const [pinnedHeroCaption, setPinnedHeroCaption] = useState('My signature pick');
@@ -488,6 +494,73 @@ export default function ProfileSandbox() {
               <input type="checkbox" disabled={!proPreview} checked={bgPattern} onChange={e => setBgPattern(e.target.checked)} />
               Heraldic diagonal background pattern {proLabel}
             </label>
+          </section>
+
+          <section>
+            <h2 style={{ marginBottom: 8, fontSize: 16 }}>Inhouse voice pack</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
+              Sandbox copy of the production picker in /settings/profile. ▶ Preview
+              plays each pack's <code>match-start.mp3</code> so you can audition the
+              new Pro voice packs (Task #206) without saving anything.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setSelectedVoicePack('')}
+                style={{
+                  padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  background: !selectedVoicePack ? 'rgba(245,158,11,0.18)' : 'var(--bg-card)',
+                  border: !selectedVoicePack ? '2px solid var(--accent, #f59e0b)' : '1px solid var(--border)',
+                  color: !selectedVoicePack ? 'var(--accent, #f59e0b)' : 'var(--text-primary)',
+                  cursor: 'pointer',
+                }}
+              >Default bell</button>
+              {ALL_VOICE_PACKS.map(p => {
+                const m = VOICE_PACK_META[p] || { label: p, sub: '' };
+                const sel = selectedVoicePack === p;
+                const locked = isPremiumVoicePack(p) && !proPreview;
+                return (
+                  <div key={p} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <button
+                      type="button"
+                      disabled={locked}
+                      onClick={locked ? undefined : () => setSelectedVoicePack(p)}
+                      title={locked ? 'Toggle Pro preview to enable' : m.sub}
+                      style={{
+                        padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                        background: sel ? 'rgba(168,85,247,0.18)' : 'rgba(168,85,247,0.05)',
+                        border: sel ? '2px solid #a855f7' : '1px dashed rgba(168,85,247,0.5)',
+                        color: '#a855f7', cursor: locked ? 'not-allowed' : 'pointer',
+                        opacity: locked ? 0.5 : 1,
+                      }}
+                    >{m.label} ★</button>
+                    <button
+                      type="button"
+                      aria-label={`Preview ${m.label} voice pack`}
+                      onClick={() => {
+                        try {
+                          const key = `${p}|match-start`;
+                          let el = voicePreviewElsRef.current.get(key);
+                          if (!el) {
+                            el = new Audio(`/voice-packs/${encodeURIComponent(p)}/match-start.mp3`);
+                            el.preload = 'auto'; el.volume = 0.85;
+                            voicePreviewElsRef.current.set(key, el);
+                          }
+                          el.currentTime = 0;
+                          const pr = el.play();
+                          if (pr && typeof pr.then === 'function') pr.catch(() => {});
+                        } catch (_) { /* ignore */ }
+                      }}
+                      style={{
+                        fontSize: 11, padding: '3px 8px', borderRadius: 6,
+                        background: 'transparent', border: '1px solid var(--border)',
+                        color: 'var(--text-muted)', cursor: 'pointer',
+                      }}
+                    >▶ Preview</button>
+                  </div>
+                );
+              })}
+            </div>
           </section>
 
           <section>

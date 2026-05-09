@@ -72,6 +72,23 @@ const FREE_LAYOUT_THEMES = ['court-pitch'];
 const PREMIUM_LAYOUT_THEMES = ['newsprint', 'carbon', 'holo', 'heritage', 'broadcast'];
 const ALL_LAYOUT_THEMES = [...FREE_LAYOUT_THEMES, ...PREMIUM_LAYOUT_THEMES];
 
+// v6.62 / Task #206 — Voice Packs Pro SKU. All five packs are Pro-only paid
+// cosmetics; there is no free pack (the existing church-bell chime in
+// useInhouseAlerts.js IS the free default). Stored in
+// player_profiles.selected_voice_pack; null/empty means "default bell".
+const FREE_VOICE_PACKS = [];
+const PREMIUM_VOICE_PACKS = ['captain', 'hype', 'calm', 'roast', 'cinematic'];
+const ALL_VOICE_PACKS = [...FREE_VOICE_PACKS, ...PREMIUM_VOICE_PACKS];
+// Event slot names matching files at web/public/voice-packs/<pack>/<event>.mp3.
+const VOICE_PACK_EVENTS = [
+  'match-start',
+  'first-blood',
+  'win',
+  'loss',
+  'level-up',
+  'achievement-unlock',
+];
+
 const ALL_TITLES = [...FREE_TITLES, ...PREMIUM_TITLES];
 const ALL_THEMES = [...FREE_THEMES, ...PREMIUM_THEMES];
 const ALL_FRAMES = [...FREE_FRAMES, ...PREMIUM_FRAMES];
@@ -89,6 +106,14 @@ function isPremiumLayoutTheme(t) {
 function isValidLayoutTheme(t) {
   if (t == null || t === '') return true;
   return ALL_LAYOUT_THEMES.includes(t);
+}
+
+function isPremiumVoicePack(p) {
+  return PREMIUM_VOICE_PACKS.includes(p);
+}
+function isValidVoicePack(p) {
+  if (p == null || p === '') return true;
+  return ALL_VOICE_PACKS.includes(p);
 }
 
 function isPremiumFrame(frame) {
@@ -203,14 +228,20 @@ module.exports = {
   FREE_LAYOUT_THEMES,
   PREMIUM_LAYOUT_THEMES,
   ALL_LAYOUT_THEMES,
+  FREE_VOICE_PACKS,
+  PREMIUM_VOICE_PACKS,
+  ALL_VOICE_PACKS,
+  VOICE_PACK_EVENTS,
   isPremiumTitle,
   isPremiumTheme,
   isPremiumFrame,
   isPremiumLayoutTheme,
+  isPremiumVoicePack,
   isValidTitle,
   isValidTheme,
   isValidFrame,
   isValidLayoutTheme,
+  isValidVoicePack,
   BIO_MAX,
   PINNED_HERO_CAPTION_MAX,
   // v5.81 extras

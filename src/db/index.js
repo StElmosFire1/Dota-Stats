@@ -1103,6 +1103,10 @@ async function init() {
     // default Court & Pitch look that ships free with the v3 cover graduation.
     // Pro-only values are validated server-side in /api/me/profile POST.
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS profile_layout_theme TEXT`);
+    // v6.62 / Task #206 — currently-selected Pro voice pack (one of
+    // PREMIUM_VOICE_PACKS in src/profileCosmetics.js, or NULL for the
+    // default church-bell chime).
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS selected_voice_pack TEXT`);
     // v5.81 — `extras` JSONB holds the eight new mockup-graduated fields
     // (pinned_hero_border, pinned_achievement_id, flair_unlocked,
     // flair_override, show_top_heroes, show_streak, frame_animated,
@@ -10283,7 +10287,7 @@ async function getPlayerProfileCustomization(accountId) {
   const r = await p.query(
     `SELECT id, account_id, bio, custom_title, theme_accent,
             pinned_hero_id, pinned_hero_caption, pinned_match_id,
-            profile_frame, profile_layout_theme, extras,
+            profile_frame, profile_layout_theme, selected_voice_pack, extras,
             pinned_achievements, created_at, updated_at
        FROM player_profiles
       WHERE account_id = $1`,
@@ -10308,6 +10312,7 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
     pinned_match_id = null,
     profile_frame = null,
     profile_layout_theme = null,
+    selected_voice_pack = null,
     extras = null,
     pinned_achievements = null,
   } = fields;
@@ -10318,11 +10323,11 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
     `INSERT INTO player_profiles
        (account_id, bio, custom_title, theme_accent,
         pinned_hero_id, pinned_hero_caption, pinned_match_id,
-        profile_frame, profile_layout_theme, extras,
+        profile_frame, profile_layout_theme, selected_voice_pack, extras,
         pinned_achievements, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-             COALESCE($10::jsonb, '{}'::jsonb),
-             COALESCE($11::jsonb, '[]'::jsonb), NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+             COALESCE($11::jsonb, '{}'::jsonb),
+             COALESCE($12::jsonb, '[]'::jsonb), NOW())
      ON CONFLICT (account_id) DO UPDATE
        SET bio = EXCLUDED.bio,
            custom_title = EXCLUDED.custom_title,
@@ -10332,14 +10337,15 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
            pinned_match_id = EXCLUDED.pinned_match_id,
            profile_frame = EXCLUDED.profile_frame,
            profile_layout_theme = EXCLUDED.profile_layout_theme,
+           selected_voice_pack = EXCLUDED.selected_voice_pack,
            extras = EXCLUDED.extras,
            pinned_achievements = EXCLUDED.pinned_achievements,
            updated_at = NOW()
      RETURNING id, account_id, bio, custom_title, theme_accent,
                pinned_hero_id, pinned_hero_caption, pinned_match_id,
-               profile_frame, profile_layout_theme, extras,
+               profile_frame, profile_layout_theme, selected_voice_pack, extras,
                pinned_achievements, created_at, updated_at`,
-    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, profile_layout_theme, extras ? JSON.stringify(extras) : null, pinnedAchJson]
+    [accountId, bio, custom_title, theme_accent, pinned_hero_id, pinned_hero_caption, pinned_match_id, profile_frame, profile_layout_theme, selected_voice_pack, extras ? JSON.stringify(extras) : null, pinnedAchJson]
   );
   const row = r.rows[0];
   if (row && !Array.isArray(row.pinned_achievements)) row.pinned_achievements = [];

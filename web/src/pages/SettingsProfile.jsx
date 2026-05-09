@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import OnboardingWizard from '../components/OnboardingWizard';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
@@ -11,7 +11,9 @@ import {
   HERO_BORDER_COLORS, FREE_FLAIRS, PREMIUM_FLAIRS, SOCIAL_URL_MAX, DEFAULT_EXTRAS,
   FREE_LAYOUT_THEMES, PREMIUM_LAYOUT_THEMES, ALL_LAYOUT_THEMES,
   DEFAULT_LAYOUT_THEME, LAYOUT_THEME_META, isPremiumLayoutTheme,
+  ALL_VOICE_PACKS, VOICE_PACK_META, isPremiumVoicePack,
 } from '../profileCosmetics';
+import { Link } from 'react-router-dom';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
 import { oauthErrorMessage } from '../components/DiscordLinkModal';
 import ProfileCard from '../components/ProfileCard';
@@ -308,6 +310,11 @@ export default function SettingsProfile() {
   const [profileFrame, setProfileFrame] = useState(DEFAULT_FRAME);
   // v6.52 / Task #195 — Magazine v3 layout theme.
   const [layoutTheme, setLayoutTheme] = useState(DEFAULT_LAYOUT_THEME);
+  // v6.62 / Task #206 — selected Pro voice pack (or '' for the default
+  // church-bell chime).
+  const [selectedVoicePack, setSelectedVoicePack] = useState('');
+  // Per-pack <Audio> cache used by the "Preview" button below the picker.
+  const voicePreviewElsRef = useRef(new Map());
   const [ownedFrames, setOwnedFrames] = useState([]);
   const [framePurchaseLoading, setFramePurchaseLoading] = useState(null);
   const [framePurchaseError, setFramePurchaseError] = useState(null);
@@ -345,6 +352,7 @@ export default function SettingsProfile() {
       setPinnedMatchId(c.pinned_match_id ? String(c.pinned_match_id) : '');
       setProfileFrame(c.profile_frame || DEFAULT_FRAME);
       setLayoutTheme(c.profile_layout_theme || DEFAULT_LAYOUT_THEME);
+      setSelectedVoicePack(c.selected_voice_pack || '');
       setExtras({ ...DEFAULT_EXTRAS, ...(c.extras || {}) });
       setPinnedAchievements(Array.isArray(c.pinned_achievements) ? c.pinned_achievements.map(String) : []);
       if (c.pinned_hero_id) {
@@ -426,6 +434,7 @@ export default function SettingsProfile() {
         pinned_match_id: pinnedMatchId || null,
         profile_frame: profileFrame || null,
         profile_layout_theme: layoutTheme || null,
+        selected_voice_pack: selectedVoicePack || null,
         extras,
         pinned_achievements: pinnedAchievements,
       };
@@ -696,6 +705,95 @@ export default function SettingsProfile() {
                       {meta.sub}
                     </div>
                   </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section style={{ marginTop: 24 }}>
+            <h2 style={{ marginBottom: 8 }}>Inhouse voice pack</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+              Replace the default church-bell chime on inhouse alerts (accept phase,
+              captain selected, your pick, match ready) with a Pro voice pack.
+              Browse all paid cosmetics on the <Link to="/shop" style={{ color: 'var(--accent)', fontWeight: 600 }}>Cosmetics Shop</Link>.
+            </p>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setSelectedVoicePack('')}
+                title="Default church-bell chime"
+                style={{
+                  textAlign: 'left', padding: '8px 14px', borderRadius: 8,
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  background: !selectedVoicePack ? 'rgba(245,158,11,0.18)' : 'var(--bg-card)',
+                  border: !selectedVoicePack ? '2px solid #f59e0b' : '1px solid var(--border)',
+                  color: !selectedVoicePack ? '#f59e0b' : 'var(--text-primary)',
+                  minWidth: 160,
+                }}
+              >
+                <div>Default bell</div>
+                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Free — medieval church-bell chime
+                </div>
+              </button>
+              {ALL_VOICE_PACKS.map(p => {
+                const meta = VOICE_PACK_META[p] || { label: p, sub: '' };
+                const premium = isPremiumVoicePack(p);
+                const locked = premium && !isPro;
+                const selected = selectedVoicePack === p;
+                return (
+                  <div key={p} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <button
+                      type="button"
+                      onClick={locked ? undefined : () => setSelectedVoicePack(p)}
+                      disabled={locked}
+                      title={locked ? 'Reserved for Pro members' : meta.sub}
+                      style={{
+                        textAlign: 'left', padding: '8px 14px', borderRadius: 8,
+                        fontSize: 13, fontWeight: 600,
+                        cursor: locked ? 'not-allowed' : 'pointer',
+                        opacity: locked ? 0.5 : 1,
+                        background: selected ? 'rgba(245,158,11,0.18)' : 'var(--bg-card)',
+                        border: selected ? '2px solid #f59e0b' : '1px solid var(--border)',
+                        color: selected ? '#f59e0b' : 'var(--text-primary)',
+                        minWidth: 180,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {meta.label}
+                        {premium && <LockedPill />}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {meta.sub}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Preview ${meta.label} voice pack`}
+                      onClick={() => {
+                        try {
+                          const key = `${p}|match-start`;
+                          let el = voicePreviewElsRef.current.get(key);
+                          if (!el) {
+                            el = new Audio(`/voice-packs/${encodeURIComponent(p)}/match-start.mp3`);
+                            el.preload = 'auto';
+                            el.volume = 0.85;
+                            voicePreviewElsRef.current.set(key, el);
+                          }
+                          el.currentTime = 0;
+                          const pr = el.play();
+                          if (pr && typeof pr.then === 'function') pr.catch(() => {});
+                        } catch (_) { /* ignore */ }
+                      }}
+                      style={{
+                        fontSize: 11, padding: '4px 8px', borderRadius: 6,
+                        background: 'transparent', border: '1px solid var(--border)',
+                        color: 'var(--text-muted)', cursor: 'pointer',
+                      }}
+                    >
+                      ▶ Preview
+                    </button>
+                  </div>
                 );
               })}
             </div>

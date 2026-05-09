@@ -41,6 +41,7 @@ const Records = lazy(() => import('./pages/Records'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const DraftSandbox = lazy(() => import('./pages/DraftSandbox'));
 const ProfileSandbox = lazy(() => import('./pages/ProfileSandbox'));
+const CosmeticsShop = lazy(() => import('./pages/CosmeticsShop'));
 const ProfileDemo = lazy(() => import('./pages/ProfileDemo'));
 const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
@@ -457,6 +458,9 @@ function ThemeToggle() {
 function Nav() {
   const location = useLocation();
   const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
+  // v6.62 / Task #206 — gate the Cosmetics Shop link on signed-in viewers.
+  const { steamUser } = useSteamAuth();
+  const accountId = steamUser?.accountId;
 
   return (
     <nav className="navbar">
@@ -486,6 +490,10 @@ function Nav() {
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
+          {/* v6.62 / Task #206 — only signed-in players need the cosmetics shop;
+              anonymous viewers can't apply anything yet. The /pro CTA in the
+              nav bar covers their upgrade path. */}
+          {accountId && <DropdownItem to="/shop">Cosmetics Shop</DropdownItem>}
           {/* v5.88 — Hall of Fame and Multi-Kills now live as tabs inside the Records page. */}
           <DropdownItem to="/join">Join the League</DropdownItem>
         </DropdownMenu>
@@ -785,6 +793,7 @@ export default function App() {
                 <Route path="/coach/onboarding" element={<CoachOnboarding />} />
                 <Route path="/me/bookings" element={<MyBookings />} />
                 <Route path="/pro" element={<Pro />} />
+                <Route path="/shop" element={<CosmeticsShop />} />
               </Routes>
               </Suspense>
             </main>
