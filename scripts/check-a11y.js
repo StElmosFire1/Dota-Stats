@@ -859,4 +859,6 @@ module.exports = {
   classifyIconOnly,
   classifyBraceExpression,
   isSingleBraceExpression,
+  scanFile,
+  scanCssFile,
 };
