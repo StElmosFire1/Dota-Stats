@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.08",
+    "title": "Patch notes now stay in sync with deployments",
+    "published_at": "2026-05-09",
+    "content": "Root-cause fix for the long-standing bug where the site stayed on v6.73 even after deploying newer code.\n\nThe bot seeds patch notes from `src/data/patchNotes.js` into the `patch_notes` database table on every startup via `seedPatchNotes()`. The seed function had a strict ascending-version-order guard that threw immediately when it saw the array was descending (our standard newest-first convention for the file). The thrown error was silently caught in `src/index.js` and logged as '[Startup] Patch note seed failed', so the DB was never updated past v6.73 — the last version that happened to be in the DB from a very early run.\n\nFix in `src/db/index.js` `seedPatchNotes()`: instead of requiring the caller to pass a sorted array, the function now sorts the input ascending internally (`[...notes].sort(...)`) before processing. The ascending-order guard is replaced with a duplicate-version check on the sorted array (a duplicate would cause one upsert to silently overwrite another — a genuine data hazard). Two existing duplicate version numbers in `src/data/patchNotes.js` were also fixed as part of this pass: the second v6.74 (magazine cover revert) was renumbered to v6.74.1, and the second v6.78 (share-card hero picker) was renumbered to v6.78.1.\n\nAfter deploying this fix and restarting the bot, all 254+ patch notes (v6.74.1 through v7.08) will upsert into the DB in one startup pass, and the site patch notes page will reflect the correct latest version immediately.",
+    "author": "System"
+  },
+  {
     "version": "7.07",
     "title": "See your share-card preview right on your own profile page",
     "published_at": "2026-05-09",
@@ -1736,7 +1743,7 @@ module.exports = [
     "author": "System"
   },
   {
-    "version": "6.74",
+    "version": "6.74.1",
     "title": "Magazine cover — back to transparent rank/MMR + vitals strip with crisp text",
     "published_at": "2026-05-09",
     "content": "Reverting the v6.72 'fix' for the rank/MMR pills and the GPM/MMR/WR/KDA/Impact strip on the Magazine v3 cover. The previous pass wrapped both in opaque ink-navy slabs with heavy backdrop-blur to make the text 'pop' against the hero portrait — but the user (correctly) pointed out the original transparent treatment looked better, and the backdrop-blur was actually softening the text against the busy hero art instead of sharpening it.\n\nFix in MagazineCover.css: .v3-cover-adornments is now a pure inline-flex container with no background, border, blur or shadow — the rank pills sit directly over the hero artwork the way they did before v6.72. .v3-cover-vitals keeps a thin 0.12-opacity white border + a subtle 0.28-opacity ink-navy wash for separation, but drops the 16px backdrop-blur entirely. Legibility now comes from a stacked text-shadow (1px black drop + 8px black halo) on every label, value, suffix and sub-line inside the strip, so 7094 / 89% / 5.87 / 574/772 / 10.0 stay sharp even over a bright hero portrait. A11y gate green, web bundle builds cleanly.",
@@ -1764,7 +1771,7 @@ module.exports = [
     "author": "System"
   },
   {
-    "version": "6.78",
+    "version": "6.78.1",
     "title": "Pick (and preview) the hero on your share-link card",
     "published_at": "2026-05-09",
     "content": "Task #259: the OG share card auto-picked your pinned hero (or fell back to most-played when nothing was pinned), but you couldn't see what the unfurl actually looked like before pasting your /p/<slug> into Discord, and you had no way to override the auto-pick if you wanted a different signature on the card than the one pinned on your profile page.\n\nSettings → Profile gains a new 'Share card hero' picker (separate from the existing 'Pinned hero' control) with three modes: 'Use pinned hero' (the default — falls back to most-played when nothing is pinned), 'Use most-played hero' (forces the most-played fallback even when a pinned hero is set), and a free-form search of your played-hero pool that lets you pin any hero to the share card without changing your profile pin. The override is persisted as a new `share_card_hero_id` field on the existing `extras` JSONB column on player_profiles — no schema migration, validateExtras() coerces the value to either null, the string sentinel 'most_played', or a positive integer hero id (anything else is dropped so a malformed client save can't poison the field). The save route additionally checks numeric ids against player_stats so a malicious client can't persist a hero you've never played.\n\nThe picker mounts a real `<img>` of `/og/profile/by-id/<accountId>.png` as a live preview, so you see exactly what crawlers will render — name, MMR tier badge, W/L, brass accent, hero portrait — before clicking Save. To preview the unsaved selection, the OG endpoint accepts an owner-only `?preview_hero_id=` query param with three values: `pinned` (ignore the saved override and render the pinned → most-played fallback chain), `most_played` (force the most-played fallback even when a pinned hero exists), or a numeric hero id. Owner-gated by `req.session.accountId === accountId` so a third party can't trick the generator into rendering an arbitrary hero on someone else's card; preview responses are sent with `Cache-Control: no-store` (set inside `_renderProfileOgCard` after the buffer is generated, so the saved-state branch keeps its 10-minute public cache and the preview branch can't be evicted) so the in-memory render cache used by the public endpoint isn't polluted. _resolveOgProfileHero() now reads `extras.share_card_hero_id` first, then falls through to the existing pinned → most-played logic when the override is unset (or when an explicit preview asks it to be ignored).\n\nFull edition only — community edition has no profile customization or OG card surface. A11y gate green (153 JSX / 3 CSS files scanned).",

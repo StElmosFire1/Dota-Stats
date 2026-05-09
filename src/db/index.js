@@ -7253,21 +7253,25 @@ async function deletePatchNote(id) {
 async function seedPatchNotes(notes) {
   const p = getPool();
 
-  // Guard: ensure seed array is in strictly ascending version order.
   // Versions are dotted numeric strings ("major.minor" or "major.minor.patch")
   // — compare numerically, padding to 3 components so e.g. 5.74.1 sorts strictly
   // after 5.74 and strictly before 5.74.2 instead of being treated as equal.
+  // The data file is stored newest-first for readability; sort ascending here so
+  // the upsert processes entries in chronological order and the order-check passes
+  // regardless of how the source array is arranged.
   const parseVer = v => {
     const [maj = 0, min = 0, patch = 0] = String(v).split('.').map(Number);
     return maj * 1_000_000 + min * 1000 + patch;
   };
-  for (let i = 1; i < notes.length; i++) {
-    const aNum = parseVer(notes[i - 1].version);
-    const bNum = parseVer(notes[i].version);
-    if (bNum <= aNum) {
+  const sorted = [...notes].sort((a, b) => parseVer(a.version) - parseVer(b.version));
+
+  // Guard: after sorting, verify there are no duplicate versions (which would
+  // silently stomp each other during upsert).
+  for (let i = 1; i < sorted.length; i++) {
+    if (parseVer(sorted[i - 1].version) === parseVer(sorted[i].version)) {
       throw new Error(
-        `[DB] patchNotes.js is out of order: v${notes[i - 1].version} appears before v${notes[i].version}. ` +
-        `Fix the order in src/data/patchNotes.js before starting the bot.`
+        `[DB] patchNotes.js has duplicate version: v${sorted[i].version}. ` +
+        `Remove the duplicate entry in src/data/patchNotes.js before starting the bot.`
       );
     }
   }
@@ -7276,7 +7280,7 @@ async function seedPatchNotes(notes) {
   // New rows get announced_at = NULL so the Discord bot can detect and announce them.
   // ON CONFLICT (existing row): update title/content/author/published_at but DON'T
   // touch announced_at — that would re-announce already-posted notes.
-  for (const note of notes) {
+  for (const note of sorted) {
     await p.query(`
       INSERT INTO patch_notes (version, title, content, author, published_at, announced_at)
       VALUES ($1, $2, $3, $4, $5, NULL)
