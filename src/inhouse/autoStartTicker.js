@@ -23,8 +23,14 @@
 const TICK_MS = 5000;
 // Task #172 — snake-draft pick sequence used to pick the right team on the
 // captain's behalf when the per-pick deadline expires. Single source of
-// truth lives in src/inhouse/draftSequence.js (Task #192).
-const { DRAFT_PICK_SEQUENCE } = require('./draftSequence');
+// truth lives in src/inhouse/draftSequence.js (Task #192 for the sequence,
+// Task #211 for the shared "whose turn?" helpers — replaces the inline
+// count-and-index math the deadline sweep + recovery sweep used to do).
+const {
+  DRAFT_PICK_SEQUENCE,
+  countDraftedNonCaptains,
+  teamForPickIndex,
+} = require('./draftSequence');
 // Hybrid skill scoring used to pick the highest-MMR remaining player —
 // mirrors the score() helper in /select-captains so the auto-pick lands
 // on the same player a captain following the leaderboard would have
@@ -255,14 +261,15 @@ async function tick(db, basePort) {
       const cap1 = Number(s.captain1_account_id);
       const cap2 = Number(s.captain2_account_id);
       const isCap = (p) => Number(p.account_id) === cap1 || Number(p.account_id) === cap2;
-      const drafted = players.filter(p => p.team !== 0 && !isCap(p)).length;
-      if (drafted >= DRAFT_PICK_SEQUENCE.length) {
+      // Task #211 — shared count + sequence-team math (was inline here).
+      const drafted = countDraftedNonCaptains(players, s);
+      const team = teamForPickIndex(drafted);
+      if (team === null) {
         // Draft is already complete — just clear the stale deadline so we
         // stop tripping this branch on every tick.
         await db.updateInhouseSession(s.id, { draft_pick_deadline_at: null }).catch(() => {});
         continue;
       }
-      const team = DRAFT_PICK_SEQUENCE[drafted];
       const undrafted = players
         .filter(p => (p.team === 0 || p.team == null) && p.status !== 'declined' && !isCap(p))
         .map(p => ({ p, s: _scoreInhousePlayer(p) }))
@@ -310,12 +317,9 @@ async function tick(db, basePort) {
         _lastFailedAttempt.set(s.id, Date.now());
       }
       const players = await db.getInhouseSessionPlayers(s.id);
-      const cap1 = Number(s.captain1_account_id);
-      const cap2 = Number(s.captain2_account_id);
-      const drafted = players.filter(p =>
-        p.team !== 0 && Number(p.account_id) !== cap1 && Number(p.account_id) !== cap2
-      ).length;
-      if (drafted < 8) continue;
+      // Task #211 — shared count helper (was inline here too).
+      const drafted = countDraftedNonCaptains(players, s);
+      if (drafted < DRAFT_PICK_SEQUENCE.length) continue;
       const { provisionInhouseServer } = require('./serverProvisioner');
       const r = await provisionInhouseServer(s.id, { trigger: 'auto_recovery' });
       if (r.ok && !r.skipped) {

@@ -7125,22 +7125,17 @@ NOTES
     }
   });
 
-  // Snake-draft pick sequence for the 8 non-captain slots (4 each side).
-  // Single source of truth lives in src/inhouse/draftSequence.js (Task #192).
-  const { DRAFT_PICK_SEQUENCE } = require('../inhouse/draftSequence');
-
-  function _currentPickerTeam(players, session) {
-    // Count drafted players, excluding the two captains by account_id (more
-    // robust than relying on pick_order > 0, since admin-override picks may
-    // arrive without a pick_order set).
-    const cap1 = session ? Number(session.captain1_account_id) : null;
-    const cap2 = session ? Number(session.captain2_account_id) : null;
-    const drafted = players.filter(p =>
-      p.team !== 0 && Number(p.account_id) !== cap1 && Number(p.account_id) !== cap2
-    ).length;
-    if (drafted >= DRAFT_PICK_SEQUENCE.length) return null; // draft complete
-    return DRAFT_PICK_SEQUENCE[drafted];
-  }
+  // Snake-draft pick sequence + "whose turn is it?" helpers. Single source
+  // of truth lives in src/inhouse/draftSequence.js (Task #192 for the
+  // sequence, Task #211 for the picker-team helpers — previously this
+  // file had its own _currentPickerTeam clone of the same math the
+  // autoStartTicker deadline sweep used).
+  const {
+    DRAFT_PICK_SEQUENCE,
+    countDraftedNonCaptains: _countDraftedNonCaptains,
+    currentPickerTeam: _currentPickerTeam,
+    teamForPickIndex: _teamForPickIndex,
+  } = require('../inhouse/draftSequence');
 
   router.post('/inhouse/:id/draft-pick', express.json(), async (req, res) => {
     try {
@@ -7239,16 +7234,15 @@ NOTES
       const cur = await db.getInhouseSession(req.params.id);
       if (!cur) return res.status(404).json({ error: 'Session not found' });
       const players = await db.getInhouseSessionPlayers(cur.id);
-      const cap1 = Number(cur.captain1_account_id);
-      const cap2 = Number(cur.captain2_account_id);
-      const drafted = players.filter(p =>
-        p.team !== 0 && Number(p.account_id) !== cap1 && Number(p.account_id) !== cap2
-      ).length;
+      const drafted = _countDraftedNonCaptains(players, cur);
       const seq = DRAFT_PICK_SEQUENCE;
+      // Task #211 — go through the shared helper instead of indexing
+      // into the sequence directly so /draft-status uses the same
+      // team-lookup semantics as /draft-pick and the ticker.
       res.json({
         sequence: seq,
         pickIdx: drafted,
-        currentPickerTeam: drafted < seq.length ? seq[drafted] : null,
+        currentPickerTeam: _teamForPickIndex(drafted),
         complete: drafted >= seq.length,
         // Task #172 — per-pick countdown payload. `pickDeadlineAt` is the
         // ISO timestamp at which the autoStartTicker will auto-pick for the

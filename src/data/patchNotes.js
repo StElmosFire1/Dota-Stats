@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.65",
+    "title": "Shared draft 'whose turn?' helper",
+    "published_at": "2026-05-09",
+    "content": "Refactor (Task #211): the snake-draft 'which captain is on the clock?' math now lives in a single shared helper in src/inhouse/draftSequence.js, used by both the website's draft-pick / draft-status routes and the bot's per-pick deadline + recovery sweeps.\n\nPreviously the same count-non-captain-drafted-then-index-into-the-sequence rule was duplicated in src/web/server.js and src/inhouse/autoStartTicker.js against slightly different player shapes; a future change to 'what counts as drafted' (e.g. excluding declined or admin-override picks) had to be made in two spots and could silently disagree. New direct unit tests in tests/draftSequence.test.js cover the helper without round-tripping through the ticker or HTTP handlers.",
+    "author": "System"
+  },
+  {
     "version": "0.1",
     "title": "Bot Foundation & Steam Lobby Creation",
     "published_at": "2026-02-17",
