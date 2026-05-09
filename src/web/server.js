@@ -9679,4 +9679,4 @@ function processReplayInternal(filePath, source, opts = {}) {
   });
 }
 
-module.exports = { createServer, processReplayInternal };
+module.exports = { createServer, processReplayInternal, createApiRouter };
