@@ -9136,6 +9136,22 @@ NOTES
     }
   });
 
+  // GET /api/admin/founders-ring-refunds — audit list of every cap-race
+  // auto-refund recorded for the Founders Pass cover ring (Task #265). Used
+  // by the superuser AdminPanel section to confirm at a glance that every
+  // over-cap buyer was actually refunded and to surface any rows stuck in
+  // status='refund_failed'. Read-only proxy of db.listFoundersRingRefunds.
+  router.get('/admin/founders-ring-refunds', requireSuperuser, async (req, res) => {
+    try {
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000);
+      const refunds = await db.listFoundersRingRefunds({ limit });
+      res.json({ refunds, limit });
+    } catch (err) {
+      console.error('[API] admin/founders-ring-refunds GET:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to load Founders Pass refunds' });
+    }
+  });
+
   // ── Founders Pass ring (v6.63 / Task #207) ──────────────────────────────
   // Limited-edition one-time entitlement. Cap is configurable via
   // FOUNDERS_RING_CAP env (default 200). The cap is checked here at

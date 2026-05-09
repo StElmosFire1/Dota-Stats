@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
+import SortableTh from '../components/SortableTh';
 import { TierBadge, MMR_TIERS } from './Leaderboard';
 import { ALL_HEROES, getHeroName } from '../heroNames';
 
@@ -120,6 +121,196 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
       <td><input type="number" min={0} max={50} value={player.deaths} onChange={e => onChange({ deaths: parseInt(e.target.value) || 0 })} style={{ width: 50 }} /></td>
       <td><input type="number" min={0} max={50} value={player.assists} onChange={e => onChange({ assists: parseInt(e.target.value) || 0 })} style={{ width: 50 }} /></td>
     </tr>
+  );
+}
+
+// Task #265 — superuser-only audit table for Founders Pass cap-race auto-refunds.
+// Lists every refund recorded in `founders_ring_refunds` (most recent first)
+// and visually highlights any row whose status is 'refund_failed' so an
+// operator can spot a stuck refund that needs manual attention in Stripe.
+function FoundersRingRefunds({ superuserKey }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [sortKey, setSortKey] = useState('created_at');
+  const [sortDir, setSortDir] = useState('desc');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError('');
+    getFoundersRingRefunds(superuserKey, { limit: 500 })
+      .then(d => setData(d))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  function toggleSort(key) {
+    if (sortKey === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'amount_cents' || key === 'created_at' ? 'desc' : 'asc');
+    }
+  }
+
+  const refunds = data?.refunds || [];
+  const sorted = [...refunds].sort((a, b) => {
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    let cmp;
+    if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+    else cmp = String(av).localeCompare(String(bv));
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const failedCount = refunds.filter(r => r.status === 'refund_failed').length;
+
+  function fmtMoney(cents, currency) {
+    if (cents == null) return '—';
+    const amt = (cents / 100).toFixed(2);
+    return `${amt} ${(currency || '').toUpperCase()}`.trim();
+  }
+  function fmtDate(d) {
+    if (!d) return '—';
+    try { return new Date(d).toLocaleString(); } catch (_) { return d; }
+  }
+  function stripeRefundUrl(refundId) {
+    if (!refundId) return null;
+    return `https://dashboard.stripe.com/refunds/${refundId}`;
+  }
+  function stripeSessionUrl(sessionId) {
+    if (!sessionId) return null;
+    return `https://dashboard.stripe.com/payments/${sessionId}`;
+  }
+
+  function SortHeader({ k, children, align = 'left' }) {
+    const active = sortKey === k;
+    const arrow = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    return (
+      <SortableTh
+        scope="col"
+        active={active}
+        direction={sortDir}
+        onSort={() => toggleSort(k)}
+        style={{ padding: '6px 10px 8px 0', fontWeight: 600, textAlign: align }}
+      >
+        {children}{arrow}
+      </SortableTh>
+    );
+  }
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6, flexWrap: 'wrap' }}>
+        <h2 id="ap-anchor-founders-refunds" className="section-title" style={{ margin: 0 }}>
+          💍 Founders Pass Refunds
+        </h2>
+        <button className="btn" onClick={load} disabled={loading} style={{ fontSize: 12 }}>
+          {loading ? '⏳ Loading…' : data === null ? 'Load' : 'Refresh'}
+        </button>
+        {data !== null && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {refunds.length} refund{refunds.length === 1 ? '' : 's'}
+            {failedCount > 0 && (
+              <span style={{ marginLeft: 8, color: '#fca5a5', fontWeight: 600 }}>
+                ⚠ {failedCount} failed
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+        Audit log of every Founders Pass cover-ring auto-refund. When a buyer pays after the cap is
+        already reached, the webhook auto-refunds them and records a row here. Rows in
+        <code> refund_failed </code> require manual follow-up in Stripe — they're highlighted in red.
+      </p>
+
+      {error && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: '#450a0a',
+                      border: '1px solid #f87171', color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+
+      {data !== null && refunds.length === 0 && (
+        <p style={{ color: '#4ade80', fontSize: 13 }}>
+          ✓ No cap-race refunds recorded — every Founders Pass purchase landed under the cap.
+        </p>
+      )}
+
+      {refunds.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)' }}>
+                <SortHeader k="created_at">Date</SortHeader>
+                <SortHeader k="account_id">Account</SortHeader>
+                <SortHeader k="amount_cents" align="right">Amount</SortHeader>
+                <SortHeader k="status">Status</SortHeader>
+                <SortHeader k="stripe_refund_id">Refund</SortHeader>
+                <SortHeader k="stripe_session_id">Session</SortHeader>
+                <th style={{ padding: '6px 10px 8px 0', fontWeight: 600 }}>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map(r => {
+                const failed = r.status === 'refund_failed';
+                const refundUrl = stripeRefundUrl(r.stripe_refund_id);
+                const sessionUrl = stripeSessionUrl(r.stripe_session_id);
+                return (
+                  <tr
+                    key={r.id}
+                    style={{
+                      borderTop: '1px solid var(--border)',
+                      background: failed ? 'rgba(239,68,68,0.10)' : undefined,
+                    }}
+                  >
+                    <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>{fmtDate(r.created_at)}</td>
+                    <td style={{ padding: '5px 10px 5px 0', fontFamily: 'monospace' }}>
+                      <Link to={`/players/${r.account_id}`}>{r.account_id}</Link>
+                    </td>
+                    <td style={{ padding: '5px 10px 5px 0', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {fmtMoney(r.amount_cents, r.currency)}
+                    </td>
+                    <td style={{ padding: '5px 10px 5px 0' }}>
+                      <span style={{
+                        display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11,
+                        fontWeight: 600,
+                        background: failed ? 'rgba(239,68,68,0.25)' : 'rgba(74,222,128,0.15)',
+                        color: failed ? '#fca5a5' : '#86efac',
+                        border: `1px solid ${failed ? '#f87171' : '#4ade80'}`,
+                      }}>
+                        {r.status || '—'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '5px 10px 5px 0', fontFamily: 'monospace', fontSize: 11 }}>
+                      {refundUrl ? (
+                        <a href={refundUrl} target="_blank" rel="noopener noreferrer">{r.stripe_refund_id}</a>
+                      ) : '—'}
+                    </td>
+                    <td style={{ padding: '5px 10px 5px 0', fontFamily: 'monospace', fontSize: 11 }}>
+                      {sessionUrl ? (
+                        <a href={sessionUrl} target="_blank" rel="noopener noreferrer">{r.stripe_session_id}</a>
+                      ) : '—'}
+                    </td>
+                    <td style={{
+                      padding: '5px 10px 5px 0', fontSize: 11,
+                      color: failed ? '#fca5a5' : 'var(--text-muted)',
+                      maxWidth: 320, wordBreak: 'break-word',
+                    }}>
+                      {r.error_message || (failed ? '(no message)' : '—')}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -3172,6 +3363,7 @@ export default function AdminPanel() {
     { label: 'Discord ID Collisions', tab: 'users', anchor: 'ap-anchor-discord-collisions', icon: '🔗', kw: 'discord duplicate merge split collision unique link reconcile' },
     { label: 'Sign-Up Requests', tab: 'users', anchor: 'signup-requests', icon: '📋', kw: 'applications join approve reject pending' },
     { label: 'Gift Purchases', tab: 'marketplace', anchor: 'ap-anchor-gifts', icon: '🎁', kw: 'pro gift stripe' },
+    { label: 'Founders Pass Refunds', tab: 'marketplace', anchor: 'ap-anchor-founders-refunds', icon: '💍', kw: 'founders ring refund cap race stripe audit failed' },
     { label: 'Coaching Marketplace', tab: 'marketplace', anchor: 'ap-anchor-coaching', icon: '🎓', kw: 'coach payout connect bookings' },
     { label: 'Tournament Brackets', tab: 'marketplace', anchor: 'ap-anchor-tournaments', icon: '🏆', kw: 'tournament prize pool buy-in' },
   ];
@@ -3438,6 +3630,9 @@ export default function AdminPanel() {
       {activeTab === 'marketplace' && (<>
       {/* Gift Purchases — audit all sent/received gifts */}
       <GiftPurchasesPanel superuserKey={superuserKey} />
+
+      {/* Founders Pass cap-race refund audit (Task #265) */}
+      <FoundersRingRefunds superuserKey={superuserKey} />
 
       {/* Coaching Marketplace — pending KYC + open disputes + revenue */}
       <CoachingAdminPanel superuserKey={superuserKey} />

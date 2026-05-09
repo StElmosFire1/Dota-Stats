@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.02",
+    "title": "Superuser audit page for Founders Pass cap-race refunds",
+    "published_at": "2026-05-09",
+    "content": "Task #265: v6.63 / Task #207 added the Founders Pass cap-race auto-refund flow and v6.74 (Task #256) added the `founders_ring_refunds` audit table + `db.listFoundersRingRefunds({ limit })` helper, but operators could only see refund outcomes by SSHing into the box and querying Postgres. There was no UI to confirm at a glance that every over-cap buyer was actually refunded, no surfacing of rows stuck in `status='refund_failed'`, and no click-through to the matching Stripe session.\n\nNew superuser-only API route `GET /api/admin/founders-ring-refunds` (in `src/web/server.js`, requireSuperuser-gated alongside the other admin audit endpoints) accepts an optional `?limit=` (clamped 1–1000, default 200) and proxies the existing `db.listFoundersRingRefunds({ limit })` helper, returning `{ refunds, limit }`.\n\nNew `FoundersRingRefunds` section in `web/src/pages/AdminPanel.jsx` under the Marketplace tab (next to Gift Purchases) renders a sortable table — Date, Account, Amount (with currency), Status, Refund (linked to `https://dashboard.stripe.com/refunds/<id>`), Session (linked to `https://dashboard.stripe.com/payments/<session_id>`), Error message. Sorting uses the shared `<SortableTh>` accessibility primitive so screen readers get a real `aria-sort`. Failed rows (`status='refund_failed'`) get a red row tint, a red status badge, and the failed-count is summarised in the section header (`⚠ N failed`) so a stuck refund is impossible to miss. The empty state confirms green that every Founders Pass purchase landed under the cap. Wired into the existing AdminPanel search index (kw: founders ring refund cap race stripe audit failed) so it's discoverable from the panel-wide jump search.\n\nFull edition only — the community edition has no Founders Pass / shop wiring. `npm run check:a11y` green (153 JSX / 3 CSS files scanned).",
+    "author": "System"
+  },
+  {
     "version": "7.01",
     "title": "Live Now tab grouped into Inhouse · Other Dota · Lobby/Queue/Voice with full inhouse roster cards",
     "published_at": "2026-05-09",

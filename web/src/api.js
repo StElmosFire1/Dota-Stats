@@ -503,6 +503,16 @@ export async function enforceDiscordIdUniqueIndex(superuserKey) {
   return data;
 }
 
+// Task #265 — Founders Pass cap-race refund audit log (superuser-only).
+export async function getFoundersRingRefunds(superuserKey, { limit = 200 } = {}) {
+  const res = await superuserFetch(BASE + `/admin/founders-ring-refunds?limit=${limit}`, {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to load Founders Pass refunds');
+  return data;
+}
+
 // Task #138 — Discord auto-join failure queue (superuser-only).
 export async function getDiscordAutoJoinFailures(superuserKey) {
   const res = await superuserFetch(BASE + '/admin/discord-autojoin-failures', {
