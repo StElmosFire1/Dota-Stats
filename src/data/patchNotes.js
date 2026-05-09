@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.67",
+    "title": "Voice packs ship with real spoken voice lines",
+    "published_at": "2026-05-09",
+    "content": "Audio (Task #216): the five Pro voice packs (Captain Calls, Hype Train, Calm Coach, Trash Talk, Cinematic Epic) now ship with real spoken voice lines instead of placeholder copies of the church bell. Each of the 30 slots (match-start / first-blood / win / loss / level-up / achievement-unlock × 5 packs) has a distinctive line whose tone matches the pack's label and sub copy in profileCosmetics.js — authoritative team-caller barks for Captain, fast high-pitched caster shouts for Hype, slow smooth coaching for Calm, mocking smack-talk for Roast, and a deep British movie-trailer baritone for Cinematic — so the upsell finally sounds different from the free chime and from every other pack.\n\nAll 30 mp3s live at web/public/voice-packs/<pack>/<event>.mp3 (96 kbps mono 44.1 kHz). The new scripts/generate-voice-packs.sh wraps espeak-ng + ffmpeg so the entire set can be re-synthesised on demand if the script copy changes; individual slots can still be hand-replaced with higher-quality recordings later. The README in the voice-packs dir was rewritten to document the new shape and per-pack voice profile. The hook still falls back to the church bell on 404, so missing slots remain safe.",
+    "author": "System"
+  },
+  {
     "version": "6.66",
     "title": "'Live now' tab on the players page",
     "published_at": "2026-05-09",
