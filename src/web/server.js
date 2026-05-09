@@ -1691,6 +1691,211 @@ function createServer(startupStatus = {}) {
     }
   });
 
+  // Task #268 — Pull the data we need for a match OG card. Computes the
+  // winning side, per-team kill totals (= "score"), MVP, and the top
+  // fragger (most kills, ties broken by highest KDA-sum). Returns null
+  // when the match is unknown.
+  function _humanHeroName(heroName) {
+    if (!heroName || typeof heroName !== 'string') return null;
+    return heroName.replace('npc_dota_hero_', '').replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+  async function _resolveOgMatch(db, matchId) {
+    try {
+      const m = await db.getMatch(matchId);
+      if (!m) return null;
+      const players = Array.isArray(m.players) ? m.players : [];
+      let radiantScore = 0;
+      let direScore = 0;
+      for (const p of players) {
+        const k = parseInt(p.kills) || 0;
+        if (p.team === 'dire') direScore += k;
+        else radiantScore += k;
+      }
+      // Top fragger: most kills, ties broken by k+a, then by lowest deaths.
+      let top = null;
+      for (const p of players) {
+        if (!top) { top = p; continue; }
+        const tk = parseInt(top.kills) || 0;
+        const pk = parseInt(p.kills) || 0;
+        if (pk > tk) { top = p; continue; }
+        if (pk < tk) continue;
+        const tka = (parseInt(top.kills) || 0) + (parseInt(top.assists) || 0);
+        const pka = (parseInt(p.kills) || 0) + (parseInt(p.assists) || 0);
+        if (pka > tka) { top = p; continue; }
+        if (pka < tka) continue;
+        if ((parseInt(p.deaths) || 0) < (parseInt(top.deaths) || 0)) top = p;
+      }
+      let topFragger = null;
+      if (top) {
+        topFragger = {
+          name: top.nickname || top.persona_name || `Player ${top.account_id || ''}`.trim(),
+          kills: parseInt(top.kills) || 0,
+          deaths: parseInt(top.deaths) || 0,
+          assists: parseInt(top.assists) || 0,
+          heroId: parseInt(top.hero_id) || null,
+          heroName: top.hero_name || null,
+          heroDisplayName: _humanHeroName(top.hero_name),
+        };
+      }
+      // MVP — getMatch returns mvp_account_id when votes exist. Look up
+      // their name + hero from the players array.
+      let mvp = null;
+      if (m.mvp_account_id) {
+        const mvpRow = players.find(p => String(p.account_id || '') === String(m.mvp_account_id));
+        if (mvpRow) {
+          mvp = {
+            name: mvpRow.nickname || mvpRow.persona_name || `Player ${mvpRow.account_id}`,
+            heroDisplayName: _humanHeroName(mvpRow.hero_name),
+          };
+        }
+      }
+      return {
+        matchId: String(m.match_id),
+        radiantWin: !!m.radiant_win,
+        radiantScore,
+        direScore,
+        durationSeconds: parseInt(m.duration) || 0,
+        topFragger,
+        mvp,
+      };
+    } catch (err) {
+      console.warn('[match-og] resolve failed:', err.message);
+      return null;
+    }
+  }
+
+  // Task #268 — Generated 1200×630 match card. Crawlers fetch this when
+  // they unfurl `/match/<id>`; we render the top-fragger's hero portrait
+  // with the winning side, score, MVP, and top-fragger KDA on top. Falls
+  // back to the static OA logo when canvas is unavailable / on any error.
+  async function _renderMatchOgCard(res, db, matchId) {
+    try {
+      const data = await _resolveOgMatch(db, matchId);
+      if (!data) return res.redirect(302, '/oa-logo.png');
+      const { generateMatchOgCard } = require('../services/matchOgCard');
+      const buf = await generateMatchOgCard({
+        matchId: data.matchId,
+        radiantWin: data.radiantWin,
+        radiantScore: data.radiantScore,
+        direScore: data.direScore,
+        durationSeconds: data.durationSeconds,
+        mvpName: data.mvp ? data.mvp.name : null,
+        mvpHeroDisplayName: data.mvp ? data.mvp.heroDisplayName : null,
+        topFraggerName: data.topFragger ? data.topFragger.name : null,
+        topFraggerKills: data.topFragger ? data.topFragger.kills : null,
+        topFraggerDeaths: data.topFragger ? data.topFragger.deaths : null,
+        topFraggerAssists: data.topFragger ? data.topFragger.assists : null,
+        topFraggerHeroId: data.topFragger ? data.topFragger.heroId : null,
+        topFraggerHeroName: data.topFragger ? data.topFragger.heroName : null,
+        topFraggerHeroDisplayName: data.topFragger ? data.topFragger.heroDisplayName : null,
+      });
+      if (!buf) return res.redirect(302, '/oa-logo.png');
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=600');
+      return res.send(buf);
+    } catch (err) {
+      console.warn('[match-og] card render failed:', err.message);
+      return res.redirect(302, '/oa-logo.png');
+    }
+  }
+
+  app.get('/og/match/:matchId.png', async (req, res) => {
+    const matchId = String(req.params.matchId || '');
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(matchId)) {
+      return res.redirect(302, '/oa-logo.png');
+    }
+    const db = require('../db');
+    return _renderMatchOgCard(res, db, matchId);
+  });
+
+  // Task #268 — Shared OG meta-tag responder for `/match/<id>` unfurls.
+  // Same shape as `_sendProfileOgMeta` (Tasks #221 / #258) so all three
+  // share-link flavours produce identical-looking cards in Discord etc.
+  async function _sendMatchOgMeta(req, res, db, matchId) {
+    let title = `Match #${matchId} · OCE Inhouse`;
+    let descriptionParts = [];
+    let resolved = null;
+    try {
+      resolved = await _resolveOgMatch(db, matchId);
+    } catch (err) {
+      console.warn('[match-og] meta fetch failed:', err.message);
+    }
+    if (resolved) {
+      const winner = resolved.radiantWin ? 'Radiant' : 'Dire';
+      title = `${winner} wins ${resolved.radiantScore}–${resolved.direScore} · Match #${matchId} · OCE Inhouse`;
+      descriptionParts.push(`${winner} victory`);
+      descriptionParts.push(`${resolved.radiantScore}–${resolved.direScore}`);
+      const mins = Math.floor((resolved.durationSeconds || 0) / 60);
+      const secs = (resolved.durationSeconds || 0) % 60;
+      if (mins > 0) descriptionParts.push(`${mins}:${String(secs).padStart(2, '0')}`);
+      if (resolved.mvp && resolved.mvp.name) {
+        descriptionParts.push(`MVP ${resolved.mvp.name}`);
+      }
+      if (resolved.topFragger && resolved.topFragger.name) {
+        const tf = resolved.topFragger;
+        descriptionParts.push(
+          `Top ${tf.name} ${tf.kills}/${tf.deaths}/${tf.assists}`
+            + (tf.heroDisplayName ? ` (${tf.heroDisplayName})` : '')
+        );
+      }
+    }
+    const description = descriptionParts.length
+      ? descriptionParts.join(' · ')
+      : 'View this inhouse match on OCE Inhouse.';
+    const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+    const host = req.get('host') || 'oceinhouse.gg';
+    const origin = `${proto}://${host}`;
+    const matchUrl = `${origin}/match/${encodeURIComponent(matchId)}`;
+    const imageUrl = `${origin}/og/match/${encodeURIComponent(matchId)}.png`;
+    const eTitle = _escapeHtml(title);
+    const eDesc = _escapeHtml(description);
+    const eUrl = _escapeHtml(matchUrl);
+    const eImage = _escapeHtml(imageUrl);
+
+    res.status(200).set('Cache-Control', 'public, max-age=300').type('html').send(
+      `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+      `<title>${eTitle}</title>` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<meta name="description" content="${eDesc}">` +
+      `<link rel="canonical" href="${eUrl}">` +
+      `<meta property="og:type" content="article">` +
+      `<meta property="og:site_name" content="OCE Inhouse">` +
+      `<meta property="og:title" content="${eTitle}">` +
+      `<meta property="og:description" content="${eDesc}">` +
+      `<meta property="og:url" content="${eUrl}">` +
+      `<meta property="og:image" content="${eImage}">` +
+      `<meta property="og:image:width" content="1200">` +
+      `<meta property="og:image:height" content="630">` +
+      `<meta property="og:image:alt" content="${eTitle}">` +
+      `<meta name="twitter:card" content="summary_large_image">` +
+      `<meta name="twitter:title" content="${eTitle}">` +
+      `<meta name="twitter:description" content="${eDesc}">` +
+      `<meta name="twitter:image" content="${eImage}">` +
+      `<meta name="twitter:image:alt" content="${eTitle}">` +
+      `<meta http-equiv="refresh" content="0; url=${eUrl}">` +
+      `</head><body><p><a href="${eUrl}">Match #${_escapeHtml(matchId)} on OCE Inhouse</a></p></body></html>`
+    );
+  }
+
+  // Task #268 — Canonical `/match/:matchId` unfurl handler. Crawlers get
+  // the generated OG card; real browsers fall through (next()) to the SPA
+  // catch-all so the React app boots normally. Mounted BEFORE the static
+  // asset serve + SPA catch-all so we can intercept the bot UAs first.
+  app.get('/match/:matchId', async (req, res, next) => {
+    const matchId = String(req.params.matchId || '');
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(matchId)) return next();
+    const ua = String(req.get('user-agent') || '');
+    if (!_isSocialUnfurler(ua)) return next();
+    try {
+      const db = require('../db');
+      return _sendMatchOgMeta(req, res, db, matchId);
+    } catch (err) {
+      console.warn('[match-og] unfurl failed:', err.message);
+      return next();
+    }
+  });
+
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
     app.use(express.static(staticPath));
