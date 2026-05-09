@@ -1313,6 +1313,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.45",
+    "title": "MatchDetail parity test no longer floods CI with mock-error stack traces",
+    "published_at": "2026-05-09",
+    "content": "**Task #177 — silencing the noisy mock errors in `web/src/pages/__tests__/MatchDetail.parity.test.jsx`.** The test was already passing, but its stderr was full of uncaught `VitestMocker.createError` stack traces (e.g. `No \"getPlayerVerifiedBadges\" export is defined on the \"../../api\" mock`) thrown from transitively-imported helpers like `VerifiedBadge.jsx`. The errors were being swallowed by `MatchErrorBoundary`, hiding genuine regressions and making the suite hard to use as a CI gate.\n\n**Fix.** Switched the `vi.mock('../../api', …)` factory from a static-object form to the `async (importOriginal) => ({ ...(await importOriginal()), <overrides> })` shape — the same pattern Task #171 used for `PlayerProfile.parity.test.jsx`. Transitively-imported `api.js` helpers now fall through to the real module instead of throwing `No \"X\" export is defined on the mock`. Only the explicitly-listed exports (`getMatch`, `deleteMatch`, `updatePlayerPosition`, `updateMatchMeta`, `clearMatchFileHash`, `triggerMissingDMs`) are still overridden.\n\n**Verification.** `cd web && npx vitest run src/pages/__tests__/MatchDetail.parity.test.jsx` — passes cleanly with no `VitestMocker.createError` noise (only the unrelated React Router v7 future-flag warnings remain).",
+    "author": "System"
+  },
+  {
     "version": "6.44",
     "title": "Tooltips and pop-overs now stay open when keyboard users tab to them",
     "published_at": "2026-05-09",

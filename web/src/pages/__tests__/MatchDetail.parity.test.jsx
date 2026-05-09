@@ -147,7 +147,8 @@ const MATCH = {
 };
 
 // ── Mock api.js ───────────────────────────────────────────────────────────
-vi.mock('../../api', () => ({
+vi.mock('../../api', async (importOriginal) => ({
+  ...(await importOriginal()),
   getMatch: vi.fn().mockResolvedValue(MATCH),
   deleteMatch: vi.fn(),
   updatePlayerPosition: vi.fn(),
