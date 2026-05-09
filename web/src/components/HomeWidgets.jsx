@@ -194,17 +194,53 @@ export function FeaturedPlayer() {
 
 export function PlayerOfTheWeek() {
   const [data, setData] = useState(null);
+  const [spotlight, setSpotlight] = useState(null);
+  const [improved, setImproved] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetchJsonSafe('/api/home/perf-spotlight').then(d => {
-      setData(d);
+    // Fetch all three in parallel: PERF leader of the week, the currently
+    // featured spotlight (so we can de-dup), and the most-improved fallback
+    // for when the two collide. Resolves once all three settle so the card
+    // doesn't flash through a doomed render before swapping to the filler.
+    Promise.all([
+      fetchJsonSafe('/api/home/perf-spotlight'),
+      fetchJsonSafe('/api/spotlight/current'),
+      fetchJsonSafe('/api/most-improved?days=7'),
+    ]).then(([perf, spot, imp]) => {
+      setData(perf || null);
+      setSpotlight((spot && spot.spotlight) || null);
+      // getMostImproved returns rows sorted by mmr_delta desc — pick the top
+      // gainer, but only if they actually moved up (>0). The DB columns are
+      // `mmr_delta` / `current_mmr` / `games_in_period`; we keep legacy-name
+      // fallbacks (`mmr_change` / `new_mmr` / `games_played`) so a future
+      // server-side rename or alias swap doesn't silently re-break this.
+      const top = Array.isArray(imp?.rows)
+        ? imp.rows.find(r => Number(r.mmr_delta ?? r.mmr_change) > 0)
+        : null;
+      setImproved(top || null);
       setLoaded(true);
     });
   }, []);
 
-  if (!loaded || !data?.player) return null;
-  const p = data.player;
+  if (!loaded) return null;
+  const perfPlayer = data?.player || null;
+  // De-dup: if the FeaturedPlayer card above is showing the same account as
+  // the PERF leader, swap this slot to a "Most Improved this week" filler so
+  // visitors don't see the same person twice in a row.
+  const sameAsFeatured = perfPlayer && spotlight
+    && Number(perfPlayer.account_id) === Number(spotlight.account_id);
+
+  if (sameAsFeatured) {
+    if (!improved) return null;
+    return <MostImprovedFiller row={improved} />;
+  }
+  if (!perfPlayer) {
+    // No PERF leader at all (quiet week) — still try the filler if we have one.
+    if (improved) return <MostImprovedFiller row={improved} />;
+    return null;
+  }
+  const p = perfPlayer;
   const perf = Number(p.perf || 0).toFixed(1);
   const pos = p.position;
   const rarity = p.perf >= 9 ? 'Top 1%' : p.perf >= 8 ? 'Elite' : p.perf >= 7 ? 'Excellent' : 'Strong';
@@ -245,6 +281,60 @@ export function PlayerOfTheWeek() {
               fontFamily: 'var(--font-condensed, inherit)',
               textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600, marginTop: 4,
             }}>{rarity} PERF · view match →</div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// Filler that takes the PlayerOfTheWeek slot when the PERF leader of the week
+// is already the FeaturedPlayer above (de-dup — see PlayerOfTheWeek).
+// Surfaces the biggest 7-day MMR climber so the slot still earns its space.
+function MostImprovedFiller({ row }) {
+  const accountId = row.account_id || row.player_id;
+  // Server returns `mmr_delta` / `current_mmr` / `games_in_period` from
+  // db.getMostImproved (src/db/index.js). Keep legacy aliases so a name
+  // change on either side doesn't silently break the filler.
+  const change = Number(row.mmr_delta ?? row.mmr_change ?? 0);
+  const newMmr = row.current_mmr ?? row.new_mmr ?? row.mmr ?? null;
+  const games = row.games_in_period ?? row.games_played ?? row.games ?? null;
+  return (
+    <Link to={`/player/${accountId}`} style={{ textDecoration: 'none' }}>
+      <div style={{
+        ...cardStyle,
+        marginBottom: 16,
+        background: 'linear-gradient(135deg, rgba(74,222,128,0.10) 0%, rgba(245,158,11,0.04) 100%)',
+        borderColor: 'rgba(74,222,128,0.35)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={eyebrowStyle}>📈 Most Improved</div>
+          <span style={{
+            fontSize: 10, fontFamily: 'var(--font-condensed, inherit)',
+            color: '#4ade80', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700,
+          }}>last 7 days</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div className="font-serif" style={{
+            fontSize: 38, fontWeight: 800,
+            color: '#4ade80',
+            fontFamily: 'var(--font-serif, serif)',
+            lineHeight: 1, minWidth: 80, textAlign: 'center',
+          }}>+{change}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="font-serif" style={{
+              fontSize: 18, fontWeight: 700, color: 'var(--text-primary)',
+              fontFamily: 'var(--font-serif, serif)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{row.display_name || row.nickname || `Player ${accountId}`}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              MMR climb · now {newMmr ?? '—'}{games ? ` · ${games} games` : ''}
+            </div>
+            <div style={{
+              fontSize: 11, color: 'var(--brass, var(--accent))',
+              fontFamily: 'var(--font-condensed, inherit)',
+              textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600, marginTop: 4,
+            }}>biggest climber · view profile →</div>
           </div>
         </div>
       </div>
