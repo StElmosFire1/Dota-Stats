@@ -588,6 +588,13 @@ export default function PlayerProfile() {
   // button to prefer the short `/p/<slug>` URL over the canonical
   // `/player/<accountId>` URL when one exists.
   const [vanitySlug, setVanitySlug] = useState(null);
+  // Task #242 — Share popover state. Opens a small Dialog next to the
+  // Share button with one-click intents for Twitter/X, Discord-friendly
+  // markdown, and the existing copy-link behaviour.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(null); // 'link' | 'discord' | null
+  const [shareAnchor, setShareAnchor] = useState(null); // { top, left } or null
+  const shareBtnRef = useRef(null);
   useEffect(() => {
     if (!accountId) { setVanitySlug(null); return; }
     let cancelled = false;
@@ -902,24 +909,19 @@ export default function PlayerProfile() {
   const headerExtras = (
     <>
       <button
-        onClick={() => {
-          // Task #221 — Prefer the short `/p/<slug>` vanity URL when this
-          // player has claimed one. Falls back to the canonical
-          // `/player/<accountId>` URL (the current page) otherwise so the
-          // button keeps working for unclaimed accounts.
-          const url = vanitySlug
-            ? `${window.location.origin}/p/${vanitySlug}`
-            : window.location.href;
-          navigator.clipboard?.writeText(url).then(() => {
-            const btn = document.getElementById('share-btn');
-            if (btn) { btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = vanitySlug ? '🔗 Share /p/' + vanitySlug : '🔗 Share'; }, 2000); }
-          }).catch(() => {
-            window.prompt('Copy this link:', url);
-          });
+        type="button"
+        ref={shareBtnRef}
+        onClick={(e) => {
+          setShareCopied(null);
+          const r = e.currentTarget.getBoundingClientRect();
+          setShareAnchor({ top: r.bottom + 8, left: r.left });
+          setShareOpen(true);
         }}
         id="share-btn"
-        title={vanitySlug ? `Copy ${window.location.origin}/p/${vanitySlug}` : 'Copy this profile URL'}
-        aria-label={vanitySlug ? `Copy share link /p/${vanitySlug}` : 'Copy share link'}
+        title={vanitySlug ? `Share ${window.location.origin}/p/${vanitySlug}` : 'Share this profile'}
+        aria-label={vanitySlug ? `Share profile /p/${vanitySlug}` : 'Share profile'}
+        aria-haspopup="dialog"
+        aria-expanded={shareOpen}
         style={{
           background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
           borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
@@ -2264,6 +2266,118 @@ export default function PlayerProfile() {
             >Close</button>
           </div>
         </div>
+      </Dialog>
+
+      {/* Task #242 — Share popover. Uses the shared <Dialog> primitive
+          (focus trap, Escape, body scroll lock, focus restore — gates
+          the hand-rolled-modal a11y check). Offers one-click intents
+          for Twitter/X and Discord-friendly markdown alongside the
+          existing copy-link behaviour. */}
+      <Dialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        labelledBy="share-popover-title"
+        backdropStyle={{
+          position: 'fixed', inset: 0, zIndex: 9000,
+          background: 'transparent',
+        }}
+        contentStyle={shareAnchor ? {
+          position: 'fixed',
+          top: Math.min(shareAnchor.top, (typeof window !== 'undefined' ? window.innerHeight - 360 : shareAnchor.top)),
+          left: Math.min(shareAnchor.left, (typeof window !== 'undefined' ? window.innerWidth - 380 : shareAnchor.left)),
+        } : undefined}
+      >
+        {(() => {
+          const shareUrl = vanitySlug
+            ? `${window.location.origin}/p/${vanitySlug}`
+            : (typeof window !== 'undefined' ? window.location.href : '');
+          const mmrValue = seasonMmr != null ? seasonMmr : (rating?.mmr != null ? rating.mmr : null);
+          const mmrFragment = mmrValue != null ? ` (${Math.round(mmrValue)} MMR)` : '';
+          const tweetText = `Check out ${displayName}${mmrFragment} on OCE Inhouse:`;
+          const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent(shareUrl)}`;
+          const discordMarkdown = `Check out **${displayName}**${mmrFragment} on OCE Inhouse: <${shareUrl}>`;
+          const copyText = (text, kind) => {
+            const done = () => {
+              setShareCopied(kind);
+              // Brief confirmation flash, then auto-close so the popover
+              // doesn't linger after the user has what they came for.
+              window.setTimeout(() => {
+                setShareCopied(prev => prev === kind ? null : prev);
+                setShareOpen(false);
+              }, 900);
+            };
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(text).then(done).catch(() => {
+                window.prompt('Copy this:', text);
+                setShareOpen(false);
+              });
+            } else {
+              window.prompt('Copy this:', text);
+              setShareOpen(false);
+            }
+          };
+          const btnStyle = {
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            color: 'var(--text)', borderRadius: 8, padding: '10px 14px',
+            fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+            textDecoration: 'none',
+          };
+          return (
+            <div style={{
+              background: 'var(--bg-secondary, #111)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: 18, minWidth: 280, maxWidth: 360,
+              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+            }}>
+              <h2
+                id="share-popover-title"
+                style={{ margin: '0 0 4px 0', fontSize: 16, fontWeight: 700, color: 'var(--text)' }}
+              >Share this profile</h2>
+              <p style={{ margin: '0 0 14px 0', fontSize: 12, color: 'var(--text-muted)', wordBreak: 'break-all' }}>
+                {shareUrl}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <a
+                  href={twitterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={btnStyle}
+                  onClick={() => setShareOpen(false)}
+                >
+                  <span aria-hidden="true">🐦</span>
+                  <span>Share on Twitter / X</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => copyText(discordMarkdown, 'discord')}
+                  style={btnStyle}
+                >
+                  <span aria-hidden="true">💬</span>
+                  <span>{shareCopied === 'discord' ? '✅ Copied for Discord!' : 'Copy for Discord'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyText(shareUrl, 'link')}
+                  style={btnStyle}
+                >
+                  <span aria-hidden="true">🔗</span>
+                  <span>{shareCopied === 'link' ? '✅ Link copied!' : 'Copy link'}</span>
+                </button>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => setShareOpen(false)}
+                  style={{
+                    background: 'transparent', border: '1px solid var(--border)',
+                    color: 'var(--text-muted)', borderRadius: 8, padding: '6px 14px',
+                    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >Close</button>
+              </div>
+            </div>
+          );
+        })()}
       </Dialog>
     </div>
   );

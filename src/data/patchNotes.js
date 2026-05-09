@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.87",
+    "title": "One-click share to Twitter/X and Discord from your profile",
+    "published_at": "2026-05-09",
+    "content": "Task #242: the 🔗 Share button on /player/:id (and /p/:slug) just copied the vanity URL to the clipboard — most users who hit it intend to paste it somewhere immediately, so the extra step (switch tab → click compose → paste) was pure friction. v6.87 turns the button into a small share popover with three quick-share options.\n\nThe button now opens a Dialog (uses the shared `<Dialog>` primitive from web/src/components/Dialog.jsx — focus trap, Escape-to-close, focus restore, body-scroll lock, gates the hand-rolled-modal a11y check). Three actions inside: (1) **Share on Twitter / X** — opens `https://twitter.com/intent/tweet?text=…&url=…` in a new tab, pre-filled with `Check out <displayName> (<MMR> MMR) on OCE Inhouse:` plus the vanity URL (so the unfurl card from Task #241 does the heavy lifting on the embed). (2) **Copy for Discord** — copies a chat-friendly markdown string (`Check out **<name>** (<MMR> MMR) on OCE Inhouse: <url>`) with the URL wrapped in `<…>` so Discord still unfurls it but doesn't double-render the link text. (3) **Copy link** — preserves the original raw-URL clipboard behaviour for users who just want the bare link. All three prefer the short `/p/<slug>` vanity URL when one is claimed (Task #221) and fall back to the canonical `/player/<accountId>` URL otherwise. MMR comes from the existing `seasonMmr` / `rating.mmr` fields already on the page — no new API calls.\n\nThe trigger button gains `aria-haspopup=\"dialog\"` + `aria-expanded` so screen readers announce the popover relationship. Each action button shows a transient ✅ Copied confirmation for 2s after a successful clipboard write (with `window.prompt` fallback for browsers that block clipboard writes). a11y gate green (153 JSX / 3 CSS files), bundle compiles cleanly. Full-edition only — community edition has no vanity slugs / share button on its profile page.",
+    "author": "System"
+  },
+  {
     "version": "6.86",
     "title": "Shared profile links unfurl with the player's hero portrait",
     "published_at": "2026-05-09",
