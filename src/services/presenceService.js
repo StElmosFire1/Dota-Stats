@@ -195,11 +195,14 @@ async function getAllLivePresences() {
   }
 
   // Discord cache is keyed by discordId; resolve to account_id in one query.
+  // Only voice-active records produce a "Live now" row (plain Discord-online
+  // is intentionally excluded — Task #213 scopes the rollup to actively-
+  // doing-something statuses).
   const discordIds = [];
   for (const [discordId, rec] of _discord.entries()) {
     if (!rec) continue;
     if (now - (rec.updatedAt || 0) > STALE_MS) continue;
-    if (!rec.voice && (!rec.state || rec.state === 'offline')) continue;
+    if (!rec.voice) continue;
     discordIds.push(String(discordId));
   }
 
@@ -292,9 +295,10 @@ async function getAllLivePresences() {
       row = { status: 'in_queue', updated_at: new Date().toISOString() };
     } else if (discord?.voice) {
       row = { status: 'in_voice', updated_at: new Date(discord.updatedAt).toISOString() };
-    } else if (discord?.state && discord.state !== 'offline') {
-      row = { status: 'online', updated_at: new Date(discord.updatedAt).toISOString() };
     }
+    // NB: plain 'online' (Discord-online but not in game/lobby/queue/voice) is
+    // intentionally excluded — Task #213 scopes "Live now" to the four
+    // actively-doing-something statuses.
     if (!row) continue;
     out.push({
       account_id: accountId,
@@ -304,7 +308,7 @@ async function getAllLivePresences() {
   }
 
   // Sort by status priority then display name for a stable UI.
-  const order = { in_game: 0, in_lobby: 1, in_queue: 2, in_voice: 3, online: 4 };
+  const order = { in_game: 0, in_lobby: 1, in_queue: 2, in_voice: 3 };
   out.sort((a, b) => {
     const da = order[a.status] ?? 99;
     const db_ = order[b.status] ?? 99;

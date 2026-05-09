@@ -335,12 +335,13 @@ export default function Players() {
 // Task #213 — "Live now" tab body. Rendered card-style so it reads like a
 // spectator hook rather than a stats grid. Mirrors the chip styling used on
 // the v3 magazine cover (MagazineCover.jsx) so the colours stay consistent.
+// Only the four "actively doing something" statuses are part of the Live now
+// rollup — plain Discord-online is intentionally excluded.
 const LIVE_LABELS = {
   in_game:  { label: 'In game',  color: '#f59e0b', bg: 'rgba(245,158,11,0.18)' },
   in_lobby: { label: 'In lobby', color: '#fbbf24', bg: 'rgba(251,191,36,0.15)' },
   in_queue: { label: 'In queue', color: '#a78bfa', bg: 'rgba(167,139,250,0.18)' },
   in_voice: { label: 'In voice', color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
-  online:   { label: 'Online',   color: '#9ca3af', bg: 'rgba(156,163,175,0.18)' },
 };
 function LiveNowList({ loading, players }) {
   if (loading && players.length === 0) {
@@ -360,7 +361,8 @@ function LiveNowList({ loading, players }) {
   return (
     <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
       {players.map(p => {
-        const cfg = LIVE_LABELS[p.status] || LIVE_LABELS.online;
+        const cfg = LIVE_LABELS[p.status];
+        if (!cfg) return null;
         let label = cfg.label;
         if (p.status === 'in_game' && p.hero) label = `In game · ${p.hero}`;
         const profileUrl = p.account_id ? `/player/${p.account_id}` : null;
