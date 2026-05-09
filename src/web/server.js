@@ -1307,15 +1307,124 @@ function createServer(startupStatus = {}) {
       .replace(/'/g, '&#39;');
   }
 
+  // Task #241 — Pick the hero we want to show on the OG card. Preference
+  // order: pinned hero (player picked it themselves on /settings/profile),
+  // then their most-played hero from player_stats. Returns
+  // { heroId, heroName, heroDisplayName } or nulls when nothing is known.
+  async function _resolveOgProfileHero(db, accountId) {
+    let heroId = null;
+    let heroName = null;
+    try {
+      const cust = await db.getPlayerProfileCustomization(accountId).catch(() => null);
+      if (cust && cust.pinned_hero_id) heroId = parseInt(cust.pinned_hero_id, 10) || null;
+    } catch (_) { /* ignore */ }
+    if (!heroId) {
+      try {
+        const pool = db.getPool && db.getPool();
+        if (pool) {
+          const r = await pool.query(
+            `SELECT hero_id, MAX(hero_name) AS hero_name, COUNT(*)::int AS games
+               FROM player_stats
+              WHERE account_id = $1 AND hero_id > 0
+              GROUP BY hero_id
+              ORDER BY games DESC
+              LIMIT 1`,
+            [accountId]
+          );
+          if (r.rows[0]) {
+            heroId = parseInt(r.rows[0].hero_id, 10) || null;
+            heroName = r.rows[0].hero_name || null;
+          }
+        }
+      } catch (_) { /* ignore */ }
+    }
+    if (heroId && !heroName) {
+      try {
+        const pool = db.getPool && db.getPool();
+        if (pool) {
+          const r = await pool.query(
+            `SELECT hero_name FROM player_stats
+              WHERE hero_id = $1 AND hero_name IS NOT NULL
+              LIMIT 1`,
+            [heroId]
+          );
+          heroName = r.rows[0]?.hero_name || null;
+        }
+      } catch (_) { /* ignore */ }
+    }
+    let heroDisplayName = null;
+    if (heroName && typeof heroName === 'string') {
+      heroDisplayName = heroName.replace('npc_dota_hero_', '').replace(/_/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+    }
+    return { heroId, heroName, heroDisplayName };
+  }
+
+  // Task #241 — Generated 1200×630 OG card endpoint. Crawlers fetch this
+  // when they unfurl `/p/<slug>`; we render the player's pinned/most-played
+  // hero portrait with name + MMR + W/L overlay. Falls back to the static
+  // OA logo when canvas is unavailable or generation fails.
+  app.get('/og/profile/:slug.png', async (req, res) => {
+    try {
+      const db = require('../db');
+      const slug = req.params.slug || '';
+      if (!db.isWellFormedVanitySlug(slug)) {
+        return res.redirect(302, '/oa-logo.png');
+      }
+      const accountId = await db.getAccountIdByVanitySlug(slug);
+      if (!accountId) return res.redirect(302, '/oa-logo.png');
+
+      const [nick, rating, hero] = await Promise.all([
+        db.getNickname(accountId).catch(() => null),
+        db.getPlayerRating(accountId).catch(() => null),
+        _resolveOgProfileHero(db, accountId),
+      ]);
+      const displayName = nick || rating?.display_name || `Player ${accountId}`;
+      const wins = parseInt(rating?.wins) || 0;
+      const losses = parseInt(rating?.losses) || 0;
+      const mmr = rating ? parseInt(rating.mmr) : NaN;
+      let tierName = null;
+      try {
+        const { getMmrTier } = require('../config');
+        if (Number.isFinite(mmr) && typeof getMmrTier === 'function') {
+          const tier = getMmrTier(mmr);
+          if (tier && tier.name) tierName = tier.name;
+        }
+      } catch (_) { /* tier lookup optional */ }
+
+      const { generateProfileOgCard } = require('../services/profileOgCard');
+      const buf = await generateProfileOgCard({
+        displayName,
+        mmr: Number.isFinite(mmr) ? mmr : null,
+        wins,
+        losses,
+        tierName,
+        heroId: hero.heroId,
+        heroName: hero.heroName,
+        heroDisplayName: hero.heroDisplayName,
+      });
+      if (!buf) return res.redirect(302, '/oa-logo.png');
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=600');
+      return res.send(buf);
+    } catch (err) {
+      console.warn('[vanity-slug] OG card render failed:', err.message);
+      return res.redirect(302, '/oa-logo.png');
+    }
+  });
+
   async function _sendVanityOgCard(req, res, db, slug, accountId) {
     let displayName = `Player ${accountId}`;
     let descriptionParts = [];
+    let hasHero = false;
     try {
-      const [nick, rating] = await Promise.all([
+      const [nick, rating, hero] = await Promise.all([
         db.getNickname(accountId).catch(() => null),
         db.getPlayerRating(accountId).catch(() => null),
+        _resolveOgProfileHero(db, accountId).catch(() => ({ heroId: null })),
       ]);
       displayName = nick || rating?.display_name || displayName;
+      hasHero = !!(hero && hero.heroId);
       if (rating) {
         const wins = parseInt(rating.wins) || 0;
         const losses = parseInt(rating.losses) || 0;
@@ -1325,6 +1434,9 @@ function createServer(startupStatus = {}) {
         if (Number.isFinite(mmr)) descriptionParts.push(`${mmr} MMR`);
         if (total > 0) descriptionParts.push(`${wins}W ${losses}L`);
         if (wr != null) descriptionParts.push(`${wr}% win rate`);
+      }
+      if (hasHero && hero.heroDisplayName) {
+        descriptionParts.push(`Signature: ${hero.heroDisplayName}`);
       }
     } catch (err) {
       console.warn('[vanity-slug] OG meta fetch failed:', err.message);
@@ -1337,7 +1449,11 @@ function createServer(startupStatus = {}) {
     const origin = `${proto}://${host}`;
     const canonical = `${origin}/p/${encodeURIComponent(slug)}`;
     const profileUrl = `${origin}/player/${encodeURIComponent(accountId)}`;
-    const imageUrl = `${origin}/oa-logo.png`;
+    // Task #241 — point unfurlers at the per-player generated card. The
+    // endpoint itself falls back to /oa-logo.png if rendering fails, so
+    // crawlers always get a real image even on the error path.
+    const imageUrl = `${origin}/og/profile/${encodeURIComponent(slug)}.png`;
+    const twitterCard = 'summary_large_image';
 
     const title = `${displayName} · OCE Inhouse`;
     const eTitle = _escapeHtml(title);
@@ -1359,11 +1475,15 @@ function createServer(startupStatus = {}) {
       `<meta property="og:description" content="${eDesc}">` +
       `<meta property="og:url" content="${eCanonical}">` +
       `<meta property="og:image" content="${eImage}">` +
+      `<meta property="og:image:width" content="1200">` +
+      `<meta property="og:image:height" content="630">` +
+      `<meta property="og:image:alt" content="${eName} — OCE Inhouse profile card">` +
       `<meta property="profile:username" content="${_escapeHtml(slug)}">` +
-      `<meta name="twitter:card" content="summary">` +
+      `<meta name="twitter:card" content="${twitterCard}">` +
       `<meta name="twitter:title" content="${eTitle}">` +
       `<meta name="twitter:description" content="${eDesc}">` +
       `<meta name="twitter:image" content="${eImage}">` +
+      `<meta name="twitter:image:alt" content="${eName} — OCE Inhouse profile card">` +
       `<meta http-equiv="refresh" content="0; url=${eProfile}">` +
       `</head><body><p><a href="${eProfile}">${eName} on OCE Inhouse</a></p></body></html>`
     );
