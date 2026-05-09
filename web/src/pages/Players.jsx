@@ -505,20 +505,25 @@ function InhouseGameCard({ matchId, players }) {
           </span>
         </div>
         {watchableId && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <a
-              href={`steam://rungame/570//+watch_server%20${encodeURIComponent(watchableId)}`}
-              style={{
-                background: cfg.bg, color: cfg.color,
-                border: `1px solid ${cfg.color}55`, borderRadius: 4,
-                padding: '4px 10px', fontSize: 11, fontWeight: 700,
-                textDecoration: 'none', whiteSpace: 'nowrap',
-              }}
-              title="Open in Dota 2 as a spectator"
-            >
-              Watch
-            </a>
-            <CopyWatchIdButton matchId={watchableId} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <a
+                href={`steam://rungame/570//+watch_server%20${encodeURIComponent(watchableId)}`}
+                style={{
+                  background: cfg.bg, color: cfg.color,
+                  border: `1px solid ${cfg.color}55`, borderRadius: 4,
+                  padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                  textDecoration: 'none', whiteSpace: 'nowrap',
+                }}
+                title="Spectate in Dota 2 — note: pub matchmaking games may be blocked by Valve's anti-sniping policy. Use the Watch tab in Dota for pubs."
+              >
+                Watch
+              </a>
+              <CopyWatchIdButton matchId={watchableId} />
+            </div>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              pubs may be restricted
+            </span>
           </div>
         )}
       </div>
@@ -684,20 +689,25 @@ function LivePlayerGrid({ players }) {
               }}>{label}</div>
             </div>
             {watchableId ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <a
-                  href={`steam://rungame/570//+watch_server%20${encodeURIComponent(watchableId)}`}
-                  style={{
-                    background: cfg.bg, color: cfg.color,
-                    border: `1px solid ${cfg.color}55`, borderRadius: 4,
-                    padding: '4px 10px', fontSize: 11, fontWeight: 700,
-                    textDecoration: 'none', whiteSpace: 'nowrap',
-                  }}
-                  title="Open in Dota 2 as a spectator"
-                >
-                  Watch
-                </a>
-                <CopyWatchIdButton matchId={watchableId} />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <a
+                    href={`steam://rungame/570//+watch_server%20${encodeURIComponent(watchableId)}`}
+                    style={{
+                      background: cfg.bg, color: cfg.color,
+                      border: `1px solid ${cfg.color}55`, borderRadius: 4,
+                      padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                      textDecoration: 'none', whiteSpace: 'nowrap',
+                    }}
+                    title="Spectate in Dota 2 — note: pub matchmaking games may be blocked by Valve's anti-sniping policy. Use the Watch tab in Dota for pubs."
+                  >
+                    Watch
+                  </a>
+                  <CopyWatchIdButton matchId={watchableId} />
+                </div>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  pubs may be restricted
+                </span>
               </div>
             ) : (
               <span style={{

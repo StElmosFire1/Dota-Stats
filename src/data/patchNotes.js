@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.09",
+    "title": "Featured player hero portrait, paywall centred, watch button hint, sign-in reliability",
+    "published_at": "2026-05-09",
+    "content": "Five UI fixes across the home page, positions paywall, live players watch button, and Steam sign-in flow.\n\nFeatured player card: the Player of the Week card on the home page had empty dead space on the right side. A hero portrait (using the same Dota CDN images as the live players page) is now displayed on the right side of the card, labelled with the hero name below it. Falls back to a placeholder if the hero image fails to load.\n\nPro paywall card: the upgrade card that appears when a non-Pro user visits a gated page (e.g. Position Player Profiles) was anchored near the top of the blurred section. On long pages it parked well below the fold. Changed to `position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%)` so the card is always centred in the visible viewport regardless of scroll position.\n\nWatch button — pub restriction hint: Valve blocks live spectating of pub matchmaking games via the `watch_server` console command as an anti-stream-sniping measure. The Watch buttons on the Live Players page now show a `pubs may be restricted` note beneath the button and an informative tooltip so players know to use Dota's Watch tab for pub games.\n\nSteam sign-in reliability: added `cache: 'no-store'` to all `/api/auth/me` fetch calls so the browser never serves a cached (stale) response after a sign-in redirect. Extended the post-`?auth=success` retry sweep from 4 attempts (max 2 s) to 6 attempts (max 5.5 s) to handle slower session-cookie propagation on prod.\n\nA11y gate green (153 JSX / 3 CSS). Build clean.",
+    "author": "System"
+  },
+  {
     "version": "7.08",
     "title": "Patch notes now stay in sync with deployments",
     "published_at": "2026-05-09",

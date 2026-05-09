@@ -817,7 +817,7 @@ function SignInRetryBanner() {
     // re-entry loop if React re-runs the effect during the sweep.
     if (!selfHealRef.current) {
       selfHealRef.current = true;
-      const delays = [200, 600, 1200, 2000];
+      const delays = [200, 600, 1200, 2000, 3500, 5500];
       let cancelled = false;
       (async () => {
         for (const d of delays) {

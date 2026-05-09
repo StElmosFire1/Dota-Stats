@@ -12,7 +12,7 @@ export function SteamAuthProvider({ children }) {
   // false and the modal stops showing).
   const refreshMe = React.useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      const res = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
       const data = await res.json();
       if (data && data.accountId) {
         setSteamUser(data);
@@ -34,7 +34,7 @@ export function SteamAuthProvider({ children }) {
     // silently dropped and the user lands at /?auth=success but stays
     // signed out. Mirrors the pattern already used by refreshMe() and
     // logout().
-    fetch('/api/auth/me', { credentials: 'include' })
+    fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
         if (data && data.accountId) {

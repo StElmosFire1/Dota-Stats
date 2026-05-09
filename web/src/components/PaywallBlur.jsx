@@ -53,25 +53,21 @@ export default function PaywallBlur({ feature, children, blurStrength = 6, minHe
           pointerEvents: 'none',
         }}
       />
-      {/* Card overlay — top-anchored + sticky so it follows the viewport. */}
+      {/* Card overlay — fixed to the centre of the visible viewport so it's
+          immediately obvious regardless of how tall the blurred section is. */}
       <div
-        style={{
-          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          display: 'flex', justifyContent: 'center',
-          padding: '24px 16px',
-          pointerEvents: 'none',
-        }}
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
       >
         <div
           className="oa-card oa-card-rule"
           style={{
-            // Sticky offset must clear the global navbar (sticky, ~52px tall,
-            // z-index 100) plus a small breathing gap. Without this, the
-            // upgrade card slides under the navbar tabs as you scroll down
-            // through the gated table and the heading gets visually clipped.
-            position: 'sticky', top: 76,
-            alignSelf: 'flex-start',
-            maxWidth: 460, width: '100%',
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 200,
+            maxWidth: 460,
+            width: 'calc(100% - 32px)',
             padding: '24px 28px', textAlign: 'center',
             color: 'var(--text-primary)',
             boxShadow: '0 14px 40px rgba(0,0,0,0.55)',

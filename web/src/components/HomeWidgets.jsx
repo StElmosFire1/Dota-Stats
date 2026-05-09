@@ -2,6 +2,30 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { formatHeroName } from '../utils/heroes';
 
+const HERO_CDN = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes';
+function heroSlug(name) {
+  if (!name) return null;
+  return String(name).replace(/^npc_dota_hero_/, '').toLowerCase().replace(/\s+/g, '_');
+}
+function HeroPortrait({ heroName, size = 72 }) {
+  const [failed, setFailed] = React.useState(false);
+  const slug = heroSlug(heroName);
+  const w = Math.round(size * 1.78);
+  if (!slug || failed) {
+    return <div style={{ width: w, height: size, background: 'var(--bg-hover)', borderRadius: 6, flexShrink: 0 }} />;
+  }
+  return (
+    <img
+      src={`${HERO_CDN}/${slug}.png`}
+      alt={slug}
+      width={w}
+      height={size}
+      onError={() => setFailed(true)}
+      style={{ borderRadius: 6, objectFit: 'cover', flexShrink: 0, display: 'block' }}
+    />
+  );
+}
+
 const fetchJsonSafe = async (url) => {
   try {
     const r = await fetch(url);
@@ -282,6 +306,17 @@ export function PlayerOfTheWeek() {
               textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600, marginTop: 4,
             }}>{rarity} PERF · view match →</div>
           </div>
+          {p.hero_name && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <HeroPortrait heroName={p.hero_name} size={64} />
+              <div style={{
+                fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
+                fontFamily: 'var(--font-condensed, inherit)',
+                textTransform: 'uppercase', letterSpacing: '0.1em',
+                maxWidth: 114, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{formatHeroName(p.hero_name)}</div>
+            </div>
+          )}
         </div>
       </div>
     </Link>
