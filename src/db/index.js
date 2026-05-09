@@ -2536,9 +2536,23 @@ async function getMatches(limit = 50, offset = 0, seasonId = null) {
   const p = getPool();
   const params = [limit, offset];
   const seasonClause = _sc(seasonId, params, 'm');
+  // `players` is a JSON array of {team, hero, kills, deaths, assists,
+  // account_id, nickname} ordered Radiant→Dire then kills DESC. Used by the
+  // Match History list to render hero icons + a "top fragger per side" line
+  // without firing N+1 follow-up queries (Task #259-followup, May 2026).
   const result = await p.query(
     `SELECT m.*,
-       (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count
+       (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count,
+       (SELECT json_agg(row_to_json(p2) ORDER BY p2.team, p2.kills DESC NULLS LAST)
+        FROM (
+          SELECT ps.team, ps.hero, ps.kills, ps.deaths, ps.assists,
+                 ps.account_id, n.nickname
+          FROM player_stats ps
+          LEFT JOIN nicknames n
+            ON n.account_id = ps.account_id AND ps.account_id != 0
+          WHERE ps.match_id = m.match_id
+        ) p2
+       ) as players
      FROM matches m
      WHERE 1=1${seasonClause}
      ORDER BY m.date DESC

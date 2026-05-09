@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { getMatches, updateMatchMeta } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
+import HeroIcon from '../components/HeroIcon';
 
 function formatDuration(seconds) {
   if (!seconds) return '--';
@@ -17,6 +18,66 @@ function formatDate(dateStr) {
     day: 'numeric', month: 'short', year: 'numeric',
     timeZone: 'Australia/Sydney',
   });
+}
+
+// Compact preview of who played and on what hero, rendered between the
+// "Radiant/Dire Victory · 40:50 · 10 players" body line and the badge
+// footer on each match card. Two rows (Radiant / Dire) with up to 5
+// hero icons + the top fragger's name per side. Avoids opening the
+// match detail page just to remember "wait, was Hoodini in this one?".
+// Defensive against the data shape: if `players` is missing (older
+// rows where the JOIN returned null, or a match with zero parsed
+// players) we render nothing — the rest of the card stays valid.
+function MatchPlayersStrip({ players, radiantWin }) {
+  if (!Array.isArray(players) || players.length === 0) return null;
+  const radiant = players.filter(p => p.team === 'radiant' || p.team === 0 || p.team === '0');
+  const dire    = players.filter(p => p.team === 'dire'    || p.team === 1 || p.team === '1');
+  if (radiant.length === 0 && dire.length === 0) return null;
+
+  const renderSide = (side, label, isWinner) => {
+    if (side.length === 0) return null;
+    const top = side[0]; // already sorted kills DESC server-side
+    const topName = top?.nickname || (top?.account_id ? `Player ${top.account_id}` : null);
+    const sideColor = label === 'Radiant' ? 'var(--radiant-color)' : 'var(--dire-color)';
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{
+          color: sideColor, fontSize: '0.72rem', fontWeight: 700,
+          letterSpacing: 0.4, width: 52, flexShrink: 0,
+          opacity: isWinner ? 1 : 0.7,
+        }}>
+          {label.toUpperCase()}
+        </span>
+        <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+          {side.slice(0, 5).map((p, i) => (
+            <HeroIcon key={`${p.account_id || 'a'}-${i}`} heroName={p.hero} size="sm" />
+          ))}
+        </div>
+        {topName && (
+          <span style={{
+            fontSize: '0.78rem', color: 'var(--text-muted)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            minWidth: 0,
+          }}>
+            top: <span style={{ color: 'var(--text-secondary)' }}>{topName}</span>
+            {Number.isFinite(Number(top?.kills)) && (
+              <> · {top.kills}/{top.deaths ?? '-'}/{top.assists ?? '-'}</>
+            )}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 4,
+      marginTop: '0.6rem',
+    }}>
+      {renderSide(radiant, 'Radiant', radiantWin)}
+      {renderSide(dire,    'Dire',    !radiantWin)}
+    </div>
+  );
 }
 
 function formatTime(dateStr) {
@@ -206,9 +267,13 @@ export default function MatchList() {
                       <span className="match-duration">{formatDuration(match.duration)}</span>
                       <span className="match-players">{match.player_count || '?'} players</span>
                     </div>
-                    {(match.parse_method || match.patch || match.season_id || isSuperuser) && (
+                    <MatchPlayersStrip players={match.players} radiantWin={match.radiant_win} />
+                    {((isSuperuser && match.parse_method) || match.patch || match.season_id || isSuperuser) && (
                       <div className="match-card-footer" style={{ alignItems: 'center' }}>
-                        {match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
+                        {/* parse_method ("odota-parser", "live-gc", etc.) is an internal pipeline detail —
+                            visitors don't care which path a match came in on. Surfaced for superusers only
+                            so admins can still spot a stalled/skipped parse from the list. */}
+                        {isSuperuser && match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
                         {match.lobby_name && <span className="lobby-name">{match.lobby_name}</span>}
                         {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
 

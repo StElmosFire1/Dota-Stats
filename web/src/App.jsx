@@ -770,13 +770,16 @@ function EditorialFooter() {
 // signed in or navigates away. Strictly read-only — does not block the
 // page or change any other UI.
 function SignInRetryBanner() {
-  const { steamUser, loading } = useSteamAuth();
+  const { steamUser, loading, refreshMe } = useSteamAuth();
   const location = useLocation();
   const [show, setShow] = useState(false);
   // One-shot guard: only POST /api/auth/diagnose once per mount, even if
   // the auth context briefly re-renders or the URL/search changes while
   // the banner is up.
   const diagnoseFiredRef = React.useRef(false);
+  // Same one-shot guard for the self-heal refetch — prevents an infinite
+  // refresh loop if /api/auth/me genuinely keeps returning null.
+  const selfHealRef = React.useRef(false);
 
   useEffect(() => {
     // Always self-clear when the trigger conditions no longer apply —
@@ -796,19 +799,48 @@ function SignInRetryBanner() {
       setShow(false);
       return;
     }
-    // ?auth=success but no session — fire the diagnostic ping at most once
-    // per mount, then surface the retry banner.
-    setShow(true);
-    if (!diagnoseFiredRef.current) {
-      diagnoseFiredRef.current = true;
-      fetch('/api/auth/diagnose', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ at: new Date().toISOString() }),
-      }).catch(() => {});
+    // ?auth=success but no session as far as the SPA knows. Before
+    // surfacing the scary retry banner, do ONE self-heal refetch of
+    // /api/auth/me. Prod logs (May 2026) prove the server-side session
+    // does land correctly — `/auth/diagnose` consistently reports
+    // session-exists=true session-accountId=… on the same browser that
+    // is showing this banner — so the most likely cause of the false
+    // positive is the SteamAuthProvider's mount-time fetch racing the
+    // session-cookie write by a few ms (the redirect from /auth/steam/
+    // return → /?auth=success can arrive at the SPA fractionally before
+    // the Set-Cookie header is committed by some browsers/proxies). A
+    // single retry through refreshMe() catches that race; if it still
+    // returns null we fall through to the diagnose ping + banner as
+    // before so a real failure is still surfaced.
+    if (!selfHealRef.current) {
+      selfHealRef.current = true;
+      refreshMe()
+        .then(user => {
+          if (user && user.accountId) {
+            setShow(false);
+            return;
+          }
+          // Genuine miss — keep the existing diagnose-then-banner path.
+          surfaceBanner();
+        })
+        .catch(() => surfaceBanner());
+      return;
     }
-  }, [loading, steamUser, location.search]);
+    surfaceBanner();
+
+    function surfaceBanner() {
+      setShow(true);
+      if (!diagnoseFiredRef.current) {
+        diagnoseFiredRef.current = true;
+        fetch('/api/auth/diagnose', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ at: new Date().toISOString() }),
+        }).catch(() => {});
+      }
+    }
+  }, [loading, steamUser, location.search, refreshMe]);
 
   if (!show) return null;
   return (

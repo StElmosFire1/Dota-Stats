@@ -21,6 +21,16 @@ export default function PaywallBlur({ feature, children, blurStrength = 6, minHe
 
   const label = FEATURE_LABELS[feature] || 'This feature';
 
+  // Layout note (Nov 2026): the upgrade card used to render with
+  // `alignItems: center` inside an `inset: 0` overlay, which centred it
+  // vertically against the WHOLE blurred body. On long pages (e.g. the
+  // Position Player Profiles table, ~80+ rows) the card landed well below
+  // the fold and users had to scroll to discover the page was even gated
+  // — they assumed it was just slow-loading data. Fix: anchor the card
+  // near the top of the gated section AND make it `position: sticky` so
+  // as the user scrolls down through the blurred preview it tracks with
+  // the viewport. Card stays in eye-shot the entire time the gated area
+  // is on screen.
   return (
     <div style={{ position: 'relative', minHeight }}>
       <div
@@ -34,22 +44,35 @@ export default function PaywallBlur({ feature, children, blurStrength = 6, minHe
       >
         {children}
       </div>
+      {/* Gradient wash sits behind the card, covering the full blurred area. */}
       <div
+        aria-hidden="true"
         style={{
           position: 'absolute', inset: 0,
           background: 'linear-gradient(180deg, rgba(13,20,36,0.35) 0%, rgba(13,20,36,0.7) 60%, rgba(13,20,36,0.85) 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 24,
+          pointerEvents: 'none',
+        }}
+      />
+      {/* Card overlay — top-anchored + sticky so it follows the viewport. */}
+      <div
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', justifyContent: 'center',
+          padding: '24px 16px',
+          pointerEvents: 'none',
         }}
       >
         <div
           className="oa-card oa-card-rule"
           style={{
+            position: 'sticky', top: 24,
+            alignSelf: 'flex-start',
             maxWidth: 460, width: '100%',
-            padding: '28px 30px', textAlign: 'center',
+            padding: '24px 28px', textAlign: 'center',
             color: 'var(--text-primary)',
-            boxShadow: '0 14px 40px rgba(0,0,0,0.45)',
+            boxShadow: '0 14px 40px rgba(0,0,0,0.55)',
             background: 'var(--bg-card)',
+            pointerEvents: 'auto',
           }}
         >
           <div className="oa-eyebrow" style={{ marginBottom: 6 }}>Pro Membership</div>
