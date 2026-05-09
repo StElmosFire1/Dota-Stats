@@ -478,9 +478,9 @@
 .magazine-v3 .v3-tod-wrap { overflow-x: auto; }
 .magazine-v3 .v3-tod-grid {
   display: grid;
-  grid-template-columns: 36px repeat(24, minmax(14px, 1fr));
-  gap: 2px;
-  min-width: 480px;
+  grid-template-columns: 36px repeat(24, minmax(38px, 1fr));
+  gap: 3px;
+  min-width: 960px;
 }
 .magazine-v3 .v3-tod-corner { width: 36px; height: 14px; }
 .magazine-v3 .v3-tod-hour-label {
@@ -495,12 +495,46 @@
   color: var(--text-muted, #8a8074);
   text-align: right;
   padding-right: 6px;
-  line-height: 18px;
+  line-height: 22px;
 }
 .magazine-v3 .v3-tod-cell {
-  height: 18px;
-  border-radius: 2px;
+  height: 22px;
+  border-radius: 3px;
   background: rgba(197, 169, 117, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.magazine-v3 .v3-tod-cell-score {
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  line-height: 1;
+  white-space: nowrap;
+}
+.magazine-v3 .v3-tod-w { color: var(--accent-green, #4ade80); }
+.magazine-v3 .v3-tod-l { color: var(--accent-red, #f87171); }
+.magazine-v3 .v3-tod-zero { opacity: 0.5; }
+.magazine-v3 .v3-tod-dash {
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0 1px;
+}
+.magazine-v3 .v3-tod-legend-sample {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-condensed, 'Oswald', sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(96, 165, 250, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Heatmap legend — explains both axes (colour = win rate, opacity = volume).

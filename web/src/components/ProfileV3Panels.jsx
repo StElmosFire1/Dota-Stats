@@ -45,8 +45,10 @@ export function TimeOfDayPanel({ data }) {
   return (
     <PanelShell eyebrow="When you play" title="Time-of-day heatmap">
       <div className="v3-panel-sub">
-        Each cell is one hour of one day in Australia/Sydney time. <strong>Colour</strong> shows whether you usually win in that slot
-        (green = mostly wins, red = mostly losses). <strong>Brightness</strong> shows how often you play it
+        Each cell is one hour of one day in Australia/Sydney time. The number inside shows
+        your <span style={{ color: 'var(--accent-green, #4ade80)', fontWeight: 700 }}>wins</span>
+        {' '}and <span style={{ color: 'var(--accent-red, #f87171)', fontWeight: 700 }}>losses</span>
+        {' '}in that slot. <strong>Brightness</strong> shows how often you play it
         (faint = a single game, solid = your busiest hour).
       </div>
       <div className="v3-tod-wrap">
@@ -61,20 +63,31 @@ export function TimeOfDayPanel({ data }) {
               {row.map((cell, hi) => {
                 const games = cell.games;
                 const wins = cell.wins;
+                const losses = games - wins;
                 const wr = games > 0 ? wins / games : 0;
+                // Single-channel volume signal in neutral blue. 0.18 floor so a
+                // single-game cell is still visible against the panel background;
+                // 1.0 ceiling on the busiest hour.
                 const opacity = games > 0 ? 0.18 + 0.82 * (games / maxGames) : 0;
-                const hue = games > 0 ? (wr >= 0.5 ? 'var(--accent-green, #4ade80)' : 'var(--accent-red, #f87171)') : 'transparent';
                 const titleStr = games > 0
-                  ? `${DAY_LABELS[di]} ${hi}:00 — ${games} games, ${wins}W/${games - wins}L (${Math.round(wr * 100)}% WR)`
+                  ? `${DAY_LABELS[di]} ${hi}:00 — ${games} games, ${wins}W/${losses}L (${Math.round(wr * 100)}% WR)`
                   : `${DAY_LABELS[di]} ${hi}:00 — no games`;
                 return (
                   <div
                     key={`c${di}-${hi}`}
                     className="v3-tod-cell"
-                    style={games > 0 ? { background: hue, opacity } : undefined}
+                    style={games > 0 ? { background: `rgba(96, 165, 250, ${opacity})` } : undefined}
                     title={titleStr}
                     aria-label={titleStr}
-                  />
+                  >
+                    {games > 0 && (
+                      <span className="v3-tod-cell-score">
+                        <span className={`v3-tod-w${wins === 0 ? ' v3-tod-zero' : ''}`}>{wins}W</span>
+                        <span className="v3-tod-dash">-</span>
+                        <span className={`v3-tod-l${losses === 0 ? ' v3-tod-zero' : ''}`}>{losses}L</span>
+                      </span>
+                    )}
+                  </div>
                 );
               })}
             </React.Fragment>
@@ -82,11 +95,11 @@ export function TimeOfDayPanel({ data }) {
         </div>
         <div className="v3-tod-legend" aria-hidden="true">
           <div className="v3-tod-legend-row">
-            <span className="v3-tod-legend-lbl">Win rate</span>
-            <span className="v3-tod-legend-swatch" style={{ background: 'var(--accent-red, #f87171)' }} title="Mostly losses" />
-            <span className="v3-tod-legend-mini">losses</span>
-            <span className="v3-tod-legend-swatch" style={{ background: 'var(--accent-green, #4ade80)' }} title="Mostly wins" />
-            <span className="v3-tod-legend-mini">wins</span>
+            <span className="v3-tod-legend-lbl">Cell score</span>
+            <span className="v3-tod-legend-sample">
+              <span className="v3-tod-w">2W</span><span className="v3-tod-dash">-</span><span className="v3-tod-l">1L</span>
+            </span>
+            <span className="v3-tod-legend-mini">wins in green, losses in red</span>
           </div>
           <div className="v3-tod-legend-row">
             <span className="v3-tod-legend-lbl">Games played</span>
@@ -94,7 +107,7 @@ export function TimeOfDayPanel({ data }) {
               <span
                 key={i}
                 className="v3-tod-legend-swatch"
-                style={{ background: 'var(--accent-green, #4ade80)', opacity: op }}
+                style={{ background: `rgba(96, 165, 250, ${op})` }}
                 title={i === 0 ? '1 game' : i === 3 ? 'Most games' : `${i + 1} of 4`}
               />
             ))}

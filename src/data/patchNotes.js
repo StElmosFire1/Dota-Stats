@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.82",
+    "title": "Time-of-day heatmap — neutral blue cells with W-L numbers inside",
+    "published_at": "2026-05-09",
+    "content": "Reworked the time-of-day heatmap on /player/:id (Magazine v3) so each played hour now shows the actual wins-losses tally inside the cell instead of a red/green colour fill. Same hourly resolution (24 cols × 7 rows), same data, much more legible.\n\nCell shape (web/src/components/ProfileV3Panels.jsx + .v3-tod-* CSS in MagazineCover.css): each played hour renders `1W-0L` style text — wins coloured `--accent-green`, losses coloured `--accent-red`, dash + zero counts faded to ~50% so a clean 1W-0L doesn't look half-red. Cell background is neutral blue (`rgba(96, 165, 250, X)`) with opacity scaled by volume — same 0.18 floor → 1.0 ceiling formula as before, just in blue instead of green/red, so the brightness=volume signal is preserved as a single channel rather than competing with hue. Cell height up from 18→22px and min cell width 38px to fit the text; grid min-width up from 480→960px so the whole thing horizontally scrolls on phones.\n\nLegend was simplified to match: dropped the two win-rate swatches (the cell text shows wins/losses directly now) and replaced them with a single sample 'Cell score: 2W-1L (wins in green, losses in red)' chip. Volume swatch row stays, recoloured to the new blue ramp.\n\nTooltip + aria-label still carry the full breakdown (`Sat 19:00 — 3 games, 2W/1L (67% WR)`) so the data is one hover/focus away. Full-edition only — community edition has no Magazine v3 panels. A11y gate green (153 JSX / 3 CSS files), web bundle builds cleanly.",
+    "author": "System"
+  },
+  {
     "version": "6.81",
     "title": "Voice-pack cues survive a bot restart",
     "published_at": "2026-05-09",
