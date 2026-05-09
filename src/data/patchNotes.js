@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "6.91",
+    "title": "Live-now badge now shows on phones too",
+    "published_at": "2026-05-09",
+    "content": "Task #248: the v6.78 'Live now' pulse-dot + count badge added in Task #227 lived inside the desktop Players nav link, which sits in `.nav-links` — and that container wraps to a full-width row beneath the brand at <=900px. On phones the badge ended up below the fold, so casual visitors browsing on mobile (the device most casual fans use) never saw the spectator hook unless they scrolled the navbar.\n\nFix: extracted the polling logic into a shared `useLivePresenceCount` hook (no behavioural change for desktop — same /api/presence/live/count poll every 30s while the tab is visible) and added a sibling `<MobileLiveBadge />` component that renders directly in the navbar's always-visible top row, right after the brand lockup. The mobile pill matches the desktop badge's green pulse styling, links to `/players?tab=live` (same deep-link as the desktop badge), and renders nothing when zero players are live so the navbar stays compact. CSS in `web/src/styles.css` reveals it with `display: inline-flex !important` inside the existing `@media (max-width: 900px)` block (the same breakpoint where `.nav-links` wraps), and hides the duplicate badge inside the wrapped Players link via a new `.nav-live-badge` class so the count never shows twice. Tap target is a real `<Link>`, has an `aria-label` describing the count and the destination, and the pulse dot is `aria-hidden`.\n\nDesktop nav is visually unchanged. a11y gate green (153 JSX / 3 CSS files). Full-edition only — community edition has no `/players?tab=live` surface.",
+    "author": "System"
+  },
+  {
     "version": "6.90",
     "title": "Time-of-day heatmap — restore the proper volume ramp (still in brass)",
     "published_at": "2026-05-09",

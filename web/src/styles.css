@@ -1086,6 +1086,18 @@ th.col-stat {
   .nav-link, .nav-brand {
     font-size: 0.82rem;
   }
+  /* Task #248 — `.nav-links` wraps to a full-width row beneath the brand
+     at this breakpoint, which pushes the v6.78 "Live now" badge below
+     the fold on phones. Reveal the always-visible top-row twin
+     (rendered by <MobileLiveBadge />) and suppress the duplicate badge
+     inside the wrapped Players link so we don't show the count twice. */
+  .nav-live-mobile {
+    display: inline-flex !important;
+    margin-left: auto;
+  }
+  .nav-links .nav-live-badge {
+    display: none !important;
+  }
 }
 
 @media (max-width: 768px) {

@@ -463,7 +463,7 @@ function ThemeToggle() {
 // the tab is visible, mirroring the per-profile chip's polling shape. The
 // link itself deep-links into the Live now tab via ?tab=live so visitors
 // land directly on the spectator hook from anywhere on the site.
-function NavPlayersLink({ isActive }) {
+function useLivePresenceCount() {
   const [count, setCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -479,6 +479,57 @@ function NavPlayersLink({ isActive }) {
     document.addEventListener('visibilitychange', onVis);
     return () => { cancelled = true; clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
   }, []);
+  return count;
+}
+
+// Task #248 — mobile-only twin of the desktop NavPlayersLink badge.
+// `.nav-links` (which hosts NavPlayersLink) wraps to a full-width row
+// below the brand on narrow screens, so on phones the badge falls below
+// the fold and stops working as a spectator hook. This pill lives in the
+// always-visible top row of the navbar and is shown only on viewports
+// where the nav wraps (see `.nav-live-mobile` in styles.css). When zero
+// players are live we render nothing so the navbar stays compact.
+function MobileLiveBadge({ count }) {
+  if (count <= 0) return null;
+  return (
+    <Link
+      to="/players?tab=live"
+      className="nav-live-mobile"
+      aria-label={`${count} player${count === 1 ? '' : 's'} live now — view spectators`}
+      title={`${count} player${count === 1 ? '' : 's'} live now`}
+      style={{
+        display: 'none',
+        alignItems: 'center',
+        gap: 5,
+        padding: '3px 9px 3px 7px',
+        borderRadius: 999,
+        background: 'rgba(34,197,94,0.14)',
+        border: '1px solid rgba(34,197,94,0.45)',
+        color: '#22c55e',
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1.2,
+        textDecoration: 'none',
+        flexShrink: 0,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: '50%',
+          background: '#22c55e',
+          boxShadow: '0 0 0 0 rgba(34,197,94,0.7)',
+          animation: 'oi-live-pulse 1.6s ease-out infinite',
+        }}
+      />
+      <span>{count} live</span>
+    </Link>
+  );
+}
+
+function NavPlayersLink({ isActive, count }) {
   const hasLive = count > 0;
   // Class isActive() matches by exact pathname, so /players stays active
   // regardless of the ?tab=live query string.
@@ -493,6 +544,7 @@ function NavPlayersLink({ isActive }) {
       <span>Players</span>
       {hasLive && (
         <span
+          className="nav-live-badge"
           aria-hidden="true"
           title={`${count} player${count === 1 ? '' : 's'} live now`}
           style={{
@@ -532,6 +584,10 @@ function Nav() {
   // v6.62 / Task #206 — gate the Cosmetics Shop link on signed-in viewers.
   const { steamUser } = useSteamAuth();
   const accountId = steamUser?.accountId;
+  // Task #248 — single shared poller for both the desktop NavPlayersLink
+  // badge and the mobile-only MobileLiveBadge so we don't fire two
+  // /api/presence/live/count requests every 30s.
+  const liveCount = useLivePresenceCount();
 
   return (
     <nav className="navbar">
@@ -542,6 +598,11 @@ function Nav() {
           <span className="brand-lockup-bot">INHOUSE</span>
         </span>
       </Link>
+      {/* Task #248 — mobile-only live-now pill, sits in the always-visible
+          top row of the navbar so phone visitors get the spectator hook
+          without expanding the wrapped nav. Hidden on desktop via CSS,
+          where the same signal already rides on the Players nav link. */}
+      <MobileLiveBadge count={liveCount} />
       <div className="nav-links">
         <Link to="/" className={isActive('/')}>Home</Link>
         <Link to="/leaderboard" className={isActive('/leaderboard')}>Leaderboard</Link>
@@ -550,7 +611,7 @@ function Nav() {
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
-        <NavPlayersLink isActive={isActive} />
+        <NavPlayersLink isActive={isActive} count={liveCount} />
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
