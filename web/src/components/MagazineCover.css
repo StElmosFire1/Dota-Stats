@@ -518,7 +518,7 @@
   white-space: nowrap;
 }
 .magazine-v3 .v3-tod-w { color: var(--accent-green, #4ade80); }
-.magazine-v3 .v3-tod-l { color: var(--accent-red, #f87171); }
+.magazine-v3 .v3-tod-l { color: #ff5a5a; }
 .magazine-v3 .v3-tod-zero { opacity: 0.5; }
 .magazine-v3 .v3-tod-dash {
   color: rgba(255, 255, 255, 0.55);
