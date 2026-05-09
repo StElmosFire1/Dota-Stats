@@ -7,6 +7,7 @@ import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
+import { useVoicePackEvents } from './hooks/useVoicePackEvents';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import WelcomeModal from './components/WelcomeModal';
 import { WhyIsThisSafeLink } from './components/SteamTrustModal';
@@ -716,6 +717,17 @@ function GlobalOnboardingWizard() {
   );
 }
 
+// Task #217 — drives win/loss, first-blood, and achievement-unlock voice
+// pack mp3s for the signed-in user from anywhere on the site (the
+// inhouse-only useInhouseAlerts hook stays mounted on /inhouse for the
+// accept/captain/your-pick/match-ready cues).
+function GlobalVoicePackEvents() {
+  const { steamUser } = useSteamAuth();
+  const accountId = steamUser?.accountId ? Number(steamUser.accountId) : null;
+  useVoicePackEvents({ accountId });
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -730,6 +742,7 @@ export default function App() {
             <SuperuserLoginModal />
             <WelcomeModal />
             <GlobalOnboardingWizard />
+            <GlobalVoicePackEvents />
             <DiscordLinkModal />
             <DiscordRetryBanner />
             <SignInRetryBanner />
