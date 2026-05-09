@@ -227,6 +227,21 @@ function isPremiumFlair(f) { return PREMIUM_FLAIRS.includes(f); }
 // any premium flair, flair_unlocked itself).
 function validateExtras(raw) {
   const e = (raw && typeof raw === 'object') ? raw : {};
+  // Task #259 — share_card_hero_id override for the OG unfurl card.
+  // Accepted values: null (use the existing pinned → most-played fallback
+  // chain), the string sentinel 'most_played' (force most-played even when
+  // a pinned hero is set), or a positive integer hero id (force that hero).
+  // Anything else is coerced to null so a malformed client save can't poison
+  // the field. The route handler does no Pro-gating — every signed-in
+  // player can override their own share-card hero.
+  let shareCardHeroId = null;
+  const rawShare = e.share_card_hero_id;
+  if (rawShare === 'most_played') {
+    shareCardHeroId = 'most_played';
+  } else if (rawShare != null && rawShare !== '') {
+    const n = parseInt(rawShare, 10);
+    if (Number.isFinite(n) && n > 0 && n < 1000000) shareCardHeroId = n;
+  }
   const out = {
     pinned_hero_border: e.pinned_hero_border == null || e.pinned_hero_border === '' ? null : String(e.pinned_hero_border),
     pinned_achievement_id: e.pinned_achievement_id == null || e.pinned_achievement_id === '' ? null : String(e.pinned_achievement_id).slice(0, 64),
@@ -239,6 +254,7 @@ function validateExtras(raw) {
     social_twitch:  e.social_twitch  == null || e.social_twitch  === '' ? null : String(e.social_twitch),
     social_youtube: e.social_youtube == null || e.social_youtube === '' ? null : String(e.social_youtube),
     social_steam:   e.social_steam   == null || e.social_steam   === '' ? null : String(e.social_steam),
+    share_card_hero_id: shareCardHeroId,
   };
   if (!isValidHeroBorder(out.pinned_hero_border)) return { ok: false, error: 'Unknown pinned-hero border colour' };
   if (!isValidFlair(out.flair_override)) return { ok: false, error: 'Unknown flair override' };

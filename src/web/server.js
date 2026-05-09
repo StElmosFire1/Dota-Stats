@@ -1375,13 +1375,37 @@ function createServer(startupStatus = {}) {
   // order: pinned hero (player picked it themselves on /settings/profile),
   // then their most-played hero from player_stats. Returns
   // { heroId, heroName, heroDisplayName } or nulls when nothing is known.
-  async function _resolveOgProfileHero(db, accountId) {
+  async function _resolveOgProfileHero(db, accountId, opts = {}) {
     let heroId = null;
     let heroName = null;
+    // Task #259 — `overrideHeroId` is the unsaved-preview override the
+    // settings page passes when the owner is auditioning a hero. Skips the
+    // saved override + pinned + most-played fallback chain entirely.
+    if (opts.overrideHeroId) {
+      const n = parseInt(opts.overrideHeroId, 10);
+      if (Number.isFinite(n) && n > 0) heroId = n;
+    }
+    // Task #259 — saved share-card hero override (extras.share_card_hero_id).
+    // 'most_played' sentinel skips the pinned step; a numeric value forces
+    // that hero. Falls through to pinned → most-played when unset.
+    let forceMostPlayed = !!opts.forceMostPlayedPreview;
+    let cust = null;
+    // We always need cust for the pinned-hero fallback below; load it once.
     try {
-      const cust = await db.getPlayerProfileCustomization(accountId).catch(() => null);
-      if (cust && cust.pinned_hero_id) heroId = parseInt(cust.pinned_hero_id, 10) || null;
+      cust = await db.getPlayerProfileCustomization(accountId).catch(() => null);
     } catch (_) { /* ignore */ }
+    if (!heroId && !forceMostPlayed && !opts.ignoreSavedOverride) {
+      const ov = cust && cust.extras ? cust.extras.share_card_hero_id : null;
+      if (ov === 'most_played') {
+        forceMostPlayed = true;
+      } else if (ov != null && ov !== '') {
+        const n = parseInt(ov, 10);
+        if (Number.isFinite(n) && n > 0) heroId = n;
+      }
+    }
+    if (!heroId && !forceMostPlayed) {
+      if (cust && cust.pinned_hero_id) heroId = parseInt(cust.pinned_hero_id, 10) || null;
+    }
     if (!heroId) {
       try {
         const pool = db.getPool && db.getPool();
@@ -1428,12 +1452,12 @@ function createServer(startupStatus = {}) {
   // when they unfurl `/p/<slug>`; we render the player's pinned/most-played
   // hero portrait with name + MMR + W/L overlay. Falls back to the static
   // OA logo when canvas is unavailable or generation fails.
-  async function _renderProfileOgCard(res, db, accountId) {
+  async function _renderProfileOgCard(res, db, accountId, opts = {}) {
     try {
       const [nick, rating, hero] = await Promise.all([
         db.getNickname(accountId).catch(() => null),
         db.getPlayerRating(accountId).catch(() => null),
-        _resolveOgProfileHero(db, accountId),
+        _resolveOgProfileHero(db, accountId, opts),
       ]);
       const displayName = nick || rating?.display_name || `Player ${accountId}`;
       const wins = parseInt(rating?.wins) || 0;
@@ -1461,7 +1485,14 @@ function createServer(startupStatus = {}) {
       });
       if (!buf) return res.redirect(302, '/oa-logo.png');
       res.set('Content-Type', 'image/png');
-      res.set('Cache-Control', 'public, max-age=600');
+      // Task #259 — preview requests (owner-only ?preview_hero_id=…) MUST
+      // bypass the public CDN cache so the picker reflects every keystroke.
+      // Saved-state requests keep the existing 10-minute cache.
+      if (opts.isPreview) {
+        res.set('Cache-Control', 'no-store');
+      } else {
+        res.set('Cache-Control', 'public, max-age=600');
+      }
       return res.send(buf);
     } catch (err) {
       console.warn('[vanity-slug] OG card render failed:', err.message);
@@ -1495,7 +1526,32 @@ function createServer(startupStatus = {}) {
     if (!/^\d{1,20}$/.test(accountId)) {
       return res.redirect(302, '/oa-logo.png');
     }
-    return _renderProfileOgCard(res, db, accountId);
+    // Task #259 — owner-only unsaved-preview override. Settings → Profile
+    // appends `?preview_hero_id=<id>` (or `most_played`) so the picker can
+    // show what the unfurl card will look like before the user clicks Save.
+    // Restricted to the signed-in owner so a third party can't trick the
+    // generator into rendering an arbitrary hero on someone else's card.
+    let opts = {};
+    if (req.session?.accountId && String(req.session.accountId) === accountId) {
+      const raw = req.query.preview_hero_id;
+      if (raw === 'most_played') {
+        opts.isPreview = true;
+        opts.forceMostPlayedPreview = true;
+      } else if (raw === 'pinned') {
+        // Explicit "show me what the pinned-fallback chain renders" mode.
+        // Bypasses the saved share_card_hero_id override so the picker
+        // can preview "Use pinned hero" before the user clicks Save.
+        opts.isPreview = true;
+        opts.ignoreSavedOverride = true;
+      } else if (raw != null && raw !== '') {
+        const n = parseInt(raw, 10);
+        if (Number.isFinite(n) && n > 0) {
+          opts.isPreview = true;
+          opts.overrideHeroId = n;
+        }
+      }
+    }
+    return _renderProfileOgCard(res, db, accountId, opts);
   });
 
   // Task #221 / #258 — Shared OG meta-tag responder. Used for both
@@ -8718,6 +8774,33 @@ NOTES
       const extrasResult = cosm.validateExtras(body.extras);
       if (!extrasResult.ok) return res.status(400).json({ error: extrasResult.error });
       const extras = extrasResult.extras;
+
+      // Task #259 — share-card hero override must be a hero the player has
+      // actually played (matches the UI restriction). Sentinel 'most_played'
+      // and null are always allowed; numeric ids are checked against
+      // player_stats so a malicious client can't persist an arbitrary id.
+      if (Number.isInteger(extras.share_card_hero_id)) {
+        const pool = db.getPool && db.getPool();
+        if (!pool) {
+          return res.status(500).json({ error: 'Could not validate share-card hero (db unavailable)' });
+        }
+        try {
+          const r = await pool.query(
+            `SELECT 1 FROM player_stats
+             WHERE account_id = $1 AND hero_id = $2 LIMIT 1`,
+            [accountId, extras.share_card_hero_id]
+          );
+          if (!r.rows.length) {
+            return res.status(400).json({
+              error: 'Share-card hero must be one of your played heroes',
+            });
+          }
+        } catch (e) {
+          // Fail closed — never persist an unverified hero id.
+          console.warn('[me/profile] share_card_hero_id check failed:', e.message);
+          return res.status(500).json({ error: 'Could not validate share-card hero' });
+        }
+      }
       // Pro-gating on the premium extras
       if (!isPro && extras.frame_animated) {
         return res.status(403).json({ error: 'Animated frame is reserved for Pro members' });

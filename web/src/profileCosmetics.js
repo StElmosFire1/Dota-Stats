@@ -196,4 +196,7 @@ export const DEFAULT_EXTRAS = {
   social_twitch: null,
   social_youtube: null,
   social_steam: null,
+  // Task #259 — null = use pinned → most-played fallback;
+  // 'most_played' = force most-played; or a positive integer hero id.
+  share_card_hero_id: null,
 };

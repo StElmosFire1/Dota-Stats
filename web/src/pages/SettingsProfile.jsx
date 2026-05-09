@@ -70,6 +70,182 @@ function ThemeSwatch({ color, selected, locked, onClick }) {
   );
 }
 
+// Task #259 — Share card hero picker. Three preset modes plus a free-form
+// hero search. Renders an `<img>` of the live OG card endpoint so the
+// player sees exactly what crawlers will unfurl. The image element appends
+// a cache-busting `t=` param on every state change so the browser always
+// re-fetches; the server marks preview responses `Cache-Control: no-store`.
+function ShareCardHeroPicker({ accountId, extras, setExtra, ownHeroes, pinnedHeroId }) {
+  const raw = extras.share_card_hero_id;
+  const mode = raw === 'most_played'
+    ? 'most_played'
+    : (raw != null && raw !== '' ? 'custom' : 'pinned');
+  const customHeroId = mode === 'custom' ? parseInt(raw, 10) : null;
+  const [search, setSearch] = useState('');
+  const [previewBust, setPreviewBust] = useState(() => Date.now());
+
+  // Re-bust the preview whenever the override changes so the <img> reloads.
+  React.useEffect(() => { setPreviewBust(Date.now()); }, [raw]);
+
+  // Restrict the picker to heroes the player has actually played — same
+  // pool the server-side validation enforces on save. Build a {id, name}
+  // shape from `ownHeroes` (which has hero_id/hero_name/games shape).
+  const playedPool = useMemo(() => {
+    return (ownHeroes || [])
+      .filter(h => h && h.hero_id)
+      .map(h => ({
+        id: parseInt(h.hero_id, 10),
+        name: h.hero_name || getHeroName(h.hero_id) || `Hero #${h.hero_id}`,
+        games: h.games || 0,
+      }));
+  }, [ownHeroes]);
+
+  const heroOptions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return playedPool.slice(0, 8); // show top played when not searching
+    return playedPool.filter(h => h.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [search, playedPool]);
+
+  // Build the preview URL. The owner-only `?preview_hero_id=` param tells
+  // the server which fallback chain to render BEFORE save:
+  //   - 'pinned' → ignore the saved share_card override and render the
+  //     pinned → most-played fallback (so unsaved "Use pinned" is honest)
+  //   - 'most_played' → force the most-played fallback even if pinned exists
+  //   - <id> → render that specific hero
+  const previewQuery = (() => {
+    if (mode === 'most_played') return `?preview_hero_id=most_played&t=${previewBust}`;
+    if (mode === 'custom' && customHeroId) return `?preview_hero_id=${customHeroId}&t=${previewBust}`;
+    return `?preview_hero_id=pinned&t=${previewBust}`;
+  })();
+  const previewSrc = `/og/profile/by-id/${encodeURIComponent(accountId)}.png${previewQuery}`;
+
+  const presetBtnStyle = (active) => ({
+    textAlign: 'left', padding: '8px 14px', borderRadius: 8,
+    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    background: active ? 'rgba(245,158,11,0.18)' : 'var(--bg-card)',
+    border: active ? '2px solid #f59e0b' : '1px solid var(--border)',
+    color: active ? '#f59e0b' : 'var(--text-primary)',
+    minWidth: 180,
+  });
+
+  const pinnedHeroName = pinnedHeroId
+    ? (getHeroName(parseInt(pinnedHeroId, 10)) || `Hero #${pinnedHeroId}`)
+    : null;
+  const mostPlayed = (ownHeroes || []).find(h => h && h.hero_id);
+  const mostPlayedName = mostPlayed
+    ? (getHeroName(mostPlayed.hero_id) || `Hero #${mostPlayed.hero_id}`)
+    : null;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => setExtra('share_card_hero_id', null)}
+          style={presetBtnStyle(mode === 'pinned')}
+        >
+          <div>Use pinned hero</div>
+          <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
+            {pinnedHeroName ? `Currently: ${pinnedHeroName}` : 'Falls back to most-played when nothing is pinned'}
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setExtra('share_card_hero_id', 'most_played')}
+          style={presetBtnStyle(mode === 'most_played')}
+        >
+          <div>Use most-played hero</div>
+          <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
+            {mostPlayedName ? `Currently: ${mostPlayedName}` : 'Auto-selected from your top hero'}
+          </div>
+        </button>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+          Or pick a specific hero from any of your played heroes:
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 240, position: 'relative' }}>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={
+                mode === 'custom' && customHeroId
+                  ? `Currently: ${getHeroName(customHeroId) || `Hero #${customHeroId}`}`
+                  : (playedPool.length === 0 ? 'No played heroes yet' : 'Search your played heroes…')
+              }
+              disabled={playedPool.length === 0}
+              style={{
+                width: '100%', padding: '8px 10px', borderRadius: 8,
+                border: '1px solid var(--border)', background: 'var(--bg-card)',
+                color: 'var(--text-primary)', fontSize: 14,
+              }}
+            />
+            {heroOptions.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8,
+                zIndex: 10, maxHeight: 220, overflowY: 'auto',
+              }}>
+                {heroOptions.map(h => (
+                  <button
+                    type="button"
+                    key={h.id}
+                    onClick={() => { setExtra('share_card_hero_id', h.id); setSearch(''); }}
+                    aria-label={`Use ${h.name} on share card`}
+                    style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 0, color: 'inherit', font: 'inherit', padding: '6px 10px', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = ''}
+                    onFocus={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onBlur={(e) => e.currentTarget.style.background = ''}
+                  >
+                    <img src={getHeroImageUrl(h.id)} alt="" style={{ width: 36, height: 20, borderRadius: 2 }} />
+                    {h.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {mode === 'custom' && (
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => setExtra('share_card_hero_id', null)}
+            >
+              Reset to pinned
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 1.5, marginBottom: 6, textTransform: 'uppercase' }}>
+          Live preview · share card
+        </div>
+        <div style={{
+          width: '100%', maxWidth: 600,
+          aspectRatio: '1200 / 630',
+          borderRadius: 10, overflow: 'hidden',
+          border: '1px solid var(--border)',
+          background: '#0d1424',
+        }}>
+          <img
+            src={previewSrc}
+            alt="Share card preview"
+            style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+          This is exactly what Discord, Twitter and Slack will show. Saves on click; preview refreshes immediately.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PreviewCard({ displayName, customization }) {
   const accent = customization.theme_accent || DEFAULT_THEME;
   return (
@@ -1102,6 +1278,27 @@ export default function SettingsProfile() {
                 }}
               />
             )}
+          </section>
+
+          {/* Task #259 — Share card hero picker. Lets the player override
+              which hero portrait shows up on the OG unfurl card crawlers
+              fetch when /p/<slug> or /player/<id> is pasted into Discord /
+              Twitter. Defaults to the existing pinned → most-played fallback
+              chain so doing nothing here keeps current behaviour. */}
+          <section style={{ marginTop: 24 }}>
+            <h2 style={{ marginBottom: 8 }}>Share card hero</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+              Hero portrait shown when your profile link is pasted into Discord, Twitter,
+              Slack, etc. Defaults to your pinned hero (or most-played hero when no pin is set).
+              Pick a different hero here if you'd rather show off a non-pinned signature.
+            </p>
+            <ShareCardHeroPicker
+              accountId={accountId}
+              extras={extras}
+              setExtra={setExtra}
+              ownHeroes={ownHeroes}
+              pinnedHeroId={pinnedHeroId}
+            />
           </section>
 
           <section style={{ marginTop: 24 }}>
