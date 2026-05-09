@@ -93,6 +93,7 @@ else
       [ -z "$p" ] && continue
       case "$p" in
         artifacts/mockup-sandbox/src/.generated/*) ;;
+        attached_assets/*) ;;
         *) only_generated=0 ;;
       esac
     done <<< "$diff_paths"
