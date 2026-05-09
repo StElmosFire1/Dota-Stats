@@ -436,8 +436,25 @@ function classifyIconOnly(inner) {
   const trimmed = inner.trim();
   if (!trimmed) return null;
 
-  // Skip dynamic content — `{label}` could be a visible label or an icon
-  // component; we can't tell statically.
+  // Single `{...}` JSX expression case (Task #183). The earlier version of
+  // this pass skipped *any* inner content containing `{` because the
+  // expression *might* be a visible text label (e.g. `{label}`). That's
+  // overly lenient — `<button onClick={x}>{icon}</button>` (where `icon`
+  // is an SVG component reference) would slip through. We now narrow:
+  //   - obvious text-y expressions (string literals, ternaries with string
+  //     branches, `t('…')` / `i18n.t('…')` i18n calls, template literals)
+  //     → skip (whitelist as a visible label)
+  //   - obvious icon expressions (a single JSX element whose tag is `svg`
+  //     or ends in `Icon`/`Svg`, or a bare identifier ending in `Icon`/`Svg`)
+  //     → flag
+  //   - everything else (ambiguous, e.g. `{label}`) → skip, same as before
+  if (isSingleBraceExpression(trimmed)) {
+    const expr = trimmed.slice(1, -1).trim();
+    return classifyBraceExpression(expr);
+  }
+
+  // Mixed content that contains a `{...}` expression alongside other nodes
+  // is too ambiguous to classify statically — keep skipping it.
   if (/\{/.test(trimmed)) return null;
 
   // Single-glyph case (×, ✕, ✖, ⌄, →, …). Use Array.from to count code
@@ -474,6 +491,100 @@ function classifyIconOnly(inner) {
   const tail = trimmed.slice(childClose).replace(/\s+/g, '');
   if (tail !== `</${childTag}>`) return null;
   return `single child <${childTag}>…</${childTag}>`;
+}
+
+/**
+ * Returns true when `trimmed` is exactly one balanced `{...}` JSX
+ * expression — i.e. it starts with `{`, ends with `}`, and the brace
+ * depth only returns to zero at the final character. Tracks string
+ * literals so braces inside strings don't confuse the depth counter.
+ * Used by classifyIconOnly to detect the `<button>{expr}</button>` shape.
+ */
+function isSingleBraceExpression(trimmed) {
+  if (trimmed.length < 2) return false;
+  if (trimmed[0] !== '{' || trimmed[trimmed.length - 1] !== '}') return false;
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < trimmed.length; i++) {
+    const c = trimmed[i];
+    if (quote) {
+      if (c === '\\') { i++; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0 && i !== trimmed.length - 1) return false;
+    }
+  }
+  return depth === 0;
+}
+
+/**
+ * Classify the inner contents of a single `{...}` JSX expression child of
+ * a button/anchor. Returns:
+ *   - a non-null string describing the icon shape → caller should FLAG
+ *   - null → caller should SKIP (either obviously a visible text label
+ *            or too ambiguous to decide statically)
+ *
+ * The bias is intentionally conservative: when in doubt, skip. We only
+ * flag shapes that clearly reference an icon component or an inline SVG.
+ */
+function classifyBraceExpression(expr) {
+  if (!expr) return null;
+
+  // Inline JSX element wrapped in braces: `{<Icon/>}`, `{<svg>…</svg>}`.
+  if (expr[0] === '<') {
+    const m = expr.match(/^<([A-Za-z][A-Za-z0-9]*)/);
+    if (!m) return null;
+    const tag = m[1];
+    if (tag === 'svg' || /Icon$/.test(tag) || /Svg$/.test(tag)) {
+      return `single child <${tag}> in {…} expression`;
+    }
+    return null;
+  }
+
+  // Bare identifier: `{icon}`, `{CloseIcon}`, `{closeSvg}`. Only flag the
+  // names that are extremely likely to be an icon component reference —
+  // a plain `{label}` or `{count}` stays ambiguous and is skipped.
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(expr)) {
+    if (/(?:Icon|Svg)$/.test(expr)) {
+      return `icon component reference {${expr}}`;
+    }
+    return null;
+  }
+
+  // Member-access reference: `{Icons.close}`, `{props.icon}`. Flag only
+  // when the trailing segment ends in Icon/Svg — `{props.label}` is
+  // intentionally not flagged.
+  if (/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(expr)) {
+    const last = expr.split('.').pop();
+    if (/(?:Icon|Svg)$/.test(last)) {
+      return `icon component reference {${expr}}`;
+    }
+    return null;
+  }
+
+  // Everything below is treated as a visible text label and skipped.
+
+  // String / template literal: `{"Save"}`, `{'Save'}`, `` {`Save ${n}`} ``
+  if (expr[0] === '"' || expr[0] === "'" || expr[0] === '`') return null;
+
+  // Ternary with a string-literal branch: `{ok ? 'Save' : 'Cancel'}` or
+  // `{ok ? <Foo/> : 'Cancel'}` — once at least one branch is a string,
+  // the rendered output can be a visible label so we skip.
+  if (expr.includes('?') && expr.includes(':') && /["'`]/.test(expr)) return null;
+
+  // i18n / formatter call invoked with a string literal first argument:
+  // `{t('save')}`, `{i18n.t('save')}`, `{tr('save')}`, `{format('Hi {name}')}`.
+  // The leading callee can be any dotted identifier chain.
+  if (/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\(\s*["'`]/.test(expr)) return null;
+
+  // Default: ambiguous (e.g. bare `{label}`, `{count}`, complex expressions)
+  // → keep the previous lenient behaviour and skip.
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -738,4 +849,14 @@ function main() {
   process.exit(1);
 }
 
-main();
+// Allow this file to be both an executable script and a require()-able module
+// so the icon-only classifier can be unit-tested in isolation (Task #183).
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  classifyIconOnly,
+  classifyBraceExpression,
+  isSingleBraceExpression,
+};
