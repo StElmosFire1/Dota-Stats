@@ -8,7 +8,7 @@ import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
-import { LiveInhousePulse, PlayerOfTheWeek, HotHeroes } from '../components/HomeWidgets';
+import { LiveInhousePulse, PlayerOfTheWeek, HotHeroes, FeaturedPlayer } from '../components/HomeWidgets';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -548,6 +548,7 @@ export default function Home() {
         <HomeBanner />
         {tournamentBanner}
         <LiveInhousePulse />
+        <FeaturedPlayer />
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
           marginBottom: 8,
@@ -575,6 +576,7 @@ export default function Home() {
       {tournamentBanner}
 
       <LiveInhousePulse />
+      <FeaturedPlayer />
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
         marginBottom: 8,

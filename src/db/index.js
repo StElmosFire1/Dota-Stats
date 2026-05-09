@@ -1128,6 +1128,51 @@ async function init() {
     // Validated + Pro-gated server-side at /api/me/profile.
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS cover_fx JSONB NOT NULL DEFAULT '[]'::jsonb`);
 
+    // Task #208 / v6.64 — Vanity slugs. Pro-gated `/p/<slug>` short URLs.
+    // CITEXT keeps comparisons case-insensitive (so `Glimmer` and `glimmer`
+    // collide), and the partial UNIQUE index ignores the NULL rows so most
+    // accounts (no slug) don't compete for one giant unique tree.
+    // `vanity_slug_released_at` is the timestamp of the most recent release;
+    // a 30-day cooldown blocks anyone else from re-claiming the same slug
+    // (the previous owner can re-take their own slug at any time).
+    try { await p.query(`CREATE EXTENSION IF NOT EXISTS citext`); } catch (_) { /* superuser-only on some hosts; tolerate */ }
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS vanity_slug CITEXT`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS vanity_slug_released_at TIMESTAMPTZ`);
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_player_profiles_vanity_slug ON player_profiles (vanity_slug) WHERE vanity_slug IS NOT NULL`);
+    // Released-slug ledger: keeps the previous owner so they can re-take
+    // their own slug, and powers the 30-day cooldown that blocks third
+    // parties from snatching it the moment it goes free. Most-recent row
+    // per slug wins (we INSERT a new row on every release).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS vanity_slug_releases (
+        id SERIAL PRIMARY KEY,
+        slug CITEXT NOT NULL,
+        prev_account_id BIGINT NOT NULL,
+        released_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_vanity_slug_releases_slug ON vanity_slug_releases (slug, released_at DESC)`);
+
+    // Task #208 / v6.64 — Profile Spotlight. Admin-curated, time-bounded
+    // featured-player rotation. The bot's hourly cron (advanceSpotlight)
+    // marks rows whose window has ended and the most recent active row is
+    // surfaced via GET /api/spotlight/current (60s in-memory cache).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS profile_spotlight (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        headline TEXT NOT NULL,
+        blurb TEXT,
+        starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ends_at TIMESTAMPTZ,
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ended_at TIMESTAMPTZ
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_profile_spotlight_active ON profile_spotlight (starts_at DESC) WHERE ended_at IS NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_profile_spotlight_account ON profile_spotlight (account_id)`);
+
     // Task #207 / v6.63 — Generic one-time entitlements table. First SKU is
     // 'founders_pass_ring' (limited-edition cover ornament). The cap is
     // enforced server-side at checkout init AND re-checked under a
@@ -10383,6 +10428,362 @@ async function setPlayerProfileCustomization(accountId, fields = {}) {
   return row;
 }
 
+// ---------- Vanity slugs + Profile Spotlight (Task #208 / v6.64) ----------
+// `/p/<slug>` short profile URLs. Slug rules: 3-24 chars, lowercase
+// alphanumerics + hyphens, no leading/trailing hyphen and no consecutive
+// hyphens. The reserved-path deny-list is enforced in the route handler so
+// the DB stays the source of truth for "what's actually claimed".
+const VANITY_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,22}[a-z0-9])$/;
+const VANITY_SLUG_COOLDOWN_DAYS = 30;
+
+function normaliseVanitySlug(input) {
+  if (input == null) return null;
+  const s = String(input).trim().toLowerCase();
+  return s || null;
+}
+
+function isWellFormedVanitySlug(slug) {
+  const s = normaliseVanitySlug(slug);
+  if (!s) return false;
+  if (s.length < 3 || s.length > 24) return false;
+  if (s.includes('--')) return false;
+  return VANITY_SLUG_RE.test(s);
+}
+
+async function getVanitySlugByAccount(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT vanity_slug, vanity_slug_released_at
+       FROM player_profiles
+      WHERE account_id = $1`,
+    [String(accountId)]
+  );
+  const row = r.rows[0];
+  return row ? { slug: row.vanity_slug || null, released_at: row.vanity_slug_released_at } : { slug: null, released_at: null };
+}
+
+async function getAccountIdByVanitySlug(slug) {
+  const s = normaliseVanitySlug(slug);
+  if (!s) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT account_id FROM player_profiles WHERE vanity_slug = $1 LIMIT 1`,
+    [s]
+  );
+  return r.rows[0]?.account_id ? String(r.rows[0].account_id) : null;
+}
+
+// Returns { available, reason }. `reason` is one of:
+//   'invalid' | 'taken' | 'cooldown' | null
+// `forAccountId` is the caller — they can always re-claim their OWN
+// recently-released slug (cooldown only blocks third parties).
+async function isVanitySlugAvailable(slug, forAccountId = null) {
+  if (!isWellFormedVanitySlug(slug)) return { available: false, reason: 'invalid' };
+  const s = normaliseVanitySlug(slug);
+  const p = getPool();
+  // Currently owned by anyone (live ownership beats the cooldown ledger).
+  const owner = await p.query(
+    `SELECT account_id FROM player_profiles WHERE vanity_slug = $1 LIMIT 1`,
+    [s]
+  );
+  if (owner.rows[0]) {
+    if (forAccountId && String(owner.rows[0].account_id) === String(forAccountId)) {
+      return { available: true, reason: null };
+    }
+    return { available: false, reason: 'taken' };
+  }
+  // Released within cooldown — only the previous owner may re-claim.
+  const cool = await p.query(
+    `SELECT prev_account_id, released_at
+       FROM vanity_slug_releases
+      WHERE slug = $1
+        AND released_at > NOW() - ($2 || ' days')::interval
+      ORDER BY released_at DESC
+      LIMIT 1`,
+    [s, String(VANITY_SLUG_COOLDOWN_DAYS)]
+  );
+  if (cool.rows[0]) {
+    if (forAccountId && String(cool.rows[0].prev_account_id) === String(forAccountId)) {
+      return { available: true, reason: null };
+    }
+    return { available: false, reason: 'cooldown' };
+  }
+  return { available: true, reason: null };
+}
+
+// Atomically (a) ensure a player_profiles row exists, (b) clear any other
+// claim that might race in, and (c) set the slug on this account. Throws
+// on collision so callers can map to a 409.
+async function claimVanitySlug(accountId, slug) {
+  if (!accountId) throw new Error('claimVanitySlug: account_id required');
+  const s = normaliseVanitySlug(slug);
+  if (!isWellFormedVanitySlug(s)) throw new Error('Invalid slug format');
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    // Re-check availability under the transaction so two concurrent claims
+    // can't both win. The unique partial index would catch it anyway, but
+    // this lets us return a clean error instead of a constraint message.
+    const owner = await client.query(
+      `SELECT account_id FROM player_profiles WHERE vanity_slug = $1 LIMIT 1`,
+      [s]
+    );
+    if (owner.rows[0] && String(owner.rows[0].account_id) !== String(accountId)) {
+      await client.query('ROLLBACK');
+      const err = new Error('Slug already taken');
+      err.code = 'SLUG_TAKEN';
+      throw err;
+    }
+    const cool = await client.query(
+      `SELECT prev_account_id FROM vanity_slug_releases
+        WHERE slug = $1 AND released_at > NOW() - ($2 || ' days')::interval
+        ORDER BY released_at DESC LIMIT 1`,
+      [s, String(VANITY_SLUG_COOLDOWN_DAYS)]
+    );
+    if (cool.rows[0] && String(cool.rows[0].prev_account_id) !== String(accountId)) {
+      await client.query('ROLLBACK');
+      const err = new Error('Slug is in 30-day release cooldown');
+      err.code = 'SLUG_COOLDOWN';
+      throw err;
+    }
+    // If this account already owns a *different* slug, treat the change
+    // as an implicit release: write the previous slug into the cooldown
+    // ledger atomically with the new claim. Without this, a Pro user
+    // could change slugs and their old slug would be immediately
+    // claimable by anyone, bypassing the 30-day cooldown.
+    const prev = await client.query(
+      `SELECT vanity_slug FROM player_profiles WHERE account_id = $1`,
+      [String(accountId)]
+    );
+    const prevSlug = prev.rows[0]?.vanity_slug
+      ? String(prev.rows[0].vanity_slug).toLowerCase()
+      : null;
+    if (prevSlug && prevSlug !== s) {
+      await client.query(
+        `INSERT INTO vanity_slug_releases (slug, prev_account_id, released_at)
+           VALUES ($1, $2, NOW())`,
+        [prevSlug, String(accountId)]
+      );
+    }
+    await client.query(
+      `INSERT INTO player_profiles (account_id, vanity_slug, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (account_id) DO UPDATE SET vanity_slug = EXCLUDED.vanity_slug, updated_at = NOW()`,
+      [String(accountId), s]
+    );
+    await client.query('COMMIT');
+    return { slug: s, previous_slug: prevSlug && prevSlug !== s ? prevSlug : null };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* already rolled back */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function releaseVanitySlug(accountId) {
+  if (!accountId) throw new Error('releaseVanitySlug: account_id required');
+  const p = getPool();
+  const cur = await p.query(
+    `SELECT vanity_slug FROM player_profiles WHERE account_id = $1`,
+    [String(accountId)]
+  );
+  const slug = cur.rows[0]?.vanity_slug;
+  if (!slug) return { released: false, slug: null };
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE player_profiles
+          SET vanity_slug = NULL,
+              vanity_slug_released_at = NOW(),
+              updated_at = NOW()
+        WHERE account_id = $1`,
+      [String(accountId)]
+    );
+    await client.query(
+      `INSERT INTO vanity_slug_releases (slug, prev_account_id, released_at)
+         VALUES ($1, $2, NOW())`,
+      [String(slug).toLowerCase(), String(accountId)]
+    );
+    await client.query('COMMIT');
+    return { released: true, slug: String(slug).toLowerCase() };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* already rolled back */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ---------- Profile Spotlight (Task #208 / v6.64) ----------
+// Returns the most recent NOT-YET-ENDED spotlight whose window is currently
+// active (`starts_at <= NOW()` and `ended_at IS NULL`). Joins the same
+// `nicknames` / `player_stats` lookup the leaderboard uses so the home page
+// can show "Featured: <displayName>" without a second round trip.
+async function getCurrentSpotlight() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT s.id, s.account_id, s.headline, s.blurb,
+            s.starts_at, s.ends_at, s.created_by, s.created_at,
+            COALESCE(n.nickname, latest.persona_name) AS display_name
+       FROM profile_spotlight s
+       LEFT JOIN nicknames n ON n.account_id = s.account_id
+       LEFT JOIN LATERAL (
+         SELECT persona_name FROM player_stats
+          WHERE account_id = s.account_id
+          ORDER BY created_at DESC
+          LIMIT 1
+       ) latest ON TRUE
+      WHERE s.ended_at IS NULL
+        AND s.starts_at <= NOW()
+        AND (s.ends_at IS NULL OR s.ends_at > NOW())
+      ORDER BY s.starts_at DESC
+      LIMIT 1`
+  );
+  return r.rows[0] || null;
+}
+
+async function listSpotlights(limit = 50) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT s.id, s.account_id, s.headline, s.blurb,
+            s.starts_at, s.ends_at, s.created_by, s.created_at, s.ended_at,
+            COALESCE(n.nickname, latest.persona_name) AS display_name
+       FROM profile_spotlight s
+       LEFT JOIN nicknames n ON n.account_id = s.account_id
+       LEFT JOIN LATERAL (
+         SELECT persona_name FROM player_stats
+          WHERE account_id = s.account_id
+          ORDER BY created_at DESC
+          LIMIT 1
+       ) latest ON TRUE
+      ORDER BY s.created_at DESC
+      LIMIT $1`,
+    [Math.max(1, Math.min(500, parseInt(limit, 10) || 50))]
+  );
+  return r.rows;
+}
+
+// Shared overlap guard. A new/updated spotlight window
+// `[startsAt, endsAt)` must not overlap any existing not-yet-ended row.
+// Postgres `OVERLAPS` semantics: half-open intervals; NULL `ends_at` is
+// treated as "open-ended" and conflicts with anything starting after the
+// existing row's start. `excludeId` is honoured for updates.
+async function _spotlightOverlaps(startsAt, endsAt, excludeId = null) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id FROM profile_spotlight
+       WHERE ended_at IS NULL
+         AND ($3::int IS NULL OR id <> $3)
+         AND (
+           ($2::timestamptz IS NULL AND ends_at IS NULL)
+           OR (ends_at IS NULL AND $2::timestamptz > starts_at)
+           OR ($2::timestamptz IS NULL AND $1::timestamptz < ends_at)
+           OR ($1::timestamptz < ends_at AND $2::timestamptz > starts_at)
+         )
+       LIMIT 1`,
+    [startsAt, endsAt, excludeId]
+  );
+  return r.rows[0]?.id || null;
+}
+
+async function createSpotlight({ accountId, headline, blurb, startsAt, endsAt, createdBy }) {
+  if (!accountId) throw new Error('createSpotlight: account_id required');
+  if (!headline || typeof headline !== 'string') throw new Error('createSpotlight: headline required');
+  const start = startsAt ? new Date(startsAt) : new Date();
+  const end = endsAt ? new Date(endsAt) : null;
+  if (end && end <= start) throw new Error('ends_at must be after starts_at');
+  const conflictId = await _spotlightOverlaps(start.toISOString(), end ? end.toISOString() : null, null);
+  if (conflictId) {
+    const err = new Error(`Spotlight window overlaps existing entry #${conflictId}. End or delete the conflicting entry first.`);
+    err.code = 'SPOTLIGHT_OVERLAP';
+    throw err;
+  }
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO profile_spotlight (account_id, headline, blurb, starts_at, ends_at, created_by)
+       VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6)
+       RETURNING *`,
+    [
+      String(accountId),
+      String(headline).slice(0, 200),
+      blurb ? String(blurb).slice(0, 1000) : null,
+      start.toISOString(),
+      end ? end.toISOString() : null,
+      createdBy || null,
+    ]
+  );
+  return r.rows[0];
+}
+
+// Edit an existing (not-yet-ended) spotlight. Honours the same overlap
+// guard, excluding the row being updated. Only headline/blurb/starts_at/
+// ends_at are mutable; account_id is fixed once created.
+async function updateSpotlight(id, { headline, blurb, startsAt, endsAt }) {
+  const numId = parseInt(id, 10);
+  if (!Number.isFinite(numId)) throw new Error('updateSpotlight: id required');
+  const p = getPool();
+  const cur = await p.query(`SELECT * FROM profile_spotlight WHERE id = $1`, [numId]);
+  if (!cur.rows[0]) throw new Error('Spotlight not found');
+  if (cur.rows[0].ended_at) throw new Error('Cannot edit an ended spotlight');
+  const newStart = startsAt ? new Date(startsAt) : new Date(cur.rows[0].starts_at);
+  const newEnd = endsAt === null ? null
+    : endsAt ? new Date(endsAt)
+    : (cur.rows[0].ends_at ? new Date(cur.rows[0].ends_at) : null);
+  if (newEnd && newEnd <= newStart) throw new Error('ends_at must be after starts_at');
+  const conflictId = await _spotlightOverlaps(
+    newStart.toISOString(),
+    newEnd ? newEnd.toISOString() : null,
+    numId
+  );
+  if (conflictId) {
+    const err = new Error(`Spotlight window overlaps existing entry #${conflictId}.`);
+    err.code = 'SPOTLIGHT_OVERLAP';
+    throw err;
+  }
+  const r = await p.query(
+    `UPDATE profile_spotlight
+        SET headline = COALESCE($2, headline),
+            blurb = $3,
+            starts_at = $4::timestamptz,
+            ends_at = $5::timestamptz
+      WHERE id = $1
+      RETURNING *`,
+    [
+      numId,
+      headline ? String(headline).slice(0, 200) : null,
+      blurb === undefined ? cur.rows[0].blurb : (blurb ? String(blurb).slice(0, 1000) : null),
+      newStart.toISOString(),
+      newEnd ? newEnd.toISOString() : null,
+    ]
+  );
+  return r.rows[0];
+}
+
+async function deleteSpotlight(id) {
+  const p = getPool();
+  const r = await p.query(`DELETE FROM profile_spotlight WHERE id = $1 RETURNING id`, [id]);
+  return r.rowCount > 0;
+}
+
+// Cron-driven rotation. Marks any active spotlight whose ends_at has passed
+// as ended. Returns the number of rows ended (so the caller can log it).
+async function advanceSpotlight() {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE profile_spotlight
+        SET ended_at = NOW()
+      WHERE ended_at IS NULL
+        AND ends_at IS NOT NULL
+        AND ends_at <= NOW()
+      RETURNING id`
+  );
+  return r.rowCount || 0;
+}
+
 // ---------- Entitlements (Task #207 / v6.63) ----------
 // Generic one-time entitlement table. First SKU is 'founders_pass_ring'.
 async function getOwnedEntitlements(accountId) {
@@ -11959,6 +12360,20 @@ module.exports = {
   getPlayerProfileCustomization,
   setPlayerProfileCustomization,
   getPlayerProfileCard,
+  // v6.64 / Task #208 — vanity slugs + profile spotlight
+  isWellFormedVanitySlug,
+  normaliseVanitySlug,
+  getVanitySlugByAccount,
+  getAccountIdByVanitySlug,
+  isVanitySlugAvailable,
+  claimVanitySlug,
+  releaseVanitySlug,
+  getCurrentSpotlight,
+  listSpotlights,
+  createSpotlight,
+  updateSpotlight,
+  deleteSpotlight,
+  advanceSpotlight,
   // v6.63 / Task #207 — entitlements
   getOwnedEntitlements,
   hasEntitlement,

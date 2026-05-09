@@ -16,6 +16,7 @@ import {
 } from '../profileCosmetics';
 import { Link } from 'react-router-dom';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
+import VanitySlugPicker from '../components/VanitySlugPicker';
 import { oauthErrorMessage } from '../components/DiscordLinkModal';
 import ProfileCard from '../components/ProfileCard';
 
@@ -285,6 +286,18 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
       </div>
       {error && <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>{error}</div>}
       {msg && <div style={{ marginTop: 6, color: '#22c55e', fontSize: 12 }}>{msg}</div>}
+    </section>
+  );
+}
+
+// v6.64 / Task #208 — Vanity slug section wrapper. Real picker logic lives
+// in the shared <VanitySlugPicker /> so both Settings → Profile and the
+// Cosmetics Shop identity card render identical controls.
+function VanitySlugSection() {
+  return (
+    <section id="vanity-slug" style={{ marginTop: 24 }}>
+      <h2 style={{ marginBottom: 8 }}>Vanity profile URL</h2>
+      <VanitySlugPicker />
     </section>
   );
 }
@@ -616,6 +629,8 @@ export default function SettingsProfile() {
           <div className="settings-profile-form">
 
           <DiscordLinkSection steamUser={steamUser} refreshMe={refreshMe} />
+
+          <VanitySlugSection />
 
           <section style={{ marginTop: 24 }}>
             <h2 style={{ marginBottom: 8 }}>Basics</h2>

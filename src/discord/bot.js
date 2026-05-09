@@ -5143,6 +5143,20 @@ class DiscordBot {
         })();
       }, 60_000);
 
+      // Task #208 / v6.64 — Profile Spotlight rotation. Every hour on the
+      // hour, mark any active spotlight whose `ends_at` has passed as
+      // ended. Cheap UPDATE; logs only when something rolls over so the
+      // log volume stays low.
+      cron.schedule('0 * * * *', async () => {
+        try {
+          const ended = await db.advanceSpotlight();
+          if (ended > 0) console.log(`[Spotlight] Rotated ${ended} expired spotlight(s).`);
+        } catch (err) {
+          console.error('[Spotlight] Rotation error:', err.message);
+        }
+      }, { timezone: 'UTC' });
+      console.log('[Discord] Profile Spotlight rotation scheduled (hourly).');
+
       // Coaching marketplace reminders (T13) — hourly cron, no-ops while flag is off
       this.startCoachingReminderCron();
       this.startCoachingAutoReleaseCron();

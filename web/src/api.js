@@ -1580,3 +1580,36 @@ export const getFoundersRingStatus = () =>
   _getJson('/shop/founders-ring/status').catch(() => ({ owned: false, sold_out: true }));
 export const buyFoundersRingCheckout = () =>
   _postJson('/shop/founders-ring/checkout');
+
+// v6.64 / Task #208 — Vanity slugs + Profile Spotlight.
+export const getMyVanitySlug = () => _getJson('/me/vanity-slug');
+export const checkVanitySlugAvailability = (slug) =>
+  _getJson(`/vanity-slug/availability?slug=${encodeURIComponent(slug)}`);
+export const claimMyVanitySlug = (slug) =>
+  fetch(BASE + '/me/vanity-slug', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug }),
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `Request failed: ${r.status}`);
+    return d;
+  });
+export const releaseMyVanitySlug = () =>
+  fetch(BASE + '/me/vanity-slug', { method: 'DELETE', credentials: 'same-origin' })
+    .then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `Request failed: ${r.status}`);
+      return d;
+    });
+
+export const getCurrentSpotlight = () =>
+  _getJson('/spotlight/current').catch(() => ({ spotlight: null }));
+export const adminListSpotlights = (superuserKey) =>
+  superuserJson('/admin/spotlight', { superuserKey });
+export const adminCreateSpotlight = (superuserKey, payload) =>
+  superuserJson('/admin/spotlight', { method: 'POST', body: payload, superuserKey });
+export const adminUpdateSpotlight = (superuserKey, id, payload) =>
+  superuserJson(`/admin/spotlight/${id}`, { method: 'PATCH', body: payload, superuserKey });
+export const adminDeleteSpotlight = (superuserKey, id) =>
+  superuserJson(`/admin/spotlight/${id}`, { method: 'DELETE', superuserKey });

@@ -1203,6 +1203,49 @@ function createServer(startupStatus = {}) {
 </body></html>`);
   });
 
+  // v6.64 / Task #208 — Vanity slug redirect. Server-side 302 from
+  // `/p/<slug>` to `/player/<account_id>` so the short URL works even
+  // before the SPA boots, and so search engines / unfurlers see the real
+  // canonical profile target. Mounted BEFORE the SPA catch-all below so
+  // it wins over the index.html fallback. Falls through to the SPA on
+  // unknown slugs so the React 404 page can take over.
+  app.get('/p/:slug', async (req, res, next) => {
+    try {
+      const db = require('../db');
+      const slug = req.params.slug || '';
+      if (!db.isWellFormedVanitySlug(slug)) {
+        return _sendVanityNotFound(res, slug);
+      }
+      const accountId = await db.getAccountIdByVanitySlug(slug);
+      if (!accountId) return _sendVanityNotFound(res, slug);
+      res.set('Cache-Control', 'no-store');
+      return res.redirect(302, `/player/${encodeURIComponent(accountId)}`);
+    } catch (err) {
+      console.error('[vanity-slug] redirect error:', err.message);
+      return _sendVanityNotFound(res, req.params.slug || '');
+    }
+  });
+
+  // Tiny self-contained 404 page so unknown vanity slugs return a real
+  // HTTP 404 (not the SPA shell at 200, which would mislead crawlers and
+  // unfurlers and bypass the requirement that unknown slugs return clean
+  // 404 semantics).
+  function _sendVanityNotFound(res, slug) {
+    const safeSlug = String(slug).replace(/[<>&"']/g, '');
+    res.status(404).set('Cache-Control', 'no-store').type('html').send(
+      `<!doctype html><html><head><meta charset="utf-8">` +
+      `<title>Vanity link not found · OCE Inhouse</title>` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<style>body{font-family:Inter,system-ui,sans-serif;background:#0d1424;color:#f5efe2;` +
+      `display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}` +
+      `h1{font-family:'Playfair Display',serif;color:#c5a975;margin:0 0 12px}` +
+      `a{color:#f59e0b;text-decoration:none;font-weight:600}</style></head>` +
+      `<body><div><h1>Link not found</h1>` +
+      `<p>No player has claimed <code>/p/${safeSlug}</code>.</p>` +
+      `<p><a href="/">← Back to OCE Inhouse</a></p></div></body></html>`
+    );
+  }
+
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
     app.use(express.static(staticPath));
@@ -7790,6 +7833,244 @@ NOTES
     } catch (err) {
       console.error('[API] push/test:', err.message);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---------- Vanity slugs + Profile Spotlight (Task #208 / v6.64) ----------
+  // Reserved-path deny-list for `/p/<slug>`. Anything that collides with a
+  // current top-level route (App.jsx Routes) or a near-miss must NOT be
+  // claimable — otherwise `/p/admin` could be confused for `/admin`. Keep
+  // this in sync with the App.jsx `<Route path>` list.
+  const RESERVED_VANITY_SLUGS = new Set([
+    'api', 'admin', 'p', 'player', 'players', 'match', 'matches', 'heroes',
+    'leaderboard', 'stats', 'positions', 'synergy', 'upload', 'seasons',
+    'predictions', 'patch-notes', 'pickem', 'sponsorships', 'multikills',
+    'ward-map', 'records', 'pudge-stats', 'schedule', 'inhouse', 'social',
+    'player-network', 'benchmarks', 'insights', 'tournaments',
+    'weekend-tournament', 'hall-of-fame', 'join', 'settings', 'pro',
+    'coaches', 'shop', 'cosmetics', 'my-bookings', 'buyin-success',
+    'player-tools', 'head-to-head', 'compare', 'draft', 'draft-assistant',
+    'draft-stats', 'hero-breakdown', 'hero-position-meta',
+    'position-player-profiles', 'season-summary', 'embed', 'static',
+    'auth', 'login', 'logout', 'signin', 'signout', 'register', 'about',
+    'help', 'support', 'terms', 'privacy', 'contact', 'faq', 'news',
+    'blog', 'home', 'dashboard', 'search', 'notifications', 'billing',
+    'me', 'us', 'spotlight', 'featured', 'undefined', 'null', 'true',
+    'false', 'root', 'system',
+  ]);
+
+  function _vanitySlugIsReserved(slug) {
+    return RESERVED_VANITY_SLUGS.has(String(slug || '').toLowerCase());
+  }
+
+  // Public availability probe for the Settings/Cosmetics picker. Always
+  // 200; the body says whether the slug is claimable + why not.
+  router.get('/vanity-slug/availability', async (req, res) => {
+    try {
+      const slug = req.query.slug || '';
+      if (!db.isWellFormedVanitySlug(slug)) {
+        return res.json({
+          slug: String(slug || '').toLowerCase(),
+          available: false,
+          reason: 'invalid',
+        });
+      }
+      if (_vanitySlugIsReserved(slug)) {
+        return res.json({
+          slug: String(slug).toLowerCase(),
+          available: false,
+          reason: 'reserved',
+        });
+      }
+      const accountId = req.session?.accountId || null;
+      const r = await db.isVanitySlugAvailable(slug, accountId);
+      res.json({ slug: String(slug).toLowerCase(), ...r });
+    } catch (err) {
+      console.error('[API] vanity-slug/availability:', err.message);
+      res.status(500).json({ error: 'availability check failed' });
+    }
+  });
+
+  router.get('/me/vanity-slug', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const cur = await db.getVanitySlugByAccount(accountId);
+      const isPro = await _isProAccount(accountId);
+      // Grandfathering: a non-Pro account that *currently* owns a slug keeps
+      // it (read-only — they cannot change to a different slug or re-claim
+      // after release without Pro). Surface that state to the UI.
+      const can_claim = isPro;
+      const grandfathered = !!(!isPro && cur && cur.slug);
+      res.json({
+        slug: cur?.slug || null,
+        released_at: cur?.released_at || null,
+        is_pro: isPro,
+        can_claim,
+        grandfathered,
+        cooldown_days: 30,
+      });
+    } catch (err) {
+      console.error('[API] me/vanity-slug GET:', err.message);
+      res.status(500).json({ error: 'Failed to load vanity slug' });
+    }
+  });
+
+  router.post('/me/vanity-slug', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const isPro = await _isProAccount(accountId);
+      if (!isPro) return res.status(403).json({ error: 'Vanity slugs require Pro' });
+      const slug = String(req.body?.slug || '').trim().toLowerCase();
+      if (!db.isWellFormedVanitySlug(slug)) {
+        return res.status(400).json({ error: 'Invalid slug. 3–24 chars, lowercase a–z, 0–9, hyphen.' });
+      }
+      if (_vanitySlugIsReserved(slug)) {
+        return res.status(409).json({ error: 'That slug is reserved.' });
+      }
+      try {
+        const r = await db.claimVanitySlug(accountId, slug);
+        return res.json({ slug: r.slug, ok: true });
+      } catch (err) {
+        if (err.code === 'SLUG_TAKEN') return res.status(409).json({ error: 'That slug is taken.' });
+        if (err.code === 'SLUG_COOLDOWN') return res.status(409).json({ error: 'That slug was recently released. Cooldown is active.' });
+        throw err;
+      }
+    } catch (err) {
+      console.error('[API] me/vanity-slug POST:', err.message);
+      res.status(500).json({ error: 'Failed to claim slug' });
+    }
+  });
+
+  router.delete('/me/vanity-slug', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      // Grandfathered non-Pro accounts are read-only on their slug — they
+      // keep what they have but cannot release it (releasing would let
+      // them re-claim only after Pro, and an accidental click would lose
+      // them the slug forever once a stranger claims it post-cooldown).
+      const isPro = await _isProAccount(accountId);
+      if (!isPro) return res.status(403).json({ error: 'Releasing a vanity slug requires Pro' });
+      const r = await db.releaseVanitySlug(accountId);
+      res.json({ ok: true, ...r });
+    } catch (err) {
+      console.error('[API] me/vanity-slug DELETE:', err.message);
+      res.status(500).json({ error: 'Failed to release slug' });
+    }
+  });
+
+  // ----- Profile Spotlight -----
+  // Public read, cached 60s in-memory so a hot home page doesn't hammer PG.
+  let _spotlightCache = { value: undefined, expiresAt: 0 };
+  function _invalidateSpotlightCache() { _spotlightCache = { value: undefined, expiresAt: 0 }; }
+
+  router.get('/spotlight/current', async (req, res) => {
+    try {
+      const now = Date.now();
+      if (_spotlightCache.value !== undefined && _spotlightCache.expiresAt > now) {
+        res.set('Cache-Control', 'public, max-age=60');
+        return res.json(_spotlightCache.value);
+      }
+      const row = await db.getCurrentSpotlight();
+      const payload = row ? {
+        spotlight: {
+          id: row.id,
+          account_id: String(row.account_id),
+          headline: row.headline,
+          blurb: row.blurb,
+          starts_at: row.starts_at,
+          ends_at: row.ends_at,
+          display_name: row.display_name || null,
+        },
+      } : { spotlight: null };
+      _spotlightCache = { value: payload, expiresAt: now + 60_000 };
+      res.set('Cache-Control', 'public, max-age=60');
+      res.json(payload);
+    } catch (err) {
+      console.error('[API] spotlight/current:', err.message);
+      res.status(500).json({ error: 'Failed to load spotlight' });
+    }
+  });
+
+  router.get('/admin/spotlight', requireSuperuser, async (req, res) => {
+    try {
+      const rows = await db.listSpotlights(100);
+      res.set('Cache-Control', 'no-store');
+      res.json({ spotlights: rows });
+    } catch (err) {
+      console.error('[API] admin/spotlight GET:', err.message);
+      res.status(500).json({ error: 'Failed to list spotlights' });
+    }
+  });
+
+  router.post('/admin/spotlight', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const body = req.body || {};
+      const accountId = body.account_id;
+      const headline = (body.headline || '').toString().trim();
+      const blurb = body.blurb ? String(body.blurb).trim() : null;
+      const startsAt = body.starts_at || null;
+      const endsAt = body.ends_at || null;
+      if (!accountId) return res.status(400).json({ error: 'account_id required' });
+      if (!headline) return res.status(400).json({ error: 'headline required' });
+      const row = await db.createSpotlight({
+        accountId,
+        headline,
+        blurb,
+        startsAt,
+        endsAt,
+        createdBy: req.session?.accountId ? `account:${req.session.accountId}` : 'superuser',
+      });
+      _invalidateSpotlightCache();
+      res.json({ ok: true, spotlight: row });
+    } catch (err) {
+      // Overlap guard returns 409 so the admin UI can surface the
+      // conflicting entry inline instead of a generic 500.
+      if (err.code === 'SPOTLIGHT_OVERLAP') {
+        return res.status(409).json({ error: err.message });
+      }
+      console.error('[API] admin/spotlight POST:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create spotlight' });
+    }
+  });
+
+  // PATCH /admin/spotlight/:id — edit a queued or active (not-yet-ended)
+  // spotlight: headline, blurb, starts_at, ends_at. Same overlap guard
+  // (excluding the row itself) applies.
+  router.patch('/admin/spotlight/:id', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
+      const body = req.body || {};
+      const row = await db.updateSpotlight(id, {
+        headline: body.headline,
+        blurb: body.blurb,
+        startsAt: body.starts_at,
+        endsAt: body.ends_at,
+      });
+      _invalidateSpotlightCache();
+      res.json({ ok: true, spotlight: row });
+    } catch (err) {
+      if (err.code === 'SPOTLIGHT_OVERLAP') {
+        return res.status(409).json({ error: err.message });
+      }
+      console.error('[API] admin/spotlight PATCH:', err.message);
+      res.status(400).json({ error: err.message || 'Failed to update spotlight' });
+    }
+  });
+
+  router.delete('/admin/spotlight/:id', requireSuperuser, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
+      const ok = await db.deleteSpotlight(id);
+      _invalidateSpotlightCache();
+      res.json({ ok, deleted: ok });
+    } catch (err) {
+      console.error('[API] admin/spotlight DELETE:', err.message);
+      res.status(500).json({ error: 'Failed to delete spotlight' });
     }
   });
 

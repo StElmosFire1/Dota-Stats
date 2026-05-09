@@ -26,6 +26,7 @@ import {
 } from '../profileCosmetics';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { getOwnedFrames, purchaseFrameCheckout, getFoundersRingStatus, buyFoundersRingCheckout } from '../api';
+import VanitySlugPicker from '../components/VanitySlugPicker';
 
 // Mirrors FRAME_PRICES in src/web/server.js. Keep in sync.
 const FRAME_PRICES_CENTS = {
@@ -311,6 +312,31 @@ export default function CosmeticsShop() {
               )
             }
           />
+        </div>
+      </section>
+
+      {/* v6.64 / Task #208 — Vanity URL slug. Pro-gated; the picker is the
+          shared <VanitySlugPicker/> so the controls match Settings → Profile
+          exactly (debounced availability, Claim/Change/Release). */}
+      <section style={{ marginBottom: 32 }}>
+        <SectionHeader
+          title="Identity · Vanity URL"
+          sub="Claim a short /p/<your-slug> link to your profile. Pro members only — 3–24 chars, lowercase a–z / 0–9 / hyphen."
+        />
+        <div style={{
+          padding: 16, borderRadius: 10, border: '1px solid var(--border)',
+          background: 'var(--bg-card)', maxWidth: 560,
+        }}>
+          {!signedIn ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                Sign in with Steam to claim a vanity URL.
+              </div>
+              <Link to="/login" style={actionButtonStyle('pro')}>Sign in →</Link>
+            </div>
+          ) : (
+            <VanitySlugPicker compact />
+          )}
         </div>
       </section>
 

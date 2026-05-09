@@ -39,6 +39,7 @@ const MultiKills = lazy(() => import('./pages/MultiKills'));
 const WardMap = lazy(() => import('./pages/WardMap'));
 const Records = lazy(() => import('./pages/Records'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const AdminSpotlight = lazy(() => import('./pages/AdminSpotlight'));
 const DraftSandbox = lazy(() => import('./pages/DraftSandbox'));
 const ProfileSandbox = lazy(() => import('./pages/ProfileSandbox'));
 const CosmeticsShop = lazy(() => import('./pages/CosmeticsShop'));
@@ -767,6 +768,7 @@ export default function App() {
                 <Route path="/ward-map" element={<WardMap />} />
                 <Route path="/records" element={<Records />} />
                 <Route path="/admin" element={<AdminPanel />} />
+                <Route path="/admin/spotlight" element={<AdminSpotlight />} />
                 <Route path="/admin/draft-sandbox" element={<DraftSandbox />} />
                 <Route path="/admin/profile-sandbox" element={<ProfileSandbox />} />
                 <Route path="/admin/profile-demo" element={<ProfileDemo />} />

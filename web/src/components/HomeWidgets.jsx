@@ -136,6 +136,54 @@ export function LiveInhousePulse() {
   );
 }
 
+// v6.64 / Task #208 — Featured Player (Profile Spotlight) card. Renders an
+// admin-curated featured player on the home page. Hidden when no spotlight
+// is currently active so the layout stays unchanged on quiet weeks.
+export function FeaturedPlayer() {
+  const [s, setS] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    fetchJsonSafe('/api/spotlight/current').then(d => {
+      setS(d?.spotlight || null);
+      setLoaded(true);
+    });
+  }, []);
+  if (!loaded || !s) return null;
+  return (
+    <Link to={`/player/${s.account_id}`} style={{ textDecoration: 'none' }}>
+      <div style={{
+        ...cardStyle,
+        marginBottom: 16,
+        background: 'linear-gradient(135deg, rgba(197,169,117,0.18) 0%, rgba(245,158,11,0.06) 100%)',
+        borderColor: 'rgba(197,169,117,0.45)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={eyebrowStyle}>🌟 Featured Player</div>
+          <span style={{
+            fontSize: 10, fontFamily: 'var(--font-condensed, inherit)',
+            color: 'var(--brass, var(--accent))',
+            textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700,
+          }}>spotlight</span>
+        </div>
+        <div className="font-serif" style={{
+          fontSize: 22, fontWeight: 700, color: 'var(--text-primary)',
+          fontFamily: 'var(--font-serif, serif)', lineHeight: 1.15, marginBottom: 4,
+        }}>
+          {s.display_name || `Player #${s.account_id}`}
+        </div>
+        <div style={{
+          fontSize: 14, fontWeight: 600, color: 'var(--accent)', marginBottom: 6,
+        }}>{s.headline}</div>
+        {s.blurb ? (
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+            {s.blurb}
+          </div>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
 export function PlayerOfTheWeek() {
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
