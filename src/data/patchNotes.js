@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.01",
+    "title": "Live Now tab grouped into Inhouse · Other Dota · Lobby/Queue/Voice with full inhouse roster cards",
+    "published_at": "2026-05-09",
+    "content": "Players → Live now used to be one flat grid where five teammates in the same inhouse game showed up as five separate cards — visitors had to mentally re-stitch \"ah, those five share match #12345, that must be one game.\" v7.01 reshapes the tab into three labelled sections and collapses each inhouse game into ONE card with the full inline roster.\n\n**Inhouse** — any group of 2+ visible live players who share the same `match_id` from Steam rich-presence is rolled into a single card. The card shows an `INHOUSE · N PLAYERS` chip + match id, one Watch / Copy-watch-id button for the whole game, and below that a stacked list of every player in the match: small hero icon + player name (linked to their profile) + hero name. Match IDs of `0` / null are never used as a group key, so multiple \"in_game but no spectator hook yet\" players don't collide into a phantom inhouse.\n\n**Other Dota** — solo `in_game` players (typically pubs not relevant to the league) plus everyone in `in_lobby`. One card per player, same shape as the previous flat grid.\n\n**Lobby · Queue · Voice** — the inhouse-queue + Discord-voice bucket (`in_queue` + `in_voice`). One card per player, unchanged shape.\n\nGrouping happens entirely client-side in `web/src/pages/Players.jsx` (`bucketLivePlayers` helper + new `InhouseGameCard` + `LivePlayerGrid` + `SectionHeading` components) — the existing `/api/presence/live` endpoint and `getAllLivePresences()` service are untouched, so no backend change and no extra round-trips. Section headings are real `<h2>` elements with a count chip, not click-handler `<div>`s. a11y gate green (153 JSX / 3 CSS files scanned), web bundle builds cleanly. Full edition only — community edition has no Live now tab.",
+    "author": "System"
+  },
+  {
     "version": "7.00",
     "title": "Match pages get a Share button so players can post big wins",
     "published_at": "2026-05-09",

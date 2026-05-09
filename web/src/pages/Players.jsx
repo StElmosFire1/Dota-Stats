@@ -422,6 +422,163 @@ function CopyWatchIdButton({ matchId }) {
   );
 }
 
+// Task #213-followup (Option C): instead of rendering one flat grid of
+// every live player, group them into three sections that match how a
+// visitor actually scans the page:
+//
+//   1. **Inhouse** — any group of 2+ "in_game" players who share the
+//      same match_id. The whole match is rendered as ONE card with the
+//      full inline roster (hero icon + display name per slot) and a
+//      single Watch button. Saves the visitor mentally re-stitching
+//      "ah, those 5 are all in match #12345".
+//   2. **Other Dota** — the leftover Dota states: solo `in_game`
+//      players (pubs / unrelated games) plus everyone in `in_lobby`.
+//      One card per player, same shape as before.
+//   3. **Lobby / Queue / Voice** — the inhouse-queue + Discord-voice
+//      bucket. Same one-card-per-player rendering.
+//
+// Grouping happens client-side so the existing /api/presence/live
+// endpoint stays untouched. Match IDs of '0' / falsy are never treated
+// as a group key (multiple "no spectator hook" players would otherwise
+// collide into a phantom inhouse).
+function bucketLivePlayers(players) {
+  const inhouseGroups = new Map(); // match_id -> [players]
+  const others = [];
+  const lobbyQueueVoice = [];
+
+  for (const p of players) {
+    if (p.status === 'in_game' && p.match_id && String(p.match_id) !== '0') {
+      const arr = inhouseGroups.get(p.match_id) || [];
+      arr.push(p);
+      inhouseGroups.set(p.match_id, arr);
+    } else if (p.status === 'in_game' || p.status === 'in_lobby') {
+      others.push(p);
+    } else {
+      // in_queue, in_voice, anything new → lobby/queue/voice bucket
+      lobbyQueueVoice.push(p);
+    }
+  }
+
+  // A match is only "inhouse-shaped" if 2+ visible players share the
+  // same match_id. Single-player matches drop back into "Other Dota"
+  // — they're almost always solo pubs not relevant to the league.
+  const inhouseMatches = [];
+  for (const [matchId, group] of inhouseGroups.entries()) {
+    if (group.length >= 2) {
+      inhouseMatches.push({ matchId, players: group });
+    } else {
+      others.push(...group);
+    }
+  }
+
+  // Stable sort: biggest inhouse first, then "Other Dota" alphabetical
+  // by display name (already sorted by status priority server-side).
+  inhouseMatches.sort((a, b) => b.players.length - a.players.length);
+  return { inhouseMatches, others, lobbyQueueVoice };
+}
+
+// One combined card per inhouse game showing the full inline roster.
+function InhouseGameCard({ matchId, players }) {
+  const watchableId = matchId && String(matchId) !== '0' ? matchId : null;
+  const cfg = LIVE_LABELS.in_game;
+  return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderLeft: `3px solid ${cfg.color}`, borderRadius: 6,
+      padding: '12px 14px',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 10, marginBottom: 8,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{
+            background: cfg.bg, color: cfg.color,
+            border: `1px solid ${cfg.color}55`, borderRadius: 999,
+            padding: '2px 8px', fontSize: 11, fontWeight: 700,
+            letterSpacing: 0.4, whiteSpace: 'nowrap',
+          }}>
+            INHOUSE · {players.length} {players.length === 1 ? 'PLAYER' : 'PLAYERS'}
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            #{matchId}
+          </span>
+        </div>
+        {watchableId && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <a
+              href={`steam://rungame/570//+watch_server%20${encodeURIComponent(watchableId)}`}
+              style={{
+                background: cfg.bg, color: cfg.color,
+                border: `1px solid ${cfg.color}55`, borderRadius: 4,
+                padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                textDecoration: 'none', whiteSpace: 'nowrap',
+              }}
+              title="Open in Dota 2 as a spectator"
+            >
+              Watch
+            </a>
+            <CopyWatchIdButton matchId={watchableId} />
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {players.map(p => {
+          const profileUrl = p.account_id ? `/player/${p.account_id}` : null;
+          const name = p.display_name || `Player ${p.account_id}`;
+          return (
+            <div
+              key={p.account_id || name}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}
+            >
+              {p.hero ? (
+                <HeroIcon heroName={p.hero} heroId={p.hero_id} size="sm" />
+              ) : (
+                <span style={{
+                  display: 'inline-block', width: 34, height: 19, borderRadius: 3,
+                  background: 'var(--bg-hover)', flexShrink: 0,
+                }} />
+              )}
+              <span style={{
+                fontSize: 13, fontWeight: 500, color: 'var(--text-primary)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                minWidth: 0, flex: 1,
+              }}>
+                {profileUrl ? (
+                  <Link to={profileUrl} style={{ color: 'inherit', textDecoration: 'none' }}>{name}</Link>
+                ) : name}
+              </span>
+              {p.hero && (
+                <span style={{
+                  fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}>{p.hero}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SectionHeading({ children, count }) {
+  return (
+    <h2 style={{
+      fontSize: 12, fontWeight: 700, letterSpacing: 0.6,
+      color: 'var(--text-muted)', textTransform: 'uppercase',
+      margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 8,
+    }}>
+      {children}
+      <span style={{
+        background: 'var(--bg-hover)', borderRadius: 999,
+        padding: '1px 8px', fontSize: 11, color: 'var(--text-secondary)',
+        fontWeight: 600,
+      }}>{count}</span>
+    </h2>
+  );
+}
+
 function LiveNowList({ loading, players }) {
   if (loading && players.length === 0) {
     return <div className="loading">Loading live presence…</div>;
@@ -437,6 +594,41 @@ function LiveNowList({ loading, players }) {
       </div>
     );
   }
+
+  const { inhouseMatches, others, lobbyQueueVoice } = bucketLivePlayers(players);
+  const hasInhouse = inhouseMatches.length > 0;
+  const hasOthers = others.length > 0;
+  const hasLqv = lobbyQueueVoice.length > 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {hasInhouse && (
+        <section>
+          <SectionHeading count={inhouseMatches.length}>Inhouse</SectionHeading>
+          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))' }}>
+            {inhouseMatches.map(g => (
+              <InhouseGameCard key={g.matchId} matchId={g.matchId} players={g.players} />
+            ))}
+          </div>
+        </section>
+      )}
+      {hasOthers && (
+        <section>
+          <SectionHeading count={others.length}>Other Dota</SectionHeading>
+          <LivePlayerGrid players={others} />
+        </section>
+      )}
+      {hasLqv && (
+        <section>
+          <SectionHeading count={lobbyQueueVoice.length}>Lobby · Queue · Voice</SectionHeading>
+          <LivePlayerGrid players={lobbyQueueVoice} />
+        </section>
+      )}
+    </div>
+  );
+}
+
+function LivePlayerGrid({ players }) {
   return (
     <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
       {players.map(p => {
