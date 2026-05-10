@@ -1473,6 +1473,13 @@ async function init() {
     // deadline expires, so an AFK captain can no longer stall the lobby.
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS draft_pick_seconds INTEGER DEFAULT 30`);
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS draft_pick_deadline_at TIMESTAMPTZ`);
+    // Task #297 — diagnostic test sessions used by the superuser-only
+    // "Test: Provision & Connect" button on the admin panel. Flagged rows
+    // are hidden from every public/active-session selector and from the
+    // autoStartTicker recovery sweep so they can't pollute /inhouse history
+    // or trip background re-provisioning. Column is additive + defaulted to
+    // false so every existing row keeps real-session semantics.
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS is_diagnostic BOOLEAN NOT NULL DEFAULT false`);
 
     // ===== Wave 2 / 3 schema =====
     // F3 — Season Pass: per-event XP ledger. account_id + season_number +
@@ -9069,20 +9076,28 @@ async function getInhouseSession(id) {
   return r.rows[0] || null;
 }
 
-async function listInhouseSessions({ status = null, limit = 50 } = {}) {
+async function listInhouseSessions({ status = null, limit = 50, includeDiagnostic = false } = {}) {
   const p = getPool();
+  // Task #297 — by default the public /api/inhouse list excludes diagnostic
+  // rows so they never appear in inhouse history. An admin caller can pass
+  // includeDiagnostic=true to opt in (no caller currently does).
+  const diagFilter = includeDiagnostic ? '' : 'COALESCE(is_diagnostic, false) = false';
   if (status) {
-    const r = await p.query(`SELECT * FROM inhouse_sessions WHERE status = $1 ORDER BY created_at DESC LIMIT $2`, [status, limit]);
+    const where = diagFilter ? `status = $1 AND ${diagFilter}` : 'status = $1';
+    const r = await p.query(`SELECT * FROM inhouse_sessions WHERE ${where} ORDER BY created_at DESC LIMIT $2`, [status, limit]);
     return r.rows;
   }
-  const r = await p.query(`SELECT * FROM inhouse_sessions ORDER BY created_at DESC LIMIT $1`, [limit]);
+  const where = diagFilter ? `WHERE ${diagFilter}` : '';
+  const r = await p.query(`SELECT * FROM inhouse_sessions ${where} ORDER BY created_at DESC LIMIT $1`, [limit]);
   return r.rows;
 }
 
 async function getActiveInhouseSession() {
   const p = getPool();
+  // Task #297 — exclude superuser diagnostic sessions so they never surface
+  // on /inhouse, the home-page bundle, or any "current session" lookup.
   const r = await p.query(
-    `SELECT * FROM inhouse_sessions WHERE status IN ('open','accepting','drafting','server_failed','in_progress') ORDER BY created_at DESC LIMIT 1`
+    `SELECT * FROM inhouse_sessions WHERE status IN ('open','accepting','drafting','server_failed','in_progress') AND COALESCE(is_diagnostic, false) = false ORDER BY created_at DESC LIMIT 1`
   );
   return r.rows[0] || null;
 }
@@ -9102,8 +9117,10 @@ async function getOrCreateOpenInhouseSession(defaults = {}) {
     // to the transaction so a crashing client doesn't permanently hold it.
     await client.query("SELECT pg_advisory_xact_lock(hashtext('inhouse_session_create_v603'))");
     const existing = await client.query(
+      // Task #297 — diagnostic sessions are invisible to the auto-create path.
       `SELECT * FROM inhouse_sessions
         WHERE status IN ('open','accepting','drafting','server_failed','in_progress')
+          AND COALESCE(is_diagnostic, false) = false
         ORDER BY created_at DESC LIMIT 1`
     );
     if (existing.rows[0]) {
@@ -11321,11 +11338,12 @@ async function getPlayerHomeData(accountId) {
         ORDER BY scheduled_at ASC
         LIMIT 1`
     ),
-    // Active inhouse lobby/session
+    // Active inhouse lobby/session — Task #297 excludes diagnostic rows.
     p.query(
       `SELECT id, status, captain_mode, notes, created_at, accept_phase_seconds
          FROM inhouse_sessions
         WHERE status IN ('open','accepting','drafting','server_failed','in_progress')
+          AND COALESCE(is_diagnostic, false) = false
         ORDER BY created_at DESC
         LIMIT 1`
     ),
@@ -11336,6 +11354,7 @@ async function getPlayerHomeData(accountId) {
          JOIN inhouse_sessions s ON s.id = isp.session_id
         WHERE isp.account_id = $1
           AND s.status IN ('open','accepting','drafting','server_failed','in_progress')
+          AND COALESCE(s.is_diagnostic, false) = false
         LIMIT 1`,
       [accountId]
     ),

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import { TierBadge, MMR_TIERS } from './Leaderboard';
@@ -2040,6 +2040,131 @@ function SeasonTiersPanelInner({ superuserKey }) {
   );
 }
 
+// Task #297 — Superuser-only diagnostic. Creates a synthetic, hidden
+// inhouse session, runs the real provisionInhouseServer() against the
+// configured dedicated server (real RCON push), and renders the
+// resulting steam://connect link inline so the operator can verify
+// Dota launches and joins. Does NOT post to Discord, NOT shuffle voice
+// channels, and the session is hidden from /inhouse + history.
+function InhouseDiagPanel({ superuserKey }) {
+  const [running, setRunning] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  async function handleProvision() {
+    setRunning(true);
+    setError('');
+    setResult(null);
+    try {
+      const r = await runInhouseDiagProvision(superuserKey);
+      setResult(r);
+    } catch (e) {
+      setError(e.message || 'Provisioning failed.');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function handleCleanup() {
+    if (!result?.sessionId) return;
+    setCleaningUp(true);
+    try {
+      await cleanupInhouseDiag(result.sessionId, superuserKey);
+      setResult(null);
+    } catch (e) {
+      setError(e.message || 'Cleanup failed.');
+    } finally {
+      setCleaningUp(false);
+    }
+  }
+
+  return (
+    <section className="admin-section" style={{ marginBottom: 36 }}>
+      <h2 id="ap-anchor-inhouse-diag" className="section-title" style={{ marginBottom: 6 }}>
+        🔌 Test: Provision &amp; Connect (Dedicated Server)
+      </h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+        Creates a hidden synthetic inhouse session, pushes a fresh match password to the
+        configured dedicated server over RCON, and renders the <code>steam://</code> connect link
+        below so you can click it and verify Dota launches and joins. The diagnostic session is
+        invisible to <code>/inhouse</code> and to match history, and it does <strong>not</strong> post to
+        Discord or move anyone in voice. Click <strong>Cleanup</strong> when you&rsquo;re done to delete
+        the hidden row.
+      </p>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={handleProvision}
+          disabled={running || cleaningUp}
+        >
+          {running ? '⏳ Provisioning…' : '🚀 Run Diagnostic Provision'}
+        </button>
+        {result?.sessionId && (
+          <button
+            type="button"
+            className="btn"
+            onClick={handleCleanup}
+            disabled={cleaningUp || running}
+          >
+            {cleaningUp ? '⏳ Cleaning up…' : '🧹 Cleanup diagnostic session'}
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: '#450a0a',
+                      border: '1px solid #f87171', color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {result && (
+        <div style={{
+          padding: 14, borderRadius: 8, background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+        }}>
+          <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-muted)' }}>
+            Diagnostic session <code>#{result.sessionId}</code> provisioned successfully.
+            {result.rcon && result.rcon.ok === false && (
+              <span style={{ color: '#fbbf24', marginLeft: 8 }}>
+                (RCON not configured — connect link only)
+              </span>
+            )}
+          </div>
+          {result.connectLink && (
+            <div style={{ marginBottom: 10 }}>
+              <a
+                href={result.connectLink}
+                style={{
+                  display: 'inline-block', padding: '12px 24px',
+                  background: '#171a21', color: '#66c0f4', textDecoration: 'none',
+                  borderRadius: 4, fontWeight: 700, border: '1px solid #66c0f4',
+                }}
+              >
+                🎮 Connect to Server
+              </a>
+            </div>
+          )}
+          {result.consoleCommand && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Or paste in the Dota console:{' '}
+              <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: 3, userSelect: 'all' }}>
+                {result.consoleCommand}
+              </code>
+            </div>
+          )}
+          <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+            Server: {result.serverIp}:{result.serverPort} · Password: {result.password}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SteamBotPanel({ superuserKey }) {
   const auth = { 'x-superuser-key': superuserKey };
   const [status, setStatus] = useState(null);
@@ -3544,6 +3669,7 @@ export default function AdminPanel() {
     { label: 'Replay Archive (Dedicated Server)', tab: 'matches', anchor: 'ap-anchor-replay-archive', icon: '🗂️', kw: 'dedicated server path' },
     { label: 'Replay Inspector', tab: 'matches', anchor: 'ap-anchor-replay-inspector', icon: '🔍', kw: 'parse debug' },
     { label: 'Database Backups', tab: 'matches', anchor: 'ap-anchor-db-backups', icon: '💾', kw: 'restore snapshot pg_dump nicknames' },
+    { label: 'Test: Provision & Connect', tab: 'steambot', anchor: 'ap-anchor-inhouse-diag', icon: '🔌', kw: 'rcon dedicated server diagnostic steam connect link test' },
     { label: 'Steam Bot Controls', tab: 'steambot', anchor: 'ap-anchor-steam-bot', icon: '🤖', kw: 'lobby login reconnect status' },
     { label: 'Test Post-Match DM', tab: 'steambot', anchor: 'ap-anchor-test-dm', icon: '✉️', kw: 'discord direct message debug' },
     { label: 'Test RSVP Registration DM', tab: 'steambot', anchor: 'ap-anchor-test-rsvp-dm', icon: '✉️', kw: 'discord rsvp invite' },
@@ -3780,6 +3906,9 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'steambot' && (<>
+      {/* Task #297 — One-click dedicated server diagnostic */}
+      <InhouseDiagPanel superuserKey={superuserKey} />
+
       {/* Steam Bot Controls */}
       <SteamBotPanel superuserKey={superuserKey} />
 

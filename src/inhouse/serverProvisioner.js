@@ -80,18 +80,24 @@ async function provisionInhouseServer(sessionId, opts = {}) {
         status: 'server_failed',
         notes: reason,
       });
-      try {
-        const { getDiscordBot } = require('../discord/bot');
-        const bot = getDiscordBot();
-        if (bot) {
-          bot._notifyChannel(
-            `⚠️ **Inhouse server provisioning failed** — session #${id}\n` +
-            `Reason: \`${rconResult.error}\`\n` +
-            `Captains can press **Retry** on the lobby page, or a superuser can re-run from the admin panel.`
-          );
+      // Task #297 — `silent: true` also suppresses the failure-path Discord
+      // ping so a diagnostic run that hits an RCON outage cannot page the
+      // community channel. The HTTP response carries the same error to the
+      // operator, which is the only audience that should see it.
+      if (!opts.silent) {
+        try {
+          const { getDiscordBot } = require('../discord/bot');
+          const bot = getDiscordBot();
+          if (bot) {
+            bot._notifyChannel(
+              `⚠️ **Inhouse server provisioning failed** — session #${id}\n` +
+              `Reason: \`${rconResult.error}\`\n` +
+              `Captains can press **Retry** on the lobby page, or a superuser can re-run from the admin panel.`
+            );
+          }
+        } catch (e) {
+          console.warn('[Inhouse] Could not notify Discord of provisioning failure:', e.message);
         }
-      } catch (e) {
-        console.warn('[Inhouse] Could not notify Discord of provisioning failure:', e.message);
       }
       return { ok: false, session: failedSession, rcon: rconResult, error: rconResult.error, failed: true };
     }
@@ -107,6 +113,12 @@ async function provisionInhouseServer(sessionId, opts = {}) {
 
     // Discord announcement + voice-channel shuffle. Wrapped so a Discord
     // outage never affects the HTTP response or the calling ticker.
+    // Task #297 — `silent: true` suppresses the Discord announce + voice-move
+    // entirely so the superuser diagnostic provision can render its
+    // steam:// link without paging the community or shuffling players.
+    if (opts.silent) {
+      return { ok: true, session, rcon: rconResult };
+    }
     try {
       const { getDiscordBot } = require('../discord/bot');
       const bot = getDiscordBot();

@@ -87,6 +87,34 @@ export async function superuserJson(url, {
   return data;
 }
 
+// Task #297 — superuser one-click "provision & connect" diagnostic helpers.
+// `runInhouseDiagProvision` creates a synthetic flagged session and pushes
+// the real RCON match-password to the configured dedicated server, returning
+// the steam://connect link inline. `cleanupInhouseDiag` deletes the row.
+export async function runInhouseDiagProvision(superuserKey) {
+  const r = await superuserFetch('/admin/inhouse/diag-provision', {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(d.error || `Diagnostic provisioning failed: ${r.status}`);
+    err.rcon = d.rcon || null;
+    throw err;
+  }
+  return d;
+}
+
+export async function cleanupInhouseDiag(sessionId, superuserKey) {
+  const r = await superuserFetch(`/admin/inhouse/diag-cleanup/${encodeURIComponent(sessionId)}`, {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `Diagnostic cleanup failed: ${r.status}`);
+  return d;
+}
+
 function _findHeader(headers, name) {
   const lower = name.toLowerCase();
   return Object.keys(headers).some(k => k.toLowerCase() === lower);

@@ -8165,6 +8165,94 @@ NOTES
     }
   });
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Task #297 — One-click superuser diagnostic.
+  //
+  // POST /api/admin/inhouse/diag-provision
+  //   Creates a synthetic inhouse_sessions row flagged is_diagnostic=true,
+  //   status='drafting' (the only status provisionInhouseServer() will
+  //   accept), then runs the real provisionInhouseServer() against the
+  //   configured dedicated server with `silent: true` (NO Discord ping,
+  //   NO voice-channel shuffle) and returns the resulting steam:// link
+  //   so the operator can click and verify Dota launches.
+  //
+  // POST /api/admin/inhouse/diag-cleanup/:id
+  //   Deletes the diagnostic row. Verifies is_diagnostic=true first so an
+  //   accidental id swap can't nuke a real session.
+  //
+  // The diagnostic row is invisible to every public selector (filtered
+  // out at the DB layer in getActiveInhouseSession, the home-page bundle,
+  // and getOrCreateOpenInhouseSession) and to the autoStartTicker passes,
+  // so it cannot pollute /inhouse history or trip background re-provisioning.
+  // ──────────────────────────────────────────────────────────────────────
+  router.post('/admin/inhouse/diag-provision', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const cfg = require('../config').config;
+      if (!cfg.dota?.dedicatedServer?.ip) {
+        return res.status(503).json({ error: 'No dedicated server IP configured (DEDICATED_SERVER_IP).' });
+      }
+      const pool = db.getPool();
+      const ins = await pool.query(
+        `INSERT INTO inhouse_sessions
+           (captain_mode, created_by, status, notes, is_diagnostic)
+         VALUES ('highest_rank', 'diagnostic', 'drafting', 'Superuser diagnostic — Test: Provision & Connect', true)
+         RETURNING *`
+      );
+      const synth = ins.rows[0];
+      const { provisionInhouseServer } = require('../inhouse/serverProvisioner');
+      const result = await provisionInhouseServer(synth.id, {
+        trigger: 'diagnostic',
+        silent: true,
+      });
+      if (!result.ok) {
+        // Provisioning failed — leave the row in place so the operator can
+        // see the failure surfaced via the failed session, then clean up.
+        await pool.query(`DELETE FROM inhouse_sessions WHERE id = $1 AND is_diagnostic = true`, [synth.id]);
+        const status = result.failed ? 502 : 500;
+        return res.status(status).json({
+          error: result.error || 'Provisioning failed',
+          rcon: result.rcon || null,
+        });
+      }
+      const s = result.session;
+      const connectLink = (s.server_ip && s.match_password)
+        ? `steam://connect/${s.server_ip}:${s.server_port}/${encodeURIComponent(s.match_password)}`
+        : null;
+      const consoleCommand = (s.server_ip && s.match_password)
+        ? `connect ${s.server_ip}:${s.server_port}; password ${s.match_password}`
+        : null;
+      res.json({
+        sessionId: s.id,
+        serverIp: s.server_ip,
+        serverPort: s.server_port,
+        password: s.match_password,
+        connectLink,
+        consoleCommand,
+        rcon: result.rcon || null,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/inhouse/diag-cleanup/:id', requireSuperuser, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ error: 'Invalid session id' });
+      const pool = db.getPool();
+      const r = await pool.query(
+        `DELETE FROM inhouse_sessions WHERE id = $1 AND is_diagnostic = true RETURNING id`,
+        [id]
+      );
+      if (r.rowCount === 0) {
+        return res.status(404).json({ error: 'Diagnostic session not found (or row is not flagged is_diagnostic — refusing to delete).' });
+      }
+      res.json({ deleted: id });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/inhouse/:id/server', requireSuperuser, express.json(), async (req, res) => {
     try {
       // Task #168 — delegated to the shared helper so the manual admin

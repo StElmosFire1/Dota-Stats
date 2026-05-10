@@ -130,12 +130,15 @@ async function tick(db, basePort) {
   let openRows, acceptingRows, draftingRows;
   try {
     [openRows, acceptingRows, draftingRows] = await Promise.all([
-      pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'open' ORDER BY id DESC LIMIT 20`),
-      pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'accepting' ORDER BY id DESC LIMIT 20`),
+      // Task #297 — diagnostic rows are excluded from every ticker pass so
+      // they never trip phase advancement, deadline auto-picks, or the
+      // recovery sweep. The diag route does its own one-shot provision.
+      pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'open' AND COALESCE(is_diagnostic, false) = false ORDER BY id DESC LIMIT 20`),
+      pool.query(`SELECT * FROM inhouse_sessions WHERE status = 'accepting' AND COALESCE(is_diagnostic, false) = false ORDER BY id DESC LIMIT 20`),
       // Task #168 — recovery sweep: pick up sessions that finished drafting
       // but never got their server provisioned (missed in-flight trigger,
       // server restart between the 8th pick and the helper firing, etc).
-      pool.query(`SELECT * FROM inhouse_sessions WHERE status IN ('drafting','server_failed') AND match_password IS NULL ORDER BY id DESC LIMIT 20`),
+      pool.query(`SELECT * FROM inhouse_sessions WHERE status IN ('drafting','server_failed') AND match_password IS NULL AND COALESCE(is_diagnostic, false) = false ORDER BY id DESC LIMIT 20`),
     ]);
   } catch (e) {
     warn('listInhouseSessions failed:', e.message);
