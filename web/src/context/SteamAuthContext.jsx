@@ -26,6 +26,25 @@ export function SteamAuthProvider({ children }) {
     }
   }, []);
 
+  // v7.16 — Apply a user payload directly without round-tripping through
+  // /api/auth/me. Used by SignInRetryBanner the moment /api/auth/complete
+  // returns the user blob, so the UI flips to "signed in" immediately —
+  // even if the freshly-set Set-Cookie hasn't propagated to subsequent
+  // fetches yet, or some intermediary stripped it. The cookie is still
+  // set on the response (so page reloads keep the user signed in); we
+  // just no longer make that the only path to a signed-in UI state.
+  const applyUser = React.useCallback((data) => {
+    if (data && data.accountId) {
+      setSteamUser(data);
+      // Best-effort backfill of fields /api/auth/complete doesn't return
+      // (discord_id, needs_discord_link, guild membership). Failure is
+      // silent — the user is already shown as signed in.
+      refreshMe().catch(() => {});
+      return true;
+    }
+    return false;
+  }, [refreshMe]);
+
   useEffect(() => {
     // Task #151 (v6.26) — explicit credentials: 'include'. Same-origin
     // fetches usually carry cookies by default, but if anything makes the
@@ -72,7 +91,7 @@ export function SteamAuthProvider({ children }) {
   };
 
   return (
-    <SteamAuthContext.Provider value={{ steamUser, loading, signIn, logout, onboardingComplete, setOnboardingComplete, refreshMe }}>
+    <SteamAuthContext.Provider value={{ steamUser, loading, signIn, logout, onboardingComplete, setOnboardingComplete, refreshMe, applyUser }}>
       {children}
     </SteamAuthContext.Provider>
   );

@@ -771,7 +771,7 @@ function EditorialFooter() {
 // signed in or navigates away. Strictly read-only — does not block the
 // page or change any other UI.
 function SignInRetryBanner() {
-  const { steamUser, loading, refreshMe } = useSteamAuth();
+  const { steamUser, loading, refreshMe, applyUser } = useSteamAuth();
   const location = useLocation();
   const [show, setShow] = useState(false);
   const diagnoseFiredRef = React.useRef(false);
@@ -809,18 +809,20 @@ function SignInRetryBanner() {
           });
           if (cancelled) return;
           if (r.ok) {
-            // Session cookie is now set.  Refresh the auth context.
-            // Retry with short backoffs to absorb any PostgreSQL session-
-            // write propagation lag before giving up and showing the banner.
-            const retryDelays = [0, 150, 500, 1200];
-            for (const delay of retryDelays) {
-              if (delay) await new Promise(res => setTimeout(res, delay));
-              if (cancelled) return;
-              try {
-                const user = await refreshMe();
-                if (user && user.accountId) { setShow(false); return; }
-              } catch { /* continue */ }
-            }
+            // v7.16 — The token-exchange response IS the user payload.
+            // Apply it inline so the UI flips to "signed in" immediately,
+            // without waiting for /api/auth/me to round-trip through the
+            // freshly-set Set-Cookie. This kills the entire class of
+            // "signed in on the server but the SPA still shows logged-out"
+            // bugs in one shot — cookie propagation lag, intermediary
+            // proxies stripping Set-Cookie, browser extensions blocking
+            // third-party-looking cookies, all become cosmetic instead of
+            // user-visible. The cookie is still set on this very response,
+            // so subsequent page reloads keep the user signed in normally.
+            try {
+              const body = await r.json();
+              if (!cancelled && applyUser(body)) { setShow(false); return; }
+            } catch { /* malformed body, fall through to retry sweep */ }
           }
         } catch { /* fall through to retry sweep */ }
         if (!cancelled) startRetrySweep();
