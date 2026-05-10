@@ -3574,6 +3574,75 @@ class DiscordBot {
       }
     })();
 
+    // Task #279 — Post the shareable 1200×630 match card (same renderer as the
+    // /og/match/<id>.png unfurl endpoint added in Task #268), alongside the
+    // scoreboard, with a "View match" link so the unfurl path matches what
+    // someone clicking the URL would see. Mirrors _resolveOgMatch in
+    // src/web/server.js so the bot and the web cache produce identical PNGs.
+    ;(async () => {
+      try {
+        const { generateMatchOgCard } = require('../services/matchOgCard');
+        const players = matchStats.players || [];
+        const radiantScore = players
+          .filter(p => p.team === 'radiant')
+          .reduce((s, p) => s + (parseInt(p.kills) || 0), 0);
+        const direScore = players
+          .filter(p => p.team === 'dire')
+          .reduce((s, p) => s + (parseInt(p.kills) || 0), 0);
+        // Top fragger: most kills, ties broken by k+a, then by lowest deaths.
+        let top = null;
+        for (const p of players) {
+          if (!top) { top = p; continue; }
+          const tk = parseInt(top.kills) || 0;
+          const pk = parseInt(p.kills) || 0;
+          if (pk > tk) { top = p; continue; }
+          if (pk < tk) continue;
+          const tka = (parseInt(top.kills) || 0) + (parseInt(top.assists) || 0);
+          const pka = (parseInt(p.kills) || 0) + (parseInt(p.assists) || 0);
+          if (pka > tka) { top = p; continue; }
+          if (pka < tka) continue;
+          if ((parseInt(p.deaths) || 0) < (parseInt(top.deaths) || 0)) top = p;
+        }
+        const buf = await generateMatchOgCard({
+          matchId: matchStats.matchId ? String(matchStats.matchId) : '',
+          radiantWin: !!matchStats.radiantWin,
+          radiantScore,
+          direScore,
+          durationSeconds: parseInt(matchStats.duration) || 0,
+          // MVP votes haven't happened yet at post-match time — leave null so
+          // the cache key matches the post-match render and the post-vote web
+          // render stays a separate (correct) cache entry.
+          mvpName: null,
+          mvpHeroDisplayName: null,
+          topFraggerName: top ? (top.personaname || `Player ${top.accountId || ''}`.trim()) : null,
+          topFraggerKills: top ? (parseInt(top.kills) || 0) : null,
+          topFraggerDeaths: top ? (parseInt(top.deaths) || 0) : null,
+          topFraggerAssists: top ? (parseInt(top.assists) || 0) : null,
+          topFraggerHeroId: top ? (parseInt(top.heroId) || null) : null,
+          topFraggerHeroName: top ? (top.heroName || null) : null,
+          topFraggerHeroDisplayName: top ? this._heroDisplayName(top.heroName, top.heroId) : null,
+        });
+        if (!buf) return;
+        const baseUrl = (process.env.SITE_URL || 'https://oceinhouse.gg').replace(/\/+$/, '');
+        const matchUrl = matchStats.matchId ? `${baseUrl}/match/${matchStats.matchId}` : null;
+        const cardName = `match_${matchStats.matchId || Date.now()}.png`;
+        const content = matchUrl ? `🔗 **View match:** ${matchUrl}` : null;
+        const payload = { files: [new AttachmentBuilder(buf, { name: cardName })] };
+        if (content) payload.content = content;
+        await channel.send(payload).catch(() => {});
+        const extraIds = config.discord.statsChannelIds.filter(id => id !== channel.id);
+        for (const id of extraIds) {
+          const ac = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
+          if (!ac) continue;
+          const xPayload = { files: [new AttachmentBuilder(buf, { name: cardName })] };
+          if (content) xPayload.content = content;
+          await ac.send(xPayload).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[MatchOgCard] Send failed:', err.message);
+      }
+    })();
+
     // Cross-post match embed to any stats channels not already receiving it
     const crossPostIds = config.discord.statsChannelIds.filter(id => id !== channel.id);
     for (const id of crossPostIds) {
