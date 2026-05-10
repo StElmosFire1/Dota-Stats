@@ -8205,13 +8205,17 @@ NOTES
         silent: true,
       });
       if (!result.ok) {
-        // Provisioning failed — delete the synthetic row immediately so a
-        // failed test never leaves an orphan diagnostic in the table. The
-        // failure detail is surfaced to the operator in the HTTP response;
-        // there's no second audience for the failed session record.
-        await pool.query(`DELETE FROM inhouse_sessions WHERE id = $1 AND is_diagnostic = true`, [synth.id]);
+        // Provisioning failed. Leave the synthetic row in place (with its
+        // server_failed status + notes payload set by provisionInhouseServer)
+        // so the operator can inspect the failure detail in the response and
+        // re-press the Cleanup button when done. The cleanup route hard
+        // guards on is_diagnostic = true so the row can never collide with
+        // real sessions.
+        const failedRow = await db.getInhouseSession(synth.id).catch(() => null);
         const status = result.failed ? 502 : 500;
         return res.status(status).json({
+          session: failedRow || null,
+          sessionId: synth.id,
           error: result.error || 'Provisioning failed',
           rcon: result.rcon || null,
         });

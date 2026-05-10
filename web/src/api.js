@@ -98,8 +98,14 @@ export async function runInhouseDiagProvision(superuserKey) {
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) {
+    // Failure responses now include the synthetic session row (with
+    // status=server_failed + notes) and its sessionId so the UI can both
+    // surface the failure detail and offer Cleanup. Attach all of that to
+    // the thrown error so callers don't need a parallel out-of-band channel.
     const err = new Error(d.error || `Diagnostic provisioning failed: ${r.status}`);
     err.rcon = d.rcon || null;
+    err.session = d.session || null;
+    err.sessionId = d.sessionId || null;
     throw err;
   }
   return d;

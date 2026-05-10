@@ -2051,6 +2051,11 @@ function InhouseDiagPanel({ superuserKey }) {
   const [cleaningUp, setCleaningUp] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  // On a failed provision the API now returns the server_failed session row
+  // (status + notes) AND a sessionId. We track that here so the UI can show
+  // the failure detail AND offer Cleanup for the orphaned diagnostic row.
+  const [failedSession, setFailedSession] = useState(null);
+  const [failedSessionId, setFailedSessionId] = useState(null);
   // Reuse the existing /api/admin/dedicated-server/status endpoint so the
   // operator can pre-flight check RCON + SSH reachability before pressing
   // the diagnostic button. Loaded lazily on mount.
@@ -2078,22 +2083,32 @@ function InhouseDiagPanel({ superuserKey }) {
     setRunning(true);
     setError('');
     setResult(null);
+    setFailedSession(null);
+    setFailedSessionId(null);
     try {
       const r = await runInhouseDiagProvision(superuserKey);
       setResult(r);
     } catch (e) {
       setError(e.message || 'Provisioning failed.');
+      // Surface the server_failed session shape so the operator can read
+      // notes inline AND cleanup the orphan row left behind by the failure.
+      setFailedSession(e.session || null);
+      setFailedSessionId(e.sessionId || null);
     } finally {
       setRunning(false);
     }
   }
 
   async function handleCleanup() {
-    if (!result?.sessionId) return;
+    const id = result?.sessionId || failedSessionId;
+    if (!id) return;
     setCleaningUp(true);
     try {
-      await cleanupInhouseDiag(result.sessionId, superuserKey);
+      await cleanupInhouseDiag(id, superuserKey);
       setResult(null);
+      setFailedSession(null);
+      setFailedSessionId(null);
+      setError('');
     } catch (e) {
       setError(e.message || 'Cleanup failed.');
     } finally {
@@ -2172,7 +2187,7 @@ function InhouseDiagPanel({ superuserKey }) {
         >
           {running ? '⏳ Provisioning…' : '🚀 Run Diagnostic Provision'}
         </button>
-        {result?.sessionId && (
+        {(result?.sessionId || failedSessionId) && (
           <button
             type="button"
             className="btn"
@@ -2183,6 +2198,27 @@ function InhouseDiagPanel({ superuserKey }) {
           </button>
         )}
       </div>
+
+      {failedSession && (
+        <div style={{
+          padding: '10px 14px', borderRadius: 8, background: '#1f0a0a',
+          border: '1px solid #f87171', marginBottom: 12, fontSize: 13,
+        }}>
+          <div style={{ fontWeight: 600, color: '#fca5a5', marginBottom: 4 }}>
+            Diagnostic session #{failedSession.id} — status: {failedSession.status}
+          </div>
+          {failedSession.notes && (
+            <pre style={{
+              margin: 0, padding: '8px 10px', background: '#0d0606',
+              border: '1px solid #2a0a0a', borderRadius: 4, color: '#fca5a5',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace',
+              fontSize: 12, maxHeight: 200, overflow: 'auto',
+            }}>
+              {failedSession.notes}
+            </pre>
+          )}
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: '8px 12px', borderRadius: 6, background: '#450a0a',
