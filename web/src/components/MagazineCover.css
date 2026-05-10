@@ -25,16 +25,22 @@
 }
 
 /* ───────── Sticky mini-header ───────── */
-/* position:sticky keeps the bar in the document flow so it only sticks
-   while scrolling through the player profile page (unlike fixed which
-   stacks over every page globally).  --nav-h is set by NavbarHeightSync
-   in App.jsx (ResizeObserver on .navbar); 52px is the CSS fallback.
-   The bar slides in from translateY(-100%) → translateY(0) once the
-   IntersectionObserver fires (cover scrolls off-screen). */
-.v3-sticky {
+/* The shell is position:sticky with height:0 — it anchors the bar below
+   the navbar without consuming any layout space.  overflow:visible lets
+   the inner bar paint downward outside the 0-height box.
+   The inner bar uses clip-path to show/hide: inset(0 0 100% 0) clips
+   everything away (bar is invisible and CONTAINED within its own box,
+   so it can never bleed over adjacent notification banners above it).
+   The reveal transition drops the bar in from the top as clip-path
+   animates to inset(0). */
+.v3-sticky-shell {
   position: sticky;
   top: var(--nav-h, 52px);
+  height: 0;
   z-index: 60;
+  overflow: visible;
+}
+.v3-sticky {
   background: rgba(13, 20, 36, 0.92);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -43,12 +49,10 @@
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  transform: translateY(-100%);
-  transition: transform 0.18s ease-out;
+  clip-path: inset(0 0 100% 0);
+  transition: clip-path 0.2s ease-out;
 }
-.v3-sticky.is-visible { transform: translateY(0); }
-/* When the sticky shell is off-screen, also hide it from pointer events so
-   nothing under the page header can be hover-captured by the invisible bar. */
+.v3-sticky.is-visible { clip-path: inset(0); }
 .v3-sticky:not(.is-visible) { pointer-events: none; }
 .v3-sticky-portrait {
   width: 30px; height: 30px; border-radius: 4px;

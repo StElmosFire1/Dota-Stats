@@ -810,8 +810,17 @@ function SignInRetryBanner() {
           if (cancelled) return;
           if (r.ok) {
             // Session cookie is now set.  Refresh the auth context.
-            const user = await refreshMe();
-            if (user && user.accountId) { setShow(false); return; }
+            // Retry with short backoffs to absorb any PostgreSQL session-
+            // write propagation lag before giving up and showing the banner.
+            const retryDelays = [0, 150, 500, 1200];
+            for (const delay of retryDelays) {
+              if (delay) await new Promise(res => setTimeout(res, delay));
+              if (cancelled) return;
+              try {
+                const user = await refreshMe();
+                if (user && user.accountId) { setShow(false); return; }
+              } catch { /* continue */ }
+            }
           }
         } catch { /* fall through to retry sweep */ }
         if (!cancelled) startRetrySweep();

@@ -166,6 +166,12 @@ export default function MagazineCover({
           keyboard user never lands on hidden off-screen content (architect
           review on Task #195). The shell stays mounted so the slide-in CSS
           transition still fires; the interactive link is conditional. */}
+      {/* Zero-height sticky shell keeps the bar in the document flow for
+          sticky positioning WITHOUT occupying any layout space. The inner bar
+          extends downward (overflow:visible on shell) and is revealed/hidden
+          via clip-path — this prevents the translateY trick from bleeding
+          visually over notification banners that sit above the shell. */}
+      <div className="v3-sticky-shell">
       <div
         className={`v3-sticky${stuck ? ' is-visible' : ''}`}
         aria-hidden={!stuck}
@@ -182,6 +188,7 @@ export default function MagazineCover({
         <span className="v3-sticky-spacer" />
         {stuck && <Link to="/players" className="v3-sticky-cta">All players</Link>}
       </div>
+      </div>{/* end v3-sticky-shell */}
 
       <div
         ref={coverRef}

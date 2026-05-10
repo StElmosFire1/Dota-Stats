@@ -3173,6 +3173,65 @@ function HomeBannerPanel({ superuserKey }) {
   );
 }
 
+// Module-level style object — stable reference so inputs never lose focus
+// when SideBannerPanel re-renders on state changes.
+const SIDE_BANNER_INPUT_STYLE = {
+  width: '100%', boxSizing: 'border-box',
+  padding: '7px 10px', borderRadius: 6,
+  border: '1px solid var(--border)',
+  background: 'var(--bg-card)', color: 'var(--text-primary)',
+  fontSize: 14, fontFamily: 'inherit',
+};
+
+// Extracted to module scope so React keeps the same component type across
+// re-renders — an inline component definition causes React to unmount/remount
+// the DOM nodes on every keystroke, ejecting focus from the input.
+function SideBannerSideForm({ side, label, cfg, updSide }) {
+  return (
+    <div style={{ flex: 1, minWidth: 260 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10, color: 'var(--brass)' }}>
+        {label} Banner
+      </h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
+          <input
+            type="checkbox"
+            checked={!!cfg[side].enabled}
+            onChange={e => updSide(side, 'enabled', e.target.checked)}
+          />
+          Enabled
+        </label>
+        {[
+          { k: 'title',    label: 'Title (bold headline)', ph: 'Season 1 Championship' },
+          { k: 'subtitle', label: 'Subtitle',              ph: '$1,000 Prize Pool' },
+          { k: 'imageUrl', label: 'Image URL',             ph: 'https://…/banner.jpg' },
+          { k: 'linkUrl',  label: 'Link URL (optional)',   ph: '/leaderboard' },
+        ].map(({ k, label: lbl, ph }) => (
+          <div key={k}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 3, color: 'var(--text-muted)' }}>
+              {lbl}
+            </label>
+            <input
+              type="text"
+              value={cfg[side][k] || ''}
+              onChange={e => updSide(side, k, e.target.value)}
+              placeholder={ph}
+              style={SIDE_BANNER_INPUT_STYLE}
+            />
+          </div>
+        ))}
+        {cfg[side].imageUrl && (
+          <img
+            src={cfg[side].imageUrl}
+            alt="preview"
+            style={{ width: 100, borderRadius: 6, border: '1px solid var(--border-subtle)', objectFit: 'cover', aspectRatio: '2/3' }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SideBannerPanel({ superuserKey }) {
   const defaultSide = () => ({ enabled: false, imageUrl: '', title: '', subtitle: '', linkUrl: '' });
   const [cfg, setCfg] = React.useState(null);
@@ -3225,58 +3284,6 @@ function SideBannerPanel({ superuserKey }) {
     }
   };
 
-  const inp = {
-    width: '100%', boxSizing: 'border-box',
-    padding: '7px 10px', borderRadius: 6,
-    border: '1px solid var(--border)',
-    background: 'var(--bg-card)', color: 'var(--text-primary)',
-    fontSize: 14, fontFamily: 'inherit',
-  };
-
-  const SideForm = ({ side, label }) => (
-    <div style={{ flex: 1, minWidth: 260 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10, color: 'var(--brass)' }}>
-        {label} Banner
-      </h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
-          <input
-            type="checkbox"
-            checked={!!cfg[side].enabled}
-            onChange={e => updSide(side, 'enabled', e.target.checked)}
-          />
-          Enabled
-        </label>
-        {[
-          { k: 'title',    label: 'Title (bold headline)', ph: 'Season 1 Championship' },
-          { k: 'subtitle', label: 'Subtitle',              ph: '$1,000 Prize Pool' },
-          { k: 'imageUrl', label: 'Image URL',             ph: 'https://…/banner.jpg' },
-          { k: 'linkUrl',  label: 'Link URL (optional)',   ph: '/leaderboard' },
-        ].map(({ k, label: lbl, ph }) => (
-          <div key={k}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 3, color: 'var(--text-muted)' }}>
-              {lbl}
-            </label>
-            <input
-              type="text"
-              value={cfg[side][k] || ''}
-              onChange={e => updSide(side, k, e.target.value)}
-              placeholder={ph}
-              style={inp}
-            />
-          </div>
-        ))}
-        {cfg[side].imageUrl && (
-          <img
-            src={cfg[side].imageUrl}
-            alt="preview"
-            style={{ width: 100, borderRadius: 6, border: '1px solid var(--border-subtle)', objectFit: 'cover', aspectRatio: '2/3' }}
-          />
-        )}
-      </div>
-    </div>
-  );
-
   return (
     <section style={{ marginTop: 32 }}>
       <h2 id="ap-anchor-side-banners" style={{ marginBottom: 6 }}>🪧 Side Banners (CMS)</h2>
@@ -3285,8 +3292,8 @@ function SideBannerPanel({ superuserKey }) {
         Use them for season promos, prize pool announcements, or sponsor graphics.
       </p>
       <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 18 }}>
-        <SideForm side="left"  label="Left" />
-        <SideForm side="right" label="Right" />
+        <SideBannerSideForm side="left"  label="Left"  cfg={cfg} updSide={updSide} />
+        <SideBannerSideForm side="right" label="Right" cfg={cfg} updSide={updSide} />
       </div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <button className="btn btn-primary" disabled={saving} onClick={save}>

@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.15",
+    "title": "Five bug fixes: admin input focus, sticky bar overlap, side banner redesign, Steam auth retry, Stripe note",
+    "published_at": "2026-05-10",
+    "content": "**Admin panel CMS inputs no longer lose focus on each keystroke** — The `SideForm` component was defined *inside* the `SideBannerPanel` render function, causing React to treat it as a new component type on every state change and unmount/remount the DOM inputs. Extracted `SideBannerSideForm` and `SIDE_BANNER_INPUT_STYLE` to module scope so React preserves the element across renders.\n\n**Profile sticky bar no longer bleeds over notification banners** — The previous `transform: translateY(-100%)` approach shifted the bar's visual rendering upward into adjacent notification banners (e.g. the Steam retry banner) without clipping it. Replaced with a `height: 0; overflow: visible` sticky shell div and `clip-path: inset(0 0 100% 0)` on the inner bar, which contains the bar's paint entirely within its own CSS box. The bar is now invisible until triggered and never overlaps elements above it. Shell with `height: 0` also eliminates the flow-space gap that previously appeared between the navbar and the cover.\n\n**Side banners redesigned to full-height, space-filling panels** — Changed from 150 px fixed strips to panels that fill the full available viewport space beside the 1200 px content column (`width: calc((100vw - 1200px) / 2 - 16px); top: var(--nav-h); bottom: 0`). Images now cover the entire slot with `object-fit: cover` and a gradient overlay carries the title/subtitle. No-image state renders branded centred text instead of a placeholder emoji. The slot stays hidden on screens < 1600 px.\n\n**Steam sign-in retry is more resilient** — After a successful `/api/auth/complete` token exchange, the SPA now retries `refreshMe()` up to four times with backoff delays (0 ms → 150 ms → 500 ms → 1200 ms) before falling through to the banner sweep. This absorbs PostgreSQL session-write propagation lag that occasionally left the auth context null immediately after the cookie was set.\n\n**Stripe warning** — The admin panel warning about a missing `STRIPE_SECRET_KEY` is a production environment config note, not a code issue. Add the key to `~/Dota-Stats-Full/.env` on the prod host to clear it.",
+    "author": "System"
+  },
+  {
     "version": "7.14",
     "title": "One-click \"Post to #highlights\" from the match share popover",
     "published_at": "2026-05-09",
