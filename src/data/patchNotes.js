@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.19",
+    "title": "Steam sign-in: stop the backfill from clobbering the freshly-applied user",
+    "published_at": "2026-05-10",
+    "content": "**The bug, the real one this time.** v7.16 introduced an `applyUser()` setter on `SteamAuthContext` so the SPA could flip to signed-in state directly from the `/api/auth/complete` response body — no second cookie-bearing fetch required. That part worked. The very next line in `applyUser()` then fired `refreshMe()` as a fire-and-forget backfill of the fields `/api/auth/complete` doesn't return (`discord_id`, `needs_discord_link`, `discord_in_guild`, `discord_autojoin_pending`). And `refreshMe()` was unconditionally calling `setSteamUser(null)` whenever `/api/auth/me` returned literal `null` (server.js line 2046, what the server returns when there's no session) or the fetch threw.\n\nResult: every cookie-propagation failure mode v7.16 was supposed to be immune to (privacy extension, intermediary stripping Set-Cookie, in-flight cookie-jar lag, service-worker origin mismatch) was re-armed by the very next line of the function. The user saw a millisecond flash of \"signed in\" then signed-out again, indistinguishable from the bug we'd been chasing across v7.11/v7.12/v7.15/v7.16. Same destructive shape silently signed users out mid-session whenever the 8-second `DiscordJoinGate` poll on `/inhouse` hit a transient null response.\n\n**The fix:** `refreshMe()` is now non-destructive. On a successful response it still updates `steamUser` (so newly-arrived `discord_id` etc. are reflected), but on a `null` response or a network error it returns `null` and *leaves the existing `steamUser` state untouched*. The only place that ever sets `steamUser` to null based on a server response is the initial-mount fetch in `SteamAuthContext` — that's the one moment where \"not signed in\" is authoritative truth instead of a transient race. `logout()` still clears state explicitly when the user actually signs out.\n\nA11y gate green. Frontend builds clean.",
+    "author": "System"
+  },
+  {
     "version": "7.18",
     "title": "Post-match Discord drop now includes the shareable match card",
     "published_at": "2026-05-10",

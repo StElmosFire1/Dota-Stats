@@ -7,9 +7,28 @@ export function SteamAuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [onboardingComplete, setOnboardingComplete] = useState(null);
 
-  // Pull /api/auth/me on mount and after a refresh request (e.g. after the
-  // first-login Discord link modal saves so `needs_discord_link` flips to
-  // false and the modal stops showing).
+  // Pull /api/auth/me to backfill fresh fields (discord_id, guild membership,
+  // needs_discord_link, autojoin-pending) on the *signed-in* user. Used after
+  // applyUser() flips the SPA to signed-in inline, after the Discord-link
+  // modal saves, after the OAuth callback, and by the periodic Inhouse gate
+  // poll.
+  //
+  // v7.18 — DELIBERATELY NON-DESTRUCTIVE. The previous version called
+  // `setSteamUser(null)` whenever the response was missing accountId or the
+  // fetch threw. That was the root cause of the long-running Steam sign-in
+  // regression: applyUser() correctly flipped the UI to signed-in from the
+  // /api/auth/complete response body, then immediately fired refreshMe()
+  // as a backfill — and if /api/auth/me raced ahead of the freshly-set
+  // session cookie (the very condition v7.16 was meant to bypass), the
+  // server returned `null`, refreshMe cleared steamUser, and the UI
+  // flipped back to signed-out. Same shape silently signed users out
+  // mid-session whenever the 8-second Inhouse gate poll hit a transient
+  // null response.
+  //
+  // The only place that should ever clear steamUser based on a "not
+  // signed in" server response is the initial-mount fetch below — that's
+  // the one moment where "not signed in" is authoritative truth, not a
+  // race or transient blip.
   const refreshMe = React.useCallback(async () => {
     try {
       const res = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
@@ -18,10 +37,11 @@ export function SteamAuthProvider({ children }) {
         setSteamUser(data);
         return data;
       }
-      setSteamUser(null);
+      // Non-destructive: server says "no session" but we may already have a
+      // valid signed-in user in state from applyUser(). Leave it alone.
       return null;
     } catch {
-      setSteamUser(null);
+      // Network error — same logic. Don't sign the user out on a blip.
       return null;
     }
   }, []);
