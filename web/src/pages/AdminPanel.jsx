@@ -2065,7 +2065,7 @@ function InhouseDiagPanel({ superuserKey }) {
   const loadSrvStatus = useCallback(async () => {
     setSrvLoading(true);
     try {
-      const r = await superuserFetch('/admin/dedicated-server/status', {
+      const r = await superuserFetch('/dedicated-server/status', {
         headers: { 'x-superuser-key': superuserKey },
       });
       const d = await r.json().catch(() => ({}));
