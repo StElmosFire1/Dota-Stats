@@ -8188,24 +8188,12 @@ NOTES
   router.post('/admin/inhouse/diag-provision', requireSuperuser, express.json(), async (req, res) => {
     try {
       const cfg = require('../config').config;
-      if (!cfg.dota?.dedicatedServer?.ip) {
-        return res.status(503).json({ error: 'No dedicated server IP configured (DEDICATED_SERVER_IP).' });
-      }
-      // Task #297 — diagnostic mode REQUIRES a real RCON push to be meaningful.
-      // The shared provisioner treats "no RCON password" as a soft fallback
-      // (connect-link-only, in_progress) for the legacy manual route, but for
-      // the diagnostic that fallback would hide a misconfiguration and
-      // produce a misleading green result. Hard-fail at the route level
-      // before we touch the DB. Production callers (drafting auto-trigger,
-      // captain-Retry, manual /server/start) keep their existing behavior.
-      if (!cfg.dota?.dedicatedServer?.rconPassword) {
-        return res.status(503).json({
-          error: 'RCON password not configured (DEDICATED_SERVER_RCON_PASSWORD). ' +
-                 'The diagnostic requires a real RCON push to validate the dedicated server; ' +
-                 'configure the RCON password and try again.',
-        });
-      }
       const pool = db.getPool();
+      // Always create the synthetic row first so EVERY failure mode (no IP,
+      // no RCON, RCON push fails, server offline) returns the same
+      // `server_failed`-shaped session the real flow uses, with `notes`
+      // carrying the operator-facing reason. The row is hidden from /inhouse
+      // and stays cleanable from the same UI button.
       const ins = await pool.query(
         `INSERT INTO inhouse_sessions
            (captain_mode, created_by, status, notes, is_diagnostic)
@@ -8213,18 +8201,47 @@ NOTES
          RETURNING *`
       );
       const synth = ins.rows[0];
+
+      // Task #297 — diagnostic mode REQUIRES a real RCON push to be
+      // meaningful. The shared provisioner treats "no RCON password" as a
+      // soft fallback (connect-link-only, in_progress) for the legacy
+      // manual route — for the diagnostic that fallback would hide a
+      // misconfiguration and produce a misleading green result. We surface
+      // the misconfig as a `server_failed` row (same shape as a real RCON
+      // outage) instead of swallowing it. Production callers (auto-trigger,
+      // captain-Retry, manual /server/start) keep their existing behavior.
+      const cfgFailures = [];
+      if (!cfg.dota?.dedicatedServer?.ip) {
+        cfgFailures.push('No dedicated server IP configured (DEDICATED_SERVER_IP).');
+      }
+      if (!cfg.dota?.dedicatedServer?.rconPassword) {
+        cfgFailures.push('RCON password not configured (DEDICATED_SERVER_RCON_PASSWORD). The diagnostic requires a real RCON push to validate the dedicated server.');
+      }
+      if (cfgFailures.length) {
+        const reason = `Server provisioning failed at ${new Date().toISOString()}: ${cfgFailures.join(' ')}`;
+        const failedRow = await db.updateInhouseSession(synth.id, {
+          status: 'server_failed',
+          notes: reason,
+        });
+        return res.status(503).json({
+          session: failedRow,
+          sessionId: synth.id,
+          error: cfgFailures.join(' '),
+          rcon: null,
+        });
+      }
+
       const { provisionInhouseServer } = require('../inhouse/serverProvisioner');
       const result = await provisionInhouseServer(synth.id, {
         trigger: 'diagnostic',
         silent: true,
       });
       if (!result.ok) {
-        // Provisioning failed. Leave the synthetic row in place (with its
-        // server_failed status + notes payload set by provisionInhouseServer)
-        // so the operator can inspect the failure detail in the response and
-        // re-press the Cleanup button when done. The cleanup route hard
-        // guards on is_diagnostic = true so the row can never collide with
-        // real sessions.
+        // Provisioning failed (RCON push error / server offline). The
+        // provisioner has already written status=server_failed + notes onto
+        // the row. Return that row so the UI can render notes inline; the
+        // operator presses Cleanup when done. cleanup route hard-guards on
+        // is_diagnostic = true so this row cannot collide with real sessions.
         const failedRow = await db.getInhouseSession(synth.id).catch(() => null);
         const status = result.failed ? 502 : 500;
         return res.status(status).json({

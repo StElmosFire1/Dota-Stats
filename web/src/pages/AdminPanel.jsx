@@ -2233,12 +2233,7 @@ function InhouseDiagPanel({ superuserKey }) {
           border: '1px solid var(--border)',
         }}>
           <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-            Diagnostic session <code>#{result.sessionId}</code> provisioned successfully.
-            {result.rcon && result.rcon.ok === false && (
-              <span style={{ color: '#fbbf24', marginLeft: 8 }}>
-                (RCON not configured — connect link only)
-              </span>
-            )}
+            Diagnostic session <code>#{result.sessionId}</code> provisioned successfully — RCON push accepted.
           </div>
           {result.connectLink && (
             <div style={{ marginBottom: 10 }}>
