@@ -8281,14 +8281,18 @@ NOTES
     try {
       const id = Number(req.params.id);
       if (!id) return res.status(400).json({ error: 'Invalid session id' });
+      // Defense-in-depth: verify the row is_diagnostic = true BEFORE deleting,
+      // so an accidental id swap can never nuke a real session even if the
+      // shared db.deleteInhouseSession() helper later grows side effects.
       const pool = db.getPool();
-      const r = await pool.query(
-        `DELETE FROM inhouse_sessions WHERE id = $1 AND is_diagnostic = true RETURNING id`,
+      const check = await pool.query(
+        `SELECT id FROM inhouse_sessions WHERE id = $1 AND is_diagnostic = true`,
         [id]
       );
-      if (r.rowCount === 0) {
+      if (check.rowCount === 0) {
         return res.status(404).json({ error: 'Diagnostic session not found (or row is not flagged is_diagnostic — refusing to delete).' });
       }
+      await db.deleteInhouseSession(id);
       res.json({ deleted: id });
     } catch (err) {
       res.status(500).json({ error: err.message });
