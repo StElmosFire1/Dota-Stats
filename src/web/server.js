@@ -9587,6 +9587,75 @@ NOTES
     }
   });
 
+  // Task #274 — POST /api/admin/founders-ring-refunds/:id/retry — superuser
+  // re-runs stripe.refunds.create against the stored payment_intent for an
+  // audit row currently stuck in status='refund_failed' and updates the row
+  // in place (status -> 'refunded' on success, refreshed error_message on
+  // failure). The underlying recordFoundersRingRefund upsert is keyed on
+  // stripe_session_id, so the row is updated rather than duplicated.
+  router.post('/admin/founders-ring-refunds/:id/retry', requireSuperuser, async (req, res) => {
+    try {
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Stripe not configured' });
+      }
+      const row = await db.getFoundersRingRefundById(req.params.id);
+      if (!row) return res.status(404).json({ error: 'Refund row not found' });
+      if (row.status !== 'refund_failed') {
+        return res.status(409).json({
+          error: `Refund row is in status '${row.status}', not 'refund_failed' — nothing to retry`,
+        });
+      }
+      if (!row.stripe_payment_intent) {
+        return res.status(422).json({
+          error: 'Refund row has no stripe_payment_intent — cannot retry; refund manually in Stripe',
+        });
+      }
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      let refundId = row.stripe_refund_id || null;
+      let newStatus = 'refund_failed';
+      let errorMessage = null;
+      try {
+        const refund = await stripe.refunds.create({
+          payment_intent: row.stripe_payment_intent,
+          metadata: {
+            reason: 'founders_ring_cap_race_retry',
+            account_id: String(row.account_id),
+            stripe_session_id: row.stripe_session_id,
+            audit_row_id: String(row.id),
+          },
+        });
+        refundId = refund?.id || refundId;
+        newStatus = 'refunded';
+        console.log('[Stripe] founders_ring refund RETRY OK:', refundId, 'session', row.stripe_session_id);
+      } catch (refundErr) {
+        errorMessage = refundErr.message || String(refundErr);
+        console.error('[Stripe] founders_ring refund RETRY FAILED for session', row.stripe_session_id, '—', errorMessage);
+      }
+      const updated = await db.recordFoundersRingRefund({
+        accountId: row.account_id,
+        sku: row.sku,
+        stripeSessionId: row.stripe_session_id,
+        stripePaymentIntent: row.stripe_payment_intent,
+        stripeRefundId: refundId,
+        amountCents: row.amount_cents,
+        currency: row.currency,
+        status: newStatus,
+        errorMessage,
+      });
+      if (newStatus === 'refunded') {
+        return res.json({ ok: true, refund: updated });
+      }
+      return res.status(502).json({
+        ok: false,
+        error: errorMessage || 'Stripe refund retry failed',
+        refund: updated,
+      });
+    } catch (err) {
+      console.error('[API] admin/founders-ring-refunds retry:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to retry refund' });
+    }
+  });
+
   // ── Founders Pass ring (v6.63 / Task #207) ──────────────────────────────
   // Limited-edition one-time entitlement. Cap is configurable via
   // FOUNDERS_RING_CAP env (default 200). The cap is checked here at

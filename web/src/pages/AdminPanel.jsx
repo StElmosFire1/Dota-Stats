@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import { TierBadge, MMR_TIERS } from './Leaderboard';
@@ -134,6 +134,11 @@ function FoundersRingRefunds({ superuserKey }) {
   const [error, setError] = useState('');
   const [sortKey, setSortKey] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
+  // Task #274 — per-row retry state ({ [id]: true while in-flight }) and a
+  // per-row error message shown inline below the row error column.
+  const [retrying, setRetrying] = useState({});
+  const [rowErrors, setRowErrors] = useState({});
+  const [statusMsg, setStatusMsg] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -143,6 +148,41 @@ function FoundersRingRefunds({ superuserKey }) {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [superuserKey]);
+
+  function handleRetry(row) {
+    if (!window.confirm(
+      `Retry Stripe refund for account ${row.account_id} (session ${row.stripe_session_id})?`
+    )) return;
+    setRetrying(prev => ({ ...prev, [row.id]: true }));
+    setRowErrors(prev => ({ ...prev, [row.id]: '' }));
+    setStatusMsg('');
+    retryFoundersRingRefund(row.id, superuserKey)
+      .then(r => {
+        setStatusMsg(`✓ Refund succeeded for account ${row.account_id}.`);
+        setData(prev => prev ? {
+          ...prev,
+          refunds: prev.refunds.map(x => x.id === row.id ? (r.refund || x) : x),
+        } : prev);
+      })
+      .catch(e => {
+        setRowErrors(prev => ({ ...prev, [row.id]: e.message }));
+        // Server returns the updated row on 502 (Stripe rejected) so the
+        // row's error_message refreshes in place without a manual reload.
+        if (e.refund) {
+          setData(prev => prev ? {
+            ...prev,
+            refunds: prev.refunds.map(x => x.id === row.id ? e.refund : x),
+          } : prev);
+        }
+      })
+      .finally(() => {
+        setRetrying(prev => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+      });
+  }
 
   function toggleSort(key) {
     if (sortKey === key) {
@@ -234,6 +274,12 @@ function FoundersRingRefunds({ superuserKey }) {
           {error}
         </div>
       )}
+      {statusMsg && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(74,222,128,0.10)',
+                      border: '1px solid #4ade80', color: '#86efac', fontSize: 13, marginBottom: 12 }}>
+          {statusMsg}
+        </div>
+      )}
 
       {data !== null && refunds.length === 0 && (
         <p style={{ color: '#4ade80', fontSize: 13 }}>
@@ -253,6 +299,7 @@ function FoundersRingRefunds({ superuserKey }) {
                 <SortHeader k="stripe_refund_id">Refund</SortHeader>
                 <SortHeader k="stripe_session_id">Session</SortHeader>
                 <th style={{ padding: '6px 10px 8px 0', fontWeight: 600 }}>Error</th>
+                <th style={{ padding: '6px 10px 8px 0', fontWeight: 600 }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -302,6 +349,27 @@ function FoundersRingRefunds({ superuserKey }) {
                       maxWidth: 320, wordBreak: 'break-word',
                     }}>
                       {r.error_message || (failed ? '(no message)' : '—')}
+                      {rowErrors[r.id] && (
+                        <div style={{ marginTop: 4, color: '#fca5a5', fontWeight: 600 }}>
+                          ⚠ {rowErrors[r.id]}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>
+                      {failed ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => handleRetry(r)}
+                          disabled={!!retrying[r.id] || !r.stripe_payment_intent}
+                          title={!r.stripe_payment_intent
+                            ? 'No payment_intent on record — refund manually in Stripe'
+                            : 'Re-run stripe.refunds.create against the stored payment_intent'}
+                          style={{ fontSize: 11, padding: '4px 10px' }}
+                        >
+                          {retrying[r.id] ? '⏳ Retrying…' : '↻ Retry refund'}
+                        </button>
+                      ) : '—'}
                     </td>
                   </tr>
                 );

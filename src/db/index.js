@@ -11214,6 +11214,20 @@ async function listFoundersRingRefunds({ limit = 200 } = {}) {
   return r.rows;
 }
 
+// Task #274 — fetch a single refund audit row by primary key. Used by the
+// superuser "Retry refund" route to verify the row exists and is currently
+// in 'refund_failed' before re-attempting stripe.refunds.create.
+async function getFoundersRingRefundById(id) {
+  const numericId = parseInt(id, 10);
+  if (!Number.isFinite(numericId) || numericId <= 0) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM founders_ring_refunds WHERE id = $1`,
+    [numericId]
+  );
+  return r.rows[0] || null;
+}
+
 async function revokeEntitlement(accountId, sku) {
   if (!accountId || !sku) return false;
   const p = getPool();
@@ -12712,6 +12726,7 @@ module.exports = {
   grantEntitlementWithCap,
   recordFoundersRingRefund,
   listFoundersRingRefunds,
+  getFoundersRingRefundById,
   revokeEntitlement,
   createGiftCheckout,
   confirmGiftCheckout,

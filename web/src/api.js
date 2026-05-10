@@ -533,6 +533,24 @@ export async function getFoundersRingRefunds(superuserKey, { limit = 200 } = {})
   return data;
 }
 
+// Task #274 — superuser one-click retry of a stuck refund_failed row.
+// On Stripe failure the server returns 502 with { error, refund } so the UI
+// can refresh the row in place with the new error_message; surface that
+// payload by attaching it to the thrown Error.
+export async function retryFoundersRingRefund(id, superuserKey) {
+  const res = await superuserFetch(BASE + `/admin/founders-ring-refunds/${id}/retry`, {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || 'Failed to retry refund');
+    err.refund = data.refund || null;
+    throw err;
+  }
+  return data;
+}
+
 // Task #138 — Discord auto-join failure queue (superuser-only).
 export async function getDiscordAutoJoinFailures(superuserKey) {
   const res = await superuserFetch(BASE + '/admin/discord-autojoin-failures', {
