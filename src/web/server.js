@@ -8191,6 +8191,20 @@ NOTES
       if (!cfg.dota?.dedicatedServer?.ip) {
         return res.status(503).json({ error: 'No dedicated server IP configured (DEDICATED_SERVER_IP).' });
       }
+      // Task #297 — diagnostic mode REQUIRES a real RCON push to be meaningful.
+      // The shared provisioner treats "no RCON password" as a soft fallback
+      // (connect-link-only, in_progress) for the legacy manual route, but for
+      // the diagnostic that fallback would hide a misconfiguration and
+      // produce a misleading green result. Hard-fail at the route level
+      // before we touch the DB. Production callers (drafting auto-trigger,
+      // captain-Retry, manual /server/start) keep their existing behavior.
+      if (!cfg.dota?.dedicatedServer?.rconPassword) {
+        return res.status(503).json({
+          error: 'RCON password not configured (DEDICATED_SERVER_RCON_PASSWORD). ' +
+                 'The diagnostic requires a real RCON push to validate the dedicated server; ' +
+                 'configure the RCON password and try again.',
+        });
+      }
       const pool = db.getPool();
       const ins = await pool.query(
         `INSERT INTO inhouse_sessions
