@@ -8205,8 +8205,10 @@ NOTES
         silent: true,
       });
       if (!result.ok) {
-        // Provisioning failed — leave the row in place so the operator can
-        // see the failure surfaced via the failed session, then clean up.
+        // Provisioning failed — delete the synthetic row immediately so a
+        // failed test never leaves an orphan diagnostic in the table. The
+        // failure detail is surfaced to the operator in the HTTP response;
+        // there's no second audience for the failed session record.
         await pool.query(`DELETE FROM inhouse_sessions WHERE id = $1 AND is_diagnostic = true`, [synth.id]);
         const status = result.failed ? 502 : 500;
         return res.status(status).json({
@@ -8221,14 +8223,19 @@ NOTES
       const consoleCommand = (s.server_ip && s.match_password)
         ? `connect ${s.server_ip}:${s.server_port}; password ${s.match_password}`
         : null;
+      // Response carries both the canonical `session` object (matches the
+      // shape /api/inhouse/:id/server returns) AND the flattened convenience
+      // fields the diagnostic UI consumes directly. Keeping both keeps the
+      // wire contract aligned with the existing manual-provision route.
       res.json({
+        session: s,
+        connectLink,
+        consoleCommand,
+        rcon: result.rcon || null,
         sessionId: s.id,
         serverIp: s.server_ip,
         serverPort: s.server_port,
         password: s.match_password,
-        connectLink,
-        consoleCommand,
-        rcon: result.rcon || null,
       });
     } catch (err) {
       res.status(500).json({ error: err.message });

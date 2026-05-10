@@ -2051,6 +2051,28 @@ function InhouseDiagPanel({ superuserKey }) {
   const [cleaningUp, setCleaningUp] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  // Reuse the existing /api/admin/dedicated-server/status endpoint so the
+  // operator can pre-flight check RCON + SSH reachability before pressing
+  // the diagnostic button. Loaded lazily on mount.
+  const [srvStatus, setSrvStatus] = useState(null);
+  const [srvLoading, setSrvLoading] = useState(false);
+
+  const loadSrvStatus = useCallback(async () => {
+    setSrvLoading(true);
+    try {
+      const r = await superuserFetch('/admin/dedicated-server/status', {
+        headers: { 'x-superuser-key': superuserKey },
+      });
+      const d = await r.json().catch(() => ({}));
+      setSrvStatus(r.ok ? d : { error: d.error || `HTTP ${r.status}` });
+    } catch (e) {
+      setSrvStatus({ error: e.message });
+    } finally {
+      setSrvLoading(false);
+    }
+  }, [superuserKey]);
+
+  useEffect(() => { loadSrvStatus(); }, [loadSrvStatus]);
 
   async function handleProvision() {
     setRunning(true);
@@ -2092,6 +2114,54 @@ function InhouseDiagPanel({ superuserKey }) {
         Discord or move anyone in voice. Click <strong>Cleanup</strong> when you&rsquo;re done to delete
         the hidden row.
       </p>
+
+      {/* Pre-flight: dedicated-server reachability snapshot */}
+      <div style={{
+        display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center',
+        padding: '10px 14px', borderRadius: 8, background: 'var(--bg-card)',
+        border: '1px solid var(--border)', marginBottom: 14, fontSize: 13,
+      }}>
+        <strong>Dedicated server:</strong>
+        {srvLoading && <span style={{ color: 'var(--text-muted)' }}>checking…</span>}
+        {!srvLoading && srvStatus && srvStatus.error && (
+          <span style={{ color: '#fca5a5' }}>⚠ {srvStatus.error}</span>
+        )}
+        {!srvLoading && srvStatus && !srvStatus.error && (
+          <>
+            <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+              {srvStatus.ip || '(no IP configured)'}:{srvStatus.port}
+            </span>
+            <span>
+              <span style={{
+                display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                background: srvStatus.rcon?.ok ? '#4ade80' : '#ef4444', marginRight: 6,
+              }} />
+              RCON: <span style={{ color: srvStatus.rcon?.ok ? '#4ade80' : '#fca5a5' }}>
+                {srvStatus.rcon?.ok ? 'reachable' : (srvStatus.rcon?.error || 'unreachable')}
+              </span>
+            </span>
+            <span>
+              <span style={{
+                display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                background: srvStatus.ssh?.ok ? '#4ade80' : '#ef4444', marginRight: 6,
+              }} />
+              SSH: <span style={{ color: srvStatus.ssh?.ok ? '#4ade80' : '#fca5a5' }}>
+                {srvStatus.ssh?.ok ? 'reachable' : (srvStatus.ssh?.error || 'unreachable')}
+              </span>
+            </span>
+          </>
+        )}
+        <button
+          type="button"
+          className="btn"
+          onClick={loadSrvStatus}
+          disabled={srvLoading}
+          style={{ fontSize: 12, padding: '3px 10px', marginLeft: 'auto' }}
+        >
+          {srvLoading ? '…' : '↺ Refresh'}
+        </button>
+        <Link to="/inhouse" style={{ fontSize: 12, color: 'var(--accent)' }}>Open /inhouse →</Link>
+      </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
         <button
