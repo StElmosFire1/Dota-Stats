@@ -1939,6 +1939,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.82",
+    "title": "Voice packs scoped to lobby-only — post-match audio dropped",
+    "published_at": "2026-05-16",
+    "content": "Product call after thinking through the dedicated-server inhouse model: voice packs are now strictly **lobby alerts** and never fire while the user is in a Dota game. Two reasons:\n\n1. **Dedicated servers bypass the Dota GC.** The original six-slot voice pack design assumed the bot could observe the player's match through the GC (first-blood, match-start, win/loss). With FACEIT-style dedicated-server provisioning the GC isn't watching most inhouse matches, so those events were going to be silent anyway.\n2. **Sounds in a background tab while tabbed into Dota are noise.** Even when the GC events did fire, the player was alt-tabbed into the game, not the website — the audio cue either went unheard or was just annoying.\n\nVOICE_PACK_EVENTS in `web/src/lib/voicePack.js` trimmed from six slots to three: `match-start` (ready-up chime), `level-up` (your-pick warning), `achievement-unlock` (captain promotion). These are exactly the slots `useInhouseAlerts.js` maps the in-website lobby sub-events to, so users on `/inhouse` keep getting full pack audio while they wait for picks/ready-up. The post-match polling hook `useVoicePackEvents` is unmounted from App.jsx — the file is kept on disk in case we want to reuse the polling shape later (e.g. for a friend-online cue or a website-only achievement toast).\n\nShop UX touched up to match. `VoicePackPreview` in the cosmetics shop now plays the `match-start` chime (the ready-up moment) instead of the now-removed `win` chime, so the ▶ Play sample button reflects the actual sound the buyer will hear in the lobby. SKU sub-copy now explicitly says **'Lobby-only — never plays while you're in a Dota game'** so the scope is unambiguous before purchase.\n\nOrphan mp3s (`first-blood.mp3`, `win.mp3`, `loss.mp3`) are left in `web/public/voice-packs/<pack>/` rather than deleted — no consumer references them, but keeping them means a future re-expansion costs zero asset work. The server-side `voiceEventQueue.js` still has producer routes; they're effectively no-ops without the client poll consuming them and can be cleaned up in a later sweep.",
+    "author": "System"
+  },
+  {
     "version": "6.81",
     "title": "Whole-card hover preview · Coach self-edit button · Steam session survives external redirects",
     "published_at": "2026-05-16",

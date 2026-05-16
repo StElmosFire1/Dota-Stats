@@ -100,9 +100,12 @@ function LayoutThemePreview({ themeId, label }) {
   );
 }
 
-// Voice-pack preview — single ▶ Play button that hits the existing
-// /voice-packs/<pack>/win.mp3 asset. Uses `win` because every pack ships
-// one and it's the most "previewable" line (no contextual confusion).
+// Voice-pack preview — single ▶ Play button that demos the ready-up
+// chime (the moment that fires when /inhouse asks you to accept a
+// found match). Voice packs are now a "lobby alerts only" cosmetic
+// (v6.82) — they replace the default church-bell chime on the inhouse
+// lobby page, so the most representative preview is the match-start /
+// ready-up slot, not the (now-removed) post-match win chime.
 function VoicePackPreview({ packId }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
@@ -111,7 +114,7 @@ function VoicePackPreview({ packId }) {
   function togglePlay() {
     if (failed) return;
     if (!audioRef.current) {
-      const a = new Audio(voicePackUrl(packId, 'win'));
+      const a = new Audio(voicePackUrl(packId, 'match-start'));
       a.preload = 'auto';
       a.addEventListener('ended', () => setPlaying(false));
       a.addEventListener('error', () => { setFailed(true); setPlaying(false); });
@@ -681,7 +684,7 @@ export default function CosmeticsShop() {
       <section style={{ marginBottom: 32 }}>
         <SectionHeader
           title="Voice packs"
-          sub="Replace the default church-bell chime on inhouse alerts with a themed voice pack. Bundled with Pro."
+          sub="Replace the default church-bell chime on the inhouse lobby page (ready-up, captain promotion, your-pick warning) with a themed audio pack. Lobby-only — never plays while you're in a Dota game. Bundled with Pro."
         />
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {PREMIUM_VOICE_PACKS.map(p => {

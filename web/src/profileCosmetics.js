@@ -106,11 +106,14 @@ export function isValidLayoutTheme(t) {
 export const FREE_VOICE_PACKS = [];
 export const PREMIUM_VOICE_PACKS = ['captain', 'hype', 'calm', 'roast', 'cinematic'];
 export const ALL_VOICE_PACKS = [...FREE_VOICE_PACKS, ...PREMIUM_VOICE_PACKS];
+// v6.82 — trimmed in lock-step with web/src/lib/voicePack.js. Voice
+// packs are now a lobby-alerts-only cosmetic; see the long-form
+// rationale comment over the canonical export there. This duplicate
+// has no current importers (all consumers pull from ../lib/voicePack)
+// but is kept in sync so a future re-import doesn't bring back the
+// pre-trim event list.
 export const VOICE_PACK_EVENTS = [
   'match-start',
-  'first-blood',
-  'win',
-  'loss',
   'level-up',
   'achievement-unlock',
 ];

@@ -7,7 +7,12 @@ import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
-import { useVoicePackEvents } from './hooks/useVoicePackEvents';
+// v6.82 — useVoicePackEvents (post-match polling that fired win/loss/
+// first-blood/achievement-unlock while the user might be tabbed into
+// Dota) is intentionally not mounted anymore. Voice packs are now a
+// lobby-only cosmetic; see web/src/lib/voicePack.js for the rationale.
+// The hook file stays on disk for now in case we want to reuse the
+// polling shape for a different in-website-only event class.
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import WelcomeModal from './components/WelcomeModal';
 import { WhyIsThisSafeLink } from './components/SteamTrustModal';
@@ -964,9 +969,12 @@ function GlobalOnboardingWizard() {
 // inhouse-only useInhouseAlerts hook stays mounted on /inhouse for the
 // accept/captain/your-pick/match-ready cues).
 function GlobalVoicePackEvents() {
-  const { steamUser } = useSteamAuth();
-  const accountId = steamUser?.accountId ? Number(steamUser.accountId) : null;
-  useVoicePackEvents({ accountId });
+  // v6.82 — gutted. The post-match polling that mounted here (win/loss/
+  // first-blood/achievement-unlock via useVoicePackEvents) is gone:
+  // voice packs are now strictly lobby alerts handled by useInhouseAlerts
+  // on /inhouse. The component itself is still mounted from App so it
+  // can be revived for a future in-website-only event class (e.g. friend
+  // online, achievement toast) without re-threading provider context.
   return null;
 }
 
