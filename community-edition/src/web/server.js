@@ -2002,6 +2002,33 @@ NOTES
     }
   });
 
+  // Home page summary: totals (matches/players/this-week/most-played hero) +
+  // the 5 most recent matches with top-killer info. Community Home.jsx calls
+  // this via getHomeStats(); without it the home page renders all '—' cards
+  // and "No matches recorded yet" (Task #311, May 2026).
+  router.get('/home-stats', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.getHomeStats(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] home-stats error:', err);
+      res.status(500).json({ error: 'Failed to fetch home stats' });
+    }
+  });
+
+  // Latest weekly recap (auto-generated each Monday, or via the !recap
+  // Discord command). Community Home.jsx calls this via getLatestRecap().
+  router.get('/latest-recap', async (req, res) => {
+    try {
+      const recap = await db.getLatestWeeklyRecap();
+      res.json(recap || {});
+    } catch (err) {
+      console.error('[API] latest-recap error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch latest recap' });
+    }
+  });
+
   router.get('/players/:accountId/rating-history', async (req, res) => {
     try {
       const history = await db.getPlayerRatingHistory(req.params.accountId);
