@@ -220,40 +220,47 @@ function Ring2_Coronet({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring3_Laurel({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  const r = size * 0.35;            // wreath baseline radius — pulled in so leaf tips stay inside the viewBox at 26px
-  // A proper laurel leaf: asymmetric pointed shape with a curved midrib.
-  // The path is drawn pointing up (tip at y = -L), then rotated into place.
-  // Three layers per leaf: drop shadow, body with gradient, top highlight.
+  const r = size * 0.36;            // band centreline — leaves are rooted here
+  // Classical laurel wreath: two branches arching up from a bottom clasp,
+  // dense overlapping leaves on each side, a small gap at the very top where
+  // the amber gem sits. Each branch puts an overlapping LEAF PAIR (one back,
+  // one front) at each of 12 positions for the full classical density.
   const Leaf = ({ x, y, rot, scale, side }: { x: number; y: number; rot: number; scale: number; side: 1 | -1 }) => {
-    const L = size * 0.095 * scale;         // leaf length (shortened so r + L < 0.5*size)
-    const W = size * 0.030 * scale;         // half-width at the bulge
-    // Asymmetric bezier: bulged outer edge, leaner inner edge, curling tip.
+    const L = size * 0.105 * scale;        // leaf length
+    const W = size * 0.028 * scale;        // half-width at the bulge
+    // Slim pointed teardrop, asymmetric so the outward edge bulges more.
     const path = side > 0
-      ? `M 0 0 C ${-W * 0.3} ${-L * 0.2}, ${-W * 0.9} ${-L * 0.55}, ${-W * 0.15} ${-L}
-         C ${W * 0.55} ${-L * 0.6}, ${W * 1.05} ${-L * 0.25}, 0 0 Z`
-      : `M 0 0 C ${W * 0.3} ${-L * 0.2}, ${W * 0.9} ${-L * 0.55}, ${W * 0.15} ${-L}
-         C ${-W * 0.55} ${-L * 0.6}, ${-W * 1.05} ${-L * 0.25}, 0 0 Z`;
+      ? `M 0 0 C ${-W * 0.3} ${-L * 0.2}, ${-W * 0.85} ${-L * 0.55}, ${-W * 0.12} ${-L}
+         C ${W * 0.55} ${-L * 0.6}, ${W * 1.0} ${-L * 0.22}, 0 0 Z`
+      : `M 0 0 C ${W * 0.3} ${-L * 0.2}, ${W * 0.85} ${-L * 0.55}, ${W * 0.12} ${-L}
+         C ${-W * 0.55} ${-L * 0.6}, ${-W * 1.0} ${-L * 0.22}, 0 0 Z`;
     const ribPath = side > 0
-      ? `M 0 ${-L * 0.05} Q ${W * 0.1} ${-L * 0.5} ${-W * 0.15} ${-L * 0.95}`
-      : `M 0 ${-L * 0.05} Q ${-W * 0.1} ${-L * 0.5} ${W * 0.15} ${-L * 0.95}`;
+      ? `M 0 ${-L * 0.05} Q ${W * 0.08} ${-L * 0.5} ${-W * 0.12} ${-L * 0.95}`
+      : `M 0 ${-L * 0.05} Q ${-W * 0.08} ${-L * 0.5} ${W * 0.12} ${-L * 0.95}`;
     return (
       <g transform={`translate(${x} ${y}) rotate(${rot})`}>
-        {/* Drop shadow — offset down-right for depth */}
-        <path d={path} fill="#000" opacity="0.35" transform="translate(0.6 0.6)"/>
-        {/* Body with two-tone gradient running across the leaf */}
+        <path d={path} fill="#000" opacity="0.35" transform="translate(0.5 0.5)"/>
         <path d={path} fill={side > 0 ? `url(#lf-r-${uid})` : `url(#lf-l-${uid})`}
-              stroke={brassDark} strokeWidth={0.4}/>
-        {/* Bright specular highlight along the upper-outer edge of the bulge */}
+              stroke={brassDark} strokeWidth={0.35}/>
         <path d={path} fill={`url(#lf-hl-${uid})`} opacity="0.55"/>
-        {/* Curving midrib — the spine of the leaf */}
-        <path d={ribPath} fill="none" stroke={brassDark} strokeWidth={0.5} opacity="0.85"/>
+        <path d={ribPath} fill="none" stroke={brassDark} strokeWidth={0.45} opacity="0.85"/>
       </g>
     );
   };
+  // Angle along each branch. Each branch sweeps a half-circle from near the
+  // bottom (where the clasp sits) up around one side to near the top (where
+  // the amber gem sits). A small bottom exclusion keeps leaves off the clasp;
+  // a small top exclusion creates the classical gap.
+  const arcStart = Math.PI / 2 - 0.10;     // just inside the bottom
+  const arcEnd   = -Math.PI / 2 + 0.22;    // just inside the top → ~25° wreath gap
+  const angFor = (t: number, side: 1 | -1) => {
+    const right = arcStart + t * (arcEnd - arcStart);
+    return side > 0 ? right : Math.PI - right;
+  };
+  const N = 12;        // positions per branch
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
-        {/* Two mirrored gradients so each branch's outward edge catches light */}
         <linearGradient id={`lf-r-${uid}`} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor={brassDark}/>
           <stop offset="55%" stopColor={brass}/>
@@ -264,37 +271,42 @@ function Ring3_Laurel({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="55%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassBright}/>
         </linearGradient>
-        {/* Specular highlight along the leaf's upper edge */}
         <linearGradient id={`lf-hl-${uid}`} x1="0" y1="1" x2="0" y2="0">
           <stop offset="0%" stopColor="#fffbe6" stopOpacity="0"/>
           <stop offset="100%" stopColor="#fffbe6" stopOpacity="0.85"/>
         </linearGradient>
       </defs>
-      {/* Two branches sweeping up from the bottom clasp toward the amber gem.
-          Each branch has 9 properly-shaped leaves at alternating sizes; the
-          leaves bend forward (toward the top) for a natural sweeping look. */}
-      {([1, -1] as const).map(side => {
-        const N = 9;
-        return (
-          <g key={side}>
-            {Array.from({ length: N }).map((_, i) => {
-              // Walk t from near-bottom (~0.93) up to near-top (~0.05)
-              const t = 0.93 - (i / (N - 1)) * 0.88;
-              const ang = (Math.PI / 2 + side * Math.PI * t) - Math.PI / 2;
-              const lx = cx + Math.cos(ang) * r;
-              const ly = cy + Math.sin(ang) * r;
-              // Leaf points outward from the centre, then fans forward by ~25°
-              // toward the top of the wreath (the natural growth direction).
-              const outward = (ang * 180 / Math.PI) + 90;
-              const fan = -side * (18 + (i % 2) * 6);
-              const scale = 0.85 + (i % 2) * 0.25;
-              return <Leaf key={i} x={lx} y={ly} rot={outward + fan} scale={scale} side={side}/>;
-            })}
-          </g>
-        );
-      })}
-      {/* Brass ribbon clasp at the bottom — knot with two trailing tails */}
-      <g transform={`translate(${cx} ${cy + r})`}>
+      {/* Each branch: two leaves per position (a smaller back leaf and a
+          larger front leaf rotated forward), giving the dense overlapping
+          look of a real laurel wreath. Leaves lean forward along the branch
+          and curl inward toward the top so the tips meet near the gem. */}
+      {([1, -1] as const).map(side => (
+        <g key={side}>
+          {Array.from({ length: N }).map((_, i) => {
+            const t = i / (N - 1);
+            const ang = angFor(t, side);
+            const lx = cx + Math.cos(ang) * r;
+            const ly = cy + Math.sin(ang) * r;
+            const outward = (ang * 180 / Math.PI) + 90;
+            // Forward lean (toward branch growth direction) at the base, then
+            // reverses near the top so the topmost leaves curl inward toward
+            // the centreline. side=+1 grows CW; side=-1 grows CCW.
+            const fan = side * (22 - 38 * t);
+            // Back leaf — larger, lower-rotation, behind the front
+            const backRot = outward + fan + side * 8;
+            // Front leaf — slightly forward of the back, smaller, more lean
+            const frontRot = outward + fan - side * 10;
+            return (
+              <g key={i}>
+                <Leaf x={lx} y={ly} rot={backRot} scale={1.05} side={side}/>
+                <Leaf x={lx} y={ly} rot={frontRot} scale={0.78} side={side}/>
+              </g>
+            );
+          })}
+        </g>
+      ))}
+      {/* Brass ribbon clasp at the bottom — knot + two trailing tails */}
+      <g transform={`translate(${cx} ${cy + r * 0.97})`}>
         <ellipse rx={size * 0.045} ry={size * 0.020}
                  fill={`url(#lf-r-${uid})`} stroke={brassDark} strokeWidth={0.5}/>
         <line x1={-size * 0.025} y1={0} x2={size * 0.025} y2={0}
@@ -304,10 +316,10 @@ function Ring3_Laurel({ size = 140, disc = 'monogram' }: RingProps) {
         <path d={`M ${size * 0.025} ${size * 0.014} Q ${size * 0.05} ${size * 0.045} ${size * 0.020} ${size * 0.075}`}
               fill="none" stroke={brass} strokeWidth={size * 0.012} strokeLinecap="round" opacity="0.8"/>
       </g>
-      {/* Amber gem set into the top where the branches meet */}
-      <circle cx={cx} cy={cy - r} r={size * 0.05} fill={brassDark}/>
-      <circle cx={cx} cy={cy - r} r={size * 0.040} fill={amber}/>
-      <circle cx={cx - size * 0.012} cy={cy - r - size * 0.012}
+      {/* Amber gem set into the wreath's top gap */}
+      <circle cx={cx} cy={cy - r * 0.97} r={size * 0.05} fill={brassDark}/>
+      <circle cx={cx} cy={cy - r * 0.97} r={size * 0.040} fill={amber}/>
+      <circle cx={cx - size * 0.012} cy={cy - r * 0.97 - size * 0.012}
               r={size * 0.016} fill="#fffbe6" opacity="0.95"/>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
@@ -420,86 +432,113 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring8_Inscribed({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  // Wide brass band so the inscription has clear room to live.
-  const stroke = Math.max(3, size * 0.115);
-  const rMid = size * 0.40;
-  const rOuter = rMid + stroke / 2;
-  const rInner = rMid - stroke / 2;
-  const inscRadius = rMid;
-  const fontSize = stroke * 0.50;
-  // Elvish-feel inscription. Repeated twice along the path with textLength so
-  // the spacing is even regardless of glyph widths.
+  // "High-value" engraved gold band. Three concentric brass elements form the
+  // bezel: an outer raised rim with bevel highlight, a dark engraved channel
+  // where the inscription lives, and an inner raised rim with matching bevel.
+  // Four amber cabochon gems are set into the outer rim at cardinal points.
+  const stroke = Math.max(3, size * 0.130);          // total bezel thickness
+  const rMid = size * 0.38;                           // channel centreline
+  const rimT = Math.max(1, stroke * 0.22);            // each raised rim thickness
+  const chanT = stroke * 0.50;                        // dark channel thickness
+  const rOuterRim = rMid + chanT / 2 + rimT / 2;      // centreline of outer rim
+  const rInnerRim = rMid - chanT / 2 - rimT / 2;      // centreline of inner rim
+  const rOuterEdge = rOuterRim + rimT / 2;
+  const rInnerEdge = rInnerRim - rimT / 2;
+  const fontSize = chanT * 0.78;
   const text = '·  FOUNDER  ·  MMXXVI  ·  OCE  ·  INHOUSE  ';
-  const circumference = 2 * Math.PI * inscRadius;
-  // Hot-spot orbit radius: the bright "molten" reveal is a soft radial gradient
-  // that orbits the band at the same radius as the text, making each section
-  // of inscription glow brightly as it passes underneath the spot.
+  const circumference = 2 * Math.PI * rMid;
+  // Gem size, capped so gems don't poke past the outer rim edge.
+  const gemR = rimT * 0.55;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
-        <linearGradient id={`insc-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={brassBright}/>
-          <stop offset="50%" stopColor={brass}/>
+        {/* Polished brass for the raised rims — bright top, deep bottom for
+            the rolled-edge bevel look. */}
+        <linearGradient id={`insc-rim-${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stopColor="#fff5d4"/>
+          <stop offset="35%" stopColor={brassBright}/>
+          <stop offset="70%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassDark}/>
         </linearGradient>
+        {/* Dark engraved channel — warm-toned shadow so it reads as recessed
+            metal, not flat black. */}
+        <linearGradient id={`insc-chan-${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stopColor="#050200"/>
+          <stop offset="50%" stopColor="#1a0d02"/>
+          <stop offset="100%" stopColor="#2a1808"/>
+        </linearGradient>
+        {/* Amber gem gradient */}
+        <radialGradient id={`insc-gem-${uid}`} cx="0.35" cy="0.30">
+          <stop offset="0%"  stopColor="#fffbe6"/>
+          <stop offset="40%" stopColor="#ffd068"/>
+          <stop offset="100%" stopColor="#8a3a08"/>
+        </radialGradient>
         <path id={`insc-path-${uid}`}
-              d={`M ${cx},${cy} m -${inscRadius},0 a ${inscRadius},${inscRadius} 0 1,1 ${inscRadius * 2},0 a ${inscRadius},${inscRadius} 0 1,1 -${inscRadius * 2},0`}/>
-        {/* Soft circular "hot spot" — a small radial gradient. White-fully-
-            opaque at the centre, fading to transparent at the edge. When this
-            is used as a mask, only the underlying graphic inside the hot spot
-            renders; everything else is hidden. */}
+              d={`M ${cx},${cy} m -${rMid},0 a ${rMid},${rMid} 0 1,1 ${rMid * 2},0 a ${rMid},${rMid} 0 1,1 -${rMid * 2},0`}/>
         <radialGradient id={`insc-hot-${uid}`} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0%" stopColor="#fff" stopOpacity="1"/>
-          <stop offset="55%" stopColor="#fff" stopOpacity="0.5"/>
+          <stop offset="0%"   stopColor="#fff" stopOpacity="1"/>
+          <stop offset="55%"  stopColor="#fff" stopOpacity="0.5"/>
           <stop offset="100%" stopColor="#fff" stopOpacity="0"/>
         </radialGradient>
-        {/* The mask. A black background hides everything, then a white-ish
-            radial gradient (the hot spot) selectively reveals what's beneath.
-            The spot orbits the band centreline via animateTransform. */}
         <mask id={`insc-mask-${uid}`}>
           <rect x="0" y="0" width={size} height={size} fill="black"/>
           <g>
             <animateTransform attributeName="transform" type="rotate"
                               from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
                               dur="9s" repeatCount="indefinite"/>
-            <circle cx={cx} cy={cy - inscRadius} r={size * 0.18}
+            <circle cx={cx} cy={cy - rMid} r={size * 0.18}
                     fill={`url(#insc-hot-${uid})`}/>
           </g>
         </mask>
       </defs>
-      {/* Brass band */}
+      {/* Outer raised rim with hairline edges for depth */}
+      <circle cx={cx} cy={cy} r={rOuterRim} fill="none"
+              stroke={`url(#insc-rim-${uid})`} strokeWidth={rimT}/>
+      <circle cx={cx} cy={cy} r={rOuterEdge} fill="none" stroke={brassDark} strokeWidth={0.5}/>
+      <circle cx={cx} cy={cy} r={rOuterRim - rimT / 2} fill="none" stroke={brassDark} strokeWidth={0.3} opacity="0.6"/>
+      {/* Dark engraved channel between the rims */}
       <circle cx={cx} cy={cy} r={rMid} fill="none"
-              stroke={`url(#insc-band-${uid})`} strokeWidth={stroke}/>
-      <circle cx={cx} cy={cy} r={rOuter} fill="none" stroke={brassDark} strokeWidth={0.7}/>
-      <circle cx={cx} cy={cy} r={rInner} fill="none" stroke={brassDark} strokeWidth={0.7}/>
-      {/* Dark engraved channel for the text to sit in */}
-      <circle cx={cx} cy={cy} r={rMid} fill="none"
-              stroke="#1a0d02" strokeWidth={stroke * 0.62} opacity="0.9"/>
-      {/* Layer 1: BASE inscription — deep amber/gold, always visible. This is
-          the "cool" state of the letters, readable but not glowing. */}
+              stroke={`url(#insc-chan-${uid})`} strokeWidth={chanT}/>
+      {/* Inner raised rim with hairline edges */}
+      <circle cx={cx} cy={cy} r={rInnerRim} fill="none"
+              stroke={`url(#insc-rim-${uid})`} strokeWidth={rimT}/>
+      <circle cx={cx} cy={cy} r={rInnerRim + rimT / 2} fill="none" stroke={brassDark} strokeWidth={0.3} opacity="0.6"/>
+      <circle cx={cx} cy={cy} r={rInnerEdge} fill="none" stroke={brassDark} strokeWidth={0.5}/>
+      {/* BASE inscription — deep amber, always readable */}
       <text fontFamily={fSerif} fontSize={fontSize} fill="#c08a2e"
             letterSpacing={fontSize * 0.22} fontWeight="700"
             dominantBaseline="middle">
-        <textPath href={`#insc-path-${uid}`} startOffset="0%" textLength={circumference}>
-          {text}
-        </textPath>
+        <textPath href={`#insc-path-${uid}`} startOffset="0%" textLength={circumference}>{text}</textPath>
       </text>
-      {/* Layer 2: HOT inscription — same text, bright molten white-gold with a
-          soft amber glow, only visible inside the rotating mask. Letters
-          appear to heat up as the hot spot orbits past them. */}
+      {/* HOT inscription — bright molten gold revealed inside the rotating
+          mask, making each letter glow as the hot-spot orbits past. */}
       <g mask={`url(#insc-mask-${uid})`}>
         <text fontFamily={fSerif} fontSize={fontSize} fill="#fff5b6"
               stroke={amber} strokeWidth={0.6}
               letterSpacing={fontSize * 0.22} fontWeight="700"
               dominantBaseline="middle"
               style={{ filter: `drop-shadow(0 0 ${size * 0.012}px ${amber})` }}>
-          <textPath href={`#insc-path-${uid}`} startOffset="0%" textLength={circumference}>
-            {text}
-          </textPath>
+          <textPath href={`#insc-path-${uid}`} startOffset="0%" textLength={circumference}>{text}</textPath>
         </text>
       </g>
-      {/* Disc sits on a dark inset, recessed from the inner band edge */}
-      <circle cx={cx} cy={cy} r={rInner - 1} fill={bg}/>
+      {/* Four amber cabochon gemstones set into the outer rim at cardinal
+          points — drop shadow, deep bezel, gem body with highlight. */}
+      {[0, 1, 2, 3].map(i => {
+        const a = i * Math.PI / 2 - Math.PI / 2;     // 12, 3, 6, 9 o'clock
+        const gx = cx + Math.cos(a) * rOuterRim;
+        const gy = cy + Math.sin(a) * rOuterRim;
+        return (
+          <g key={i}>
+            <circle cx={gx} cy={gy} r={gemR + 0.5} fill="#000" opacity="0.45"/>
+            <circle cx={gx} cy={gy} r={gemR} fill={brassDark}/>
+            <circle cx={gx} cy={gy} r={gemR * 0.85} fill={`url(#insc-gem-${uid})`}/>
+            <circle cx={gx - gemR * 0.30} cy={gy - gemR * 0.30}
+                    r={gemR * 0.30} fill="#fffbe6" opacity="0.85"/>
+          </g>
+        );
+      })}
+      {/* Dark inset for the avatar disc */}
+      <circle cx={cx} cy={cy} r={rInnerEdge - 1} fill={bg}/>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
   );
@@ -856,7 +895,7 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring16_Forge({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  const r = size * 0.43;
+  const r = size * 0.41;          // pulled in so displaced band stays inside viewBox
   const stroke = Math.max(3, size * 0.055);
   // Molten brass effect: SVG turbulence noise + displacement map distorts the
   // band into a rippling liquid surface. The turbulence's baseFrequency is
@@ -880,10 +919,9 @@ function Ring16_Forge({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="40%" stopColor={amber}/>
           <stop offset="100%" stopColor="#c83232" stopOpacity="0"/>
         </radialGradient>
-        {/* The turbulence/displacement filter that makes the band liquid.
-            Filter region kept tight (0–100%) so distorted pixels don't escape
-            the viewBox; scale reduced so displacement can't push the outer
-            edge past 0.5*size at 26px. */}
+        {/* Turbulence/displacement filter — molten ripple effect on the band.
+            Filter region is bounded to the band's bbox so distorted pixels
+            cannot escape it. */}
         <filter id={`fg-melt-${uid}`} x="0%" y="0%" width="100%" height="100%">
           <feTurbulence type="fractalNoise" baseFrequency="0.04 0.08"
                         numOctaves="2" seed="3" result="noise">
@@ -894,37 +932,42 @@ function Ring16_Forge({ size = 140, disc = 'monogram' }: RingProps) {
           <feDisplacementMap in="SourceGraphic" in2="noise"
                              scale={size * 0.012} xChannelSelector="R" yChannelSelector="G"/>
         </filter>
+        {/* Hard outer clip — guarantees nothing (displaced band, ember halo,
+            heat glow, drop-shadow) escapes the viewBox at any size. */}
+        <clipPath id={`fg-clip-${uid}`}>
+          <circle cx={cx} cy={cy} r={size / 2 - 0.5}/>
+        </clipPath>
       </defs>
-      {/* Inner heat glow contained inside the band */}
-      <circle cx={cx} cy={cy} r={r - stroke * 0.4} fill={`url(#fg-glow-${uid})`}/>
-      {/* The molten band — solid brass stroke passed through the melt filter */}
-      <g filter={`url(#fg-melt-${uid})`}>
-        <circle cx={cx} cy={cy} r={r} fill="none"
-                stroke={`url(#fg-band-${uid})`} strokeWidth={stroke}/>
+      {/* Everything below sits inside the hard circular clip */}
+      <g clipPath={`url(#fg-clip-${uid})`}>
+        {/* Inner heat glow contained inside the band */}
+        <circle cx={cx} cy={cy} r={r - stroke * 0.4} fill={`url(#fg-glow-${uid})`}/>
+        {/* The molten band — solid brass stroke through the melt filter */}
+        <g filter={`url(#fg-melt-${uid})`}>
+          <circle cx={cx} cy={cy} r={r} fill="none"
+                  stroke={`url(#fg-band-${uid})`} strokeWidth={stroke}/>
+        </g>
+        <AvatarDisc kind={disc} size={size} uid={uid}/>
+        {/* Rising embers — SMIL animate on cy so motion scales with viewBox */}
+        {Array.from({ length: emberCount }).map((_, i) => {
+          const ang = Math.PI / 2 + ((i / emberCount) - 0.5) * Math.PI * 0.7;
+          const ex = cx + Math.cos(ang) * r;
+          const ey = cy + Math.sin(ang) * r;
+          const dur = 3.2;
+          const begin = `${-i * 0.65}s`;
+          return (
+            <circle key={i} cx={ex} cy={ey} r={size * 0.018}
+                    fill={`url(#fg-ember-${uid})`} opacity="0">
+              <animate attributeName="cy"
+                       from={ey} to={ey - size * 0.22}
+                       dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
+              <animate attributeName="opacity"
+                       values="0;1;1;0" keyTimes="0;0.15;0.7;1"
+                       dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
+            </circle>
+          );
+        })}
       </g>
-      <AvatarDisc kind={disc} size={size} uid={uid}/>
-      {/* Rising embers — each starts at a position on the bottom half of the
-          band and drifts upward, fading as it rises. SMIL <animate> on cy is
-          used (not CSS translateY) so motion scales with viewBox: the ember
-          rises by `size*0.22` regardless of preview size. */}
-      {Array.from({ length: emberCount }).map((_, i) => {
-        const ang = Math.PI / 2 + ((i / emberCount) - 0.5) * Math.PI * 0.7;
-        const ex = cx + Math.cos(ang) * r;
-        const ey = cy + Math.sin(ang) * r;
-        const dur = 3.2;
-        const begin = `${-i * 0.65}s`;
-        return (
-          <circle key={i} cx={ex} cy={ey} r={size * 0.018}
-                  fill={`url(#fg-ember-${uid})`} opacity="0">
-            <animate attributeName="cy"
-                     from={ey} to={ey - size * 0.22}
-                     dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
-            <animate attributeName="opacity"
-                     values="0;1;1;0" keyTimes="0;0.15;0.7;1"
-                     dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
-          </circle>
-        );
-      })}
     </svg>
   );
 }
@@ -1048,28 +1091,40 @@ function Ring19_Storm({ size = 140, disc = 'monogram' }: RingProps) {
   // intervals across different sectors. Each arc is a jagged polyline drawn
   // from a starting position outward along the band, lit electric-blue, and
   // visible only during a brief flash window of its keyframe cycle.
-  // Build a jagged lightning path of N segments from origin (0,0). The bolt
-  // travels INWARD (positive y in the local frame, then rotated so +y points
-  // toward the centre of the ring) so it never escapes the viewBox at 26px.
-  const bolt = (segments: number, len: number, jag: number, seedOffset: number) => {
-    const pts: string[] = ['M 0 0'];
-    for (let i = 1; i <= segments; i++) {
-      const t = i / segments;
-      const dx = Math.sin(seedOffset + i * 2.3) * jag;
-      pts.push(`L ${dx.toFixed(2)} ${(t * len).toFixed(2)}`);
+  // A proper lightning bolt: a jagged MAIN path going inward by `boltLen`,
+  // plus a smaller BRANCH forking off partway down. Local coords: positive y
+  // points inward (toward the ring centre) after the parent <g> rotation.
+  const boltLen = size * 0.12;
+  const segs = 6;
+  const jag = size * 0.022;
+  const buildBolt = (seed: number) => {
+    const main: string[] = ['M 0 0'];
+    for (let i = 1; i <= segs; i++) {
+      const t = i / segs;
+      const dx = Math.sin(seed + i * 2.3) * jag;
+      main.push(`L ${dx.toFixed(2)} ${(t * boltLen).toFixed(2)}`);
     }
-    return pts.join(' ');
+    // Branch forks from segment 2, two short jagged segments off to one side.
+    const branchSeg = 2;
+    const bx = Math.sin(seed + branchSeg * 2.3) * jag;
+    const by = (branchSeg / segs) * boltLen;
+    const branchDir = Math.cos(seed * 1.7) > 0 ? 1 : -1;
+    const branch = [
+      `M ${bx.toFixed(2)} ${by.toFixed(2)}`,
+      `L ${(bx + branchDir * jag * 1.4).toFixed(2)} ${(by + boltLen * 0.18).toFixed(2)}`,
+      `L ${(bx + branchDir * jag * 2.1).toFixed(2)} ${(by + boltLen * 0.36).toFixed(2)}`,
+    ].join(' ');
+    return { main: main.join(' '), branch };
   };
-  // Each arc starts on the outer band centreline and arcs inward by `boltLen`.
-  // boltLen kept short so the bolt tip stays inside the inner band edge.
-  const boltLen = size * 0.10;
-  const arcs = Array.from({ length: 6 }).map((_, i) => {
-    const a = (i / 6) * Math.PI * 2 - Math.PI / 2 + Math.PI / 12;
+  // Five bolts at staggered angles. Each fires a multi-flash strike sequence
+  // on a 5s cycle with 1s offsets — feels like a continuous storm with
+  // multiple strikes per bolt rather than a single quick blip.
+  const arcs = Array.from({ length: 5 }).map((_, i) => {
+    const a = (i / 5) * Math.PI * 2 - Math.PI / 2 + Math.PI / 10;
     const sx = cx + Math.cos(a) * r;
     const sy = cy + Math.sin(a) * r;
-    // Rotate so local +y points toward centre (i.e. inward along the radius).
-    const rot = (a * 180 / Math.PI) - 90;
-    return { i, sx, sy, rot, d: bolt(5, boltLen, size * 0.020, i * 1.7) };
+    const rot = (a * 180 / Math.PI) - 90;     // local +y → inward
+    return { i, sx, sy, rot, ...buildBolt(i * 1.7 + 0.3) };
   });
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -1091,18 +1146,27 @@ function Ring19_Storm({ size = 140, disc = 'monogram' }: RingProps) {
               stroke={`url(#st-band-${uid})`} strokeWidth={stroke}/>
       <circle cx={cx} cy={cy} r={r + stroke / 2} fill="none" stroke="#3a4a6a" strokeWidth={0.5}/>
       <circle cx={cx} cy={cy} r={r - stroke / 2} fill="none" stroke="#3a4a6a" strokeWidth={0.5}/>
-      {/* Six lightning arcs at staggered positions, each flashing briefly on
-          a different schedule so the storm feels chaotic but rhythmic. */}
-      {arcs.map(({ i, sx, sy, rot, d }) => (
+      {/* Five lightning bolts. Each bolt fires a multi-flash STRIKE sequence
+          (initial strike → flicker → secondary strike → fade) on a 5s loop
+          with 1s offsets. With 5 bolts at 1s apart and ~1.1s strikes, there's
+          almost always lightning somewhere on the ring — a proper storm, not
+          a single quick blip. Main bolt + secondary branch are rendered with
+          both a diffuse blue halo and a bright white core. */}
+      {arcs.map(({ i, sx, sy, rot, main, branch }) => (
         <g key={i} transform={`translate(${sx} ${sy}) rotate(${rot})`}>
-          <g style={{ animation: 'fp-flash 2.4s steps(40, end) infinite',
-                      animationDelay: `${-i * 0.4}s` }}>
-            {/* Wide glow halo behind the bolt */}
-            <path d={d} fill="none" stroke="#7ab8ff" strokeWidth={size * 0.025}
+          <g style={{ animation: 'fp-strike 5s ease-out infinite',
+                      animationDelay: `${-i * 1}s` }}>
+            {/* Diffuse electric-blue halo — main + branch */}
+            <path d={main} fill="none" stroke="#7ab8ff" strokeWidth={size * 0.030}
                   strokeLinecap="round" strokeLinejoin="round" opacity="0.55"
-                  style={{ filter: `blur(${size * 0.008}px)` }}/>
-            {/* Bright core bolt */}
-            <path d={d} fill="none" stroke="#fffbe6" strokeWidth={size * 0.010}
+                  style={{ filter: `blur(${size * 0.012}px)` }}/>
+            <path d={branch} fill="none" stroke="#7ab8ff" strokeWidth={size * 0.020}
+                  strokeLinecap="round" strokeLinejoin="round" opacity="0.45"
+                  style={{ filter: `blur(${size * 0.010}px)` }}/>
+            {/* Bright white cores — main + branch */}
+            <path d={main} fill="none" stroke="#fffbe6" strokeWidth={size * 0.012}
+                  strokeLinecap="round" strokeLinejoin="round"/>
+            <path d={branch} fill="none" stroke="#fffbe6" strokeWidth={size * 0.008}
                   strokeLinecap="round" strokeLinejoin="round"/>
           </g>
         </g>
@@ -1180,26 +1244,17 @@ function Ring20_Constellation({ size = 140, disc = 'monogram' }: RingProps) {
 }
 
 const RINGS: { id: string; name: string; tag: string; Comp: React.FC<RingProps> }[] = [
-  { id: 'classic',       name: '1. Classic Brass',    tag: 'Double band · slow highlight orbit',       Comp: Ring1_Classic },
-  { id: 'coronet',       name: '2. Coronet',          tag: 'Crown-style notched outer rim',            Comp: Ring2_Coronet },
-  { id: 'laurel',        name: '3. Laurel Wreath',    tag: 'Reworked: denser two-tone leaves + clasp', Comp: Ring3_Laurel },
-  { id: 'signet',        name: '4. Signet',           tag: 'Heavy brass band · "OCE" engraving',       Comp: Ring4_Signet },
-  { id: 'comet',         name: '5. Aurum Comet',      tag: 'Comet tail sweeping the ring',             Comp: Ring5_Comet },
-  { id: 'constellation', name: '6. Constellation',    tag: '7 brass star points around the band',      Comp: Ring6_Constellation },
-  { id: 'beveled',       name: '7. Beveled Edge',     tag: 'Engraved depth · bright top, dark bottom', Comp: Ring7_Beveled },
-  { id: 'inscribed',     name: '8. Inscribed',        tag: 'Reworked: Elvish serif inside the band',   Comp: Ring8_Inscribed },
-  { id: 'phoenix',       name: '9. Phoenix',          tag: 'Three orbiting embers · crimson halo',     Comp: Ring9_Phoenix },
-  { id: 'twin',          name: '10. Twin Halo',       tag: 'Counter-rotating dual rings',              Comp: Ring10_TwinHalo },
-  { id: 'serpent',       name: '11. Twin Serpent',    tag: 'Two snakes intertwined as the band',       Comp: Ring11_TwinSerpent },
-  { id: 'filigree',      name: '12. Filigree Scroll', tag: 'Art Nouveau scrollwork · 8 motifs',        Comp: Ring12_Filigree },
-  { id: 'sigil',         name: '13. Aurum Sigil',     tag: 'Diamond medallion breaks the band',        Comp: Ring13_Sigil },
-  { id: 'astrolabe',     name: '14. Astrolabe',       tag: 'Animated · 3 rings · engraved ticks',      Comp: Ring14_Astrolabe },
-  { id: 'eclipse',       name: '15. Eclipse',         tag: 'Animated · orbiting eclipse + corona',     Comp: Ring15_Eclipse },
-  { id: 'forge',         name: '16. Forge',           tag: 'Animated · molten brass + rising embers',  Comp: Ring16_Forge },
-  { id: 'aurora',        name: '17. Aurora',          tag: 'Animated · flowing brass shimmer',         Comp: Ring17_Aurora },
-  { id: 'runes',         name: '18. Runes',           tag: 'Animated · 8 glyphs glow in sequence',     Comp: Ring18_Runes },
-  { id: 'storm',         name: '19. Storm',           tag: 'Animated · lightning across the band',     Comp: Ring19_Storm },
-  { id: 'starmap',       name: '20. Constellation',   tag: 'Animated · twinkling star map',            Comp: Ring20_Constellation },
+  { id: 'classic',   name: '1. Classic Brass',  tag: 'Double band · slow highlight orbit',       Comp: Ring1_Classic },
+  { id: 'laurel',    name: '2. Laurel Wreath',  tag: 'Classical wreath · 24 overlapping leaves', Comp: Ring3_Laurel },
+  { id: 'beveled',   name: '3. Beveled Edge',   tag: 'Engraved depth · bright top, dark bottom', Comp: Ring7_Beveled },
+  { id: 'inscribed', name: '4. Inscribed',      tag: 'Raised rims · 4 gems · molten hot-spot',   Comp: Ring8_Inscribed },
+  { id: 'phoenix',   name: '5. Phoenix',        tag: 'Three orbiting embers · crimson halo',     Comp: Ring9_Phoenix },
+  { id: 'twin',      name: '6. Twin Halo',      tag: 'Counter-rotating dual rings',              Comp: Ring10_TwinHalo },
+  { id: 'astrolabe', name: '7. Astrolabe',      tag: 'Animated · 3 rings · engraved ticks',     Comp: Ring14_Astrolabe },
+  { id: 'eclipse',   name: '8. Eclipse',        tag: 'Animated · orbiting eclipse + corona',    Comp: Ring15_Eclipse },
+  { id: 'forge',     name: '9. Forge',          tag: 'Animated · molten brass + rising embers', Comp: Ring16_Forge },
+  { id: 'storm',     name: '10. Storm',         tag: 'Animated · multi-flash lightning strikes', Comp: Ring19_Storm },
+  { id: 'starmap',   name: '11. Constellation', tag: 'Animated · twinkling star map',           Comp: Ring20_Constellation },
 ];
 
 const DISC_OPTIONS: { id: DiscKind; name: string; tag: string }[] = [
@@ -1218,38 +1273,42 @@ export function FoundersRingPicker() {
         @keyframes fp-sweep     { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes fp-sweep-rev { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
         @keyframes fp-breathe   { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
-        /* Brief glow pulse — used for runes; 0–4% ramps up, 4–12% holds peak,
-           12–22% fades, rest stays dark. With 8 runes at 0.5s offsets across
-           a 4s cycle, each glyph lights once per cycle in sequence. */
-        @keyframes fp-pulse     { 0%,22%,100% { opacity: 0; } 4%,12% { opacity: 1; } }
-        /* Lightning flash — extremely brief blip. Used by storm bolts. */
-        @keyframes fp-flash     { 0%,4%,100% { opacity: 0; } 1%,3% { opacity: 1; } }
+        /* Lightning STRIKE sequence — multiple flashes per cycle so storm
+           reads as proper lightning (initial → flicker → secondary → fade)
+           rather than a single quick blip. Strike window is ~22% of cycle. */
+        @keyframes fp-strike    {
+          0%, 7%, 22%, 100% { opacity: 0; }
+          8%  { opacity: 1; }    /* initial strike */
+          10% { opacity: 0.3; }
+          11% { opacity: 0.95; } /* flicker */
+          12% { opacity: 0.4; }
+          13% { opacity: 0.85; }
+          14% { opacity: 0.5; }
+          16% { opacity: 1; }    /* secondary strike */
+          17% { opacity: 0.6; }
+          18% { opacity: 0.9; }
+        }
         /* Star twinkle — gentle scale + opacity wobble */
         @keyframes fp-twinkle   { 0%,100% { opacity: 0.35; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.15); } }
-        /* Rising ember — drifts upward + outward fade for forge sparks */
-        @keyframes fp-rise      { 0% { transform: translateY(0); opacity: 0; }
-                                  15% { opacity: 1; }
-                                  100% { transform: translateY(-${'40px'}); opacity: 0; } }
       `}</style>
 
       <header style={{ marginBottom: 28 }}>
         <div style={{ fontFamily: fCond, fontSize: 12, letterSpacing: 4, textTransform: 'uppercase', color: amber, marginBottom: 6 }}>Founders Pass · Picker</div>
         <h1 style={{ fontFamily: fSerif, fontSize: 36, fontWeight: 700, margin: '0 0 8px' }}>Pick your founders ring</h1>
         <p style={{ color: muted, maxWidth: 760, lineHeight: 1.55, margin: 0 }}>
-          Twenty variants below. Laurel has been redrawn with proper asymmetric leaf paths (nine per branch,
-          shadow + gradient body + specular highlight + curving midrib + ribbon clasp). Inscribed now has a
-          rotating <em>hot spot</em> mask that makes each section of the inscription glow molten white-gold as it
-          passes — the One Ring effect when it's been thrown in the fire. Five new high-quality animated rings
-          showing what SVG can actually do: <strong>Forge</strong> (turbulence + displacement filter creates a
-          rippling molten brass surface, with embers rising from the bottom), <strong>Aurora</strong> (multi-stop
-          flowing gradient transforms continuously around the band like a slow brass shimmer),
-          <strong>Runes</strong> (eight engraved glyphs glow amber in sequence around the band — Saruman's tower
-          energy), <strong>Storm</strong> (six lightning arcs flash at staggered intervals across a dark steel
-          band) and <strong>Constellation</strong> (twelve stars twinkle on a slow-drifting night-sky disc with
-          amber threads linking them). Every ring renders crisply at every production size (26px on match cards,
-          36px in leaderboard rows, 68px on profile headers, 200px+ in shop). The five disc treatments below are
-          <em>per-page</em>, not a player choice — scoreboard rows show rank number, match cards show hero
-          portrait, profile shows Steam avatar, fallback is the brass monogram.
+          Shortlist of eleven, trimmed to the directions worth taking further. <strong>Laurel</strong> is now a
+          dense classical wreath — twelve positions per branch, two overlapping leaves at each (back + front),
+          twenty-four leaves a side, leaves leaning forward along the branch and curling inward at the top so
+          their tips meet near the amber gem. <strong>Inscribed</strong> reads as proper high-value gold now:
+          outer + inner raised brass rims with rolled-edge bevel highlights, a deep engraved channel between
+          them, four amber cabochon gemstones set at the cardinal points, and the rotating hot-spot mask still
+          making each section of the inscription glow molten as it passes. <strong>Forge</strong> is now fully
+          clipped to a hard outer circle so the displaced band can't escape the boundary at any size.
+          <strong> Storm</strong> rebuilt as proper lightning — five bolts, each with a secondary branching fork,
+          firing a multi-flash strike sequence (initial → flicker → secondary → fade) on staggered 1s offsets.
+          The fifteen leftover variants (Coronet, Signet, Comet, the old Constellation, Twin Serpent, Filigree,
+          Sigil, Aurora, Runes) are dropped. Every ring still renders crisply at production sizes (26px / 36px /
+          56px shown beneath each card).
         </p>
       </header>
 
@@ -1257,7 +1316,7 @@ export function FoundersRingPicker() {
       <section style={{ marginBottom: 32, padding: 18, background: card, borderRadius: 10, border: `1px solid ${border}` }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 14 }}>
           <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass }}>Avatar disc · what fills the centre</div>
-          <div style={{ fontSize: 12, color: dim }}>Click to preview each treatment across all 10 rings →</div>
+          <div style={{ fontSize: 12, color: dim }}>Click to preview each treatment across all 11 rings →</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
           {DISC_OPTIONS.map(opt => {
@@ -1286,8 +1345,8 @@ export function FoundersRingPicker() {
 
       {/* Ring grid */}
       <section>
-        <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass, marginBottom: 12 }}>Ring variants · 20 options</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
+        <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass, marginBottom: 12 }}>Ring variants · 11 options</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           {RINGS.map(({ id, name, tag, Comp }) => (
             <div key={id} style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 180, width: '100%' }}>
@@ -1312,7 +1371,7 @@ export function FoundersRingPicker() {
       <footer style={{ marginTop: 32, padding: 18, background: card, border: `1px solid ${border}`, borderRadius: 10 }}>
         <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass, marginBottom: 8 }}>How to choose</div>
         <div style={{ fontSize: 13, color: muted, lineHeight: 1.6 }}>
-          Tell me a number (1–20) for the ring. The disc isn't a buyer choice — it's chosen per-page automatically
+          Tell me a number (1–11) for the ring. The disc isn't a buyer choice — it's chosen per-page automatically
           (rank on scoreboards, hero on match cards, Steam avatar on profiles, monogram as fallback). Pick the
           ring and I'll graduate it into the live <code style={{ background: '#1a2744', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>FoundersRing</code> component,
           roll it through the Boutique mockup, then onto the real shop.
