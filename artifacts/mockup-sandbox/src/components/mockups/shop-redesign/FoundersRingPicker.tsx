@@ -534,6 +534,25 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="50%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassDark}/>
         </linearGradient>
+        {/* Shimmer sweep — a narrow bright crest that travels around the
+            band on a long cycle. Mostly transparent so the band keeps its
+            normal bevel; the crest only flashes by every few seconds.
+            Animated with keyTimes/values so it PAUSES for most of the cycle
+            and then sweeps quickly — gives the "every now and then" feel
+            rather than a constant rotating highlight. */}
+        <linearGradient id={`bev-shimmer-${uid}`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor="#fffbe6" stopOpacity="0"/>
+          <stop offset="44%"  stopColor="#fffbe6" stopOpacity="0"/>
+          <stop offset="48%"  stopColor="#fffbe6" stopOpacity="0.55"/>
+          <stop offset="50%"  stopColor="#ffffff" stopOpacity="0.95"/>
+          <stop offset="52%"  stopColor="#fffbe6" stopOpacity="0.55"/>
+          <stop offset="56%"  stopColor="#fffbe6" stopOpacity="0"/>
+          <stop offset="100%" stopColor="#fffbe6" stopOpacity="0"/>
+          <animateTransform attributeName="gradientTransform" type="rotate"
+                            values={`-30 ${cx} ${cy}; -30 ${cx} ${cy}; 210 ${cx} ${cy}; 210 ${cx} ${cy}`}
+                            keyTimes="0;0.55;0.85;1"
+                            dur="5.5s" repeatCount="indefinite"/>
+        </linearGradient>
       </defs>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={`url(#bev-${uid})`} strokeWidth={stroke}/>
       {/* Bevel: bright top edge + dark bottom edge */}
@@ -543,6 +562,10 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
       <circle cx={cx} cy={cy} r={r - stroke * 0.4} fill="none" stroke={brassDark} strokeWidth={1.5}
               strokeDasharray={`${Math.PI * r * 0.5} ${Math.PI * r * 4}`}
               transform={`rotate(70 ${cx} ${cy})`} opacity="0.7"/>
+      {/* Shimmer overlay — sits on top of the bevel, only visible during the
+          short sweep portion of the cycle. */}
+      <circle cx={cx} cy={cy} r={r} fill="none"
+              stroke={`url(#bev-shimmer-${uid})`} strokeWidth={stroke}/>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
   );
@@ -1025,6 +1048,26 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
       <circle cx={cx} cy={cy} r={r} fill="none"
               stroke={`url(#ecl-corona-${uid})`} strokeWidth={stroke * 1.5}
               style={{ animation: 'fp-breathe 4.2s ease-in-out infinite', transformOrigin: `${cx}px ${cy}px` }}/>
+      {/* LIT BAND — a bright amber crest on the band itself that rotates in
+          LOCKSTEP with the orbiting eclipsing body, so the part of the ring
+          nearest the body glows as if lit by it. Same 22s period and same
+          starting angle (the gradient's bright crest sits at the top, where
+          the body starts), giving the illusion of the body's corona casting
+          light onto the band wherever it passes. */}
+      <linearGradient id={`ecl-lit-${uid}`} x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%"   stopColor="#fff5b6" stopOpacity="0"/>
+        <stop offset="35%"  stopColor="#fff5b6" stopOpacity="0"/>
+        <stop offset="44%"  stopColor={amber}   stopOpacity="0.55"/>
+        <stop offset="50%"  stopColor="#fffbe6" stopOpacity="0.95"/>
+        <stop offset="56%"  stopColor={amber}   stopOpacity="0.55"/>
+        <stop offset="65%"  stopColor="#fff5b6" stopOpacity="0"/>
+        <stop offset="100%" stopColor="#fff5b6" stopOpacity="0"/>
+        <animateTransform attributeName="gradientTransform" type="rotate"
+                          from={`-90 ${cx} ${cy}`} to={`270 ${cx} ${cy}`}
+                          dur="22s" repeatCount="indefinite"/>
+      </linearGradient>
+      <circle cx={cx} cy={cy} r={r} fill="none"
+              stroke={`url(#ecl-lit-${uid})`} strokeWidth={stroke}/>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
       {/* The eclipsing body — a dark sphere that slowly orbits the band centreline */}
       <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 22s linear infinite' }}>
@@ -1035,6 +1078,11 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
             <circle r={stroke * 2.0} fill={`url(#ecl-corona-${uid})`} opacity="0.6"/>
             <circle r={stroke * 1.6} fill={`url(#ecl-corona-${uid})`} opacity="0.9"/>
           </g>
+          {/* Spill light on the band immediately beneath the body — a small
+              soft white-hot patch that travels with the body, reinforcing
+              the illusion that the body itself is illuminating the ring. */}
+          <circle r={stroke * 1.1} fill="#fffbe6" opacity="0.35"
+                  style={{ filter: `blur(${stroke * 0.5}px)` }}/>
           {/* The dark body itself */}
           <circle r={stroke * 0.95} fill={`url(#ecl-body-${uid})`}
                   stroke={brassDark} strokeWidth={0.5}/>
@@ -1437,12 +1485,12 @@ function Ring20_Constellation({ size = 140, disc = 'monogram' }: RingProps) {
 const RINGS: { id: string; name: string; tag: string; Comp: React.FC<RingProps> }[] = [
   { id: 'classic',   name: '1. Classic Brass',  tag: 'Roman numerals · cabochons · milled edge', Comp: Ring1_Classic },
   { id: 'laurel',    name: '2. Laurel Wreath',  tag: 'Pointed almond leaves · gold-relief ref',  Comp: Ring3_Laurel },
-  { id: 'beveled',   name: '3. Beveled Edge',   tag: 'Engraved depth · bright top, dark bottom', Comp: Ring7_Beveled },
+  { id: 'beveled',   name: '3. Beveled Edge',   tag: 'Bright bevel · periodic shimmer sweep',    Comp: Ring7_Beveled },
   { id: 'inscribed', name: '4. Inscribed',      tag: 'Raised rims · dark brass · molten text',   Comp: Ring8_Inscribed },
   { id: 'phoenix',   name: '5. Phoenix',        tag: 'Three orbiting embers · crimson halo',     Comp: Ring9_Phoenix },
   { id: 'twin',      name: '6. Twin Halo',      tag: 'Counter-rotating dual rings',              Comp: Ring10_TwinHalo },
   { id: 'astrolabe', name: '7. Astrolabe',      tag: 'Animated · 3 rings · engraved ticks',     Comp: Ring14_Astrolabe },
-  { id: 'eclipse',   name: '8. Eclipse',        tag: 'Animated · orbiting eclipse + corona',    Comp: Ring15_Eclipse },
+  { id: 'eclipse',   name: '8. Eclipse',        tag: 'Orbiting body lights the band as it passes', Comp: Ring15_Eclipse },
   { id: 'forge',     name: '9. Forge',          tag: 'Animated · molten brass + rising embers', Comp: Ring16_Forge },
   { id: 'storm',     name: '10. Storm',         tag: 'Animated · multi-flash lightning strikes', Comp: Ring19_Storm },
   { id: 'starmap',   name: '11. Constellation', tag: 'Animated · twinkling star map',           Comp: Ring20_Constellation },
@@ -1505,8 +1553,14 @@ export function FoundersRingPicker() {
           filter region and pulling the band radius in a touch so the displaced edge stays inside the box. <strong>Twin Halo</strong> orbits shrunk
           (r₁ 0.40, r₂ 0.32, halo 0.055) so both orbs stay fully inside the box on every pass, and the avatar
           disc is rendered before the orbs so they always sit on top of it.
-          <strong> Storm</strong> remains six asynchronous jagged-walk lightning bolts inside a circular clip.
-          <strong> Eclipse</strong> pulsates on three independent cycles. Every ring still renders crisply at
+          <strong> Beveled Edge</strong> now gets a narrow bright shimmer that sweeps across the
+          band every ~5.5 seconds — pauses, flashes by, pauses again, so it feels like a glint catching
+          the light rather than a constantly spinning highlight. <strong>Storm</strong> remains six
+          asynchronous jagged-walk lightning bolts inside a circular clip.
+          <strong> Eclipse</strong> pulsates on three independent cycles, and the band itself now carries
+          a bright amber crest that rotates in lockstep with the orbiting eclipsing body — so the part of
+          the ring nearest the body glows as if lit by its corona, plus a soft white-hot spill patch
+          travels with the body for the cast-light effect. Every ring still renders crisply at
           production sizes (26px / 36px / 56px beneath each card).
         </p>
       </header>
