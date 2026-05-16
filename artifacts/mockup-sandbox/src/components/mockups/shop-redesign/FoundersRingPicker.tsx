@@ -564,7 +564,11 @@ function Ring8_Inscribed({ size = 140, disc = 'monogram' }: RingProps) {
   const rOuterEdge = rOuterRim + rimT / 2;
   const rInnerEdge = rInnerRim - rimT / 2;
   const fontSize = chanT * 0.78;
-  const text = '·  FOUNDER  ·  MMXXVI  ·  OCE  ·  INHOUSE  ';
+  // Doubled inscription so the text visibly fills the entire circumference
+  // (the previous single phrase, stretched to fit, read as patchy with the
+  // heavy letter-spacing). Two repeats give a continuous-looking band of
+  // glyphs all the way around.
+  const text = '·  FOUNDER  ·  MMXXVI  ·  OCE  ·  INHOUSE  ·  FOUNDER  ·  MMXXVI  ·  OCE  ·  INHOUSE  ';
   const circumference = 2 * Math.PI * rMid;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -1047,110 +1051,73 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring16_Forge({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  // Forge — molten gold band. Built in layers so the band ALWAYS reads as a
-  // real bevelled gold ring (no muddy crimson/brown), with multiple
-  // independently-rotating bright overlays giving the molten-flowing feel.
-  // No displacement filter (which previously caused clipping). Outer reach
-  // is r + stroke/2 = 0.42 × size — comfortably inside the viewBox.
-  const r = size * 0.39;
-  const stroke = Math.max(3, size * 0.060);
-  const emberCount = 6;
+  // Forge — molten brass band using turbulence + displacement (the original,
+  // good-looking version). The previous "bites" out of the band were NOT the
+  // displacement itself — they were the filter REGION being bounded to the
+  // band's bbox (x=0% width=100%), which clamped displaced pixels at the
+  // edge. The fix: expand the filter region well past the band so displaced
+  // pixels have room to render, and keep the displacement scale small enough
+  // that the outer reach stays inside the viewBox.
+  const r = size * 0.36;          // pulled in so the displaced outer edge stays inside the viewBox
+  const stroke = Math.max(3, size * 0.045);
+  const emberCount = 5;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
-        {/* Base bevel — solid gold cylinder: bright top → deep brass bottom.
-            This is what makes the band always read as a real metal ring,
-            not a muddy gradient. */}
-        <linearGradient id={`fg-base-${uid}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#fff5b6"/>
-          <stop offset="25%"  stopColor={brassBright}/>
-          <stop offset="55%"  stopColor={amber}/>
-          <stop offset="85%"  stopColor="#a05010"/>
-          <stop offset="100%" stopColor="#4a2008"/>
+        <linearGradient id={`fg-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={brassBright}/>
+          <stop offset="40%" stopColor={amber}/>
+          <stop offset="100%" stopColor="#8a3a08"/>
         </linearGradient>
-        {/* Molten-flow overlay — bright white-hot crest that travels around
-            the band. Soft falloff on both sides so it BLENDS into the bevel
-            rather than overpowering it. */}
-        <linearGradient id={`fg-flow-${uid}`} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%"   stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="30%"  stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="42%"  stopColor={amber}   stopOpacity="0.55"/>
-          <stop offset="50%"  stopColor="#fffbe6" stopOpacity="0.95"/>
-          <stop offset="58%"  stopColor={amber}   stopOpacity="0.55"/>
-          <stop offset="70%"  stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="100%" stopColor="#fffbe6" stopOpacity="0"/>
-          <animateTransform attributeName="gradientTransform" type="rotate"
-                            from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
-                            dur="4.5s" repeatCount="indefinite"/>
-        </linearGradient>
-        {/* Second flow — counter-rotating, narrower, hotter crest so the
-            band "boils" rather than just spinning. */}
-        <linearGradient id={`fg-flow2-${uid}`} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%"   stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="46%"  stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="50%"  stopColor="#ffe49a" stopOpacity="0.9"/>
-          <stop offset="54%"  stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="100%" stopColor="#fffbe6" stopOpacity="0"/>
-          <animateTransform attributeName="gradientTransform" type="rotate"
-                            from={`0 ${cx} ${cy}`} to={`-360 ${cx} ${cy}`}
-                            dur="2.9s" repeatCount="indefinite"/>
-        </linearGradient>
-        {/* Dark "cool patch" overlay — small region of cooled brass that
-            travels around the band on yet another period, adding visual
-            texture so the band doesn't look uniform. */}
-        <linearGradient id={`fg-cool-${uid}`} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%"   stopColor="#3a1a04" stopOpacity="0"/>
-          <stop offset="44%"  stopColor="#3a1a04" stopOpacity="0"/>
-          <stop offset="50%"  stopColor="#3a1a04" stopOpacity="0.55"/>
-          <stop offset="56%"  stopColor="#3a1a04" stopOpacity="0"/>
-          <stop offset="100%" stopColor="#3a1a04" stopOpacity="0"/>
-          <animateTransform attributeName="gradientTransform" type="rotate"
-                            from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
-                            dur="7.3s" repeatCount="indefinite"/>
-        </linearGradient>
-        {/* Inner radial heat — orange glow contained inside the band */}
         <radialGradient id={`fg-glow-${uid}`} cx="0.5" cy="0.5">
-          <stop offset="40%" stopColor="#ff8c1a" stopOpacity="0"/>
-          <stop offset="100%" stopColor="#ff8c1a" stopOpacity="0.25"/>
+          <stop offset="50%" stopColor="#ff8c1a" stopOpacity="0"/>
+          <stop offset="100%" stopColor="#ff8c1a" stopOpacity="0.20"/>
         </radialGradient>
-        {/* Ember radial */}
         <radialGradient id={`fg-ember-${uid}`} cx="0.5" cy="0.5">
           <stop offset="0%" stopColor="#fffbe6"/>
           <stop offset="40%" stopColor={amber}/>
           <stop offset="100%" stopColor="#c83232" stopOpacity="0"/>
         </radialGradient>
+        {/* Molten ripple — turbulence + displacement applied to the band.
+            CRITICAL: the filter region must be larger than the band's bbox so
+            displaced pixels have room to render. The previous version had
+            x=0% width=100% which clamped displaced pixels at the band's edge
+            (that's what produced the "bites" out of the ring). */}
+        <filter id={`fg-melt-${uid}`}
+                x="-30%" y="-30%" width="160%" height="160%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.04 0.08"
+                        numOctaves="2" seed="3" result="noise">
+            <animate attributeName="baseFrequency"
+                     values="0.04 0.08;0.06 0.10;0.04 0.08"
+                     dur="9s" repeatCount="indefinite"/>
+          </feTurbulence>
+          <feDisplacementMap in="SourceGraphic" in2="noise"
+                             scale={size * 0.006} xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
       </defs>
       {/* Inner heat glow contained inside the band */}
       <circle cx={cx} cy={cy} r={r - stroke * 0.4} fill={`url(#fg-glow-${uid})`}/>
-      {/* Base bevel — always-on solid gold cylinder. This is the floor of the
-          band's appearance so it never looks muddy. */}
-      <circle cx={cx} cy={cy} r={r} fill="none"
-              stroke={`url(#fg-base-${uid})`} strokeWidth={stroke}/>
-      {/* Cool-patch overlay (subtle darker pass) for texture */}
-      <circle cx={cx} cy={cy} r={r} fill="none"
-              stroke={`url(#fg-cool-${uid})`} strokeWidth={stroke}/>
-      {/* Two molten-flow overlays travelling at different speeds in opposite
-          directions — gives the boiling-gold effect. */}
-      <circle cx={cx} cy={cy} r={r} fill="none"
-              stroke={`url(#fg-flow-${uid})`} strokeWidth={stroke}/>
-      <circle cx={cx} cy={cy} r={r} fill="none"
-              stroke={`url(#fg-flow2-${uid})`} strokeWidth={stroke}/>
-      {/* Hairline dark edges crisp up the band silhouette */}
-      <circle cx={cx} cy={cy} r={r + stroke / 2} fill="none" stroke="#2a1404" strokeWidth={0.6}/>
-      <circle cx={cx} cy={cy} r={r - stroke / 2} fill="none" stroke="#2a1404" strokeWidth={0.6}/>
+      {/* The molten band — solid brass stroke through the melt filter. With
+          r=0.36 and stroke=0.045 the outer band edge sits at 0.3825, plus
+          the tiny displacement scale of 0.006 → max reach ≈ 0.39, well
+          inside the 0.5 viewBox half-width. */}
+      <g filter={`url(#fg-melt-${uid})`}>
+        <circle cx={cx} cy={cy} r={r} fill="none"
+                stroke={`url(#fg-band-${uid})`} strokeWidth={stroke}/>
+      </g>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
       {/* Rising embers — staggered timings */}
       {Array.from({ length: emberCount }).map((_, i) => {
-        const ang = Math.PI / 2 + ((i / emberCount) - 0.5) * Math.PI * 0.65;
+        const ang = Math.PI / 2 + ((i / emberCount) - 0.5) * Math.PI * 0.7;
         const ex = cx + Math.cos(ang) * r;
         const ey = cy + Math.sin(ang) * r;
-        const dur = 3.0 + (i % 3) * 0.3;
-        const begin = `${-i * 0.55}s`;
+        const dur = 3.2;
+        const begin = `${-i * 0.65}s`;
         return (
           <circle key={i} cx={ex} cy={ey} r={size * 0.014}
                   fill={`url(#fg-ember-${uid})`} opacity="0">
             <animate attributeName="cy"
-                     from={ey} to={ey - size * 0.13}
+                     from={ey} to={ey - size * 0.14}
                      dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
             <animate attributeName="opacity"
                      values="0;1;1;0" keyTimes="0;0.15;0.7;1"
@@ -1531,10 +1498,11 @@ export function FoundersRingPicker() {
           long pointed almond leaves (~14 per branch) leaning along the rib the way real laurel grows, rising
           from a single brass stem at the bottom centre with a ~60° open gap at the top — branches now reach
           nearly to the crown, matching the gold-relief reference shape. <strong>Inscribed</strong> swaps the navy channel for near-black dark
-          brass so the inscription reads as oxidised metal between two bright raised rims. <strong>Forge</strong>
-          drops the displacement filter entirely (which was producing the "bites" out of the band) and replaces
-          it with a multi-stop molten gradient that rotates around the ring, plus a counter-rotating bright
-          hot-spot — the band genuinely flows now and can never clip. <strong>Twin Halo</strong> orbits shrunk
+          brass so the inscription reads as oxidised metal between two bright raised rims, and the engraved
+          text now repeats twice so it visibly fills the entire circumference instead of stretching to fit.
+          <strong> Forge</strong> is back to the original turbulence-displacement molten brass band — the
+          previous "bites" were the filter region being clamped to the band's bbox, fixed by expanding the
+          filter region and pulling the band radius in a touch so the displaced edge stays inside the box. <strong>Twin Halo</strong> orbits shrunk
           (r₁ 0.40, r₂ 0.32, halo 0.055) so both orbs stay fully inside the box on every pass, and the avatar
           disc is rendered before the orbs so they always sit on top of it.
           <strong> Storm</strong> remains six asynchronous jagged-walk lightning bolts inside a circular clip.
