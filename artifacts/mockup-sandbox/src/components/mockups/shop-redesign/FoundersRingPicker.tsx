@@ -551,21 +551,21 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
               strokeDasharray={`${Math.PI * r * 0.5} ${Math.PI * r * 4}`}
               transform={`rotate(70 ${cx} ${cy})`} opacity="0.7"/>
       {/* Single sun-glint — one small bright hot-spot on the band that
-          streaks quickly across a ~70° arc, fades, then pauses ~4s before
+          streaks across a ~150° arc, fades, then pauses ~3s before
           flashing again. Tangent ellipse so it reads like a long highlight
-          on a polished surface. Cycle = 5s: 0.05 fade-in → 0.18 streak →
-          0.03 fade-out → 0.74 dark pause. */}
+          on a polished surface. Cycle = 5s: 0.04 fade-in → 0.38 streak →
+          0.04 fade-out → 0.54 dark pause. */}
       <g>
         <ellipse cx={cx} cy={cy - r} rx={stroke * 1.6} ry={stroke * 0.55}
                  fill={`url(#bev-glint-${uid})`} opacity="0">
           <animate attributeName="opacity"
                    values="0;1;1;0;0"
-                   keyTimes="0;0.04;0.22;0.26;1"
+                   keyTimes="0;0.04;0.42;0.46;1"
                    dur="5s" repeatCount="indefinite"/>
         </ellipse>
         <animateTransform attributeName="transform" type="rotate"
-                          values={`-35 ${cx} ${cy};35 ${cx} ${cy};35 ${cx} ${cy}`}
-                          keyTimes="0;0.26;1"
+                          values={`-75 ${cx} ${cy};75 ${cx} ${cy};75 ${cx} ${cy}`}
+                          keyTimes="0;0.46;1"
                           dur="5s" repeatCount="indefinite"/>
       </g>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
@@ -1019,8 +1019,10 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
   // below, so the band appears to bow outward under the body's gravity
   // wherever it passes. Gaussian falloff for a smooth, organic-looking warp.
   const SEG = 120;
-  const sigma = 0.40;          // ~23° spread of the bulge
-  const bulge = stroke * 0.95; // peak outward displacement
+  const sigma = 0.35;           // ~20° spread of the squeeze
+  const bulge = -stroke * 1.05; // NEGATIVE = squeeze inward (band pinched
+                                // toward centre where the orb passes, like
+                                // the orb is compressing the band).
   const warpedPath = (radius: number) => {
     let d = '';
     for (let i = 0; i <= SEG; i++) {
@@ -1063,9 +1065,10 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
       {/* Breathing amber halo — INSIDE the band, pulses on a faster cycle */}
       <circle cx={cx} cy={cy} r={r - stroke * 0.5} fill={`url(#ecl-breath-${uid})`}
               style={{ animation: 'fp-breathe 3.5s ease-in-out infinite', transformOrigin: `${cx}px ${cy}px` }}/>
-      {/* Warped brass band — rotates in lockstep with the orbiting body so
-          the bulge always sits directly under the body, like gravitational
-          lensing pulling the ring outward as the body passes. */}
+      {/* Pinched brass band — rotates in lockstep with the orbiting body so
+          the squeeze always sits directly under the body. The band is
+          pulled INWARD toward centre as the orb passes, as if the orb's
+          mass is compressing it. */}
       <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 22s linear infinite' }}>
         <path d={bandD}  fill="none" stroke={brass}     strokeWidth={stroke}/>
         <path d={outerD} fill="none" stroke={brassDark} strokeWidth={0.6}/>
@@ -1500,7 +1503,7 @@ const RINGS: { id: string; name: string; tag: string; Comp: React.FC<RingProps> 
   { id: 'phoenix',   name: '5. Phoenix',        tag: 'Three orbiting embers · crimson halo',     Comp: Ring9_Phoenix },
   { id: 'twin',      name: '6. Twin Halo',      tag: 'Counter-rotating dual rings',              Comp: Ring10_TwinHalo },
   { id: 'astrolabe', name: '7. Astrolabe',      tag: 'Animated · 3 rings · engraved ticks',     Comp: Ring14_Astrolabe },
-  { id: 'eclipse',   name: '8. Eclipse',        tag: 'Band warps under orbiting body · gravity lens', Comp: Ring15_Eclipse },
+  { id: 'eclipse',   name: '8. Eclipse',        tag: 'Band pinches inward under the orbiting body', Comp: Ring15_Eclipse },
   { id: 'forge',     name: '9. Forge',          tag: 'Animated · molten brass + rising embers', Comp: Ring16_Forge },
   { id: 'storm',     name: '10. Storm',         tag: 'Animated · multi-flash lightning strikes', Comp: Ring19_Storm },
   { id: 'starmap',   name: '11. Constellation', tag: 'Animated · twinkling star map',           Comp: Ring20_Constellation },
@@ -1563,14 +1566,12 @@ export function FoundersRingPicker() {
           filter region and pulling the band radius in a touch so the displaced edge stays inside the box. <strong>Twin Halo</strong> orbits shrunk
           (r₁ 0.40, r₂ 0.32, halo 0.055) so both orbs stay fully inside the box on every pass, and the avatar
           disc is rendered before the orbs so they always sit on top of it.
-          <strong> Beveled Edge</strong> shows one small sun-glint that streaks quickly across a ~70°
-          arc on the top of the band, then pauses ~4s before flashing again. (Previous version used a
-          1D linear gradient which produced two simultaneous bright spots on opposite sides of the
-          circle; replaced with a single tangent ellipse rotated around the band centre.) <strong>Storm</strong>
-          remains six asynchronous jagged-walk lightning bolts inside a circular clip.
-          <strong> Eclipse</strong> now uses a Gaussian-warped band path that rotates in lockstep with the
-          orbiting body — the band physically bows outward beneath the body, like gravitational lensing,
-          with a soft amber rim-light along the bulged arc to suggest light bending. Every ring still renders crisply at
+          <strong> Beveled Edge</strong> shows one small sun-glint that streaks across a ~150° arc on the
+          top of the band, then pauses ~3s before flashing again. <strong>Storm</strong> remains six
+          asynchronous jagged-walk lightning bolts inside a circular clip. <strong>Eclipse</strong> now
+          uses a Gaussian-pinched band path that rotates in lockstep with the orbiting body — the band
+          is pulled INWARD toward centre as the orb passes, as if the orb's mass is compressing it,
+          with a soft amber rim-light along the pinched arc. Every ring still renders crisply at
           production sizes (26px / 36px / 56px beneath each card).
         </p>
       </header>
