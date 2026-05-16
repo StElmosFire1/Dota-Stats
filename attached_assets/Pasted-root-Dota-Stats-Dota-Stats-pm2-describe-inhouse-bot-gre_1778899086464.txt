@@ -1,0 +1,73 @@
+root@Dota-Stats:~/Dota-Stats# pm2 describe inhouse-bot | grep -E 'script path|cwd'
+│ script path       │ /root/Dota-Stats/src/index.js         │
+│ exec cwd          │ /root/Dota-Stats                      │
+root@Dota-Stats:~/Dota-Stats# pm2 delete inhouse-bot
+cd ~/Dota-Stats && pm2 start community-edition/src/index.js --name inhouse-bot --update-env
+pm2 save
+[PM2] Applying action deleteProcessId on app [inhouse-bot](ids: [ 0 ])
+[PM2] [inhouse-bot](0) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ oi-bot             │ fork     │ 124  │ online    │ 0%       │ 265.5mb  │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Starting /root/Dota-Stats/community-edition/src/index.js in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot        │ fork     │ 0    │ online    │ 0%       │ 17.9mb   │
+│ 1  │ oi-bot             │ fork     │ 124  │ online    │ 0%       │ 265.5mb  │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /root/.pm2/dump.pm2
+root@Dota-Stats:~/Dota-Stats# pm2 describe inhouse-bot | grep -E 'script path|cwd'
+pm2 logs inhouse-bot --lines 20 --nostream
+│ script path       │ /root/Dota-Stats/community-edition/src/index.js │
+│ exec cwd          │ /root/Dota-Stats                                │
+[TAILING] Tailing last 20 lines for [inhouse-bot] process (change the value with --lines option)
+/root/.pm2/logs/inhouse-bot-error.log last 20 lines:
+2|inhouse- | [API] Error fetching matches: column ps.hero does not exist
+2|inhouse- | [API] Error fetching matches: column ps.hero does not exist
+2|inhouse- | [API] Error fetching matches: column ps.hero does not exist
+2|inhouse- | [API] Error fetching matches: column ps.hero does not exist
+2|inhouse- | [API] Error fetching matches: column ps.hero does not exist
+2|inhouse- | [API] Error fetching matches: column ps.hero does not exist
+2|inhouse- | [Config] Optional env vars not set (some features may be limited):
+2|inhouse- | [Config]   - WEEKLY_RECAP_CHANNEL_ID
+2|inhouse- | [Config]   - DISCORD_INVITE
+2|inhouse- | [Config]   - STEAM_SHARED_SECRET
+2|inhouse- | [Config]   - TRUSTED_STEAM_IDS
+2|inhouse- | [Config]   - DEDICATED_SERVER_IP
+2|inhouse- | [Config]   - DEDICATED_SERVER_PORT
+2|inhouse- | [Config]   - DEDICATED_SERVER_STEAM_ID
+2|inhouse- | [Config]   - DEDICATED_SERVER_RCON_PASSWORD
+2|inhouse- | [Config]   - DISABLE_STEAM
+2|inhouse- | [nicknames] Cannot create unique index on discord_id — 2 duplicate(s) need admin attention:
+2|inhouse- |   discord_id=195511302309806082 → accounts=128956172, 1265769771, 1910138544
+2|inhouse- |   discord_id=379564248067604481 → accounts=1142497072, 1142497079
+2|inhouse- | [Startup] Patch note seed failed: [DB] patchNotes.js is out of order: v1.2 appears before v1.1. Fix the order in src/data/patchNotes.js before starting the bot.
+
+/root/.pm2/logs/inhouse-bot-out.log last 20 lines:
+2|inhouse- | [RankSync] 87/111 account=128956169 source=opendota
+2|inhouse- | 
+2|inhouse- | [Shutdown] Graceful shutdown...
+2|inhouse- | [Discord] Bot shut down.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Dota2 GC] Left practice lobby.
+2|inhouse- | [Steam] Shut down.
+2|inhouse- | [dotenv@17.3.1] injecting env (15) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+2|inhouse- | === Dota 2 Inhouse Stats Bot ===
+2|inhouse- | Starting up...
+2|inhouse- | 
+2|inhouse- | [Startup] Running COMMUNITY edition from /root/Dota-Stats
+2|inhouse- | [DB] PostgreSQL connected.
+2|inhouse- | [DB] Schema migrations applied.
+2|inhouse- | [Startup] Google Sheets: disabled (config.features.sheets = false)
+2|inhouse- | [Replay] Clearing port 5600 before spawn...
+2|inhouse- | [Replay] Starting parser service on port 5600
+2|inhouse- | [Replay] Parser service is ready.
+2|inhouse- | [Steam] Logging in...
+2|inhouse- | [Steam] Logged in successfully.
+
+root@Dota-Stats:~/Dota-Stats# 
