@@ -1,132 +1,93 @@
 # Dota 2 Inhouse Stats Bot
 
 ## Overview
-The Dota 2 Inhouse Stats Bot is a Node.js Discord bot designed to track and display Dota 2 inhouse game statistics for an OCE community. It prioritizes privacy by not relying on public match APIs and offers various methods for recording match data, including replay parsing and real-time lobby monitoring. A comprehensive web dashboard complements the bot, providing features like match history, TrueSkill MMR leaderboards, detailed player profiles, and tools for community management. The project aims to be a complete platform for competitive inhouse Dota 2 communities, incorporating features such as season management, prize pools, and advanced statistical analysis.
+Node.js Discord bot + React/Express dashboard for an OCE Dota 2 inhouse community. Replay parsing (local OpenDota Java parser), TrueSkill MMR, real-time lobby monitoring, season management, prize pools, FACEIT-style inhouse lobbies, Stripe-backed monetisation, and a coaching marketplace. Two editions deploy side-by-side (see "Editions & deploys" below).
 
 ## User Preferences
-I prefer iterative development, with a focus on delivering core features first and then refining them. When making changes, please prioritize robust error handling and graceful degradation. I value clear, concise explanations for any complex technical decisions or implementations.
+- **Iterative development.** Core feature first, refine after. Prioritise robust error handling and graceful degradation. Explain complex technical decisions concisely.
+- **Patch notes.** After completing a meaningful batch of changes, add a single grouped entry to `src/data/patchNotes.js`, incrementing the version. Group related work into one note rather than one per change — publish only when there's a significant set of work to describe. Do this automatically, never wait to be asked.
+- **GitHub push.** After every batch the post-merge hook (`scripts/post-merge.sh`) auto-pushes to GitHub using `GITHUB_PERSONAL_ACCESS_TOKEN`. If a manual push is needed, the credential one-liner is:
+  ```
+  git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin HEAD:main
+  ```
+  The hook self-heals non-fast-forward rejections (it fetches the platform's recommitted SHA, verifies the tree matches, and force-with-lease pushes). The only allowed source of divergence is `artifacts/mockup-sandbox/src/.generated/`.
 
-After completing a meaningful batch of changes, add a single grouped entry to `src/data/patchNotes.js` summarising everything that changed (incrementing the version number from the current latest). Group related changes into one patch note rather than posting one per individual change — only publish when there is a significant set of work to describe. This must be done automatically — never wait to be asked.
-
-After completing any set of changes and rebuilding, the latest commit is pushed to GitHub automatically by the post-merge hook (`scripts/post-merge.sh`), which runs after the platform's auto-commit and uses the `GITHUB_PERSONAL_ACCESS_TOKEN` secret with this credential-helper one-liner:
-`git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin HEAD:main`
-
-If that push is rejected as non-fast-forward (the platform's own checkout sometimes commits + pushes to origin/main under a different SHA between merges, and the Replit sandbox blocks every git op that touches `.git/refs/remotes/origin/*.lock` or `.git/objects/maintenance.lock` so we can't `git fetch origin main` here to catch up), the hook self-heals (v6.85). It reads the real remote tip via `git --no-optional-locks ls-remote origin main`, fetches ONLY that object via `GIT_OPTIONAL_LOCKS=0 git -c gc.auto=0 -c maintenance.auto=false fetch --no-auto-gc --no-auto-maintenance --no-write-fetch-head origin <SHA>` (the fetch-by-SHA + maintenance-disabled combo is the one shape the sandbox does NOT block), confirms the local HEAD's tree matches the remote tip's tree (the platform-recommitted SHA is byte-equivalent to ours — the only allowed source of divergence is `artifacts/mockup-sandbox/src/.generated/`, the auto-regenerated mockup index), and force-with-lease pushes HEAD onto main. Any real source-file divergence aborts the self-heal so legitimate concurrent work is never clobbered.
-
-The bot runs under PM2. The prod host has **two separate checkouts** side-by-side, and **each edition has its own dedicated deploy script** — they are deliberately independent siblings so a mistaken invocation can never cross-deploy.
+## Editions & deploys
+Two checkouts side-by-side on the prod host. Each edition has its own deploy script — they are deliberately independent so a mistaken invocation can never cross-deploy.
 
 | Edition | Domain | Checkout | Deploy command | PM2 process | Entrypoint |
 |---|---|---|---|---|---|
 | Full | `oceinhouse.gg` | `~/Dota-Stats-Full/` | `cd ~/Dota-Stats-Full && bash deploy.sh` | `oi-bot` | `src/index.js` (serves `web/dist/`) |
 | Community | `dota.stats.corvidaeinc.com` | `~/Dota-Stats/` | `cd ~/Dota-Stats && bash community-edition/deploy.sh` | `inhouse-bot` | `community-edition/src/index.js` (serves `community-edition/web/dist/`) |
 
-Both scripts: `git reset --hard origin/main`, run the parser-jar `--check` gate, run the a11y gate, `npm install` + `npm run build` in the edition's web dir, then `pm2 restart <name> --update-env`. Override the target with `PM2_APP=other-name bash …`. The full-edition `deploy.sh` builds **only** `web/` and restarts **only** `oi-bot`. The community-edition `community-edition/deploy.sh` builds **only** `community-edition/web/` and restarts **only** `inhouse-bot` (and hard-blocks `PM2_APP=oi-bot`). Always confirm you're in the correct checkout before deploying.
+Both scripts: `git reset --hard origin/main` → run the safety gates below → `npm install` + `npm run build` in the edition's web dir → `pm2 restart <name> --update-env`. Always confirm you're in the correct checkout before deploying.
 
-**Community edition is paywall-free by policy** (see `community-edition/SETUP.md` — "Pro tier / paid memberships — removed"). Pro tier, Stripe, and every paywall touchpoint is full-edition-only and must never appear in `community-edition/src/` or `community-edition/web/src/`. Task #303 stripped the last source-level holdovers (a server-side 402 paywall on the replay-download route, two unused `useProStatus`/`useProMembers` stub hooks, and a dead `trendPaywall` state branch on the community PlayerProfile page).
+**Community edition is paywall-free by policy** (see `community-edition/SETUP.md`). Pro tier, Stripe, and every paywall touchpoint is full-edition-only.
 
-**Pro-paywall regression gate (Tasks #299, #303):** `scripts/check-community-paywall.sh` is the belt-and-braces backstop. It runs **two passes**:
-- **Source-scan pass** (Task #303): scans `community-edition/src/` and `community-edition/web/src/` in two sub-passes — a fixed-string pass for nine tokens (`PaywallCard`, `useProStatus`, `useProMembers`, `isProMember`, `feature: 'replay_download'`, `Pro membership`, `requires Pro`, `Pro Tier`, `Inhouse Stats Pro`) plus a broader regex pass `(['"]?)paywall\1[[:space:]]*:` that catches any `paywall:` / `"paywall":` / `'paywall':` key shape regardless of value. `community-edition/SETUP.md`, `community-edition/README.md`, and `community-edition/src/data/patchNotes.js` are explicitly allow-listed so we can still describe historical paywalls in prose.
-- **Dist-scan pass** (Task #299): when `community-edition/web/dist/` exists, `grep -RFl`s the built bundle for the four full-edition-only minification-survivable tokens (`PaywallCard`, `useProStatus`, `Pro Tier`, `Inhouse Stats Pro`).
+### Pre-deploy safety gates
+All four gates run in both `deploy.sh` and `scripts/post-merge.sh`. The scripts are the source of truth — the summary here is just so I know what's protecting me. Any gate failure aborts the deploy / GitHub push before PM2 is touched.
 
-The gate runs in both `community-edition/deploy.sh` and `scripts/post-merge.sh` (which also builds `community-edition/web/` alongside the top-level `web/`) — the source pass fires BEFORE the build so a regression fails fast without paying for an install + build first; the dist pass runs after the build as a second backstop. A failure aborts the deploy / GitHub push with the offending path(s) printed, before anything reaches the prod host.
+1. **Parser-jar freshness** (`scripts/build-parser.sh --check`, also `npm run check:parser`). Fails if the committed `odota-parser/target/stats-0.1.0.jar` is older than any file under `odota-parser/src/` or `odota-parser/pom.xml`. No JDK required — never invokes Maven.
+2. **A11y gate** (`scripts/check-a11y.js`, also `npm run check:a11y`). Six passes enforcing the frontend house rules below. See `docs/a11y-gates-history.md` for per-pass detail.
+3. **Community paywall gate** (`scripts/check-community-paywall.sh`). Source-scan pass (runs before build, fails fast) plus dist-scan pass (after build). Allow-list: `community-edition/SETUP.md`, `community-edition/README.md`, `community-edition/src/data/patchNotes.js`.
+4. **Wrong-edition + PM2-entrypoint gates** (inline in each `deploy.sh`). Aborts if the checkout's directory basename looks wrong for its edition, AND verifies via `pm2 jlist` that the target PM2 process's `pm_exec_path` + `pm_cwd` actually point at this checkout's entrypoint. First-time deploys (no PM2 process yet) are a no-op. If gate 4 fires, the abort message points at the one-time PM2 re-registration snippet (see below).
 
-**One-time PM2 re-registration for community edition (Task #298):** if `pm2 describe inhouse-bot | grep -E 'script path|cwd'` shows `script path /root/Dota-Stats/src/index.js` (the full-edition entrypoint — this is the deploy bug that caused the Pro paywall to appear on `dota.stats.corvidaeinc.com/synergy`), re-register it once at the community entrypoint:
+### One-time PM2 re-registration (community edition)
+If `pm2 describe inhouse-bot | grep -E 'script path|cwd'` shows the full-edition entrypoint, re-register once:
 ```
 pm2 delete inhouse-bot
 cd ~/Dota-Stats && pm2 start community-edition/src/index.js --name inhouse-bot --update-env
 pm2 save
 ```
-After that the standard `bash community-edition/deploy.sh` keeps everything in sync.
 
-**Wrong-edition deploy gate (Task #302):** both `deploy.sh` and `community-edition/deploy.sh` hard-fail before restarting PM2 if their own checkout's directory basename looks like the wrong edition — promoting the Task #300 startup warning to a deploy-time abort so a misconfigured checkout can never silently serve the wrong `web/dist/`. `deploy.sh` (full edition) aborts when its cwd basename contains `community` or ends in `dota-stats` (the community prod basename); `community-edition/deploy.sh` aborts when the resolved repo-root basename contains `full`. The full-edition prod basename `dota-stats-full` and the community prod basename `dota-stats` are both designed to avoid the opposite heuristic, so a correctly-deployed host never sees a false positive. The abort message points at the one-time PM2 re-registration snippet above.
+### Java replay parser
+`odota-parser/target/stats-0.1.0.jar` is rebuilt automatically on deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and the post-merge hook). Only re-runs `mvn install -DskipTests` when stale. Force a rebuild: `npm run build:parser`.
 
-**PM2 entrypoint-verification gate (Task #307):** belt-and-braces backstop for the Task #302 directory-name heuristic. Just before `pm2 restart`, both deploy scripts read `pm2 jlist` (parsed by an inline Node one-liner to extract `pm2_env.pm_exec_path` and `pm2_env.pm_cwd` — the authoritative `pm2 describe` fields) for the target process name and refuse to restart if either field doesn't match this checkout's expected entrypoint/cwd. `deploy.sh` expects `${DEPLOY_CWD}/src/index.js` + `${DEPLOY_CWD}`; `community-edition/deploy.sh` expects `${REPO_ROOT}/community-edition/src/index.js` + `${REPO_ROOT}`. This closes the last gap from Task #302: a host where someone manually renamed the checkout so the directory-name heuristic happens to align but PM2 is still misregistered against the wrong entrypoint. If the PM2 process doesn't exist yet (first-time deploy, `pm2 jlist` doesn't include the name), the gate no-ops and lets `pm2 restart` create it. Both abort messages print the observed vs. expected script path + cwd and point at the one-time PM2 re-registration snippet above.
-The Java replay parser jar (`odota-parser/target/stats-0.1.0.jar`) is rebuilt automatically on each deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and `scripts/post-merge.sh`). The script only re-runs `mvn install -DskipTests` when the jar is missing or older than any file under `odota-parser/src/` or `odota-parser/pom.xml`, so normal restarts are no-ops. To force a manual rebuild, run `npm run build:parser`.
+## Branding
+**OCE Inhouse** under the OA logo (`web/public/oa-logo.png` + `favicon.png`). Palette: **Hybrid · Court & Pitch** — ink-navy `#0d1424`, brass `#c5a975`, amber `#f59e0b`, parchment `#f5efe2`. CSS tokens in `web/src/styles.css`: `--bg-primary`, `--accent`, `--gold`, `--brass`, `--amber`, `--parchment`, `--ink-navy`. Fonts: Inter (`--font`), Oswald (`--font-condensed`), Playfair Display (`--font-serif`).
 
-Both `deploy.sh` and `scripts/post-merge.sh` run `bash scripts/build-parser.sh --check` (also exposed as `npm run check:parser`) as a hard gate **before** any local rebuild. The check exits non-zero if the committed jar is older than any file under `odota-parser/src/` (whole tree, not just `src/main/java`) or `odota-parser/pom.xml`, so a deploy/post-merge with a stale committed jar fails fast and cannot be silently self-healed by a rebuild on the deploy host. The check never invokes Maven, so it is also safe to wire into CI runners without a JDK.
-
-## System Architecture
-The system is built on Node.js, integrating with Discord and Steam for game interactions. Data persistence is managed using PostgreSQL.
-
-**Branding:**
-As of v5.59 the site is rebranded to **OCE Inhouse** under the OA logo (`web/public/oa-logo.png` + `web/public/favicon.png`). The global palette is the **Hybrid · Court & Pitch** system — ink-navy `#0d1424` backgrounds, brass `#c5a975` accent, amber `#f59e0b` highlights, parchment `#f5efe2` light theme — driven by the existing CSS token names in `web/src/styles.css` (`--bg-primary`, `--accent`, `--gold`, `--brass`, `--amber`, `--parchment`, `--ink-navy`). Fonts: Inter (sans, `--font`), Oswald (condensed, `--font-condensed`), Playfair Display (serif, `--font-serif`).
-
-**UI/UX Decisions:**
-The web dashboard is a React-based frontend with an Express backend, offering extensive features such as match history, TrueSkill MMR leaderboards, player profiles with detailed breakdowns, and synergy matrices. Key UI elements include multi-kill leaderboards, player comparison tools, enhanced gold lead displays, hero meta analysis, and expandable stats tables. Recent additions include a Hero Breakdown tab, a merged Draft page, a Predictions page, and "Most Improved" and "Form Guide" widgets. Further planned enhancements include a Hero Tier List, Hero Matchups, Player Benchmarks, an expanded achievement system, a Player Network page, a Hall of Fame, and Tournament Brackets. Player profiles feature shareable links, best allies, and rolling win rate charts.
-
-**Technical Implementations:**
-- **Data Recording:** Supports replay parsing via a local OpenDota Java parser instance and real-time lobby monitoring through the Dota 2 Game Coordinator.
-- **Automated Match Detection:** Includes friend lobby auto-detection and an OpenDota fallback system for practice lobby matches.
-- **Player Rating:** Implements TrueSkill for dynamic MMR calculations, with an 8-tier ladder system and an Impact Score for position-neutral performance rating. TrueSkill 2 is also being experimentally evaluated.
-- **PERF (Positive Impact Score):** Position-aware, duration-normalised 1.0–10.0 score persisted in `player_stats.perf` (with full per-stat breakdown in `perf_breakdown` and source in `perf_source`). Computed against per-position avg/elite per-minute targets defined in `src/perf/perfWeights.config.js` so a score of 5.0 = average for the role, 9.0+ = top 1%, and 10.0 is achievable for any position with elite play. Calculated automatically after every match record via `src/perf/perfService.js` (mirrored to `community-edition/src/perf/`); historical matches can be backfilled with the owner-only Discord command `!perf-backfill [limit]`. Match scoreboards prefer the persisted PERF when present, falling back to the legacy match-relative score otherwise.
-- **Monetization & Management:** Integrates Stripe for per-tournament buy-ins and managing prize pools. Features include season pass with XP economy, player profile customization, and a "Pro Tier" subscription for advanced features like detailed hero meta and analytics.
-- **Community Features:** Includes a sign-up/join page, nickname system, Discord commands for bot interaction, and an AI match commentary system using Grok.
-- **Advanced Match Analytics:** Provides post-match MVP voting, attitude ratings, scoreboard image generation, and hot streak announcements.
-- **Match Prediction System:** Allows users to predict match outcomes.
-- **Game Scheduling & Balancing:** Features Discord commands for scheduling games and an MMR-based team balancer.
-- **Inhouse Lobby System:** A FACEIT-style inhouse lobby (`/inhouse`) provides a complete session flow from player sign-in, position registration, timed accept phase, captain selection, and a captain draft UI, integrated with dedicated servers for game provisioning and replay pulling. As of v6.35 (Task #168), the dedicated server is **auto-provisioned the moment the captain draft completes** — no admin click required. The 10th pick fires the shared `provisionInhouseServer()` helper (`src/inhouse/serverProvisioner.js`); a per-session in-memory single-flight Set + a recovery sweep in `autoStartTicker.js` make the trigger duplicate-safe and self-healing across server restarts. When RCON is configured but the push fails, the session moves to a `server_failed` state with a captain-visible **Retry** button on `/inhouse` (route: `POST /api/inhouse/:id/server/retry`, auth = either captain OR superuser) and pings the bot's admin Discord channel. The community edition has the inhouse_sessions table but no inhouse routes / page / ticker, so this is full-edition-only.
-- **Hero Meta & Draft Assistant:** `Hero Meta V2` provides position-specific hero win rates and pick frequencies. `Draft Assistant V2` offers live counter-pick and synergy scoring based on real-time picks.
-- **Notifications:** A comprehensive notification system allows players to manage preferences for various alerts (e.g., post-match DMs, MVP votes, hot streaks) through a dedicated settings page and web push notifications.
-- **Profile Customization:** Signed-in players can personalize their profiles with bios, custom titles, accent colors, pinned heroes, and matches.
-- **Coaching Marketplace:** A peer-to-peer coaching marketplace, built with Stripe Connect Express, allows eligible top players or high-ranked users to offer paid coaching sessions.
-
-**System Design Choices:**
-- **Modularity:** Components are structured for Discord, Steam, Lobby, API, Stats, Sheets, and Replay processing.
-- **Graceful Degradation:** Core functionalities are designed to remain operational even if non-critical components are unavailable.
-- **Child Processes:** The Java replay parser is executed as a child process.
+## Architecture (high level)
+- **Data recording:** local OpenDota Java parser + real-time Dota 2 GC lobby monitoring + friend-lobby auto-detection + OpenDota fallback for practice lobbies.
+- **Player rating:** TrueSkill with 8-tier ladder. PERF score (1.0–10.0, position-aware, duration-normalised) persisted in `player_stats.perf` with breakdown in `perf_breakdown`. Targets in `src/perf/perfWeights.config.js`. Backfill: `!perf-backfill [limit]`.
+- **Monetisation:** Stripe for Pro membership, tournament buy-ins, prize pools, frame purchases, gift checkouts, coaching marketplace (Stripe Connect Express). In-app coin currency (v6.79) for individual cosmetic unlocks — priced above Stripe equivalents so it's an alternative path, not a shortcut. See `src/web/server.js` `COIN_PRICES` for the catalog.
+- **Inhouse lobby system** (`/inhouse`, full edition only): FACEIT-style flow — sign-in → position registration → timed accept → captain draft → auto-provisioned dedicated server on 10th pick (via `src/inhouse/serverProvisioner.js`, single-flight Set + recovery sweep in `autoStartTicker.js`). Failed provision → `server_failed` state with captain-visible Retry + admin Discord ping.
+- **Hero meta / draft assistant:** position-specific win rates + live counter-pick scoring.
+- **Notifications:** preference-driven web push + post-match DMs + MVP/hot-streak alerts.
+- **Modularity:** Discord, Steam, Lobby, API, Stats, Sheets, Replay each in their own module. Graceful degradation — non-critical components can be missing without breaking the core. Java parser runs as a child process.
 
 ## Frontend accessibility house rule
-Every clickable thing in `web/src/` and `community-edition/web/src/` must be keyboard-reachable, screen-reader-labelled, and operable without a mouse. Six rules cover the shapes that have repeatedly slipped through PRs (Tasks #158, #161) — do not reintroduce them:
+Every clickable thing in `web/src/` and `community-edition/web/src/` must be keyboard-reachable, screen-reader-labelled, and operable without a mouse. The a11y gate (`npm run check:a11y`) enforces all six rules:
 
-- **No `<div onClick>` / `<span onClick>` for actions.** Use a real `<button type="button">`, or if the layout forbids it (e.g. nested `<Link>` where button-in-button is invalid HTML), add ALL of `role="button"` + `tabIndex={0}` + `onKeyDown` (Enter/Space) + `aria-label` (or visible text). Toggles also need `aria-expanded` / `aria-pressed` / `aria-checked` as appropriate.
-- **Sortable table columns** must use the shared `SortableTh` component (`web/src/components/SortableTh.jsx`, mirrored to community-edition) — never raw `<th onClick>`. Pass `active` + `direction` so screen readers get a real `aria-sort`.
-- **Modals/dialogs** must use the shared `<Dialog>` primitive (`web/src/components/Dialog.jsx`, mirrored to community-edition — Task #165). It handles backdrop, `role="dialog"`+`aria-modal`, focus capture/restore, focus-trap, body-scroll lock, and Escape-to-close in one place. Pass `labelledBy` or `label` for the accessible name, and `initialFocusRef` if a specific control should receive focus on open. Do NOT hand-roll a `<div role="dialog">`+ad-hoc `onKeyDown`.
-- **Hover-only reveals are forbidden.** Anything that appears on `:hover` must also appear on `:focus`/`:focus-within` and remain readable on touch devices (`@media (hover: none)`). The v3 Magazine hero cards (Task #158) are the reference pattern.
-- **Custom toggle/switch/radio shapes** must use the matching ARIA role (`role="switch"`+`aria-checked`, or `role="radiogroup"` + `role="radio"` children). Don't ship a `<div>` styled as a switch.
-- **Icon-only buttons** must carry an `aria-label` (e.g. dismiss `×` buttons, close buttons). `title=` is NOT a substitute — screen readers treat it inconsistently.
+1. **No `<div onClick>` for actions.** Use `<button type="button">`, or if button-in-button is invalid HTML, add `role="button"` + `tabIndex={0}` + `onKeyDown` (Enter/Space) + `aria-label`. Toggles need `aria-expanded` / `aria-pressed` / `aria-checked`.
+2. **Sortable table columns** use the shared `SortableTh` component — never raw `<th onClick>`.
+3. **Modals/dialogs** use the shared `<Dialog>` primitive (handles backdrop, `role="dialog"`+`aria-modal`, focus capture/restore/trap, body-scroll lock, Escape-to-close). Pass `labelledBy` or `label`. To exempt a file, add it to `DIALOG_ALLOWLIST` in `scripts/check-a11y.js`.
+4. **Hover-only reveals are forbidden.** Anything that appears on `:hover` must also appear on `:focus`/`:focus-within` and work on touch (`@media (hover: none)`).
+5. **Custom toggle/switch/radio shapes** use the matching ARIA role (`role="switch"`+`aria-checked`, or `role="radiogroup"` + `role="radio"`).
+6. **Icon-only buttons** carry an `aria-label`. `title=` is NOT a substitute.
 
-If a new clickable shape doesn't fit one of these, add the shape and document it here before it spreads.
-
-**Automated enforcement:** `scripts/check-a11y.js` (`npm run check:a11y`) runs as a hard pre-build gate in both `deploy.sh` and `scripts/post-merge.sh` — a regression fails the deploy / GitHub push before the frontend bundle is rebuilt. Six passes:
-
-| # | Pass | Flags | Origin |
-|---|------|-------|--------|
-| 1 | Generic clickable | `<div>/<span>/<li>/<tr>/<td>/<th>/<section>/<article>/<header>/<footer>/<nav>/<aside>/<main>/<ul>/<ol>/<p>/<figure>/<figcaption>/<img>` with `onClick` missing the `role`+`tabIndex`+`onKeyDown` triad. `<th onClick>` always flagged → use `SortableTh`. Allows `role="presentation"`/`"none"`/`"dialog"` as non-actionable containers. | Task #164 |
-| 2 | Custom switch/toggle/radio | `<div>`/`<span>` with switch/toggle/radio class tokens AND a click/change/keydown handler but missing `role="switch"`/`role="radio"` + `aria-checked`. | Task #169 |
-| 3 | Hover-reveal CSS | `:hover` rules in `*.css` that reveal content (combinator after `:hover`, or set `display`/`opacity`/`visibility`/`pointer-events`/`clip-path`/`max-height`/`height`) without a matching `:focus`/`:focus-within`/`:focus-visible` rule. | Task #170 |
-| 4 | Icon-only button | `<button>`/`<a>` whose only visible content is a single non-letter glyph or icon child (`<svg>`, `*Icon`/`*Svg` components, including via `cloneElement` or single-element arrays) without `aria-label`/`aria-labelledby`. | Tasks #175, #183, #194 |
-| 5 | Hand-rolled modal | Literal `role="dialog"` outside the two allow-listed `Dialog.jsx` primitives — modals MUST go through the shared `<Dialog>`. To intentionally exempt a file, add it to `DIALOG_ALLOWLIST` in `scripts/check-a11y.js`. | Task #182 |
-| 6 | Mouse-handler focus parity | JSX with inline `onMouseEnter`/`onMouseLeave`/`onMouseOver`/`onMouseOut` that calls a `set...(…)` (state change) without the matching `onFocus`/`onBlur`. Cosmetic-only handlers and reference-form handlers are not flagged. | Task #185 |
-
-Synthetic test coverage for every pass lives in `tests/checkA11y.test.js`. Full per-pass detail (heuristics, edge cases, allow-list rationale, evolution history) is in `docs/a11y-gates-history.md`; `scripts/check-a11y.js` itself is the authoritative source of truth for the rules.
+`scripts/check-a11y.js` is authoritative; per-pass detail in `docs/a11y-gates-history.md`; synthetic coverage in `tests/checkA11y.test.js`. If a new clickable shape doesn't fit one of these, add the shape and document it here before it spreads.
 
 ## Test coach end-to-end (Task #312)
+Stripe Connect Express requires real KYC, so dev-testing the coaching marketplace UI needs a shortcut.
 
-The coaching marketplace uses Stripe Connect Express, which requires real KYC (DOB, address, bank, ID). For dev/testing there are two paths depending on how much of the flow you need to exercise:
+**Path A — UI only (no real Stripe):** Admin Panel → 🎓 Coaching → **🧪 Test: Promote to Coach (skip Stripe Connect)** → leave `account_id` blank to use your superuser account → click *Promote to coach*. Calls `POST /api/admin/coaching/promote-test-coach` (superuser-only), inserts a `coaches` row with synthetic `acct_test_<accountId>_<ts>` + status `active`. Editor, availability, public profile, and `/coaches` listing all work. Bookings will fail at Checkout creation because the synthetic id isn't real — use Path B for full E2E.
 
-**Path A — UI testing only (no real Stripe):**
-Admin Panel → 🎓 Coaching tab → **🧪 Test: Promote to Coach (skip Stripe Connect)** → leave `account_id` blank (uses your superuser account) → click *Promote to coach*. This calls `POST /api/admin/coaching/promote-test-coach` (superuser-only), which inserts a `coaches` row with a synthetic `acct_test_<accountId>_<ts>` Stripe id and `status='active'`. The coach editor (`/coach/edit`), availability picker, public profile page, and `/coaches` listing all work. Bookings will fail at Stripe Checkout creation because the synthetic id doesn't exist on Stripe's side — that's expected; use Path B for full booking E2E.
-
-**Path B — Full booking flow against Stripe test mode:**
-1. In your Stripe dashboard, toggle the **View test data** switch (top-left).
+**Path B — Full booking against Stripe test mode:**
+1. Stripe dashboard → toggle **View test data**.
 2. *Developers → API keys* → copy the test-mode **Secret key** (`sk_test_…`).
-3. On the dev workspace, swap `STRIPE_SECRET_KEY` to that test key (Replit secret) and restart the workflow.
-4. Sign in with Steam, hit the *Apply to coach* CTA on your profile, then go through Stripe Connect Express onboarding. Test mode accepts fake KYC: DOB `01/01/1990`, address autocomplete `address_full_match`, SSN `000-00-0000`, routing `110000000`, bank `000123456789`. `charges_enabled` + `payouts_enabled` flip on within seconds.
-5. Now the booking flow on `/coaches/:id/book` completes through to Stripe Checkout. Use test card `4242 4242 4242 4242`, any future expiry, any CVC.
+3. Swap `STRIPE_SECRET_KEY` to that key (Replit secret), restart workflow.
+4. Apply to coach → Stripe Connect Express. Test mode accepts: DOB `01/01/1990`, address autocomplete `address_full_match`, SSN `000-00-0000`, routing `110000000`, bank `000123456789`.
+5. Booking flow on `/coaches/:id/book` completes through Checkout. Test card: `4242 4242 4242 4242`, any future expiry, any CVC.
 
-The test-mode key is per-workspace — production must continue using the live `sk_live_…` key. Don't commit either; both go through Replit secrets.
+Production must continue using the live `sk_live_…` key. Both keys go through Replit secrets, never committed.
 
 ## External Dependencies
-- **Discord API:** `discord.js`
-- **Steam API:** `steam-user`, `dota2-user`
-- **OpenDota API:** For match data and the `odota/parser`
-- **PostgreSQL Database**
-- **odota/parser (Java):** OpenDota's replay parser for detailed match statistics.
-- **ts-trueskill:** Library for TrueSkill MMR calculations.
-- **Stripe:** For payment processing, including tournament buy-ins, season passes, and the coaching marketplace.
-- **@napi-rs/canvas:** Used for generating scoreboard images.
-- **Google Sheets API:** (Optional) `google-spreadsheet` for sheets integration.
-- **node-fetch:** For HTTP requests and Steam OpenID authentication.
-- **express-session:** For server-side session management.
-- **helmet:** For HTTP security.
-- **express-rate-limit:** For rate limiting on authentication endpoints.
+- **Discord:** `discord.js`
+- **Steam:** `steam-user`, `dota2-user`
+- **OpenDota:** match data + `odota/parser` (Java replay parser)
+- **PostgreSQL** (Replit-managed)
+- **ts-trueskill** for MMR
+- **Stripe** — payments, Connect Express for coaching
+- **@napi-rs/canvas** — scoreboard image generation
+- **Google Sheets API** (optional) — `google-spreadsheet`
+- **node-fetch**, **express-session**, **helmet**, **express-rate-limit**
