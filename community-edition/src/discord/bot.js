@@ -2492,6 +2492,103 @@ class DiscordBot {
     }
   }
 
+  async _cmdReportCard(msg, args) {
+    const sub = (args[0] || '').toLowerCase();
+    if (sub !== 'on' && sub !== 'off') {
+      const current = await db.getPlayerReportCardOptOut(msg.author.id);
+      return msg.reply(
+        `Post-match report card DMs are currently **${current ? 'ON \u2705' : 'OFF'}** for you.\n` +
+        `Use \`!reportcard on\` to opt in, or \`!reportcard off\` to opt out.\n` +
+        `_The report card DMs you a personal stats summary after each inhouse match._`
+      );
+    }
+    const optIn = sub === 'on';
+    await db.setPlayerReportCardOptOut(msg.author.id, optIn);
+    return msg.reply(optIn
+      ? '\u2705 You\'ve opted **in** — you\'ll receive a personal stats DM after each match you play.'
+      : '\u274C You\'ve opted **out** of post-match report card DMs.');
+  }
+
+  async _cmdRatings(msg, args) {
+    const sub = (args[0] || '').toLowerCase();
+    if (sub !== 'on' && sub !== 'off') {
+      const current = await db.getPlayerRatingsOptOut(msg.author.id);
+      return msg.reply(
+        `Post-match teammate rating DMs are currently **${current ? 'OFF \u274C' : 'ON \u2705'}** for you.\n` +
+        `Use \`!ratings off\` to stop getting MVP/attitude vote requests after matches.\n` +
+        `Use \`!ratings on\` to turn them back on.`
+      );
+    }
+    const optOut = sub === 'off';
+    await db.setPlayerRatingsOptOut(msg.author.id, optOut);
+    return msg.reply(optOut
+      ? '\u274C You\'ve opted **out** of post-match teammate rating DMs.'
+      : '\u2705 You\'ve opted **in** to post-match teammate rating DMs.');
+  }
+
+  async _sendReportCardDMs(matchStats) {
+    if (!matchStats?.players || matchStats.players.length === 0) return;
+    const registeredPlayers = await db.getRegisteredPlayers().catch(() => []);
+
+    for (const player of matchStats.players) {
+      try {
+        const reg = registeredPlayers.find(r =>
+          r.account_id_32?.toString() === player.accountId?.toString() ||
+          r.account_id_64?.toString() === player.accountId?.toString()
+        );
+        if (!reg?.discord_id) continue;
+
+        const optedIn = await db.getPlayerReportCardOptOut(reg.discord_id).catch(() => false);
+        if (!optedIn) continue;
+
+        const allowed = await (db.isNotificationEnabled
+          ? db.isNotificationEnabled(reg.account_id_32, 'post_match_dm').catch(() => true)
+          : Promise.resolve(true));
+        if (!allowed) continue;
+
+        const user = await this.client.users.fetch(reg.discord_id).catch(() => null);
+        if (!user) continue;
+
+        const won = (player.team === 'radiant' && matchStats.radiantWin) ||
+                    (player.team === 'dire' && !matchStats.radiantWin);
+        const resultEmoji = won ? '\u{1F7E2} WIN' : '\u{1F534} LOSS';
+        const heroName = (player.heroName || '').replace('npc_dota_hero_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const kda = player.deaths > 0
+          ? `${player.kills}/${player.deaths}/${player.assists} (${((player.kills + player.assists) / player.deaths).toFixed(2)} KDA)`
+          : `${player.kills}/${player.deaths}/${player.assists} (Perfect KDA)`;
+
+        const rating = await db.getPlayerRating(reg.account_id_32).catch(() => null);
+        const tier = rating ? getMmrTier(rating.mmr) : null;
+
+        const embed = new EmbedBuilder()
+          .setTitle(`\u{1F4CB} Match Report — #${matchStats.matchId}`)
+          .setColor(won ? 0x4ade80 : 0xf87171)
+          .setDescription(`${resultEmoji} · ${heroName}`)
+          .addFields(
+            { name: 'K/D/A', value: kda, inline: true },
+            { name: 'GPM', value: `${player.gpm || player.goldPerMin || 0}`, inline: true },
+            { name: 'XPM', value: `${player.xpm || player.xpPerMin || 0}`, inline: true },
+            { name: 'Hero Dmg', value: `${(player.heroDamage || 0).toLocaleString()}`, inline: true },
+            { name: 'Tower Dmg', value: `${(player.towerDamage || 0).toLocaleString()}`, inline: true },
+            { name: 'Healing', value: `${(player.heroHealing || 0).toLocaleString()}`, inline: true },
+          );
+
+        if (rating) {
+          embed.addFields({
+            name: `${tier?.emoji || ''} MMR`,
+            value: `**${rating.mmr}** (${rating.wins}W—${rating.losses}L)`,
+            inline: false,
+          });
+        }
+
+        embed.setFooter({ text: 'Use !reportcard off to stop these DMs' });
+        await user.send({ embeds: [embed] });
+      } catch (err) {
+        console.error(`[ReportCard] Failed to DM player ${player.accountId}:`, err.message);
+      }
+    }
+  }
+
   async _handleRatingReply(msg) {
     const session = this.pendingRatingSessions.get(msg.author.id);
     if (!session) return;

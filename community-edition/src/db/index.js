@@ -2786,6 +2786,15 @@ async function getMatchRaterIds(matchId) {
   return new Set(result.rows.map(r => String(r.rater_account_id)));
 }
 
+async function isNotificationEnabled(_accountId, _category) {
+  // Community edition does not implement per-category notification preferences
+  // (Wave 2 F4 was a full-edition feature). Default-on so opt-out flags in
+  // dedicated tables (e.g. report_card_optin, ratings_optout) remain the only
+  // gate. Signature matches the full-edition method so call sites can be ported
+  // verbatim.
+  return true;
+}
+
 async function logMatchDMSent(matchId, accountId) {
   const p = getPool();
   await p.query(
@@ -6448,6 +6457,7 @@ module.exports = {
   getMatchRaterIds,
   logMatchDMSent,
   getMatchDMLog,
+  isNotificationEnabled,
   getMatchRatings,
   getPlayerRatingsReceived,
   getDiscordIdsForMatch,
