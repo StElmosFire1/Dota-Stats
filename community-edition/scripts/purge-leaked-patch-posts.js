@@ -14,7 +14,7 @@
  * the Discord side. It connects with the community DISCORD_TOKEN, walks the
  * configured PATCH_CHANNEL_IDS / ANNOUNCE_CHANNEL_ID, and deletes any of the
  * bot's own patch-note embed posts whose version is NOT in the legitimate
- * community keep-list ('0.1'..'0.7', '1.1', '1.2', '1.3', ...).
+ * community keep-list ('0.1'..'0.7', '1.1', '1.2', '1.3', '1.4', ...).
  *
  * Run with:
  *   cd ~/Dota-Stats && set -a && source .env && set +a
@@ -33,7 +33,7 @@ const { Client, GatewayIntentBits, Partials } = require('discord.js');
 
 const DEFAULT_KEEP = new Set([
   '0.1', '0.2', '0.3', '0.4', '0.5', '0.6', '0.7',
-  '1.1', '1.2', '1.3',
+  '1.1', '1.2', '1.3', '1.4',
 ]);
 
 const DRY_RUN = process.argv.includes('--dry-run');

@@ -1049,6 +1049,34 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  // Player-synergy heatmap (teammate win-rate matrix). Community Synergy.jsx
+  // calls /synergy/heatmap and /enemy-synergy/heatmap; without these routes
+  // the page shows "Not enough match data yet" because fetchJson 404s and the
+  // heatmap component falls through its empty-state branch. DB functions
+  // already exist in community-edition/src/db/index.js — these are HTTP-only.
+  // No requirePro gate (community edition is paywall-free by policy).
+  router.get('/synergy/heatmap', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.getSynergyHeatmap(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] synergy/heatmap error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch synergy heatmap' });
+    }
+  });
+
+  router.get('/enemy-synergy/heatmap', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const data = await db.getEnemySynergyHeatmap(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] enemy-synergy/heatmap error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch enemy synergy heatmap' });
+    }
+  });
+
   router.get('/synergy', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

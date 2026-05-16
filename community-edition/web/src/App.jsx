@@ -328,7 +328,7 @@ export default function App() {
             <SuperuserLoginModal />
             <WelcomeModal />
             <Nav />
-            <main className="main-content">
+            <main className="container">
               <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Loading…</div>}>
               <Routes>
                 <Route path="/" element={<Home />} />
