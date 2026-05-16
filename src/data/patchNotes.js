@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.31",
+    "title": "Resync the superuser admin-route safety check manifest",
+    "published_at": "2026-05-16",
+    "content": "Task #311: the Task #267 sweep (`tests/superuserAdminRouteAuth.test.js`) diff-checks every `requireSuperuser`-gated route on the api router against a hand-maintained manifest, so adding/removing a gate without updating the manifest fails the test deterministically. Three new admin routes had landed since the manifest was last touched — `POST /admin/inhouse/diag-provision`, `POST /admin/inhouse/diag-cleanup/:id`, and `POST /admin/founders-ring-refunds/:id/retry` — which left the test red and, more importantly, blind to the silent-gate-drop regression it was built to catch.\n\n**Fix:** added the three routes to `EXPECTED_SUPERUSER_ROUTES` preserving the existing ordering convention (the two `diag-*` entries slot in next to the other `/admin/inhouse/:id/*` admin routes; the `founders-ring-refunds/:id/retry` entry slots immediately after its sibling `GET /admin/founders-ring-refunds`). Both sub-tests are now green — the manifest diff matches the live router stack exactly, and the per-route 401/401/403 probe sweep passes for every gated route including the three new ones.",
+    "author": "System"
+  },
+  {
     "version": "7.30",
     "title": "Unit tests pin the PM2 entrypoint-verification deploy gate",
     "published_at": "2026-05-16",
