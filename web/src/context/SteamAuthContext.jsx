@@ -100,6 +100,71 @@ export function SteamAuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // v6.81 — re-sync auth state when the page is restored from history.
+  //
+  // Symptom: users reported being signed out of Steam after navigating to
+  // an external site (Stripe Checkout, OpenDota match link, Discord) and
+  // returning. Two distinct browser behaviours cause the perceived logout:
+  //
+  // (1) **Back-forward cache (bfcache).** Modern browsers freeze a page
+  //     when you navigate away and restore the in-memory React state
+  //     instantly on back. If the SPA's auth state was momentarily null
+  //     when bfcache snapshotted (e.g. mid-refresh-attempt), the restored
+  //     view shows "signed out" until the user manually reloads.
+  //
+  // (2) **Tab-switch during a long external session.** If the user spends
+  //     long enough on the external site for the React state to feel
+  //     stale, returning to the tab needs to revalidate against the
+  //     server-side session (which is still alive in Postgres).
+  //
+  // Both are fixed by re-running `refreshMe()` whenever the page becomes
+  // visible again or is restored from bfcache. `refreshMe` is deliberately
+  // NON-DESTRUCTIVE (see its definition above) — it ONLY upgrades a null
+  // local state to signed-in if the server agrees, never the reverse.
+  // That means a transient null response from /api/auth/me can't trigger
+  // a spurious logout; only the initial-mount fetch above can do that,
+  // and only on a true full reload.
+  useEffect(() => {
+    // Browsers commonly fire `visibilitychange` + `focus` (and sometimes
+    // `pageshow`) within a few milliseconds of each other when the user
+    // returns from an external tab/site. Without throttling, that would
+    // produce 2–3 back-to-back `/api/auth/me` calls. `refreshMe` is
+    // non-destructive so the storm can't cause incorrect logout, but it
+    // is still pointless network churn — coalesce to a single refresh
+    // per ~2-second window via a simple timestamp guard plus an
+    // in-flight flag (no setTimeout debouncer needed because every call
+    // site funnels through `maybeRefresh`).
+    let lastRefreshAt = 0;
+    let inFlight = false;
+    function maybeRefresh() {
+      // Only attempt the refresh if the document is actually visible —
+      // avoids waking the network when the user is just cycling tabs.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      if (inFlight) return;
+      if (now - lastRefreshAt < 2000) return;
+      lastRefreshAt = now;
+      inFlight = true;
+      refreshMe()
+        .catch(() => {})
+        .finally(() => { inFlight = false; });
+    }
+    function onPageShow(e) {
+      // `persisted` is true when the page is being restored from bfcache;
+      // a full reload sets it false and the initial-mount fetch handles
+      // that case, so we only refresh for the bfcache path.
+      if (e && e.persisted) maybeRefresh();
+    }
+    document.addEventListener('visibilitychange', maybeRefresh);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('focus', maybeRefresh);
+    return () => {
+      document.removeEventListener('visibilitychange', maybeRefresh);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('focus', maybeRefresh);
+    };
+  }, [refreshMe]);
+
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     setSteamUser(null);

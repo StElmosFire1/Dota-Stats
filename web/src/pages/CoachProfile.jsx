@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
+import { useSteamAuth } from '../context/SteamAuthContext';
 
 const BASE = '/api';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -79,6 +80,7 @@ function generateOpenSlots(availability, durationMinutes) {
 
 export default function CoachProfile() {
   const { id } = useParams();
+  const { steamUser } = useSteamAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [bookForm, setBookForm] = useState({ slot_start_at: '', duration_minutes: 60 });
@@ -127,9 +129,26 @@ export default function CoachProfile() {
 
   const { coach, availability, reviews, rating, credibility } = data;
   const totalCost = Math.round((coach.hourly_rate_cents * (parseInt(bookForm.duration_minutes) || 60)) / 60);
+  // v6.81 — coach.account_id is the Steam account id; only the coach
+  // themselves should see the Edit Profile shortcut. Without this, coaches
+  // had no in-page way to find /coach/edit — the only existing entry
+  // points were the /coaches listing card and the admin panel test-coach
+  // promote panel, neither of which is obvious to a real coach.
+  const isOwner = steamUser?.accountId && coach.account_id && Number(steamUser.accountId) === Number(coach.account_id);
 
   return (
     <div style={{ maxWidth: 900, margin: '24px auto', padding: 16 }}>
+      {isOwner ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <Link
+            to="/coach/edit"
+            className="btn"
+            style={{ padding: '6px 14px', textDecoration: 'none', fontSize: 13, background: 'var(--accent)', color: 'var(--ink-navy, #0d1424)', fontWeight: 600 }}
+          >
+            ✎ Edit my coach profile
+          </Link>
+        </div>
+      ) : null}
       <h1 style={{ marginBottom: 4 }}>{coach.display_name || `Coach #${coach.id}`}</h1>
       <div style={{ color: 'var(--text-muted)', marginBottom: 16 }}>
         {rating?.review_count > 0

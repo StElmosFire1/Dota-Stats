@@ -2039,12 +2039,25 @@ body.light-theme .oa-ticker-track .oa-ticker-dot { color: rgba(245,239,226,0.5);
   pointer-events: none;
   user-select: none;
 }
-.cosmetic-card__preview-wrap:hover .cosmetic-card__zoom,
+/* v6.81 — trigger the popup from anywhere on the whole card, not just
+   the thumbnail. The previous selector `.cosmetic-card__preview-wrap:hover`
+   only fired when the cursor was over the small thumbnail area, which is
+   often a tiny circle (frames) or banner strip (themes); users hovering
+   the card label/buttons never saw the popup at all. `.cosmetic-card:hover`
+   makes the entire card the hover trigger, which is what buyers expect.
+   Keyboard accessibility still works via `:focus-within` on the wrap (the
+   wrap is `tabIndex={0}`) and via the card itself when its descendants
+   are focused. The popup remains positioned relative to the thumbnail
+   wrap (`.cosmetic-card__zoom` is absolutely positioned inside the
+   wrap), so it pops up above the preview, not above the buttons. */
+.cosmetic-card:hover .cosmetic-card__zoom,
 .cosmetic-card__preview-wrap:focus-visible .cosmetic-card__zoom,
-.cosmetic-card__preview-wrap:focus-within .cosmetic-card__zoom {
+.cosmetic-card:focus-within .cosmetic-card__zoom {
   opacity: 1;
   visibility: visible;
-  pointer-events: auto;
+  /* pointer-events on the zoom stay `none` (set above) so the
+     duplicated controls inside cannot eat clicks — touch + mouse
+     interactions go to the real preview underneath. */
   transform: translateX(-50%) scale(1);
   transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s;
 }
