@@ -35,6 +35,21 @@ if [ -f web/package.json ]; then
   (cd web && npm run build)
 fi
 
+if [ -f community-edition/web/package.json ]; then
+  echo "[post-merge] Installing community-edition/web/ dependencies..."
+  (cd community-edition/web && npm install --no-audit --no-fund)
+
+  echo "[post-merge] Building community frontend..."
+  (cd community-edition/web && npm run build)
+
+  echo "[post-merge] Verifying no Pro-paywall code leaked into community bundle (Task #299)..."
+  # Hard gate: refuse to push if the built community bundle contains any
+  # full-edition-only Pro-paywall tokens. Mirrors the gate run by
+  # community-edition/deploy.sh on the prod host, but fails the GitHub
+  # push here so a regression can never reach prod in the first place.
+  bash scripts/check-community-paywall.sh
+fi
+
 echo "[post-merge] Pushing latest commit to GitHub (origin main)..."
 if [ -z "${GITHUB_PERSONAL_ACCESS_TOKEN}" ]; then
   echo "[post-merge] GITHUB_PERSONAL_ACCESS_TOKEN is not set; skipping git push." >&2

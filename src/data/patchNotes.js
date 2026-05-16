@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.22",
+    "title": "Pro-paywall regression gate for the community edition build",
+    "published_at": "2026-05-16",
+    "content": "Task #299: the community site (`dota.stats.corvidaeinc.com`) must never ship Pro-tier paywall code. v7.21 (Task #298) fixed the deploy-infrastructure bug that was causing the full-edition bundle to be served on the community domain by splitting the deploy scripts into independent siblings — but there was no automated guarantee that future builds stay paywall-free. If someone copy-pastes a `PaywallCard` import into `community-edition/web/src/` in the future, or if the deploy regresses for some new reason, we'd only notice when a user reports it.\n\n**Fix:** a new shell gate `scripts/check-community-paywall.sh` runs `grep -RFl` over `community-edition/web/dist/` after the build and fails non-zero if any of four forbidden full-edition-only tokens appears in the bundle: `PaywallCard`, `useProStatus`, `Pro Tier`, `Inhouse Stats Pro`. Offending chunk paths are printed so the operator can see exactly which file leaked. The gate is wired into both `community-edition/deploy.sh` (post-build, before the `pm2 restart`) and `scripts/post-merge.sh` (which now also builds `community-edition/web/` alongside the top-level `web/`), so a regression fails the GitHub push **before** it ever reaches the prod host — and fails the on-host deploy as a second backstop. Documented in `replit.md` under the deploy section. Negative-tested by symlinking a stub file containing `PaywallCard` into `community-edition/web/dist/`: gate exits non-zero with the offending path printed. Positive-tested against the current clean build: green.",
+    "author": "System"
+  },
+  {
     "version": "7.21",
     "title": "Independent community-edition deploy: kill the cross-deploy paywall bug",
     "published_at": "2026-05-16",

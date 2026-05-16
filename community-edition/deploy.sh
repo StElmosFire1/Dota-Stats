@@ -44,6 +44,14 @@ npm run build
 
 cd "${REPO_ROOT}"
 
+echo "==> [community] Verifying no Pro-paywall code leaked into community bundle (Task #299)..."
+# Hard gate: refuse to deploy if the built community bundle in
+# community-edition/web/dist/ contains any full-edition-only Pro-paywall
+# tokens (PaywallCard, useProStatus, "Pro Tier", "Inhouse Stats Pro").
+# Backstop for Task #298's deploy-split fix — catches anyone copy-pasting
+# full-edition paywall code into community-edition/web/src/ in future.
+bash scripts/check-community-paywall.sh
+
 echo "==> [community] Restarting bot..."
 # Target by PM2 process name so the deploy isn't fragile to id renumbering.
 # Default is the community-edition process; override at call-site with:
