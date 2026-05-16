@@ -7,6 +7,7 @@
     "build:parser": "bash scripts/build-parser.sh",
     "check:parser": "bash scripts/build-parser.sh --check",
     "check:a11y": "node scripts/check-a11y.js",
+    "check:community-paywall-source": "node scripts/check-community-paywall-source.js",
     "prestart": "bash scripts/build-parser.sh",
     "start": "node src/index.js",
     "test": "node --test tests/",

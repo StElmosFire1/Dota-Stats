@@ -35,6 +35,15 @@ echo "==> [community] Verifying frontend accessibility (Task #164 — house rule
 # so it is the right gate to run for either edition.
 node scripts/check-a11y.js
 
+echo "==> [community] Verifying no Pro-paywall imports in community web source (Task #301)..."
+# Fast-feedback gate: resolve-aware source scan over community-edition/web/src/.
+# Prints line-numbered errors and is aware of the local no-op useProStatus
+# stub (anything resolving to community-edition/web/src/hooks/useProStatus is
+# allowed; anything resolving to the full-edition web/src/hooks/useProStatus
+# is not). Runs in milliseconds so a regression aborts the deploy before
+# we pay for an npm install + Vite build.
+node scripts/check-community-paywall-source.js
+
 echo "==> [community] Verifying no Pro-paywall code in community source (Task #303)..."
 # Hard gate (source-scan pass): refuse to deploy if any community source
 # file in community-edition/src/ or community-edition/web/src/ contains a

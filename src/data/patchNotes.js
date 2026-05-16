@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.25",
+    "title": "Fast source-level Pro-paywall gate for the community frontend",
+    "published_at": "2026-05-16",
+    "content": "Task #301: the Task #299 dist-scan gate catches Pro-paywall leaks reliably, but only after a full `npm install` + Vite build (~30s+). When a developer accidentally adds a `from '../components/PaywallCard'` or pulls in the full-edition `useProStatus` from `web/src/hooks/`, that's a long wait for feedback — and the resulting error is a path to a minified chunk in `community-edition/web/dist/`, not the offending source line.\n\n**Fix:** a new Node script `scripts/check-community-paywall-source.js` walks `community-edition/web/src/` (skipping `node_modules`/`dist`/`build`) over `.js`/`.jsx`/`.ts`/`.tsx` files and flags any reference to `PaywallCard` or `useProStatus`. Unlike the existing fixed-string grep in `scripts/check-community-paywall.sh`, the new gate is **resolve-aware** for `useProStatus`: it parses the import specifier, resolves it relative to the importing file, and allows the import iff it lands on the local no-op stub at `community-edition/web/src/hooks/useProStatus.{js,jsx,ts,tsx}`. The stub file itself is also allow-listed so it can declare/self-reference the hook. Errors are printed `path:lineNo  reason` with the offending source line quoted, so the developer sees exactly which import to fix.\n\n**Wired in BEFORE the build** in both `community-edition/deploy.sh` and `scripts/post-merge.sh` — the new fast gate runs first, then the existing source+dist gate from `scripts/check-community-paywall.sh` runs (source pass before build, dist pass after) as the byte-level final backstop. Also exposed as `npm run check:community-paywall-source` for local iteration. Negative-tested with a synthetic `__test_paywall_leak.jsx` importing both `PaywallCard` and a non-stub `useProStatus` (3 line-numbered errors, exit 1); positive-tested with a stub at `community-edition/web/src/hooks/useProStatus.js` imported from `community-edition/web/src/pages/X.jsx` via `../hooks/useProStatus` (green, exit 0); current clean tree exits 0.",
+    "author": "System"
+  },
+  {
     "version": "7.24",
     "title": "Startup banner: loudly warn if the bot is running the wrong edition for its checkout",
     "published_at": "2026-05-16",
