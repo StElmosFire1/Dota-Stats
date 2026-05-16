@@ -13,11 +13,22 @@ After completing any set of changes and rebuilding, the latest commit is pushed 
 
 If that push is rejected as non-fast-forward (the platform's own checkout sometimes commits + pushes to origin/main under a different SHA between merges, and the Replit sandbox blocks every git op that touches `.git/refs/remotes/origin/*.lock` or `.git/objects/maintenance.lock` so we can't `git fetch origin main` here to catch up), the hook self-heals (v6.85). It reads the real remote tip via `git --no-optional-locks ls-remote origin main`, fetches ONLY that object via `GIT_OPTIONAL_LOCKS=0 git -c gc.auto=0 -c maintenance.auto=false fetch --no-auto-gc --no-auto-maintenance --no-write-fetch-head origin <SHA>` (the fetch-by-SHA + maintenance-disabled combo is the one shape the sandbox does NOT block), confirms the local HEAD's tree matches the remote tip's tree (the platform-recommitted SHA is byte-equivalent to ours — the only allowed source of divergence is `artifacts/mockup-sandbox/src/.generated/`, the auto-regenerated mockup index), and force-with-lease pushes HEAD onto main. Any real source-file divergence aborts the self-heal so legitimate concurrent work is never clobbered.
 
-The bot runs under PM2. The prod host has **two separate checkouts** side-by-side:
-- `~/Dota-Stats-Full/` — **full edition** (OCE Inhouse, `oceinhouse.gg`). Standard deploy: `cd ~/Dota-Stats-Full && bash deploy.sh`
-- `~/Dota-Stats/` — **community edition**. Standard deploy: `cd ~/Dota-Stats && bash deploy.sh`
+The bot runs under PM2. The prod host has **two separate checkouts** side-by-side, and **each edition has its own dedicated deploy script** — they are deliberately independent siblings so a mistaken invocation can never cross-deploy.
 
-Each `deploy.sh`: pulls latest code (`git reset --hard origin/main`), runs `npm install` in the `web/` dir, builds the frontend (`npm run build`), then restarts the matching PM2 process **by name** (full = `oi-bot`, community = `inhouse-bot`). Override the target at call-site with `PM2_APP=other-name bash deploy.sh`. Always confirm you're in the correct directory before deploying — running the wrong one will swap a site to the wrong edition.
+| Edition | Domain | Checkout | Deploy command | PM2 process | Entrypoint |
+|---|---|---|---|---|---|
+| Full | `oceinhouse.gg` | `~/Dota-Stats-Full/` | `cd ~/Dota-Stats-Full && bash deploy.sh` | `oi-bot` | `src/index.js` (serves `web/dist/`) |
+| Community | `dota.stats.corvidaeinc.com` | `~/Dota-Stats/` | `cd ~/Dota-Stats && bash community-edition/deploy.sh` | `inhouse-bot` | `community-edition/src/index.js` (serves `community-edition/web/dist/`) |
+
+Both scripts: `git reset --hard origin/main`, run the parser-jar `--check` gate, run the a11y gate, `npm install` + `npm run build` in the edition's web dir, then `pm2 restart <name> --update-env`. Override the target with `PM2_APP=other-name bash …`. The full-edition `deploy.sh` builds **only** `web/` and restarts **only** `oi-bot`. The community-edition `community-edition/deploy.sh` builds **only** `community-edition/web/` and restarts **only** `inhouse-bot` (and hard-blocks `PM2_APP=oi-bot`). Always confirm you're in the correct checkout before deploying.
+
+**One-time PM2 re-registration for community edition (Task #298):** if `pm2 describe inhouse-bot | grep -E 'script path|cwd'` shows `script path /root/Dota-Stats/src/index.js` (the full-edition entrypoint — this is the deploy bug that caused the Pro paywall to appear on `dota.stats.corvidaeinc.com/synergy`), re-register it once at the community entrypoint:
+```
+pm2 delete inhouse-bot
+cd ~/Dota-Stats && pm2 start community-edition/src/index.js --name inhouse-bot --update-env
+pm2 save
+```
+After that the standard `bash community-edition/deploy.sh` keeps everything in sync.
 The Java replay parser jar (`odota-parser/target/stats-0.1.0.jar`) is rebuilt automatically on each deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and `scripts/post-merge.sh`). The script only re-runs `mvn install -DskipTests` when the jar is missing or older than any file under `odota-parser/src/` or `odota-parser/pom.xml`, so normal restarts are no-ops. To force a manual rebuild, run `npm run build:parser`.
 
 Both `deploy.sh` and `scripts/post-merge.sh` run `bash scripts/build-parser.sh --check` (also exposed as `npm run check:parser`) as a hard gate **before** any local rebuild. The check exits non-zero if the committed jar is older than any file under `odota-parser/src/` (whole tree, not just `src/main/java`) or `odota-parser/pom.xml`, so a deploy/post-merge with a stale committed jar fails fast and cannot be silently self-healed by a rebuild on the deploy host. The check never invokes Maven, so it is also safe to wire into CI runners without a JDK.

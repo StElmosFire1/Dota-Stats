@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.21",
+    "title": "Independent community-edition deploy: kill the cross-deploy paywall bug",
+    "published_at": "2026-05-16",
+    "content": "Task #298: `dota.stats.corvidaeinc.com/synergy` was showing the Pro-tier paywall card even though `community-edition/web/src/pages/Synergy.jsx` has no gate. Root cause was a deploy-infrastructure bug, not a code bug: the top-level `deploy.sh` only ever built `web/` (full edition) and `pm2 restart`ed whatever process was named — it never built `community-edition/web/` and never set the PM2 script path. The `inhouse-bot` PM2 process on the prod host was therefore registered against `/root/Dota-Stats/src/index.js` (the FULL-edition entrypoint, which serves `web/dist/` complete with paywalls) instead of `community-edition/src/index.js` (which serves the clean `community-edition/web/dist/`).\n\n**Fix:** added a dedicated `community-edition/deploy.sh` scoped strictly to the community edition — pulls latest, runs the shared parser-jar `--check` + a11y gates, builds `community-edition/web/` only, and `pm2 restart inhouse-bot --update-env` only. It hard-blocks `PM2_APP=oi-bot` so it can never accidentally restart the full-edition process. The top-level `deploy.sh` is now explicitly the FULL-edition deploy (header comment + reaffirmed `cd web` + `oi-bot` default). The two scripts are deliberately independent siblings, not a single switchable script — keeping them separate means a mistaken invocation cannot ever cross-deploy and swap a site to the wrong edition. `replit.md` rewritten with a clear per-edition deploy table plus a one-time PM2 re-registration snippet operators run on the prod host to point `inhouse-bot` at `community-edition/src/index.js` the first time.\n\n**Outcome (once the prod host runs the one-shot re-registration + the new `community-edition/deploy.sh`):** community `/synergy` renders the heatmap directly for everyone (no `PaywallCard` chunk imported), `/pro` 404s, and full-edition `oceinhouse.gg/synergy` paywall is completely untouched — exactly the independent-deploy model we want.",
+    "author": "System"
+  },
+  {
     "version": "7.20",
     "title": "One-click superuser diagnostic: provision dedicated server & verify Dota connect",
     "published_at": "2026-05-10",

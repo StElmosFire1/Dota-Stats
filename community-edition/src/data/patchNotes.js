@@ -1,5 +1,11 @@
 module.exports = [
   {
+    "version": "1.1",
+    "title": "Community deploy fixed: synergy heatmap is free again",
+    "published_at": "2026-05-16",
+    "content": "The community edition is now deployed by its own dedicated script (`community-edition/deploy.sh`), completely independent of the full-edition deploy. Previously the production host was accidentally running the full-edition entrypoint, which made the Synergy heatmap appear paywalled on the community site. With the new deploy in place, `/synergy` is open to everyone again and `/pro` no longer exists on community."
+  },
+  {
     "version": "0.1",
     "title": "Bot Foundation & Steam Lobby Creation",
     "published_at": "2026-02-17",

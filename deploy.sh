@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-# Dota Inhouse Bot — production deploy script
+# Dota Inhouse Bot — FULL-EDITION production deploy script
 # Usage: bash deploy.sh
-# Run from: ~/Dota-Stats on the DO server
+# Run from: ~/Dota-Stats-Full on the DO server (the full-edition checkout).
+#
+# This script is the FULL EDITION deploy. It builds web/ and restarts the
+# full-edition PM2 process (oi-bot by default). It does NOT touch anything
+# under community-edition/ — for that, run `bash community-edition/deploy.sh`
+# from the community checkout (~/Dota-Stats). Keeping the two scripts as
+# independent siblings means a mistaken invocation can never cross-deploy
+# and swap a site to the wrong edition (Task #298).
 
 set -e  # stop on any error
 
