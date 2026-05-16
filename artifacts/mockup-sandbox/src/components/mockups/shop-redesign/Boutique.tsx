@@ -93,54 +93,62 @@ function FramePreview({ ring }: { ring: string }) {
 // the outer rail slowly (18s). Inner avatar disc has a gentle amber glow
 // breathing on 8s. Polished, restrained, jewelry-quality — not a spinner.
 function FoundersRing({ size = 200 }: { size?: number }) {
-  const uid = React.useId();
+  const uid = React.useId().replace(/:/g, '');
   const cx = size / 2;
   const cy = size / 2;
-  const outerR = size * 0.46;
-  const innerR = size * 0.40;
-  const railStroke = Math.max(2, size * 0.032);
-  const innerStroke = Math.max(1, size * 0.008);
-  const avatarR = size * 0.36;
-  const orbitR = outerR;
-  const highlightR = Math.max(3, size * 0.06);
+  // Thicker, more present rail. Two close-set brass bands for a "double band" engraved feel.
+  const railOuter = size * 0.47;
+  const railInner = size * 0.39;
+  const railStroke = Math.max(3, size * 0.05);
+  const innerBandStroke = Math.max(1, size * 0.015);
+  const avatarR = size * 0.34;
+  const orbitR = railOuter;
+  const highlightR = Math.max(4, size * 0.075);
   return (
     <div style={{ position: 'relative', width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block', overflow: 'visible' }}>
         <defs>
-          <linearGradient id={`brass-${uid}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#e3c98a"/>
-            <stop offset="35%" stopColor="#c5a975"/>
-            <stop offset="65%" stopColor="#8a7448"/>
-            <stop offset="100%" stopColor="#c5a975"/>
-          </linearGradient>
-          <radialGradient id={`disc-${uid}`} cx="0.35" cy="0.30">
+          <radialGradient id={`disc${uid}`} cx="0.35" cy="0.30">
             <stop offset="0%" stopColor="#3a4560"/>
             <stop offset="60%" stopColor="#1a2236"/>
             <stop offset="100%" stopColor="#0d1424"/>
           </radialGradient>
-          <radialGradient id={`glow-${uid}`}>
+          <radialGradient id={`glow${uid}`}>
             <stop offset="0%" stopColor="#fffbe6" stopOpacity="1"/>
-            <stop offset="40%" stopColor="#fcd34d" stopOpacity="0.7"/>
+            <stop offset="35%" stopColor="#fcd34d" stopOpacity="0.85"/>
             <stop offset="100%" stopColor="#f59e0b" stopOpacity="0"/>
           </radialGradient>
         </defs>
-        {/* Outer engraved brass rail */}
-        <circle cx={cx} cy={cy} r={outerR} fill="none" stroke={`url(#brass-${uid})`} strokeWidth={railStroke}/>
-        {/* Inner hairline brass rail */}
-        <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="#c5a975" strokeWidth={innerStroke} opacity="0.55"/>
+        {/* Soft amber outer halo (static, very low opacity) */}
+        <circle cx={cx} cy={cy} r={railOuter + railStroke * 0.8} fill="none" stroke="#f59e0b" strokeWidth={railStroke * 1.6} opacity="0.08"/>
+        {/* Outer brass rail — bright, solid */}
+        <circle cx={cx} cy={cy} r={railOuter} fill="none" stroke="#c5a975" strokeWidth={railStroke}/>
+        {/* Inset highlight on the outer rail's upper arc (static glossy effect) */}
+        <circle cx={cx} cy={cy} r={railOuter} fill="none" stroke="#fbe6a8" strokeWidth={railStroke * 0.45}
+                strokeDasharray={`${Math.PI * railOuter * 0.55} ${Math.PI * railOuter * 4}`}
+                strokeDashoffset={Math.PI * railOuter * 0.45}
+                transform={`rotate(-110 ${cx} ${cy})`} opacity="0.85" strokeLinecap="round"/>
+        {/* Outer rail bottom shadow arc */}
+        <circle cx={cx} cy={cy} r={railOuter} fill="none" stroke="#6b5530" strokeWidth={railStroke * 0.35}
+                strokeDasharray={`${Math.PI * railOuter * 0.40} ${Math.PI * railOuter * 4}`}
+                strokeDashoffset={Math.PI * railOuter * 0.30}
+                transform={`rotate(60 ${cx} ${cy})`} opacity="0.7" strokeLinecap="round"/>
+        {/* Inner brass band */}
+        <circle cx={cx} cy={cy} r={railInner} fill="none" stroke="#c5a975" strokeWidth={innerBandStroke}/>
         {/* Avatar disc */}
-        <circle cx={cx} cy={cy} r={avatarR} fill={`url(#disc-${uid})`}/>
-        {/* Slow amber breathing glow inside the disc */}
-        <circle cx={cx} cy={cy} r={avatarR} fill="none" stroke="#f59e0b" strokeWidth={Math.max(1, size * 0.012)} opacity="0.35" style={{ animation: 'fp-breathe 8s ease-in-out infinite', transformOrigin: 'center' }}/>
+        <circle cx={cx} cy={cy} r={avatarR} fill={`url(#disc${uid})`} stroke="#0d1424" strokeWidth={Math.max(1, size * 0.008)}/>
+        {/* Slow amber breathing glow just inside the avatar edge */}
+        <circle cx={cx} cy={cy} r={avatarR - Math.max(2, size * 0.018)} fill="none" stroke="#f59e0b" strokeWidth={Math.max(1, size * 0.018)} opacity="0.45" style={{ animation: 'fp-breathe 8s ease-in-out infinite' }}/>
         {/* Slow travelling highlight — orbits the outer rail at 18s */}
         <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 18s linear infinite' }}>
-          <circle cx={cx} cy={cy - orbitR} r={highlightR} fill={`url(#glow-${uid})`}/>
+          <circle cx={cx} cy={cy - orbitR} r={highlightR * 1.8} fill={`url(#glow${uid})`} opacity="0.7"/>
+          <circle cx={cx} cy={cy - orbitR} r={highlightR} fill={`url(#glow${uid})`}/>
+          <circle cx={cx} cy={cy - orbitR} r={highlightR * 0.35} fill="#fffbe6"/>
         </g>
         {size >= 90 ? (
-          <text x={cx} y={cy + size * 0.025} textAnchor="middle"
+          <text x={cx} y={cy + size * 0.06} textAnchor="middle"
                 fontFamily="Playfair Display, Georgia, serif" fontStyle="italic"
-                fontSize={size * 0.18} fill="#c5a975" opacity="0.85"
-                style={{ letterSpacing: 1 }}>
+                fontSize={size * 0.16} fill="#c5a975" opacity="0.9">
             BAD1
           </text>
         ) : null}
