@@ -534,12 +534,10 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="50%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassDark}/>
         </linearGradient>
-        {/* Shimmer sweep — a narrow bright crest that travels around the
-            band on a long cycle. Mostly transparent so the band keeps its
-            normal bevel; the crest only flashes by every few seconds.
-            Animated with keyTimes/values so it PAUSES for most of the cycle
-            and then sweeps quickly — gives the "every now and then" feel
-            rather than a constant rotating highlight. */}
+        {/* Shimmer sweep — a single bright crest that fades IN, travels smoothly
+            around the band, fades OUT, then pauses for a few seconds before
+            repeating. Total cycle = 8s: 0.4s fade-in, 5.2s travel (full 360°
+            of gradient rotation while visible), 0.4s fade-out, 2s pause. */}
         <linearGradient id={`bev-shimmer-${uid}`}
                         gradientUnits="userSpaceOnUse"
                         x1={cx - r} y1={cy} x2={cx + r} y2={cy}>
@@ -550,10 +548,11 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="54%"  stopColor="#fffbe6" stopOpacity="0.7"/>
           <stop offset="60%"  stopColor="#fffbe6" stopOpacity="0"/>
           <stop offset="100%" stopColor="#fffbe6" stopOpacity="0"/>
+          {/* Rotation runs only during the visible window, then holds. */}
           <animateTransform attributeName="gradientTransform" type="rotate"
-                            values={`-30 ${cx} ${cy}; -30 ${cx} ${cy}; 210 ${cx} ${cy}; 210 ${cx} ${cy}`}
-                            keyTimes="0;0.55;0.85;1"
-                            dur="5.5s" repeatCount="indefinite"/>
+                            values={`-90 ${cx} ${cy};270 ${cx} ${cy};270 ${cx} ${cy}`}
+                            keyTimes="0;0.7;1"
+                            dur="8s" repeatCount="indefinite"/>
         </linearGradient>
       </defs>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={`url(#bev-${uid})`} strokeWidth={stroke}/>
@@ -564,10 +563,14 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
       <circle cx={cx} cy={cy} r={r - stroke * 0.4} fill="none" stroke={brassDark} strokeWidth={1.5}
               strokeDasharray={`${Math.PI * r * 0.5} ${Math.PI * r * 4}`}
               transform={`rotate(70 ${cx} ${cy})`} opacity="0.7"/>
-      {/* Shimmer overlay — sits on top of the bevel, only visible during the
-          short sweep portion of the cycle. */}
+      {/* Shimmer overlay — fades in, travels, fades out, then pauses. */}
       <circle cx={cx} cy={cy} r={r} fill="none"
-              stroke={`url(#bev-shimmer-${uid})`} strokeWidth={stroke}/>
+              stroke={`url(#bev-shimmer-${uid})`} strokeWidth={stroke}>
+        <animate attributeName="opacity"
+                 values="0;1;1;0;0"
+                 keyTimes="0;0.05;0.65;0.7;1"
+                 dur="8s" repeatCount="indefinite"/>
+      </circle>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
   );
@@ -1014,6 +1017,28 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
   // Pulled in to leave headroom for the corona/halo without exceeding viewBox.
   const r = size * 0.41;
   const stroke = Math.max(3, size * 0.05);
+  // Warped band geometry — a circle with a smooth radial bulge centred at
+  // angle 0 (top). The whole path rotates in lockstep with the orbiting body
+  // below, so the band appears to bow outward under the body's gravity
+  // wherever it passes. Gaussian falloff for a smooth, organic-looking warp.
+  const SEG = 120;
+  const sigma = 0.40;          // ~23° spread of the bulge
+  const bulge = stroke * 0.95; // peak outward displacement
+  const warpedPath = (radius: number) => {
+    let d = '';
+    for (let i = 0; i <= SEG; i++) {
+      const t = (i / SEG) * Math.PI * 2;
+      let dt = t; if (dt > Math.PI) dt -= Math.PI * 2;
+      const rr = radius + bulge * Math.exp(-(dt * dt) / (2 * sigma * sigma));
+      const x = cx + rr * Math.sin(t);
+      const y = cy - rr * Math.cos(t);
+      d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
+    }
+    return d + 'Z';
+  };
+  const bandD  = warpedPath(r);
+  const outerD = warpedPath(r + stroke / 2);
+  const innerD = warpedPath(r - stroke / 2);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
@@ -1041,52 +1066,37 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
       {/* Breathing amber halo — INSIDE the band, pulses on a faster cycle */}
       <circle cx={cx} cy={cy} r={r - stroke * 0.5} fill={`url(#ecl-breath-${uid})`}
               style={{ animation: 'fp-breathe 3.5s ease-in-out infinite', transformOrigin: `${cx}px ${cy}px` }}/>
-      {/* Base brass band */}
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke={brass} strokeWidth={stroke}/>
-      <circle cx={cx} cy={cy} r={r + stroke / 2} fill="none" stroke={brassDark} strokeWidth={0.6}/>
-      <circle cx={cx} cy={cy} r={r - stroke / 2} fill="none" stroke={brassDark} strokeWidth={0.6}/>
-      {/* Corona ring — also breathes on a SLIGHTLY OFFSET cycle so the whole
-          ring feels alive rather than just a static brass band. */}
+      {/* Warped brass band — rotates in lockstep with the orbiting body so
+          the bulge always sits directly under the body, like gravitational
+          lensing pulling the ring outward as the body passes. */}
+      <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 22s linear infinite' }}>
+        <path d={bandD}  fill="none" stroke={brass}     strokeWidth={stroke}/>
+        <path d={outerD} fill="none" stroke={brassDark} strokeWidth={0.6}/>
+        <path d={innerD} fill="none" stroke={brassDark} strokeWidth={0.6}/>
+        {/* Subtle amber rim-light along the bulged section — implies the
+            warped band is also bending light from the body. */}
+        <path d={bandD} fill="none" stroke={amber} strokeWidth={stroke * 0.35} opacity="0.5"
+              strokeDasharray={`${Math.PI * r * 0.18} ${Math.PI * r * 4}`}
+              strokeDashoffset={`${-Math.PI * r * 0.09}`}/>
+      </g>
+      {/* Corona ring — breathes on a slightly offset cycle (kept as a plain
+          circle behind everything; its softness hides any non-warp). */}
       <circle cx={cx} cy={cy} r={r} fill="none"
               stroke={`url(#ecl-corona-${uid})`} strokeWidth={stroke * 1.5}
               style={{ animation: 'fp-breathe 4.2s ease-in-out infinite', transformOrigin: `${cx}px ${cy}px` }}/>
-      {/* LIT BAND — a bright amber crest on the band itself that rotates in
-          LOCKSTEP with the orbiting eclipsing body, so the part of the ring
-          nearest the body glows as if lit by it. Same 22s period and same
-          starting angle (the gradient's bright crest sits at the top, where
-          the body starts), giving the illusion of the body's corona casting
-          light onto the band wherever it passes. */}
-      <linearGradient id={`ecl-lit-${uid}`}
-                      gradientUnits="userSpaceOnUse"
-                      x1={cx - r} y1={cy} x2={cx + r} y2={cy}>
-        <stop offset="0%"   stopColor="#fff5b6" stopOpacity="0"/>
-        <stop offset="30%"  stopColor="#fff5b6" stopOpacity="0"/>
-        <stop offset="42%"  stopColor={amber}   stopOpacity="0.7"/>
-        <stop offset="50%"  stopColor="#fffbe6" stopOpacity="1"/>
-        <stop offset="58%"  stopColor={amber}   stopOpacity="0.7"/>
-        <stop offset="70%"  stopColor="#fff5b6" stopOpacity="0"/>
-        <stop offset="100%" stopColor="#fff5b6" stopOpacity="0"/>
-        <animateTransform attributeName="gradientTransform" type="rotate"
-                          from={`-90 ${cx} ${cy}`} to={`270 ${cx} ${cy}`}
-                          dur="22s" repeatCount="indefinite"/>
-      </linearGradient>
-      <circle cx={cx} cy={cy} r={r} fill="none"
-              stroke={`url(#ecl-lit-${uid})`} strokeWidth={stroke}/>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
-      {/* The eclipsing body — a dark sphere that slowly orbits the band centreline */}
+      {/* The eclipsing body — a dark sphere that slowly orbits the band centreline.
+          Same 22s period as the warped band above, so the bulge stays under it. */}
       <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 22s linear infinite' }}>
-        <g transform={`translate(${cx} ${cy - r})`}>
+        {/* Offset outward by `bulge` so the body sits ON the bulged centreline,
+            not on the un-warped centreline beneath it. */}
+        <g transform={`translate(${cx} ${cy - r - bulge})`}>
           {/* Bright corona behind the sphere — pulses independently for the
               "solar flare" effect as the eclipsing body orbits. */}
           <g style={{ animation: 'fp-pulse-bright 2.6s ease-in-out infinite', transformOrigin: '0 0' }}>
             <circle r={stroke * 2.0} fill={`url(#ecl-corona-${uid})`} opacity="0.6"/>
             <circle r={stroke * 1.6} fill={`url(#ecl-corona-${uid})`} opacity="0.9"/>
           </g>
-          {/* Spill light on the band immediately beneath the body — a small
-              soft white-hot patch that travels with the body, reinforcing
-              the illusion that the body itself is illuminating the ring. */}
-          <circle r={stroke * 1.1} fill="#fffbe6" opacity="0.35"
-                  style={{ filter: `blur(${stroke * 0.5}px)` }}/>
           {/* The dark body itself */}
           <circle r={stroke * 0.95} fill={`url(#ecl-body-${uid})`}
                   stroke={brassDark} strokeWidth={0.5}/>
@@ -1494,7 +1504,7 @@ const RINGS: { id: string; name: string; tag: string; Comp: React.FC<RingProps> 
   { id: 'phoenix',   name: '5. Phoenix',        tag: 'Three orbiting embers · crimson halo',     Comp: Ring9_Phoenix },
   { id: 'twin',      name: '6. Twin Halo',      tag: 'Counter-rotating dual rings',              Comp: Ring10_TwinHalo },
   { id: 'astrolabe', name: '7. Astrolabe',      tag: 'Animated · 3 rings · engraved ticks',     Comp: Ring14_Astrolabe },
-  { id: 'eclipse',   name: '8. Eclipse',        tag: 'Orbiting body lights the band as it passes', Comp: Ring15_Eclipse },
+  { id: 'eclipse',   name: '8. Eclipse',        tag: 'Band warps under orbiting body · gravity lens', Comp: Ring15_Eclipse },
   { id: 'forge',     name: '9. Forge',          tag: 'Animated · molten brass + rising embers', Comp: Ring16_Forge },
   { id: 'storm',     name: '10. Storm',         tag: 'Animated · multi-flash lightning strikes', Comp: Ring19_Storm },
   { id: 'starmap',   name: '11. Constellation', tag: 'Animated · twinkling star map',           Comp: Ring20_Constellation },
@@ -1557,14 +1567,12 @@ export function FoundersRingPicker() {
           filter region and pulling the band radius in a touch so the displaced edge stays inside the box. <strong>Twin Halo</strong> orbits shrunk
           (r₁ 0.40, r₂ 0.32, halo 0.055) so both orbs stay fully inside the box on every pass, and the avatar
           disc is rendered before the orbs so they always sit on top of it.
-          <strong> Beveled Edge</strong> now gets a narrow bright shimmer that sweeps across the
-          band every ~5.5 seconds — pauses, flashes by, pauses again, so it feels like a glint catching
-          the light rather than a constantly spinning highlight. <strong>Storm</strong> remains six
-          asynchronous jagged-walk lightning bolts inside a circular clip.
-          <strong> Eclipse</strong> pulsates on three independent cycles, and the band itself now carries
-          a bright amber crest that rotates in lockstep with the orbiting eclipsing body — so the part of
-          the ring nearest the body glows as if lit by its corona, plus a soft white-hot spill patch
-          travels with the body for the cast-light effect. Every ring still renders crisply at
+          <strong> Beveled Edge</strong> gets a single bright glint that fades in, travels smoothly all the way
+          around the band, fades out, then pauses ~2s before repeating (8s cycle). <strong>Storm</strong>
+          remains six asynchronous jagged-walk lightning bolts inside a circular clip.
+          <strong> Eclipse</strong> now uses a Gaussian-warped band path that rotates in lockstep with the
+          orbiting body — the band physically bows outward beneath the body, like gravitational lensing,
+          with a soft amber rim-light along the bulged arc to suggest light bending. Every ring still renders crisply at
           production sizes (26px / 36px / 56px beneath each card).
         </p>
       </header>
