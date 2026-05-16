@@ -540,13 +540,15 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
             Animated with keyTimes/values so it PAUSES for most of the cycle
             and then sweeps quickly — gives the "every now and then" feel
             rather than a constant rotating highlight. */}
-        <linearGradient id={`bev-shimmer-${uid}`} x1="0" y1="0" x2="1" y2="0">
+        <linearGradient id={`bev-shimmer-${uid}`}
+                        gradientUnits="userSpaceOnUse"
+                        x1={cx - r} y1={cy} x2={cx + r} y2={cy}>
           <stop offset="0%"   stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="44%"  stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="48%"  stopColor="#fffbe6" stopOpacity="0.55"/>
-          <stop offset="50%"  stopColor="#ffffff" stopOpacity="0.95"/>
-          <stop offset="52%"  stopColor="#fffbe6" stopOpacity="0.55"/>
-          <stop offset="56%"  stopColor="#fffbe6" stopOpacity="0"/>
+          <stop offset="40%"  stopColor="#fffbe6" stopOpacity="0"/>
+          <stop offset="46%"  stopColor="#fffbe6" stopOpacity="0.7"/>
+          <stop offset="50%"  stopColor="#ffffff" stopOpacity="1"/>
+          <stop offset="54%"  stopColor="#fffbe6" stopOpacity="0.7"/>
+          <stop offset="60%"  stopColor="#fffbe6" stopOpacity="0"/>
           <stop offset="100%" stopColor="#fffbe6" stopOpacity="0"/>
           <animateTransform attributeName="gradientTransform" type="rotate"
                             values={`-30 ${cx} ${cy}; -30 ${cx} ${cy}; 210 ${cx} ${cy}; 210 ${cx} ${cy}`}
@@ -1054,13 +1056,15 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
           starting angle (the gradient's bright crest sits at the top, where
           the body starts), giving the illusion of the body's corona casting
           light onto the band wherever it passes. */}
-      <linearGradient id={`ecl-lit-${uid}`} x1="0" y1="0" x2="1" y2="0">
+      <linearGradient id={`ecl-lit-${uid}`}
+                      gradientUnits="userSpaceOnUse"
+                      x1={cx - r} y1={cy} x2={cx + r} y2={cy}>
         <stop offset="0%"   stopColor="#fff5b6" stopOpacity="0"/>
-        <stop offset="35%"  stopColor="#fff5b6" stopOpacity="0"/>
-        <stop offset="44%"  stopColor={amber}   stopOpacity="0.55"/>
-        <stop offset="50%"  stopColor="#fffbe6" stopOpacity="0.95"/>
-        <stop offset="56%"  stopColor={amber}   stopOpacity="0.55"/>
-        <stop offset="65%"  stopColor="#fff5b6" stopOpacity="0"/>
+        <stop offset="30%"  stopColor="#fff5b6" stopOpacity="0"/>
+        <stop offset="42%"  stopColor={amber}   stopOpacity="0.7"/>
+        <stop offset="50%"  stopColor="#fffbe6" stopOpacity="1"/>
+        <stop offset="58%"  stopColor={amber}   stopOpacity="0.7"/>
+        <stop offset="70%"  stopColor="#fff5b6" stopOpacity="0"/>
         <stop offset="100%" stopColor="#fff5b6" stopOpacity="0"/>
         <animateTransform attributeName="gradientTransform" type="rotate"
                           from={`-90 ${cx} ${cy}`} to={`270 ${cx} ${cy}`}
