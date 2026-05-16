@@ -1,0 +1,109 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+git --no-optional-locks status
+git --no-optional-locks log --oneline -3 -- community-edition/src/db/index.js
+grep -n "ps\.hero" community-edition/src/db/index.js
+On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean
+cd13973 Task 103: Stop a second account from claiming a Discord ID already linked to another player
+f126280 v5.90 — quick admin/UX fixes batch (8 items)
+5753430 v5.79: tournament detail 500 actual fix + obvious Steam signed-in indicator
+328:        JOIN player_stats ps ON ps.match_id = md.match_id AND ps.hero_id = md.hero_id
+347:             JOIN player_stats ps ON ps.match_id = md2.match_id AND ps.hero_id = md2.hero_id
+1667:            ps.hero_damage, ps.tower_damage, ps.hero_healing,
+1839:            ps.hero_damage, ps.tower_damage, ps.hero_healing,
+1928:            ps.hero_damage, ps.tower_damage, ps.hero_healing,
+2608:       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage
+2611:     WHERE ${whereClause} AND ps.hero_id > 0${heroSc}
+2872:    `SELECT ps.account_id, ps.persona_name, ps.team, ps.hero_name,
+3039:       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+3041:       ROUND(AVG(ps.hero_healing), 0) as avg_hero_healing,
+3198:       ps.hero_id,
+3199:       ps.hero_name,
+3207:       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+3209:       ROUND(AVG(ps.hero_healing), 0) as avg_hero_healing,
+3214:         WHERE md.hero_id = ps.hero_id AND md.is_pick = false${sc2}
+3218:     WHERE ps.hero_id > 0${sc}
+3219:     GROUP BY ps.hero_id, ps.hero_name
+3263:       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+3265:       ROUND(AVG(ps.hero_healing), 0) as avg_hero_healing,
+3448:       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+3605:       ps.hero_id, ps.hero_name,
+3613:       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+3615:       ROUND(AVG(ps.hero_healing), 0) as avg_hero_healing,
+3622:     WHERE ${whereClause} AND ps.hero_id > 0
+3623:     GROUP BY ps.hero_id, ps.hero_name
+3657:       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+3659:       ROUND(AVG(ps.hero_healing), 0) as avg_hero_healing,
+3687:       ROUND(AVG(ps.hero_damage), 0) as avg_hero_damage,
+3693:     WHERE ps.hero_id = $1${sc}
+4141:       COUNT(DISTINCT CASE WHEN ps.hero_id > 0 THEN ps.hero_id ELSE NULL END) as unique_heroes
+4159:       ps.hero_id,
+4160:       ps.hero_name,
+4172:     WHERE ps.hero_id > 0${sc2}
+4175:       ps.hero_id, ps.hero_name
+4176:     ORDER BY ps.hero_name`,
+4183:    `SELECT ps.match_id, ps.slot, ps.hero_id,
+4369:         AVG(ps.hero_damage) as avg_hero_damage, AVG(ps.damage_taken) as avg_damage_taken,
+4371:         COUNT(DISTINCT ps.hero_id) as unique_heroes
+4415:      `SELECT COUNT(DISTINCT ps.hero_id) as unique_heroes,
+4421:                WHERE ps2.account_id = ANY($1::bigint[]) AND ps2.hero_id = ps.hero_id AND m2.is_legacy = false) sub
+4820:    p.query(`SELECT ${playerSelect}, ps.hero_name ${playerJoins} ${baseWhere} ORDER BY ps.kills DESC LIMIT 1`, params),
+4823:    p.query(`SELECT ${playerSelect}, ps.hero_name ${playerJoins} ${baseWhere} ORDER BY ps.deaths DESC LIMIT 1`, params),
+4826:    p.query(`SELECT ${playerSelect}, ps.gpm, ps.hero_name ${playerJoins} ${baseWhere} ORDER BY ps.gpm DESC LIMIT 1`, params),
+4844:    p.query(`SELECT ${playerSelect}, ps.hero_healing, ps.hero_name
+4845:      ${playerJoins} ${baseWhere} AND ps.hero_healing > 0 ORDER BY ps.hero_healing DESC LIMIT 1`, params),
+4848:    p.query(`SELECT ${playerSelect}, ps.tower_damage, ps.hero_name
+4852:    p.query(`SELECT ${playerSelect}, ps.stun_duration, ps.hero_name
+4860:    p.query(`SELECT ${playerSelect}, ps.hero_name, ps.rampages
+4864:    p.query(`SELECT ${playerSelect}, ps.hero_name, ps.gpm,
+4871:      ps.kills, ps.assists, ps.deaths, ps.hero_name,
+4952:    SELECT ps.hero_id, COUNT(*) as games,
+4956:    WHERE ps.hero_id > 0${excludeIds.length ? ` AND ps.hero_id != ALL($${params.push(excludeIds)})` : ''}
+4959:    GROUP BY ps.hero_id
+4969:      `SELECT ps.hero_id,
+4974:       WHERE ps.hero_id > 0
+4979:       GROUP BY ps.hero_id HAVING COUNT(*) >= 1`,
+4992:      `SELECT ps.hero_id,
+4997:       WHERE ps.hero_id > 0
+5002:       GROUP BY ps.hero_id HAVING COUNT(*) >= 1`,
+5092:        STRING_AGG(ps.hero_id::text, ',' ORDER BY ps.hero_id)          AS hero_fingerprint,
+5103:      WHERE ps.hero_id > 0
+5260:      ps.hero_id,
+5261:      ps.hero_name,
+5271:    WHERE ps.hero_id > 0 AND ps.position BETWEEN 1 AND 5 AND m.is_legacy = false${sc}
+5272:    GROUP BY ps.hero_id, ps.hero_name, ps.position
+5289:    SELECT ps.ward_placements, ps.persona_name, ps.hero_id, ps.hero_name, m.match_id, m.date
+5396:      ps.hero_name,
+5398:      ps.hero_damage, ps.hero_healing, ps.tower_damage, ps.net_worth,
+5490:      ROUND(AVG(ps.hero_damage),0) AS avg_damage
+5831:      SUM(ps.hero_damage)::bigint as total_damage,
+5832:      SUM(ps.hero_healing)::bigint as total_healing,
+6195:    SELECT ps.hero_id,
+6196:           MIN(ps.hero_name) AS hero_name,
+6201:    WHERE ps.hero_id > 0 ${matchSc}
+6202:    GROUP BY ps.hero_id
+6209:    SELECT ps.hero_id, ps.position::int AS position,
+6214:    WHERE ps.hero_id > 0 AND ps.position BETWEEN 1 AND 5 ${matchSc}
+6215:    GROUP BY ps.hero_id, ps.position
+6295:    SELECT ps.hero_id, MIN(ps.hero_name) AS hero_name,
+6300:    WHERE ps.hero_id > 0 ${excluded.length ? ` AND ps.hero_id != ALL($${params.push(excluded)})` : ''} ${sc}
+6301:    GROUP BY ps.hero_id
+6314:      SELECT ps.hero_id,
+6319:      WHERE ps.hero_id > 0
+6322:      GROUP BY ps.hero_id
+6339:      SELECT ps.hero_id,
+6345:      WHERE ps.hero_id > 0
+6348:      GROUP BY ps.hero_id
+6609:       ROUND(AVG(ps.hero_damage), 0) AS avg_hero_damage,
+6614:     WHERE ps.hero_name = 'npc_dota_hero_pudge'
+6651:     WHERE ps.hero_name = 'npc_dota_hero_pudge'
+6694:      ps.hero_name,
+6695:      ps.hero_id,
+6701:      AND ps.hero_name IS NOT NULL AND ps.hero_name != ''
+6702:    GROUP BY ps.hero_name, ps.hero_id
+6990:      ps.hero_damage,
+6991:      ps.hero_id,
+7046:      ROUND(AVG(ps.hero_damage)::numeric) AS avg_hero_damage,
+7048:      ROUND(AVG(ps.hero_healing)::numeric) AS avg_healing,
