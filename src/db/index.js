@@ -1114,6 +1114,40 @@ async function init() {
     // one JSONB so adding/removing knobs in the future doesn't need a
     // migration. See src/profileCosmetics.js for validation + defaults.
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS extras JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    // Task #313 / v6.79 — In-app currency. coin_balance = spendable, coin_lifetime = total ever earned (vanity).
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS coin_balance INT NOT NULL DEFAULT 0`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS coin_lifetime INT NOT NULL DEFAULT 0`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coin_transactions (
+        id BIGSERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        delta INT NOT NULL,
+        reason TEXT NOT NULL,
+        ref_match_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coin_tx_account_created ON coin_transactions (account_id, created_at DESC)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coin_tx_account_pos_day ON coin_transactions (account_id, created_at) WHERE delta > 0`);
+    // Earn idempotency — at most one positive grant per (account, match, reason).
+    // Prevents double-credit if recordMatch is replayed or the earn hook fires
+    // twice on a retried path. NULL ref_match_id (e.g. admin grants, future
+    // achievement bonuses without a match anchor) is unconstrained.
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_coin_tx_match_grant ON coin_transactions (account_id, ref_match_id, reason) WHERE ref_match_id IS NOT NULL AND delta > 0`);
+    // Cosmetics unlocked via coin spend (kind+value pairs); merged into ownership
+    // checks alongside Pro membership and Stripe-purchased entitlements.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coin_owned_cosmetics (
+        id BIGSERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        kind TEXT NOT NULL,
+        value TEXT NOT NULL,
+        coins_spent INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(account_id, kind, value)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coin_owned_account ON coin_owned_cosmetics (account_id)`);
     // Task #204 / v6.60 — Magazine v3 pinned-achievement ribbon. Array of
     // achievement keys (max 3, server-validated against the player's earned
     // non-secret achievements). Free tier pins 1; Pro pins up to 3. Stored
@@ -2511,6 +2545,37 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
       }
     } catch (e) {
       console.warn(`[Achievements] grant failed for match ${matchStats.matchId}: ${e.message}`);
+    }
+
+    // Task #313 / v6.79 — Coin grants for completed matches.
+    // +10 per signed-in player, +5 if on the winning team. Gated by duration
+    // ≥ 1200 s (20 min) so short stomps / abandons don't farm coins, and by
+    // applyDailyCap (100/account/day) inside grantCoins. Best-effort:
+    // failures here never roll back the recorded match.
+    try {
+      const duration = matchStats.duration || 0;
+      if (duration >= 1200) {
+        const winningTeam = matchStats.radiantWin ? 0 : 1;
+        for (const player of matchStats.players) {
+          const accountId = player.accountId ? parseInt(player.accountId) : 0;
+          if (!accountId || accountId === 0) continue;
+          const won = (Number(player.team) === winningTeam);
+          const delta = 10 + (won ? 5 : 0);
+          try {
+            const r = await grantCoins({
+              accountId, delta,
+              reason: won ? 'match_win' : 'match_complete',
+              refMatchId: matchStats.matchId,
+              applyDailyCap: true,
+            });
+            if (r.capped) console.log(`[Coins] ${accountId} hit daily cap on match ${matchStats.matchId} (granted ${r.granted}/${delta})`);
+          } catch (e) {
+            console.warn(`[Coins] grant failed for ${accountId} on ${matchStats.matchId}: ${e.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[Coins] match-complete earn block failed: ${e.message}`);
     }
 
     return { matchId: matchStats.matchId, achievementGrants };
@@ -11130,6 +11195,180 @@ async function listEntitlementHolders(sku, limit = 500) {
 // Cap-aware grant. Returns { ok, granted, reason }. Wraps the cap check and
 // the insert in a single transaction so concurrent buys can't exceed `cap`.
 // `cap = 0` (or null) means uncapped.
+// ────────────────────────────────────────────────────────────────────────────
+// Task #313 / v6.79 — In-app currency helpers.
+//
+// Earn rules (enforced in recordMatch + future MVP/achievement hooks):
+//   +10 per completed match (duration ≥ 20 min)
+//   +5 win bonus
+//   Soft daily cap of 100 per account on positive grants (admin grants ignore cap)
+//
+// Spend goes through purchaseCosmeticWithCoins() which is atomic:
+//   FOR UPDATE lock on player_profiles row → debit + ledger row + ownership row.
+// ────────────────────────────────────────────────────────────────────────────
+
+const DAILY_COIN_CAP = 100;
+
+async function getCoinBalance(accountId) {
+  if (!accountId) return { balance: 0, lifetime: 0 };
+  const p = getPool();
+  await p.query(`INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`, [accountId]);
+  const r = await p.query(
+    `SELECT COALESCE(coin_balance, 0)::int AS balance, COALESCE(coin_lifetime, 0)::int AS lifetime
+     FROM player_profiles WHERE account_id = $1`,
+    [accountId]
+  );
+  return r.rows[0] || { balance: 0, lifetime: 0 };
+}
+
+async function grantCoins({ accountId, delta, reason, refMatchId = null, applyDailyCap = false }) {
+  if (!accountId || !Number.isFinite(delta) || delta <= 0) return { granted: 0, capped: false };
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    // Per-account advisory lock for the entire transaction. Serialises the
+    // SUM-then-min daily-cap check with the matching INSERT so concurrent
+    // grants for the same account cannot overrun the cap.
+    await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [accountId]);
+    await client.query(`INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`, [accountId]);
+    let actualDelta = delta;
+    if (applyDailyCap) {
+      const r = await client.query(
+        `SELECT COALESCE(SUM(delta), 0)::int AS earned_today
+         FROM coin_transactions
+         WHERE account_id = $1 AND delta > 0 AND created_at >= date_trunc('day', NOW())`,
+        [accountId]
+      );
+      const earnedToday = r.rows[0]?.earned_today || 0;
+      const remaining = Math.max(0, DAILY_COIN_CAP - earnedToday);
+      actualDelta = Math.min(delta, remaining);
+      if (actualDelta <= 0) {
+        await client.query('COMMIT');
+        return { granted: 0, capped: true };
+      }
+    }
+    // Idempotency: ON CONFLICT against uq_coin_tx_match_grant — if the same
+    // (account, match, reason) grant has already been recorded, we return
+    // {granted:0, idempotent:true} and never touch the balance.
+    const ins = await client.query(
+      `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id) VALUES ($1, $2, $3, $4)
+       ON CONFLICT ON CONSTRAINT uq_coin_tx_match_grant DO NOTHING
+       RETURNING id`,
+      [accountId, actualDelta, String(reason || 'grant').slice(0, 64), refMatchId]
+    );
+    if (ins.rowCount === 0) {
+      await client.query('COMMIT');
+      return { granted: 0, idempotent: true };
+    }
+    await client.query(
+      `UPDATE player_profiles
+       SET coin_balance = COALESCE(coin_balance, 0) + $1,
+           coin_lifetime = COALESCE(coin_lifetime, 0) + $1
+       WHERE account_id = $2`,
+      [actualDelta, accountId]
+    );
+    await client.query('COMMIT');
+    return { granted: actualDelta, capped: actualDelta < delta };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function listCoinTransactions(accountId, limit = 20) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, delta, reason, ref_match_id, created_at
+     FROM coin_transactions WHERE account_id = $1
+     ORDER BY id DESC LIMIT $2`,
+    [accountId, Math.max(1, Math.min(100, limit))]
+  );
+  return r.rows;
+}
+
+async function getCoinOwnedCosmetics(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT kind, value FROM coin_owned_cosmetics WHERE account_id = $1`,
+    [accountId]
+  );
+  return r.rows;
+}
+
+async function hasCoinCosmetic(accountId, kind, value) {
+  if (!accountId || !kind || !value) return false;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT 1 FROM coin_owned_cosmetics WHERE account_id = $1 AND kind = $2 AND value = $3 LIMIT 1`,
+    [accountId, kind, value]
+  );
+  return r.rowCount > 0;
+}
+
+async function purchaseCosmeticWithCoins({ accountId, sku, cost }) {
+  if (!accountId || !sku || !Number.isFinite(cost) || cost <= 0) {
+    throw new Error('purchaseCosmeticWithCoins: accountId + sku + positive cost required');
+  }
+  const idx = sku.indexOf(':');
+  if (idx < 1) throw new Error('Bad SKU shape (expected kind:value)');
+  const kind = sku.slice(0, idx);
+  const value = sku.slice(idx + 1);
+  if (!value) throw new Error('Bad SKU shape (empty value)');
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    // Per-account advisory lock — serialises any concurrent buys (same or
+    // different SKUs) so the FOR UPDATE balance lock + ownership claim +
+    // ledger insert all see a consistent snapshot.
+    await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [accountId]);
+    // Ensure profile row exists then lock the balance.
+    await client.query(`INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`, [accountId]);
+    // Insert-first ownership claim: if the row already exists, ON CONFLICT
+    // returns rowCount=0 and we bail BEFORE debiting — this closes the
+    // double-spend race the architect flagged (two concurrent buys both
+    // passing a pre-check then both debiting).
+    const claim = await client.query(
+      `INSERT INTO coin_owned_cosmetics (account_id, kind, value, coins_spent) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (account_id, kind, value) DO NOTHING RETURNING id`,
+      [accountId, kind, value, cost]
+    );
+    if (claim.rowCount === 0) {
+      await client.query('ROLLBACK');
+      const err = new Error('Already owned'); err.code = 'ALREADY_OWNED'; throw err;
+    }
+    const br = await client.query(
+      `SELECT COALESCE(coin_balance, 0)::int AS balance FROM player_profiles WHERE account_id = $1 FOR UPDATE`,
+      [accountId]
+    );
+    const bal = br.rows[0]?.balance ?? 0;
+    if (bal < cost) {
+      await client.query('ROLLBACK'); // rolls back the ownership claim too — the user can retry once they earn enough.
+      const err = new Error(`Insufficient coins (have ${bal}, need ${cost})`); err.code = 'INSUFFICIENT_FUNDS'; throw err;
+    }
+    await client.query(
+      `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id) VALUES ($1, $2, $3, NULL)`,
+      [accountId, -cost, `purchase:${sku}`.slice(0, 64)]
+    );
+    await client.query(
+      `UPDATE player_profiles SET coin_balance = coin_balance - $1 WHERE account_id = $2`,
+      [cost, accountId]
+    );
+    await client.query('COMMIT');
+    return { ok: true, sku, kind, value, spent: cost, newBalance: bal - cost };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 async function grantEntitlementWithCap({ accountId, sku, cap, grantedBy = null, metadata = null }) {
   if (!accountId || !sku) throw new Error('grantEntitlementWithCap: accountId + sku required');
   const p = getPool();
@@ -11575,6 +11814,11 @@ const PRO_BUNDLED_FRAMES = ['gold'];
 
 async function hasFrameUnlocked(accountId, frameId, isPro = false) {
   if (isPro && PRO_BUNDLED_FRAMES.includes(frameId)) return true;
+  // Task #313 / v6.79 — coin-purchased frames count as unlocked. Checked before
+  // the Stripe purchase lookup so the lighter query wins for coin buyers.
+  try {
+    if (await hasCoinCosmetic(accountId, 'frame', frameId)) return true;
+  } catch { /* coin tables may not exist on legacy deploys */ }
   const p = getPool();
   const r = await p.query(
     `SELECT 1 FROM frame_purchases WHERE account_id = $1 AND frame_id = $2 AND status = 'active' LIMIT 1`,
@@ -11590,6 +11834,16 @@ async function getOwnedFrames(accountId, isPro = false) {
     [accountId]
   );
   const purchased = r.rows.map(row => row.frame_id);
+  // Task #313 / v6.79 — also union coin-purchased frames into ownership.
+  try {
+    const coinFrames = await p.query(
+      `SELECT value FROM coin_owned_cosmetics WHERE account_id = $1 AND kind = 'frame'`,
+      [accountId]
+    );
+    for (const row of coinFrames.rows) {
+      if (!purchased.includes(row.value)) purchased.push(row.value);
+    }
+  } catch { /* table may not exist on very old deploys; ignore */ }
   if (isPro) {
     for (const f of PRO_BUNDLED_FRAMES) {
       if (!purchased.includes(f)) purchased.push(f);
@@ -12743,6 +12997,13 @@ module.exports = {
   countEntitlementHolders,
   listEntitlementHolders,
   grantEntitlementWithCap,
+  // Task #313 / v6.79 — in-app currency
+  getCoinBalance,
+  grantCoins,
+  listCoinTransactions,
+  getCoinOwnedCosmetics,
+  hasCoinCosmetic,
+  purchaseCosmeticWithCoins,
   recordFoundersRingRefund,
   listFoundersRingRefunds,
   getFoundersRingRefundById,

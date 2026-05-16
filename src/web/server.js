@@ -9326,7 +9326,11 @@ NOTES
         return res.status(400).json({ error: 'Unknown profile layout theme' });
       }
       if (!isPro && cosm.isPremiumLayoutTheme(profileLayoutThemeRaw)) {
-        return res.status(403).json({ error: 'That profile theme is reserved for Pro members' });
+        // Task #313 / v6.79 — coin-purchased layout themes unlock without Pro.
+        const coinOwned = await db.hasCoinCosmetic(accountId, 'layout_theme', profileLayoutThemeRaw);
+        if (!coinOwned) {
+          return res.status(403).json({ error: 'That profile theme is reserved for Pro members (or unlock with coins in the shop)' });
+        }
       }
 
       // v6.62 / Task #206 — Voice Packs Pro SKU. All packs are Pro-only paid
@@ -9336,7 +9340,11 @@ NOTES
         return res.status(400).json({ error: 'Unknown voice pack' });
       }
       if (!isPro && cosm.isPremiumVoicePack(selectedVoicePackRaw)) {
-        return res.status(403).json({ error: 'Voice packs are reserved for Pro members' });
+        // Task #313 / v6.79 — coin-purchased voice packs unlock without Pro.
+        const coinOwned = await db.hasCoinCosmetic(accountId, 'voice_pack', selectedVoicePackRaw);
+        if (!coinOwned) {
+          return res.status(403).json({ error: 'Voice packs are reserved for Pro members (or unlock with coins in the shop)' });
+        }
       }
 
       // v5.81 — extras (8 mockup-graduated knobs). Validated + Pro-gated.
@@ -10430,6 +10438,117 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     } catch (err) {
       console.error('[API] coach/onboarding-status:', err.message);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #312 — Superuser-only dev shortcut: promote any account to an
+  // "active" coach without going through Stripe Connect Express. Synthetic
+  // stripe_account_id; the profile/editor/availability/listing UI all work,
+  // but bookings will fail at Stripe Checkout creation because the
+  // synthetic account doesn't exist on Stripe's side. For full end-to-end
+  // testing (including bookings) swap STRIPE_SECRET_KEY to a sk_test_…
+  // key and run the real /coach/onboard flow (see replit.md → "Test coach
+  // end-to-end"). Promoted coaches still need to fill out price/bio/avail
+  // via /coach/edit before they appear on /coaches.
+  router.post('/admin/coaching/promote-test-coach', express.json(), async (req, res) => {
+    if (!_isSu(req)) return res.status(403).json({ error: 'Superuser only' });
+    try {
+      const accountId = parseInt(req.body?.account_id || req.session?.accountId, 10);
+      if (!accountId) return res.status(400).json({ error: 'account_id required (or sign in first)' });
+      const existing = await db.getCoach(accountId);
+      const fakeStripeId = existing?.stripe_account_id || `acct_test_${accountId}_${Date.now()}`;
+      await db.createCoachRow({ accountId, stripeAccountId: fakeStripeId, country: 'AU' });
+      const coach = await db.setCoachStatus(accountId, 'active');
+      res.json({
+        ok: true,
+        coach,
+        next_steps: [
+          'Open /coach/edit (now visible) and set hourly rate + bio + availability.',
+          'Visit /coaches to confirm the profile is listed.',
+          'To exercise the booking flow end-to-end, swap STRIPE_SECRET_KEY to a sk_test_… key and run the real /coach/onboard flow instead.',
+        ],
+      });
+    } catch (err) {
+      console.error('[API] admin promote-test-coach:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Task #313 / v6.79 — In-app currency ────────────────────────────────
+  // Server-authoritative price catalog. SKU shape `<kind>:<value>`:
+  //   - voice_pack:<id>       (800)
+  //   - layout_theme:<id>     (1200)
+  //   - frame:<id>            (2500 — deliberately above the $5 Stripe price
+  //                            so coin path stays the "alternative" route,
+  //                            not the cheap shortcut)
+  // Title + accent are deferred to phase 2 (no coin alt-buy yet); they remain
+  // Pro-only because the save validation paths don't yet check coin ownership.
+  const COIN_PRICES = Object.freeze({
+    'voice_pack:captain':   800,
+    'voice_pack:hype':      800,
+    'voice_pack:calm':      800,
+    'voice_pack:roast':     800,
+    'voice_pack:cinematic': 800,
+    'layout_theme:newsprint': 1200,
+    'layout_theme:carbon':    1200,
+    'layout_theme:holo':      1200,
+    'layout_theme:heritage':  1200,
+    'layout_theme:broadcast': 1200,
+    // Real frame catalog from web/src/profileCosmetics.js: gold is Pro-bundled
+    // (no coin path); neon-blue/cosmic/fire are the individually-purchasable
+    // premium frames. 2500 🪙 is deliberately above the $2.99/$3.99 Stripe
+    // price so coin path stays the "alternative" route, not the cheap one.
+    'frame:neon-blue': 2500,
+    'frame:cosmic':    2500,
+    'frame:fire':      2500,
+  });
+
+  router.get('/coins/me', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+    try {
+      const balance = await db.getCoinBalance(accountId);
+      const recent = await db.listCoinTransactions(accountId, 20);
+      const owned = await db.getCoinOwnedCosmetics(accountId);
+      res.json({ ...balance, recent, owned, prices: COIN_PRICES });
+    } catch (e) {
+      console.error('[API] /coins/me:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/coins/spend', express.json(), async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+    const sku = String(req.body?.sku || '');
+    const cost = COIN_PRICES[sku];
+    if (!cost) return res.status(400).json({ error: 'Unknown or non-coin SKU' });
+    try {
+      const result = await db.purchaseCosmeticWithCoins({ accountId, sku, cost });
+      res.json(result);
+    } catch (e) {
+      if (e.code === 'INSUFFICIENT_FUNDS') return res.status(402).json({ error: e.message });
+      if (e.code === 'ALREADY_OWNED') return res.status(409).json({ error: e.message });
+      console.error('[API] /coins/spend:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/admin/coins/grant', express.json(), async (req, res) => {
+    if (!_isSu(req)) return res.status(403).json({ error: 'Superuser only' });
+    const accountId = parseInt(req.body?.account_id, 10);
+    const delta = parseInt(req.body?.delta, 10);
+    const reason = String(req.body?.reason || 'admin_grant').slice(0, 64);
+    if (!accountId || !Number.isFinite(delta) || delta <= 0) {
+      return res.status(400).json({ error: 'account_id + positive integer delta required (clawbacks unsupported in phase 1)' });
+    }
+    try {
+      // Admin grants ignore the daily soft cap.
+      const r = await db.grantCoins({ accountId, delta, reason });
+      res.json({ ok: true, ...r });
+    } catch (e) {
+      console.error('[API] /admin/coins/grant:', e.message);
+      res.status(500).json({ error: e.message });
     }
   });
 

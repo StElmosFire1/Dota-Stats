@@ -579,6 +579,46 @@ function NavPlayersLink({ isActive, count }) {
   );
 }
 
+// Task #313 / v6.79 — Coin balance pill in the navbar. Polls /api/coins/me
+// once on sign-in + every 60s so a freshly-recorded match bumps the balance
+// without a hard reload. Hidden when signed-out. Links to /shop so a click
+// is the shortcut into the spend surface.
+function NavCoinPill({ accountId }) {
+  const [balance, setBalance] = React.useState(null);
+  React.useEffect(() => {
+    if (!accountId) { setBalance(null); return undefined; }
+    let alive = true;
+    const load = () => {
+      fetch('/api/coins/me', { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (alive && d) setBalance(Number(d.balance) || 0); })
+        .catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(t); };
+  }, [accountId]);
+  if (!accountId || balance === null) return null;
+  return (
+    <Link
+      to="/shop"
+      title={`Coin balance — earn by playing inhouses, spend in the cosmetics shop`}
+      aria-label={`Coin balance: ${balance}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '3px 10px', borderRadius: 999,
+        background: 'rgba(245,158,11,0.14)',
+        border: '1px solid rgba(245,158,11,0.5)',
+        color: '#fbbf24', fontSize: 12, fontWeight: 700,
+        textDecoration: 'none', lineHeight: 1.2,
+      }}
+    >
+      <span aria-hidden="true" style={{ fontSize: 13 }}>🪙</span>
+      {balance.toLocaleString()}
+    </Link>
+  );
+}
+
 function Nav() {
   const location = useLocation();
   const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
@@ -604,6 +644,8 @@ function Nav() {
           without expanding the wrapped nav. Hidden on desktop via CSS,
           where the same signal already rides on the Players nav link. */}
       <MobileLiveBadge count={liveCount} />
+      {/* Task #313 / v6.79 — coin balance pill, signed-in only. */}
+      <NavCoinPill accountId={accountId} />
       <div className="nav-links">
         <Link to="/" className={isActive('/')}>Home</Link>
         <Link to="/leaderboard" className={isActive('/leaderboard')}>Leaderboard</Link>

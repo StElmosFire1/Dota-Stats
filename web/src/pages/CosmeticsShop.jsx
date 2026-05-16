@@ -12,7 +12,7 @@
 //     or bundled with Pro (gold). Frame prices mirror the FRAME_PRICES map
 //     in src/web/server.js (kept in sync via this comment).
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   PREMIUM_TITLES,
@@ -27,6 +27,195 @@ import {
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { getOwnedFrames, purchaseFrameCheckout, getFoundersRingStatus, buyFoundersRingCheckout } from '../api';
 import VanitySlugPicker from '../components/VanitySlugPicker';
+import { voicePackUrl } from '../lib/voicePack';
+
+// Task #312 — preview palettes for the Magazine v3 layout themes. Mirrors the
+// real `.layout-theme-<id>` CSS-token swaps applied to the live profile cover
+// banner, so the swatch the buyer sees here is the same palette they'll get
+// after purchase. Six tokens cover the cover-card render: bg, accent, text,
+// muted text, plus an optional gradient overlay for holo.
+const LAYOUT_THEME_PALETTE = {
+  'court-pitch': { bg: '#0d1424', accent: '#c5a975', text: '#f5efe2', muted: '#9ca3af', overlay: null,
+                   description: 'Ink-navy + brass' },
+  newsprint:     { bg: '#f5efe2', accent: '#8b6914', text: '#1a1a1a', muted: '#5b5240', overlay: null,
+                   description: 'Sepia broadsheet' },
+  carbon:        { bg: '#0a0a0a', accent: '#f59e0b', text: '#f5f5f5', muted: '#737373', overlay: null,
+                   description: 'Pitch-black + amber' },
+  holo:          { bg: '#1a0033', accent: '#a855f7', text: '#f5f5ff', muted: '#a5b4fc',
+                   overlay: 'linear-gradient(135deg, rgba(168,85,247,0.25) 0%, rgba(6,182,212,0.25) 100%)',
+                   description: 'Iridescent purple/cyan' },
+  heritage:      { bg: '#2d1810', accent: '#d4a017', text: '#f5e6c8', muted: '#bfa57a', overlay: null,
+                   description: 'Warm cigar + gold' },
+  broadcast:     { bg: '#0c1117', accent: '#ff6b1a', text: '#f5f5f5', muted: '#9ca3af', overlay: null,
+                   description: 'Sport-channel orange' },
+};
+
+// Mini avatar + frame preview. Renders the SAME FRAME_META.style as the live
+// profile-card wrapper applies, so the buyer sees the exact glow/border.
+function FramePreview({ frameId, label }) {
+  const style = (FRAME_META[frameId] || {}).style || {};
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 4px' }}>
+      <div
+        aria-label={`Preview of ${label || frameId} frame`}
+        style={{
+          width: 56, height: 56, borderRadius: '50%',
+          background: 'linear-gradient(135deg, #1f2937 0%, #374151 100%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'var(--font-condensed, inherit)', fontWeight: 700,
+          fontSize: 18, color: 'var(--text-muted)', letterSpacing: 0.5,
+          ...style,
+        }}
+      >OA</div>
+    </div>
+  );
+}
+
+// Mini layout-theme preview. Mimics the Magazine v3 cover banner: theme bg,
+// optional gradient overlay, accent stripe, title in theme text colour.
+function LayoutThemePreview({ themeId, label }) {
+  const p = LAYOUT_THEME_PALETTE[themeId] || LAYOUT_THEME_PALETTE['court-pitch'];
+  return (
+    <div
+      aria-label={`Preview of ${label || themeId} layout theme`}
+      style={{
+        position: 'relative', height: 70, borderRadius: 6, overflow: 'hidden',
+        background: p.bg, border: '1px solid var(--border)', marginBottom: 8,
+      }}
+    >
+      {p.overlay ? (
+        <div style={{ position: 'absolute', inset: 0, background: p.overlay }} />
+      ) : null}
+      <div style={{ position: 'absolute', left: 8, right: 8, top: 8, color: p.text, fontFamily: 'var(--font-condensed, inherit)', fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+        PLAYER NAME
+      </div>
+      <div style={{ position: 'absolute', left: 8, top: 26, color: p.muted, fontSize: 10 }}>
+        Inhouse Legend
+      </div>
+      <div style={{ position: 'absolute', left: 8, bottom: 8, right: 8, height: 3, background: p.accent, borderRadius: 2 }} />
+      <div style={{ position: 'absolute', right: 8, bottom: 14, color: p.accent, fontFamily: 'var(--font-condensed, inherit)', fontSize: 11, fontWeight: 700 }}>
+        7-W STREAK
+      </div>
+    </div>
+  );
+}
+
+// Voice-pack preview — single ▶ Play button that hits the existing
+// /voice-packs/<pack>/win.mp3 asset. Uses `win` because every pack ships
+// one and it's the most "previewable" line (no contextual confusion).
+function VoicePackPreview({ packId }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  function togglePlay() {
+    if (failed) return;
+    if (!audioRef.current) {
+      const a = new Audio(voicePackUrl(packId, 'win'));
+      a.preload = 'auto';
+      a.addEventListener('ended', () => setPlaying(false));
+      a.addEventListener('error', () => { setFailed(true); setPlaying(false); });
+      audioRef.current = a;
+    }
+    if (playing) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setPlaying(false);
+    } else {
+      const p = audioRef.current.play();
+      if (p && p.catch) p.catch(() => { setFailed(true); setPlaying(false); });
+      setPlaying(true);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={togglePlay}
+      disabled={failed}
+      aria-label={playing ? 'Stop voice pack preview' : 'Play voice pack preview'}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+        background: failed ? 'rgba(75,85,99,0.18)' : (playing ? 'rgba(34,197,94,0.18)' : 'rgba(59,130,246,0.18)'),
+        color: failed ? '#9ca3af' : (playing ? '#86efac' : '#93c5fd'),
+        border: `1px solid ${failed ? '#4b556355' : (playing ? '#16a34a55' : '#3b82f655')}`,
+        cursor: failed ? 'not-allowed' : 'pointer',
+        marginBottom: 4,
+      }}
+    >
+      {failed ? '⚠ Sample unavailable' : (playing ? '■ Stop' : '▶ Play sample')}
+    </button>
+  );
+}
+
+// Title preview — renders "PlayerName · <title>" the way it appears under a
+// player's name on the profile card subtitle, so the buyer reads it the way
+// it will appear.
+function TitlePreview({ title }) {
+  return (
+    <div
+      aria-label={`Preview of ${title} title`}
+      style={{
+        marginBottom: 8, padding: '6px 8px', borderRadius: 4,
+        background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border)',
+      }}
+    >
+      <div style={{ fontFamily: 'var(--font-condensed, inherit)', fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
+        PlayerName
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--accent)', fontStyle: 'italic' }}>
+        {title}
+      </div>
+    </div>
+  );
+}
+
+// Founders Pass cover preview — mimics a Magazine v3 cover tile with the
+// brass→amber ring applied so buyers see what they're getting.
+function FoundersRingPreview() {
+  return (
+    <div
+      aria-label="Preview of Founders Pass ring"
+      style={{
+        position: 'relative', height: 80, borderRadius: 6, overflow: 'hidden',
+        background: 'linear-gradient(135deg, #0d1424 0%, #1a2540 100%)',
+        border: '1px solid var(--border)', marginBottom: 8,
+        boxShadow: '0 0 0 2px #c5a975, 0 0 0 4px #f59e0b, 0 0 16px rgba(245,158,11,0.5)',
+      }}
+    >
+      <div style={{ position: 'absolute', inset: 0, padding: 8, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <div style={{ color: '#f5efe2', fontFamily: 'var(--font-condensed, inherit)', fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+          PLAYER NAME
+        </div>
+        <div style={{ color: '#c5a975', fontFamily: 'var(--font-condensed, inherit)', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>
+          FOUNDER · #042
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Theme accent preview — renders a mini stat-card retinted with the accent
+// (border + label + a value bar) so the buyer sees the colour applied in
+// context, not just as a swatch.
+function AccentPreview({ color }) {
+  return (
+    <div
+      aria-label={`Preview of ${color} accent in context`}
+      style={{
+        width: 80, padding: 6, borderRadius: 6,
+        background: 'rgba(0,0,0,0.25)',
+        border: `1px solid ${color}66`,
+        marginTop: 6,
+      }}
+    >
+      <div style={{ fontSize: 9, color, fontWeight: 700, letterSpacing: 0.5, marginBottom: 2 }}>KDA</div>
+      <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 700 }}>9.2</div>
+      <div style={{ height: 3, marginTop: 4, background: color, borderRadius: 2, width: '70%' }} />
+    </div>
+  );
+}
 
 // Mirrors FRAME_PRICES in src/web/server.js. Keep in sync.
 const FRAME_PRICES_CENTS = {
@@ -101,13 +290,14 @@ function actionButtonStyle(variant) {
   return { ...base, background: 'rgba(245,158,11,0.12)', color: 'var(--accent)', border: '1px solid var(--border)' };
 }
 
-function CosmeticCard({ label, sub, badges, action }) {
+function CosmeticCard({ label, sub, badges, action, preview }) {
   return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)',
       borderRadius: 10, padding: '12px 14px', minWidth: 220, maxWidth: 280,
       display: 'flex', flexDirection: 'column', gap: 8,
     }}>
+      {preview ? <div>{preview}</div> : null}
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
         <strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>{label}</strong>
         {badges}
@@ -135,6 +325,46 @@ export default function CosmeticsShop() {
   // v6.63 / Task #207 — Founders Pass ring (one-time, capped SKU).
   const [foundersStatus, setFoundersStatus] = useState(null);
   const [foundersBuying, setFoundersBuying] = useState(false);
+  // Task #313 / v6.79 — in-app currency. coinInfo = { balance, lifetime, owned[], prices{} }.
+  const [coinInfo, setCoinInfo] = useState(null);
+  const [coinBuying, setCoinBuying] = useState(null); // SKU currently in flight
+  const [coinFlash, setCoinFlash] = useState(null);   // {ok, msg} for last spend
+
+  const reloadCoins = React.useCallback(() => {
+    if (!signedIn) { setCoinInfo(null); return; }
+    fetch('/api/coins/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setCoinInfo(d); })
+      .catch(() => {});
+  }, [signedIn]);
+
+  useEffect(() => { reloadCoins(); }, [reloadCoins]);
+
+  const isCoinOwned = React.useCallback((kind, value) => {
+    if (!coinInfo?.owned) return false;
+    return coinInfo.owned.some(o => o.kind === kind && o.value === value);
+  }, [coinInfo]);
+
+  async function spendCoins(sku) {
+    setCoinBuying(sku); setCoinFlash(null);
+    try {
+      const r = await fetch('/api/coins/spend', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      setCoinFlash({ ok: true, msg: `Unlocked ${sku} for ${d.spent} 🪙 — apply it in Settings → Profile.` });
+      reloadCoins();
+      // Frame purchase also affects the legacy ownedFrames list.
+      getOwnedFrames().then(list => setOwnedFrames(Array.isArray(list) ? list : [])).catch(() => {});
+    } catch (e) {
+      setCoinFlash({ ok: false, msg: e.message || 'Spend failed.' });
+    } finally {
+      setCoinBuying(null);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -186,23 +416,56 @@ export default function CosmeticsShop() {
 
   // Pro-bundled cosmetic (titles, themes, layout themes, voice packs):
   // owned with Pro → "Pick in settings"; otherwise → "Unlock with Pro".
-  function proBundledAction() {
+  // Task #313 / v6.79 — also accepts coin-purchase SKU + coin-owned flag so
+  // non-Pro buyers can unlock individually with the in-app currency.
+  function proBundledAction(coinSku) {
     if (!signedIn) {
       return <Link to="/pro" style={actionButtonStyle('pro')}>Sign in & go Pro →</Link>;
     }
-    if (isPro) {
+    const coinOwned = coinSku ? isCoinOwned(coinSku.split(':')[0], coinSku.split(':')[1]) : false;
+    if (isPro || coinOwned) {
       return (
-        <Link to="/settings/profile" style={actionButtonStyle('settings')}>
-          Pick in settings →
-        </Link>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Link to="/settings/profile" style={actionButtonStyle('settings')}>Pick in settings →</Link>
+          {coinOwned && !isPro ? (
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Unlocked with 🪙 coins</span>
+          ) : null}
+        </div>
       );
     }
-    return <Link to="/pro" style={actionButtonStyle('pro')}>Unlock with Pro →</Link>;
+    // No Pro, not coin-owned: offer both Pro + coin-buy paths.
+    const price = coinSku ? coinInfo?.prices?.[coinSku] : null;
+    const canAfford = price && (coinInfo?.balance ?? 0) >= price;
+    const busy = coinBuying === coinSku;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Link to="/pro" style={actionButtonStyle('pro')}>Unlock with Pro →</Link>
+        {price ? (
+          <button
+            type="button"
+            disabled={busy || !canAfford}
+            onClick={() => spendCoins(coinSku)}
+            title={canAfford ? `Spend ${price} coins to unlock just this item` : `Need ${price} coins (you have ${coinInfo?.balance ?? 0})`}
+            style={{
+              ...actionButtonStyle('buy'),
+              opacity: busy ? 0.6 : (canAfford ? 1 : 0.5),
+              cursor: canAfford ? 'pointer' : 'not-allowed',
+              background: canAfford ? 'rgba(245,158,11,0.14)' : 'rgba(75,85,99,0.12)',
+              color: canAfford ? '#fbbf24' : '#9ca3af',
+              border: `1px solid ${canAfford ? 'rgba(245,158,11,0.5)' : '#4b556355'}`,
+            }}
+          >
+            {busy ? 'Unlocking…' : `or ${price} 🪙`}
+          </button>
+        ) : null}
+      </div>
+    );
   }
 
   // Profile frames have three flavours:
   //   - gold: bundled with Pro (cannot be purchased separately)
   //   - rest: purchasable individually OR bundled with Pro
+  // Task #313 / v6.79 — non-gold frames can also be bought with 🪙 coins.
   function frameAction(frameId) {
     if (!signedIn) {
       return <Link to="/pro" style={actionButtonStyle('pro')}>Sign in to purchase →</Link>;
@@ -223,6 +486,10 @@ export default function CosmeticsShop() {
     }
     const price = FRAME_PRICES_CENTS[frameId];
     const buying = purchasingFrame === frameId;
+    const coinSku = `frame:${frameId}`;
+    const coinPrice = coinInfo?.prices?.[coinSku];
+    const canAffordCoins = coinPrice && (coinInfo?.balance ?? 0) >= coinPrice;
+    const coinBusy = coinBuying === coinSku;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <button
@@ -233,6 +500,24 @@ export default function CosmeticsShop() {
         >
           {buying ? 'Starting checkout…' : `Buy ${formatPrice(price)}`}
         </button>
+        {coinPrice ? (
+          <button
+            type="button"
+            disabled={coinBusy || !canAffordCoins}
+            onClick={() => spendCoins(coinSku)}
+            title={canAffordCoins ? `Spend ${coinPrice} coins to unlock` : `Need ${coinPrice} coins (you have ${coinInfo?.balance ?? 0})`}
+            style={{
+              ...actionButtonStyle('buy'),
+              opacity: coinBusy ? 0.6 : (canAffordCoins ? 1 : 0.5),
+              cursor: canAffordCoins ? 'pointer' : 'not-allowed',
+              background: canAffordCoins ? 'rgba(245,158,11,0.14)' : 'rgba(75,85,99,0.12)',
+              color: canAffordCoins ? '#fbbf24' : '#9ca3af',
+              border: `1px solid ${canAffordCoins ? 'rgba(245,158,11,0.5)' : '#4b556355'}`,
+            }}
+          >
+            {coinBusy ? 'Unlocking…' : `or ${coinPrice} 🪙`}
+          </button>
+        ) : null}
         {!isPro && (
           <Link to="/pro" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
             …or unlock all with Pro →
@@ -264,6 +549,34 @@ export default function CosmeticsShop() {
             background: '#3a1414', color: '#fca5a5', border: '1px solid #b91c1c55', fontSize: 13 }}
           >{purchaseError}</div>
         ) : null}
+        {/* Task #313 / v6.79 — coin balance banner. Signed-in only; shows the
+            current spendable balance + lifetime earned, plus a flash message
+            after a successful or failed spend. */}
+        {signedIn && coinInfo ? (
+          <div style={{
+            marginTop: 14, padding: '10px 14px', borderRadius: 8,
+            background: 'rgba(245,158,11,0.08)',
+            border: '1px solid rgba(245,158,11,0.35)',
+            display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', fontSize: 13,
+          }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#fbbf24' }}>
+              🪙 {Number(coinInfo.balance || 0).toLocaleString()}
+            </span>
+            <span style={{ color: 'var(--text-muted)' }}>
+              Spendable · {Number(coinInfo.lifetime || 0).toLocaleString()} earned all-time.
+              Earn coins by playing inhouses (+10 per match ≥ 20 min, +5 if you win, soft cap 100 per day).
+            </span>
+          </div>
+        ) : null}
+        {coinFlash ? (
+          <div style={{
+            marginTop: 10, padding: '8px 12px', borderRadius: 6,
+            background: coinFlash.ok ? 'rgba(34,197,94,0.1)' : '#3a1414',
+            color: coinFlash.ok ? '#86efac' : '#fca5a5',
+            border: `1px solid ${coinFlash.ok ? '#16a34a55' : '#b91c1c55'}`,
+            fontSize: 13,
+          }}>{coinFlash.msg}</div>
+        ) : null}
       </div>
 
       {/* v6.63 / Task #207 — Founders Pass ring. One-time SKU, capped at
@@ -277,6 +590,7 @@ export default function CosmeticsShop() {
         />
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <CosmeticCard
+            preview={<FoundersRingPreview />}
             label="Founders Pass — cover ring"
             sub={
               foundersStatus
@@ -352,10 +666,11 @@ export default function CosmeticsShop() {
             return (
               <CosmeticCard
                 key={p}
+                preview={<VoicePackPreview packId={p} />}
                 label={m.label}
                 sub={m.sub}
                 badges={owned ? <OwnedPill /> : <ProPill />}
-                action={proBundledAction()}
+                action={proBundledAction(`voice_pack:${p}`)}
               />
             );
           })}
@@ -374,10 +689,11 @@ export default function CosmeticsShop() {
             return (
               <CosmeticCard
                 key={t}
+                preview={<LayoutThemePreview themeId={t} label={m.label} />}
                 label={m.label}
                 sub={m.sub}
                 badges={owned ? <OwnedPill /> : <ProPill />}
-                action={proBundledAction()}
+                action={proBundledAction(`layout_theme:${t}`)}
               />
             );
           })}
@@ -401,6 +717,7 @@ export default function CosmeticsShop() {
             return (
               <CosmeticCard
                 key={f}
+                preview={<FramePreview frameId={f} label={m.label} />}
                 label={m.label || f}
                 sub={sub}
                 badges={
@@ -426,6 +743,7 @@ export default function CosmeticsShop() {
             return (
               <CosmeticCard
                 key={t}
+                preview={<TitlePreview title={t} />}
                 label={t}
                 badges={owned ? <OwnedPill /> : <ProPill />}
                 action={proBundledAction()}
@@ -454,6 +772,7 @@ export default function CosmeticsShop() {
                   background: c, border: '2px solid var(--border)',
                 }} />
                 <code style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c}</code>
+                <AccentPreview color={c} />
                 {owned ? <OwnedPill /> : <ProPill />}
               </div>
             );

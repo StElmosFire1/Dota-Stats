@@ -100,6 +100,22 @@ If a new clickable shape doesn't fit one of these, add the shape and document it
 
 Synthetic test coverage for every pass lives in `tests/checkA11y.test.js`. Full per-pass detail (heuristics, edge cases, allow-list rationale, evolution history) is in `docs/a11y-gates-history.md`; `scripts/check-a11y.js` itself is the authoritative source of truth for the rules.
 
+## Test coach end-to-end (Task #312)
+
+The coaching marketplace uses Stripe Connect Express, which requires real KYC (DOB, address, bank, ID). For dev/testing there are two paths depending on how much of the flow you need to exercise:
+
+**Path A — UI testing only (no real Stripe):**
+Admin Panel → 🎓 Coaching tab → **🧪 Test: Promote to Coach (skip Stripe Connect)** → leave `account_id` blank (uses your superuser account) → click *Promote to coach*. This calls `POST /api/admin/coaching/promote-test-coach` (superuser-only), which inserts a `coaches` row with a synthetic `acct_test_<accountId>_<ts>` Stripe id and `status='active'`. The coach editor (`/coach/edit`), availability picker, public profile page, and `/coaches` listing all work. Bookings will fail at Stripe Checkout creation because the synthetic id doesn't exist on Stripe's side — that's expected; use Path B for full booking E2E.
+
+**Path B — Full booking flow against Stripe test mode:**
+1. In your Stripe dashboard, toggle the **View test data** switch (top-left).
+2. *Developers → API keys* → copy the test-mode **Secret key** (`sk_test_…`).
+3. On the dev workspace, swap `STRIPE_SECRET_KEY` to that test key (Replit secret) and restart the workflow.
+4. Sign in with Steam, hit the *Apply to coach* CTA on your profile, then go through Stripe Connect Express onboarding. Test mode accepts fake KYC: DOB `01/01/1990`, address autocomplete `address_full_match`, SSN `000-00-0000`, routing `110000000`, bank `000123456789`. `charges_enabled` + `payouts_enabled` flip on within seconds.
+5. Now the booking flow on `/coaches/:id/book` completes through to Stripe Checkout. Use test card `4242 4242 4242 4242`, any future expiry, any CVC.
+
+The test-mode key is per-workspace — production must continue using the live `sk_live_…` key. Don't commit either; both go through Replit secrets.
+
 ## External Dependencies
 - **Discord API:** `discord.js`
 - **Steam API:** `steam-user`, `dota2-user`

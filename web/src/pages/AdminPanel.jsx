@@ -3181,6 +3181,86 @@ function CoachingMarketplaceFlagPanel({ superuserKey }) {
   );
 }
 
+// Task #312 — Superuser-only dev shortcut for testing the coaching marketplace
+// without going through Stripe Connect Express KYC. Hits the
+// /api/admin/coaching/promote-test-coach route which inserts a synthetic
+// `acct_test_…` Stripe account id and flips the coach row to status='active',
+// so /coaches/listing + /coach/edit + /coach/<id> all work. Bookings will
+// fail at Stripe Checkout creation (the synthetic account doesn't exist on
+// Stripe's side) — see replit.md → "Test coach end-to-end" for the test-mode
+// swap that makes booking checkout succeed.
+function TestCoachPanel({ superuserKey }) {
+  const [accountId, setAccountId] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+  const [err, setErr] = React.useState('');
+
+  async function promote() {
+    setBusy(true); setErr(''); setResult(null);
+    try {
+      const r = await fetch('/api/admin/coaching/promote-test-coach', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+        body: JSON.stringify({ account_id: accountId ? parseInt(accountId, 10) : undefined }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      setResult(d);
+    } catch (e) {
+      setErr(e.message || 'Promote failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-test-coach" className="section-title" style={{ marginBottom: 6 }}>
+        🧪 Test: Promote to Coach (skip Stripe Connect)
+      </h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Creates an <code>active</code> coach row for the given account (or your own if blank) with a
+        synthetic <code>acct_test_…</code> Stripe id, bypassing Connect Express KYC. The profile editor,
+        availability, public profile, and <code>/coaches</code> listing all work; bookings will fail at
+        Stripe Checkout because the fake account doesn&rsquo;t exist on Stripe&rsquo;s side. For full
+        booking end-to-end, see <em>replit.md → Test coach end-to-end</em>.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={{ fontSize: 13 }}>
+          account_id (optional):
+          <input
+            value={accountId}
+            onChange={e => setAccountId(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="leave blank to use your own"
+            style={{ marginLeft: 8, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', width: 200 }}
+          />
+        </label>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={promote}
+          style={{ padding: '6px 14px' }}
+        >
+          {busy ? 'Promoting…' : 'Promote to coach'}
+        </button>
+      </div>
+      {err ? (
+        <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: '#3a1414', color: '#fca5a5', border: '1px solid #b91c1c55', fontSize: 13 }}>{err}</div>
+      ) : null}
+      {result ? (
+        <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: 'rgba(34,197,94,0.1)', color: '#86efac', border: '1px solid #16a34a55', fontSize: 13 }}>
+          <strong>✓ Promoted</strong> — coach #{result.coach?.account_id} now <code>active</code> (synthetic id <code>{result.coach?.stripe_account_id}</code>).
+          <ol style={{ marginTop: 6, marginBottom: 0, paddingLeft: 20 }}>
+            {(result.next_steps || []).map((s, i) => <li key={i} style={{ marginTop: 4 }}>{s}</li>)}
+          </ol>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function WelcomeModalPanel({ superuserKey }) {
   const [cfg, setCfg] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -4107,6 +4187,7 @@ export default function AdminPanel() {
       <TierLadderPreview />
       {/* ── Coaching Marketplace flag (v5.93 launch kill-switch) ─────── */}
       <CoachingMarketplaceFlagPanel superuserKey={superuserKey} />
+      <TestCoachPanel superuserKey={superuserKey} />
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
       <WelcomeModalPanel superuserKey={superuserKey} />
