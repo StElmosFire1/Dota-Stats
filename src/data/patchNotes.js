@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.30",
+    "title": "Unit tests pin the PM2 entrypoint-verification deploy gate",
+    "published_at": "2026-05-16",
+    "content": "Task #310: v7.28 (Task #307) added a `pm2 jlist`-driven pre-restart gate to both `deploy.sh` and `community-edition/deploy.sh` that refuses to restart when PM2's `pm_exec_path` or `pm_cwd` for the target process doesn't match this checkout's expected entrypoint/cwd. It's the belt-and-braces backstop against the original Task #298 cross-edition deploy bug (the directory-name heuristic from Task #302 is the first line of defence; this is the second). Like the Task #302 gate, it had no automated coverage — a future refactor of either deploy script could silently break it and we'd only find out during a real misdeploy.\n\n**Fix:** new `tests/deployPm2VerifyGate.test.js` extracts the live Task #307 gate snippet from each deploy script by slicing from the `EXPECTED_PM2_SCRIPT=` assignment through the closing `fi` immediately before `pm2 restart`, then exercises it with a fake `pm2` executable (written to a temp dir + prepended to `PATH`) whose `jlist` subcommand emits a controlled JSON payload. The pinned matrix covers all the shapes the gate is meant to defend against: correct entrypoint + cwd → exit 0; wrong entrypoint → exit 1 with the re-registration hint and `replit.md` reference; wrong cwd → exit 1 with the same hint; empty `[]` jlist (first-time deploy) → no-op exit 0; jlist that contains a process by a different name → no-op exit 0. The community-side wrong-entrypoint case specifically uses the exact Task #298 misregistration shape (`inhouse-bot` pointed at the full-edition `src/index.js`) and asserts the abort message references `Task #298` so a future refactor that drops that breadcrumb fails the test. The Task #302 basename heuristic itself is already pinned by `tests/deployEditionGate.test.js` (v7.29 / Task #308), so this task only adds the missing PM2 coverage. 10/10 green under the existing `node --test tests/` runner.",
+    "author": "System"
+  },
+  {
     "version": "7.29",
     "title": "Unit test pins the wrong-edition deploy gate matrix",
     "published_at": "2026-05-16",
