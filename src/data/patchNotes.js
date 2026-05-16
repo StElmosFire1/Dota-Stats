@@ -1939,6 +1939,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.80",
+    "title": "Hover-to-enlarge previews · Coach editor shortcut",
+    "published_at": "2026-05-16",
+    "content": "Two small UX follow-ups to v6.79's shop + test-coach work.\n\n**1) Hover-to-enlarge cosmetic previews.** Every card in `/shop` already shows a thumbnail of what you're buying (frame ring, theme banner, voice ▶ play button, title subtitle, founders ring, accent retint), but the thumbnails are small. v6.80 wraps each preview in a CSS hover-zoom popup: mouse over a card's preview and a 2× scaled version floats above it with a captioned border. Implemented in `web/src/styles.css` (new `.cosmetic-card__zoom` block) + `CosmeticCard` in `CosmeticsShop.jsx`, no JS state — pure `:hover` + `:focus-within` toggling.\n\nA11y rule 4 compliance: the popup also triggers on keyboard focus (preview wrap is `tabIndex={0}` with a `role='img'` + descriptive `aria-label`), and the `@media (hover: none)` block keeps tap-to-focus working on touch. The voice-pack ▶ Play button inside the zoomed popup gets `pointer-events: auto` so you can still click it while enlarged. A11y gate green.\n\n**2) Coach editor shortcut.** The v6.79 test-coach panel returned a success block with text steps but no clickable path to the next page — testers had to know to navigate manually to `/coach/edit`. The success block now renders two real `<Link>` buttons: **→ Open coach editor** (goes straight to `/coach/edit`) and **View public profile** (goes to `/coaches/<account_id>`), so the full UI loop is one click each from the admin panel. The flow is now: Admin → Config tab → 🧪 Test coach → Promote → Open editor.",
+    "author": "System"
+  },
+  {
     "version": "6.79",
     "title": "Cosmetics shop previews · Test-coach shortcut · In-app currency phase 1 · Stripe checkout fix",
     "published_at": "2026-05-16",

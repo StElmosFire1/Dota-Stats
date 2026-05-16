@@ -292,12 +292,36 @@ function actionButtonStyle(variant) {
 
 function CosmeticCard({ label, sub, badges, action, preview }) {
   return (
-    <div style={{
+    <div className="cosmetic-card" style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)',
       borderRadius: 10, padding: '12px 14px', minWidth: 220, maxWidth: 280,
       display: 'flex', flexDirection: 'column', gap: 8,
     }}>
-      {preview ? <div>{preview}</div> : null}
+      {preview ? (
+        <div
+          className="cosmetic-card__preview-wrap"
+          tabIndex={0}
+          aria-label={`Preview: ${label}. Hover or focus to enlarge.`}
+        >
+          {preview}
+          {/*
+            Zoomed clone is `aria-hidden` (screen readers already saw the real
+            preview above) AND `inert` so any interactive descendants in the
+            clone (e.g. VoicePackPreview's ▶ Play <button>) are removed from
+            the focus order and a11y tree — no duplicate tab stops, no
+            focusable content inside an aria-hidden subtree. `pointer-events:
+            none` is also applied via CSS to the clone's children so a stray
+            mouse click on the enlarged image can't trigger the buried
+            duplicate control either. The wrapper itself carries no `role` —
+            `role='img'` would conflict with the original (non-cloned)
+            interactive children rendered above.
+          */}
+          <div className="cosmetic-card__zoom" aria-hidden="true" inert="">
+            <span className="cosmetic-card__zoom-label">{label} — enlarged preview</span>
+            <span className="cosmetic-card__zoom-inner">{preview}</span>
+          </div>
+        </div>
+      ) : null}
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
         <strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>{label}</strong>
         {badges}

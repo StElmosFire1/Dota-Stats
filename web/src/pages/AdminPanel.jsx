@@ -3255,6 +3255,22 @@ function TestCoachPanel({ superuserKey }) {
           <ol style={{ marginTop: 6, marginBottom: 0, paddingLeft: 20 }}>
             {(result.next_steps || []).map((s, i) => <li key={i} style={{ marginTop: 4 }}>{s}</li>)}
           </ol>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link
+              to="/coach/edit"
+              className="btn"
+              style={{ padding: '6px 12px', textDecoration: 'none', fontSize: 13 }}
+            >
+              → Open coach editor
+            </Link>
+            <Link
+              to={`/coaches/${result.coach?.account_id}`}
+              className="btn"
+              style={{ padding: '6px 12px', textDecoration: 'none', fontSize: 13, background: 'transparent', border: '1px solid var(--border)' }}
+            >
+              View public profile
+            </Link>
+          </div>
         </div>
       ) : null}
     </section>

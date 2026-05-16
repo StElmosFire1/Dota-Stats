@@ -1991,3 +1991,74 @@ body.light-theme .oa-ticker-track .oa-ticker-dot { color: rgba(245,239,226,0.5);
 
 .sortable-th-button:focus { outline: none; }
 .sortable-th-button:focus-visible { outline: 2px solid var(--accent, #c5a975); outline-offset: 2px; border-radius: 2px; }
+
+/* ── Cosmetics shop hover-zoom preview (v6.80) ───────────────────────────
+   Each cosmetic card's preview pops up at ~2x scale on hover or keyboard
+   focus, satisfying a11y rule 4 (hover reveals must also work on :focus).
+   Touch devices get a focus-on-tap fallback via @media (hover: none). */
+.cosmetic-card { position: relative; }
+.cosmetic-card__preview-wrap {
+  position: relative;
+  display: inline-block;
+  outline: none;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+.cosmetic-card__preview-wrap:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent, #c5a975);
+}
+.cosmetic-card__zoom {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  transform-origin: bottom center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s linear 0.16s;
+  background: var(--bg-card, #141a2a);
+  border: 1px solid var(--accent, #c5a975);
+  border-radius: 10px;
+  padding: 24px 32px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+  z-index: 200;
+  white-space: nowrap;
+}
+.cosmetic-card__zoom-inner {
+  display: inline-block;
+  transform: scale(2);
+  transform-origin: center center;
+}
+/* Belt-and-braces: even though the zoom subtree carries `inert`, kill
+   pointer events on its contents so a stray mouse click on the enlarged
+   image can't trigger the buried (duplicated) ▶ Play button on
+   voice-pack cards. The original control above the popup keeps working. */
+.cosmetic-card__zoom,
+.cosmetic-card__zoom * {
+  pointer-events: none;
+  user-select: none;
+}
+.cosmetic-card__preview-wrap:hover .cosmetic-card__zoom,
+.cosmetic-card__preview-wrap:focus-visible .cosmetic-card__zoom,
+.cosmetic-card__preview-wrap:focus-within .cosmetic-card__zoom {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(-50%) scale(1);
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s;
+}
+.cosmetic-card__zoom-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+  text-align: center;
+  white-space: normal;
+}
+@media (hover: none) {
+  /* Touch: tap-to-focus reveals the popup; no hover animation needed. */
+  .cosmetic-card__preview-wrap { cursor: pointer; }
+}
