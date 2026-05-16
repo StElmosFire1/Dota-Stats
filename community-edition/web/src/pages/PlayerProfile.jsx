@@ -329,20 +329,16 @@ export default function PlayerProfile() {
   const [playerRank, setPlayerRank] = useState(null);
   const [loading, setLoading] = useState(true);
   const [matchStatsHistory, setMatchStatsHistory] = useState([]);
-  const [trendPaywall, setTrendPaywall] = useState(null);
 
   useEffect(() => {
     if (!showProfileChartV2 || !isOwnProfile || !accountId) {
       setMatchStatsHistory([]);
-      setTrendPaywall(null);
       return;
     }
-    setTrendPaywall(null);
     getPlayerMatchStatsHistory(accountId, seasonId)
       .then(d => setMatchStatsHistory(d?.history || []))
-      .catch((err) => {
+      .catch(() => {
         setMatchStatsHistory([]);
-        if (err && err.paywall) setTrendPaywall(err);
       });
   }, [accountId, seasonId, showProfileChartV2, isOwnProfile]);
 

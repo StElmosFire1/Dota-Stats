@@ -35,6 +35,16 @@ echo "==> [community] Verifying frontend accessibility (Task #164 — house rule
 # so it is the right gate to run for either edition.
 node scripts/check-a11y.js
 
+echo "==> [community] Verifying no Pro-paywall code in community source (Task #303)..."
+# Hard gate (source-scan pass): refuse to deploy if any community source
+# file in community-edition/src/ or community-edition/web/src/ contains a
+# forbidden Pro/paywall token. Runs BEFORE the build so a regression
+# fails fast without paying for an install + build first. The same script
+# also runs a dist-scan pass after the build below; the source pass alone
+# is enough to catch the cases this task was created to prevent
+# (server-side 402 paywall, unused Pro hooks, dead frontend branches).
+bash scripts/check-community-paywall.sh
+
 echo "==> [community] Installing community frontend dependencies..."
 cd community-edition/web
 npm install --silent
@@ -45,11 +55,10 @@ npm run build
 cd "${REPO_ROOT}"
 
 echo "==> [community] Verifying no Pro-paywall code leaked into community bundle (Task #299)..."
-# Hard gate: refuse to deploy if the built community bundle in
-# community-edition/web/dist/ contains any full-edition-only Pro-paywall
-# tokens (PaywallCard, useProStatus, "Pro Tier", "Inhouse Stats Pro").
-# Backstop for Task #298's deploy-split fix — catches anyone copy-pasting
-# full-edition paywall code into community-edition/web/src/ in future.
+# Hard gate (dist-scan pass): backstop for the source-scan above.
+# Catches anything that survives minification/bundling — e.g. a third-party
+# dep that snuck in a paywall string. Same script, runs both passes
+# whenever the dist directory exists.
 bash scripts/check-community-paywall.sh
 
 echo "==> [community] Restarting bot..."

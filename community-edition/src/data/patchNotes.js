@@ -1,5 +1,11 @@
 module.exports = [
   {
+    "version": "1.2",
+    "title": "Replay downloads are now free for everyone",
+    "published_at": "2026-05-16",
+    "content": "The community edition is paywall-free by design (see `SETUP.md` — \"Pro tier / paid memberships — removed\"), but an audit turned up a leftover server route that still returned HTTP 402 \"requires Pro membership\" when anyone tried to download a stored replay. Removed: replay downloads at `/replays/:matchId/download` and `/matches/:matchId/replay` are now open to anyone who can reach the API. A couple of unused Pro-status frontend hooks and one dead error-handling branch on the player profile page have also been cleaned up. A new automated check rejects any future deploy that reintroduces paywall code anywhere in the community source tree."
+  },
+  {
     "version": "1.1",
     "title": "Community deploy fixed: synergy heatmap is free again",
     "published_at": "2026-05-16",

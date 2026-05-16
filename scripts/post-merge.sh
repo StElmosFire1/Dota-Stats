@@ -27,6 +27,14 @@ echo "[post-merge] Verifying frontend accessibility (Task #164 — house rule ga
 # BEFORE the frontend build so a regression fails fast.
 node scripts/check-a11y.js
 
+echo "[post-merge] Verifying no Pro-paywall code in community source (Task #303)..."
+# Hard gate (source-scan pass): refuse to push if any community source
+# file contains a forbidden Pro/paywall token. Runs BEFORE either build
+# so a regression fails the GitHub push without paying for the builds.
+# The same gate runs again after the community build below as a dist-scan
+# backstop.
+bash scripts/check-community-paywall.sh
+
 if [ -f web/package.json ]; then
   echo "[post-merge] Installing web/ dependencies..."
   (cd web && npm install --no-audit --no-fund)
