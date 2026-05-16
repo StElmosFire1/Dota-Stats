@@ -12,7 +12,7 @@
 //     or bundled with Pro (gold). Frame prices mirror the FRAME_PRICES map
 //     in src/web/server.js (kept in sync via this comment).
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   PREMIUM_TITLES,
@@ -27,7 +27,6 @@ import {
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { getOwnedFrames, purchaseFrameCheckout, getFoundersRingStatus, buyFoundersRingCheckout } from '../api';
 import VanitySlugPicker from '../components/VanitySlugPicker';
-import { voicePackUrl } from '../lib/voicePack';
 
 // Task #312 — preview palettes for the Magazine v3 layout themes. Mirrors the
 // real `.layout-theme-<id>` CSS-token swaps applied to the live profile cover
@@ -100,57 +99,12 @@ function LayoutThemePreview({ themeId, label }) {
   );
 }
 
-// Voice-pack preview — single ▶ Play button that demos the ready-up
-// chime (the moment that fires when /inhouse asks you to accept a
-// found match). Voice packs are now a "lobby alerts only" cosmetic
-// (v6.82) — they replace the default church-bell chime on the inhouse
-// lobby page, so the most representative preview is the match-start /
-// ready-up slot, not the (now-removed) post-match win chime.
-function VoicePackPreview({ packId }) {
-  const audioRef = useRef(null);
-  const [playing, setPlaying] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  function togglePlay() {
-    if (failed) return;
-    if (!audioRef.current) {
-      const a = new Audio(voicePackUrl(packId, 'match-start'));
-      a.preload = 'auto';
-      a.addEventListener('ended', () => setPlaying(false));
-      a.addEventListener('error', () => { setFailed(true); setPlaying(false); });
-      audioRef.current = a;
-    }
-    if (playing) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setPlaying(false);
-    } else {
-      const p = audioRef.current.play();
-      if (p && p.catch) p.catch(() => { setFailed(true); setPlaying(false); });
-      setPlaying(true);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={togglePlay}
-      disabled={failed}
-      aria-label={playing ? 'Stop voice pack preview' : 'Play voice pack preview'}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-        background: failed ? 'rgba(75,85,99,0.18)' : (playing ? 'rgba(34,197,94,0.18)' : 'rgba(59,130,246,0.18)'),
-        color: failed ? '#9ca3af' : (playing ? '#86efac' : '#93c5fd'),
-        border: `1px solid ${failed ? '#4b556355' : (playing ? '#16a34a55' : '#3b82f655')}`,
-        cursor: failed ? 'not-allowed' : 'pointer',
-        marginBottom: 4,
-      }}
-    >
-      {failed ? '⚠ Sample unavailable' : (playing ? '■ Stop' : '▶ Play sample')}
-    </button>
-  );
-}
+// v6.83 — VoicePackPreview removed. The per-event picker on
+// /settings/profile already lets users audition every pack slot, and
+// duplicating it as a shop-card ▶ Play button added clutter without
+// covering the full pack. Voice packs render as text-only cards in
+// the shop; the popup section of CosmeticCard is skipped when no
+// `preview` prop is passed.
 
 // Title preview — renders "PlayerName · <title>" the way it appears under a
 // player's name on the profile card subtitle, so the buyer reads it the way
@@ -309,14 +263,15 @@ function CosmeticCard({ label, sub, badges, action, preview }) {
           {preview}
           {/*
             Zoomed clone is `aria-hidden` (screen readers already saw the real
-            preview above) AND `inert` so any interactive descendants in the
-            clone (e.g. VoicePackPreview's ▶ Play <button>) are removed from
-            the focus order and a11y tree — no duplicate tab stops, no
-            focusable content inside an aria-hidden subtree. `pointer-events:
-            none` is also applied via CSS to the clone's children so a stray
-            mouse click on the enlarged image can't trigger the buried
-            duplicate control either. The wrapper itself carries no `role` —
-            `role='img'` would conflict with the original (non-cloned)
+            preview above) AND `inert` so any future interactive descendants
+            (none today — VoicePackPreview's ▶ Play button was removed in
+            v6.83) are removed from the focus order and a11y tree, with no
+            duplicate tab stops and no focusable content inside an
+            aria-hidden subtree. `pointer-events: none` is also applied via
+            CSS to the clone's children so a stray mouse click on the
+            enlarged image can't trigger anything buried below. The wrapper
+            itself carries no `role` — `role='img'` would conflict with the
+            original (non-cloned)
             interactive children rendered above.
           */}
           <div className="cosmetic-card__zoom" aria-hidden="true" inert="">
@@ -693,7 +648,13 @@ export default function CosmeticsShop() {
             return (
               <CosmeticCard
                 key={p}
-                preview={<VoicePackPreview packId={p} />}
+                /* v6.83 — no in-shop audio preview. The per-event picker on
+                   /settings/profile already lets users audition every pack
+                   slot from a single place; duplicating that as a ▶ Play
+                   button per shop card added clutter, broke the hover-zoom
+                   popup layout, and gave robot-voice samples that don't
+                   match the rest of the site's audio theme. Voice packs
+                   show as text-only cards in the shop now. */
                 label={m.label}
                 sub={m.sub}
                 badges={owned ? <OwnedPill /> : <ProPill />}

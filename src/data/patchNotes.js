@@ -1939,6 +1939,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.83",
+    "title": "Cosmetic hover-popup actually shows the preview · Voice pack ▶ Play button removed",
+    "published_at": "2026-05-16",
+    "content": "Two cosmetics shop UX fixes after a real-world look at v6.81/v6.82.\n\n**Hover popup was rendering empty.** The enlarged preview that pops up over each cosmetic card on hover/focus was showing only the *'<NAME> — enlarged preview'* label with a thin vertical line where the duplicated thumbnail should have been. Root cause: `FramePreview`, `LayoutThemePreview`, and `TitlePreview` use `position: absolute` for everything visible, which contributes zero to their parent's intrinsic width. The original (non-cloned) render works because `.cosmetic-card__preview-wrap` stretches to fill the flex-column card body, but the duplicated clone lives inside an absolutely-positioned popup that shrink-wraps to its content's *pre-transform* width — with no explicit width on `.cosmetic-card__zoom-inner`, the scaled span collapsed to width 0. Fix: pin `width: 200px` on the zoom-inner, switch its display from `inline-block` to `block`, drop `white-space: nowrap` on the popup (which only mattered for the inline-block layout), drop `transform: scale(2)` to `scale(1.6)` (≈320px visual; still readable, doesn't overflow narrow viewports), and add bottom padding to compensate for the scaled content extending past its layout box.\n\n**Voice pack ▶ Play button removed from the shop.** Three reasons: (1) the per-event picker on `/settings/profile` already lets users audition every slot of every pack from a single place, so the shop button was a half-pack-redundant duplicate, (2) the duplicated `<button>` inside the hover-popup created a focus/inert tangle that was only partially solved by `inert=''` + pointer-events:none, (3) the current TTS mp3s are robot voices that don't fit the site's Court & Pitch audio theme anyway. Voice packs now render as clean text-only cards in the shop (label + sub + Pro/Owned badge + action button); the `VoicePackPreview` component is deleted. Pack auditioning happens at the one place it makes sense (the settings picker).\n\nA11y gate green (152 JSX / 4 CSS).",
+    "author": "System"
+  },
+  {
     "version": "6.82",
     "title": "Voice packs scoped to lobby-only — post-match audio dropped",
     "published_at": "2026-05-16",

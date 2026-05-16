@@ -2020,16 +2020,31 @@ body.light-theme .oa-ticker-track .oa-ticker-dot { color: rgba(245,239,226,0.5);
   background: var(--bg-card, #141a2a);
   border: 1px solid var(--accent, #c5a975);
   border-radius: 10px;
-  padding: 24px 32px;
+  /* v6.83 — extra bottom padding compensates for transform: scale(1.6)
+     on the inner: scaled content extends beyond its layout box, and
+     without breathing room the bottom edge of the scaled preview clips
+     against the popup border. */
+  padding: 24px 32px 56px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
   z-index: 200;
-  white-space: nowrap;
 }
 .cosmetic-card__zoom-inner {
-  display: inline-block;
-  transform: scale(2);
-  transform-origin: center center;
+  display: block;
+  width: 200px;
+  transform: scale(1.6);
+  transform-origin: top center;
+  margin: 0 auto;
 }
+/* v6.83 — explicit width is essential. The preview components inside
+   (FramePreview, LayoutThemePreview, TitlePreview) use position:absolute
+   for their visible content, which contributes 0 to the parent's
+   intrinsic width. The original (non-cloned) render works because the
+   preview-wrap stretches to fill the flex-column card body. But the
+   absolutely-positioned popup shrink-wraps to its content's pre-transform
+   width, so without an explicit width here the inner collapses to 0 and
+   the popup renders as just the "ENLARGED PREVIEW" label with nothing
+   below it. 200px × 1.6 ≈ 320px visual width — enough to read the theme
+   strip clearly without overflowing the viewport on narrow screens. */
 /* Belt-and-braces: even though the zoom subtree carries `inert`, kill
    pointer events on its contents so a stray mouse click on the enlarged
    image can't trigger the buried (duplicated) ▶ Play button on
