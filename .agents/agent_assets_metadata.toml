@@ -155,3 +155,9 @@ id = "IJ78xzXoFfLAevDGCeXz2"
 uri = "file://web/public/voice-packs/roast/achievement-unlock.mp3"
 type = "audio"
 title = "roast achievement-unlock"
+
+[[outputs]]
+id = "axxTkC26RFzpCXUVHtOtR"
+uri = "file://.local/previews/scoreboard_test.png"
+type = "image"
+title = "Community-edition scoreboard image — test render with synthetic 10-player match"

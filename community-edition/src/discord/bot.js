@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { generateScoreboardImage } = require('../services/scoreboardImage');
 const cron = require('node-cron');
 const { config, getMmrTier } = require('../config');
 const { getStatsService } = require('../stats/statsService');
@@ -1843,14 +1844,31 @@ class DiscordBot {
 
     await channel.send({ embeds: [embed] });
 
-
-
     // Cross-post match embed to any stats channels not already receiving it
     const crossPostIds = config.discord.statsChannelIds.filter(id => id !== channel.id);
     for (const id of crossPostIds) {
       const xch = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
       if (xch) await xch.send({ embeds: [embed] }).catch(() => {});
     }
+
+    // Generate and send the scoreboard image (ported from full edition Task #279).
+    // Procedural @napi-rs/canvas render — no external asset deps. Posts after the
+    // text embed so the embed unfurls first and the image follows underneath.
+    ;(async () => {
+      try {
+        const imgBuf = await generateScoreboardImage(matchStats);
+        if (!imgBuf) return;
+        const cardName = `scoreboard_${matchStats.matchId || Date.now()}.png`;
+        await channel.send({ files: [new AttachmentBuilder(imgBuf, { name: cardName })] }).catch(() => {});
+        const extraIds = config.discord.statsChannelIds.filter(id => id !== channel.id);
+        for (const id of extraIds) {
+          const ac = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
+          if (ac) await ac.send({ files: [new AttachmentBuilder(imgBuf, { name: cardName })] }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[ScoreboardImage] Send failed:', err.message);
+      }
+    })();
 
     // Streak callouts — runs for ALL recording paths
     ;(async () => {
