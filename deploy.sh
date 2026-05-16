@@ -41,6 +41,18 @@ echo "==> Restarting bot..."
 # Target by PM2 process name so the deploy isn't fragile to id renumbering.
 # Override at call-site with: PM2_APP=other-name bash deploy.sh
 PM2_APP="${PM2_APP:-oi-bot}"
+
+# Safety check (symmetric to community-edition/deploy.sh's oi-bot block):
+# refuse to run if someone tries to point this script at the community
+# edition's PM2 process. This script only ever builds web/ (full-edition
+# frontend), so restarting inhouse-bot from here would be a cross-deploy
+# and resurrect exactly the bug Task #298 fixed.
+if [ "${PM2_APP}" = "inhouse-bot" ]; then
+  echo "ERROR: deploy.sh (full edition) refuses to target PM2 process 'inhouse-bot'." >&2
+  echo "       inhouse-bot is the COMMUNITY-edition process; use community-edition/deploy.sh for that." >&2
+  exit 1
+fi
+
 pm2 restart "${PM2_APP}" --update-env
 
 echo ""
