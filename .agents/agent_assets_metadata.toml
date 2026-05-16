@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "ne56Ac_o8qgb1hQzL_0Kh"
@@ -72,3 +71,21 @@ id = "ly-HiA9qCCZd-KRG6lSDl"
 uri = "file://web/public/badges/tier-sub-1-outlaw.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "4nBf5s_DOIub3AejPTlsx"
+uri = "file://web/public/voice-packs/cinematic/level-up.mp3"
+type = "audio"
+title = "cinematic level up brass glissando"
+
+[[outputs]]
+id = "ObqketynS13eYY_vjy3bx"
+uri = "file://web/public/voice-packs/cinematic/match-start.mp3"
+type = "audio"
+title = "cinematic match start brass horn"
+
+[[outputs]]
+id = "fo0ltGip2JodX9tWs2yrD"
+uri = "file://web/public/voice-packs/cinematic/achievement-unlock.mp3"
+type = "audio"
+title = "cinematic achievement brass fanfare"
