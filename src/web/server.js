@@ -3759,7 +3759,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
       const baseUrl = process.env.SITE_URL || `http://170.64.182.110:5000`;
 
       const session = await stripe.checkout.sessions.create({
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -5852,7 +5852,7 @@ NOTES
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
       const baseUrl = process.env.SITE_URL || `http://170.64.182.110:5000`;
       const session = await stripe.checkout.sessions.create({
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -9670,7 +9670,7 @@ NOTES
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const frameLabelMap = { gold: 'Gold', 'neon-blue': 'Neon Blue', cosmic: 'Cosmic', fire: 'Fire' };
       const session = await stripe.checkout.sessions.create({
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -9849,7 +9849,7 @@ NOTES
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const session = await stripe.checkout.sessions.create({
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -9945,7 +9945,7 @@ NOTES
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const priceCents = _proPriceCents();
       const session = await stripe.checkout.sessions.create({
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -10009,7 +10009,7 @@ NOTES
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const SEASON_PASS_GIFT_CENTS = 799;
       const session = await stripe.checkout.sessions.create({
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -10207,7 +10207,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const priceCents = _proPriceCents();
       const session = await stripe.checkout.sessions.create({
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'aud',
