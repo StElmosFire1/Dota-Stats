@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.29",
+    "title": "Unit test pins the wrong-edition deploy gate matrix",
+    "published_at": "2026-05-16",
+    "content": "Task #308: v7.26 (Task #302) added a `case \"${DEPLOY_BASE}\" in` gate to both `deploy.sh` and `community-edition/deploy.sh` that hard-fails when the checkout directory basename looks like the wrong edition. It's the last safety net against the original Task #298 cross-edition deploy bug, but its correctness rests on two easily-lost details: the `basename | tr '[:upper:]' '[:lower:]'` lowercase step, and the exact pattern (full edition: `*community*|*dota-stats`; community edition: `*full*`). If someone later 'simplifies' the pattern — drops the `*dota-stats` suffix branch, removes the `tr` step — the gate could silently start passing the wrong basenames again and the regression would only surface during a real misdeploy.\n\n**Fix:** new `tests/deployEditionGate.test.js` reads both deploy scripts, asserts each still pipes through `tr '[:upper:]' '[:lower:]'`, extracts the live `case` pattern from each, and then runs the pattern against a fixed matrix of basenames via `bash -c`. The matrix covers both real prod basenames (`dota-stats-full` allowed on the full side / blocked on community, `dota-stats` the inverse), mixed-case variants (`Dota-Stats-Full`, `Dota-Stats`) to lock in the lowercase step, and adversarial false-positive candidates per side (`community-checkout`, `my-community-fork`, `some-dota-stats` blocked on full; `some-full-checkout`, `fullstack-fork` blocked on community), plus an unrelated control basename that must be allowed on both sides. The test also explicitly asserts the full-edition pattern still contains both `*community*` and `*dota-stats` branches and the community-edition pattern still contains `*full*` — so a 'simplification' that drops a branch fails the test before we even exercise the matrix. Runs under the existing `node --test tests/` runner (3/3 green).",
+    "author": "System"
+  },
+  {
     "version": "7.28",
     "title": "Verify PM2 process actually points at this edition's entrypoint before restarting",
     "published_at": "2026-05-16",
