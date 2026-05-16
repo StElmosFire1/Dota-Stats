@@ -534,26 +534,13 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="50%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassDark}/>
         </linearGradient>
-        {/* Shimmer sweep — a single bright crest that fades IN, travels smoothly
-            around the band, fades OUT, then pauses for a few seconds before
-            repeating. Total cycle = 8s: 0.4s fade-in, 5.2s travel (full 360°
-            of gradient rotation while visible), 0.4s fade-out, 2s pause. */}
-        <linearGradient id={`bev-shimmer-${uid}`}
-                        gradientUnits="userSpaceOnUse"
-                        x1={cx - r} y1={cy} x2={cx + r} y2={cy}>
-          <stop offset="0%"   stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="40%"  stopColor="#fffbe6" stopOpacity="0"/>
-          <stop offset="46%"  stopColor="#fffbe6" stopOpacity="0.7"/>
-          <stop offset="50%"  stopColor="#ffffff" stopOpacity="1"/>
-          <stop offset="54%"  stopColor="#fffbe6" stopOpacity="0.7"/>
-          <stop offset="60%"  stopColor="#fffbe6" stopOpacity="0"/>
+        {/* Glint hot-spot — soft radial blob, bright white centre falling
+            off to transparent. Painted as a tangent ellipse on the band. */}
+        <radialGradient id={`bev-glint-${uid}`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="1"/>
+          <stop offset="35%"  stopColor="#fffbe6" stopOpacity="0.85"/>
           <stop offset="100%" stopColor="#fffbe6" stopOpacity="0"/>
-          {/* Rotation runs only during the visible window, then holds. */}
-          <animateTransform attributeName="gradientTransform" type="rotate"
-                            values={`-90 ${cx} ${cy};270 ${cx} ${cy};270 ${cx} ${cy}`}
-                            keyTimes="0;0.7;1"
-                            dur="8s" repeatCount="indefinite"/>
-        </linearGradient>
+        </radialGradient>
       </defs>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={`url(#bev-${uid})`} strokeWidth={stroke}/>
       {/* Bevel: bright top edge + dark bottom edge */}
@@ -563,14 +550,24 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
       <circle cx={cx} cy={cy} r={r - stroke * 0.4} fill="none" stroke={brassDark} strokeWidth={1.5}
               strokeDasharray={`${Math.PI * r * 0.5} ${Math.PI * r * 4}`}
               transform={`rotate(70 ${cx} ${cy})`} opacity="0.7"/>
-      {/* Shimmer overlay — fades in, travels, fades out, then pauses. */}
-      <circle cx={cx} cy={cy} r={r} fill="none"
-              stroke={`url(#bev-shimmer-${uid})`} strokeWidth={stroke}>
-        <animate attributeName="opacity"
-                 values="0;1;1;0;0"
-                 keyTimes="0;0.05;0.65;0.7;1"
-                 dur="8s" repeatCount="indefinite"/>
-      </circle>
+      {/* Single sun-glint — one small bright hot-spot on the band that
+          streaks quickly across a ~70° arc, fades, then pauses ~4s before
+          flashing again. Tangent ellipse so it reads like a long highlight
+          on a polished surface. Cycle = 5s: 0.05 fade-in → 0.18 streak →
+          0.03 fade-out → 0.74 dark pause. */}
+      <g>
+        <ellipse cx={cx} cy={cy - r} rx={stroke * 1.6} ry={stroke * 0.55}
+                 fill={`url(#bev-glint-${uid})`} opacity="0">
+          <animate attributeName="opacity"
+                   values="0;1;1;0;0"
+                   keyTimes="0;0.04;0.22;0.26;1"
+                   dur="5s" repeatCount="indefinite"/>
+        </ellipse>
+        <animateTransform attributeName="transform" type="rotate"
+                          values={`-35 ${cx} ${cy};35 ${cx} ${cy};35 ${cx} ${cy}`}
+                          keyTimes="0;0.26;1"
+                          dur="5s" repeatCount="indefinite"/>
+      </g>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
   );
@@ -1085,12 +1082,11 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
               stroke={`url(#ecl-corona-${uid})`} strokeWidth={stroke * 1.5}
               style={{ animation: 'fp-breathe 4.2s ease-in-out infinite', transformOrigin: `${cx}px ${cy}px` }}/>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
-      {/* The eclipsing body — a dark sphere that slowly orbits the band centreline.
-          Same 22s period as the warped band above, so the bulge stays under it. */}
+      {/* The eclipsing body — a dark sphere that orbits on the ORIGINAL
+          (un-warped) circular path. Same 22s period as the warped band, so
+          the bulge stays directly beneath it as the band distorts around it. */}
       <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 22s linear infinite' }}>
-        {/* Offset outward by `bulge` so the body sits ON the bulged centreline,
-            not on the un-warped centreline beneath it. */}
-        <g transform={`translate(${cx} ${cy - r - bulge})`}>
+        <g transform={`translate(${cx} ${cy - r})`}>
           {/* Bright corona behind the sphere — pulses independently for the
               "solar flare" effect as the eclipsing body orbits. */}
           <g style={{ animation: 'fp-pulse-bright 2.6s ease-in-out infinite', transformOrigin: '0 0' }}>
@@ -1567,8 +1563,10 @@ export function FoundersRingPicker() {
           filter region and pulling the band radius in a touch so the displaced edge stays inside the box. <strong>Twin Halo</strong> orbits shrunk
           (r₁ 0.40, r₂ 0.32, halo 0.055) so both orbs stay fully inside the box on every pass, and the avatar
           disc is rendered before the orbs so they always sit on top of it.
-          <strong> Beveled Edge</strong> gets a single bright glint that fades in, travels smoothly all the way
-          around the band, fades out, then pauses ~2s before repeating (8s cycle). <strong>Storm</strong>
+          <strong> Beveled Edge</strong> shows one small sun-glint that streaks quickly across a ~70°
+          arc on the top of the band, then pauses ~4s before flashing again. (Previous version used a
+          1D linear gradient which produced two simultaneous bright spots on opposite sides of the
+          circle; replaced with a single tangent ellipse rotated around the band centre.) <strong>Storm</strong>
           remains six asynchronous jagged-walk lightning bolts inside a circular clip.
           <strong> Eclipse</strong> now uses a Gaussian-warped band path that rotates in lockstep with the
           orbiting body — the band physically bows outward beneath the body, like gravitational lensing,
