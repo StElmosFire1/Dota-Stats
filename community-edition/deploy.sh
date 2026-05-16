@@ -110,6 +110,51 @@ if [ "${PM2_APP}" = "oi-bot" ]; then
   exit 1
 fi
 
+# Task #307: belt-and-braces backstop for the Task #302 directory-name gate.
+# The directory-name heuristic above catches the common shape of the
+# Task #298 mistake, but the authoritative source of truth for what PM2
+# will actually exec is `pm2 describe <name>` — specifically the
+# `pm_exec_path` (script path) and `pm_cwd` fields. Refuse to restart
+# if PM2 is registered against any entrypoint or cwd other than this
+# checkout's community-edition entrypoint. If the PM2 process doesn't
+# exist yet (first-time deploy), no-op — `pm2 restart` below will
+# create it from whatever the user runs next, and there's nothing to
+# verify.
+EXPECTED_PM2_SCRIPT="${REPO_ROOT}/community-edition/src/index.js"
+EXPECTED_PM2_CWD="${REPO_ROOT}"
+PM2_INFO="$(pm2 jlist 2>/dev/null | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  let arr;
+  try { arr = JSON.parse(raw); } catch { process.exit(0); }
+  if (!Array.isArray(arr)) process.exit(0);
+  const p = arr.find(x => x && x.name === process.argv[1]);
+  if (!p) process.exit(0);
+  const env = p.pm2_env || {};
+  console.log(env.pm_exec_path || "");
+  console.log(env.pm_cwd || "");
+});
+' "${PM2_APP}" 2>/dev/null || true)"
+if [ -n "${PM2_INFO}" ]; then
+  PM2_SCRIPT="$(printf '%s\n' "${PM2_INFO}" | sed -n '1p')"
+  PM2_CWD="$(printf '%s\n' "${PM2_INFO}" | sed -n '2p')"
+  if [ "${PM2_SCRIPT}" != "${EXPECTED_PM2_SCRIPT}" ] || [ "${PM2_CWD}" != "${EXPECTED_PM2_CWD}" ]; then
+    echo "ERROR: community-edition/deploy.sh refuses to restart PM2 process '${PM2_APP}'." >&2
+    echo "       PM2 is registered against the wrong entrypoint or cwd for this checkout:" >&2
+    echo "         pm2 script path : ${PM2_SCRIPT}" >&2
+    echo "         pm2 cwd         : ${PM2_CWD}" >&2
+    echo "         expected script : ${EXPECTED_PM2_SCRIPT}" >&2
+    echo "         expected cwd    : ${EXPECTED_PM2_CWD}" >&2
+    echo "       This is exactly the Task #298 bug shape — PM2 was registered against" >&2
+    echo "       the full-edition entrypoint (src/index.js) for the community checkout," >&2
+    echo "       which silently served the Pro paywall on dota.stats.corvidaeinc.com." >&2
+    echo "       See the \"One-time PM2 re-registration for community edition\" snippet" >&2
+    echo "       in replit.md for the exact re-registration recipe, then retry." >&2
+    exit 1
+  fi
+fi
+
 pm2 restart "${PM2_APP}" --update-env
 
 echo ""

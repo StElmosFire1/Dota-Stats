@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.28",
+    "title": "Verify PM2 process actually points at this edition's entrypoint before restarting",
+    "published_at": "2026-05-16",
+    "content": "Task #307: v7.26 (Task #302) hard-fails each deploy script when its checkout directory basename looks like the wrong edition, which catches the common shape of the Task #298 mistake. But the heuristic is directory-name only — a host where someone manually renamed the checkout so it happens to match (or a host where the basename aligns by coincidence) could still have PM2 misregistered against the wrong entrypoint, and the gate would happily let the deploy through. The authoritative source of truth for what PM2 will actually exec is `pm2 describe <name>`'s `script path` + `cwd`.\n\n**Fix:** added a second pre-restart gate in both `deploy.sh` and `community-edition/deploy.sh` that reads `pm2 jlist`, extracts `pm2_env.pm_exec_path` + `pm2_env.pm_cwd` for the target process via an inline Node one-liner, and refuses to restart if either doesn't match this checkout's expected entrypoint/cwd. `deploy.sh` expects `${DEPLOY_CWD}/src/index.js` + `${DEPLOY_CWD}` (the full-edition entrypoint and its repo root); `community-edition/deploy.sh` expects `${REPO_ROOT}/community-edition/src/index.js` + `${REPO_ROOT}`. If the PM2 process doesn't exist yet (first-time deploy — `pm2 jlist` doesn't include the name), the gate no-ops so `pm2 restart` can create it. Abort messages print the observed vs. expected pair and point at the one-time PM2 re-registration snippet in `replit.md`. Syntax-checked both scripts with `bash -n`. `replit.md` updated with the new gate section.",
+    "author": "System"
+  },
+  {
     "version": "7.27",
     "title": "Route test pins the community replay-download contract",
     "published_at": "2026-05-16",
