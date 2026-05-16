@@ -5,6 +5,18 @@ const { getReplayParser } = require('./replay/replayParser');
 const db = require('./db');
 const { createServer } = require('./web/server');
 
+function logEditionBanner() {
+  const edition = 'FULL';
+  const cwd = process.cwd();
+  const base = require('path').basename(cwd).toLowerCase();
+  const looksLikeCommunity = base.includes('community') || /dota-stats$/.test(base);
+  if (looksLikeCommunity) {
+    console.warn(`[Startup] WARNING: Running ${edition} edition from ${cwd} — directory name suggests this is a community-edition checkout. The full-edition entrypoint (src/index.js) should run from ~/Dota-Stats-Full/. If PM2 is misconfigured, see the "One-time PM2 re-registration for community edition" snippet in replit.md to re-register the inhouse-bot process against community-edition/src/index.js.`);
+  } else {
+    console.log(`[Startup] Running ${edition} edition from ${cwd}`);
+  }
+}
+
 // Track startup status for health checks
 const startupStatus = {
   discord: false,
@@ -20,6 +32,8 @@ const startupStatus = {
 async function main() {
   console.log('=== Dota 2 Inhouse Stats Bot ===');
   console.log('Starting up...\n');
+
+  logEditionBanner();
 
   validateConfig();
 

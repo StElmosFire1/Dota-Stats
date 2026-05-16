@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.24",
+    "title": "Startup banner: loudly warn if the bot is running the wrong edition for its checkout",
+    "published_at": "2026-05-16",
+    "content": "Task #300: the Task #298 paywall bug went unnoticed for ages because nothing complained when `/root/Dota-Stats/src/index.js` (the FULL-edition entrypoint) was running from inside the COMMUNITY checkout directory — PM2 just happily booted the wrong server and started serving the wrong `web/dist/`. A loud startup line would have made the mismatch obvious in PM2 logs the very first time it happened.\n\n**Fix:** both `src/index.js` and `community-edition/src/index.js` now log a clearly-labelled `[Startup] Running FULL edition from <cwd>` / `[Startup] Running COMMUNITY edition from <cwd>` banner immediately after the boot header. If the cwd basename looks like the wrong edition for the entrypoint that's running (full entrypoint from a path whose basename contains `community` or ends in `dota-stats`; community entrypoint from a path whose basename contains `full`), the line is upgraded to a `console.warn` and points the operator at the one-time PM2 re-registration snippet in `replit.md`. Heuristic is deliberately conservative — basename-only, never blocks startup, only warns. The full-edition prod basename `dota-stats-full` does not match the community heuristic, and the community-edition prod basename `dota-stats` does not match the full heuristic, so a correctly-deployed prod host never sees a false-positive warn.",
+    "author": "System"
+  },
+  {
     "version": "7.23",
     "title": "Community edition is now paywall-free at the source level",
     "published_at": "2026-05-16",
