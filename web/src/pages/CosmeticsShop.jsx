@@ -12,7 +12,7 @@
 //     or bundled with Pro (gold). Frame prices mirror the FRAME_PRICES map
 //     in src/web/server.js (kept in sync via this comment).
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   PREMIUM_TITLES,
@@ -247,6 +247,58 @@ function actionButtonStyle(variant) {
   return { ...base, background: 'rgba(245,158,11,0.12)', color: 'var(--accent)', border: '1px solid var(--border)' };
 }
 
+// v6.84 — click-to-toggle preview replaces v6.80-era hover. The wrap is
+// now a real <button type="button"> with `aria-expanded`, which makes
+// the popup a standard disclosure (announced as "expanded/collapsed" by
+// screen readers, Enter/Space keyboard-equivalent to a click).
+// Trade-off vs hover: one extra click to peek, but the popup stays open
+// while the user inspects it — they can move their mouse off the
+// thumbnail without it vanishing, and it doesn't trigger by accident
+// when scrolling past. ESC closes, click-outside closes, second click
+// on the wrap closes. The hover/focus-within CSS selectors are gone.
+function CosmeticCardPreview({ label, children }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    function onKey(e) { if (e.key === 'Escape') setOpen(false); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <button
+      type="button"
+      ref={wrapRef}
+      className={`cosmetic-card__preview-wrap${open ? ' is-open' : ''}`}
+      aria-expanded={open}
+      aria-label={`Preview: ${label}. ${open ? 'Press to close enlarged preview.' : 'Press to enlarge.'}`}
+      onClick={() => setOpen(o => !o)}
+    >
+      {children}
+      {/*
+        Zoom clone is `aria-hidden` + `inert` so its duplicated content
+        is never announced or focusable. The previews (FramePreview,
+        LayoutThemePreview, TitlePreview) are purely presentational so
+        there are no interactive descendants to gate — the inert is
+        belt-and-braces for any future preview that adds buttons.
+      */}
+      <div className="cosmetic-card__zoom" aria-hidden="true" inert="">
+        <span className="cosmetic-card__zoom-label">{label} — enlarged preview</span>
+        <span className="cosmetic-card__zoom-inner">{children}</span>
+      </div>
+    </button>
+  );
+}
+
 function CosmeticCard({ label, sub, badges, action, preview }) {
   return (
     <div className="cosmetic-card" style={{
@@ -255,30 +307,7 @@ function CosmeticCard({ label, sub, badges, action, preview }) {
       display: 'flex', flexDirection: 'column', gap: 8,
     }}>
       {preview ? (
-        <div
-          className="cosmetic-card__preview-wrap"
-          tabIndex={0}
-          aria-label={`Preview: ${label}. Hover or focus to enlarge.`}
-        >
-          {preview}
-          {/*
-            Zoomed clone is `aria-hidden` (screen readers already saw the real
-            preview above) AND `inert` so any future interactive descendants
-            (none today — VoicePackPreview's ▶ Play button was removed in
-            v6.83) are removed from the focus order and a11y tree, with no
-            duplicate tab stops and no focusable content inside an
-            aria-hidden subtree. `pointer-events: none` is also applied via
-            CSS to the clone's children so a stray mouse click on the
-            enlarged image can't trigger anything buried below. The wrapper
-            itself carries no `role` — `role='img'` would conflict with the
-            original (non-cloned)
-            interactive children rendered above.
-          */}
-          <div className="cosmetic-card__zoom" aria-hidden="true" inert="">
-            <span className="cosmetic-card__zoom-label">{label} — enlarged preview</span>
-            <span className="cosmetic-card__zoom-inner">{preview}</span>
-          </div>
-        </div>
+        <CosmeticCardPreview label={label}>{preview}</CosmeticCardPreview>
       ) : null}
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
         <strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>{label}</strong>

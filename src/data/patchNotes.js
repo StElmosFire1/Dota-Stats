@@ -1939,6 +1939,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "6.84",
+    "title": "Cosmetic preview: click-to-toggle replaces hover",
+    "published_at": "2026-05-16",
+    "content": "Trial swap of the v6.80-era hover-zoom on cosmetic cards to a click-to-toggle disclosure. The thumbnail wrap is now a real `<button type=\"button\">` with `aria-expanded`, which makes the popup a standard a11y disclosure (screen readers announce expanded/collapsed; Enter/Space are keyboard-equivalent to a click; ESC + click-outside close).\n\nWhy worth trying: hover was triggering accidentally during scroll and on tap on touch devices that emulate hover, and `:focus-within` was firing the popup any time a sibling Buy button got keyboard focus. Click trades one extra interaction for stability — the popup stays open while the user looks at it instead of vanishing the moment the cursor drifts off the thumbnail, and it never fires by surprise.\n\nThe `.cosmetic-card:hover` and `:focus-within` CSS selectors are gone; an `.is-open` class added by React state is the only trigger. The popup remains `aria-hidden` + `inert` when closed and visually identical when open (v6.83's width fix still applies).\n\nA11y gate green (152 JSX / 4 CSS).",
+    "author": "System"
+  },
+  {
     "version": "6.83",
     "title": "Cosmetic hover-popup actually shows the preview · Voice pack ▶ Play button removed",
     "published_at": "2026-05-16",
