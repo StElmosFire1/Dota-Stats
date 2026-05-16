@@ -87,6 +87,74 @@ function FramePreview({ ring }: { ring: string }) {
   return <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#2a3142', border: `3px solid ${ring}`, boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }}/>;
 }
 
+// Animated founders ring. Two static engraved rails (brass), with a single
+// soft highlight that slowly travels around the outer rail (18s). Inner
+// glow breathes 8s. Polished, restrained, jewelry-quality — not a spinner.
+function FoundersRing({ size = 200 }: { size?: number }) {
+  const rail = Math.max(2, Math.round(size * 0.022));
+  const inset = rail + 2;
+  const innerInset = rail + 6;
+  return (
+    <div style={{ position: 'relative', width: size, height: size }}>
+      {/* Outer engraved rail */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: '50%',
+        background: `conic-gradient(from 220deg, #8a7448, #c5a975, #e3c98a, #c5a975, #8a7448, #6b5530, #8a7448)`,
+        WebkitMask: `radial-gradient(circle, transparent calc(50% - ${rail + 1}px), #000 calc(50% - ${rail}px), #000 calc(50% - 1px), transparent 50%)`,
+                mask: `radial-gradient(circle, transparent calc(50% - ${rail + 1}px), #000 calc(50% - ${rail}px), #000 calc(50% - 1px), transparent 50%)`,
+      }}/>
+      {/* Slow travelling highlight (the only motion on the outer rail) */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: '50%',
+        animation: 'fp-sweep 18s linear infinite',
+      }}>
+        <div style={{
+          position: 'absolute', top: `-${rail / 2}px`, left: '50%', width: rail * 2.4, height: rail * 2.4,
+          marginLeft: -rail * 1.2, borderRadius: '50%',
+          background: 'radial-gradient(circle, #fffbe6 0%, rgba(252,211,77,0.7) 35%, transparent 70%)',
+          filter: 'blur(1px)',
+        }}/>
+      </div>
+      {/* Inner thin rail */}
+      <div style={{
+        position: 'absolute', inset: innerInset, borderRadius: '50%',
+        border: `1px solid rgba(197,169,117,0.6)`,
+      }}/>
+      {/* Avatar disc */}
+      <div style={{
+        position: 'absolute', inset: inset + 4, borderRadius: '50%',
+        background: 'radial-gradient(circle at 35% 30%, #3a4560 0%, #1a2236 60%, #0d1424 100%)',
+      }}/>
+      {/* Soft inner glow breathing */}
+      <div style={{
+        position: 'absolute', inset: inset + 4, borderRadius: '50%',
+        boxShadow: `inset 0 0 ${Math.round(size * 0.12)}px rgba(245,158,11,0.35)`,
+        animation: 'fp-breathe 8s ease-in-out infinite',
+      }}/>
+      {size >= 80 ? (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'Playfair Display, Georgia, serif', fontStyle: 'italic',
+          color: '#c5a975', fontSize: Math.round(size * 0.07), letterSpacing: 1,
+          textShadow: '0 1px 2px rgba(0,0,0,0.7)',
+        }}>BAD1</div>
+      ) : null}
+    </div>
+  );
+}
+
+function FounderBadge() {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 8px', borderRadius: 4,
+      background: 'rgba(245,158,11,0.12)', border: `1px solid rgba(245,158,11,0.5)`,
+      fontFamily: 'Oswald, sans-serif', fontSize: 10, letterSpacing: 2,
+      textTransform: 'uppercase', color: '#f59e0b',
+    }}>✦ Founder</span>
+  );
+}
+
 export function Boutique() {
   return (
     <div style={{ background: bg, minHeight: '100vh', fontFamily: fSans, color: text }}>
@@ -98,16 +166,22 @@ export function Boutique() {
       <SubNav/>
       <div style={{ maxWidth: 1140, margin: '0 auto', padding: '0 24px 80px' }}>
 
-        {/* HERO — Founders Pass with animated shimmer ring */}
+        {/* HERO — Founders Pass with slow upscale ring animation */}
         <style>{`
-          @keyframes fp-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-          @keyframes fp-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.35), 0 12px 32px rgba(0,0,0,0.6); }
-                                50%       { box-shadow: 0 0 0 14px rgba(245,158,11,0), 0 12px 32px rgba(0,0,0,0.6); } }
-          @keyframes fp-shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+          /* Slow 18s clockwise sweep — a single highlight travels around the
+             ring like light catching a polished band. No spinning gradient. */
+          @keyframes fp-sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          /* Very subtle inner glow breathing, 8s, ease-in-out. */
+          @keyframes fp-breathe { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+          /* Tiny independent ember orbit at 14s. */
+          @keyframes fp-ember { from { transform: rotate(0deg) translateX(98px) rotate(0deg); }
+                                to   { transform: rotate(360deg) translateX(98px) rotate(-360deg); } }
+          /* Mini ring variants for the surface previews — slower for restraint. */
+          @keyframes fp-sweep-mini { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         `}</style>
         <section id="founders" style={{
-          background: `linear-gradient(135deg, #152036 0%, #1a2744 100%)`,
-          borderRadius: 14, padding: '48px 56px',
+          background: `radial-gradient(circle at 80% 30%, #1f2a48 0%, #152036 50%, #0f1729 100%)`,
+          borderRadius: 14, padding: '52px 56px',
           display: 'grid', gridTemplateColumns: '1fr auto', gap: 48, alignItems: 'center',
           position: 'relative', overflow: 'hidden', marginBottom: 40,
           border: `1px solid ${border}`,
@@ -117,12 +191,12 @@ export function Boutique() {
             <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 4, textTransform: 'uppercase', color: amber, marginBottom: 12 }}>The Founders Pass · 588 remaining</div>
             <h1 style={{ fontFamily: fSerif, fontSize: 44, fontWeight: 700, margin: '0 0 14px', lineHeight: 1.1, color: text }}>Be a founder of OCE Inhouse.</h1>
             <p style={{ fontFamily: fSans, fontSize: 15, color: muted, lineHeight: 1.55, marginBottom: 18, maxWidth: 460 }}>
-              An animated founders ring on your avatar — visible on the
+              A polished animated ring on your avatar — visible on the
               leaderboard, every match card, the inhouse lobby, and your
               profile. Capped at 1,000, one-time, Stripe only.
             </p>
             <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 26px', fontFamily: fSans, fontSize: 13, color: muted, display: 'grid', gap: 6 }}>
-              <li>✦ Animated brass-and-amber ring (founders exclusive)</li>
+              <li>✦ Animated founders ring (founders exclusive)</li>
               <li>✦ "Founder" badge beside your name everywhere it appears</li>
               <li>✦ Permanent leaderboard hover-card highlight</li>
               <li>✦ 2,000 spendable coins included</li>
@@ -132,46 +206,103 @@ export function Boutique() {
               fontFamily: fCond, fontSize: 14, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer',
             }}>Claim founder status — $39 USD</button>
           </div>
-          {/* Animated ring: rotating brass/amber shimmer gradient + soft amber pulse */}
-          <div style={{ position: 'relative', width: 200, height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{
-              position: 'absolute', inset: 0, borderRadius: '50%',
-              background: `conic-gradient(from 0deg, ${brass}, ${amber}, #fcd34d, ${amber}, ${brass}, #8a7448, ${brass})`,
-              animation: 'fp-rotate 6s linear infinite',
-              filter: 'blur(0.5px)',
-            }}/>
-            <div style={{
-              position: 'absolute', inset: 8, borderRadius: '50%',
-              background: '#0d1424',
-            }}/>
-            <div style={{
-              position: 'absolute', inset: 14, borderRadius: '50%',
-              background: 'radial-gradient(circle at 35% 30%, #3a4560 0%, #1a2236 60%, #0d1424 100%)',
-              animation: 'fp-pulse 2.4s ease-in-out infinite',
-            }}/>
-            <div style={{
-              position: 'relative', zIndex: 1, fontFamily: fSerif, fontSize: 13, fontStyle: 'italic',
-              color: amber, letterSpacing: 1, textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-            }}>your avatar</div>
-          </div>
+
+          {/* Large showcase ring */}
+          <FoundersRing size={220}/>
         </section>
 
-        {/* Where you'll be seen */}
-        <section style={{ marginBottom: 56, padding: '20px 24px', background: card, border: `1px solid ${border}`, borderRadius: 10 }}>
-          <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass, marginBottom: 10 }}>Where you'll be seen</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
-            {[
-              ['Leaderboard', 'Ring renders next to your name in every top-100 row.'],
-              ['Match cards', 'Both teams see the ring on hover and in post-match.'],
-              ['Inhouse lobby', 'Live captain-draft screen shows founders first.'],
-              ['Profile page', 'Permanent founders banner above your stats.'],
-              ['Discord recap', 'Weekly recap embed tags founders with the ring.'],
-            ].map(([t, d]) => (
-              <div key={t} style={{ background: hover, borderRadius: 8, padding: 14, border: `1px solid ${border}` }}>
-                <div style={{ fontFamily: fSerif, fontSize: 14, color: text, fontWeight: 600, marginBottom: 4 }}>{t}</div>
-                <div style={{ fontFamily: fSans, fontSize: 11, color: dim, lineHeight: 1.45 }}>{d}</div>
+        {/* Where you'll be seen — actual rendered surfaces */}
+        <section style={{ marginBottom: 56 }}>
+          <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 4, textTransform: 'uppercase', color: brass, marginBottom: 8 }}>Where you'll be seen</div>
+          <h2 style={{ fontFamily: fSerif, fontSize: 26, fontWeight: 700, margin: '0 0 18px', color: text }}>The ring follows you across the site.</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 16 }}>
+
+            {/* Leaderboard row preview */}
+            <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 18 }}>
+              <div style={{ fontFamily: fCond, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: dim, marginBottom: 10 }}>Leaderboard · Top 5</div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {[
+                  { rank: 1, name: 'BAD1', mmr: 7265, founder: true },
+                  { rank: 2, name: 'Lemon Burtle', mmr: 6940, founder: false },
+                  { rank: 3, name: 'Astro', mmr: 6802, founder: true },
+                ].map(p => (
+                  <div key={p.rank} style={{
+                    display: 'grid', gridTemplateColumns: '32px 48px 1fr auto', gap: 12, alignItems: 'center',
+                    padding: '8px 10px', background: p.founder ? 'rgba(245,158,11,0.06)' : 'transparent',
+                    border: `1px solid ${p.founder ? 'rgba(245,158,11,0.25)' : border}`, borderRadius: 6,
+                  }}>
+                    <div style={{ fontFamily: fSerif, fontStyle: 'italic', color: dim, fontSize: 16 }}>{p.rank}</div>
+                    {p.founder ? <FoundersRing size={36}/> : <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#2a3142', border: `2px solid ${border}` }}/>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontFamily: fSans, fontSize: 14, color: text, fontWeight: 600 }}>{p.name}</span>
+                      {p.founder ? <FounderBadge/> : null}
+                    </div>
+                    <span style={{ fontFamily: fCond, fontSize: 14, color: brass, letterSpacing: 1 }}>{p.mmr} MMR</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+
+            {/* Profile header preview */}
+            <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 18 }}>
+              <div style={{ fontFamily: fCond, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: dim, marginBottom: 10 }}>Profile header</div>
+              <div style={{
+                background: 'linear-gradient(135deg, #1a2744, #152036)',
+                borderRadius: 8, padding: '20px 22px',
+                border: `1px solid rgba(245,158,11,0.25)`,
+                position: 'relative', overflow: 'hidden',
+                display: 'flex', alignItems: 'center', gap: 16,
+              }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${amber}, transparent)` }}/>
+                <FoundersRing size={68}/>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontFamily: fSerif, fontSize: 20, color: text, fontWeight: 700 }}>BAD1</span>
+                    <FounderBadge/>
+                  </div>
+                  <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: amber }}>Founder · #042 of 1,000</div>
+                  <div style={{ fontFamily: fSans, fontSize: 12, color: muted, marginTop: 4 }}>7,265 MMR · Tier I · PERF 8.5</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Match card preview */}
+            <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 18 }}>
+              <div style={{ fontFamily: fCond, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: dim, marginBottom: 10 }}>Match card · Radiant lineup</div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {[
+                  { name: 'BAD1', hero: 'Invoker', k: 14, d: 3, a: 9, founder: true },
+                  { name: 'Lemon Burtle', hero: 'Lifestealer', k: 11, d: 4, a: 8, founder: false },
+                  { name: 'Astro', hero: 'Earthshaker', k: 4, d: 6, a: 18, founder: true },
+                ].map(r => (
+                  <div key={r.name} style={{ display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: 10, alignItems: 'center', padding: '4px 0' }}>
+                    {r.founder ? <FoundersRing size={26}/> : <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2a3142', border: `2px solid ${border}` }}/>}
+                    <div>
+                      <div style={{ fontFamily: fSans, fontSize: 12, color: text }}>{r.name} {r.founder ? <span style={{ color: amber, fontSize: 10, letterSpacing: 1, marginLeft: 4 }}>✦</span> : null}</div>
+                      <div style={{ fontFamily: fSans, fontSize: 10, color: dim }}>{r.hero}</div>
+                    </div>
+                    <div style={{ fontFamily: fCond, fontSize: 12, color: muted, letterSpacing: 1 }}>{r.k}/{r.d}/{r.a}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Discord embed preview */}
+            <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 18 }}>
+              <div style={{ fontFamily: fCond, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: dim, marginBottom: 10 }}>Discord weekly recap</div>
+              <div style={{ background: '#2b2d31', borderLeft: `3px solid ${amber}`, borderRadius: 4, padding: '12px 14px', fontFamily: 'system-ui, sans-serif' }}>
+                <div style={{ fontSize: 11, color: '#b5bac1', marginBottom: 6 }}>OCE Inhouse Bot · Week 12 Recap</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                  <FoundersRing size={32}/>
+                  <div style={{ fontSize: 13, color: '#f2f3f5', fontWeight: 600 }}>BAD1 <span style={{ color: amber, fontSize: 11, marginLeft: 4 }}>FOUNDER</span></div>
+                </div>
+                <div style={{ fontSize: 12, color: '#dbdee1', lineHeight: 1.5 }}>
+                  Topped the leaderboard with 7,265 MMR. PERF score 8.5
+                  — highest across every recorded match this week.
+                </div>
+              </div>
+            </div>
+
           </div>
         </section>
 
