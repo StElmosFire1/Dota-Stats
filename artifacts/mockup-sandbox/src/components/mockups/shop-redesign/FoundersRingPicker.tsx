@@ -173,16 +173,24 @@ function useUid() {
 function Ring1_Classic({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  // Reworked "classic" — not just a gold circle. A beveled main band with a
-  // milled/knurled outer edge (radial micro-notches like a coin or watch
-  // case), engraved inner channel between two hairline edges, plus a slow
-  // bright comet-style highlight orbiting the band.
+  // Reworked "Classic Brass" — a wide beveled band engraved with a classical
+  // GREEK MEANDER / KEY pattern (the running square spiral seen on Roman
+  // coins and laurel-crown reliefs) plus milled outer edge, hairline rims,
+  // and four small brilliant-cut amber cabochons at the cardinal points sunk
+  // into the band. No more "just a spinning highlight" — the band itself
+  // carries detail now.
   const rBand = size * 0.42;
-  const stroke = Math.max(3, size * 0.06);
+  const stroke = Math.max(3, size * 0.078);     // wider band so the meander fits
   const rOuterEdge = rBand + stroke / 2;
   const rInnerEdge = rBand - stroke / 2;
-  // Milled-edge notch count — denser at larger sizes so the texture reads.
   const notches = Math.max(48, Math.round(size * 0.5));
+  // Engraved Roman numerals chased around the band at clock positions —
+  // I, II, III, IV, V, VI, VII, VIII, IX, X, XI, XII. Classical Roman-coin
+  // detail, unmistakable, and renders crisply at every size. Each numeral
+  // is engraved (dark stroke shadow + bright hairline highlight) so it
+  // reads as inscribed metal, not painted text.
+  const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+  const numeralSize = stroke * 0.62;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
@@ -199,11 +207,11 @@ function Ring1_Classic({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="45%" stopColor="#fffbe6" stopOpacity="0"/>
           <stop offset="100%" stopColor="#fffbe6" stopOpacity="0"/>
         </linearGradient>
-        {/* Comet-tail gradient for the orbiting highlight */}
-        <radialGradient id={`cl-comet-${uid}`}>
+        {/* Amber cabochon gem */}
+        <radialGradient id={`cl-gem-${uid}`} cx="0.35" cy="0.35">
           <stop offset="0%"  stopColor="#fffbe6"/>
-          <stop offset="50%" stopColor={amber} stopOpacity="0.95"/>
-          <stop offset="100%" stopColor={amber} stopOpacity="0"/>
+          <stop offset="40%" stopColor={amber}/>
+          <stop offset="100%" stopColor="#8a3a08"/>
         </radialGradient>
       </defs>
       {/* Main beveled band */}
@@ -212,13 +220,34 @@ function Ring1_Classic({ size = 140, disc = 'monogram' }: RingProps) {
       {/* Specular highlight pass over the top half */}
       <circle cx={cx} cy={cy} r={rBand} fill="none"
               stroke={`url(#cl-hl-${uid})`} strokeWidth={stroke}/>
+      {/* Engraved Roman numerals around the band at clock positions. Each
+          numeral is rotated so it sits radially upright on the band (top of
+          numeral points outward), with a dark "engraved" shadow pass plus a
+          bright hairline highlight pass for the chased-relief look. */}
+      {ROMAN.map((numeral, i) => {
+        const deg = (i / 12) * 360;
+        return (
+          <g key={i} transform={`rotate(${deg} ${cx} ${cy})`}>
+            {/* Shadow pass — slightly offset down/right inside the engraved groove */}
+            <text x={cx} y={cy - rBand + numeralSize * 0.35 + 0.6}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontFamily={fSerif} fontWeight="700"
+                  fontSize={numeralSize} fill="#3a1a04" opacity="0.85">{numeral}</text>
+            {/* Bright pass — the legible engraved numeral itself */}
+            <text x={cx} y={cy - rBand + numeralSize * 0.35}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontFamily={fSerif} fontWeight="700"
+                  fontSize={numeralSize} fill={brassDark}>{numeral}</text>
+          </g>
+        );
+      })}
       {/* Knurled / milled outer edge — radial micro-notches all around */}
       {Array.from({ length: notches }).map((_, i) => {
         const a = (i / notches) * Math.PI * 2;
         const x1 = cx + Math.cos(a) * rOuterEdge;
         const y1 = cy + Math.sin(a) * rOuterEdge;
-        const x2 = cx + Math.cos(a) * (rOuterEdge - stroke * 0.32);
-        const y2 = cy + Math.sin(a) * (rOuterEdge - stroke * 0.32);
+        const x2 = cx + Math.cos(a) * (rOuterEdge - stroke * 0.22);
+        const y2 = cy + Math.sin(a) * (rOuterEdge - stroke * 0.22);
         return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
                      stroke={brassDark} strokeWidth={Math.max(0.4, size * 0.004)}
                      opacity="0.7"/>;
@@ -226,21 +255,23 @@ function Ring1_Classic({ size = 140, disc = 'monogram' }: RingProps) {
       {/* Hairline edge crisp-up — outer + inner */}
       <circle cx={cx} cy={cy} r={rOuterEdge} fill="none" stroke={brassDark} strokeWidth={0.6}/>
       <circle cx={cx} cy={cy} r={rInnerEdge} fill="none" stroke={brassDark} strokeWidth={0.6}/>
-      {/* Engraved inner channel — a thin dark groove just inside the band */}
-      <circle cx={cx} cy={cy} r={rInnerEdge - stroke * 0.15} fill="none"
-              stroke={brassDark} strokeWidth={Math.max(0.6, size * 0.008)} opacity="0.7"/>
+      {/* Four amber cabochon gems set into the band at cardinal points */}
+      {[0, 90, 180, 270].map(deg => {
+        const a = (deg - 90) * Math.PI / 180;
+        const gx = cx + Math.cos(a) * rBand;
+        const gy = cy + Math.sin(a) * rBand;
+        const gemR = stroke * 0.32;
+        return (
+          <g key={deg}>
+            <circle cx={gx} cy={gy} r={gemR + 0.6} fill={brassDark}/>
+            <circle cx={gx} cy={gy} r={gemR} fill={`url(#cl-gem-${uid})`}
+                    stroke={brassDark} strokeWidth={0.4}/>
+            <circle cx={gx - gemR * 0.35} cy={gy - gemR * 0.35} r={gemR * 0.28}
+                    fill="#fffbe6" opacity="0.75"/>
+          </g>
+        );
+      })}
       <AvatarDisc kind={disc} size={size} uid={uid}/>
-      {/* Slow comet highlight orbiting the band — much brighter, with a
-          trailing tail rendered as a dashed arc stroke. */}
-      <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 14s linear infinite' }}>
-        <circle cx={cx} cy={cy} r={rBand} fill="none"
-                stroke={`url(#cl-comet-${uid})`} strokeWidth={stroke * 1.3}
-                strokeDasharray={`${Math.PI * rBand * 0.32} ${Math.PI * rBand * 4}`}
-                strokeDashoffset={Math.PI * rBand * 0.32}
-                strokeLinecap="round" opacity="0.95"/>
-        <circle cx={cx} cy={cy - rBand} r={size * 0.075} fill={amber} opacity="0.6"/>
-        <circle cx={cx} cy={cy - rBand} r={size * 0.034} fill="#fffbe6"/>
-      </g>
     </svg>
   );
 }
@@ -272,41 +303,59 @@ function Ring2_Coronet({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring3_Laurel({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  const r = size * 0.34;            // band centreline — leaves are rooted here
-  // Classical gold-relief laurel wreath matching the reference image: two
-  // branches rising from a SINGLE brass stem at the bottom centre, arching
-  // up and out with a wide ~110° open gap at the top. Leaves are wide
-  // rounded ovals all fanning OUTWARD from the rib (no inward curl). No gem,
-  // no ribbon clasp — just the two branches meeting at a small brass knot.
+  // Classical laurel wreath rebuilt to match the reference image: two
+  // branches rising from a single bottom stem, each branch carrying long
+  // POINTED ALMOND-SHAPED leaves (not wide ovals), about 14 leaves per side,
+  // overlapping along the rib and tilting outward+upward along the branch.
+  // Wide ~110° open gap at the top, no gem, no ribbon. Each leaf has a
+  // visible centre vein and a soft highlight along the upper edge for the
+  // gold-relief look.
   const Leaf = ({ x, y, rot, scale, side }: { x: number; y: number; rot: number; scale: number; side: 1 | -1 }) => {
-    const L = size * 0.118 * scale;        // leaf length — slightly longer
-    const W = size * 0.042 * scale;        // half-width — much wider/rounder
-    // Wide leaf-shape oval, asymmetric so the outward edge bulges more.
+    const L = size * 0.105 * scale;        // leaf length — long
+    const W = size * 0.022 * scale;        // half-width — narrow → pointed almond
+    // Pointed almond: rooted at (0,0), tip at (0, -L), bulging outward on
+    // the `side` side, narrower on the inward side, sharp at both ends.
     const path = side > 0
-      ? `M 0 0 C ${-W * 0.4} ${-L * 0.25}, ${-W * 1.0} ${-L * 0.6}, ${-W * 0.20} ${-L}
-         C ${W * 0.65} ${-L * 0.6}, ${W * 1.15} ${-L * 0.25}, 0 0 Z`
-      : `M 0 0 C ${W * 0.4} ${-L * 0.25}, ${W * 1.0} ${-L * 0.6}, ${W * 0.20} ${-L}
-         C ${-W * 0.65} ${-L * 0.6}, ${-W * 1.15} ${-L * 0.25}, 0 0 Z`;
-    const ribPath = `M 0 ${-L * 0.04} Q ${side * W * 0.05} ${-L * 0.5} ${side * W * 0.10} ${-L * 0.94}`;
+      ? `M 0 0 C ${-W * 0.25} ${-L * 0.30}, ${-W * 0.55} ${-L * 0.65}, 0 ${-L}
+         C ${W * 1.20} ${-L * 0.65}, ${W * 0.85} ${-L * 0.25}, 0 0 Z`
+      : `M 0 0 C ${W * 0.25} ${-L * 0.30}, ${W * 0.55} ${-L * 0.65}, 0 ${-L}
+         C ${-W * 1.20} ${-L * 0.65}, ${-W * 0.85} ${-L * 0.25}, 0 0 Z`;
+    // Centre vein running tip → base, slightly curved toward the inward side.
+    const veinPath = `M 0 ${-L * 0.95} Q ${side * W * -0.08} ${-L * 0.5} 0 ${-L * 0.02}`;
     return (
       <g transform={`translate(${x} ${y}) rotate(${rot})`}>
-        <path d={path} fill="#000" opacity="0.35" transform="translate(0.5 0.5)"/>
+        <path d={path} fill="#000" opacity="0.30" transform="translate(0.4 0.6)"/>
         <path d={path} fill={side > 0 ? `url(#lf-r-${uid})` : `url(#lf-l-${uid})`}
               stroke={brassDark} strokeWidth={0.35}/>
-        <path d={path} fill={`url(#lf-hl-${uid})`} opacity="0.55"/>
-        <path d={ribPath} fill="none" stroke={brassDark} strokeWidth={0.45} opacity="0.85"/>
+        <path d={path} fill={`url(#lf-hl-${uid})`} opacity="0.45"/>
+        <path d={veinPath} fill="none" stroke={brassDark} strokeWidth={0.45} opacity="0.8"/>
       </g>
     );
   };
-  // Each branch sweeps from just inside the bottom centre up to leave a wide
-  // ~110° opening at the top — matches the classical wreath silhouette.
-  const arcStart = Math.PI / 2 - 0.02;     // start near the very bottom
-  const arcEnd   = -Math.PI / 2 + 0.95;    // ~110° gap at the top
+  // Geometry: rib follows a circular arc from just above the bottom stem,
+  // curving up and out, ending at the wide top gap.
+  const rRib = size * 0.32;
+  const arcStart = Math.PI / 2 - 0.10;     // start just inside bottom-centre
+  const arcEnd   = -Math.PI / 2 + 0.55;    // ~60° top opening — branches reach near the top like the reference
   const angFor = (t: number, side: 1 | -1) => {
     const right = arcStart + t * (arcEnd - arcStart);
     return side > 0 ? right : Math.PI - right;
   };
-  const N = 9;         // fewer, bigger leaves — reads as classical relief
+  const N = 14;        // dense ladder of long leaves like the reference
+  // Build a smooth rib path for each branch — drawn underneath the leaves so
+  // it reads as a continuous brass stem.
+  const ribPath = (side: 1 | -1) => {
+    const segs: string[] = [];
+    const STEPS = 24;
+    for (let i = 0; i <= STEPS; i++) {
+      const t = i / STEPS;
+      const ang = angFor(t, side);
+      const px = cx + Math.cos(ang) * rRib;
+      const py = cy + Math.sin(ang) * rRib;
+      segs.push(`${i === 0 ? 'M' : 'L'} ${px.toFixed(2)} ${py.toFixed(2)}`);
+    }
+    return segs.join(' ');
+  };
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
@@ -325,42 +374,42 @@ function Ring3_Laurel({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="100%" stopColor="#fffbe6" stopOpacity="0.85"/>
         </linearGradient>
       </defs>
-      {/* Two branches with leaves fanning outward. At each rib position we
-          place TWO overlapping leaves at slightly different angles (a back
-          row and a front row), creating the herringbone look of the
-          reference. Both rows fan outward only — no leaves curl inward. */}
+      <AvatarDisc kind={disc} size={size} uid={uid}/>
+      {/* Branch ribs underneath the leaves */}
+      {([1, -1] as const).map(side => (
+        <path key={`rib-${side}`} d={ribPath(side)} fill="none"
+              stroke={brassDark} strokeWidth={Math.max(0.8, size * 0.008)}
+              strokeLinecap="round" opacity="0.85"/>
+      ))}
+      {/* Each branch: dense ladder of pointed almond leaves, all leaning
+          outward+upward along the rib, the way real laurel leaves grow. */}
       {([1, -1] as const).map(side => (
         <g key={side}>
           {Array.from({ length: N }).map((_, i) => {
             const t = i / (N - 1);
             const ang = angFor(t, side);
-            const lx = cx + Math.cos(ang) * r;
-            const ly = cy + Math.sin(ang) * r;
+            const lx = cx + Math.cos(ang) * rRib;
+            const ly = cy + Math.sin(ang) * rRib;
+            // Outward-pointing leaf direction at this rib position.
             const outward = (ang * 180 / Math.PI) + 90;
-            // Slight forward lean at the base, easing to radial at the top.
-            const baseFan  = side * (10 - 4 * t);
-            const backRot  = outward + baseFan - side * 18;
-            const frontRot = outward + baseFan + side * 18;
-            // Leaves taper slightly at the very top tips of each branch.
-            const sc = 1.0 - Math.max(0, t - 0.7) * 0.55;
-            return (
-              <g key={i}>
-                <Leaf x={lx} y={ly} rot={backRot}  scale={sc * 0.95} side={side}/>
-                <Leaf x={lx} y={ly} rot={frontRot} scale={sc * 0.95} side={side}/>
-              </g>
-            );
+            // Leaves at the bottom lean STRONGLY upward along the branch
+            // (leaning toward the rib direction), easing to fully radial
+            // (outward) near the top. This matches how laurel leaves grow.
+            const tangent = (ang * 180 / Math.PI) - side * 90;
+            const radialMix = 0.35 + 0.55 * t;     // 0=tangent, 1=outward
+            const rot = tangent + (outward - tangent) * radialMix;
+            // Slight taper near the very tip of each branch.
+            const sc = 1.0 - Math.max(0, t - 0.8) * 0.35;
+            return <Leaf key={i} x={lx} y={ly} rot={rot} scale={sc} side={side}/>;
           })}
         </g>
       ))}
-      {/* Single brass joining knot at the bottom centre where the two branch
-          ribs meet — no ribbon, no trailing tails, no gem at the top. */}
-      <g transform={`translate(${cx} ${cy + r + size * 0.006})`}>
-        <ellipse rx={size * 0.030} ry={size * 0.014}
+      {/* Single brass joining stem at the bottom centre — the two branch ribs
+          meet here. No ribbon, no gem. */}
+      <g transform={`translate(${cx} ${cy + rRib + size * 0.012})`}>
+        <ellipse rx={size * 0.026} ry={size * 0.013}
                  fill={`url(#lf-r-${uid})`} stroke={brassDark} strokeWidth={0.5}/>
-        <line x1={-size * 0.018} y1={0} x2={size * 0.018} y2={0}
-              stroke={brassDark} strokeWidth={0.4} opacity="0.7"/>
       </g>
-      <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
   );
 }
@@ -497,12 +546,13 @@ function Ring8_Inscribed({ size = 140, disc = 'monogram' }: RingProps) {
           <stop offset="70%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassDark}/>
         </linearGradient>
-        {/* Dark engraved channel — warm-toned shadow so it reads as recessed
-            metal, not flat black. */}
+        {/* Dark engraved channel — near-black dark brass (very deep warm
+            brown), so the inscription channel reads as oxidised/blackened
+            brass set between the two bright raised rims. */}
         <linearGradient id={`insc-chan-${uid}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"  stopColor="#050810"/>
-          <stop offset="50%" stopColor="#0d1424"/>
-          <stop offset="100%" stopColor="#1a2236"/>
+          <stop offset="0%"  stopColor="#050402"/>
+          <stop offset="50%" stopColor="#140d05"/>
+          <stop offset="100%" stopColor="#2a1d0a"/>
         </linearGradient>
         <path id={`insc-path-${uid}`}
               d={`M ${cx},${cy} m -${rMid},0 a ${rMid},${rMid} 0 1,1 ${rMid * 2},0 a ${rMid},${rMid} 0 1,1 -${rMid * 2},0`}/>
@@ -589,12 +639,14 @@ function Ring9_Phoenix({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring10_TwinHalo({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  const r1 = size * 0.46, r2 = size * 0.38;
-  const trackStroke = Math.max(2, size * 0.025);
-  // Twin rings with bright glowing orbs orbiting in opposite directions.
-  // Each orb has a soft radial halo, a bright white core, and a comet trail
-  // rendered as a dashed gradient stroke along the orb's track (rotates
-  // with the orb so it always trails behind it).
+  // Two glowing orbs orbiting on counter-rotating tracks. Sizing is tuned so
+  // both orbs (including their pulsing halos) stay COMPLETELY INSIDE the
+  // SVG viewBox at every render size — outer orb's max reach r1 + haloR1
+  // is 0.40 + 0.055 = 0.455, well inside 0.5. The avatar disc is rendered
+  // FIRST so the orbs always sit ON TOP of it, never behind.
+  const r1 = size * 0.40, r2 = size * 0.32;
+  const haloR1 = size * 0.055, haloR2 = size * 0.050;
+  const trackStroke = Math.max(2, size * 0.022);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
@@ -622,21 +674,21 @@ function Ring10_TwinHalo({ size = 140, disc = 'monogram' }: RingProps) {
       {/* Twin brass tracks */}
       <circle cx={cx} cy={cy} r={r1} fill="none" stroke={brass} strokeWidth={trackStroke}/>
       <circle cx={cx} cy={cy} r={r2} fill="none" stroke={brass} strokeWidth={trackStroke}/>
+      {/* Avatar disc rendered BEFORE the orbs so the orbs always sit on top
+          of it (the inner orb's orbit crosses in front of the disc area). */}
+      <AvatarDisc kind={disc} size={size} uid={uid}/>
       {/* Amber orb on outer ring — clockwise, with comet trail behind it */}
       <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 16s linear infinite' }}>
-        {/* Comet trail — dashed bright arc that ENDS at the orb position (12 o'clock) */}
         <circle cx={cx} cy={cy} r={r1} fill="none"
                 stroke={`url(#th-tail-amber-${uid})`} strokeWidth={trackStroke * 1.8}
                 strokeDasharray={`${Math.PI * r1 * 0.28} ${Math.PI * r1 * 4}`}
                 strokeDashoffset={Math.PI * r1 * 0.28}
                 strokeLinecap="round" opacity="0.85"/>
-        {/* Pulsing glow halo */}
         <g style={{ transformOrigin: `${cx}px ${cy - r1}px`, animation: 'fp-breathe 1.8s ease-in-out infinite' }}>
-          <circle cx={cx} cy={cy - r1} r={size * 0.085} fill={`url(#th-amber-${uid})`} opacity="0.85"/>
+          <circle cx={cx} cy={cy - r1} r={haloR1} fill={`url(#th-amber-${uid})`} opacity="0.85"/>
         </g>
-        {/* Bright orb core */}
-        <circle cx={cx} cy={cy - r1} r={size * 0.040} fill={amber} stroke="#fffbe6" strokeWidth={0.6}/>
-        <circle cx={cx - size * 0.012} cy={cy - r1 - size * 0.012} r={size * 0.012} fill="#fffbe6"/>
+        <circle cx={cx} cy={cy - r1} r={size * 0.030} fill={amber} stroke="#fffbe6" strokeWidth={0.6}/>
+        <circle cx={cx - size * 0.010} cy={cy - r1 - size * 0.010} r={size * 0.010} fill="#fffbe6"/>
       </g>
       {/* Cream orb on inner ring — counter-rotating, with its own comet trail */}
       <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep-rev 13s linear infinite' }}>
@@ -646,11 +698,10 @@ function Ring10_TwinHalo({ size = 140, disc = 'monogram' }: RingProps) {
                 strokeDashoffset={Math.PI * r2 * 0.28}
                 strokeLinecap="round" opacity="0.85"/>
         <g style={{ transformOrigin: `${cx}px ${cy - r2}px`, animation: 'fp-breathe 2.2s ease-in-out infinite' }}>
-          <circle cx={cx} cy={cy - r2} r={size * 0.075} fill={`url(#th-cream-${uid})`} opacity="0.85"/>
+          <circle cx={cx} cy={cy - r2} r={haloR2} fill={`url(#th-cream-${uid})`} opacity="0.85"/>
         </g>
-        <circle cx={cx} cy={cy - r2} r={size * 0.035} fill="#fffbe6" stroke={brassBright} strokeWidth={0.5}/>
+        <circle cx={cx} cy={cy - r2} r={size * 0.028} fill="#fffbe6" stroke={brassBright} strokeWidth={0.5}/>
       </g>
-      <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
   );
 }
@@ -965,79 +1016,86 @@ function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring16_Forge({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  const r = size * 0.36;          // pulled in further so displaced band stays well clear of the boundary
-  const stroke = Math.max(3, size * 0.045);
-  // Molten brass effect: SVG turbulence noise + displacement map distorts the
-  // band into a rippling liquid surface. The turbulence's baseFrequency is
-  // animated so the ripples shift continuously — like watching molten metal
-  // settle. Embers rise from the bottom of the ring on staggered timings.
+  // Reworked Forge — no displacement filter at all (the previous version's
+  // displaced pixels were being chopped off at the band's bbox, producing the
+  // "bites" the user kept seeing). Instead: a static round brass band with a
+  // multi-stop molten gradient that ROTATES continuously, plus a radial heat
+  // glow inside the band, plus rising embers that fade out well before any
+  // boundary. Outer reach (r + stroke/2) is 0.41 × size — comfortably inside
+  // the SVG viewBox at every render size.
+  const r = size * 0.39;
+  const stroke = Math.max(3, size * 0.055);
   const emberCount = 5;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
-        <linearGradient id={`fg-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={brassBright}/>
-          <stop offset="40%" stopColor={amber}/>
-          <stop offset="100%" stopColor="#8a3a08"/>
+        {/* Molten gradient stops cycling around the ring — gives the
+            impression of liquid metal flowing along the band. */}
+        <linearGradient id={`fg-band-${uid}`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor="#5a2a08"/>
+          <stop offset="20%"  stopColor="#c83232"/>
+          <stop offset="40%"  stopColor={amber}/>
+          <stop offset="55%"  stopColor="#fff5b6"/>
+          <stop offset="70%"  stopColor={amber}/>
+          <stop offset="85%"  stopColor="#c83232"/>
+          <stop offset="100%" stopColor="#5a2a08"/>
+          <animateTransform attributeName="gradientTransform" type="rotate"
+                            from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
+                            dur="6s" repeatCount="indefinite"/>
+        </linearGradient>
+        {/* Brighter molten "hot-spot" overlay rotating at a different speed
+            so the band reads as boiling rather than just spinning. */}
+        <linearGradient id={`fg-hot-${uid}`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor="#fff5b6" stopOpacity="0"/>
+          <stop offset="48%"  stopColor="#fff5b6" stopOpacity="0"/>
+          <stop offset="52%"  stopColor="#fffbe6" stopOpacity="0.95"/>
+          <stop offset="58%"  stopColor="#fff5b6" stopOpacity="0"/>
+          <stop offset="100%" stopColor="#fff5b6" stopOpacity="0"/>
+          <animateTransform attributeName="gradientTransform" type="rotate"
+                            from={`0 ${cx} ${cy}`} to={`-360 ${cx} ${cy}`}
+                            dur="3.7s" repeatCount="indefinite"/>
         </linearGradient>
         <radialGradient id={`fg-glow-${uid}`} cx="0.5" cy="0.5">
-          <stop offset="50%" stopColor="#ff8c1a" stopOpacity="0"/>
-          <stop offset="100%" stopColor="#ff8c1a" stopOpacity="0.20"/>
+          <stop offset="40%" stopColor="#ff8c1a" stopOpacity="0"/>
+          <stop offset="100%" stopColor="#ff8c1a" stopOpacity="0.22"/>
         </radialGradient>
         <radialGradient id={`fg-ember-${uid}`} cx="0.5" cy="0.5">
           <stop offset="0%" stopColor="#fffbe6"/>
           <stop offset="40%" stopColor={amber}/>
           <stop offset="100%" stopColor="#c83232" stopOpacity="0"/>
         </radialGradient>
-        {/* Turbulence/displacement filter — molten ripple effect on the band.
-            Filter region is bounded to the band's bbox so distorted pixels
-            cannot escape it. */}
-        <filter id={`fg-melt-${uid}`} x="0%" y="0%" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.04 0.08"
-                        numOctaves="2" seed="3" result="noise">
-            <animate attributeName="baseFrequency"
-                     values="0.04 0.08;0.06 0.10;0.04 0.08"
-                     dur="9s" repeatCount="indefinite"/>
-          </feTurbulence>
-          <feDisplacementMap in="SourceGraphic" in2="noise"
-                             scale={size * 0.006} xChannelSelector="R" yChannelSelector="G"/>
-        </filter>
-        {/* Hard outer clip — guarantees nothing (displaced band, ember halo,
-            heat glow, drop-shadow) escapes the viewBox at any size. */}
-        <clipPath id={`fg-clip-${uid}`}>
-          <circle cx={cx} cy={cy} r={size / 2 - 0.5}/>
-        </clipPath>
       </defs>
-      {/* Everything below sits inside the hard circular clip */}
-      <g clipPath={`url(#fg-clip-${uid})`}>
-        {/* Inner heat glow contained inside the band */}
-        <circle cx={cx} cy={cy} r={r - stroke * 0.4} fill={`url(#fg-glow-${uid})`}/>
-        {/* The molten band — solid brass stroke through the melt filter */}
-        <g filter={`url(#fg-melt-${uid})`}>
-          <circle cx={cx} cy={cy} r={r} fill="none"
-                  stroke={`url(#fg-band-${uid})`} strokeWidth={stroke}/>
-        </g>
-        <AvatarDisc kind={disc} size={size} uid={uid}/>
-        {/* Rising embers — SMIL animate on cy so motion scales with viewBox */}
-        {Array.from({ length: emberCount }).map((_, i) => {
-          const ang = Math.PI / 2 + ((i / emberCount) - 0.5) * Math.PI * 0.7;
-          const ex = cx + Math.cos(ang) * r;
-          const ey = cy + Math.sin(ang) * r;
-          const dur = 3.2;
-          const begin = `${-i * 0.65}s`;
-          return (
-            <circle key={i} cx={ex} cy={ey} r={size * 0.014}
-                    fill={`url(#fg-ember-${uid})`} opacity="0">
-              <animate attributeName="cy"
-                       from={ey} to={ey - size * 0.14}
-                       dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
-              <animate attributeName="opacity"
-                       values="0;1;1;0" keyTimes="0;0.15;0.7;1"
-                       dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
-            </circle>
-          );
-        })}
-      </g>
+      {/* Inner heat glow contained inside the band */}
+      <circle cx={cx} cy={cy} r={r - stroke * 0.4} fill={`url(#fg-glow-${uid})`}/>
+      {/* The molten band — base flowing gradient + brighter hot-spot pass.
+          Hairline dark edges keep the band reading as a solid metal ring. */}
+      <circle cx={cx} cy={cy} r={r + stroke / 2} fill="none" stroke="#3a1a04" strokeWidth={0.6}/>
+      <circle cx={cx} cy={cy} r={r - stroke / 2} fill="none" stroke="#3a1a04" strokeWidth={0.6}/>
+      <circle cx={cx} cy={cy} r={r} fill="none"
+              stroke={`url(#fg-band-${uid})`} strokeWidth={stroke}/>
+      <circle cx={cx} cy={cy} r={r} fill="none"
+              stroke={`url(#fg-hot-${uid})`} strokeWidth={stroke} opacity="0.9"/>
+      <AvatarDisc kind={disc} size={size} uid={uid}/>
+      {/* Rising embers — start at the band, drift inward+upward, fade out
+          well before reaching any boundary. */}
+      {Array.from({ length: emberCount }).map((_, i) => {
+        const ang = Math.PI / 2 + ((i / emberCount) - 0.5) * Math.PI * 0.6;
+        const ex = cx + Math.cos(ang) * r;
+        const ey = cy + Math.sin(ang) * r;
+        const dur = 3.2;
+        const begin = `${-i * 0.65}s`;
+        return (
+          <circle key={i} cx={ex} cy={ey} r={size * 0.014}
+                  fill={`url(#fg-ember-${uid})`} opacity="0">
+            <animate attributeName="cy"
+                     from={ey} to={ey - size * 0.12}
+                     dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
+            <animate attributeName="opacity"
+                     values="0;1;1;0" keyTimes="0;0.15;0.7;1"
+                     dur={`${dur}s`} begin={begin} repeatCount="indefinite"/>
+          </circle>
+        );
+      })}
     </svg>
   );
 }
@@ -1348,10 +1406,10 @@ function Ring20_Constellation({ size = 140, disc = 'monogram' }: RingProps) {
 }
 
 const RINGS: { id: string; name: string; tag: string; Comp: React.FC<RingProps> }[] = [
-  { id: 'classic',   name: '1. Classic Brass',  tag: 'Beveled band · milled edge · comet orbit', Comp: Ring1_Classic },
-  { id: 'laurel',    name: '2. Laurel Wreath',  tag: 'Gold-relief wreath · open top · 18 leaves', Comp: Ring3_Laurel },
+  { id: 'classic',   name: '1. Classic Brass',  tag: 'Roman numerals · cabochons · milled edge', Comp: Ring1_Classic },
+  { id: 'laurel',    name: '2. Laurel Wreath',  tag: 'Pointed almond leaves · gold-relief ref',  Comp: Ring3_Laurel },
   { id: 'beveled',   name: '3. Beveled Edge',   tag: 'Engraved depth · bright top, dark bottom', Comp: Ring7_Beveled },
-  { id: 'inscribed', name: '4. Inscribed',      tag: 'Raised rims · navy channel · molten text', Comp: Ring8_Inscribed },
+  { id: 'inscribed', name: '4. Inscribed',      tag: 'Raised rims · dark brass · molten text',   Comp: Ring8_Inscribed },
   { id: 'phoenix',   name: '5. Phoenix',        tag: 'Three orbiting embers · crimson halo',     Comp: Ring9_Phoenix },
   { id: 'twin',      name: '6. Twin Halo',      tag: 'Counter-rotating dual rings',              Comp: Ring10_TwinHalo },
   { id: 'astrolabe', name: '7. Astrolabe',      tag: 'Animated · 3 rings · engraved ticks',     Comp: Ring14_Astrolabe },
@@ -1404,21 +1462,22 @@ export function FoundersRingPicker() {
         <div style={{ fontFamily: fCond, fontSize: 12, letterSpacing: 4, textTransform: 'uppercase', color: amber, marginBottom: 6 }}>Founders Pass · Picker</div>
         <h1 style={{ fontFamily: fSerif, fontSize: 36, fontWeight: 700, margin: '0 0 8px' }}>Pick your founders ring</h1>
         <p style={{ color: muted, maxWidth: 760, lineHeight: 1.55, margin: 0 }}>
-          Shortlist of eleven, tightened to the latest direction notes.
-          <strong> Classic Brass</strong> is now a proper beveled ring with a milled / knurled outer edge,
-          engraved inner channel, and a brighter comet-tail highlight orbiting the band — not just a gold circle.
-          <strong> Laurel</strong> matches the gold-relief reference: two branches rising from a single brass
-          stem at the bottom centre, a wide ~110° open gap at the top, wide rounded leaves all fanning outward
-          (no inward curl), no gem, no ribbon clasp. <strong>Inscribed</strong> drops the cardinal cabochon
-          gems from the outer rim and recolours the engraved channel from brown to dark navy so it reads as
-          inset metal against ink.<strong> Forge</strong> is pulled tighter (smaller r, lighter stroke, less
-          displacement, shorter ember motion) so the molten band stays well clear of the boundary at every size.
-          <strong> Storm</strong> is rebuilt as proper jagged lightning — six bolts on non-synchronising prime
-          durations, each with random segment counts and 1–2 forking branches, hard-clipped to a circular
-          boundary so glow can't escape. <strong>Eclipse</strong> now pulsates on three independent cycles
-          (inner halo, corona ring, orbiting body's flare) for a constantly-alive feel. <strong>Twin Halo</strong>
-          orbs are bright glowing cores with pulsing radial halos and comet trails that follow the track.
-          Every ring still renders crisply at production sizes (26px / 36px / 56px beneath each card).
+          Shortlist of eleven, retuned to the latest direction notes.
+          <strong> Classic Brass</strong> now carries twelve engraved <em>Roman numerals</em> (I–XII) chased
+          around a wide beveled band at clock positions, four amber cabochon gems set at the cardinal points,
+          and a milled outer edge — proper Roman-coin detail, not just a gold ring. <strong>Laurel</strong> is rebuilt with
+          long pointed almond leaves (~14 per branch) leaning along the rib the way real laurel grows, rising
+          from a single brass stem at the bottom centre with a ~60° open gap at the top — branches now reach
+          nearly to the crown, matching the gold-relief reference shape. <strong>Inscribed</strong> swaps the navy channel for near-black dark
+          brass so the inscription reads as oxidised metal between two bright raised rims. <strong>Forge</strong>
+          drops the displacement filter entirely (which was producing the "bites" out of the band) and replaces
+          it with a multi-stop molten gradient that rotates around the ring, plus a counter-rotating bright
+          hot-spot — the band genuinely flows now and can never clip. <strong>Twin Halo</strong> orbits shrunk
+          (r₁ 0.40, r₂ 0.32, halo 0.055) so both orbs stay fully inside the box on every pass, and the avatar
+          disc is rendered before the orbs so they always sit on top of it.
+          <strong> Storm</strong> remains six asynchronous jagged-walk lightning bolts inside a circular clip.
+          <strong> Eclipse</strong> pulsates on three independent cycles. Every ring still renders crisply at
+          production sizes (26px / 36px / 56px beneath each card).
         </p>
       </header>
 
