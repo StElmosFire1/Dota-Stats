@@ -1,0 +1,74 @@
+root@Dota-Stats:~/Dota-Stats# pm2 restart inhouse-bot --update-env
+pm2 logs inhouse-bot --lines 30 --nostream
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 276263   │ 0s     │ 1    │ online    │ 0%       │ 22.6mb   │ root     │ disabled │
+│ 1  │ oi-bot         │ default     │ 1.0.0   │ fork    │ 158737   │ 5D     │ 124  │ online    │ 0%       │ 266.2mb  │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[TAILING] Tailing last 30 lines for [inhouse-bot] process (change the value with --lines option)
+/root/.pm2/logs/inhouse-bot-error.log last 30 lines:
+2|inhouse- | [Steam] addFriend 76561199224226400 failed: Blocked
+2|inhouse- | [Steam] addFriend 76561198984795170 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198085474660 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198038386002 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198798004431 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198382307909 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198237529940 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198296537550 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198091098562 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561197967820146 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198064159299 failed: DuplicateName
+2|inhouse- | [Baselines] startup recompute failed: db.initSchema is not a function
+2|inhouse- | [Steam] addFriend 76561198089221900 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561197967854187 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561199102762800 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198080314140 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198137683360 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198405107800 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198191762191 failed: Ignored
+2|inhouse- | [Steam] addFriend 76561197989849461 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198283283073 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198085006413 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561199874927470 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198097755191 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198153471170 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198110829631 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198232809764 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198166943713 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561198053926929 failed: DuplicateName
+2|inhouse- | [Steam] addFriend 76561199117113889 failed: DuplicateName
+
+/root/.pm2/logs/inhouse-bot-out.log last 30 lines:
+2|inhouse- | [Startup] Active features:
+2|inhouse- |   - Discord:        YES
+2|inhouse- |   - Database:       YES
+2|inhouse- |   - Steam:          YES (connected)
+2|inhouse- |   - Replay parser:  YES (full stats)
+2|inhouse- |   - TrueSkill MMR:  YES
+2|inhouse- |   - Google Sheets:  DORMANT
+2|inhouse- |   - Match poller:   DORMANT
+2|inhouse- |   - Lobby/monitor:  YES
+2|inhouse- | [Web] Dashboard running on port 5000
+2|inhouse- | [Startup] All systems ready.
+2|inhouse- | 
+2|inhouse- | [Discord] Bot online as Dota Bot#5597
+2|inhouse- | [Discord] Weekly recap scheduled (Mondays 9am AEST).
+2|inhouse- | [Discord] Season 10 launch is manual-only (Admin Panel button).
+2|inhouse- | [Discord] Position baselines recompute scheduled (Mondays 03:00 UTC).
+2|inhouse- | [PatchNotes] 97 unannounced note(s): v6.29, v6.30, v6.31, v6.32, v6.33, v6.35, v6.36, v6.37, v6.39, v6.40, v6.41, v6.42, v6.43, v6.44, v6.45, v6.46, v6.48, v6.49, v6.50, v6.51, v6.52, v6.53, v6.54, v6.65, v6.66, v6.55, v6.56, v6.57, v6.58, v6.59, v6.60, v6.61, v6.62, v6.63, v6.64, v6.73, v6.74, v6.74.1, v6.75, v6.76, v6.77, v6.78, v6.78.1, v6.79, v6.80, v6.81, v6.82, v6.83, v6.84, v6.85, v6.86, v6.87, v6.88, v6.89, v6.90, v7.04, v6.91, v6.93, v6.94, v6.95, v6.96, v6.97, v7.05, v7.06, v6.71, v6.99, v7.00, v7.01, v7.02, v7.03, v7.07, v7.08, v7.09, v7.10, v7.10.5, v7.11, v7.12, v7.13, v7.14, v6.98, v6.72, v6.67, v6.68, v6.69, v6.70, v6.47, v6.38, v7.15, v7.16, v7.17, v7.18, v7.19, v7.20, v7.21, v7.22, v7.23, v7.24
+2|inhouse- | [PatchNotes] Posting to 1 channel(s)...
+2|inhouse- | [Baselines] Startup recompute (rows=0, ageDays=Infinity).
+2|inhouse- | [Baselines] Starting startup position-baselines recompute...
+2|inhouse- | [dotenv@17.3.1] injecting env (0) from community-edition/.env -- tip: ⚙️  override existing env vars with { override: true }
+2|inhouse- | [baselines] starting (season=all, maxBuckets=120)
+2|inhouse- | [Steam] addAllKnownFriends: 0 requests sent, 44 already friends
+2|inhouse- | 
+2|inhouse- | [Shutdown] Graceful shutdown...
+2|inhouse- | [Discord] Bot shut down.
+2|inhouse- | [Replay] Parser service stopped.
+2|inhouse- | [Dota2 GC] Left practice lobby.
+2|inhouse- | [Steam] Shut down.
+2|inhouse- | [dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
