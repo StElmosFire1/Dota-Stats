@@ -43,32 +43,41 @@ fail=0
 # server paywall would emit. We use fixed-string matches so the patterns
 # do not need shell-quoting gymnastics.
 #
-#   - PaywallCard            full-edition paywall component name
-#   - useProStatus           full-edition Pro-status hook (community used to
-#                            ship a no-op stub by the same name; Task #303
-#                            deleted it)
-#   - useProMembers          ditto
-#   - isProMember            DB helper that gates a route by Pro membership
-#   - 'paywall: true'        the server response shape used by the old
-#                            community replay-download paywall (Task #303
-#                            removed this exact return)
-#   - "paywall": true        JSON-encoded variant
-#   - Pro membership         user-facing error message string
-#   - 'requires Pro'         user-facing error message string
-#   - Pro Tier               full-edition product label
-#   - Inhouse Stats Pro      full-edition product name
+#   - PaywallCard                full-edition paywall component name
+#   - useProStatus               full-edition Pro-status hook (community used
+#                                to ship a no-op stub by the same name;
+#                                Task #303 deleted it)
+#   - useProMembers              ditto
+#   - isProMember                DB helper that gates a route by Pro membership
+#   - feature: 'replay_download' the `feature` field of the old community
+#                                replay-download paywall response (Task #303
+#                                removed this exact return)
+#   - Pro membership             user-facing error message string
+#   - requires Pro               user-facing error message string
+#   - Pro Tier                   full-edition product label
+#   - Inhouse Stats Pro          full-edition product name
 SRC_FORBIDDEN=(
   "PaywallCard"
   "useProStatus"
   "useProMembers"
   "isProMember"
-  "paywall: true"
-  "\"paywall\": true"
+  "feature: 'replay_download'"
   "Pro membership"
   "requires Pro"
   "Pro Tier"
   "Inhouse Stats Pro"
 )
+
+# Regex pass (broader, catches any `paywall:` key shape regardless of value).
+# Matches a `paywall` field in an object literal or JSON response, e.g.:
+#   paywall: true
+#   "paywall": false
+#   'paywall': someExpr
+# We use grep -E with the regex below. Bare word `paywall` (in comments,
+# variable names) is intentionally NOT flagged — the doc-allowlist already
+# covers the prose-mention case, and the key-shape regex is what reliably
+# distinguishes a real server response from incidental wording.
+SRC_FORBIDDEN_REGEX="(['\"]?)paywall\\1[[:space:]]*:"
 
 # Documentation/history paths are intentionally excluded — we still want
 # to be able to *describe* historical paywalls in SETUP.md and the patch
@@ -78,11 +87,11 @@ SRC_EXCLUDE_REGEX='/(community-edition/(SETUP\.md|README\.md|src/data/patchNotes
 
 for src_dir in "${SRC_DIRS[@]}"; do
   if [ ! -d "${src_dir}" ]; then continue; fi
+  # Fixed-string pass.
   for token in "${SRC_FORBIDDEN[@]}"; do
     # -F fixed string, -r recurse, -l list-files-with-match, -I skip binary.
     matches="$(grep -RFlI -- "${token}" "${src_dir}" 2>/dev/null || true)"
     if [ -z "${matches}" ]; then continue; fi
-    # Filter out the doc/history allow-list.
     while IFS= read -r f; do
       [ -z "$f" ] && continue
       if [[ "$f" =~ $SRC_EXCLUDE_REGEX ]]; then continue; fi
@@ -93,6 +102,19 @@ for src_dir in "${SRC_DIRS[@]}"; do
       fail=1
     done <<< "${matches}"
   done
+  # Regex pass — catches any `paywall:` key shape (bare, quoted, JSON).
+  matches="$(grep -RElI -- "${SRC_FORBIDDEN_REGEX}" "${src_dir}" 2>/dev/null || true)"
+  if [ -n "${matches}" ]; then
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      if [[ "$f" =~ $SRC_EXCLUDE_REGEX ]]; then continue; fi
+      if [ "$fail" -eq 0 ]; then
+        echo "ERROR: forbidden paywall token(s) found in community source tree:" >&2
+      fi
+      echo "       [paywall:<value> shape] in ${f#${REPO_ROOT}/}" >&2
+      fail=1
+    done <<< "${matches}"
+  fi
 done
 
 # -----------------------------------------------------------------------------

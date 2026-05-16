@@ -894,10 +894,9 @@ function createApiRouter(startupStatus = {}) {
   });
 
   // Public: download the archived .dem replay file for a match.
-  // Task #303 — the community edition is paywall-free by policy
-  // (see community-edition/SETUP.md "Pro tier / paid memberships — removed").
-  // Anyone who can reach the API can download a stored replay; the only
-  // checks are that the file exists and hasn't expired off disk.
+  // Open to anyone — no auth gate, no monetization layer (the community
+  // edition has none; see community-edition/SETUP.md). The only checks are
+  // that the row exists and the file hasn't expired off disk.
   // Shared handler — mounted at both `/replays/:matchId/download`
   // (legacy) and `/matches/:matchId/replay` (canonical, mirrors the
   // full edition's route shape so the frontend code is identical).
