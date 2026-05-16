@@ -220,79 +220,67 @@ function Ring2_Coronet({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring3_Laurel({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  const r = size * 0.43;
-  // Almond / vesica leaf shape used by every leaf — drawn pointing up,
-  // then rotated into place. Two-tone fill via gradient ID per leaf side.
-  const leafPath = (len: number, w: number) =>
-    `M 0 0 Q ${w} ${-len * 0.45} 0 ${-len} Q ${-w} ${-len * 0.45} 0 0 Z`;
-  // 9 leaves per branch — outer cluster + smaller fillers in between.
-  // Each entry: [angleFromTop, length, width, isFiller]
-  const leafSpec: [number, number, number, boolean][] = [
-    [0.95, 0.16, 0.055, false], // bottom-most (near clasp)
-    [0.80, 0.15, 0.050, true],
-    [0.65, 0.17, 0.058, false],
-    [0.50, 0.14, 0.048, true],
-    [0.36, 0.18, 0.060, false],
-    [0.24, 0.13, 0.045, true],
-    [0.14, 0.16, 0.052, false],
-    [0.06, 0.11, 0.040, true],
-  ];
+  const r = size * 0.41;            // pulled in slightly so leaves can't clip viewBox
+  const lvL = size * 0.075;         // half-length of each ellipse leaf
+  const lvW = size * 0.030;         // half-width of each ellipse leaf
+  const leafCount = 11;             // per side — denser than the original 7
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
-        <linearGradient id={`leaf-${uid}`} x1="0" y1="0" x2="1" y2="0">
+        {/* Per-side gradient: catches light on the leaf's outward edge */}
+        <linearGradient id={`lf-r-${uid}`} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor={brassDark}/>
-          <stop offset="55%" stopColor={brass}/>
+          <stop offset="60%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassBright}/>
         </linearGradient>
-        <linearGradient id={`leaf-flip-${uid}`} x1="1" y1="0" x2="0" y2="0">
+        <linearGradient id={`lf-l-${uid}`} x1="1" y1="0" x2="0" y2="0">
           <stop offset="0%" stopColor={brassDark}/>
-          <stop offset="55%" stopColor={brass}/>
+          <stop offset="60%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassBright}/>
         </linearGradient>
       </defs>
-      {/* Faint reference circle (the wreath itself replaces the band) */}
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke={brassDark} strokeWidth={Math.max(1, size * 0.012)} opacity="0.35"/>
-      {/* Two laurel branches sweeping from the bottom clasp up to the top gem */}
+      {/* Faint reference band underneath the wreath */}
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={brass}
+              strokeWidth={Math.max(1.5, size * 0.018)} opacity="0.35"/>
+      {/* Two branches — denser sparse-ellipse style (same vibe as the original
+          first pass, just higher quality with gradients + alternating sizes) */}
       {[1, -1].map(side => (
         <g key={side}>
-          {leafSpec.map(([t, lenMul, wMul, filler], i) => {
-            // Walk t from near-bottom (t≈1) up toward the top (t≈0) along this side.
+          {Array.from({ length: leafCount }).map((_, i) => {
+            // Walk t from near-bottom (~0.95) up to near-top (~0.05) along this side.
+            const t = 0.95 - (i / (leafCount - 1)) * 0.9;
             const ang = (side > 0 ? Math.PI / 2 + Math.PI * t : Math.PI / 2 - Math.PI * t) - Math.PI / 2;
             const x = cx + Math.cos(ang) * r;
             const y = cy + Math.sin(ang) * r;
-            const len = size * lenMul;
-            const w = size * wMul;
-            // Rotate so leaf points outward from the circle, then fan slightly
-            // forward along the direction of travel for a natural branch look.
-            const tangent = (ang * 180 / Math.PI) + 90 + side * 22;
-            const grad = side > 0 ? `url(#leaf-${uid})` : `url(#leaf-flip-${uid})`;
+            const rot = (ang * 180 / Math.PI) + 90 + side * 30;  // tangent + outward fan
+            // Alternate between big and small leaves for a more natural look
+            const big = i % 2 === 0;
+            const grad = side > 0 ? `url(#lf-r-${uid})` : `url(#lf-l-${uid})`;
             return (
-              <g key={i} transform={`translate(${x} ${y}) rotate(${tangent})`}>
-                <path d={leafPath(len, w)} fill={grad} stroke={brassDark} strokeWidth={0.4}/>
-                {/* Centre vein for definition */}
-                <line x1={0} y1={0} x2={0} y2={-len * 0.92} stroke={brassDark} strokeWidth={0.5} opacity="0.7"/>
-                {/* Smaller filler leaf alongside on the offside, creates depth */}
-                {!filler && (
-                  <path d={leafPath(len * 0.65, w * 0.7)} fill={brass}
-                        transform={`translate(${-side * w * 0.5} ${-len * 0.25}) rotate(${-side * 35})`}
-                        opacity="0.85" stroke={brassDark} strokeWidth={0.3}/>
-                )}
+              <g key={i} transform={`rotate(${rot} ${x} ${y})`}>
+                <ellipse cx={x} cy={y} rx={big ? lvL : lvL * 0.7} ry={big ? lvW : lvW * 0.85}
+                         fill={grad} stroke={brassDark} strokeWidth={0.4}/>
+                {/* Subtle centre vein along the leaf */}
+                <line x1={x - (big ? lvL : lvL * 0.7) * 0.85} y1={y}
+                      x2={x + (big ? lvL : lvL * 0.7) * 0.85} y2={y}
+                      stroke={brassDark} strokeWidth={0.4} opacity="0.6"/>
               </g>
             );
           })}
         </g>
       ))}
-      {/* Clasp / ribbon at the bottom where the two branches join */}
+      {/* Small brass clasp at the bottom where the branches meet */}
       <g transform={`translate(${cx} ${cy + r})`}>
-        <path d={`M ${-size * 0.08} 0 Q 0 ${size * 0.025} ${size * 0.08} 0 L ${size * 0.065} ${size * 0.035} Q 0 ${size * 0.05} ${-size * 0.065} ${size * 0.035} Z`}
-              fill={`url(#leaf-${uid})`} stroke={brassDark} strokeWidth={0.5}/>
-        <line x1={-size * 0.04} y1={size * 0.018} x2={size * 0.04} y2={size * 0.018} stroke={brassDark} strokeWidth={0.5} opacity="0.6"/>
+        <ellipse rx={size * 0.045} ry={size * 0.018}
+                 fill={`url(#lf-r-${uid})`} stroke={brassDark} strokeWidth={0.5}/>
+        <line x1={-size * 0.025} y1={0} x2={size * 0.025} y2={0}
+              stroke={brassDark} strokeWidth={0.5} opacity="0.6"/>
       </g>
-      {/* Amber gem at the top where branches meet */}
-      <circle cx={cx} cy={cy - r} r={size * 0.058} fill={brassDark}/>
-      <circle cx={cx} cy={cy - r} r={size * 0.048} fill={amber}/>
-      <circle cx={cx - size * 0.012} cy={cy - r - size * 0.012} r={size * 0.018} fill="#fffbe6" opacity="0.9"/>
+      {/* Amber gem at the top where the branches meet */}
+      <circle cx={cx} cy={cy - r} r={size * 0.045} fill={brassDark}/>
+      <circle cx={cx} cy={cy - r} r={size * 0.036} fill={amber}/>
+      <circle cx={cx - size * 0.010} cy={cy - r - size * 0.010}
+              r={size * 0.014} fill="#fffbe6" opacity="0.9"/>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
   );
@@ -404,67 +392,56 @@ function Ring7_Beveled({ size = 140, disc = 'monogram' }: RingProps) {
 function Ring8_Inscribed({ size = 140, disc = 'monogram' }: RingProps) {
   const uid = useUid();
   const cx = size / 2, cy = size / 2;
-  // Wider band so the inscription has somewhere to live without overhanging.
-  const stroke = Math.max(6, size * 0.10);
-  const rMid = size * 0.43;                  // band centreline radius
+  // Wide brass band so the inscription has clear room to live.
+  // Low floor (3) keeps the band inside the viewBox at 26px production sizes.
+  const stroke = Math.max(3, size * 0.115);
+  const rMid = size * 0.40;                   // band centreline radius — pulled in so outer edge fits viewBox
   const rOuter = rMid + stroke / 2;
   const rInner = rMid - stroke / 2;
-  // The engraved text rides the band centreline; the SVG path baseline sits
-  // along that radius, so glyph ascenders + descenders both stay between
-  // rInner and rOuter when fontSize ≤ stroke * 0.7.
-  const inscRadius = rMid + stroke * 0.05;   // tiny nudge for visual centring
-  const fontSize = stroke * 0.62;
+  // Text rides the exact centreline of the band, then we centre it vertically
+  // via dominantBaseline so glyphs extend equally above + below the path.
+  const inscRadius = rMid;
+  // Conservative font: centred glyphs of cap height ~0.72*fontSize need to fit
+  // within ±stroke/2 of the path. fontSize ≤ stroke / 0.72 ≈ stroke * 1.38;
+  // we go much smaller for breathing room.
+  const fontSize = stroke * 0.50;
+  // Short inscription that fits comfortably in one revolution with textLength.
+  const text = '·  FOUNDER  ·  MMXXVI  ·  OCE  INHOUSE  ';
+  const circumference = 2 * Math.PI * inscRadius;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
         <linearGradient id={`insc-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={brassBright}/>
-          <stop offset="55%" stopColor={brass}/>
+          <stop offset="50%" stopColor={brass}/>
           <stop offset="100%" stopColor={brassDark}/>
         </linearGradient>
-        {/* Engraved channel: a darker inset that the letters sit inside */}
-        <radialGradient id={`insc-chan-${uid}`} cx="0.5" cy="0.5">
-          <stop offset={`${(rInner / rOuter) * 100}%`} stopColor={brassDark} stopOpacity="0"/>
-          <stop offset={`${((rInner + stroke * 0.15) / rOuter) * 100}%`} stopColor="#2a1d08" stopOpacity="0.55"/>
-          <stop offset={`${((rOuter - stroke * 0.15) / rOuter) * 100}%`} stopColor="#2a1d08" stopOpacity="0.55"/>
-          <stop offset="100%" stopColor={brassDark} stopOpacity="0"/>
-        </radialGradient>
+        {/* Engraved channel: dark recess running the band centreline that the
+            gold letters sit inside. Gives the One-Ring "letters glow against
+            dark engraving" look — high contrast for readability. */}
         <path id={`insc-path-${uid}`}
               d={`M ${cx},${cy} m -${inscRadius},0 a ${inscRadius},${inscRadius} 0 1,1 ${inscRadius * 2},0 a ${inscRadius},${inscRadius} 0 1,1 -${inscRadius * 2},0`}/>
       </defs>
-      {/* Solid brass band rendered as a thick stroke at the centreline */}
-      <circle cx={cx} cy={cy} r={rMid} fill="none" stroke={`url(#insc-band-${uid})`} strokeWidth={stroke}/>
+      {/* Brass band as a thick stroke along the centreline */}
+      <circle cx={cx} cy={cy} r={rMid} fill="none"
+              stroke={`url(#insc-band-${uid})`} strokeWidth={stroke}/>
       {/* Outer + inner hairline edges */}
-      <circle cx={cx} cy={cy} r={rOuter} fill="none" stroke={brassDark} strokeWidth={0.6}/>
-      <circle cx={cx} cy={cy} r={rInner} fill="none" stroke={brassDark} strokeWidth={0.6}/>
-      {/* Carved channel — darker recess where the text sits */}
-      <circle cx={cx} cy={cy} r={rMid} fill="none" stroke={`url(#insc-chan-${uid})`} strokeWidth={stroke * 0.7}/>
-      {/* Elvish-feel inscription — serif, generous letterspacing, all caps.
-          Two layers: dark shadow underneath + brass-bright letters on top
-          give an engraved-then-rubbed-with-gold look. textLength constrains
-          the string to one full revolution so it never overflows. */}
-      {(() => {
-        const text = '· FOUNDER · OCE · INHOUSE · MMXXVI ';
-        const circumference = 2 * Math.PI * inscRadius;
-        return (
-          <>
-            <text fontFamily={fSerif} fontSize={fontSize} fill="#1a0f04"
-                  letterSpacing={fontSize * 0.18} fontWeight="700" opacity="0.85">
-              <textPath href={`#insc-path-${uid}`} startOffset="0%" textLength={circumference}>
-                {text}
-              </textPath>
-            </text>
-            <text fontFamily={fSerif} fontSize={fontSize} fill="#f3d98a"
-                  letterSpacing={fontSize * 0.18} fontWeight="700"
-                  transform={`translate(0 -0.4)`}>
-              <textPath href={`#insc-path-${uid}`} startOffset="0%" textLength={circumference}>
-                {text}
-              </textPath>
-            </text>
-          </>
-        );
-      })()}
-      {/* Disc sits on a dark inset, slightly recessed from the inner band edge */}
+      <circle cx={cx} cy={cy} r={rOuter} fill="none" stroke={brassDark} strokeWidth={0.7}/>
+      <circle cx={cx} cy={cy} r={rInner} fill="none" stroke={brassDark} strokeWidth={0.7}/>
+      {/* Dark engraved channel — solid dark stroke at ~55% of band thickness */}
+      <circle cx={cx} cy={cy} r={rMid} fill="none"
+              stroke="#1a0d02" strokeWidth={stroke * 0.62} opacity="0.85"/>
+      {/* Gold inscription rides the centreline. dominantBaseline="middle"
+          vertically centres the glyphs so they stay within the channel. */}
+      <text fontFamily={fSerif} fontSize={fontSize} fill="#f0c97a"
+            stroke="#fffbe6" strokeWidth={0.25}
+            letterSpacing={fontSize * 0.22} fontWeight="700"
+            dominantBaseline="middle">
+        <textPath href={`#insc-path-${uid}`} startOffset="0%" textLength={circumference}>
+          {text}
+        </textPath>
+      </text>
+      {/* Disc sits on a dark inset, recessed from the inner band edge */}
       <circle cx={cx} cy={cy} r={rInner - 1} fill={bg}/>
       <AvatarDisc kind={disc} size={size} uid={uid}/>
     </svg>
@@ -686,6 +663,139 @@ function Ring13_Sigil({ size = 140, disc = 'monogram' }: RingProps) {
   );
 }
 
+function Ring14_Astrolabe({ size = 140, disc = 'monogram' }: RingProps) {
+  const uid = useUid();
+  const cx = size / 2, cy = size / 2;
+  // Pulled in slightly so the outer ring's stroke half-width stays inside size/2.
+  const rOuter = size * 0.44;
+  const rMid = size * 0.38;
+  const rInner = size * 0.32;
+  const stroke = Math.max(1.5, size * 0.018);
+  // Tick marks for each ring — long every 4th, short otherwise, drawn as
+  // radial lines that read as engraved graduations on an antique astrolabe.
+  const ringTicks = (radius: number, count: number, longEvery: number, longLen: number, shortLen: number) =>
+    Array.from({ length: count }).map((_, i) => {
+      const a = (i / count) * Math.PI * 2 - Math.PI / 2;
+      const isLong = i % longEvery === 0;
+      const len = isLong ? longLen : shortLen;
+      const x1 = cx + Math.cos(a) * radius;
+      const y1 = cy + Math.sin(a) * radius;
+      const x2 = cx + Math.cos(a) * (radius - len);
+      const y2 = cy + Math.sin(a) * (radius - len);
+      return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+                   stroke={isLong ? brassBright : brass}
+                   strokeWidth={isLong ? stroke * 0.9 : stroke * 0.5}
+                   opacity={isLong ? 0.95 : 0.7}/>;
+    });
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <defs>
+        <linearGradient id={`ast-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={brassBright}/>
+          <stop offset="55%" stopColor={brass}/>
+          <stop offset="100%" stopColor={brassDark}/>
+        </linearGradient>
+        {/* Inner amber glow — sits between centre and the outermost ring so it
+            stays inside the viewBox at every preview size. */}
+        <radialGradient id={`ast-glow-${uid}`} cx="0.5" cy="0.5">
+          <stop offset="30%" stopColor={amber} stopOpacity="0"/>
+          <stop offset="70%" stopColor={amber} stopOpacity="0.10"/>
+          <stop offset="100%" stopColor={amber} stopOpacity="0"/>
+        </radialGradient>
+      </defs>
+      {/* Inner amber halo, contained inside the outermost ring */}
+      <circle cx={cx} cy={cy} r={rOuter} fill={`url(#ast-glow-${uid})`}/>
+      {/* Outer engraved ring — rotates slowly clockwise */}
+      <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 28s linear infinite' }}>
+        <circle cx={cx} cy={cy} r={rOuter} fill="none"
+                stroke={`url(#ast-band-${uid})`} strokeWidth={stroke * 1.4}/>
+        {ringTicks(rOuter, 32, 4, size * 0.045, size * 0.022)}
+      </g>
+      {/* Middle ring — counter-rotates, different speed */}
+      <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep-rev 18s linear infinite' }}>
+        <circle cx={cx} cy={cy} r={rMid} fill="none"
+                stroke={`url(#ast-band-${uid})`} strokeWidth={stroke * 1.1}/>
+        {ringTicks(rMid, 24, 6, size * 0.030, size * 0.015)}
+        {/* Two cardinal pointer beads at opposite positions */}
+        <circle cx={cx} cy={cy - rMid} r={size * 0.028} fill={amber} stroke={brassDark} strokeWidth={0.5}/>
+        <circle cx={cx} cy={cy + rMid} r={size * 0.020} fill={brassBright} stroke={brassDark} strokeWidth={0.5}/>
+      </g>
+      {/* Inner ring — rotates slow forward, distinct from outer */}
+      <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 40s linear infinite' }}>
+        <circle cx={cx} cy={cy} r={rInner} fill="none"
+                stroke={brass} strokeWidth={stroke}/>
+        {ringTicks(rInner, 16, 4, size * 0.022, size * 0.010)}
+      </g>
+      {/* Centre crosshairs — engraved compass lines, static */}
+      <line x1={cx - rInner * 0.15} y1={cy} x2={cx + rInner * 0.15} y2={cy}
+            stroke={brassDark} strokeWidth={stroke * 0.5} opacity="0.5"/>
+      <line x1={cx} y1={cy - rInner * 0.15} x2={cx} y2={cy + rInner * 0.15}
+            stroke={brassDark} strokeWidth={stroke * 0.5} opacity="0.5"/>
+      <AvatarDisc kind={disc} size={size} uid={uid}/>
+    </svg>
+  );
+}
+
+function Ring15_Eclipse({ size = 140, disc = 'monogram' }: RingProps) {
+  const uid = useUid();
+  const cx = size / 2, cy = size / 2;
+  // Pulled in to leave headroom for the corona/halo without exceeding viewBox.
+  const r = size * 0.41;
+  const stroke = Math.max(3, size * 0.05);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <defs>
+        {/* Eclipse corona: bright amber rim — drawn as a stroke whose half-width
+            is bounded so the outer edge stays inside size/2 at every size. */}
+        <radialGradient id={`ecl-corona-${uid}`} cx="0.5" cy="0.5">
+          <stop offset="65%" stopColor="#0d0a04" stopOpacity="0"/>
+          <stop offset="80%" stopColor={amber} stopOpacity="0.45"/>
+          <stop offset="92%" stopColor="#fffbe6" stopOpacity="0.7"/>
+          <stop offset="100%" stopColor={amber} stopOpacity="0"/>
+        </radialGradient>
+        {/* The eclipsing body: dark sphere with subtle rim light */}
+        <radialGradient id={`ecl-body-${uid}`} cx="0.45" cy="0.35">
+          <stop offset="0%" stopColor="#3a2a1a"/>
+          <stop offset="55%" stopColor="#0d0a04"/>
+          <stop offset="100%" stopColor="#000"/>
+        </radialGradient>
+        {/* Breathing inner halo — sits inside the ring, gently pulses */}
+        <radialGradient id={`ecl-breath-${uid}`} cx="0.5" cy="0.5">
+          <stop offset="40%" stopColor={amber} stopOpacity="0"/>
+          <stop offset="80%" stopColor={amber} stopOpacity="0.20"/>
+          <stop offset="100%" stopColor={amber} stopOpacity="0"/>
+        </radialGradient>
+      </defs>
+      {/* Breathing amber halo — INSIDE the band, not outside */}
+      <circle cx={cx} cy={cy} r={r - stroke * 0.5} fill={`url(#ecl-breath-${uid})`}
+              style={{ animation: 'fp-breathe 8s ease-in-out infinite', transformOrigin: `${cx}px ${cy}px` }}/>
+      {/* Base brass band */}
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={brass} strokeWidth={stroke}/>
+      <circle cx={cx} cy={cy} r={r + stroke / 2} fill="none" stroke={brassDark} strokeWidth={0.6}/>
+      <circle cx={cx} cy={cy} r={r - stroke / 2} fill="none" stroke={brassDark} strokeWidth={0.6}/>
+      {/* Corona ring — strokeWidth bounded so outer edge r+stroke*0.75 ≤ size*0.49 */}
+      <circle cx={cx} cy={cy} r={r} fill="none"
+              stroke={`url(#ecl-corona-${uid})`} strokeWidth={stroke * 1.5}/>
+      <AvatarDisc kind={disc} size={size} uid={uid}/>
+      {/* The eclipsing body — a dark sphere that slowly orbits the band centreline */}
+      <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 22s linear infinite' }}>
+        {/* Sphere positioned at top of ring */}
+        <g transform={`translate(${cx} ${cy - r})`}>
+          {/* Bright corona behind the sphere — gives the eclipse halo effect */}
+          <circle r={stroke * 1.6} fill={`url(#ecl-corona-${uid})`} opacity="0.9"/>
+          {/* The dark body itself */}
+          <circle r={stroke * 0.95} fill={`url(#ecl-body-${uid})`}
+                  stroke={brassDark} strokeWidth={0.5}/>
+          {/* Rim-light catch on the upper-left edge */}
+          <circle r={stroke * 0.95} fill="none"
+                  stroke="#fffbe6" strokeWidth={0.6} strokeDasharray={`${stroke * 0.7} ${stroke * 4}`}
+                  transform="rotate(-120)" opacity="0.7"/>
+        </g>
+      </g>
+    </svg>
+  );
+}
+
 const RINGS: { id: string; name: string; tag: string; Comp: React.FC<RingProps> }[] = [
   { id: 'classic',       name: '1. Classic Brass',    tag: 'Double band · slow highlight orbit',       Comp: Ring1_Classic },
   { id: 'coronet',       name: '2. Coronet',          tag: 'Crown-style notched outer rim',            Comp: Ring2_Coronet },
@@ -697,9 +807,11 @@ const RINGS: { id: string; name: string; tag: string; Comp: React.FC<RingProps> 
   { id: 'inscribed',     name: '8. Inscribed',        tag: 'Reworked: Elvish serif inside the band',   Comp: Ring8_Inscribed },
   { id: 'phoenix',       name: '9. Phoenix',          tag: 'Three orbiting embers · crimson halo',     Comp: Ring9_Phoenix },
   { id: 'twin',          name: '10. Twin Halo',       tag: 'Counter-rotating dual rings',              Comp: Ring10_TwinHalo },
-  { id: 'serpent',       name: '11. Twin Serpent',    tag: 'New: two snakes intertwined as the band',  Comp: Ring11_TwinSerpent },
-  { id: 'filigree',      name: '12. Filigree Scroll', tag: 'New: Art Nouveau scrollwork · 8 motifs',   Comp: Ring12_Filigree },
-  { id: 'sigil',         name: '13. Aurum Sigil',     tag: 'New: diamond medallion breaks the band',   Comp: Ring13_Sigil },
+  { id: 'serpent',       name: '11. Twin Serpent',    tag: 'Two snakes intertwined as the band',       Comp: Ring11_TwinSerpent },
+  { id: 'filigree',      name: '12. Filigree Scroll', tag: 'Art Nouveau scrollwork · 8 motifs',        Comp: Ring12_Filigree },
+  { id: 'sigil',         name: '13. Aurum Sigil',     tag: 'Diamond medallion breaks the band',        Comp: Ring13_Sigil },
+  { id: 'astrolabe',     name: '14. Astrolabe',       tag: 'Animated · 3 rings · ticks · 18–40s',      Comp: Ring14_Astrolabe },
+  { id: 'eclipse',       name: '15. Eclipse',         tag: 'Animated · orbiting eclipse + corona',     Comp: Ring15_Eclipse },
 ];
 
 const DISC_OPTIONS: { id: DiscKind; name: string; tag: string }[] = [
@@ -724,12 +836,16 @@ export function FoundersRingPicker() {
         <div style={{ fontFamily: fCond, fontSize: 12, letterSpacing: 4, textTransform: 'uppercase', color: amber, marginBottom: 6 }}>Founders Pass · Picker</div>
         <h1 style={{ fontFamily: fSerif, fontSize: 36, fontWeight: 700, margin: '0 0 8px' }}>Pick your founders ring</h1>
         <p style={{ color: muted, maxWidth: 760, lineHeight: 1.55, margin: 0 }}>
-          Thirteen variants below — the original ten plus three new high-quality options (Twin Serpent, Filigree
-          Scroll, Aurum Sigil), with reworked Laurel (denser leaves + clasp) and reworked Inscribed (Elvish serif
-          contained inside the band, no overhang). Each animates slowly (12–20s) and renders crisply at every size
-          used in production (26px on match cards, 36px in leaderboard rows, 68px on profile headers, 200px+ in
-          shop). The five disc treatments below are <em>per-page</em>, not a player choice — scoreboard rows show
-          rank number, match cards show hero portrait, profile shows Steam avatar, fallback is the brass monogram.
+          Fifteen variants below. Laurel has been pulled back to the sparse-ellipse style you preferred, just
+          higher quality (eleven gradient leaves per branch, alternating sizes, no clipping). Inscribed now has
+          gold lettering against a dark engraved channel for One-Ring-style contrast, sized to stay inside the
+          band. Two new animated variants in the Phoenix tier: <strong>Astrolabe</strong> (three rotating brass
+          rings with engraved tick marks, counter-rotating at 18/28/40s) and <strong>Eclipse</strong> (a dark
+          sphere with amber corona slowly orbits the band, breathing halo behind). Each ring renders crisply at
+          every size used in production (26px on match cards, 36px in leaderboard rows, 68px on profile headers,
+          200px+ in shop). The five disc treatments below are <em>per-page</em>, not a player choice — scoreboard
+          rows show rank number, match cards show hero portrait, profile shows Steam avatar, fallback is the brass
+          monogram.
         </p>
       </header>
 
@@ -766,7 +882,7 @@ export function FoundersRingPicker() {
 
       {/* Ring grid */}
       <section>
-        <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass, marginBottom: 12 }}>Ring variants · 13 options</div>
+        <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass, marginBottom: 12 }}>Ring variants · 15 options</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
           {RINGS.map(({ id, name, tag, Comp }) => (
             <div key={id} style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -792,7 +908,7 @@ export function FoundersRingPicker() {
       <footer style={{ marginTop: 32, padding: 18, background: card, border: `1px solid ${border}`, borderRadius: 10 }}>
         <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass, marginBottom: 8 }}>How to choose</div>
         <div style={{ fontSize: 13, color: muted, lineHeight: 1.6 }}>
-          Tell me a number (1–13) for the ring. The disc isn't a buyer choice — it's chosen per-page automatically
+          Tell me a number (1–15) for the ring. The disc isn't a buyer choice — it's chosen per-page automatically
           (rank on scoreboards, hero on match cards, Steam avatar on profiles, monogram as fallback). Pick the
           ring and I'll graduate it into the live <code style={{ background: '#1a2744', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>FoundersRing</code> component,
           roll it through the Boutique mockup, then onto the real shop.
