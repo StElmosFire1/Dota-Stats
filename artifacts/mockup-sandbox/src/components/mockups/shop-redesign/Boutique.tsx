@@ -98,30 +98,81 @@ export function Boutique() {
       <SubNav/>
       <div style={{ maxWidth: 1140, margin: '0 auto', padding: '0 24px 80px' }}>
 
-        {/* HERO */}
+        {/* HERO — Founders Pass with animated shimmer ring */}
+        <style>{`
+          @keyframes fp-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          @keyframes fp-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.35), 0 12px 32px rgba(0,0,0,0.6); }
+                                50%       { box-shadow: 0 0 0 14px rgba(245,158,11,0), 0 12px 32px rgba(0,0,0,0.6); } }
+          @keyframes fp-shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+        `}</style>
         <section id="founders" style={{
           background: `linear-gradient(135deg, #152036 0%, #1a2744 100%)`,
           borderRadius: 14, padding: '48px 56px',
           display: 'grid', gridTemplateColumns: '1fr auto', gap: 48, alignItems: 'center',
-          position: 'relative', overflow: 'hidden', marginBottom: 56,
+          position: 'relative', overflow: 'hidden', marginBottom: 40,
           border: `1px solid ${border}`,
         }}>
-          <div style={{ position: 'absolute', top: -40, right: -40, width: 220, height: 220, borderRadius: '50%', border: `4px solid ${brass}`, opacity: 0.2 }}/>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${brass}, transparent)` }}/>
           <div>
-            <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 4, textTransform: 'uppercase', color: brass, marginBottom: 12 }}>Founders Pass · 588 remaining</div>
-            <h1 style={{ fontFamily: fSerif, fontSize: 44, fontWeight: 700, margin: '0 0 14px', lineHeight: 1.1, color: text }}>A brass ring, forever.</h1>
-            <p style={{ fontFamily: fSans, fontSize: 15, color: muted, lineHeight: 1.55, marginBottom: 24, maxWidth: 440 }}>
-              The capped Founders Pass marks you on every page and every
-              lobby. One-time purchase, Stripe only — coins don't unlock
-              this one.
+            <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 4, textTransform: 'uppercase', color: amber, marginBottom: 12 }}>The Founders Pass · 588 remaining</div>
+            <h1 style={{ fontFamily: fSerif, fontSize: 44, fontWeight: 700, margin: '0 0 14px', lineHeight: 1.1, color: text }}>Be a founder of OCE Inhouse.</h1>
+            <p style={{ fontFamily: fSans, fontSize: 15, color: muted, lineHeight: 1.55, marginBottom: 18, maxWidth: 460 }}>
+              An animated founders ring on your avatar — visible on the
+              leaderboard, every match card, the inhouse lobby, and your
+              profile. Capped at 1,000, one-time, Stripe only.
             </p>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 26px', fontFamily: fSans, fontSize: 13, color: muted, display: 'grid', gap: 6 }}>
+              <li>✦ Animated brass-and-amber ring (founders exclusive)</li>
+              <li>✦ "Founder" badge beside your name everywhere it appears</li>
+              <li>✦ Permanent leaderboard hover-card highlight</li>
+              <li>✦ 2,000 spendable coins included</li>
+            </ul>
             <button style={{
               background: amber, color: '#1a1a1a', border: 'none', padding: '14px 28px', borderRadius: 8,
               fontFamily: fCond, fontSize: 14, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700, cursor: 'pointer',
-            }}>Purchase — $39 USD</button>
+            }}>Claim founder status — $39 USD</button>
           </div>
-          <div style={{ width: 160, height: 160, borderRadius: '50%', background: '#2a3142', border: `6px solid ${brass}`, boxShadow: '0 12px 32px rgba(0,0,0,0.6)' }}/>
+          {/* Animated ring: rotating brass/amber shimmer gradient + soft amber pulse */}
+          <div style={{ position: 'relative', width: 200, height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{
+              position: 'absolute', inset: 0, borderRadius: '50%',
+              background: `conic-gradient(from 0deg, ${brass}, ${amber}, #fcd34d, ${amber}, ${brass}, #8a7448, ${brass})`,
+              animation: 'fp-rotate 6s linear infinite',
+              filter: 'blur(0.5px)',
+            }}/>
+            <div style={{
+              position: 'absolute', inset: 8, borderRadius: '50%',
+              background: '#0d1424',
+            }}/>
+            <div style={{
+              position: 'absolute', inset: 14, borderRadius: '50%',
+              background: 'radial-gradient(circle at 35% 30%, #3a4560 0%, #1a2236 60%, #0d1424 100%)',
+              animation: 'fp-pulse 2.4s ease-in-out infinite',
+            }}/>
+            <div style={{
+              position: 'relative', zIndex: 1, fontFamily: fSerif, fontSize: 13, fontStyle: 'italic',
+              color: amber, letterSpacing: 1, textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+            }}>your avatar</div>
+          </div>
+        </section>
+
+        {/* Where you'll be seen */}
+        <section style={{ marginBottom: 56, padding: '20px 24px', background: card, border: `1px solid ${border}`, borderRadius: 10 }}>
+          <div style={{ fontFamily: fCond, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: brass, marginBottom: 10 }}>Where you'll be seen</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
+            {[
+              ['Leaderboard', 'Ring renders next to your name in every top-100 row.'],
+              ['Match cards', 'Both teams see the ring on hover and in post-match.'],
+              ['Inhouse lobby', 'Live captain-draft screen shows founders first.'],
+              ['Profile page', 'Permanent founders banner above your stats.'],
+              ['Discord recap', 'Weekly recap embed tags founders with the ring.'],
+            ].map(([t, d]) => (
+              <div key={t} style={{ background: hover, borderRadius: 8, padding: 14, border: `1px solid ${border}` }}>
+                <div style={{ fontFamily: fSerif, fontSize: 14, color: text, fontWeight: 600, marginBottom: 4 }}>{t}</div>
+                <div style={{ fontFamily: fSans, fontSize: 11, color: dim, lineHeight: 1.45 }}>{d}</div>
+              </div>
+            ))}
+          </div>
         </section>
 
         {/* Frames */}
