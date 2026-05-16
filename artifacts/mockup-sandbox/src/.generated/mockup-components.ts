@@ -23,5 +23,6 @@ export const modules: ModuleMap = {
   "./components/mockups/profile-redesign/MagazineSpreadV3Newsprint.tsx": () => import("../components/mockups/profile-redesign/MagazineSpreadV3Newsprint.tsx"),
   "./components/mockups/profile-redesign/ProfileRedesignBoard.tsx": () => import("../components/mockups/profile-redesign/ProfileRedesignBoard.tsx"),
   "./components/mockups/profile-redesign/TacticalDossier.tsx": () => import("../components/mockups/profile-redesign/TacticalDossier.tsx"),
-  "./components/mockups/profile-redesign/TrophyWall.tsx": () => import("../components/mockups/profile-redesign/TrophyWall.tsx")
+  "./components/mockups/profile-redesign/TrophyWall.tsx": () => import("../components/mockups/profile-redesign/TrophyWall.tsx"),
+  "./components/mockups/voice-packs/Auditioner.tsx": () => import("../components/mockups/voice-packs/Auditioner.tsx")
 };

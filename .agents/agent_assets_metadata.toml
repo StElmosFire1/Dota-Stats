@@ -89,3 +89,69 @@ id = "fo0ltGip2JodX9tWs2yrD"
 uri = "file://web/public/voice-packs/cinematic/achievement-unlock.mp3"
 type = "audio"
 title = "cinematic achievement brass fanfare"
+
+[[outputs]]
+id = "OpV-jpJwVBZJuHfR2EdR7"
+uri = "file://web/public/voice-packs/captain/achievement-unlock.mp3"
+type = "audio"
+title = "captain achievement-unlock"
+
+[[outputs]]
+id = "L2-aFFchB7bTw1iRKCE1P"
+uri = "file://web/public/voice-packs/captain/match-start.mp3"
+type = "audio"
+title = "captain match-start"
+
+[[outputs]]
+id = "F744q7ib3tQsQsg1budvk"
+uri = "file://web/public/voice-packs/hype/level-up.mp3"
+type = "audio"
+title = "hype level-up"
+
+[[outputs]]
+id = "V3WDm1uZQ3nFqcYstFBPR"
+uri = "file://web/public/voice-packs/hype/match-start.mp3"
+type = "audio"
+title = "hype match-start"
+
+[[outputs]]
+id = "6RWGhsWutqKr9UmP2w71i"
+uri = "file://web/public/voice-packs/hype/achievement-unlock.mp3"
+type = "audio"
+title = "hype achievement-unlock"
+
+[[outputs]]
+id = "Jt3wVkhnfCQWZNV0VNMkO"
+uri = "file://web/public/voice-packs/calm/level-up.mp3"
+type = "audio"
+title = "calm level-up"
+
+[[outputs]]
+id = "y9kHzIsLrRekap5X_gMKr"
+uri = "file://web/public/voice-packs/calm/match-start.mp3"
+type = "audio"
+title = "calm match-start"
+
+[[outputs]]
+id = "QxbCkHA9uSfaR2fLNjQ3Z"
+uri = "file://web/public/voice-packs/calm/achievement-unlock.mp3"
+type = "audio"
+title = "calm achievement-unlock"
+
+[[outputs]]
+id = "gmsu1ZfMTNXV13H4WKznl"
+uri = "file://web/public/voice-packs/roast/match-start.mp3"
+type = "audio"
+title = "roast match-start"
+
+[[outputs]]
+id = "sNexwdoEBLA-rMFa6KoVi"
+uri = "file://web/public/voice-packs/roast/level-up.mp3"
+type = "audio"
+title = "roast level-up"
+
+[[outputs]]
+id = "IJ78xzXoFfLAevDGCeXz2"
+uri = "file://web/public/voice-packs/roast/achievement-unlock.mp3"
+type = "audio"
+title = "roast achievement-unlock"
