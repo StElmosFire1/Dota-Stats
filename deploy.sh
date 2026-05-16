@@ -12,6 +12,31 @@
 
 set -e  # stop on any error
 
+# Task #302: hard pre-restart gate, symmetric to the Task #300 startup
+# warning in src/index.js. If this script (the FULL edition) is being run
+# from a checkout whose directory basename looks like the community
+# checkout, abort BEFORE we restart PM2 — a misconfigured PM2 process
+# pointing the full-edition entrypoint at the community checkout would
+# silently serve the wrong web/dist/ to users (this is exactly the
+# Task #298 paywall bug). Heuristic mirrors logEditionBanner() in
+# src/index.js exactly: basename contains "community" OR ends in
+# "dota-stats" (the community prod basename). The full-edition prod
+# basename "dota-stats-full" does not match, so a correctly-deployed
+# host never sees a false-positive abort.
+DEPLOY_CWD="$(pwd)"
+DEPLOY_BASE="$(basename "${DEPLOY_CWD}" | tr '[:upper:]' '[:lower:]')"
+case "${DEPLOY_BASE}" in
+  *community*|*dota-stats)
+    echo "ERROR: deploy.sh (full edition) refuses to run from '${DEPLOY_CWD}'." >&2
+    echo "       Directory basename '${DEPLOY_BASE}' looks like a community-edition checkout." >&2
+    echo "       The full-edition deploy script must run from ~/Dota-Stats-Full/ (basename 'dota-stats-full')." >&2
+    echo "       If PM2 is misconfigured, see the \"One-time PM2 re-registration for community edition\"" >&2
+    echo "       snippet in replit.md to re-register the inhouse-bot process against community-edition/src/index.js," >&2
+    echo "       then run 'bash community-edition/deploy.sh' from ~/Dota-Stats/ instead." >&2
+    exit 1
+    ;;
+esac
+
 echo "==> Pulling latest code..."
 git fetch origin
 git reset --hard origin/main

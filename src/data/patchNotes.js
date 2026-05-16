@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "7.26",
+    "title": "Hard-fail deploys when the wrong-edition warning would fire",
+    "published_at": "2026-05-16",
+    "content": "Task #302: v7.24 (Task #300) added a startup `console.warn` when the bot's entrypoint doesn't match its checkout directory basename, but it only logs — a misconfigured PM2 process still boots and serves the wrong site. The warning is useful for catching the problem in PM2 logs, but by then users on `oceinhouse.gg` or `dota.stats.corvidaeinc.com` may already be seeing the wrong edition's `web/dist/`.\n\n**Fix:** promoted the Task #300 heuristic to a hard pre-restart gate in both deploy scripts. `deploy.sh` (full edition) now aborts before `pm2 restart oi-bot` if its own cwd basename contains `community` or ends in `dota-stats` (the community prod basename). `community-edition/deploy.sh` aborts before `pm2 restart inhouse-bot` if its resolved repo-root basename contains `full`. Both use the exact same `basename | tr` + `case` pattern, with abort messages that point at the one-time PM2 re-registration snippet in `replit.md`. The full-edition prod basename `dota-stats-full` and the community prod basename `dota-stats` are designed to avoid the opposite heuristic, so a correctly-deployed host never sees a false-positive abort. Syntax-checked both scripts with `bash -n`.",
+    "author": "System"
+  },
+  {
     "version": "7.25",
     "title": "Fast source-level Pro-paywall gate for the community frontend",
     "published_at": "2026-05-16",
