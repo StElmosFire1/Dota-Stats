@@ -2,6 +2,7 @@
 // Big Founders hero banner with brass ring artwork. Sticky sub-nav for
 // anchor jumps. Taller product cards on --bg-card with bigger previews.
 // Dual coin/$ pricing. Amber CTAs match the site's Pro pill style.
+import * as React from 'react';
 
 const bg = '#0d1424';
 const card = '#152036';
@@ -87,58 +88,63 @@ function FramePreview({ ring }: { ring: string }) {
   return <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#2a3142', border: `3px solid ${ring}`, boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }}/>;
 }
 
-// Animated founders ring. Two static engraved rails (brass), with a single
-// soft highlight that slowly travels around the outer rail (18s). Inner
-// glow breathes 8s. Polished, restrained, jewelry-quality — not a spinner.
+// Animated founders ring. SVG-based for crisp rendering at every size.
+// Two engraved brass rails sit static; a single soft amber highlight orbits
+// the outer rail slowly (18s). Inner avatar disc has a gentle amber glow
+// breathing on 8s. Polished, restrained, jewelry-quality — not a spinner.
 function FoundersRing({ size = 200 }: { size?: number }) {
-  const rail = Math.max(2, Math.round(size * 0.022));
-  const inset = rail + 2;
-  const innerInset = rail + 6;
+  const uid = React.useId();
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = size * 0.46;
+  const innerR = size * 0.40;
+  const railStroke = Math.max(2, size * 0.032);
+  const innerStroke = Math.max(1, size * 0.008);
+  const avatarR = size * 0.36;
+  const orbitR = outerR;
+  const highlightR = Math.max(3, size * 0.06);
   return (
     <div style={{ position: 'relative', width: size, height: size }}>
-      {/* Outer engraved rail */}
-      <div style={{
-        position: 'absolute', inset: 0, borderRadius: '50%',
-        background: `conic-gradient(from 220deg, #8a7448, #c5a975, #e3c98a, #c5a975, #8a7448, #6b5530, #8a7448)`,
-        WebkitMask: `radial-gradient(circle, transparent calc(50% - ${rail + 1}px), #000 calc(50% - ${rail}px), #000 calc(50% - 1px), transparent 50%)`,
-                mask: `radial-gradient(circle, transparent calc(50% - ${rail + 1}px), #000 calc(50% - ${rail}px), #000 calc(50% - 1px), transparent 50%)`,
-      }}/>
-      {/* Slow travelling highlight (the only motion on the outer rail) */}
-      <div style={{
-        position: 'absolute', inset: 0, borderRadius: '50%',
-        animation: 'fp-sweep 18s linear infinite',
-      }}>
-        <div style={{
-          position: 'absolute', top: `-${rail / 2}px`, left: '50%', width: rail * 2.4, height: rail * 2.4,
-          marginLeft: -rail * 1.2, borderRadius: '50%',
-          background: 'radial-gradient(circle, #fffbe6 0%, rgba(252,211,77,0.7) 35%, transparent 70%)',
-          filter: 'blur(1px)',
-        }}/>
-      </div>
-      {/* Inner thin rail */}
-      <div style={{
-        position: 'absolute', inset: innerInset, borderRadius: '50%',
-        border: `1px solid rgba(197,169,117,0.6)`,
-      }}/>
-      {/* Avatar disc */}
-      <div style={{
-        position: 'absolute', inset: inset + 4, borderRadius: '50%',
-        background: 'radial-gradient(circle at 35% 30%, #3a4560 0%, #1a2236 60%, #0d1424 100%)',
-      }}/>
-      {/* Soft inner glow breathing */}
-      <div style={{
-        position: 'absolute', inset: inset + 4, borderRadius: '50%',
-        boxShadow: `inset 0 0 ${Math.round(size * 0.12)}px rgba(245,158,11,0.35)`,
-        animation: 'fp-breathe 8s ease-in-out infinite',
-      }}/>
-      {size >= 80 ? (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'Playfair Display, Georgia, serif', fontStyle: 'italic',
-          color: '#c5a975', fontSize: Math.round(size * 0.07), letterSpacing: 1,
-          textShadow: '0 1px 2px rgba(0,0,0,0.7)',
-        }}>BAD1</div>
-      ) : null}
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
+        <defs>
+          <linearGradient id={`brass-${uid}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#e3c98a"/>
+            <stop offset="35%" stopColor="#c5a975"/>
+            <stop offset="65%" stopColor="#8a7448"/>
+            <stop offset="100%" stopColor="#c5a975"/>
+          </linearGradient>
+          <radialGradient id={`disc-${uid}`} cx="0.35" cy="0.30">
+            <stop offset="0%" stopColor="#3a4560"/>
+            <stop offset="60%" stopColor="#1a2236"/>
+            <stop offset="100%" stopColor="#0d1424"/>
+          </radialGradient>
+          <radialGradient id={`glow-${uid}`}>
+            <stop offset="0%" stopColor="#fffbe6" stopOpacity="1"/>
+            <stop offset="40%" stopColor="#fcd34d" stopOpacity="0.7"/>
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0"/>
+          </radialGradient>
+        </defs>
+        {/* Outer engraved brass rail */}
+        <circle cx={cx} cy={cy} r={outerR} fill="none" stroke={`url(#brass-${uid})`} strokeWidth={railStroke}/>
+        {/* Inner hairline brass rail */}
+        <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="#c5a975" strokeWidth={innerStroke} opacity="0.55"/>
+        {/* Avatar disc */}
+        <circle cx={cx} cy={cy} r={avatarR} fill={`url(#disc-${uid})`}/>
+        {/* Slow amber breathing glow inside the disc */}
+        <circle cx={cx} cy={cy} r={avatarR} fill="none" stroke="#f59e0b" strokeWidth={Math.max(1, size * 0.012)} opacity="0.35" style={{ animation: 'fp-breathe 8s ease-in-out infinite', transformOrigin: 'center' }}/>
+        {/* Slow travelling highlight — orbits the outer rail at 18s */}
+        <g style={{ transformOrigin: `${cx}px ${cy}px`, animation: 'fp-sweep 18s linear infinite' }}>
+          <circle cx={cx} cy={cy - orbitR} r={highlightR} fill={`url(#glow-${uid})`}/>
+        </g>
+        {size >= 90 ? (
+          <text x={cx} y={cy + size * 0.025} textAnchor="middle"
+                fontFamily="Playfair Display, Georgia, serif" fontStyle="italic"
+                fontSize={size * 0.18} fill="#c5a975" opacity="0.85"
+                style={{ letterSpacing: 1 }}>
+            BAD1
+          </text>
+        ) : null}
+      </svg>
     </div>
   );
 }
