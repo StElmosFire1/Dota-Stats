@@ -1,0 +1,242 @@
+root@Dota-Stats:~/Dota-Stats# cd ~/Dota-Stats
+bash community-edition/deploy.sh    # picks up the layout + synergy fixes
+set -a && source .env && set +a
+
+# Preview, then commit (note: drop --dry-run on the second line):
+node community-edition/scripts/purge-recent-bot-posts.js \
+  --channel=1380084621676646453 --hours=2 --dry-run
+node community-edition/scripts/purge-recent-bot-posts.js \
+  --channel=1380084621676646453 --hours=2
+==> [community] Pulling latest code...
+remote: Enumerating objects: 58, done.
+remote: Counting objects: 100% (58/58), done.
+remote: Compressing objects: 100% (15/15), done.
+remote: Total 41 (delta 26), reused 39 (delta 24), pack-reused 0 (from 0)
+Unpacking objects: 100% (41/41), 582.82 KiB | 6.55 MiB/s, done.
+From https://github.com/StElmosFire1/Dota-Stats
+   5b15206..2173997  main       -> origin/main
+HEAD is now at 2173997 Task #311: Resync superuser admin-route safety check manifest
+==> [community] Verifying committed replay parser jar is in sync with sources...
+[build-parser] OK: odota-parser/target/stats-0.1.0.jar is up to date with sources.
+==> [community] Verifying frontend accessibility (Task #164 — house rule gate)...
+[check-a11y] OK — scanned 152 JSX/TS file(s) and 4 CSS file(s), no accessibility regressions found.
+==> [community] Verifying no Pro-paywall imports in community web source (Task #301)...
+[check-community-paywall-source] OK — community-edition/web/src/ is clean of Pro-paywall references.
+==> [community] Verifying no Pro-paywall code in community source (Task #303)...
+[check-community-paywall] OK — source tree clean and no forbidden tokens in community-edition/web/dist/.
+==> [community] Installing community frontend dependencies...
+==> [community] Building community frontend...
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 782 modules transformed.
+dist/index.html                          0.47 kB │ gzip:   0.31 kB
+dist/assets/index-CpfRjeiy.css          19.41 kB │ gzip:   4.63 kB
+dist/assets/SortableTh-B0fNrf13.js       0.53 kB │ gzip:   0.35 kB
+dist/assets/ImpactBadge-DslI4BIC.js      1.37 kB │ gzip:   0.68 kB
+dist/assets/heroes-B4IkSDsk.js           1.55 kB │ gzip:   0.88 kB
+dist/assets/RankBadge-B8CZkCbn.js        2.87 kB │ gzip:   1.34 kB
+dist/assets/Synergy-CReoOzvL.js          4.04 kB │ gzip:   1.67 kB
+dist/assets/MultiKills-CJ1R0A1Y.js       4.78 kB │ gzip:   1.72 kB
+dist/assets/HeroBreakdown-BrTIYZZR.js    5.07 kB │ gzip:   1.77 kB
+dist/assets/OverallStats-DpWGS50b.js     5.19 kB │ gzip:   1.81 kB
+dist/assets/HallOfFame-DmZtTJv8.js       5.22 kB │ gzip:   2.12 kB
+dist/assets/Seasons-CpEX16wZ.js          5.54 kB │ gzip:   1.94 kB
+dist/assets/PatchNotes-SpOLl0z6.js       6.61 kB │ gzip:   2.48 kB
+dist/assets/heroNames-Du5QXGww.js        7.13 kB │ gzip:   3.40 kB
+dist/assets/MatchList-cNgvlMMB.js        7.45 kB │ gzip:   2.75 kB
+dist/assets/DraftStats-MJye3AOM.js       7.60 kB │ gzip:   1.93 kB
+dist/assets/RecordMatch-C3TrVxci.js      7.77 kB │ gzip:   2.79 kB
+dist/assets/Players-Cmow7O9U.js          7.80 kB │ gzip:   2.63 kB
+dist/assets/Draft-CtpkOIwl.js            7.87 kB │ gzip:   1.97 kB
+dist/assets/Home-CgeT0eMV.js             8.01 kB │ gzip:   2.85 kB
+dist/assets/PudgeStats-C0G0bVN-.js      10.96 kB │ gzip:   3.43 kB
+dist/assets/Upload-XjHpM-_h.js          11.33 kB │ gzip:   3.99 kB
+dist/assets/PositionStats-Cfw4h_gW.js   11.61 kB │ gzip:   3.00 kB
+dist/assets/StatsEditor-DYzWiK_2.js     13.33 kB │ gzip:   4.06 kB
+dist/assets/Records-DjRHIQqH.js         15.17 kB │ gzip:   4.51 kB
+dist/assets/Leaderboard-Bo4dPDtC.js     15.43 kB │ gzip:   4.36 kB
+dist/assets/Heroes-C3Muu_Zc.js          20.71 kB │ gzip:   6.51 kB
+dist/assets/PlayerProfile-CDVzY2Lo.js   33.45 kB │ gzip:   8.22 kB
+dist/assets/AdminPanel-DVCH6gvB.js      54.09 kB │ gzip:  14.05 kB
+dist/assets/MatchDetail-DmUFrrto.js    108.10 kB │ gzip:  30.11 kB
+dist/assets/index-CrKmIBJK.js          198.07 kB │ gzip:  63.36 kB
+dist/assets/LineChart-BO8onacP.js      353.54 kB │ gzip: 105.21 kB
+✓ built in 8.03s
+==> [community] Verifying no Pro-paywall code leaked into community bundle (Task #299)...
+[check-community-paywall] OK — source tree clean and no forbidden tokens in community-edition/web/dist/.
+==> [community] Restarting bot...
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 2 ])
+[PM2] [inhouse-bot](2) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 277609   │ 0s     │ 3    │ online    │ 0%       │ 21.9mb   │ root     │ disabled │
+│ 1  │ oi-bot         │ default     │ 1.0.0   │ fork    │ 158737   │ 5D     │ 124  │ online    │ 0%       │ 266.2mb  │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+
+✓ Community deploy complete.
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ inhouse-bot    │ default     │ 1.0.0   │ fork    │ 277609   │ 0s     │ 3    │ online    │ 0%       │ 53.0mb   │ root     │ disabled │
+│ 1  │ oi-bot         │ default     │ 1.0.0   │ fork    │ 158737   │ 5D     │ 124  │ online    │ 0%       │ 266.2mb  │ root     │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+Mode: DRY RUN (nothing will be deleted)
+Channel: 1380084621676646453
+Window: messages from the last 2 hour(s) (since 2026-05-16T01:23:10.332Z)
+Logged in as Dota Bot#5597 (id 1473222773064335403)
+  DEL  1505034527070752899  2026-05-16T02:29:53.443Z  📋 Bot Update — v6.11 | Discord auto-join failures now ping an admin channel instead of dying silent
+  DEL  1505034525158408265  2026-05-16T02:29:52.987Z  📋 Bot Update — v6.20 | Fewer round-trips on every page load — Discord retry banner now rides /api/a
+  DEL  1505034523216449730  2026-05-16T02:29:52.524Z  📋 Bot Update — v6.19 | Admins can see who's stuck waiting to retry their Discord auto-join
+  DEL  1505034521354047488  2026-05-16T02:29:52.080Z  📋 Bot Update — v6.18 | Public profiles now use the same polished card the editor previews
+  DEL  1505034501334761472  2026-05-16T02:29:47.307Z  📋 Bot Update — v6.17 | Discord auto-join health panel now survives bot restarts
+  DEL  1505034498633502762  2026-05-16T02:29:46.663Z  📋 Bot Update — v6.22 | Discord auto-join retry queue now self-prunes ancient stuck rows
+  DEL  1505034496863506559  2026-05-16T02:29:46.241Z  📋 Bot Update — v6.23 | Admin auto-join failure list now shows player nicknames next to Discord IDs
+  DEL  1505034495554748587  2026-05-16T02:29:45.929Z  📋 Bot Update — v6.24 | Admin retry-queue rows now match the new history-table nickname treatment
+  DEL  1505034493235429417  2026-05-16T02:29:45.376Z  📋 Bot Update — v6.16 | Auto-balance now shows the projected MMR balance up front
+  DEL  1505034491134083273  2026-05-16T02:29:44.875Z  📋 Bot Update — v6.15 | Players who failed to auto-join Discord can now retry once the bot is fixed
+  DEL  1505034489196187860  2026-05-16T02:29:44.413Z  📋 Bot Update — v6.21 | Admin auto-join panel now shows a 7-day timeline with drill-down on failures
+  DEL  1505034467524481104  2026-05-16T02:29:39.246Z  📋 Bot Update — v6.14 | Admins can now see Discord auto-join health at a glance
+  DEL  1505034465477660936  2026-05-16T02:29:38.758Z  📋 Bot Update — v6.26 | Steam sign-in finally sticks across PM2 restarts · diagnostic banner for the
+  DEL  1505034463870980168  2026-05-16T02:29:38.375Z  📋 Bot Update — v6.25 | Patch-notes pipeline fix · footer auto-versioning · file reorder & dedupe
+  DEL  1505034460893020293  2026-05-16T02:29:37.665Z  📋 Bot Update — v5.91 | Public-profile parity audit — every block confirmed visible to non-owners
+  DEL  1505034458326368366  2026-05-16T02:29:37.053Z  📋 Bot Update — v5.90 | Quick admin / UX fixes batch (8 items)
+  DEL  1505034456044666961  2026-05-16T02:29:36.509Z  📋 Bot Update — v5.89 | Public Profile Parity · Admin Demo Lobby (Bots + Auto-Draft) · Community Nic
+  DEL  1505034454555561984  2026-05-16T02:29:36.154Z  📋 Bot Update — v5.88 | Records Hub Consolidation · Floating Profile Preview · Sign-Out Frees Lobby 
+  DEL  1505034452407947396  2026-05-16T02:29:35.642Z  📋 Bot Update — v5.87 | Security: Feature flag gates now enforced server-side for coaching marketpla
+  DEL  1505034432619479301  2026-05-16T02:29:30.924Z  📋 Bot Update — v5.86 | Inhouse Lobby Glow-Up · PERF on Leaderboard · Tier Badges Everywhere · AI Sc
+  DEL  1505034430643965953  2026-05-16T02:29:30.453Z  📋 Bot Update — v5.85 | Steam sign-in trust UX — visible reassurance that we never see your password
+  DEL  1505034429075161259  2026-05-16T02:29:30.079Z  📋 Bot Update — v5.84 | Inhouse lobby recognises signed-in users, account dropdown menu in the nav (
+  DEL  1505034426881671181  2026-05-16T02:29:29.556Z  📋 Bot Update — v5.83 | Steam sign-in fixed (`ps.created_at` crash), tier-ladder dedup, V1 ladder re
+  DEL  1505034424880730144  2026-05-16T02:29:29.079Z  📋 Bot Update — v5.82 | Heraldic rank names on every player badge, King reserved for #1, MMR ladder 
+  DEL  1505034422561538219  2026-05-16T02:29:28.526Z  📋 Bot Update — v5.81 | Public profile graduates the v5.74 mockup — eight customization knobs are no
+  DEL  1505034420300546120  2026-05-16T02:29:27.987Z  📋 Bot Update — v6.10 | One-click admin tool for reconciling Discord IDs shared by multiple accounts
+  DEL  1505034411530256475  2026-05-16T02:29:25.896Z  📋 Bot Update — v6.09 | Stripe misconfiguration is no longer silent — startup log + admin banner
+  DEL  1505034389640183919  2026-05-16T02:29:20.677Z  📋 Bot Update — v6.08 | Signed-in home now shows the standard landing under your personalized dashbo
+  DEL  1505034387274727434  2026-05-16T02:29:20.113Z  📋 Bot Update — v6.07 | Profile editor live preview no longer covers the form
+  DEL  1505034385454272632  2026-05-16T02:29:19.679Z  📋 Bot Update — v6.06 | Fixed Steam sign-in trust footnote overflowing the nav row
+  DEL  1505034383781007550  2026-05-16T02:29:19.280Z  📋 Bot Update — v6.05 | Players can fully unlink their Discord account from Settings
+  DEL  1505034381641646081  2026-05-16T02:29:18.770Z  📋 Bot Update — v6.04 | Discord OAuth now auto-joins new users to the OCE Inhouse server (and assign
+  DEL  1505034379733504191  2026-05-16T02:29:18.315Z  📋 Bot Update — v6.03 | Auto-running /inhouse lobby + captain-mode vote + church-bell chime
+  DEL  1505034377179172975  2026-05-16T02:29:17.706Z  📋 Bot Update — v6.02 | Stop a second account from claiming a Discord ID that's already linked
+  DEL  1505034374595215440  2026-05-16T02:29:17.090Z  📋 Bot Update — v6.00 | Community edition admin panel gets the same superuser auto-recovery
+  DEL  1505034354542510171  2026-05-16T02:29:12.309Z  📋 Bot Update — v5.99 | One-click "Connect with Discord" replaces the paste-your-ID step
+  DEL  1505034352063680532  2026-05-16T02:29:11.718Z  📋 Bot Update — v5.98 | Verify Discord IDs against the real account before saving
+  DEL  1505034350217924718  2026-05-16T02:29:11.278Z  📋 Bot Update — v5.97 | Snapshot test guards public-profile parity from silent regressions
+  DEL  1505034347873566821  2026-05-16T02:29:10.719Z  📋 Bot Update — v5.96 | Auto-recover the superuser session so admin actions don't 403 silently
+  DEL  1505034344861794326  2026-05-16T02:29:10.001Z  📋 Bot Update — v5.95 | TrueSkill V1 code paths fully removed from the rating engine
+  DEL  1505034342743802060  2026-05-16T02:29:09.496Z  📋 Bot Update — v5.94 | First-login Discord ID onboarding modal
+  DEL  1505034340739055656  2026-05-16T02:29:09.018Z  📋 Bot Update — v5.92 | Tournament self-registration + paid buy-ins (Stripe) with withdraw/refund + 
+  DEL  1505034338415280280  2026-05-16T02:29:08.464Z  📋 Bot Update — v6.01 | Players can re-link a different Discord account from Settings
+  DEL  1505034317351354399  2026-05-16T02:29:03.442Z  📋 Bot Update — v5.74.2 | Security: Session-Based Admin Auth & Superuser Privilege Boundary
+  DEL  1505034315204132865  2026-05-16T02:29:02.930Z  📋 Bot Update — v5.93 | Coaching Marketplace opens to everyone
+  DEL  1505034313098461375  2026-05-16T02:29:02.428Z  📋 Bot Update — v5.64 | Pro paywall sweep + tournament 404 diagnostics + light-mode polish
+  DEL  1505034311391379486  2026-05-16T02:29:02.021Z  📋 Bot Update — v5.63 | Bug-fix sweep — Inhouse session SQL, light-mode tabs, wider pages, welcome-m
+  DEL  1505034309130784770  2026-05-16T02:29:01.482Z  📋 Bot Update — v5.78 | Steam sign-in trust-proxy fix, broadcast ticker live refresh, tournament cac
+  DEL  1505034307461189713  2026-05-16T02:29:01.084Z  📋 Bot Update — v5.77 | Tournament listing/detail consistency, home page pulse widgets, Steam sign-i
+  DEL  1505034304906854542  2026-05-16T02:29:00.475Z  📋 Bot Update — v5.80 | Steam OpenID verify body — actual final fix (the real reason sign-in kept fa
+  DEL  1505034283293736982  2026-05-16T02:28:55.322Z  📋 Bot Update — v5.76 | Home banner CMS, lobby voice channel, tournament not-found UX, fresh voice c
+  DEL  1505034281607495710  2026-05-16T02:28:54.920Z  📋 Bot Update — v5.75 | Full inhouse lobby flow — auto-start, hybrid-rank captains, captain-led snak
+  DEL  1505034279913128066  2026-05-16T02:28:54.516Z  📋 Bot Update — v5.70 | Steam sign-in fix, Welcome Modal preview tooling, admin Tier Ladder + Nickna
+  DEL  1505034277304275006  2026-05-16T02:28:53.894Z  📋 Bot Update — v5.74.1 | Profile Demo Page + Tournament Cross-Table Redirect
+  DEL  1505034275790258236  2026-05-16T02:28:53.533Z  📋 Bot Update — v5.74 | Sub-Apprentice rebrand — Outlaw > Vagabond > Peasant + new heraldic emblems 
+  DEL  1505034267984400515  2026-05-16T02:28:51.672Z  📋 Bot Update — v5.73 | Draft Sandbox — player hover tooltip with KDA, win rate, preferred positions
+  DEL  1505034266080317445  2026-05-16T02:28:51.218Z  📋 Bot Update — v5.72 | Tournament card click fix · Steam SITE_URL warning · interactive Profile San
+  DEL  1505034264276631684  2026-05-16T02:28:50.788Z  📋 Bot Update — v5.71 | Admin Draft Sandbox — test-run the captain pick flow with placeholder player
+  DEL  1505034262129283256  2026-05-16T02:28:50.276Z  📋 Bot Update — v5.69 | Bug-fix sweep — sub-Apprentice rebrand, tournament click, superuser unlocks,
+  DEL  1505034260019679234  2026-05-16T02:28:49.773Z  📋 Bot Update — v5.68 | Medieval tier ladder — heraldic shield badges replace the old Gaben → Anchor
+  DEL  1505034240209981450  2026-05-16T02:28:45.050Z  📋 Bot Update — v5.67 | Pro Membership consolidation + Tournament 404 auto-rescue
+  DEL  1505034238406295693  2026-05-16T02:28:44.620Z  📋 Bot Update — v5.79 | Tournament detail 500 — actual root cause + obvious Steam signed-in indicato
+  DEL  1505034236690956419  2026-05-16T02:28:44.211Z  📋 Bot Update — v5.66 | Steam-login security hardening
+  DEL  1505034234748735558  2026-05-16T02:28:43.748Z  📋 Bot Update — v5.65 | Admin Panel search bar
+  DEL  1505034233020944564  2026-05-16T02:28:43.336Z  📋 Bot Update — v5.58 | PERF Positive Impact Revamp — Position-Aware, 10 Achievable for Every Role
+  DEL  1505034231280046301  2026-05-16T02:28:42.921Z  📋 Bot Update — v5.62 | Court & Pitch Home Landing + Editable Ticker + Marketplace Nav
+  DEL  1505034228889423954  2026-05-16T02:28:42.351Z  📋 Bot Update — v5.61 | Admin Panel left-sidebar restructure
+  DEL  1505034223298281654  2026-05-16T02:28:41.018Z  📋 Bot Update — v5.60 | Court & Pitch graduation — global primitives, ticker, footer, Welcome Modal 
+  DEL  1505034218328031353  2026-05-16T02:28:39.833Z  📋 Bot Update — v5.59 | OCE Inhouse rebrand — Court & Pitch palette + flag cleanup
+
+Scanned 100 message(s) in #stats. 69 authored by the bot within the window.
+Dry run — re-run without --dry-run to actually delete.
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+Mode: LIVE (will delete)
+Channel: 1380084621676646453
+Window: messages from the last 2 hour(s) (since 2026-05-16T01:23:12.566Z)
+Logged in as Dota Bot#5597 (id 1473222773064335403)
+  DEL  1505034527070752899  2026-05-16T02:29:53.443Z  📋 Bot Update — v6.11 | Discord auto-join failures now ping an admin channel instead of dying silent
+  DEL  1505034525158408265  2026-05-16T02:29:52.987Z  📋 Bot Update — v6.20 | Fewer round-trips on every page load — Discord retry banner now rides /api/a
+  DEL  1505034523216449730  2026-05-16T02:29:52.524Z  📋 Bot Update — v6.19 | Admins can see who's stuck waiting to retry their Discord auto-join
+  DEL  1505034521354047488  2026-05-16T02:29:52.080Z  📋 Bot Update — v6.18 | Public profiles now use the same polished card the editor previews
+  DEL  1505034501334761472  2026-05-16T02:29:47.307Z  📋 Bot Update — v6.17 | Discord auto-join health panel now survives bot restarts
+  DEL  1505034498633502762  2026-05-16T02:29:46.663Z  📋 Bot Update — v6.22 | Discord auto-join retry queue now self-prunes ancient stuck rows
+  DEL  1505034496863506559  2026-05-16T02:29:46.241Z  📋 Bot Update — v6.23 | Admin auto-join failure list now shows player nicknames next to Discord IDs
+  DEL  1505034495554748587  2026-05-16T02:29:45.929Z  📋 Bot Update — v6.24 | Admin retry-queue rows now match the new history-table nickname treatment
+  DEL  1505034493235429417  2026-05-16T02:29:45.376Z  📋 Bot Update — v6.16 | Auto-balance now shows the projected MMR balance up front
+  DEL  1505034491134083273  2026-05-16T02:29:44.875Z  📋 Bot Update — v6.15 | Players who failed to auto-join Discord can now retry once the bot is fixed
+  DEL  1505034489196187860  2026-05-16T02:29:44.413Z  📋 Bot Update — v6.21 | Admin auto-join panel now shows a 7-day timeline with drill-down on failures
+  DEL  1505034467524481104  2026-05-16T02:29:39.246Z  📋 Bot Update — v6.14 | Admins can now see Discord auto-join health at a glance
+  DEL  1505034465477660936  2026-05-16T02:29:38.758Z  📋 Bot Update — v6.26 | Steam sign-in finally sticks across PM2 restarts · diagnostic banner for the
+  DEL  1505034463870980168  2026-05-16T02:29:38.375Z  📋 Bot Update — v6.25 | Patch-notes pipeline fix · footer auto-versioning · file reorder & dedupe
+  DEL  1505034460893020293  2026-05-16T02:29:37.665Z  📋 Bot Update — v5.91 | Public-profile parity audit — every block confirmed visible to non-owners
+  DEL  1505034458326368366  2026-05-16T02:29:37.053Z  📋 Bot Update — v5.90 | Quick admin / UX fixes batch (8 items)
+  DEL  1505034456044666961  2026-05-16T02:29:36.509Z  📋 Bot Update — v5.89 | Public Profile Parity · Admin Demo Lobby (Bots + Auto-Draft) · Community Nic
+  DEL  1505034454555561984  2026-05-16T02:29:36.154Z  📋 Bot Update — v5.88 | Records Hub Consolidation · Floating Profile Preview · Sign-Out Frees Lobby 
+  DEL  1505034452407947396  2026-05-16T02:29:35.642Z  📋 Bot Update — v5.87 | Security: Feature flag gates now enforced server-side for coaching marketpla
+  DEL  1505034432619479301  2026-05-16T02:29:30.924Z  📋 Bot Update — v5.86 | Inhouse Lobby Glow-Up · PERF on Leaderboard · Tier Badges Everywhere · AI Sc
+  DEL  1505034430643965953  2026-05-16T02:29:30.453Z  📋 Bot Update — v5.85 | Steam sign-in trust UX — visible reassurance that we never see your password
+  DEL  1505034429075161259  2026-05-16T02:29:30.079Z  📋 Bot Update — v5.84 | Inhouse lobby recognises signed-in users, account dropdown menu in the nav (
+  DEL  1505034426881671181  2026-05-16T02:29:29.556Z  📋 Bot Update — v5.83 | Steam sign-in fixed (`ps.created_at` crash), tier-ladder dedup, V1 ladder re
+  DEL  1505034424880730144  2026-05-16T02:29:29.079Z  📋 Bot Update — v5.82 | Heraldic rank names on every player badge, King reserved for #1, MMR ladder 
+  DEL  1505034422561538219  2026-05-16T02:29:28.526Z  📋 Bot Update — v5.81 | Public profile graduates the v5.74 mockup — eight customization knobs are no
+  DEL  1505034420300546120  2026-05-16T02:29:27.987Z  📋 Bot Update — v6.10 | One-click admin tool for reconciling Discord IDs shared by multiple accounts
+  DEL  1505034411530256475  2026-05-16T02:29:25.896Z  📋 Bot Update — v6.09 | Stripe misconfiguration is no longer silent — startup log + admin banner
+  DEL  1505034389640183919  2026-05-16T02:29:20.677Z  📋 Bot Update — v6.08 | Signed-in home now shows the standard landing under your personalized dashbo
+  DEL  1505034387274727434  2026-05-16T02:29:20.113Z  📋 Bot Update — v6.07 | Profile editor live preview no longer covers the form
+  DEL  1505034385454272632  2026-05-16T02:29:19.679Z  📋 Bot Update — v6.06 | Fixed Steam sign-in trust footnote overflowing the nav row
+  DEL  1505034383781007550  2026-05-16T02:29:19.280Z  📋 Bot Update — v6.05 | Players can fully unlink their Discord account from Settings
+  DEL  1505034381641646081  2026-05-16T02:29:18.770Z  📋 Bot Update — v6.04 | Discord OAuth now auto-joins new users to the OCE Inhouse server (and assign
+  DEL  1505034379733504191  2026-05-16T02:29:18.315Z  📋 Bot Update — v6.03 | Auto-running /inhouse lobby + captain-mode vote + church-bell chime
+  DEL  1505034377179172975  2026-05-16T02:29:17.706Z  📋 Bot Update — v6.02 | Stop a second account from claiming a Discord ID that's already linked
+  DEL  1505034374595215440  2026-05-16T02:29:17.090Z  📋 Bot Update — v6.00 | Community edition admin panel gets the same superuser auto-recovery
+  DEL  1505034354542510171  2026-05-16T02:29:12.309Z  📋 Bot Update — v5.99 | One-click "Connect with Discord" replaces the paste-your-ID step
+  DEL  1505034352063680532  2026-05-16T02:29:11.718Z  📋 Bot Update — v5.98 | Verify Discord IDs against the real account before saving
+  DEL  1505034350217924718  2026-05-16T02:29:11.278Z  📋 Bot Update — v5.97 | Snapshot test guards public-profile parity from silent regressions
+  DEL  1505034347873566821  2026-05-16T02:29:10.719Z  📋 Bot Update — v5.96 | Auto-recover the superuser session so admin actions don't 403 silently
+  DEL  1505034344861794326  2026-05-16T02:29:10.001Z  📋 Bot Update — v5.95 | TrueSkill V1 code paths fully removed from the rating engine
+  DEL  1505034342743802060  2026-05-16T02:29:09.496Z  📋 Bot Update — v5.94 | First-login Discord ID onboarding modal
+  DEL  1505034340739055656  2026-05-16T02:29:09.018Z  📋 Bot Update — v5.92 | Tournament self-registration + paid buy-ins (Stripe) with withdraw/refund + 
+  DEL  1505034338415280280  2026-05-16T02:29:08.464Z  📋 Bot Update — v6.01 | Players can re-link a different Discord account from Settings
+  DEL  1505034317351354399  2026-05-16T02:29:03.442Z  📋 Bot Update — v5.74.2 | Security: Session-Based Admin Auth & Superuser Privilege Boundary
+  DEL  1505034315204132865  2026-05-16T02:29:02.930Z  📋 Bot Update — v5.93 | Coaching Marketplace opens to everyone
+  DEL  1505034313098461375  2026-05-16T02:29:02.428Z  📋 Bot Update — v5.64 | Pro paywall sweep + tournament 404 diagnostics + light-mode polish
+  DEL  1505034311391379486  2026-05-16T02:29:02.021Z  📋 Bot Update — v5.63 | Bug-fix sweep — Inhouse session SQL, light-mode tabs, wider pages, welcome-m
+  DEL  1505034309130784770  2026-05-16T02:29:01.482Z  📋 Bot Update — v5.78 | Steam sign-in trust-proxy fix, broadcast ticker live refresh, tournament cac
+  DEL  1505034307461189713  2026-05-16T02:29:01.084Z  📋 Bot Update — v5.77 | Tournament listing/detail consistency, home page pulse widgets, Steam sign-i
+  DEL  1505034304906854542  2026-05-16T02:29:00.475Z  📋 Bot Update — v5.80 | Steam OpenID verify body — actual final fix (the real reason sign-in kept fa
+  DEL  1505034283293736982  2026-05-16T02:28:55.322Z  📋 Bot Update — v5.76 | Home banner CMS, lobby voice channel, tournament not-found UX, fresh voice c
+  DEL  1505034281607495710  2026-05-16T02:28:54.920Z  📋 Bot Update — v5.75 | Full inhouse lobby flow — auto-start, hybrid-rank captains, captain-led snak
+  DEL  1505034279913128066  2026-05-16T02:28:54.516Z  📋 Bot Update — v5.70 | Steam sign-in fix, Welcome Modal preview tooling, admin Tier Ladder + Nickna
+  DEL  1505034277304275006  2026-05-16T02:28:53.894Z  📋 Bot Update — v5.74.1 | Profile Demo Page + Tournament Cross-Table Redirect
+  DEL  1505034275790258236  2026-05-16T02:28:53.533Z  📋 Bot Update — v5.74 | Sub-Apprentice rebrand — Outlaw > Vagabond > Peasant + new heraldic emblems 
+  DEL  1505034267984400515  2026-05-16T02:28:51.672Z  📋 Bot Update — v5.73 | Draft Sandbox — player hover tooltip with KDA, win rate, preferred positions
+  DEL  1505034266080317445  2026-05-16T02:28:51.218Z  📋 Bot Update — v5.72 | Tournament card click fix · Steam SITE_URL warning · interactive Profile San
+  DEL  1505034264276631684  2026-05-16T02:28:50.788Z  📋 Bot Update — v5.71 | Admin Draft Sandbox — test-run the captain pick flow with placeholder player
+  DEL  1505034262129283256  2026-05-16T02:28:50.276Z  📋 Bot Update — v5.69 | Bug-fix sweep — sub-Apprentice rebrand, tournament click, superuser unlocks,
+  DEL  1505034260019679234  2026-05-16T02:28:49.773Z  📋 Bot Update — v5.68 | Medieval tier ladder — heraldic shield badges replace the old Gaben → Anchor
+  DEL  1505034240209981450  2026-05-16T02:28:45.050Z  📋 Bot Update — v5.67 | Pro Membership consolidation + Tournament 404 auto-rescue
+  DEL  1505034238406295693  2026-05-16T02:28:44.620Z  📋 Bot Update — v5.79 | Tournament detail 500 — actual root cause + obvious Steam signed-in indicato
+  DEL  1505034236690956419  2026-05-16T02:28:44.211Z  📋 Bot Update — v5.66 | Steam-login security hardening
+  DEL  1505034234748735558  2026-05-16T02:28:43.748Z  📋 Bot Update — v5.65 | Admin Panel search bar
+  DEL  1505034233020944564  2026-05-16T02:28:43.336Z  📋 Bot Update — v5.58 | PERF Positive Impact Revamp — Position-Aware, 10 Achievable for Every Role
+  DEL  1505034231280046301  2026-05-16T02:28:42.921Z  📋 Bot Update — v5.62 | Court & Pitch Home Landing + Editable Ticker + Marketplace Nav
+  DEL  1505034228889423954  2026-05-16T02:28:42.351Z  📋 Bot Update — v5.61 | Admin Panel left-sidebar restructure
+  DEL  1505034223298281654  2026-05-16T02:28:41.018Z  📋 Bot Update — v5.60 | Court & Pitch graduation — global primitives, ticker, footer, Welcome Modal 
+  DEL  1505034218328031353  2026-05-16T02:28:39.833Z  📋 Bot Update — v5.59 | OCE Inhouse rebrand — Court & Pitch palette + flag cleanup
+
+Scanned 100 message(s) in #stats. 69 authored by the bot within the window.
+  bulkDelete failed: Missing Permissions
+
+Deleted 0 message(s) from #stats.
