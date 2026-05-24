@@ -69,6 +69,38 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// Task #317 — finalise account-deletion requests once their 30-day grace
+// window elapses. Runs once on boot (after a brief delay so DB init can
+// complete) and then every 6 hours. Anonymizes each due account
+// (persona_name → "Deleted Player #N", customisations cleared, match-history
+// rows preserved). Best-effort; per-account failures are logged but do not
+// halt the sweep.
+async function _runAccountDeletionSweep() {
+  try {
+    const due = await db.listAccountsReadyForAnonymization(30);
+    for (const accountId of due) {
+      try {
+        const result = await db.anonymizeAccount(accountId);
+        // Belt-and-braces session cleanup at anonymization time too — the
+        // request-time revoke should have caught these, but if a session
+        // was created in the gap between request and grace expiry (e.g.
+        // sign-in that *cancelled* deletion, then re-request) we want to
+        // make absolutely sure no cookie survives the final purge.
+        await db.revokeAllSessionsForAccount(accountId).catch(() => 0);
+        if (!result?.already) {
+          console.log('[Account Deletion] sweep anonymized', accountId, 'as', result?.label);
+        }
+      } catch (e) {
+        console.warn('[Account Deletion] sweep failed for', accountId, '—', e?.message || e);
+      }
+    }
+  } catch (e) {
+    console.warn('[Account Deletion] sweep listing failed:', e?.message || e);
+  }
+}
+setTimeout(() => { _runAccountDeletionSweep().catch(() => {}); }, 60_000).unref();
+setInterval(() => { _runAccountDeletionSweep().catch(() => {}); }, 6 * 60 * 60 * 1000).unref();
+
 // Replay store cleanup: runs every 12 hours, deletes expired files from disk.
 setInterval(async () => {
   try {
@@ -428,7 +460,7 @@ function createServer(startupStatus = {}) {
   const DISCORD_OAUTH_AUTHORIZE = 'https://discord.com/api/oauth2/authorize';
   const DISCORD_OAUTH_TOKEN = 'https://discord.com/api/oauth2/token';
   const DISCORD_OAUTH_USER = 'https://discord.com/api/users/@me';
-  const DISCORD_OAUTH_RETURNS = { home: '/', settings: '/settings/profile' };
+  const DISCORD_OAUTH_RETURNS = { home: '/', settings: '/settings/account' };
 
   function discordOAuthRedirectUri(req) {
     return `${steamBaseUrl(req)}/auth/discord/callback`;
@@ -2086,6 +2118,32 @@ function createServer(startupStatus = {}) {
 function createApiRouter(startupStatus = {}, _app = null) {
   const router = express.Router();
 
+  // Task #317 — central guard for pending-deletion / anonymized accounts.
+  // Every public read of a player's data goes through one of these URL
+  // shapes; rather than sprinkle `isAccountHidden` checks across ~25
+  // endpoints, intercept the URL upfront and return 404 once before any
+  // handler runs. Mutation routes are scoped to `/me/...` (auth'd to the
+  // owner) or admin endpoints, so a GET-only gate is sufficient.
+  //
+  // Owner-overrides are intentionally not granted — the spec says the
+  // profile is hidden during the grace period; the owner sees their own
+  // deletion state via /api/me/account-status and Settings → Danger zone.
+  const _PLAYER_PATH_RE = /^\/(?:players?)\/(\d+)(?:[\/?#]|$)/;
+  router.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    const m = _PLAYER_PATH_RE.exec(req.path);
+    if (!m) return next();
+    const id = m[1];
+    db.isAccountHidden(id)
+      .then((hidden) => {
+        if (hidden) {
+          return res.status(404).json({ error: 'Account not available', code: 'account_hidden' });
+        }
+        next();
+      })
+      .catch(() => next());
+  });
+
   router.get('/health', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     let dbOk = false;
@@ -2205,6 +2263,13 @@ function createApiRouter(startupStatus = {}, _app = null) {
       req.session.accountId = accountId;
       req.session.steamId64 = steamId64;
       req.session.displayName = displayName;
+      // Task #317 — Steam login during the 30-day grace cancels the
+      // pending account-deletion request. Best-effort: a DB hiccup must
+      // not block the session-save path. If the account has already been
+      // anonymized this is a no-op (the WHERE clause filters it out).
+      db.cancelAccountDeletion(accountId).catch((cancelErr) => {
+        console.warn('[Auth Complete] cancelAccountDeletion failed for', accountId, '—', cancelErr?.message || cancelErr);
+      });
       req.session.save((saveErr) => {
         if (saveErr) {
           console.error('[Auth Complete] session.save failed:', saveErr);
@@ -2873,6 +2938,13 @@ function createApiRouter(startupStatus = {}, _app = null) {
 
   router.get('/players/:accountId', async (req, res) => {
     try {
+      // Task #317 — pending-deletion / anonymized accounts vanish from
+      // public profile reads. This is the primary surface PlayerProfile.jsx
+      // fetches first, so a 404 here cascades the page into its
+      // "not found" state across every dependent sub-fetch.
+      if (await db.isAccountHidden(req.params.accountId)) {
+        return res.status(404).json({ error: 'Account not available', code: 'account_hidden' });
+      }
       const seasonId = req.query.season_id || null;
       const stats = await db.getPlayerStats(req.params.accountId, seasonId);
       res.json(stats);
@@ -2891,7 +2963,14 @@ function createApiRouter(startupStatus = {}, _app = null) {
       // or signed-in non-superusers. Only superusers (who edit it via the
       // separately-gated POST /players/:accountId/discord route) see it.
       const isSuperuser = !!(req.session && req.session.isSuperuser);
-      const safe = isSuperuser ? players : players.map(p => {
+      // Task #317 — drop pending-deletion / anonymized accounts from the
+      // public listing so they vanish from leaderboards and player search
+      // the moment deletion is requested.
+      const hiddenChecks = await Promise.all(
+        players.map(p => p.account_id ? db.isAccountHidden(p.account_id) : Promise.resolve(false))
+      );
+      const visible = players.filter((_, i) => !hiddenChecks[i]);
+      const safe = isSuperuser ? visible : visible.map(p => {
         const { discord_id, ...rest } = p;
         return rest;
       });
@@ -10178,11 +10257,16 @@ NOTES
     try {
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
-      const [homeData, onboardingComplete] = await Promise.all([
+      const [homeData, onboardingState] = await Promise.all([
         db.getPlayerHomeData(accountId),
-        db.getOnboardingStatus(accountId),
+        db.getOnboardingState(accountId),
       ]);
-      res.json({ ...homeData, onboarding_complete: onboardingComplete });
+      res.json({
+        ...homeData,
+        onboarding_complete: onboardingState.complete,
+        onboarding_step_index: onboardingState.step_index,
+        onboarding_completed_at: onboardingState.completed_at,
+      });
     } catch (err) {
       console.error('[API] me/home GET:', err.message);
       res.status(500).json({ error: 'Failed to fetch home data' });
@@ -10218,6 +10302,7 @@ NOTES
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       await db.setOnboardingComplete(accountId, false);
+      await db.setOnboardingStep(accountId, 0);
       res.json({ ok: true });
     } catch (err) {
       console.error('[API] me/onboarding/reset POST:', err.message);
@@ -10225,8 +10310,96 @@ NOTES
     }
   });
 
+  // Task #317 — persist step index so the wizard resumes mid-flow.
+  router.post('/me/onboarding/step', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const step = parseInt(req.body?.step, 10);
+      if (!Number.isFinite(step)) return res.status(400).json({ error: 'step required' });
+      const saved = await db.setOnboardingStep(accountId, step);
+      res.json({ ok: true, step_index: saved });
+    } catch (err) {
+      console.error('[API] me/onboarding/step POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #317 — account-deletion two-stage flow.
+  //
+  // Request → `pending_deletion_at` is set. A 30-day grace window starts;
+  // Steam login during that window cancels the request (see /auth/complete).
+  // After 30 days the periodic sweep (see scheduleAccountDeletionSweep)
+  // calls db.anonymizeAccount() which renames the player's persona to
+  // "Deleted Player #N" everywhere and clears their customisations while
+  // preserving match-history integrity (player_stats rows are kept).
+  router.get('/me/account-status', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const status = await db.getAccountDeletionStatus(accountId);
+      const GRACE_DAYS = 30;
+      let purgeAt = null;
+      if (status.pending_deletion_at) {
+        purgeAt = new Date(new Date(status.pending_deletion_at).getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      }
+      res.json({
+        pending_deletion_at: status.pending_deletion_at,
+        anonymized_at: status.anonymized_at,
+        grace_days: GRACE_DAYS,
+        scheduled_purge_at: purgeAt,
+      });
+    } catch (err) {
+      console.error('[API] me/account-status GET:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/account/request-deletion', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const status = await db.requestAccountDeletion(accountId);
+      // Backend-enforced account-wide session revocation. Destroying the
+      // current request session covers this browser; deleting every
+      // `user_sessions` row whose `sess.accountId` matches covers every
+      // other device/tab and renders any stolen cookie for the account
+      // immediately useless. A fresh Steam sign-in is required to cancel;
+      // that path goes through /auth/complete which atomically calls
+      // cancelAccountDeletion.
+      const revoked = await db.revokeAllSessionsForAccount(accountId).catch(() => 0);
+      console.log('[Account Deletion] request — accountId:', accountId, 'pending_at:', status.pending_deletion_at, 'sessions_revoked:', revoked);
+      req.session.destroy(() => {
+        res.json({ ok: true, pending_deletion_at: status.pending_deletion_at, signed_out: true, sessions_revoked: revoked });
+      });
+    } catch (err) {
+      console.error('[API] me/account/request-deletion POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/account/cancel-deletion', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const status = await db.cancelAccountDeletion(accountId);
+      console.log('[Account Deletion] cancel — accountId:', accountId);
+      res.json({ ok: true, pending_deletion_at: status.pending_deletion_at });
+    } catch (err) {
+      console.error('[API] me/account/cancel-deletion POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/player/:id/profile-card', async (req, res) => {
     try {
+      // Task #317 — pending-deletion / anonymized accounts disappear from
+      // public profile reads during the grace period. Owner-overrides are
+      // intentionally not granted here; the owner sees their own state in
+      // /api/me/account-status and Settings → Danger zone.
+      if (await db.isAccountHidden(req.params.id)) {
+        return res.status(404).json({ error: 'Account not available', code: 'account_hidden' });
+      }
       const card = await db.getPlayerProfileCard(req.params.id);
       res.json({ customization: card });
     } catch (err) {

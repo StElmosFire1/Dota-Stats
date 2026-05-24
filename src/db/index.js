@@ -1104,6 +1104,18 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_player_profiles_account ON player_profiles (account_id)`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS onboarding_complete BOOLEAN NOT NULL DEFAULT false`);
+    // Task #317 — 5-step tour: persist last step viewed + completion timestamp.
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS onboarding_step_index INTEGER NOT NULL DEFAULT 0`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ`);
+    // Task #317 — two-stage account deletion. `pending_deletion_at` is set when
+    // the user requests deletion; a 30-day grace sweep flips them to
+    // `anonymized_at` and replaces persona_name on player_stats with
+    // "Deleted Player #N", preserving match-history integrity. Steam login
+    // before the sweep clears `pending_deletion_at` (cancel).
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS pending_deletion_at TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS anonymized_label TEXT`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_player_profiles_pending_deletion ON player_profiles (pending_deletion_at) WHERE pending_deletion_at IS NOT NULL AND anonymized_at IS NULL`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS profile_frame TEXT`);
     // v6.52 / Task #195 — Magazine v3 layout theme. NULL/empty means the
     // default Court & Pitch look that ships free with the v3 cover graduation.
@@ -11790,17 +11802,222 @@ async function getOnboardingStatus(accountId) {
   return !!r.rows[0].onboarding_complete;
 }
 
+// Task #317 — richer state for the 5-step tour. Returns step_index + the
+// completion timestamp so the wizard can resume mid-flow and the Settings
+// page can offer a "Replay tour" button with last-completed-on metadata.
+async function getOnboardingState(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT onboarding_complete, onboarding_step_index, onboarding_completed_at
+       FROM player_profiles WHERE account_id = $1`,
+    [accountId]
+  );
+  if (!r.rows[0]) return { complete: false, step_index: 0, completed_at: null };
+  return {
+    complete: !!r.rows[0].onboarding_complete,
+    step_index: r.rows[0].onboarding_step_index || 0,
+    completed_at: r.rows[0].onboarding_completed_at || null,
+  };
+}
+
 async function setOnboardingComplete(accountId, complete = true) {
   const p = getPool();
   await p.query(
-    `INSERT INTO player_profiles (account_id, onboarding_complete, updated_at)
-     VALUES ($1, $2, NOW())
+    `INSERT INTO player_profiles (account_id, onboarding_complete, onboarding_completed_at, updated_at)
+     VALUES ($1, $2, CASE WHEN $2::boolean THEN NOW() ELSE NULL END, NOW())
      ON CONFLICT (account_id) DO UPDATE
        SET onboarding_complete = EXCLUDED.onboarding_complete,
+           onboarding_completed_at = CASE
+             WHEN EXCLUDED.onboarding_complete THEN COALESCE(player_profiles.onboarding_completed_at, NOW())
+             ELSE NULL
+           END,
            updated_at = NOW()`,
     [accountId, !!complete]
   );
   return true;
+}
+
+async function setOnboardingStep(accountId, stepIndex) {
+  const idx = Math.max(0, Math.min(10, parseInt(stepIndex, 10) || 0));
+  const p = getPool();
+  await p.query(
+    `INSERT INTO player_profiles (account_id, onboarding_step_index, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (account_id) DO UPDATE
+       SET onboarding_step_index = EXCLUDED.onboarding_step_index,
+           updated_at = NOW()`,
+    [accountId, idx]
+  );
+  return idx;
+}
+
+// ---------- Account deletion (Task #317) ----------
+// Task #317 — single source of truth for "should this account be hidden from
+// public surfaces?". An account is hidden once `pending_deletion_at` is set
+// and stays hidden forever after `anonymized_at` flips. Used by public read
+// endpoints (`/api/player/:id/...`, `/api/players`, profile cards) so the
+// account disappears the moment the user requests deletion rather than only
+// after the 30-day grace sweep.
+// Task #317 — revoke every active session belonging to an account. Used on
+// deletion request (and again in the anonymization sweep as a safety net)
+// so a stolen cookie or a session on another device can't keep an account
+// signed in during/after the grace period.
+//
+// `user_sessions` is the connect-pg-simple table created at boot. Its `sess`
+// column is JSON, so we look up rows whose `sess.accountId` matches.
+async function revokeAllSessionsForAccount(accountId) {
+  if (!accountId) return 0;
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `DELETE FROM user_sessions
+        WHERE (sess::jsonb ->> 'accountId') = $1::text`,
+      [String(accountId)]
+    );
+    return r.rowCount || 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+async function isAccountHidden(accountId) {
+  if (!accountId) return false;
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `SELECT 1 FROM player_profiles
+        WHERE account_id = $1
+          AND (pending_deletion_at IS NOT NULL OR anonymized_at IS NOT NULL)
+        LIMIT 1`,
+      [accountId]
+    );
+    return r.rowCount > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function getAccountDeletionStatus(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT pending_deletion_at, anonymized_at, anonymized_label
+       FROM player_profiles WHERE account_id = $1`,
+    [accountId]
+  );
+  if (!r.rows[0]) return { pending_deletion_at: null, anonymized_at: null, anonymized_label: null };
+  return {
+    pending_deletion_at: r.rows[0].pending_deletion_at,
+    anonymized_at: r.rows[0].anonymized_at,
+    anonymized_label: r.rows[0].anonymized_label,
+  };
+}
+
+async function requestAccountDeletion(accountId) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO player_profiles (account_id, pending_deletion_at, updated_at)
+     VALUES ($1, NOW(), NOW())
+     ON CONFLICT (account_id) DO UPDATE
+       SET pending_deletion_at = COALESCE(player_profiles.pending_deletion_at, NOW()),
+           updated_at = NOW()
+       WHERE player_profiles.anonymized_at IS NULL`,
+    [accountId]
+  );
+  return getAccountDeletionStatus(accountId);
+}
+
+async function cancelAccountDeletion(accountId) {
+  const p = getPool();
+  await p.query(
+    `UPDATE player_profiles
+        SET pending_deletion_at = NULL,
+            updated_at = NOW()
+      WHERE account_id = $1
+        AND anonymized_at IS NULL`,
+    [accountId]
+  );
+  return getAccountDeletionStatus(accountId);
+}
+
+// Finalise deletion: anonymize one account. Preserves match-history integrity
+// by KEEPING player_stats rows (account_id stays) but stripping persona_name
+// to "Deleted Player #N", clearing Discord linkage, wiping the customizable
+// profile, and marking the row as anonymized. Idempotent — re-running for the
+// same account is a no-op once anonymized_at is set.
+async function anonymizeAccount(accountId) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query(
+      `SELECT anonymized_at, anonymized_label FROM player_profiles WHERE account_id = $1 FOR UPDATE`,
+      [accountId]
+    );
+    if (existing.rows[0]?.anonymized_at) {
+      await client.query('COMMIT');
+      return { label: existing.rows[0].anonymized_label, already: true };
+    }
+    const seq = await client.query(
+      `SELECT COUNT(*)::int + 1 AS n FROM player_profiles WHERE anonymized_at IS NOT NULL`
+    );
+    const label = `Deleted Player #${seq.rows[0].n}`;
+    await client.query(
+      `UPDATE player_stats SET persona_name = $2, discord_id = '' WHERE account_id = $1`,
+      [accountId, label]
+    );
+    // Best-effort wipes — ignore missing tables/columns on a stripped install.
+    const safe = async (sql, params) => { try { await client.query(sql, params); } catch (_) { /* tolerate */ } };
+    // Sever every external identity link we own for this account so the
+    // anonymized row cannot be re-identified after the sweep.
+    //   - `nicknames` row deleted outright (it holds the Discord-id → account
+    //     mapping that powers `!whoami` and DM routing).
+    //   - `ratings.discord_id` blanked alongside the display_name rename.
+    //   - `players` row (Steam-id → account mapping) deleted outright.
+    //   - `discord_id` blanked on player_stats so old match scoreboards no
+    //     longer expose the player's Discord handle.
+    await safe(`DELETE FROM nicknames WHERE account_id = $1`, [accountId]);
+    await safe(`UPDATE ratings SET display_name = $2, discord_id = '' WHERE player_id = $1`, [accountId, label]);
+    await safe(`DELETE FROM players WHERE account_id_32 = $1::text`, [accountId]);
+    await safe(`DELETE FROM discord_auto_join_failures WHERE account_id = $1`, [accountId]);
+    await safe(`DELETE FROM discord_link_pending WHERE account_id = $1`, [accountId]);
+    await safe(`DELETE FROM web_auth_sessions WHERE account_id = $1`, [accountId]);
+    await safe(`UPDATE player_profiles
+                  SET bio = NULL, custom_title = NULL, theme_accent = NULL,
+                      pinned_hero_id = NULL, pinned_hero_caption = NULL, pinned_match_id = NULL,
+                      profile_frame = NULL, profile_layout_theme = NULL, selected_voice_pack = NULL,
+                      extras = '{}'::jsonb, pinned_achievements = '[]'::jsonb, cover_fx = '[]'::jsonb,
+                      vanity_slug = NULL, equipped_founder_ring = NULL,
+                      anonymized_at = NOW(), anonymized_label = $2,
+                      pending_deletion_at = COALESCE(pending_deletion_at, NOW()),
+                      onboarding_complete = false, onboarding_step_index = 0, onboarding_completed_at = NULL,
+                      updated_at = NOW()
+                WHERE account_id = $1`, [accountId, label]);
+    await safe(`DELETE FROM notification_prefs WHERE account_id = $1`, [accountId]);
+    await safe(`DELETE FROM push_subscriptions WHERE account_id = $1`, [accountId]);
+    await client.query('COMMIT');
+    return { label, already: false };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Returns accounts whose `pending_deletion_at` is older than the grace period
+// and have not yet been anonymized — for the periodic sweep.
+async function listAccountsReadyForAnonymization(graceDays = 30) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT account_id FROM player_profiles
+      WHERE pending_deletion_at IS NOT NULL
+        AND anonymized_at IS NULL
+        AND pending_deletion_at < NOW() - ($1 || ' days')::interval
+      ORDER BY pending_deletion_at ASC
+      LIMIT 100`,
+    [String(graceDays)]
+  );
+  return r.rows.map(row => String(row.account_id));
 }
 
 // ---------- Personalised home data ----------
@@ -13911,7 +14128,16 @@ module.exports = {
   grantSeasonPassActivation,
   hasSeasonPassActivation,
   getOnboardingStatus,
+  getOnboardingState,
+  isAccountHidden,
+  revokeAllSessionsForAccount,
   setOnboardingComplete,
+  setOnboardingStep,
+  getAccountDeletionStatus,
+  requestAccountDeletion,
+  cancelAccountDeletion,
+  anonymizeAccount,
+  listAccountsReadyForAnonymization,
   getPlayerHomeData,
   isProMember,
   getProSubscription,

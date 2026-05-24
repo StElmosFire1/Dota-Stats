@@ -17,6 +17,7 @@ import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import WelcomeModal from './components/WelcomeModal';
 import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
+import OnboardingNudge from './components/OnboardingNudge';
 import DiscordLinkModal from './components/DiscordLinkModal';
 import DiscordRetryBanner from './components/DiscordRetryBanner';
 import SideBanners from './components/SideBanner';
@@ -69,6 +70,9 @@ const SettingsNotifications = lazy(() => import('./pages/SettingsNotifications')
 const SettingsProfile = lazy(() => import('./pages/SettingsProfile'));
 const Pro = lazy(() => import('./pages/Pro'));
 const SettingsBilling = lazy(() => import('./pages/SettingsBilling'));
+const Settings = lazy(() => import('./pages/Settings'));
+const SettingsAccount = lazy(() => import('./pages/SettingsAccount'));
+const SettingsDangerZone = lazy(() => import('./pages/SettingsDangerZone'));
 const Coaches = lazy(() => import('./pages/Coaches'));
 const CoachProfile = lazy(() => import('./pages/CoachProfile'));
 const CoachEdit = lazy(() => import('./pages/CoachEdit'));
@@ -266,13 +270,17 @@ function SteamButton() {
                 <span aria-hidden="true">👤</span> View profile
               </Link>
             )}
-            <Link to="/settings/profile" role="menuitem" style={itemStyle}
+            <Link to="/settings" role="menuitem" style={itemStyle}
               onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
-              <span aria-hidden="true">⚙️</span> Profile settings
+              <span aria-hidden="true">⚙️</span> Settings
             </Link>
             <Link to="/settings/notifications" role="menuitem" style={itemStyle}
               onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
               <span aria-hidden="true">🔔</span> Notifications
+            </Link>
+            <Link to="/settings/billing" role="menuitem" style={itemStyle}
+              onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
+              <span aria-hidden="true">💳</span> Billing
             </Link>
             {accountId && (
               <Link to={`/player/${accountId}#matches`} role="menuitem" style={itemStyle}
@@ -956,14 +964,83 @@ function SignInRetryBanner() {
   );
 }
 
+// Task #317 — first-visit shows the wizard; once dismissed, a non-blocking
+// nudge banner replaces it until the user finishes the tour. The nudge's
+// "Resume tour" button re-opens the wizard at the persisted step index.
+//
+// Returning incomplete users get ONLY the nudge — never the auto-modal —
+// per spec ("gentle nudge for returners"). We detect a returner via:
+//   1. localStorage flag `onboarding_modal_seen` set on first auto-show, OR
+//   2. server-side `onboarding_step_index > 0` (they navigated past welcome
+//      on a prior visit, which is server-truth and survives a cleared
+//      localStorage / new device).
 function GlobalOnboardingWizard() {
-  const { onboardingComplete, setOnboardingComplete } = useSteamAuth();
-  if (onboardingComplete !== false) return null;
+  const { onboardingComplete, setOnboardingComplete, steamUser } = useSteamAuth();
+  const [open, setOpen] = React.useState(false);
+  const [resumeAt, setResumeAt] = React.useState(0);
+  const [autoShown, setAutoShown] = React.useState(false);
+
+  React.useEffect(() => {
+    if (onboardingComplete !== false || !steamUser?.accountId || autoShown) return;
+    setAutoShown(true);
+    let modalSeen = false;
+    try { modalSeen = !!localStorage.getItem('onboarding_modal_seen'); } catch {}
+
+    // Explicit replay-from-Settings override: ?onboarding=1 force-opens the
+    // wizard at step 1 regardless of returner heuristics. Strip the param
+    // after honouring it so a back-button doesn't re-trigger.
+    let forced = false;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('onboarding') === '1') {
+        forced = true;
+        sp.delete('onboarding');
+        const next = window.location.pathname + (sp.toString() ? '?' + sp.toString() : '') + window.location.hash;
+        window.history.replaceState({}, '', next);
+      }
+    } catch {}
+
+    fetch('/api/me/home', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const idx = (d && Number.isFinite(d.onboarding_step_index)) ? d.onboarding_step_index : 0;
+        setResumeAt(forced ? 0 : idx);
+        const isReturner = modalSeen || idx > 0;
+        if (forced || !isReturner) {
+          try { localStorage.setItem('onboarding_modal_seen', '1'); } catch {}
+          setOpen(true);
+        }
+      })
+      .catch(() => {
+        if (forced || !modalSeen) {
+          try { localStorage.setItem('onboarding_modal_seen', '1'); } catch {}
+          setOpen(true);
+        }
+      });
+  }, [onboardingComplete, steamUser?.accountId, autoShown]);
+
+  const openWizard = React.useCallback(() => {
+    fetch('/api/me/home', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const idx = (d && Number.isFinite(d.onboarding_step_index)) ? d.onboarding_step_index : 0;
+        setResumeAt(idx);
+        setOpen(true);
+      })
+      .catch(() => setOpen(true));
+  }, []);
+
   return (
-    <OnboardingWizard
-      onComplete={() => setOnboardingComplete(true)}
-      onDismiss={() => setOnboardingComplete(true)}
-    />
+    <>
+      <OnboardingNudge onResume={openWizard} />
+      {open && onboardingComplete === false && (
+        <OnboardingWizard
+          initialStep={resumeAt}
+          onComplete={() => { setOpen(false); setOnboardingComplete(true); }}
+          onDismiss={() => { setOpen(false); }}
+        />
+      )}
+    </>
   );
 }
 
@@ -1071,9 +1148,14 @@ export default function App() {
                 <Route path="/hall-of-fame" element={<HallOfFame />} />
                 <Route path="/admin/record-match" element={<RecordMatch />} />
                 <Route path="/join" element={<Join />} />
-                <Route path="/settings/notifications" element={<SettingsNotifications />} />
-                <Route path="/settings/profile" element={<SettingsProfile />} />
-                <Route path="/settings/billing" element={<SettingsBilling />} />
+                <Route path="/settings" element={<Settings />}>
+                  <Route path="profile" element={<SettingsProfile />} />
+                  <Route path="notifications" element={<SettingsNotifications />} />
+                  <Route path="account" element={<SettingsAccount />} />
+                  <Route path="billing" element={<SettingsBilling />} />
+                  <Route path="coaching" element={<CoachEdit />} />
+                  <Route path="danger-zone" element={<SettingsDangerZone />} />
+                </Route>
                 <Route path="/coaches" element={<Coaches />} />
                 <Route path="/coaches/:id" element={<CoachProfile />} />
                 <Route path="/coach/:id" element={<CoachProfile />} />
