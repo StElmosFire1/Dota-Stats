@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "7.47",
+    "title": "Home-page 'Watch live' badge surfaces active spectator stream (Task #336)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Watch live badge on the home page.** New `WatchLiveBadge` widget in `web/src/components/HomeWidgets.jsx` polls the existing `GET /api/inhouse/live-spectate` probe every 10s (same cadence the inhouse hub uses) and renders a small red 'Watch live' pill linking to `/spectate/:matchId` whenever the lobbyManager reports an active match. Auto-hides when no match is live, so the layout is unchanged on quiet days. Wired into `web/src/pages/Home.jsx` above `LiveInhousePulse` for both signed-in and signed-out branches.",
+      "**Why this matters.** Task #325 added the 'Watch live' pill to `/inhouse`, but new visitors landing on the home page had no signal a live spectator stream was available — they had to click through to the inhouse hub first to discover it.",
+      "**A11y.** Badge carries an `aria-label` and the decorative pulsing dot is `aria-hidden`. `npm run check:a11y` passes.",
+      "**Edition scope.** Full edition only — the surfaced endpoint is part of the full-edition inhouse system."
+    ]
+  },
+  {
     "version": "7.46",
     "title": "Promote Coach Premium so coaches discover the upgrade (Task #335)",
     "published_at": "2026-05-24",

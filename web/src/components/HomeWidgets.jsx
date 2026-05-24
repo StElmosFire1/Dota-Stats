@@ -160,6 +160,53 @@ export function LiveInhousePulse() {
   );
 }
 
+// Task #336 — Watch live badge. Polls /api/inhouse/live-spectate (same probe
+// the inhouse hub uses) and surfaces a small link to /spectate/:matchId
+// whenever the lobbyManager reports an active match. Returns null otherwise
+// so the home page layout is unchanged when nothing is live.
+export function WatchLiveBadge() {
+  const [matchId, setMatchId] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      fetchJsonSafe('/api/inhouse/live-spectate').then(d => {
+        if (!alive) return;
+        setMatchId(d && d.matchId ? String(d.matchId) : null);
+      });
+    };
+    tick();
+    const i = setInterval(tick, 10000);
+    return () => { alive = false; clearInterval(i); };
+  }, []);
+
+  if (!matchId) return null;
+
+  return (
+    <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+      <Link
+        to={`/spectate/${matchId}`}
+        aria-label={`Watch live match ${matchId}`}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '6px 14px', borderRadius: 999,
+          background: 'rgba(244,67,54,0.16)', color: '#f44336',
+          fontSize: 12, fontWeight: 700, letterSpacing: 0.6,
+          border: '1px solid #f4433655', textDecoration: 'none',
+          fontFamily: 'var(--font-condensed, inherit)',
+          textTransform: 'uppercase',
+        }}
+      >
+        <span aria-hidden="true" style={{
+          display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+          background: '#f44336', animation: 'oa-pulse 2s infinite',
+        }} />
+        🔴 Watch live
+      </Link>
+    </div>
+  );
+}
+
 // v6.64 / Task #208 — Featured Player (Profile Spotlight) card. Renders an
 // admin-curated featured player on the home page. Hidden when no spotlight
 // is currently active so the layout stays unchanged on quiet weeks.
