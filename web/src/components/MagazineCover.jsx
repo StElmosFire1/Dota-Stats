@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getHeroImageUrl, getHeroName } from '../heroNames';
 import './MagazineCover.css';
+import FounderRing from './founderRings/FounderRing';
 
 const POS_LABEL = ['', 'Carry', 'Mid', 'Off', 'Soft Sup', 'Hard Sup'];
 
@@ -103,6 +104,13 @@ export default function MagazineCover({
   presence,
   // v6.63 / Task #207 — Founders Pass ring + Cover FX (Pro toggles).
   foundersRing = false,
+  // Task #314 / v7.34 — currently-equipped Founders Ring slug. When set
+  // (and the player owns it server-side), we render the matching SVG ring
+  // as a corner badge ON TOP OF the legacy `.v3-founders-ring` CSS halo
+  // — the halo stays as a backwards-compat brass border for original
+  // Founders Pack owners; the SVG is the showcase of the specific design
+  // they chose. NULL means: render only the halo (if `foundersRing`).
+  equippedFounderRing = null,
   coverFx = [],
 }) {
   // Sticky header visibility — driven by IntersectionObserver on the cover.
@@ -211,6 +219,25 @@ export default function MagazineCover({
           // the ownership status is already surfaced elsewhere (shop page +
           // settings panel) and an extra "ring" announcement adds no value.
           <span className="v3-founders-ring" aria-hidden="true" />
+        )}
+        {equippedFounderRing && (
+          // Task #314 / v7.34 — equipped Founders Ring badge. Positioned in
+          // the top-right corner of the cover so the player's pinned hero
+          // backdrop, name, and stats stay legible. Sized at 72px (≈ the
+          // shop preview at 140px ÷ 2). Pointer-events disabled so the badge
+          // never intercepts clicks on the underlying CTAs. aria-hidden for
+          // the same reason as the brass halo above — ownership status is
+          // already surfaced in the shop + settings panel.
+          <span
+            style={{
+              position: 'absolute', top: 12, right: 12, width: 72, height: 72,
+              pointerEvents: 'none', zIndex: 3,
+              filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.55))',
+            }}
+            aria-hidden="true"
+          >
+            <FounderRing sku={equippedFounderRing} size={72} disc="emblem" />
+          </span>
         )}
         {(coverFx || []).includes('vignette-pulse') && (
           <span className="v3-fx-vignette" aria-hidden="true" />

@@ -163,6 +163,46 @@ export function validateCoverFx(raw) {
 // and the cover ring renderer. Mirror of src/profileCosmetics.js.
 export const FOUNDERS_RING_SKU = 'founders_pass_ring';
 
+// Task #314 / v7.34 — Founders Ring catalog (mirror of src/profileCosmetics.js).
+// 11 designs; `inscribed` is bundled with the Founders Pack, the other 10
+// are individually-purchasable shop SKUs tiered as static or animated.
+export const FOUNDER_RING_SLUGS = [
+  'inscribed', 'classic', 'laurel', 'beveled',
+  'phoenix',   'twin',    'astrolabe', 'eclipse',
+  'forge',     'storm',   'starmap',
+];
+export const FOUNDER_RING_TIER = {
+  inscribed: 'bundled',
+  classic:   'static',
+  laurel:    'static',
+  beveled:   'animated',
+  phoenix:   'animated',
+  twin:      'animated',
+  astrolabe: 'animated',
+  eclipse:   'animated',
+  forge:     'animated',
+  storm:     'animated',
+  starmap:   'animated',
+};
+export const FOUNDER_RING_LABEL = {
+  inscribed: 'Inscribed',  classic: 'Classic Brass', laurel: 'Laurel Wreath',
+  beveled:   'Beveled Edge', phoenix: 'Phoenix',     twin:   'Twin Halo',
+  astrolabe: 'Astrolabe',  eclipse: 'Eclipse',       forge:  'Forge',
+  storm:     'Storm',       starmap: 'Constellation',
+};
+export const FOUNDER_RING_USD_CENTS = { static: 499, animated: 799 };
+export const FOUNDER_RING_COIN_PRICE = { static: 1200, animated: 2000 };
+export function founderRingSku(slug) {
+  if (slug === 'inscribed') return FOUNDERS_RING_SKU;
+  return `founder_ring:${slug}`;
+}
+export function isValidFounderRingSlug(slug) {
+  return typeof slug === 'string' && FOUNDER_RING_SLUGS.includes(slug);
+}
+export function isPurchasableFounderRingSlug(slug) {
+  return isValidFounderRingSlug(slug) && FOUNDER_RING_TIER[slug] !== 'bundled';
+}
+
 export const DEFAULT_THEME = FREE_THEMES[0];
 export const DEFAULT_FRAME = 'none';
 

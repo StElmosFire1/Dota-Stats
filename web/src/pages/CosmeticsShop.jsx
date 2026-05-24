@@ -25,7 +25,14 @@ import {
   VOICE_PACK_META,
 } from '../profileCosmetics';
 import { useSteamAuth } from '../context/SteamAuthContext';
-import { getOwnedFrames, purchaseFrameCheckout, getFoundersRingStatus, buyFoundersRingCheckout } from '../api';
+import { getOwnedFrames, purchaseFrameCheckout, getFoundersRingStatus, buyFoundersRingCheckout,
+  listMyFounderRings, setEquippedFounderRing as apiSetEquippedFounderRing,
+  buyFounderRingCheckout, spendCoinsOnSku } from '../api';
+import FounderRing from '../components/founderRings/FounderRing';
+import {
+  FOUNDER_RING_SLUGS, FOUNDER_RING_TIER, FOUNDER_RING_LABEL,
+  FOUNDER_RING_USD_CENTS, FOUNDER_RING_COIN_PRICE,
+} from '../profileCosmetics';
 import VanitySlugPicker from '../components/VanitySlugPicker';
 
 // Task #312 — preview palettes for the Magazine v3 layout themes. Mirrors the
@@ -336,6 +343,13 @@ export default function CosmeticsShop() {
   // v6.63 / Task #207 — Founders Pass ring (one-time, capped SKU).
   const [foundersStatus, setFoundersStatus] = useState(null);
   const [foundersBuying, setFoundersBuying] = useState(false);
+  // Task #314 / v7.34 — full Founders Ring catalog (10 individually-sold
+  // slugs + Inscribed). `ringState` mirrors /api/me/founder-rings:
+  // { owned: [slug...], equipped: slug|null }. `ringBusy` is the slug
+  // currently being acted on (so we can disable just one card's buttons).
+  const [ringState, setRingState] = useState({ owned: [], equipped: null });
+  const [ringBusy, setRingBusy] = useState(null);
+  const [ringError, setRingError] = useState(null);
   // Task #313 / v6.79 — in-app currency. coinInfo = { balance, lifetime, owned[], prices{} }.
   const [coinInfo, setCoinInfo] = useState(null);
   const [coinBuying, setCoinBuying] = useState(null); // SKU currently in flight
@@ -386,6 +400,15 @@ export default function CosmeticsShop() {
     getFoundersRingStatus()
       .then(s => { if (alive) setFoundersStatus(s || null); })
       .catch(() => {});
+    // Task #314 / v7.34 — load the user's owned + equipped Founders Rings.
+    // Public/anon users see the cards but can't buy/equip.
+    if (signedIn) {
+      listMyFounderRings()
+        .then(d => { if (alive && d) setRingState({ owned: d.owned || [], equipped: d.equipped || null }); })
+        .catch(() => { /* unauth or transient — leave defaults */ });
+    } else {
+      setRingState({ owned: [], equipped: null });
+    }
     if (!signedIn) { setIsPro(false); setOwnedFrames([]); return () => { alive = false; }; }
     fetch('/api/me/profile', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
@@ -637,6 +660,146 @@ export default function CosmeticsShop() {
               )
             }
           />
+        </div>
+      </section>
+
+      {/* Task #314 / v7.34 — Founders Rings (10 individually-sold SKUs + the
+          bundled Inscribed). Tiered pricing: static rings (Classic, Laurel)
+          are $4.99 / 1200 🪙; animated rings are $7.99 / 2000 🪙. The
+          Inscribed card is informational only — its CTA defers to the
+          Founders Pass section above. Buying via coins is the alt-buy path
+          and is deliberately priced above the Stripe equivalent. */}
+      <section style={{ marginBottom: 32 }}>
+        <SectionHeader
+          title="Founders Rings"
+          sub="A growing collection of cover-ring designs. Buy individually or pick up Inscribed with the Founders Pack. Only one ring is equipped at a time."
+        />
+        {ringError && (
+          <div role="alert" style={{
+            padding: '8px 12px', marginBottom: 12, borderRadius: 8,
+            border: '1px solid #b91c1c55', background: '#7f1d1d22', color: '#fca5a5',
+            fontSize: 13,
+          }}>{ringError}</div>
+        )}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {FOUNDER_RING_SLUGS.map(slug => {
+            const tier = FOUNDER_RING_TIER[slug];
+            const label = FOUNDER_RING_LABEL[slug];
+            const isInscribed = slug === 'inscribed';
+            const owned = ringState.owned.includes(slug);
+            const equipped = ringState.equipped === slug;
+            const usdCents = isInscribed ? null
+              : (tier === 'static' ? FOUNDER_RING_USD_CENTS.static : FOUNDER_RING_USD_CENTS.animated);
+            const coinPrice = isInscribed ? null
+              : (tier === 'static' ? FOUNDER_RING_COIN_PRICE.static : FOUNDER_RING_COIN_PRICE.animated);
+            const busy = ringBusy === slug;
+
+            const tierLabel = tier === 'animated' ? 'Animated'
+              : tier === 'static' ? 'Static'
+              : 'Bundled with Founders Pack';
+
+            // Equip / unequip handler (toggles equipped state).
+            const equipAction = async () => {
+              if (!signedIn || busy) return;
+              setRingBusy(slug); setRingError(null);
+              try {
+                const next = equipped ? null : slug;
+                const result = await apiSetEquippedFounderRing(next);
+                setRingState(s => ({ ...s, equipped: result?.equipped ?? next }));
+              } catch (err) {
+                setRingError(err.message || 'Failed to update equipped ring');
+              } finally {
+                setRingBusy(null);
+              }
+            };
+
+            // Stripe buy (individual ring). Inscribed defers to Founders Pass.
+            const buyStripe = async () => {
+              if (!signedIn || busy || isInscribed) return;
+              setRingBusy(slug); setRingError(null);
+              try {
+                const result = await buyFounderRingCheckout(slug);
+                if (result?.url) window.location.assign(result.url);
+                else setRingError('Checkout did not return a URL');
+              } catch (err) {
+                setRingError(err.message || 'Failed to start checkout');
+              } finally {
+                setRingBusy(null);
+              }
+            };
+
+            // Coin alt-buy. Re-loads ownership on success so card flips to
+            // the Equip state.
+            const buyCoins = async () => {
+              if (!signedIn || busy || isInscribed) return;
+              setRingBusy(slug); setRingError(null);
+              try {
+                await spendCoinsOnSku(`founder_ring:${slug}`);
+                const fresh = await listMyFounderRings();
+                if (fresh) setRingState({ owned: fresh.owned || [], equipped: fresh.equipped || null });
+              } catch (err) {
+                setRingError(err.message || 'Failed to spend coins');
+              } finally {
+                setRingBusy(null);
+              }
+            };
+
+            const action = (() => {
+              if (!signedIn) {
+                return <Link to="/login" style={actionButtonStyle('pro')}>Sign in →</Link>;
+              }
+              if (owned) {
+                return (
+                  <button type="button" onClick={equipAction} disabled={busy}
+                          aria-pressed={equipped}
+                          style={{ ...actionButtonStyle(equipped ? 'owned' : 'buy'),
+                                   opacity: busy ? 0.6 : 1 }}>
+                    {busy ? '…' : equipped ? '✓ Equipped (click to unequip)' : 'Equip'}
+                  </button>
+                );
+              }
+              if (isInscribed) {
+                return (
+                  <a href="#founders-pass" onClick={(e) => {
+                    e.preventDefault();
+                    document.querySelector('section h2')?.scrollIntoView?.({ behavior: 'smooth' });
+                  }} style={actionButtonStyle('pro')}>
+                    See Founders Pass ↑
+                  </a>
+                );
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <button type="button" onClick={buyStripe} disabled={busy}
+                          style={{ ...actionButtonStyle('buy'), opacity: busy ? 0.6 : 1 }}>
+                    {busy ? 'Starting checkout…' : `Buy ${formatPrice(usdCents)}`}
+                  </button>
+                  <button type="button" onClick={buyCoins} disabled={busy}
+                          style={{ ...actionButtonStyle('settings'), opacity: busy ? 0.6 : 1, fontSize: 12 }}>
+                    {busy ? '…' : `or ${coinPrice} 🪙`}
+                  </button>
+                </div>
+              );
+            })();
+
+            return (
+              <CosmeticCard
+                key={slug}
+                preview={
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                width: '100%', height: '100%' }}>
+                    <FounderRing sku={slug} size={140} disc="emblem" />
+                  </div>
+                }
+                label={label}
+                sub={tierLabel}
+                badges={
+                  equipped ? <OwnedPill /> : owned ? <OwnedPill /> : null
+                }
+                action={action}
+              />
+            );
+          })}
         </div>
       </section>
 

@@ -1181,6 +1181,10 @@ export default function PlayerProfile() {
         // entitlement (one-time SKU, capped); the FX list is Pro-only and
         // already validated server-side before persistence.
         foundersRing={showProfileCustomization && Array.isArray(profileCard?.owned_entitlements) && profileCard.owned_entitlements.includes('founders_pass_ring')}
+        // Task #314 / v7.34 — equipped Founders Ring slug. Server-side
+        // setEquippedFounderRing() already validates ownership before
+        // persisting the column, so we can trust the value as-is here.
+        equippedFounderRing={showProfileCustomization && profileCard?.equipped_founder_ring ? profileCard.equipped_founder_ring : null}
         coverFx={showProfileCustomization && Array.isArray(profileCard?.cover_fx) ? profileCard.cover_fx : []}
       />
       <Link to="/players" className="back-link">&larr; Back to players</Link>

@@ -1612,6 +1612,15 @@ async function _postJson(path, body) {
   return data;
 }
 
+// Task #314 / v7.34 — Founders Ring catalog.
+export const listMyFounderRings = () => _getJson('/me/founder-rings');
+export const setEquippedFounderRing = (sku) => _postJson('/me/equipped-ring', { sku });
+export const buyFounderRingCheckout = (slug) =>
+  _postJson('/shop/founders-ring/checkout', { slug });
+// Generic coin spend (already enforced server-side against COIN_PRICES). Used
+// by the shop's "Buy with coins" alt-buy path for founder rings.
+export const spendCoinsOnSku = (sku) => _postJson('/coins/spend', { sku });
+
 export const getReplayQuota = () => _getJson('/me/replay-quota');
 export const getWeeklyReport = () => _getJson('/me/weekly-report');
 export const getCoachRecommendations = () => _getJson('/me/coach-recommendations');

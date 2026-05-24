@@ -171,6 +171,9 @@ function FullPreviewCard({ displayName, c, frame, foundersRing, coverFx }) {
         Live Preview · cover
       </div>
       <div className="magazine-v3 v3-theme-court-pitch">
+        {/* Task #314 / v7.34 — ProfileSandbox doesn't surface a ring-picker
+            yet, so the equipped slug is just propagated through if present in
+            the sandbox state (defaults to none). */}
         <MagazineCover
           displayName={displayName}
           customTitle={c.custom_title || null}

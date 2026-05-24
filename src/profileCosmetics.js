@@ -132,6 +132,52 @@ const COVER_FX_META = {
 // One-time entitlement SKU for the Founders Pass cover ring. Used as the
 // `sku` value on the `entitlements` table.
 const FOUNDERS_RING_SKU = 'founders_pass_ring';
+
+// Task #314 / v7.34 — Founders Ring catalog. 11 designs total: `inscribed`
+// is bundled with the Founders Pack (granted via FOUNDERS_RING_SKU); the
+// other 10 are individually-purchasable shop SKUs. Static-tier rings
+// (no animation) are $4.99 / 1200🪙; animated rings are $7.99 / 2000🪙.
+// Coin prices stay deliberately above the Stripe equivalent so the coin
+// path remains the "alternative" route, not the cheap one.
+const FOUNDER_RING_SLUGS = [
+  'inscribed', 'classic', 'laurel', 'beveled',
+  'phoenix',   'twin',    'astrolabe', 'eclipse',
+  'forge',     'storm',   'starmap',
+];
+const FOUNDER_RING_TIER = {
+  inscribed: 'bundled',  // not individually purchasable — comes with Founders Pack
+  classic:   'static',
+  laurel:    'static',
+  beveled:   'animated',
+  phoenix:   'animated',
+  twin:      'animated',
+  astrolabe: 'animated',
+  eclipse:   'animated',
+  forge:     'animated',
+  storm:     'animated',
+  starmap:   'animated',
+};
+const FOUNDER_RING_LABEL = {
+  inscribed: 'Inscribed',  classic: 'Classic Brass', laurel: 'Laurel Wreath',
+  beveled:   'Beveled Edge', phoenix: 'Phoenix',     twin:   'Twin Halo',
+  astrolabe: 'Astrolabe',  eclipse: 'Eclipse',       forge:  'Forge',
+  storm:     'Storm',       starmap: 'Constellation',
+};
+const FOUNDER_RING_USD_CENTS = { static: 499, animated: 799 };
+const FOUNDER_RING_COIN_PRICE = { static: 1200, animated: 2000 };
+// Convert slug → server-side SKU used on the entitlements/coin_owned_cosmetics
+// tables. Inscribed reuses the legacy FOUNDERS_RING_SKU; everything else gets
+// a `founder_ring:<slug>` namespaced SKU.
+function founderRingSku(slug) {
+  if (slug === 'inscribed') return FOUNDERS_RING_SKU;
+  return `founder_ring:${slug}`;
+}
+function isValidFounderRingSlug(slug) {
+  return typeof slug === 'string' && FOUNDER_RING_SLUGS.includes(slug);
+}
+function isPurchasableFounderRingSlug(slug) {
+  return isValidFounderRingSlug(slug) && FOUNDER_RING_TIER[slug] !== 'bundled';
+}
 function isValidCoverFxId(id) { return COVER_FX_IDS.includes(id); }
 // Returns a canonical array (deduped, allow-listed). Accepts any input
 // shape and never throws — empty array on garbage input. Cap at
@@ -313,6 +359,14 @@ module.exports = {
   isValidCoverFxId,
   validateCoverFx,
   FOUNDERS_RING_SKU,
+  FOUNDER_RING_SLUGS,
+  FOUNDER_RING_TIER,
+  FOUNDER_RING_LABEL,
+  FOUNDER_RING_USD_CENTS,
+  FOUNDER_RING_COIN_PRICE,
+  founderRingSku,
+  isValidFounderRingSlug,
+  isPurchasableFounderRingSlug,
   BIO_MAX,
   PINNED_HERO_CAPTION_MAX,
   SHARE_CARD_TAGLINE_MAX,

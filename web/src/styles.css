@@ -2092,3 +2092,28 @@ body.light-theme .oa-ticker-track .oa-ticker-dot { color: rgba(245,239,226,0.5);
   /* Touch: tap-to-focus reveals the popup; no hover animation needed. */
   .cosmetic-card__preview-wrap { cursor: pointer; }
 }
+
+/* ─── Task #314 / v7.34 — Founders Ring animations ───────────────────────────
+   Used by <FounderRing> components in web/src/components/founderRings/.
+   Inline-style `animation:` rules on SVG groups reference these by name.
+   Static rings (classic, laurel, inscribed) ignore all of these. */
+@keyframes fp-sweep        { from { transform: rotate(0deg); }   to { transform: rotate(360deg); } }
+@keyframes fp-sweep-rev    { from { transform: rotate(0deg); }   to { transform: rotate(-360deg); } }
+@keyframes fp-breathe      { 0%,100% { opacity: 0.55; }          50% { opacity: 1; } }
+@keyframes fp-pulse        { 0%,100% { opacity: 0; }             50% { opacity: 1; } }
+@keyframes fp-pulse-bright { 0%,100% { opacity: 0.45; transform: scale(0.85); }
+                             50%     { opacity: 1;    transform: scale(1.15); } }
+@keyframes fp-twinkle      { 0%,100% { opacity: 0.35; transform: scale(0.7); }
+                             50%     { opacity: 1;    transform: scale(1.15); } }
+@keyframes fp-strike {
+  0%, 7%, 22%, 100% { opacity: 0; }
+  8%  { opacity: 1; }
+  10% { opacity: 0.3; }
+  11% { opacity: 0.95; }
+  12% { opacity: 0.4; }
+  13% { opacity: 0.85; }
+  14% { opacity: 0.5; }
+  16% { opacity: 1; }
+  17% { opacity: 0.6; }
+  18% { opacity: 0.9; }
+}

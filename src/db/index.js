@@ -1172,6 +1172,12 @@ async function init() {
     try { await p.query(`CREATE EXTENSION IF NOT EXISTS citext`); } catch (_) { /* superuser-only on some hosts; tolerate */ }
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS vanity_slug CITEXT`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS vanity_slug_released_at TIMESTAMPTZ`);
+    // Task #314 / v7.34 — currently-equipped Founders Ring slug (e.g. 'classic',
+    // 'phoenix'). NULL means "render the default" — which for Founders Pack
+    // owners is Inscribed via the legacy `.v3-founders-ring` CSS halo, and
+    // for non-owners is nothing. setEquippedFounderRing() validates that the
+    // account actually owns the slug before persisting.
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS equipped_founder_ring TEXT`);
     await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_player_profiles_vanity_slug ON player_profiles (vanity_slug) WHERE vanity_slug IS NOT NULL`);
     // Released-slug ledger: keeps the previous owner so they can re-take
     // their own slug, and powers the 30-day cooldown that blocks third
@@ -11740,6 +11746,75 @@ async function getPlayerHomeData(accountId) {
 // kills/deaths/assists) so the card can render without a second round trip.
 // Returns null if the player has never customized; safe to call without the
 // flag check (the route gates first).
+// Task #314 / v7.34 — Founders Ring ownership + equip helpers.
+//
+// listOwnedFounderRings(accountId) → array of slugs the user owns from any
+// source: Founders Pack entitlement → 'inscribed'; `founder_ring:<slug>`
+// entitlements (Stripe-bought) → slug; coin_owned_cosmetics kind='founder_ring'
+// → slug. De-duplicated, ordered by FOUNDER_RING_SLUGS.
+async function listOwnedFounderRings(accountId) {
+  if (!accountId) return [];
+  const cosm = require('../profileCosmetics');
+  const owned = new Set();
+  // (1) Stripe-bought entitlements — match the legacy founders pack SKU as
+  // "inscribed", and any `founder_ring:<slug>` row as its slug.
+  const p = getPool();
+  const er = await p.query(
+    `SELECT sku FROM entitlements WHERE account_id = $1
+       AND (sku = $2 OR sku LIKE 'founder_ring:%')`,
+    [accountId, cosm.FOUNDERS_RING_SKU]
+  );
+  for (const row of er.rows) {
+    if (row.sku === cosm.FOUNDERS_RING_SKU) owned.add('inscribed');
+    else if (row.sku.startsWith('founder_ring:')) {
+      const slug = row.sku.slice('founder_ring:'.length);
+      if (cosm.isValidFounderRingSlug(slug)) owned.add(slug);
+    }
+  }
+  // (2) Coin-bought rings.
+  const cr = await p.query(
+    `SELECT value FROM coin_owned_cosmetics WHERE account_id = $1 AND kind = 'founder_ring'`,
+    [accountId]
+  );
+  for (const row of cr.rows) {
+    if (cosm.isValidFounderRingSlug(row.value)) owned.add(row.value);
+  }
+  // Return in canonical FOUNDER_RING_SLUGS order so the UI list is stable.
+  return cosm.FOUNDER_RING_SLUGS.filter(s => owned.has(s));
+}
+
+// Persist the currently-equipped Founders Ring slug. Pass `null` (or empty
+// string) to clear it back to the default. Throws { code: 'NOT_OWNED' } when
+// the slug isn't in the caller's owned set — UI gets a 409 from the route.
+async function setEquippedFounderRing(accountId, slug) {
+  if (!accountId) throw new Error('setEquippedFounderRing: accountId required');
+  const cosm = require('../profileCosmetics');
+  const p = getPool();
+  // Clear path.
+  if (slug == null || slug === '') {
+    await p.query(`INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`, [accountId]);
+    await p.query(`UPDATE player_profiles SET equipped_founder_ring = NULL WHERE account_id = $1`, [accountId]);
+    return { ok: true, equipped: null };
+  }
+  if (!cosm.isValidFounderRingSlug(slug)) {
+    const err = new Error('Unknown ring slug'); err.code = 'BAD_SLUG'; throw err;
+  }
+  const owned = await listOwnedFounderRings(accountId);
+  if (!owned.includes(slug)) {
+    const err = new Error('You do not own that ring'); err.code = 'NOT_OWNED'; throw err;
+  }
+  await p.query(`INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`, [accountId]);
+  await p.query(`UPDATE player_profiles SET equipped_founder_ring = $1 WHERE account_id = $2`, [slug, accountId]);
+  return { ok: true, equipped: slug };
+}
+
+async function getEquippedFounderRing(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(`SELECT equipped_founder_ring FROM player_profiles WHERE account_id = $1`, [accountId]);
+  return r.rows[0]?.equipped_founder_ring || null;
+}
+
 async function getPlayerProfileCard(accountId) {
   const p = getPool();
   const base = await getPlayerProfileCustomization(accountId);
@@ -11784,10 +11859,15 @@ async function getPlayerProfileCard(accountId) {
   // pass ring) so the profile renderer can decide whether to draw the cover
   // ring ornament.
   const owned_entitlements = await getOwnedEntitlements(accountId);
+  // Task #314 / v7.34 — also surface the equipped Founders Ring slug so the
+  // profile renderer can pick the right SVG. NULL = render the legacy CSS
+  // halo when the account holds the Founders Pack, else nothing.
+  const equipped_founder_ring = await getEquippedFounderRing(accountId);
   return {
     ...base,
     pinned_match: pinnedMatch,
     owned_entitlements,
+    equipped_founder_ring,
   };
 }
 
@@ -13064,6 +13144,9 @@ module.exports = {
   getPlayerProfileCustomization,
   setPlayerProfileCustomization,
   getPlayerProfileCard,
+  listOwnedFounderRings,
+  setEquippedFounderRing,
+  getEquippedFounderRing,
   // v6.64 / Task #208 — vanity slugs + profile spotlight
   isWellFormedVanitySlug,
   normaliseVanitySlug,

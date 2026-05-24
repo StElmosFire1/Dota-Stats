@@ -752,6 +752,32 @@ function createServer(startupStatus = {}) {
             // Re-throw so Stripe retries on transient DB failures.
             throw e;
           }
+        } else if (purpose === 'founder_ring_individual') {
+          // Task #314 / v7.34 — grant any of the 10 individually-purchasable
+          // Founders Rings. No cap (cap=null), so the auto-refund branch
+          // can never fire here; idempotent on (account_id, sku) at the
+          // entitlements table level.
+          const cosm = require('../profileCosmetics');
+          const ringAccountId = session.metadata?.account_id;
+          const sku = session.metadata?.sku;
+          const slug = session.metadata?.slug;
+          if (ringAccountId && sku && cosm.isPurchasableFounderRingSlug(slug)) {
+            const result = await db.grantEntitlementWithCap({
+              accountId: ringAccountId,
+              sku,
+              cap: null,
+              grantedBy: 'stripe',
+              metadata: {
+                stripe_session_id: session.id,
+                amount_cents: session.amount_total || null,
+                currency: session.currency || 'aud',
+                slug,
+              },
+            });
+            console.log('[Stripe] Founders Ring granted:', ringAccountId, sku, 'reason=', result.reason);
+          } else {
+            console.error('[Stripe] founder_ring_individual: missing/invalid metadata on session', session.id);
+          }
         } else if (purpose === 'founders_ring') {
           // v6.63 / Task #207 — fulfil the limited Founders Pass cover ring.
           // Cap is re-checked under transaction; if the cap has been hit
@@ -9811,6 +9837,16 @@ NOTES
     const n = parseInt(process.env.FOUNDERS_RING_PRICE_CENTS || '999', 10);
     return Number.isFinite(n) && n > 0 ? n : 999;
   }
+  // Task #314 / v7.34 — per-slug Stripe price for the individually-sold rings.
+  // Static rings (Classic, Laurel) are cheaper than animated. Inscribed is
+  // not individually priced — it ships with the Founders Pack only.
+  function _founderRingIndividualPriceCents(slug) {
+    const cosm = require('../profileCosmetics');
+    const tier = cosm.FOUNDER_RING_TIER[slug];
+    if (tier === 'static')   return cosm.FOUNDER_RING_USD_CENTS.static;
+    if (tier === 'animated') return cosm.FOUNDER_RING_USD_CENTS.animated;
+    return null;
+  }
 
   // GET /api/shop/founders-ring/status — public read for the shop card.
   router.get('/shop/founders-ring/status', async (req, res) => {
@@ -9837,51 +9873,149 @@ NOTES
   });
 
   // POST /api/shop/founders-ring/checkout — Stripe checkout init.
+  //
+  // Task #314 / v7.34 — now also handles the 10 individually-purchasable ring
+  // slugs (Classic, Laurel, Beveled, Phoenix, Twin, Astrolabe, Eclipse,
+  // Forge, Storm, Constellation). Pass `{ slug: 'classic' }` for one of those.
+  // Omitting the slug (or passing 'inscribed') falls through to the legacy
+  // capped Founders Pack flow — same metadata.purpose='founders_ring', same
+  // cap re-check + auto-refund branch in the webhook. Individual rings have
+  // no cap, use `purpose: 'founder_ring_individual'`, and their per-slug SKU
+  // (founder_ring:<slug>) lands in entitlements via grantEntitlementWithCap
+  // with cap=null in the webhook.
   router.post('/shop/founders-ring/checkout', express.json(), async (req, res) => {
     try {
       const accountId = req.session?.accountId;
-      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to purchase the Founders Pass.' });
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to purchase a Founders Ring.' });
       const cosm = require('../profileCosmetics');
-      if (await db.hasEntitlement(accountId, cosm.FOUNDERS_RING_SKU)) {
-        return res.status(409).json({ error: 'You already own the Founders Pass ring.', already_owned: true });
-      }
-      const cap = _foundersRingCap();
-      const sold = await db.countEntitlementHolders(cosm.FOUNDERS_RING_SKU);
-      if (sold >= cap) {
-        return res.status(409).json({ error: 'The Founders Pass has sold out.', sold_out: true });
-      }
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: 'Payments are not configured.' });
       }
-      const priceCents = _foundersRingPriceCents();
+      const rawSlug = (req.body?.slug || '').trim().toLowerCase();
+      const slug = rawSlug || 'inscribed';
+      if (!cosm.isValidFounderRingSlug(slug)) {
+        return res.status(400).json({ error: 'Unknown ring slug.' });
+      }
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+
+      // ── Legacy capped Founders Pack path (Inscribed) ──────────────────────
+      if (slug === 'inscribed') {
+        if (await db.hasEntitlement(accountId, cosm.FOUNDERS_RING_SKU)) {
+          return res.status(409).json({ error: 'You already own the Founders Pass ring.', already_owned: true });
+        }
+        const cap = _foundersRingCap();
+        const sold = await db.countEntitlementHolders(cosm.FOUNDERS_RING_SKU);
+        if (sold >= cap) {
+          return res.status(409).json({ error: 'The Founders Pass has sold out.', sold_out: true });
+        }
+        const priceCents = _foundersRingPriceCents();
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [{
+            price_data: {
+              currency: 'aud',
+              product_data: {
+                name: 'OCE Inhouse — Founders Pass (Limited)',
+                description: `Limited to ${cap} owners — adds a decorative ring around your Magazine v3 cover, in perpetuity.`,
+              },
+              unit_amount: priceCents,
+            },
+            quantity: 1,
+          }],
+          mode: 'payment',
+          success_url: `${baseUrl}/shop?founders_ring=success`,
+          cancel_url: `${baseUrl}/shop?founders_ring=cancelled`,
+          metadata: {
+            purpose: 'founders_ring',
+            account_id: String(accountId),
+            sku: cosm.FOUNDERS_RING_SKU,
+          },
+        });
+        return res.json({ url: session.url });
+      }
+
+      // ── Individual-ring path (10 SKUs, no cap) ────────────────────────────
+      const sku = cosm.founderRingSku(slug);
+      if (await db.hasEntitlement(accountId, sku)) {
+        return res.status(409).json({ error: 'You already own that ring.', already_owned: true });
+      }
+      // Coin-owned rings already grant equip-rights, but Stripe-buying them
+      // on top is a no-op duplicate — block to avoid double-charge confusion.
+      const ownedCoin = await db.getCoinOwnedCosmetics(accountId).catch(() => []);
+      if (Array.isArray(ownedCoin) && ownedCoin.some(o => o.kind === 'founder_ring' && o.value === slug)) {
+        return res.status(409).json({ error: 'You already own that ring (via coins).', already_owned: true });
+      }
+      const priceCents = _founderRingIndividualPriceCents(slug);
+      if (!priceCents) return res.status(400).json({ error: 'That ring is not individually purchasable.' });
+      const label = cosm.FOUNDER_RING_LABEL[slug] || slug;
+      const tierLabel = cosm.FOUNDER_RING_TIER[slug] === 'animated' ? 'Animated' : 'Static';
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'aud',
             product_data: {
-              name: 'OCE Inhouse — Founders Pass (Limited)',
-              description: `Limited to ${cap} owners — adds a decorative ring around your Magazine v3 cover, in perpetuity.`,
+              name: `OCE Inhouse — Founders Ring: ${label}`,
+              description: `${tierLabel} cover-ring cosmetic. One-time unlock — equip in your shop or settings.`,
             },
             unit_amount: priceCents,
           },
           quantity: 1,
         }],
         mode: 'payment',
-        success_url: `${baseUrl}/shop?founders_ring=success`,
-        cancel_url: `${baseUrl}/shop?founders_ring=cancelled`,
+        success_url: `${baseUrl}/shop?founder_ring=success&slug=${encodeURIComponent(slug)}`,
+        cancel_url: `${baseUrl}/shop?founder_ring=cancelled`,
         metadata: {
-          purpose: 'founders_ring',
+          purpose: 'founder_ring_individual',
           account_id: String(accountId),
-          sku: cosm.FOUNDERS_RING_SKU,
+          sku,
+          slug,
         },
       });
       res.json({ url: session.url });
     } catch (err) {
       console.error('[API] shop/founders-ring/checkout:', err.message);
       res.status(500).json({ error: err.message || 'Failed to create checkout' });
+    }
+  });
+
+  // Task #314 / v7.34 — Founders Ring catalog endpoints.
+  router.get('/me/founder-rings', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+    try {
+      const cosm = require('../profileCosmetics');
+      const owned = await db.listOwnedFounderRings(accountId);
+      const equipped = await db.getEquippedFounderRing(accountId);
+      res.json({
+        slugs: cosm.FOUNDER_RING_SLUGS,
+        tier: cosm.FOUNDER_RING_TIER,
+        label: cosm.FOUNDER_RING_LABEL,
+        usd_cents: cosm.FOUNDER_RING_USD_CENTS,
+        coin_price: cosm.FOUNDER_RING_COIN_PRICE,
+        owned,
+        equipped,
+      });
+    } catch (err) {
+      console.error('[API] me/founder-rings:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/equipped-ring', express.json(), async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+    const raw = req.body?.sku;
+    const slug = raw == null || raw === '' ? null : String(raw).trim().toLowerCase();
+    try {
+      const result = await db.setEquippedFounderRing(accountId, slug);
+      res.json(result);
+    } catch (err) {
+      if (err.code === 'NOT_OWNED') return res.status(409).json({ error: err.message });
+      if (err.code === 'BAD_SLUG')  return res.status(400).json({ error: err.message });
+      console.error('[API] me/equipped-ring:', err.message);
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -10501,6 +10635,19 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     'frame:neon-blue': 2500,
     'frame:cosmic':    2500,
     'frame:fire':      2500,
+    // Task #314 / v7.34 — Founders Ring catalog. Static tier (Classic,
+    // Laurel) = 1200 🪙; animated tier (everything else) = 2000 🪙. Inscribed
+    // is bundled with the Founders Pack and isn't sold individually.
+    'founder_ring:classic':   1200,
+    'founder_ring:laurel':    1200,
+    'founder_ring:beveled':   2000,
+    'founder_ring:phoenix':   2000,
+    'founder_ring:twin':      2000,
+    'founder_ring:astrolabe': 2000,
+    'founder_ring:eclipse':   2000,
+    'founder_ring:forge':     2000,
+    'founder_ring:storm':     2000,
+    'founder_ring:starmap':   2000,
   });
 
   router.get('/coins/me', async (req, res) => {
