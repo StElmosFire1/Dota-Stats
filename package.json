@@ -11,7 +11,8 @@
     "prestart": "bash scripts/build-parser.sh",
     "start": "node src/index.js",
     "test": "node --test tests/",
-    "perf:backfill": "node scripts/perf-backfill.js"
+    "perf:backfill": "node scripts/perf-backfill.js",
+    "migrate": "node-pg-migrate -m migrations -j sql up"
   },
   "keywords": [
     "dota2",

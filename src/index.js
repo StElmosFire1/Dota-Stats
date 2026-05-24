@@ -4,6 +4,8 @@ const { getDiscordBot } = require('./discord/bot');
 const { getReplayParser } = require('./replay/replayParser');
 const db = require('./db');
 const { createServer } = require('./web/server');
+const { logger, hasPino } = require('./logger');
+const { ensureBootstrapAdmin } = require('./auth/adminRoles');
 
 function logEditionBanner() {
   const edition = 'FULL';
@@ -52,7 +54,21 @@ async function main() {
     } catch (err) {
       console.error('[Startup] Patch note seed failed:', err.message);
     }
+
+    // Task #313 — bootstrap a single superuser from env var if requested.
+    // Logged via structured logger so it's greppable in JSON output.
+    try {
+      const bootstrapped = await ensureBootstrapAdmin(db);
+      if (bootstrapped) {
+        logger.info({ accountId: bootstrapped.accountId, role: bootstrapped.role },
+          'bootstrap admin granted from BOOTSTRAP_ADMIN_STEAM_ID');
+      }
+    } catch (err) {
+      logger.warn({ err: err.message }, 'bootstrap admin failed');
+    }
   }
+
+  logger.info({ pino: hasPino() }, 'logger initialised');
 
   // --- Google Sheets (dormant) ---
   // To re-enable: set config.features.sheets = true and configure SHEET_ID + creds.json

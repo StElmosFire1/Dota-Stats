@@ -6,6 +6,17 @@ const EventEmitter = require('events');
 
 const FRIEND_POLL_INTERVAL_MS = 60 * 1000;
 
+// Task #313 — GC reliability watchdog tunables.
+//
+// The Dota 2 GC silently drops connections under load (and after Valve-side
+// maintenance) without a corresponding `disconnected` event on the inner
+// SteamUser socket. When that happens, the bot looks healthy (Steam socket
+// alive, `isLoggedIn=true`) but every `gcClient.send*` quietly times out
+// because the GC session is dead. The watchdog notices prolonged GC
+// silence and triggers a re-hello.
+const GC_WATCHDOG_INTERVAL_MS = 60 * 1000;
+const GC_SILENCE_THRESHOLD_MS = 5 * 60 * 1000;
+
 class SteamDotaClient extends EventEmitter {
   constructor() {
     super();
@@ -30,8 +41,21 @@ class SteamDotaClient extends EventEmitter {
       this.gcClient.on('ready', () => {
         console.log('[Steam] Dota 2 GC is ready!');
         this.isGCReady = true;
+        this._lastGcActivityAt = Date.now();
         this.emit('gcReady');
+        this._startGcWatchdog();
       });
+
+      // Any GC traffic resets the silence clock. We listen to the raw
+      // message events the underlying Dota2GCClient surfaces; if the
+      // implementation doesn't emit them we still rely on the periodic
+      // hello sender below to keep things alive.
+      try {
+        const bump = () => { this._lastGcActivityAt = Date.now(); };
+        this.gcClient.on('message', bump);
+        this.gcClient.on('receive', bump);
+        this.gcClient.on('connectionStatus', bump);
+      } catch (_) { /* optional events; safe to skip */ }
 
       this.steamClient.gamesPlayed([DOTA2_APPID]);
     });
@@ -285,7 +309,56 @@ class SteamDotaClient extends EventEmitter {
     }
   }
 
+  // Task #313 — GC reliability watchdog. Pings GC every 60s; if we haven't
+  // observed any GC activity in 5 minutes, kicks the GC session by replaying
+  // `gamesPlayed([DOTA2_APPID])`, which causes the GC client to re-hello.
+  // No-op if a watchdog is already running. Safe to call from tests with
+  // injected timing knobs: pass `{ intervalMs, thresholdMs, now }` to
+  // override the defaults (used by the unit test).
+  _startGcWatchdog(opts = {}) {
+    if (this._gcWatchdogTimer) return; // already running
+    const intervalMs = opts.intervalMs || GC_WATCHDOG_INTERVAL_MS;
+    const thresholdMs = opts.thresholdMs || GC_SILENCE_THRESHOLD_MS;
+    const now = opts.now || (() => Date.now());
+    if (this._lastGcActivityAt == null) this._lastGcActivityAt = now();
+    this._gcWatchdogTimer = setInterval(() => {
+      try {
+        this._checkGcLiveness({ thresholdMs, now });
+      } catch (err) {
+        console.warn('[Steam] GC watchdog tick failed:', err.message);
+      }
+    }, intervalMs);
+    if (this._gcWatchdogTimer.unref) this._gcWatchdogTimer.unref();
+  }
+
+  _checkGcLiveness({ thresholdMs, now }) {
+    if (!this.isLoggedIn) return; // can't kick GC without Steam
+    const last = this._lastGcActivityAt || now();
+    const silentFor = now() - last;
+    if (silentFor < thresholdMs) return;
+    console.warn(`[Steam] GC silent for ${(silentFor / 1000).toFixed(0)}s — kicking session (gamesPlayed re-hello).`);
+    this.isGCReady = false;
+    try {
+      this.steamClient.gamesPlayed([]);
+      setTimeout(() => {
+        try { this.steamClient.gamesPlayed([DOTA2_APPID]); } catch (_) { /* swallow */ }
+      }, 1000);
+      this._lastGcActivityAt = now(); // reset clock so we don't re-fire every tick
+      this.emit('gcWatchdogKick', { silentForMs: silentFor });
+    } catch (err) {
+      console.error('[Steam] GC re-hello failed:', err.message);
+    }
+  }
+
+  _stopGcWatchdog() {
+    if (this._gcWatchdogTimer) {
+      clearInterval(this._gcWatchdogTimer);
+      this._gcWatchdogTimer = null;
+    }
+  }
+
   shutdown() {
+    this._stopGcWatchdog();
     if (this.gcClient) {
       this.gcClient.shutdown();
     }

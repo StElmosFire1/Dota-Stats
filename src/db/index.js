@@ -1696,6 +1696,34 @@ async function init() {
       console.warn('[DB] continuing because MAGV3_SCHEMA_OPTIONAL=1 — v3 routes may misbehave.');
     }
 
+    // Task #313 — Admin role tiers + audit log.
+    // Tiered alternative to the legacy SUPERUSER_PASSWORD / UPLOAD_KEY
+    // shared secrets. See src/auth/adminRoles.js for the role model. Both
+    // tables are tiny (one row per admin; append-only audit) and indexed
+    // for the access patterns the helpers use (lookup by account_id;
+    // recent audit by actor + time).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS admin_users (
+        account_id BIGINT PRIMARY KEY,
+        role TEXT NOT NULL CHECK (role IN ('moderator','admin','superuser')),
+        granted_by BIGINT,
+        granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS admin_audit_log (
+        id BIGSERIAL PRIMARY KEY,
+        actor_account_id BIGINT,
+        actor_role TEXT,
+        action TEXT NOT NULL,
+        target_account_id BIGINT,
+        meta JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_log (created_at DESC)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_actor ON admin_audit_log (actor_account_id, created_at DESC)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -2381,11 +2409,26 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
       ]
     );
 
-    for (const player of matchStats.players) {
-      await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log, dieback_count)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73)`,
-        [
+    // Task #313 — bulk insert path. The pre-refactor loop issued ~50–100 round-
+    // trips per match (one INSERT per player_stats row + one per item + one
+    // per ability + N for the draft). For a typical inhouse with 10 players,
+    // 60 items, and 200 abilities that's ~270 sequential awaits inside the
+    // transaction; we now do at most 4 multi-row INSERTs total. Behaviour is
+    // identical (same columns, same column order, same JSON shapes) — pg
+    // accepts a single `VALUES ($1,...),($N,...)` statement and binds the
+    // flattened params array positionally.
+    {
+      const PS_COLS = 73;
+      const psPlaceholders = [];
+      const psParams = [];
+      const dmgRows = []; // separate post-pass for the optional damage_* update
+      for (let i = 0; i < matchStats.players.length; i++) {
+        const player = matchStats.players[i];
+        const base = i * PS_COLS;
+        const ph = [];
+        for (let j = 1; j <= PS_COLS; j++) ph.push('$' + (base + j));
+        psPlaceholders.push('(' + ph.join(',') + ')');
+        psParams.push(
           matchStats.matchId,
           player.accountId || 0,
           player.discordId || '',
@@ -2459,50 +2502,97 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
           player.hookCastTimes ? JSON.stringify(player.hookCastTimes) : null,
           player.hookCastLog ? JSON.stringify(player.hookCastLog) : null,
           player.diebackCount || 0,
-        ]
-      );
-
-      // Persist damage type breakdown if available from replay parsing
-      if (player.damagePhysical || player.damageMagical || player.damagePure) {
+        );
+        if (player.damagePhysical || player.damageMagical || player.damagePure) {
+          dmgRows.push({
+            slot: player.slot || 0,
+            phys: player.damagePhysical || 0,
+            mag: player.damageMagical || 0,
+            pure: player.damagePure || 0,
+          });
+        }
+      }
+      if (psPlaceholders.length > 0) {
+        await client.query(
+          `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log, dieback_count)
+           VALUES ${psPlaceholders.join(',')}`,
+          psParams
+        );
+      }
+      // Damage breakdown: still a per-slot UPDATE because pg doesn't support
+      // bulk UPDATE-from-VALUES as cleanly, but only fires for rows that
+      // actually carry the breakdown. Typical inhouse: 0–10 rows.
+      for (const r of dmgRows) {
         await client.query(
           `UPDATE player_stats SET damage_physical=$1, damage_magical=$2, damage_pure=$3
            WHERE match_id=$4 AND slot=$5`,
-          [player.damagePhysical || 0, player.damageMagical || 0, player.damagePure || 0,
-           matchStats.matchId, player.slot || 0]
+          [r.phys, r.mag, r.pure, matchStats.matchId, r.slot]
         );
       }
 
-      if (player.items && player.items.length > 0) {
+      // Items — bulk insert via multi-row VALUES with ON CONFLICT DO NOTHING.
+      const itemPh = [];
+      const itemParams = [];
+      let itemBase = 0;
+      for (const player of matchStats.players) {
+        if (!player.items || player.items.length === 0) continue;
         for (const item of player.items) {
-          await client.query(
-            `INSERT INTO player_items (match_id, slot, item_slot, item_id, item_name, purchase_time, enhancement_level)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (match_id, slot, item_slot) DO NOTHING`,
-            [matchStats.matchId, player.slot || 0, item.slot, item.itemId || 0, item.itemName || '', item.purchaseTime || 0, item.enhancementLevel || 0]
-          );
+          itemPh.push(`($${itemBase + 1},$${itemBase + 2},$${itemBase + 3},$${itemBase + 4},$${itemBase + 5},$${itemBase + 6},$${itemBase + 7})`);
+          itemParams.push(matchStats.matchId, player.slot || 0, item.slot, item.itemId || 0, item.itemName || '', item.purchaseTime || 0, item.enhancementLevel || 0);
+          itemBase += 7;
         }
       }
+      if (itemPh.length > 0) {
+        await client.query(
+          `INSERT INTO player_items (match_id, slot, item_slot, item_id, item_name, purchase_time, enhancement_level)
+           VALUES ${itemPh.join(',')}
+           ON CONFLICT (match_id, slot, item_slot) DO NOTHING`,
+          itemParams
+        );
+      }
 
-      if (player.abilities && player.abilities.length > 0) {
+      // Abilities — bulk insert.
+      const abPh = [];
+      const abParams = [];
+      let abBase = 0;
+      for (const player of matchStats.players) {
+        if (!player.abilities || player.abilities.length === 0) continue;
         for (const ability of player.abilities) {
-          await client.query(
-            `INSERT INTO player_abilities (match_id, slot, ability_name, ability_level, time)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [matchStats.matchId, player.slot || 0, ability.abilityName || '', ability.abilityLevel || 0, ability.time || 0]
-          );
+          abPh.push(`($${abBase + 1},$${abBase + 2},$${abBase + 3},$${abBase + 4},$${abBase + 5})`);
+          abParams.push(matchStats.matchId, player.slot || 0, ability.abilityName || '', ability.abilityLevel || 0, ability.time || 0);
+          abBase += 5;
         }
+      }
+      if (abPh.length > 0) {
+        await client.query(
+          `INSERT INTO player_abilities (match_id, slot, ability_name, ability_level, time)
+           VALUES ${abPh.join(',')}`,
+          abParams
+        );
       }
     }
 
     if (matchStats.draft && matchStats.draft.length > 0) {
       await client.query(`DELETE FROM match_draft WHERE match_id = $1`, [matchStats.matchId]);
+      // Bulk draft insert.
+      const dPh = [];
+      const dParams = [];
+      let dBase = 0;
       for (const d of matchStats.draft) {
         if (!d.heroId || d.heroId <= 0) continue;
+        const teamNum = typeof d.team === 'string'
+          ? (d.team === 'radiant' ? 0 : 1)
+          : (d.team === 2 ? 0 : d.team === 3 ? 1 : (d.team || 0));
+        dPh.push(`($${dBase + 1},$${dBase + 2},$${dBase + 3},$${dBase + 4},$${dBase + 5})`);
+        dParams.push(matchStats.matchId, d.heroId, d.isPick, d.order || 0, teamNum);
+        dBase += 5;
+      }
+      if (dPh.length > 0) {
         await client.query(
           `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team)
-           VALUES ($1, $2, $3, $4, $5)
+           VALUES ${dPh.join(',')}
            ON CONFLICT (match_id, order_num) DO NOTHING`,
-          [matchStats.matchId, d.heroId, d.isPick, d.order || 0, typeof d.team === 'string' ? (d.team === 'radiant' ? 0 : 1) : (d.team === 2 ? 0 : d.team === 3 ? 1 : (d.team || 0))]
+          dParams
         );
       }
     }

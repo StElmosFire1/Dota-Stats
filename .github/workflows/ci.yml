@@ -1,0 +1,42 @@
+# Task #313 — minimal CI matrix.
+#
+# What runs on every push / PR to main:
+#   1. node 20 + npm install (no audit/fund chatter)
+#   2. Parser-jar freshness gate (no JDK needed; it only stats files)
+#   3. A11y house-rule gate (six passes, ~hundreds of files)
+#   4. Community paywall source-scan gate (fast; runs before any build)
+#   5. `node --test tests/` — the project's existing runner
+#
+# Notably absent (intentionally): the web build, the community web build,
+# and the Java parser rebuild. Those are run on the prod deploy host via
+# deploy.sh / post-merge.sh and don't need to gate CI. If a future task
+# adds JS/TS type-checking or lint, slot it in after step 2.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: install
+        run: npm install --no-audit --no-fund
+      - name: parser-jar freshness
+        run: npm run check:parser
+      - name: a11y house rules
+        run: npm run check:a11y
+      - name: community paywall source-scan
+        run: npm run check:community-paywall-source
+      - name: tests
+        run: npm test
