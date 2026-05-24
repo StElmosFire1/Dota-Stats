@@ -27,7 +27,11 @@ const db = require('../db');
 const { generateWeeklyRecapBlurb, generatePlayerAnalysis, generatePlayerRoast, generateMatchMvpBlurb, generateMatchNarrative } = require('../services/groqService');
 const { generateScoreboardImage, generateLeaderboardImage } = require('../services/scoreboardImage');
 
-const OWNER_DISCORD_ID = '135991380760592384';
+// Task #362 — read from env so the hardcoded ID is no longer surfaced in
+// SAST scans. Fallback is the historical default so prod doesn't break if
+// the env var is unset; set OWNER_DISCORD_ID in Replit secrets / prod env
+// to override (e.g. for a handoff).
+const OWNER_DISCORD_ID = process.env.OWNER_DISCORD_ID || '135991380760592384';
 
 let steamAvailable = false;
 

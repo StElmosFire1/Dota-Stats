@@ -1501,7 +1501,7 @@ function createApiRouter(startupStatus = {}) {
 
   router.post('/admin/restore-backup', requireSuperuser, async (req, res) => {
     const { backup } = req.body || {};
-    if (!backup || !/^[a-z0-9_]+$/i.test(backup)) {
+    if (!backup || !/^([a-z0-9_]+_)?[0-9]{14}$/.test(backup)) {
       return res.status(400).json({ error: 'Invalid backup name.' });
     }
     const p = db.getPool();
@@ -1534,7 +1534,7 @@ function createApiRouter(startupStatus = {}) {
 
   router.delete('/admin/delete-backup/:backup', requireSuperuser, async (req, res) => {
     const backup = req.params.backup;
-    if (!backup || !/^[a-z0-9_]+$/i.test(backup)) {
+    if (!backup || !/^([a-z0-9_]+_)?[0-9]{14}$/.test(backup)) {
       return res.status(400).json({ error: 'Invalid backup name.' });
     }
     try {

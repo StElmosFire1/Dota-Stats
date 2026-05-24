@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "7.56",
+    "title": "Security remediation batch — rotated GCP key, Vite CVE, SQL whitelist, env-ify owner ID (Task #362)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Leaked Google service-account JSON removed from the working tree.** `attached_assets/dota-stats-487707-68694b22a462_1771315018239.json` contained a real `private_key` for `dota-bot@dota-stats-487707.iam.gserviceaccount.com` and was deleted. **The key itself must be rotated in the Google Cloud console** (Service Accounts → dota-bot → Keys → delete `68694b22a4622b48c8b2729e9108c99c38ee38c7`, generate a new one, redeploy Google Sheets integration with the new credentials) — file deletion alone does not invalidate the key. `.gitignore` now blocks `attached_assets/*.json`, `*.pem`, `*.key` so an upload can't reintroduce this class of leak.",
+      "**Vite CVE-2025-30208 patched in both editions.** `web/package.json` and `community-edition/web/package.json` bumped from `vite ^5.0.0` to `^5.4.15` (resolved to 5.4.21 on install). Both `npm run build`s are clean — no React 18 code depended on vite-5.x-only API surface, so the upgrade is a no-op for the bundles.",
+      "**Community + full edition backup-restore SQL injection hardened.** `community-edition/src/web/server.js` (restore + delete-backup routes ~1505/1535) and `src/web/server.js` (~4863/4893) previously accepted any `^[a-z0-9_]+$` suffix into a template-literal `CREATE/INSERT/DROP TABLE …_bak_<x>` SQL statement. Tightened to `^([a-z0-9_]+_)?[0-9]{14}$` so the suffix must match the actual `createDbBackup` output format (optional `label_` prefix + a 14-digit `YYYYMMDDHHMMSS` timestamp). Even though both routes are superuser-only, the old regex would have accepted constructed names like `evil_bak_x_attack_payload`; the new whitelist refuses anything that isn't a real backup slug.",
+      "**`OWNER_DISCORD_ID` env-ified in both bots.** `src/discord/bot.js:30` and `community-edition/src/discord/bot.js:11` now read `process.env.OWNER_DISCORD_ID || '<historical default>'` with a comment, instead of hardcoding the literal. Documented under a new \"Environment variables (security-relevant)\" section in `replit.md`. Production behaviour is unchanged when the env var is absent — but a handoff or a SAST false-positive flag can now be addressed by setting the env var rather than patching the source.",
+      "**Gates green:** a11y, community paywall, parser-jar freshness; both edition builds clean on the new Vite. **Action item for ops:** rotate the GCP service-account key in the cloud console — this commit only stops the bleeding from the repo side.",
+      "**Edition scope.** Both editions — security fix."
+    ]
+  },
+  {
     "version": "7.55",
     "title": "Ops stability + telemetry batch — push hook, regressions, cron heartbeat, bot filter (Task #361)",
     "published_at": "2026-05-24",

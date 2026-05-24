@@ -135,6 +135,14 @@ dist
 # Credentials
 creds.json
 
+# Service-account / API key dumps accidentally landed in attached_assets via
+# uploads. Task #362: a real GCP service-account JSON was committed at
+# attached_assets/dota-stats-487707-…json on 2026-05-24 and had to be
+# scrubbed + rotated. Block the whole .json/.pem class so it can't recur.
+attached_assets/*.json
+attached_assets/*.pem
+attached_assets/*.key
+
 # Replay files
 replays/
 *.dem

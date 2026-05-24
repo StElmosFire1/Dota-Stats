@@ -81,6 +81,10 @@ Stripe Connect Express requires real KYC, so dev-testing the coaching marketplac
 
 Production must continue using the live `sk_live_…` key. Both keys go through Replit secrets, never committed.
 
+## Environment variables (security-relevant)
+- `OWNER_DISCORD_ID` — overrides the hardcoded Discord owner ID used by `!perf-backfill`, `!backfill-pick-source`, and other owner-only Discord commands in both editions (`src/discord/bot.js`, `community-edition/src/discord/bot.js`). Falls back to the historical default (`135991380760592384`) when unset so prod doesn't break on a missed env update — set this in Replit secrets / prod env any time the owner handle changes.
+- `attached_assets/*.json|*.pem|*.key` are now `.gitignore`-blocked after Task #362's leaked GCP service-account incident. Don't bypass; if a JSON dump genuinely needs to be in-tree, scrub the secrets first.
+
 ## External Dependencies
 - **Discord:** `discord.js`
 - **Steam:** `steam-user`, `dota2-user`
