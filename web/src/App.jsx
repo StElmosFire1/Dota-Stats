@@ -43,6 +43,7 @@ const StatsEditor = lazy(() => import('./pages/StatsEditor'));
 const PatchNotes = lazy(() => import('./pages/PatchNotes'));
 const Pickem = lazy(() => import('./pages/Pickem'));
 const SponsorshipInbox = lazy(() => import('./pages/SponsorshipInbox'));
+const Sponsorships = lazy(() => import('./pages/Sponsorships'));
 const Home = lazy(() => import('./pages/Home'));
 const MultiKills = lazy(() => import('./pages/MultiKills'));
 const WardMap = lazy(() => import('./pages/WardMap'));
@@ -686,6 +687,7 @@ function Nav() {
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
+          <DropdownItem to="/sponsorships">Sponsor a Slot</DropdownItem>
           {/* v6.62 / Task #206 — only signed-in players need the cosmetics shop;
               anonymous viewers can't apply anything yet. The /pro CTA in the
               nav bar covers their upgrade path. */}
@@ -1131,6 +1133,7 @@ export default function App() {
                 <Route path="/pickem" element={<Pickem />} />
                 <Route path="/coins/buy" element={<BuyCoins />} />
                 <Route path="/sponsorships/inbox" element={<SponsorshipInbox />} />
+                <Route path="/sponsorships" element={<Sponsorships />} />
                 <Route path="/multikills" element={<MultiKills />} />
                 <Route path="/ward-map" element={<WardMap />} />
                 <Route path="/records" element={<Records />} />

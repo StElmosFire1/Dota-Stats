@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.45",
+    "title": "Public sponsorship storefront + home banner placement (Task #334)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**`/sponsorships` storefront.** New `web/src/pages/Sponsorships.jsx` lists every active slot from `GET /api/sponsorships/slots` (label, slug, description, monthly price formatted via `Intl.NumberFormat`) and surfaces a `Sponsor this slot` button on each card. Clicking opens a modal that collects sponsor name (required), click-through URL, logo URL, contact email, and months (1–12), then POSTs to `/api/sponsorships/:slug/checkout` and redirects to the returned Stripe Checkout URL. Anonymous visitors can buy via the `buyer_email` fallback already accepted by the existing checkout route — no new server endpoints were added.",
+      "**Modal uses the shared `<Dialog>` primitive.** Focus capture/restore, Escape-to-close, body-scroll lock, and ARIA labelling all come from the existing primitive, so the new page passes `npm run check:a11y` without any allowlist entry.",
+      "**Routing + nav.** New lazy route `/sponsorships` wired in `web/src/App.jsx` next to the existing `/sponsorships/inbox`, plus a `Sponsor a Slot` entry in the Tools dropdown so prospective sponsors have a discoverable entry point.",
+      "**Home banner already wired.** `SponsorshipBanner` was already rendering on the home page with slug `home_top`; this task verifies the public surface exists and adds the storefront required to actually sell those slots.",
+      "**Edition scope.** Full edition only — the community edition is paywall-free by policy and does not surface monetisation pages."
+    ]
+  },
+  {
     "version": "7.44",
     "title": "Per-row tenant isolation across matches, tournaments, coaches, inhouse sessions (Task #333)",
     "published_at": "2026-05-24",
