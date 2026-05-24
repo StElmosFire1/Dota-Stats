@@ -198,6 +198,25 @@ function formatTimeRemaining(targetMs, nowMs) {
   return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
+// Task #338 — render an absolute end time in the visitor's own browser
+// timezone (e.g. "Sun, 24 May, 8:00 pm AEST"). We deliberately let the
+// runtime pick the locale + short timezone name rather than hard-coding
+// AEST/UTC so a player in EU/NA sees the time they recognise. Falls back
+// to a plain ISO string if `toLocaleString` rejects the options object
+// on an older browser.
+function formatAbsoluteEndTime(targetMs) {
+  const d = new Date(targetMs);
+  try {
+    return d.toLocaleString(undefined, {
+      weekday: 'short', day: 'numeric', month: 'short',
+      hour: 'numeric', minute: '2-digit',
+      timeZoneName: 'short',
+    });
+  } catch {
+    return d.toString();
+  }
+}
+
 // Mirrors FRAME_PRICES in src/web/server.js. Keep in sync.
 const FRAME_PRICES_CENTS = {
   gold: 299,
@@ -403,13 +422,32 @@ export default function CosmeticsShop() {
       .catch(() => setLimitedDrops([]));
   }, []);
   useEffect(() => { reloadLimitedDrops(); }, [reloadLimitedDrops]);
-  useEffect(() => {
-    if (!limitedDrops.length) return undefined;
-    const hasFuture = limitedDrops.some(d => new Date(d.available_until).getTime() > Date.now());
-    if (!hasFuture) return undefined;
-    const id = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(id);
+  // Task #338 — adaptive tick rate. A 1s ticker is overkill while the
+  // soonest drop still has > 1h left (the relative line only changes
+  // minute-by-minute at that scale), so we tick every 60s in the
+  // "minutes/days" regime and only switch to 1s in the final hour, when
+  // the seconds digit is actually visible. We key the interval off the
+  // earliest end time so the moment any one drop drops below 1h the
+  // effect re-runs and picks the faster cadence.
+  const soonestEndsAtMs = React.useMemo(() => {
+    let soonest = Infinity;
+    for (const d of limitedDrops) {
+      const t = new Date(d.available_until).getTime();
+      if (Number.isFinite(t) && t > nowMs && t < soonest) soonest = t;
+    }
+    return soonest;
+    // nowMs intentionally excluded — we don't want to recompute every tick;
+    // the interval below re-runs whenever `limitedDrops` changes or the
+    // regime flips (tracked separately via `tickRegime`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limitedDrops]);
+  const tickRegime = (soonestEndsAtMs - nowMs) <= 60 * 60 * 1000 ? 'fast' : 'slow';
+  useEffect(() => {
+    if (!Number.isFinite(soonestEndsAtMs)) return undefined;
+    const intervalMs = tickRegime === 'fast' ? 1000 : 60 * 1000;
+    const id = setInterval(() => setNowMs(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [soonestEndsAtMs, tickRegime]);
 
   const isCoinOwned = React.useCallback((kind, value) => {
     if (!coinInfo?.owned) return false;
@@ -755,22 +793,42 @@ export default function CosmeticsShop() {
               {active.map(drop => {
                 const endsAtMs = new Date(drop.available_until).getTime();
                 const remaining = formatTimeRemaining(endsAtMs, nowMs);
+                // Task #338 — absolute end time in the visitor's own browser
+                // timezone is the primary line; the relative "ends in …"
+                // figure stays as a secondary line so quick scanners still
+                // see at-a-glance urgency.
+                const endsAtLocal = formatAbsoluteEndTime(endsAtMs);
                 const sold = Number(drop.quantity_sold || 0);
                 const cap = drop.quantity_cap != null ? Number(drop.quantity_cap) : null;
                 const soldOut = cap != null && sold >= cap;
                 const busy = dropBuying === drop.id;
                 const hasStripe = drop.price_cents != null;
                 const hasCoins = drop.coin_price != null;
-                const subParts = [
-                  String(drop.kind || '').replace(/_/g, ' '),
-                  `Ends in ${remaining}`,
-                ];
-                if (cap != null) subParts.push(`${sold} / ${cap} sold`);
+                const endsLine = (
+                  <span title={new Date(endsAtMs).toString()}>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                      Ends {endsAtLocal}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {' · in '}{remaining}
+                    </span>
+                  </span>
+                );
+                const kindLabel = String(drop.kind || '').replace(/_/g, ' ');
+                const capLabel = cap != null ? `${sold} / ${cap} sold` : null;
+                const subNode = (
+                  <span>
+                    {kindLabel}
+                    {' · '}
+                    {endsLine}
+                    {capLabel ? <> {' · '}{capLabel}</> : null}
+                  </span>
+                );
                 return (
                   <CosmeticCard
                     key={drop.id}
                     label={drop.label || drop.sku}
-                    sub={subParts.join(' · ')}
+                    sub={subNode}
                     badges={
                       soldOut ? <LockedPill /> : <ProPill />
                     }

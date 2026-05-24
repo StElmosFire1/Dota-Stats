@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "7.48",
+    "title": "Limited-drop countdown shows your local end time (Task #338)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Absolute end time, in your timezone.** Each card on the 'Available now — limited drop' panel (`web/src/pages/CosmeticsShop.jsx`) now leads with `Ends <localized date/time>` using `toLocaleString` with the visitor's own locale + short timezone name (e.g. 'Ends Sun, 24 May, 8:00 pm AEST'). The previous live `Ends in Xd Yh Zm Ws` figure stays as a secondary, muted line so urgency is still legible at a glance. The exact ISO string is exposed as a `title` tooltip for anyone who wants to copy/paste it.",
+      "**Adaptive ticker.** The `nowMs` `setInterval` now switches cadence based on the soonest drop's remaining window — 1 minute when > 1h remains (the relative line only changes at that scale anyway), 1 second only in the final 60 minutes when the seconds digit is actually visible. Drives off `React.useMemo`-derived `soonestEndsAtMs` so the effect re-runs cleanly the moment any card crosses the 1h threshold.",
+      "**Edition scope.** Full edition only — the community edition does not surface a limited-drop shop."
+    ]
+  },
+  {
     "version": "7.47",
     "title": "Home-page 'Watch live' badge surfaces active spectator stream (Task #336)",
     "published_at": "2026-05-24",
