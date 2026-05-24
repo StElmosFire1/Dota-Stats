@@ -57,6 +57,37 @@ export default function CoachOnboarding() {
           Already onboarded? <Link to="/coach/edit" style={{ color: 'var(--accent)' }}>→ Open coach editor</Link>
         </p>
       )}
+
+      {/* Task #335 — surface Coach Premium as the natural next step once KYC
+          completes. The pitch page handles the case where the coach row
+          doesn't exist yet by routing back here, so this is safe pre-KYC too. */}
+      <div style={{
+        marginTop: 24, padding: 16, borderRadius: 10,
+        background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(197,169,117,0.04))',
+        border: '1px solid var(--brass, #c5a975)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+          <span style={{
+            fontSize: 10, fontWeight: 800, letterSpacing: 0.7,
+            padding: '2px 8px', borderRadius: 999,
+            background: 'linear-gradient(135deg, #fbbf24, #c5a975)', color: '#0d1424',
+            textTransform: 'uppercase',
+          }}>★ Optional</span>
+          <strong>After KYC: consider Coach Premium</strong>
+        </div>
+        <p style={{ color: 'var(--text-muted)', margin: '0 0 10px', fontSize: 14 }}>
+          $9.99/mo subscription that drops your platform fee from 10% to 7% and
+          features your profile at the top of the /coaches directory with a Premium badge.
+        </p>
+        <Link to="/coach/premium" style={{
+          display: 'inline-block', padding: '8px 16px', borderRadius: 6,
+          background: 'transparent', color: 'var(--amber, #f59e0b)',
+          border: '1px solid var(--amber, #f59e0b)',
+          textDecoration: 'none', fontWeight: 700, fontSize: 13,
+        }}>
+          Learn about Premium →
+        </Link>
+      </div>
       {msg && <p style={{ color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--text-muted)', marginTop: 12 }}>{msg}</p>}
     </div>
   );

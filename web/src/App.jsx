@@ -82,6 +82,7 @@ const Coaches = lazy(() => import('./pages/Coaches'));
 const CoachProfile = lazy(() => import('./pages/CoachProfile'));
 const CoachEdit = lazy(() => import('./pages/CoachEdit'));
 const CoachOnboarding = lazy(() => import('./pages/CoachOnboarding'));
+const CoachPremium = lazy(() => import('./pages/CoachPremium'));
 const MyBookings = lazy(() => import('./pages/MyBookings'));
 const SeasonSummary = lazy(() => import('./pages/SeasonSummary'));
 const BuyCoins = lazy(() => import('./pages/BuyCoins'));
@@ -1168,6 +1169,7 @@ export default function App() {
                 <Route path="/coach/:id" element={<CoachProfile />} />
                 <Route path="/coach/edit" element={<CoachEdit />} />
                 <Route path="/coach/onboarding" element={<CoachOnboarding />} />
+                <Route path="/coach/premium" element={<CoachPremium />} />
                 <Route path="/me/bookings" element={<MyBookings />} />
                 <Route path="/pro" element={<Pro />} />
                 <Route path="/shop" element={<CosmeticsShop />} />

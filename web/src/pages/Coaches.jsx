@@ -92,6 +92,10 @@ export default function Coaches() {
         <Link to="/coach/onboarding" style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>
           Want to coach? Apply here →
         </Link>
+        {' · '}
+        <Link to="/coach/premium" style={{ color: 'var(--amber, #f59e0b)', whiteSpace: 'nowrap' }}>
+          ★ Coach Premium
+        </Link>
       </p>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -119,10 +123,24 @@ export default function Coaches() {
         {coaches.map(c => (
           <Link key={c.id} to={`/coaches/${c.id}`}
             style={{
-              display: 'block', background: 'var(--bg-card)', border: '1px solid var(--border)',
+              display: 'block', background: 'var(--bg-card)',
+              border: c.is_premium ? '1px solid var(--brass, #c5a975)' : '1px solid var(--border)',
               borderRadius: 10, padding: 16, textDecoration: 'none', color: 'inherit',
+              boxShadow: c.is_premium ? '0 0 0 1px rgba(245,158,11,0.18) inset' : 'none',
+              position: 'relative',
             }}>
-            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{c.display_name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 17, fontWeight: 700 }}>{c.display_name}</span>
+              {c.is_premium && (
+                <span aria-label="Coach Premium subscriber"
+                  style={{
+                    fontSize: 10, fontWeight: 800, letterSpacing: 0.7,
+                    padding: '2px 7px', borderRadius: 999,
+                    background: 'linear-gradient(135deg, #fbbf24, #c5a975)',
+                    color: '#0d1424', textTransform: 'uppercase',
+                  }}>★ Premium</span>
+              )}
+            </div>
             <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8 }}>
               {c.taught_roles ? `Roles: ${c.taught_roles}` : 'Coach'}
             </div>

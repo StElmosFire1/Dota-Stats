@@ -13816,6 +13816,9 @@ async function listActiveCoaches({ language, role, hero, maxPriceCents, tenantId
     `SELECT c.id, c.account_id, c.hourly_rate_cents, c.currency, c.bio,
             c.languages, c.taught_roles, c.taught_heroes, c.intro_video_url,
             c.response_time_hours, c.country, c.created_at,
+            -- Task #335 — expose premium entitlement so the public marketplace
+            -- card can render a "Premium" badge alongside the featured ordering.
+            (c.is_premium IS TRUE AND (c.premium_until IS NULL OR c.premium_until > NOW())) AS is_premium,
             COALESCE(n.nickname, c.account_id::text) AS display_name,
             (SELECT ROUND(AVG(rating)::numeric, 2) FROM coaching_reviews WHERE coach_account_id = c.account_id) AS avg_rating,
             (SELECT COUNT(*)::int FROM coaching_reviews WHERE coach_account_id = c.account_id) AS review_count,

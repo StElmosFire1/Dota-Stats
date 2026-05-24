@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.46",
+    "title": "Promote Coach Premium so coaches discover the upgrade (Task #335)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Public pitch page at `/coach/premium`.** New `web/src/pages/CoachPremium.jsx` explains the three perks (featured placement, 7% commission vs the 10% site default, priority support), shows the maths on a $50/hr session (break-even at 7 bookings/month), and surfaces a `Subscribe — $9.99/mo` CTA that calls the existing `POST /api/coach/premium/checkout` endpoint and redirects to Stripe. Already-active subscribers see a `✓ You're already Premium` confirmation and a `Manage in coach editor` link instead. Visitors who aren't signed in or don't yet have a coach row are bounced to `/coach/onboarding` first. Lazy-loaded route wired in `web/src/App.jsx`.",
+      "**Premium badge on `/coaches` directory cards.** `listActiveCoaches` in `src/db/index.js` now SELECTs `(c.is_premium IS TRUE AND (c.premium_until IS NULL OR c.premium_until > NOW())) AS is_premium` so the public marketplace JSON exposes entitlement state. `web/src/pages/Coaches.jsx` reads that field and renders a brass `★ Premium` pill on each card plus a brass border + subtle amber inner-glow, making the featured-first ordering visually legible (previously premium coaches were silently ordered first with no visual differentiation). The directory header gains a `★ Coach Premium` link to the new pitch page.",
+      "**Onboarding flow surfaces Premium as the natural post-KYC step.** `CoachOnboarding.jsx` now ends with a brass-bordered \"After KYC: consider Coach Premium\" card linking to `/coach/premium`. The `CoachEdit.jsx` page already had the subscribe card from Task #320 and is unchanged.",
+      "**No new backend routes.** Reuses the existing checkout / status / cancel endpoints and the existing `coach_premium` Stripe webhook lifecycle — entitlement flips in one place (`db.applyCoachPremiumStripeEvent`) and propagates to the marketplace listing automatically via the SQL change above.",
+      "**Edition scope.** Full edition only — community edition is paywall-free by policy."
+    ]
+  },
+  {
     "version": "7.45",
     "title": "Public sponsorship storefront + home banner placement (Task #334)",
     "published_at": "2026-05-24",
