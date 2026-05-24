@@ -54,6 +54,8 @@ const CosmeticsShop = lazy(() => import('./pages/CosmeticsShop'));
 const ProfileDemo = lazy(() => import('./pages/ProfileDemo'));
 const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
+const ReplayViewer = lazy(() => import('./pages/ReplayViewer'));
+const Spectate = lazy(() => import('./pages/Spectate'));
 const Social = lazy(() => import('./pages/Social'));
 const HallOfFame = lazy(() => import('./pages/HallOfFame'));
 const PlayerBenchmarks = lazy(() => import('./pages/PlayerBenchmarks'));
@@ -1078,6 +1080,8 @@ export default function App() {
                 <Route path="/me/bookings" element={<MyBookings />} />
                 <Route path="/pro" element={<Pro />} />
                 <Route path="/shop" element={<CosmeticsShop />} />
+                <Route path="/replay/:matchId" element={<ReplayViewer />} />
+                <Route path="/spectate/:matchId" element={<Spectate />} />
               </Routes>
               </Suspense>
             </main>

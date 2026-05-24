@@ -2477,6 +2477,11 @@ class ReplayParser {
             name: p.personaname || '',
             team: p.team,
             samples: p.timelineSamples || [],
+            // Task #315 — per-player position samples (sampled every 10s in the
+            // combat-log loop above into `allPositions[slot]`). Powers the 2D
+            // minimap replay viewer. Empty when the replay had no positional
+            // interval events (very old replays / partial parses).
+            positions: allPositions[slot] || [],
             purchaseLog,
             abilityLog: (abilityLevelups[slot] || []).map((a, idx) => ({
               heroLevel: idx + 1,

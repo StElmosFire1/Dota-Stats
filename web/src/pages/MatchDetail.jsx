@@ -22,7 +22,7 @@ class MatchErrorBoundary extends Component {
   }
 }
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord, getNemesisSpotlight, recapCardUrl, shareRecapCardToDiscord } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord, getNemesisSpotlight, recapCardUrl, shareRecapCardToDiscord, submitPlayerReplayChunked, getUploadStatus } from '../api';
 import { MMR_TIERS } from './Leaderboard';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -3033,6 +3033,130 @@ function RemoteReplayButton({ match }) {
   );
 }
 
+// Task #315 — Pro-gated link into the 2D minimap replay viewer. Renders
+// alongside the existing Remote-replay download button. Non-Pro viewers
+// see the same star + label so they understand it exists.
+function ReplayViewerLink({ match }) {
+  const { status: proStatus } = useProStatus();
+  const { isSuperuser } = useSuperuser();
+  const { isAdmin } = useAdmin();
+  const isPro = isSuperuser || isAdmin || proStatus?.is_pro;
+  // The viewer needs game_timeline data, which only exists for matches
+  // recorded from a parsed .dem (any provenance is fine — bot_fetched,
+  // dedicated_server, player_uploaded all work). Hide when no replay
+  // has ever been processed for the match.
+  if (!match.has_replay && !match.has_remote_replay && !match.replay_provenance) return null;
+  return (
+    <Link
+      to={`/replay/${match.match_id}`}
+      title={isPro ? 'Open the 2D minimap replay viewer' : 'Pro membership required to open the replay viewer'}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        background: isPro ? 'rgba(99,102,241,0.12)' : 'rgba(245,158,11,0.12)',
+        border: `1px solid ${isPro ? 'rgba(99,102,241,0.4)' : 'rgba(245,158,11,0.4)'}`,
+        color: isPro ? '#a5b4fc' : '#fbbf24',
+        borderRadius: 8, padding: '2px 10px', fontSize: 12, fontWeight: 600,
+        textDecoration: 'none',
+      }}
+    >
+      {isPro ? '🎬 Replay Viewer' : '★ Replay Viewer (Pro)'}
+    </Link>
+  );
+}
+
+// Task #315 — Fallback uploader. When the bot couldn't auto-fetch the .dem
+// (Valve replay-store flake / dedicated-server archive missed it), any
+// signed-in match participant can submit their own copy of the file. The
+// server enforces match-participation and rejects mismatched match ids.
+function SubmitReplayButton({ match, steamUser, onUploaded }) {
+  const { isSuperuser } = useSuperuser();
+  const { isAdmin } = useAdmin();
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [error, setError] = useState(null);
+
+  const viewerAccountId = steamUser?.accountId;
+  const isParticipant = !!viewerAccountId && Array.isArray(match.players)
+    && match.players.some((p) => String(p.account_id) === String(viewerAccountId));
+  const canSubmit = isParticipant || isSuperuser || isAdmin;
+  // Skip the affordance entirely when an archive already exists (any source).
+  const alreadyHaveReplay = match.has_replay || match.has_remote_replay;
+  if (alreadyHaveReplay || !canSubmit) return null;
+
+  const pickFile = () => fileRef.current?.click();
+
+  const onPick = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.name.endsWith('.dem') && !file.name.endsWith('.dem.bz2')) {
+      setError('Only .dem replay files are accepted.');
+      return;
+    }
+    setError(null);
+    setUploading(true);
+    setProgress({ phase: 'init', percent: 0, detail: 'Starting…' });
+    try {
+      const { jobId } = await submitPlayerReplayChunked(match.match_id, file, setProgress);
+      // Poll status until terminal.
+      const start = Date.now();
+      while (Date.now() - start < 5 * 60 * 1000) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const status = await getUploadStatus(jobId).catch(() => null);
+        if (!status) continue;
+        if (status.status === 'complete') {
+          setProgress({ phase: 'complete', percent: 100, detail: 'Replay recorded — refreshing…' });
+          onUploaded?.();
+          break;
+        }
+        if (status.status === 'error') {
+          throw new Error(status.error || 'Parser failed');
+        }
+        setProgress({ phase: 'processing', percent: 97, detail: status.step || 'Parsing…' });
+      }
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={pickFile}
+        disabled={uploading}
+        title="Submit your local .dem copy of this match — useful when the bot could not fetch the replay from Valve."
+        aria-label="Submit your own replay for this match"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.4)',
+          color: '#34d399', borderRadius: 8, padding: '2px 10px',
+          fontSize: 12, fontWeight: 600, cursor: uploading ? 'wait' : 'pointer',
+          opacity: uploading ? 0.7 : 1,
+        }}
+      >
+        {uploading ? `⏳ ${progress?.detail || 'Uploading…'}` : '⬆ Submit Replay (.dem)'}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".dem,.bz2"
+        onChange={onPick}
+        style={{ display: 'none' }}
+        aria-hidden="true"
+      />
+      {error && (
+        <span role="alert" style={{ color: '#fecaca', fontSize: 12 }}>
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
 function MatchDetailInner() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -3530,6 +3654,8 @@ function MatchDetailInner() {
             </span>
           )}
           <RemoteReplayButton match={match} />
+          <ReplayViewerLink match={match} />
+          <SubmitReplayButton match={match} steamUser={steamUser} onUploaded={() => getMatch(matchId).then(setMatch).catch(() => {})} />
         </div>
       </div>
 

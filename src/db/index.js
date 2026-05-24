@@ -222,6 +222,12 @@ async function init() {
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_path TEXT DEFAULT NULL`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_file_expires_at TIMESTAMPTZ DEFAULT NULL`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_path TEXT DEFAULT NULL`);
+    // Task #315 — track how the .dem behind this match was sourced. Values:
+    //   'bot_fetched' (default — downloaded from Valve via the bot pipeline),
+    //   'dedicated_server' (auto-archived from our own GSL host),
+    //   'player_uploaded' (any signed-in match participant fallback upload),
+    //   'web_admin' (uploaded via the admin /upload page with an upload key).
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_provenance TEXT DEFAULT NULL`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS patch_notes (
@@ -2383,19 +2389,20 @@ async function updatePlayerStats(matchId, players) {
   }
 }
 
-async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, seasonId) {
+async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, seasonId, replayProvenance = null) {
   const p = getPool();
   const client = await p.connect();
   try {
     await client.query('BEGIN');
 
     await client.query(
-      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes, team_abilities)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes, team_abilities, replay_provenance)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        ON CONFLICT (match_id) DO UPDATE SET date = EXCLUDED.date,
          game_timeline = COALESCE(EXCLUDED.game_timeline, matches.game_timeline),
          lane_outcomes = COALESCE(EXCLUDED.lane_outcomes, matches.lane_outcomes),
-         team_abilities = COALESCE(EXCLUDED.team_abilities, matches.team_abilities)
+         team_abilities = COALESCE(EXCLUDED.team_abilities, matches.team_abilities),
+         replay_provenance = COALESCE(EXCLUDED.replay_provenance, matches.replay_provenance)
          WHERE EXCLUDED.date < NOW() - INTERVAL '10 minutes'`,
       [
         matchStats.matchId,
@@ -2412,6 +2419,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         matchStats.gameTimeline ? JSON.stringify(matchStats.gameTimeline) : null,
         matchStats.laneOutcomes ? JSON.stringify(matchStats.laneOutcomes) : null,
         matchStats.teamAbilities ? JSON.stringify(matchStats.teamAbilities) : null,
+        replayProvenance || null,
       ]
     );
 
@@ -13331,6 +13339,8 @@ module.exports = {
   expireOldReplayFiles,
   setReplayPath,
   getReplayPath,
+  setReplayProvenance,
+  getReplayProvenance,
   getMatchesWithReplayStatus,
   addToQueue,
   removeFromQueue,
@@ -13746,6 +13756,27 @@ async function setReplayPath(matchId, remotePath) {
     `UPDATE matches SET replay_path = $1 WHERE match_id = $2`,
     [remotePath || null, matchId]
   );
+}
+
+// Task #315 — record / read the provenance tag separately from the file-path
+// setters above so a re-upload from a player can update only the source tag
+// without touching the archived-file path that recordMatch() already managed.
+async function setReplayProvenance(matchId, provenance) {
+  if (!matchId || !provenance) return;
+  const p = getPool();
+  await p.query(
+    `UPDATE matches SET replay_provenance = $1 WHERE match_id = $2`,
+    [provenance, matchId]
+  );
+}
+
+async function getReplayProvenance(matchId) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT replay_provenance FROM matches WHERE match_id = $1`,
+    [matchId]
+  );
+  return res.rows[0]?.replay_provenance || null;
 }
 
 async function getReplayPath(matchId) {

@@ -2645,6 +2645,15 @@ function createApiRouter(startupStatus = {}, _app = null) {
       // Do NOT expose replay_path (internal filesystem path) to public clients.
       const remoteReplayRow = await db.getReplayPath(req.params.matchId).catch(() => null);
       match.has_remote_replay = !!(remoteReplayRow?.replay_path);
+      // Task #315 — expose the provenance tag so the UI can show a badge
+      // ("Player-uploaded replay" / "From dedicated server") and so the
+      // upload-fallback button can decide whether to show the "submit
+      // your own copy" affordance to match participants.
+      try {
+        match.replay_provenance = await db.getReplayProvenance(req.params.matchId);
+      } catch (_) {
+        match.replay_provenance = null;
+      }
       // Per-player V3 performance modifier breakdown (so the scoreboard can
       // explain "why did my MMR change by +24"). Failure to compute this is
       // non-fatal — the rest of the match payload should still render.
@@ -4995,6 +5004,451 @@ function createApiRouter(startupStatus = {}, _app = null) {
       safeJob.chunksReceived = chunksReceived ? chunksReceived.size : 0;
     }
     res.json(safeJob);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Task #315 — Replay experience: player-upload fallback, dedicated-server
+  // auto-archive hook, Pro-gated 2D minimap viewer feed, live SSE spectator.
+  // ---------------------------------------------------------------------------
+
+  // Helper: returns the participant set for a match (account ids as strings).
+  async function _matchParticipantAccountIds(matchId) {
+    try {
+      const m = await db.getMatch(matchId);
+      if (!m || !Array.isArray(m.players)) return new Set();
+      return new Set(
+        m.players
+          .map((p) => (p.account_id != null ? String(p.account_id) : null))
+          .filter((id) => id && id !== '0')
+      );
+    } catch (_) {
+      return new Set();
+    }
+  }
+
+  // Player-upload init/chunk/complete trio. Auth is Steam-session-only and
+  // also enforces that the signed-in account played in this match. Any
+  // signed-in superuser may also use this path (and can pass `accountId`
+  // in the init body to act on behalf of a player). The job is tagged with
+  // `expectedMatchId` so processReplayJob() rejects a mismatched .dem before
+  // touching the DB.
+  async function _resolvePlayerUploader(req, matchId) {
+    const adminKey = process.env.SUPERUSER_PASSWORD;
+    const isAdmin = !!(req.session && req.session.isSuperuser) ||
+      !!(adminKey && req.headers['x-superuser-key'] === adminKey);
+    const accountId = req.session && req.session.accountId ? String(req.session.accountId) : null;
+    if (!accountId && !isAdmin) {
+      return { error: 'Sign in with Steam to submit a replay for this match.', status: 401 };
+    }
+    if (isAdmin) return { accountId: accountId || 'admin', isAdmin: true };
+    const participants = await _matchParticipantAccountIds(matchId);
+    if (!participants.has(accountId)) {
+      return { error: 'You can only submit replays for matches you played in.', status: 403 };
+    }
+    return { accountId, isAdmin: false };
+  }
+
+  router.post('/matches/:matchId/replay-submit/init', express.json(), async (req, res) => {
+    try {
+      const parserCheck = getReplayParser();
+      if (!parserCheck?.parserReady) {
+        return res.status(503).json({ error: 'Parser service is not running. Replay parsing unavailable.' });
+      }
+      const matchId = String(req.params.matchId);
+      const actor = await _resolvePlayerUploader(req, matchId);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const { fileName, fileSize, totalChunks } = req.body || {};
+      if (!fileName || !fileSize || !totalChunks) {
+        return res.status(400).json({ error: 'Missing fileName, fileSize, or totalChunks' });
+      }
+      if (!fileName.endsWith('.dem') && !fileName.endsWith('.dem.bz2')) {
+        return res.status(400).json({ error: 'Only .dem replay files are accepted' });
+      }
+      const parsedSize = parseInt(fileSize);
+      const parsedChunks = parseInt(totalChunks);
+      if (isNaN(parsedSize) || parsedSize <= 0 || parsedSize > 300 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Invalid file size (max 300MB)' });
+      }
+      if (isNaN(parsedChunks) || parsedChunks <= 0 || parsedChunks > 1000) {
+        return res.status(400).json({ error: 'Invalid chunk count' });
+      }
+      const jobId = crypto.randomBytes(8).toString('hex');
+      ensureDir(path.join(CHUNK_DIR, jobId));
+      uploadJobs.set(jobId, {
+        status: 'uploading',
+        fileName,
+        fileSize: parsedSize,
+        totalChunks: parsedChunks,
+        chunksReceived: new Set(),
+        startedAt: Date.now(),
+        patch: null,
+        expectedMatchId: matchId,
+        replayProvenance: 'player_uploaded',
+        submitterAccountId: actor.accountId,
+      });
+      console.log(`[API] Player replay-submit init: job=${jobId} match=${matchId} by=${actor.accountId} size=${(parsedSize/1024/1024).toFixed(1)}MB`);
+      res.json({ jobId });
+    } catch (err) {
+      console.error('[API] replay-submit/init error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const playerChunkUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
+
+  router.post('/matches/:matchId/replay-submit/chunk/:jobId', playerChunkUpload.single('chunk'), async (req, res) => {
+    try {
+      const matchId = String(req.params.matchId);
+      const actor = await _resolvePlayerUploader(req, matchId);
+      if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const { jobId } = req.params;
+      const chunkIndex = parseInt(req.headers['x-chunk-index']);
+      const job = uploadJobs.get(jobId);
+      if (!job) return res.status(404).json({ error: 'Job not found — please restart the upload' });
+      if (job.expectedMatchId !== matchId) return res.status(403).json({ error: 'Job/match id mismatch' });
+      if (!actor.isAdmin && job.submitterAccountId !== actor.accountId) {
+        return res.status(403).json({ error: 'You did not start this upload job.' });
+      }
+      if (job.status !== 'uploading') return res.status(400).json({ error: `Job not accepting chunks (status: ${job.status})` });
+      if (isNaN(chunkIndex) || chunkIndex < 0 || chunkIndex >= job.totalChunks) {
+        return res.status(400).json({ error: `Invalid chunk index: ${chunkIndex}` });
+      }
+      if (!req.file) return res.status(400).json({ error: 'No chunk data received' });
+      const chunkPath = path.join(CHUNK_DIR, jobId, `chunk_${String(chunkIndex).padStart(5, '0')}`);
+      await fs.promises.writeFile(chunkPath, req.file.buffer);
+      job.chunksReceived.add(chunkIndex);
+      res.json({ received: job.chunksReceived.size, total: job.totalChunks });
+    } catch (err) {
+      console.error('[API] replay-submit/chunk error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/matches/:matchId/replay-submit/complete/:jobId', express.json(), async (req, res) => {
+    const matchId = String(req.params.matchId);
+    const actor = await _resolvePlayerUploader(req, matchId);
+    if (actor.error) return res.status(actor.status).json({ error: actor.error });
+    const { jobId } = req.params;
+    const job = uploadJobs.get(jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.expectedMatchId !== matchId) return res.status(403).json({ error: 'Job/match id mismatch' });
+    if (!actor.isAdmin && job.submitterAccountId !== actor.accountId) {
+      return res.status(403).json({ error: 'You did not start this upload job.' });
+    }
+    if (job.status !== 'uploading') return res.status(400).json({ error: `Job in '${job.status}' state` });
+    job.status = 'assembling';
+    uploadJobs.set(jobId, job);
+    const jobChunkDir = path.join(CHUNK_DIR, jobId);
+    const chunks = fs.readdirSync(jobChunkDir).filter(f => f.startsWith('chunk_')).sort();
+    if (chunks.length !== job.totalChunks) {
+      job.status = 'uploading';
+      uploadJobs.set(jobId, job);
+      return res.status(400).json({ error: `Expected ${job.totalChunks} chunks, got ${chunks.length}` });
+    }
+    const filePath = path.join(UPLOAD_DIR, `${jobId}.dem`);
+    try {
+      const writeStream = fs.createWriteStream(filePath);
+      for (const chunk of chunks) writeStream.write(fs.readFileSync(path.join(jobChunkDir, chunk)));
+      writeStream.end();
+      writeStream.on('finish', () => {
+        cleanupChunks(jobId);
+        uploadJobs.set(jobId, {
+          status: 'processing',
+          fileName: job.fileName,
+          step: 'Parsing replay...',
+          startedAt: job.startedAt,
+          filePath,
+          expectedMatchId: matchId,
+          replayProvenance: 'player_uploaded',
+          submitterAccountId: actor.accountId,
+        });
+        res.json({ status: 'processing', message: 'File assembled, parsing started.' });
+        enqueueParse(jobId, filePath, `player:${actor.accountId}`, {
+          expectedMatchId: matchId,
+          replayProvenance: 'player_uploaded',
+        });
+      });
+      writeStream.on('error', (err) => {
+        cleanupChunks(jobId);
+        cleanupFile(filePath);
+        setJobTerminal(jobId, { status: 'error', error: 'Failed to assemble file' });
+        res.status(500).json({ error: 'Failed to assemble file' });
+      });
+    } catch (err) {
+      cleanupChunks(jobId);
+      cleanupFile(filePath);
+      setJobTerminal(jobId, { status: 'error', error: 'Assembly failed: ' + err.message });
+      res.status(500).json({ error: 'Assembly failed' });
+    }
+  });
+
+  // Dedicated-server auto-archive hook. Two ways to fire:
+  //   POST /api/replay-hooks/dedicated-server   { remotePath, matchId? }
+  //     — bot/admin posts metadata; we SSH-fetch the file via the existing
+  //       serverReplayFetcher and run it through processReplayJob with
+  //       provenance='dedicated_server'. Auth: shared secret in env
+  //       REPLAY_HOOK_SECRET (header `x-replay-hook-secret`).
+  router.post('/replay-hooks/dedicated-server', express.json(), async (req, res) => {
+    try {
+      const secret = process.env.REPLAY_HOOK_SECRET;
+      if (!secret) return res.status(503).json({ error: 'Hook disabled (REPLAY_HOOK_SECRET not set).' });
+      if (req.headers['x-replay-hook-secret'] !== secret) {
+        return res.status(401).json({ error: 'Invalid hook secret' });
+      }
+      const { remotePath, matchId } = req.body || {};
+      if (!remotePath || typeof remotePath !== 'string') {
+        return res.status(400).json({ error: 'remotePath is required (path on the dedicated server)' });
+      }
+      const safeRemote = remotePath.trim();
+      if (safeRemote.includes('..') || !safeRemote.endsWith('.dem')) {
+        return res.status(400).json({ error: 'remotePath must end in .dem and contain no path traversal' });
+      }
+      const { fetchReplayByName } = require('../services/serverReplayFetcher');
+      const fileName = path.basename(safeRemote);
+      // fetchReplayByName resolves the remote directory from config — we only
+      // honour the basename portion, so an attacker can't traverse out of the
+      // configured `dota.dedicatedServer.ssh.replayDir` even if they manage
+      // to learn the hook secret.
+      const fetched = await fetchReplayByName(fileName);
+      const localPath = fetched.localPath;
+      // Hand off to the existing pipeline. processReplayInternal builds the
+      // job record + drives processReplayJob with our opts.
+      processReplayInternal(localPath, `dedicated-server-hook`, {
+        expectedMatchId: matchId || null,
+        replayProvenance: 'dedicated_server',
+        remotePath: fetched.remotePath,
+      }).then((result) => {
+        console.log(`[API] Dedicated-server hook complete for ${fileName}:`, result?.status);
+      }).catch((err) => {
+        console.error(`[API] Dedicated-server hook parse failed:`, err.message);
+      });
+      res.json({ ok: true, fileName, queued: true });
+    } catch (err) {
+      console.error('[API] dedicated-server hook error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Pro-gated minimap timeline feed. Returns the position samples + key
+  // game events (kills, towers, roshan) and per-player metadata the 2D
+  // minimap viewer needs. The heavyweight per-tick data already lives in
+  // game_timeline JSON on the match row — we just slim it to what the
+  // viewer renders and add hero/name lookups so the client doesn't have
+  // to re-join match.players.
+  router.get('/matches/:matchId/replay-timeline', async (req, res) => {
+    try {
+      const accountId = req.session && req.session.accountId ? String(req.session.accountId) : null;
+      const isAdmin = !!(req.session && req.session.isSuperuser);
+      if (!accountId && !isAdmin) return res.status(401).json({ error: 'Sign in with Steam to view the replay viewer.' });
+      const isPro = isAdmin || await _isProAccount(accountId);
+      if (!isPro) return res.status(402).json({ error: 'Pro membership required for the replay viewer.', code: 'pro_required' });
+      const match = await db.getMatch(req.params.matchId);
+      if (!match) return res.status(404).json({ error: 'Match not found' });
+      if (!match.game_timeline) {
+        return res.status(404).json({ error: 'No timeline available — this match was not parsed from a .dem file.' });
+      }
+      const timeline = typeof match.game_timeline === 'string'
+        ? JSON.parse(match.game_timeline)
+        : match.game_timeline;
+      const playerMeta = new Map();
+      for (const p of (match.players || [])) {
+        playerMeta.set(p.player_slot, {
+          slot: p.player_slot,
+          accountId: p.account_id || null,
+          name: p.personaname || '',
+          heroId: p.hero_id || 0,
+          team: p.team,
+        });
+      }
+      // Per-player ward placements come from player_stats.ward_placements
+      // (persisted by the parser pipeline) — join by player_slot.
+      const wardsBySlot = new Map();
+      for (const p of (match.players || [])) {
+        const list = p.ward_placements || p.wardPlacements || [];
+        wardsBySlot.set(p.player_slot, Array.isArray(list) ? list : []);
+      }
+      const players = (timeline.players || []).map((tp) => {
+        const meta = playerMeta.get(tp.slot) || {};
+        return {
+          slot: tp.slot,
+          name: meta.name || tp.name || '',
+          heroId: meta.heroId || 0,
+          team: meta.team || tp.team || 'radiant',
+          positions: tp.positions || [],
+          // Per-minute samples power the gold/XP graph + synced side-panel.
+          samples: (tp.samples || []).map((s) => ({
+            t: s.t, k: s.k, d: s.d, a: s.a, nw: s.nw, xp: s.xp, level: s.level, gold: s.gold,
+          })),
+          // Item purchase timeline — only "real" items, the parser already
+          // filters consumables/wards out of purchaseLog into this list.
+          purchases: (tp.purchaseLog || []).map((pu) => ({ t: pu.time || 0, item: pu.itemName })),
+          // Ward placements with world coords for the wards overlay layer.
+          wards: wardsBySlot.get(tp.slot) || [],
+          // Smoke uses (timestamps only) for the smoke overlay layer.
+          smokes: tp.smokeTimes || [],
+        };
+      });
+      // Objective events — towers/raxes/roshan/tormenter/aegis/first-blood/kills.
+      // The minimap viewer renders a feed and the gold/XP graph annotates them.
+      const events = (timeline.events || []).filter((e) =>
+        ['kill', 'tower_kill', 'rax_kill', 'building', 'roshan', 'roshan_kill',
+         'tormenter', 'aegis', 'first_blood', 'smoke'].includes(e.type)
+      );
+      res.set('Cache-Control', 'private, max-age=300');
+      res.json({
+        matchId: String(match.match_id),
+        duration: match.duration || 0,
+        radiantWin: match.radiant_win,
+        players,
+        events,
+      });
+    } catch (err) {
+      console.error('[API] replay-timeline error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Live spectator SSE — streams the current `lobbyManager.currentLobby`
+  // snapshot every 3s for in-progress inhouse matches. Public read; the
+  // payload is the same shape /api/inhouse/active already returns plus a
+  // top-level matchId match check. Closes the stream once the underlying
+  // lobby ends or the match id stops matching.
+  router.get('/spectate/:matchId', async (req, res) => {
+    const targetMatchId = String(req.params.matchId);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-store, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders?.();
+    let closed = false;
+    const send = (event, data) => {
+      if (closed) return;
+      try {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (_) {}
+    };
+    // Cached realtime stats — refreshed at most once every 10s to stay well
+    // inside Steam WebAPI's rate budget even when many viewers subscribe.
+    let realtimeCache = { ts: 0, data: null };
+    const fetchRealtime = async (serverSteamId) => {
+      if (!serverSteamId || !process.env.STEAM_API_KEY) return null;
+      if (Date.now() - realtimeCache.ts < 10000) return realtimeCache.data;
+      try {
+        const url = `https://api.steampowered.com/IDOTA2MatchStats_570/GetRealtimeStats/v1/`
+          + `?key=${encodeURIComponent(process.env.STEAM_API_KEY)}`
+          + `&server_steam_id=${encodeURIComponent(String(serverSteamId))}`;
+        const r = await fetch(url, { timeout: 4000 });
+        if (!r.ok) { realtimeCache = { ts: Date.now(), data: null }; return null; }
+        const j = await r.json();
+        // Slim payload to the shape the spectator UI consumes.
+        const teams = (j.teams || []).map((tm) => ({
+          teamNumber: tm.team_number,
+          score: tm.score || 0,
+          netWorth: tm.net_worth || 0,
+          players: (tm.players || []).map((pl) => ({
+            accountId: pl.accountid,
+            name: pl.name,
+            heroId: pl.heroid,
+            level: pl.level || 0,
+            kills: pl.kill_count || 0,
+            deaths: pl.death_count || 0,
+            assists: pl.assists_count || 0,
+            networth: pl.net_worth || 0,
+            lh: pl.lh_count || 0,
+            dn: pl.denies_count || 0,
+            gpm: pl.gold_per_min || 0,
+            xpm: pl.xp_per_min || 0,
+          })),
+        }));
+        const graphData = j.graph_data ? {
+          graph_gold: j.graph_data.graph_gold || [],
+          graph_xp: j.graph_data.graph_xp || [],
+        } : null;
+        const slim = {
+          matchTime: j.match ? (j.match.game_time || 0) : 0,
+          gameTime: j.match ? (j.match.timestamp || 0) : 0,
+          teams,
+          graphData,
+        };
+        realtimeCache = { ts: Date.now(), data: slim };
+        return slim;
+      } catch (_) {
+        realtimeCache = { ts: Date.now(), data: null };
+        return null;
+      }
+    };
+
+    const buildSnapshot = async () => {
+      let lobby = null;
+      let serverSteamId = null;
+      try {
+        const { getLobbyManager } = require('../lobby/lobbyManager');
+        const lm = getLobbyManager && getLobbyManager();
+        if (lm && lm.currentLobby) {
+          const cl = lm.currentLobby;
+          if (cl.matchId && String(cl.matchId) === targetMatchId) {
+            // Captains-mode draft state — picks_bans is the canonical GC
+            // field; the bot mirrors it onto currentLobby when present.
+            const picksBans = (cl.picks_bans || cl.picksBans || []).map((pb) => ({
+              isPick: !!pb.is_pick,
+              heroId: pb.hero_id || 0,
+              team: pb.team,
+              order: pb.order || 0,
+            }));
+            serverSteamId = cl.server_steam_id || cl.serverSteamId || null;
+            lobby = {
+              matchId: String(cl.matchId),
+              name: cl.name,
+              state: lm.state,
+              gameState: cl.game_state || cl.gameState || null,
+              matchDuration: cl.matchDuration || cl.match_duration || null,
+              serverSteamId: serverSteamId ? String(serverSteamId) : null,
+              playerCount: cl.playerCount || 0,
+              gamePlayerCount: cl._gamePlayerCount || 0,
+              players: (cl.players || []).map((p) => ({
+                steamId: p.steamId,
+                team: p.team,
+                slot: p.slot,
+                heroId: p.heroId || 0,
+                name: p.name || null,
+              })),
+              picksBans,
+            };
+          }
+        }
+      } catch (_) {}
+      // Pull realtime stats (cached 10s) if we have a server id and key.
+      const realtime = lobby ? await fetchRealtime(serverSteamId) : null;
+      return { lobby, realtime, ts: Date.now() };
+    };
+    // Initial snapshot.
+    send('snapshot', await buildSnapshot());
+    const interval = setInterval(async () => {
+      const snap = await buildSnapshot();
+      send('snapshot', snap);
+      if (!snap.lobby) {
+        send('end', { reason: 'no_active_lobby' });
+        cleanup();
+      }
+    }, 3000);
+    const heartbeat = setInterval(() => {
+      if (!closed) { try { res.write(': keep-alive\n\n'); } catch (_) {} }
+    }, 15000);
+    function cleanup() {
+      if (closed) return;
+      closed = true;
+      clearInterval(interval);
+      clearInterval(heartbeat);
+      try { res.end(); } catch (_) {}
+    }
+    req.on('close', cleanup);
+    req.on('aborted', cleanup);
   });
 
   router.get('/available-stats', (req, res) => {
@@ -11711,9 +12165,9 @@ async function resolveSteamId64FromUrl(url) {
 const parseQueue = [];
 let parseRunning = false;
 
-function enqueueParse(jobId, filePath, ip) {
+function enqueueParse(jobId, filePath, ip, opts = {}) {
   const job = uploadJobs.get(jobId);
-  parseQueue.push({ jobId, filePath, ip, patch: job ? job.patch : null });
+  parseQueue.push({ jobId, filePath, ip, patch: job ? job.patch : null, opts });
   updateJobStep(jobId, 'Queued for parsing...');
   drainParseQueue();
 }
@@ -11722,7 +12176,7 @@ async function drainParseQueue() {
   if (parseRunning) return;
   parseRunning = true;
   while (parseQueue.length > 0) {
-    const { jobId, filePath, ip, patch } = parseQueue.shift();
+    const { jobId, filePath, ip, patch, opts } = parseQueue.shift();
     const pos = parseQueue.length;
     if (pos > 0) {
       for (let i = 0; i < parseQueue.length; i++) {
@@ -11730,7 +12184,7 @@ async function drainParseQueue() {
       }
     }
     try {
-      await processReplayJob(jobId, filePath, ip, patch);
+      await processReplayJob(jobId, filePath, ip, patch, opts || {});
     } catch (err) {
       console.error(`[API] Job ${jobId} unhandled error:`, err);
     }
@@ -11744,6 +12198,33 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
 
     const replayParser = getReplayParser();
     const fileHash = replayParser.computeFileHash(filePath);
+
+    // Task #315 — when a caller pins a specific match id (player-upload and
+    // dedicated-server hook flows both do this), we MUST parse the replay and
+    // validate the embedded match id BEFORE any duplicate-delete logic runs.
+    // Otherwise a participant could upload a .dem from an unrelated match
+    // through their own match-detail page; if that file's hash or parsed
+    // match id collided with an already-recorded match, the duplicate
+    // handlers would happily delete that existing match record before the
+    // expected-match guard ever fired.
+    let matchStats = null;
+    if (opts.expectedMatchId) {
+      updateJobStep(jobId, 'Parsing replay file...');
+      matchStats = await replayParser.parseReplayFull(filePath);
+      if (!matchStats || !matchStats.players || matchStats.players.length === 0) {
+        cleanupFile(filePath);
+        setJobTerminal(jobId, { status: 'error', error: 'Failed to parse replay - no player data found' });
+        return;
+      }
+      if (String(matchStats.matchId) !== String(opts.expectedMatchId)) {
+        cleanupFile(filePath);
+        setJobTerminal(jobId, {
+          status: 'error',
+          error: `Replay match id (${matchStats.matchId}) does not match the expected match (${opts.expectedMatchId}).`,
+        });
+        return;
+      }
+    }
 
     const existingHashMatch = await db.isFileHashRecorded(fileHash);
     let replaceReason = null;
@@ -11763,14 +12244,14 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
       }
     }
 
-    updateJobStep(jobId, 'Parsing replay file...');
-
-    const matchStats = await replayParser.parseReplayFull(filePath);
-
-    if (!matchStats || !matchStats.players || matchStats.players.length === 0) {
-      cleanupFile(filePath);
-      setJobTerminal(jobId, { status: 'error', error: 'Failed to parse replay - no player data found' });
-      return;
+    if (!matchStats) {
+      updateJobStep(jobId, 'Parsing replay file...');
+      matchStats = await replayParser.parseReplayFull(filePath);
+      if (!matchStats || !matchStats.players || matchStats.players.length === 0) {
+        cleanupFile(filePath);
+        setJobTerminal(jobId, { status: 'error', error: 'Failed to parse replay - no player data found' });
+        return;
+      }
     }
 
     // Fix date: if replay has no embedded timestamp, fall back to file mtime rather than now()
@@ -11801,7 +12282,9 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
 
     const activeSeason = await db.getActiveSeason();
     const seasonId = activeSeason ? activeSeason.id : null;
-    const recordResult = await db.recordMatch(matchStats, '', `web:${ip}`, fileHash, patch, seasonId);
+    const recordResult = await db.recordMatch(
+      matchStats, '', `web:${ip}`, fileHash, patch, seasonId, opts.replayProvenance || null
+    );
 
     // Data quality check + RCON server reset — same pipeline as bot._recordMatchData
     try {

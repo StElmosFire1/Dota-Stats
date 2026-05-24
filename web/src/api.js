@@ -783,6 +783,74 @@ export async function getUploadStatus(jobId) {
   return fetchJson(`/upload/status/${jobId}`);
 }
 
+// Task #315 — Player-uploaded replay fallback. Same chunked shape as
+// uploadReplayChunked but auth is the Steam session cookie + a server-side
+// match-participation check. The match id is part of the URL so the server
+// can verify the parsed .dem belongs to this match before recording.
+export async function submitPlayerReplayChunked(matchId, file, onProgress) {
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+  const safeId = encodeURIComponent(String(matchId));
+  onProgress?.({ phase: 'init', percent: 0, detail: 'Starting upload...' });
+  const initRes = await fetch(BASE + `/matches/${safeId}/replay-submit/init`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileName: file.name, fileSize: file.size, totalChunks }),
+  });
+  const initData = await initRes.json();
+  if (!initRes.ok) throw new Error(initData.error || 'Failed to initialize upload');
+  const { jobId } = initData;
+  let completedChunks = 0;
+  const totalMB = (file.size / (1024 * 1024)).toFixed(1);
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, file.size);
+    const chunk = file.slice(start, end);
+    let attempts = 0;
+    while (attempts < 3) {
+      try {
+        const fd = new FormData();
+        fd.append('chunk', chunk, `chunk_${i}.bin`);
+        const cr = await fetch(BASE + `/matches/${safeId}/replay-submit/chunk/${jobId}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-Chunk-Index': String(i) },
+          body: fd,
+        });
+        if (!cr.ok) {
+          let msg = `Chunk ${i} failed (HTTP ${cr.status})`;
+          try { msg = (await cr.json()).error || msg; } catch (_) {}
+          throw new Error(msg);
+        }
+        break;
+      } catch (err) {
+        attempts++;
+        if (attempts >= 3) throw err;
+        await new Promise((r) => setTimeout(r, 1000 * attempts));
+      }
+    }
+    completedChunks++;
+    const percent = Math.round((completedChunks / totalChunks) * 90);
+    const uploadedMB = (Math.min(completedChunks * CHUNK_SIZE, file.size) / (1024 * 1024)).toFixed(1);
+    onProgress?.({ phase: 'uploading', percent, detail: `Uploading ${uploadedMB}/${totalMB} MB (${percent}%)` });
+  }
+  onProgress?.({ phase: 'assembling', percent: 92, detail: 'Assembling file...' });
+  const cr = await fetch(BASE + `/matches/${safeId}/replay-submit/complete/${jobId}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const cd = await cr.json();
+  if (!cr.ok) throw new Error(cd.error || 'Failed to complete upload');
+  onProgress?.({ phase: 'processing', percent: 95, detail: 'Parsing replay...' });
+  return { jobId };
+}
+
+// Pro-gated minimap timeline payload for the 2D replay viewer.
+export async function getReplayTimeline(matchId) {
+  return fetchJson(`/matches/${encodeURIComponent(String(matchId))}/replay-timeline`);
+}
+
 export async function getDuplicateMatches(adminKey) {
   return fetchJson(`/admin/duplicate-matches`, {
     headers: { 'x-admin-key': adminKey },

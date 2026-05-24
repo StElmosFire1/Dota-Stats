@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "7.36",
+    "title": "Replay experience (Task #315): player-upload fallback · dedicated-server auto-archive hook · Pro 2D minimap viewer · live spectator SSE",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Player-upload fallback.** Any signed-in match participant can now submit their own `.dem` copy from the match-detail page (new green ⬆ Submit Replay button next to the existing Remote-replay download). The server enforces match-participation via `_resolvePlayerUploader` and rejects mismatched files inside `processReplayJob` via the new `opts.expectedMatchId` guard — a player can't sneak an unrelated replay through their own match page. Chunked upload reuses the existing 2 MB chunk infrastructure but with Steam-session auth instead of `UPLOAD_KEY`. Provenance is recorded as `player_uploaded`.",
+      "**Dedicated-server auto-archive hook.** New `POST /api/replay-hooks/dedicated-server` accepts `{ remotePath, matchId? }` authenticated by `REPLAY_HOOK_SECRET` (header `x-replay-hook-secret`). Only the basename of `remotePath` is honoured — the remote directory is fixed by `dota.dedicatedServer.ssh.replayDir` so a leaked secret can't traverse outside the configured replay dir. Pulls the file via the existing `fetchReplayByName` SSH helper, then runs through `processReplayInternal` with provenance `dedicated_server` and the bound match id (when supplied) for parsed-match-id verification.",
+      "**Provenance column.** New `replay_provenance` text column on `matches` (added via the same `ALTER TABLE IF NOT EXISTS` chain that bootstraps the other replay columns). Threaded through `recordMatch(... , replayProvenance)` and exposed on the match GET payload so the UI can badge \"Player-uploaded\" / \"From dedicated server\".",
+      "**Pro 2D minimap replay viewer (`/replay/:matchId`).** New `getReplayTimeline` endpoint slim-serves the parser's `gameTimeline.players[].positions` array (sampled every 10 s — newly added to the parser output) plus per-player metadata and the key game events. The new `ReplayViewer` page renders the standard minimap.jpg with interpolated hero dots, scrubbable timeline, play/pause, and 1×/2×/4×/8× speed controls (a11y-compliant `role=\"radiogroup\"`). Gated by `_isProAccount`; non-Pro callers get HTTP 402 with `code: 'pro_required'`.",
+      "**Live spectator SSE (`/spectate/:matchId`).** New SSE endpoint streams a `snapshot` event every 3 s built from the in-process `lobbyManager.currentLobby` GC state — team/slot/heroId per seat — and an `end` event when the lobby is no longer active. New public `Spectate` page renders Radiant/Dire seats with a live indicator and reconnects via the browser's `EventSource` auto-retry.",
+      "**Edition scope.** Full edition only — the inhouse league surface and Pro paywall both live there. Community edition stays untouched (zero new paywall surface)."
+    ]
+  },
+  {
     "version": "7.35",
     "title": "Scoreboard & match QOL (Task #314): per-match MMR deltas, PERF \"why you scored X\" breakdown, nemesis spotlight, shareable recap cards",
     "published_at": "2026-05-24",
