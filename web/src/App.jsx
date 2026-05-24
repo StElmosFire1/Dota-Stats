@@ -52,6 +52,10 @@ const AdminSpotlight = lazy(() => import('./pages/AdminSpotlight'));
 const DraftSandbox = lazy(() => import('./pages/DraftSandbox'));
 const ProfileSandbox = lazy(() => import('./pages/ProfileSandbox'));
 const CosmeticsShop = lazy(() => import('./pages/CosmeticsShop'));
+const SeasonPass = lazy(() => import('./pages/SeasonPass'));
+const Teams = lazy(() => import('./pages/Teams'));
+const TeamCreate = lazy(() => import('./pages/TeamCreate'));
+const TeamProfile = lazy(() => import('./pages/TeamProfile'));
 const ProfileDemo = lazy(() => import('./pages/ProfileDemo'));
 const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
@@ -1164,6 +1168,10 @@ export default function App() {
                 <Route path="/me/bookings" element={<MyBookings />} />
                 <Route path="/pro" element={<Pro />} />
                 <Route path="/shop" element={<CosmeticsShop />} />
+                <Route path="/season-pass" element={<SeasonPass />} />
+                <Route path="/teams" element={<Teams />} />
+                <Route path="/teams/new" element={<TeamCreate />} />
+                <Route path="/teams/:id" element={<TeamProfile />} />
                 <Route path="/replay/:matchId" element={<ReplayViewer />} />
                 <Route path="/spectate/:matchId" element={<Spectate />} />
               </Routes>

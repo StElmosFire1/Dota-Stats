@@ -1875,3 +1875,36 @@ export const adminUpdateSpotlight = (superuserKey, id, payload) =>
   superuserJson(`/admin/spotlight/${id}`, { method: 'PATCH', body: payload, superuserKey });
 export const adminDeleteSpotlight = (superuserKey, id) =>
   superuserJson(`/admin/spotlight/${id}`, { method: 'DELETE', superuserKey });
+
+// ===== Task #319 — Season Pass v2 / Teams / Weekly challenges / Limited drops / Gifting =====
+function _postJson(path, body) {
+  return fetch(BASE + path, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `Request failed: ${r.status}`);
+    return d;
+  });
+}
+export const createSeasonPassCheckout = () => _postJson('/season-pass/checkout', {});
+export const listTeams = () => _getJson('/teams');
+export const getTeam = (id) => _getJson(`/teams/${id}`);
+export const getMyTeam = () => _getJson('/me/team').catch(() => ({ team: null, invites: [] }));
+export const createTeamCheckout = (name, tag) => _postJson('/teams/checkout', { name, tag });
+export const payTeamUpkeep = (teamId) => _postJson(`/teams/${teamId}/upkeep/checkout`, {});
+export const editTeam = (teamId, payload) => _postJson(`/teams/${teamId}/edit`, payload);
+export const inviteToTeam = (teamId, account_id) => _postJson(`/teams/${teamId}/invite`, { account_id });
+export const respondTeamInvite = (inviteId, accept) => _postJson(`/team-invites/${inviteId}/respond`, { accept });
+export const leaveTeam = (teamId) => _postJson(`/teams/${teamId}/leave`, {});
+export const getActiveWeeklyChallenges = () => _getJson('/weekly-challenges/active');
+export const getMyWeeklyChallenges = () => _getJson('/me/weekly-challenges').catch(() => ({ challenges: [] }));
+export const claimWeeklyChallenge = (id) => _postJson(`/weekly-challenges/${id}/claim`, {});
+export const adminCreateWeeklyChallenge = (payload) => _postJson('/admin/weekly-challenges', payload);
+export const getActiveLimitedDrops = () => _getJson('/limited-drops/active');
+export const adminListLimitedDrops = () => _getJson('/admin/limited-drops');
+export const adminCreateLimitedDrop = (payload) => _postJson('/admin/limited-drops', payload);
+export const adminDeactivateLimitedDrop = (id) => _postJson(`/admin/limited-drops/${id}/deactivate`, {});
+export const giftCoins = ({ recipientAccountId, packId, anonymous, message }) =>
+  _postJson('/gift/coins', { recipientAccountId, packId, anonymous, message });

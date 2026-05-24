@@ -913,6 +913,52 @@ function createServer(startupStatus = {}) {
               console.log('[Stripe] Founders Pass ring granted:', ringAccountId, 'reason=', result.reason);
             }
           }
+        } else if (purpose === 'team_creation') {
+          // Task #319 — flip pending team row to active + insert owner membership.
+          const team = await db.confirmTeamCreation(session.id);
+          if (team) {
+            console.log('[Stripe] Team created:', team.name, '(' + team.tag + ') owner', team.owner_account_id);
+          } else {
+            console.warn('[Stripe] team_creation webhook: no pending team for session', session.id);
+          }
+        } else if (purpose === 'team_upkeep') {
+          // Task #319 — extend the team's paid-until window by 30 days.
+          const pay = await db.confirmTeamUpkeep(session.id);
+          if (pay) {
+            console.log('[Stripe] Team upkeep paid: team', pay.team_id, 'by', pay.payer_account_id);
+          } else {
+            console.warn('[Stripe] team_upkeep webhook: no pending payment for session', session.id);
+          }
+        } else if (purpose === 'season_pass_self') {
+          // Task #319 — direct (self) Season Pass purchase.
+          const row = await db.confirmSeasonPassSelfPurchase(session.id);
+          if (row) {
+            await db.grantSeasonPassActivation({
+              accountId: row.account_id,
+              seasonNumber: row.season_number,
+              giftStripeSessionId: null,
+            }).catch(() => {});
+            console.log('[Stripe] Season Pass self-purchase confirmed for', row.account_id, 'season', row.season_number);
+          } else {
+            console.warn('[Stripe] season_pass_self webhook: no pending row for session', session.id);
+          }
+        } else if (purpose === 'gift_coins') {
+          // Task #319 — gift a coin pack to another player.
+          const gift = await db.confirmGiftCheckout(session.id).catch(() => null);
+          if (gift) {
+            const coins = parseInt(session.metadata?.coins || '0', 10) || 0;
+            if (coins > 0) {
+              await db.grantCoins({
+                accountId: gift.recipient_account_id,
+                delta: coins,
+                reason: `gift_coins:${session.id}`,
+                applyDailyCap: false,
+              }).catch(() => {});
+              console.log('[Stripe] Gift coins delivered:', coins, '🪙 to', gift.recipient_account_id);
+            }
+          } else {
+            console.warn('[Stripe] gift_coins webhook: no gift for session', session.id);
+          }
         } else if (purpose === 'frame_purchase') {
           const frameId = session.metadata?.frame_id;
           const frameAccountId = session.metadata?.account_id;
@@ -12827,6 +12873,385 @@ Return exactly this JSON shape (all fields required, arrays of strings):
   // here so the existing `requirePro` / `_isProAccount` / `_isSu` helpers can
   // be passed in by closure. The module also adds an app-level
   // `/embed/:accountId` route via the `app` reference.
+  // ============================================================================
+  // Task #319 — Season Pass v2 / Teams / Weekly Challenges / Limited Drops / Gifting
+  // ============================================================================
+
+  // ── Season Pass self-purchase checkout ────────────────────────────────────
+  router.post('/season-pass/checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam first.' });
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+      const pool = db.getPool();
+      const seasonRow = await pool.query(`SELECT id FROM seasons WHERE active = true ORDER BY id DESC LIMIT 1`);
+      const seasonNumber = seasonRow.rows[0]?.id;
+      if (!seasonNumber) return res.status(400).json({ error: 'No active season.' });
+      const already = await db.hasSeasonPassActivation(accountId, seasonNumber).catch(() => false);
+      if (already) return res.status(409).json({ error: 'You already have this season pass.' });
+      const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const origin = `${proto}://${host}`;
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            unit_amount: db.SEASON_PASS_PRICE_CENTS,
+            product_data: {
+              name: `OCE Inhouse — Season ${seasonNumber} Pass`,
+              description: '50 tiers, season-exclusive cosmetics, +20% coin earnings, prediction multiplier, trophy.',
+            },
+          },
+          quantity: 1,
+        }],
+        success_url: `${origin}/season-pass?success=1`,
+        cancel_url:  `${origin}/season-pass?cancelled=1`,
+        metadata: {
+          purpose: 'season_pass_self',
+          account_id: String(accountId),
+          season_number: String(seasonNumber),
+        },
+      });
+      await db.recordSeasonPassSelfPurchase({
+        accountId, seasonNumber, stripeSessionId: session.id,
+        amountCents: db.SEASON_PASS_PRICE_CENTS, currency: 'aud',
+      });
+      res.json({ url: session.url });
+    } catch (e) {
+      console.error('[API] /season-pass/checkout:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Teams ─────────────────────────────────────────────────────────────────
+  router.get('/teams', async (req, res) => {
+    try { res.json({ teams: await db.listTeams({ limit: 100 }) }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/teams/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid team id.' });
+      const team = await db.getTeamById(id);
+      if (!team) return res.status(404).json({ error: 'Team not found.' });
+      const [members, stats] = await Promise.all([
+        db.getTeamMembers(id),
+        db.getTeamStats(id),
+      ]);
+      res.json({ team, members, stats });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/me/team', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.json({ team: null, invites: [] });
+      const [team, invites] = await Promise.all([
+        db.getTeamForAccount(accountId),
+        db.listTeamInvites(accountId),
+      ]);
+      res.json({ team, invites });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/teams/checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to create a team.' });
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+      const name = String(req.body?.name || '').trim();
+      const tag  = String(req.body?.tag  || '').trim().toUpperCase();
+      if (!/^[A-Za-z0-9 _-]{3,32}$/.test(name)) return res.status(400).json({ error: 'Name must be 3–32 chars (letters, numbers, space, _, -).' });
+      if (!/^[A-Z0-9]{2,6}$/.test(tag)) return res.status(400).json({ error: 'Tag must be 2–6 uppercase letters/numbers.' });
+      const existing = await db.getTeamForAccount(accountId);
+      if (existing) return res.status(409).json({ error: 'You are already on a team.' });
+      const pool = db.getPool();
+      const dup = await pool.query(`SELECT 1 FROM teams WHERE LOWER(name)=LOWER($1) OR UPPER(tag)=UPPER($2)`, [name, tag]);
+      if (dup.rows[0]) return res.status(409).json({ error: 'Name or tag is already taken.' });
+      const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const origin = `${proto}://${host}`;
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            unit_amount: db.TEAM_CREATION_PRICE_CENTS,
+            product_data: {
+              name: `OCE Inhouse — Team Creation: ${name} [${tag}]`,
+              description: 'One-time fee to register a team / clan on OCE Inhouse.',
+            },
+          },
+          quantity: 1,
+        }],
+        success_url: `${origin}/teams?created=1`,
+        cancel_url:  `${origin}/teams/new?cancelled=1`,
+        metadata: { purpose: 'team_creation', account_id: String(accountId), name, tag },
+      });
+      await db.createTeamCheckout({
+        ownerAccountId: accountId, name, tag,
+        stripeSessionId: session.id,
+        amountCents: db.TEAM_CREATION_PRICE_CENTS,
+      });
+      res.json({ url: session.url });
+    } catch (e) {
+      console.error('[API] /teams/checkout:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/teams/:id/upkeep/checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+      const teamId = parseInt(req.params.id, 10);
+      const team = await db.getTeamById(teamId);
+      if (!team) return res.status(404).json({ error: 'Team not found.' });
+      const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const origin = `${proto}://${host}`;
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            unit_amount: db.TEAM_UPKEEP_PRICE_CENTS,
+            product_data: {
+              name: `Team Upkeep — ${team.name} [${team.tag}]`,
+              description: `${db.TEAM_UPKEEP_PERIOD_DAYS} days of upkeep coverage.`,
+            },
+          },
+          quantity: 1,
+        }],
+        success_url: `${origin}/teams/${teamId}?upkeep=1`,
+        cancel_url:  `${origin}/teams/${teamId}?upkeep_cancelled=1`,
+        metadata: { purpose: 'team_upkeep', account_id: String(accountId), team_id: String(teamId) },
+      });
+      await db.recordTeamUpkeep({
+        teamId, payerAccountId: accountId,
+        stripeSessionId: session.id,
+        amountCents: db.TEAM_UPKEEP_PRICE_CENTS,
+      });
+      res.json({ url: session.url });
+    } catch (e) {
+      console.error('[API] team upkeep checkout:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/teams/:id/edit', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const teamId = parseInt(req.params.id, 10);
+      const team = await db.updateTeamProfile(teamId, accountId, req.body || {});
+      res.json({ team });
+    } catch (e) {
+      if (e.code === 'FORBIDDEN') return res.status(403).json({ error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/teams/:id/invite', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const teamId = parseInt(req.params.id, 10);
+      const invitee = parseInt(req.body?.account_id, 10);
+      if (!Number.isFinite(invitee)) return res.status(400).json({ error: 'Invitee account_id is required.' });
+      const invite = await db.inviteToTeam({ teamId, inviteeAccountId: invitee, invitedByAccountId: accountId });
+      res.json({ invite });
+    } catch (e) {
+      if (e.code === 'FORBIDDEN') return res.status(403).json({ error: e.message });
+      if (e.code === 'CONFLICT')  return res.status(409).json({ error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/team-invites/:inviteId/respond', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const inviteId = parseInt(req.params.inviteId, 10);
+      const accept = !!req.body?.accept;
+      const result = await db.respondToTeamInvite({ inviteId, accountId, accept });
+      res.json(result);
+    } catch (e) {
+      if (e.code === 'NOT_FOUND') return res.status(404).json({ error: e.message });
+      if (e.code === 'CONFLICT')  return res.status(409).json({ error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/teams/:id/leave', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const teamId = parseInt(req.params.id, 10);
+      res.json(await db.leaveTeam({ teamId, accountId }));
+    } catch (e) {
+      if (e.code === 'NOT_FOUND') return res.status(404).json({ error: e.message });
+      if (e.code === 'FORBIDDEN') return res.status(403).json({ error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Weekly challenges ────────────────────────────────────────────────────
+  router.get('/weekly-challenges/active', async (req, res) => {
+    try { res.json({ challenges: await db.getActiveWeeklyChallenges() }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/me/weekly-challenges', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.json({ challenges: [] });
+      res.json({ challenges: await db.getWeeklyChallengeProgress(accountId) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/weekly-challenges/:id/claim', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const challengeId = parseInt(req.params.id, 10);
+      res.json(await db.claimWeeklyChallenge({ accountId, challengeId }));
+    } catch (e) {
+      if (e.code === 'NOT_FOUND')   return res.status(404).json({ error: e.message });
+      if (e.code === 'BAD_REQUEST') return res.status(400).json({ error: e.message });
+      if (e.code === 'CONFLICT')    return res.status(409).json({ error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/admin/weekly-challenges', express.json(), async (req, res) => {
+    try {
+      if (!await _isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const b = req.body || {};
+      const startsAt = b.starts_at ? new Date(b.starts_at) : new Date();
+      const endsAt = b.ends_at ? new Date(b.ends_at) : new Date(Date.now() + 7 * 86400000);
+      const row = await db.createWeeklyChallenge({
+        seasonNumber: parseInt(b.season_number, 10),
+        weekNumber: parseInt(b.week_number, 10),
+        title: String(b.title || ''),
+        description: String(b.description || ''),
+        metric: String(b.metric || ''),
+        target: parseInt(b.target, 10) || 1,
+        xpReward: parseInt(b.xp_reward, 10) || 100,
+        coinReward: parseInt(b.coin_reward, 10) || 0,
+        startsAt, endsAt,
+      });
+      res.json({ challenge: row });
+    } catch (e) {
+      console.error('[API] admin/weekly-challenges:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Limited drops ────────────────────────────────────────────────────────
+  router.get('/limited-drops/active', async (req, res) => {
+    try { res.json({ drops: await db.getActiveLimitedDrops() }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/admin/limited-drops', async (req, res) => {
+    try {
+      if (!await _isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      res.json({ drops: await db.listAllLimitedDrops({ limit: 200 }) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/admin/limited-drops', express.json(), async (req, res) => {
+    try {
+      if (!await _isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const b = req.body || {};
+      const availableFrom = b.available_from ? new Date(b.available_from) : new Date();
+      const availableUntil = b.available_until ? new Date(b.available_until) : new Date(Date.now() + 7 * 86400000);
+      const row = await db.createLimitedDrop({
+        sku: String(b.sku || ''),
+        label: String(b.label || ''),
+        description: b.description ? String(b.description) : null,
+        kind: String(b.kind || 'frame'),
+        priceCents: b.price_cents != null ? parseInt(b.price_cents, 10) : null,
+        coinPrice: b.coin_price != null ? parseInt(b.coin_price, 10) : null,
+        quantityCap: b.quantity_cap != null ? parseInt(b.quantity_cap, 10) : null,
+        seasonNumber: b.season_number != null ? parseInt(b.season_number, 10) : null,
+        availableFrom, availableUntil,
+        createdBy: req.session?.accountId || null,
+      });
+      res.json({ drop: row });
+    } catch (e) {
+      console.error('[API] admin/limited-drops POST:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/admin/limited-drops/:id/deactivate', async (req, res) => {
+    try {
+      if (!await _isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      await db.deactivateLimitedDrop(parseInt(req.params.id, 10));
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Gift coins ──────────────────────────────────────────────────────────
+  router.post('/gift/coins', express.json(), async (req, res) => {
+    try {
+      const gifterAccountId = req.session?.accountId;
+      if (!gifterAccountId) return res.status(401).json({ error: 'Sign in with Steam first.' });
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+      const { recipientAccountId, packId, anonymous, message } = req.body || {};
+      if (!recipientAccountId) return res.status(400).json({ error: 'recipientAccountId is required.' });
+      if (String(recipientAccountId) === String(gifterAccountId)) {
+        return res.status(400).json({ error: 'You cannot gift yourself.' });
+      }
+      const pack = COIN_PACKS[String(packId || '')];
+      if (!pack) return res.status(400).json({ error: 'Unknown coin pack.' });
+      const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const origin = `${proto}://${host}`;
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            unit_amount: pack.priceCents,
+            product_data: {
+              name: `Gift — ${pack.label}`,
+              description: `Send ${pack.coins} 🪙 to another OCE Inhouse player.`,
+            },
+          },
+          quantity: 1,
+        }],
+        success_url: `${origin}/coins/buy?gifted=1`,
+        cancel_url:  `${origin}/coins/buy?cancelled=1`,
+        metadata: {
+          purpose: 'gift_coins',
+          account_id: String(gifterAccountId),
+          recipient_account_id: String(recipientAccountId),
+          pack_id: pack.id,
+          coins: String(pack.coins),
+        },
+      });
+      await db.createAnonymousGift({
+        gifterAccountId, recipientAccountId,
+        giftType: 'coins',
+        stripeSessionId: session.id,
+        amountCents: pack.priceCents,
+        currency: 'aud',
+        anonymous: !!anonymous,
+        message: message ? String(message).slice(0, 280) : null,
+      });
+      res.json({ url: session.url });
+    } catch (e) {
+      console.error('[API] gift/coins:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   try {
     const { mountMagazineV3Routes } = require('../monetization/magazineV3');
     mountMagazineV3Routes({

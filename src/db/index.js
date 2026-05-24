@@ -1903,6 +1903,149 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_log (created_at DESC)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_actor ON admin_audit_log (actor_account_id, created_at DESC)`);
 
+    // ===== Task #319 — Season Pass v2 / Teams / Weekly challenges / Limited drops / Gifting =====
+    // Anonymous-gift flag (so the recipient DM hides the gifter name).
+    await p.query(`ALTER TABLE gift_purchases ADD COLUMN IF NOT EXISTS anonymous BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE gift_purchases ADD COLUMN IF NOT EXISTS message TEXT`);
+
+    // Teams / clans. Creation = $10 AUD via Stripe (purpose='team_creation').
+    // Optional $5 AUD upkeep via team_upkeep_payments. Owner is the founding
+    // member; team_members holds the roster with a role (owner/captain/member).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS teams (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(64) NOT NULL UNIQUE,
+        tag VARCHAR(8) NOT NULL UNIQUE,
+        owner_account_id BIGINT NOT NULL,
+        bio TEXT DEFAULT '',
+        logo_url TEXT,
+        color_primary VARCHAR(20) DEFAULT '#c5a975',
+        color_secondary VARCHAR(20) DEFAULT '#0d1424',
+        frame_id VARCHAR(50),
+        upkeep_paid_until TIMESTAMPTZ,
+        stripe_session_id VARCHAR(200) UNIQUE,
+        is_active BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_teams_owner ON teams(owner_account_id)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS team_members (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','captain','member')),
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(team_id, account_id),
+        UNIQUE(account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS team_invites (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        invitee_account_id BIGINT NOT NULL,
+        invited_by_account_id BIGINT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined','expired')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        responded_at TIMESTAMPTZ,
+        UNIQUE(team_id, invitee_account_id, status)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_team_invites_invitee ON team_invites(invitee_account_id, status)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS team_upkeep_payments (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        payer_account_id BIGINT NOT NULL,
+        stripe_session_id VARCHAR(200) UNIQUE,
+        amount_cents INTEGER NOT NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'aud',
+        extended_until TIMESTAMPTZ,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+      )
+    `);
+
+    // Weekly challenges. Admin-defined rows describe a metric to track per
+    // player per week; weekly_challenge_progress is the per-account counter.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS weekly_challenges (
+        id SERIAL PRIMARY KEY,
+        season_number INTEGER NOT NULL,
+        week_number INTEGER NOT NULL,
+        title VARCHAR(120) NOT NULL,
+        description TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        target INTEGER NOT NULL DEFAULT 1,
+        xp_reward INTEGER NOT NULL DEFAULT 100,
+        coin_reward INTEGER NOT NULL DEFAULT 0,
+        starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ends_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season_number, week_number, metric)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_weekly_challenges_window ON weekly_challenges(starts_at, ends_at)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS weekly_challenge_progress (
+        id SERIAL PRIMARY KEY,
+        challenge_id INTEGER NOT NULL REFERENCES weekly_challenges(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        progress INTEGER NOT NULL DEFAULT 0,
+        completed_at TIMESTAMPTZ,
+        claimed_at TIMESTAMPTZ,
+        UNIQUE(challenge_id, account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_wcp_account ON weekly_challenge_progress(account_id)`);
+
+    // Limited-drop cosmetics. Admin tool rotates a SKU window; the shop
+    // surface reads /api/limited-drops/active and renders an "Available now"
+    // panel during the window. Optional quantity cap for true scarcity.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS limited_drops (
+        id SERIAL PRIMARY KEY,
+        sku VARCHAR(120) NOT NULL,
+        label VARCHAR(120) NOT NULL,
+        description TEXT,
+        kind VARCHAR(40) NOT NULL,
+        price_cents INTEGER,
+        coin_price INTEGER,
+        quantity_cap INTEGER,
+        quantity_sold INTEGER NOT NULL DEFAULT 0,
+        season_number INTEGER,
+        available_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        available_until TIMESTAMPTZ NOT NULL,
+        created_by BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_limited_drops_window ON limited_drops(available_from, available_until)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_limited_drops_sku ON limited_drops(sku)`);
+
+    // Season-exclusive cosmetics catalog. Each row binds a cosmetic SKU to a
+    // single season; the shop renders a "Season Exclusive" badge and the
+    // grant flow stamps `season_number` so the cosmetic stays in inventory
+    // permanently once unlocked.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_cosmetics (
+        id SERIAL PRIMARY KEY,
+        season_number INTEGER NOT NULL,
+        sku VARCHAR(120) NOT NULL,
+        label VARCHAR(120) NOT NULL,
+        kind VARCHAR(40) NOT NULL,
+        tier_required INTEGER,
+        UNIQUE(season_number, sku)
+      )
+    `);
+
+    // Season pass purchases — record direct self-purchases (not just gifts).
+    await p.query(`ALTER TABLE season_pass_purchases ADD COLUMN IF NOT EXISTS amount_cents INTEGER`);
+    await p.query(`ALTER TABLE season_pass_purchases ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'aud'`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -14194,6 +14337,423 @@ async function getWeeklyPlayerSummary(accountId) {
   };
 }
 
+// ===== Task #319 — Season Pass v2 / Teams / Weekly challenges / Limited drops =====
+
+const TEAM_CREATION_PRICE_CENTS = 1000;     // $10 AUD
+const TEAM_UPKEEP_PRICE_CENTS   = 500;      // $5  AUD per period
+const TEAM_UPKEEP_PERIOD_DAYS   = 30;
+const SEASON_PASS_PRICE_CENTS   = 1499;     // $14.99 AUD
+
+// Extra Season Pass XP sources (in addition to win/loss/mvp/hot_streak in SEASON_PASS_XP).
+const SEASON_PASS_XP_EXTRA = Object.freeze({
+  prediction_correct: 15,
+  achievement: 25,
+  referral_signup: 200,
+  weekly_challenge: 100,   // default — actual reward comes from weekly_challenges.xp_reward
+});
+
+// ---------- Teams ----------
+async function createTeamCheckout({ ownerAccountId, name, tag, stripeSessionId, amountCents, currency = 'aud' }) {
+  const p = getPool();
+  // Pending row — flipped to active by the Stripe webhook on payment success.
+  const r = await p.query(
+    `INSERT INTO teams (name, tag, owner_account_id, stripe_session_id, is_active)
+     VALUES ($1, $2, $3, $4, FALSE) RETURNING *`,
+    [name, tag, ownerAccountId, stripeSessionId]
+  );
+  return r.rows[0];
+}
+async function confirmTeamCreation(stripeSessionId) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const tr = await client.query(
+      `UPDATE teams SET is_active = TRUE WHERE stripe_session_id = $1 AND is_active = FALSE RETURNING *`,
+      [stripeSessionId]
+    );
+    if (!tr.rows[0]) { await client.query('ROLLBACK'); return null; }
+    const team = tr.rows[0];
+    await client.query(
+      `INSERT INTO team_members (team_id, account_id, role) VALUES ($1, $2, 'owner')
+       ON CONFLICT (account_id) DO NOTHING`,
+      [team.id, team.owner_account_id]
+    );
+    await client.query('COMMIT');
+    return team;
+  } catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
+}
+async function getTeamById(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM teams WHERE id = $1 AND is_active = TRUE`, [id]);
+  return r.rows[0] || null;
+}
+async function listTeams({ limit = 50 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT t.*,
+            (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id)::int AS member_count
+       FROM teams t
+      WHERE t.is_active = TRUE
+      ORDER BY member_count DESC, t.created_at DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return r.rows;
+}
+async function getTeamMembers(teamId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT tm.team_id, tm.account_id, tm.role, tm.joined_at,
+            COALESCE(NULLIF(n.nickname, ''), 'Unknown') AS nickname
+       FROM team_members tm
+       LEFT JOIN nicknames n ON n.account_id = tm.account_id
+      WHERE tm.team_id = $1
+      ORDER BY CASE tm.role WHEN 'owner' THEN 0 WHEN 'captain' THEN 1 ELSE 2 END, tm.joined_at ASC`,
+    [teamId]
+  );
+  return r.rows.map(r => ({ ...r, account_id: String(r.account_id) }));
+}
+async function getTeamForAccount(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT t.*, tm.role
+       FROM team_members tm
+       JOIN teams t ON t.id = tm.team_id
+      WHERE tm.account_id = $1 AND t.is_active = TRUE`,
+    [accountId]
+  );
+  return r.rows[0] || null;
+}
+async function updateTeamProfile(teamId, accountId, { bio, color_primary, color_secondary, frame_id, logo_url }) {
+  const p = getPool();
+  const mr = await p.query(
+    `SELECT role FROM team_members WHERE team_id = $1 AND account_id = $2`,
+    [teamId, accountId]
+  );
+  if (!mr.rows[0] || (mr.rows[0].role !== 'owner' && mr.rows[0].role !== 'captain')) {
+    const e = new Error('Only the team owner or captain can edit the team profile.');
+    e.code = 'FORBIDDEN';
+    throw e;
+  }
+  const r = await p.query(
+    `UPDATE teams SET
+        bio = COALESCE($2, bio),
+        color_primary = COALESCE($3, color_primary),
+        color_secondary = COALESCE($4, color_secondary),
+        frame_id = COALESCE($5, frame_id),
+        logo_url = COALESCE($6, logo_url)
+      WHERE id = $1 RETURNING *`,
+    [teamId, bio, color_primary, color_secondary, frame_id, logo_url]
+  );
+  return r.rows[0];
+}
+async function inviteToTeam({ teamId, inviteeAccountId, invitedByAccountId }) {
+  const p = getPool();
+  const mr = await p.query(
+    `SELECT role FROM team_members WHERE team_id = $1 AND account_id = $2`,
+    [teamId, invitedByAccountId]
+  );
+  if (!mr.rows[0]) { const e = new Error('You are not on this team.'); e.code = 'FORBIDDEN'; throw e; }
+  const existing = await p.query(
+    `SELECT 1 FROM team_members WHERE account_id = $1`, [inviteeAccountId]
+  );
+  if (existing.rows[0]) { const e = new Error('That player is already on a team.'); e.code = 'CONFLICT'; throw e; }
+  const r = await p.query(
+    `INSERT INTO team_invites (team_id, invitee_account_id, invited_by_account_id, status)
+     VALUES ($1, $2, $3, 'pending')
+     ON CONFLICT (team_id, invitee_account_id, status) DO UPDATE SET created_at = NOW()
+     RETURNING *`,
+    [teamId, inviteeAccountId, invitedByAccountId]
+  );
+  return r.rows[0];
+}
+async function listTeamInvites(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ti.*, t.name AS team_name, t.tag AS team_tag
+       FROM team_invites ti
+       JOIN teams t ON t.id = ti.team_id
+      WHERE ti.invitee_account_id = $1 AND ti.status = 'pending' AND t.is_active = TRUE
+      ORDER BY ti.created_at DESC`,
+    [accountId]
+  );
+  return r.rows;
+}
+async function respondToTeamInvite({ inviteId, accountId, accept }) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
+      `SELECT * FROM team_invites WHERE id = $1 AND invitee_account_id = $2 AND status = 'pending' FOR UPDATE`,
+      [inviteId, accountId]
+    );
+    if (!r.rows[0]) { await client.query('ROLLBACK'); const e = new Error('Invite not found.'); e.code = 'NOT_FOUND'; throw e; }
+    const invite = r.rows[0];
+    if (accept) {
+      const ex = await client.query(`SELECT 1 FROM team_members WHERE account_id = $1`, [accountId]);
+      if (ex.rows[0]) { await client.query('ROLLBACK'); const e = new Error('You are already on a team.'); e.code = 'CONFLICT'; throw e; }
+      await client.query(
+        `INSERT INTO team_members (team_id, account_id, role) VALUES ($1, $2, 'member')`,
+        [invite.team_id, accountId]
+      );
+    }
+    await client.query(
+      `UPDATE team_invites SET status = $2, responded_at = NOW() WHERE id = $1`,
+      [inviteId, accept ? 'accepted' : 'declined']
+    );
+    await client.query('COMMIT');
+    return { accepted: accept, team_id: invite.team_id };
+  } catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
+}
+async function leaveTeam({ teamId, accountId }) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT role FROM team_members WHERE team_id = $1 AND account_id = $2`,
+    [teamId, accountId]
+  );
+  if (!r.rows[0]) { const e = new Error('You are not on this team.'); e.code = 'NOT_FOUND'; throw e; }
+  if (r.rows[0].role === 'owner') {
+    const e = new Error('The team owner cannot leave; disband the team instead.');
+    e.code = 'FORBIDDEN'; throw e;
+  }
+  await p.query(`DELETE FROM team_members WHERE team_id = $1 AND account_id = $2`, [teamId, accountId]);
+  return { ok: true };
+}
+async function getTeamStats(teamId) {
+  const p = getPool();
+  const members = await p.query(
+    `SELECT account_id FROM team_members WHERE team_id = $1`, [teamId]
+  );
+  const accountIds = members.rows.map(r => r.account_id);
+  if (accountIds.length === 0) return { games: 0, wins: 0, losses: 0, win_rate: 0 };
+  // A "team match" is one where every team member playing was on the same side.
+  const r = await p.query(
+    `SELECT m.match_id, m.radiant_win, ps.team, COUNT(*) AS members_on_side
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.account_id = ANY($1::bigint[])
+      GROUP BY m.match_id, m.radiant_win, ps.team
+      HAVING COUNT(*) >= 3`,
+    [accountIds]
+  );
+  let wins = 0, losses = 0;
+  for (const row of r.rows) {
+    const won = (row.team === 'radiant') === row.radiant_win;
+    if (won) wins++; else losses++;
+  }
+  const games = wins + losses;
+  return { games, wins, losses, win_rate: games ? Math.round((wins / games) * 100) : 0 };
+}
+async function recordTeamUpkeep({ teamId, payerAccountId, stripeSessionId, amountCents, currency = 'aud' }) {
+  const p = getPool();
+  const extendedUntil = new Date(Date.now() + TEAM_UPKEEP_PERIOD_DAYS * 86400000);
+  const r = await p.query(
+    `INSERT INTO team_upkeep_payments (team_id, payer_account_id, stripe_session_id, amount_cents, currency, extended_until, status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING *`,
+    [teamId, payerAccountId, stripeSessionId, amountCents, currency, extendedUntil]
+  );
+  return r.rows[0];
+}
+async function confirmTeamUpkeep(stripeSessionId) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
+      `UPDATE team_upkeep_payments SET status = 'completed', completed_at = NOW()
+         WHERE stripe_session_id = $1 AND status = 'pending' RETURNING *`,
+      [stripeSessionId]
+    );
+    if (!r.rows[0]) { await client.query('ROLLBACK'); return null; }
+    const pay = r.rows[0];
+    await client.query(
+      `UPDATE teams SET upkeep_paid_until = GREATEST(COALESCE(upkeep_paid_until, NOW()), NOW()) + INTERVAL '${TEAM_UPKEEP_PERIOD_DAYS} days'
+         WHERE id = $1`,
+      [pay.team_id]
+    );
+    await client.query('COMMIT');
+    return pay;
+  } catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
+}
+
+// ---------- Weekly challenges ----------
+async function createWeeklyChallenge({ seasonNumber, weekNumber, title, description, metric, target, xpReward, coinReward, startsAt, endsAt }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO weekly_challenges (season_number, week_number, title, description, metric, target, xp_reward, coin_reward, starts_at, ends_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT (season_number, week_number, metric) DO UPDATE
+       SET title = EXCLUDED.title, description = EXCLUDED.description,
+           target = EXCLUDED.target, xp_reward = EXCLUDED.xp_reward,
+           coin_reward = EXCLUDED.coin_reward,
+           starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at
+     RETURNING *`,
+    [seasonNumber, weekNumber, title, description, metric, target, xpReward, coinReward, startsAt, endsAt]
+  );
+  return r.rows[0];
+}
+async function getActiveWeeklyChallenges() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM weekly_challenges
+      WHERE starts_at <= NOW() AND ends_at > NOW()
+      ORDER BY season_number DESC, week_number DESC, id ASC`
+  );
+  return r.rows;
+}
+async function getWeeklyChallengeProgress(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT wc.id AS challenge_id, wc.title, wc.description, wc.metric, wc.target,
+            wc.xp_reward, wc.coin_reward, wc.starts_at, wc.ends_at,
+            COALESCE(wcp.progress, 0)::int AS progress,
+            wcp.completed_at, wcp.claimed_at
+       FROM weekly_challenges wc
+       LEFT JOIN weekly_challenge_progress wcp
+         ON wcp.challenge_id = wc.id AND wcp.account_id = $1
+      WHERE wc.starts_at <= NOW() AND wc.ends_at > NOW()
+      ORDER BY wc.week_number DESC, wc.id ASC`,
+    [accountId]
+  );
+  return r.rows;
+}
+async function bumpWeeklyChallengeProgress({ accountId, metric, delta = 1 }) {
+  const p = getPool();
+  const challenges = await p.query(
+    `SELECT id, target, season_number FROM weekly_challenges
+      WHERE metric = $1 AND starts_at <= NOW() AND ends_at > NOW()`,
+    [metric]
+  );
+  for (const c of challenges.rows) {
+    await p.query(
+      `INSERT INTO weekly_challenge_progress (challenge_id, account_id, progress, completed_at)
+       VALUES ($1, $2, $3, CASE WHEN $3 >= $4 THEN NOW() ELSE NULL END)
+       ON CONFLICT (challenge_id, account_id) DO UPDATE
+         SET progress = weekly_challenge_progress.progress + $3,
+             completed_at = CASE
+               WHEN weekly_challenge_progress.completed_at IS NULL
+                AND weekly_challenge_progress.progress + $3 >= $4
+               THEN NOW()
+               ELSE weekly_challenge_progress.completed_at
+             END`,
+      [c.id, accountId, delta, c.target]
+    );
+  }
+}
+async function claimWeeklyChallenge({ accountId, challengeId }) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const cr = await client.query(
+      `SELECT wc.*, wcp.progress, wcp.completed_at, wcp.claimed_at
+         FROM weekly_challenges wc
+         LEFT JOIN weekly_challenge_progress wcp
+           ON wcp.challenge_id = wc.id AND wcp.account_id = $2
+        WHERE wc.id = $1 FOR UPDATE OF wcp`,
+      [challengeId, accountId]
+    );
+    const row = cr.rows[0];
+    if (!row) { await client.query('ROLLBACK'); const e = new Error('Challenge not found.'); e.code = 'NOT_FOUND'; throw e; }
+    if (!row.completed_at) { await client.query('ROLLBACK'); const e = new Error('Challenge not yet complete.'); e.code = 'BAD_REQUEST'; throw e; }
+    if (row.claimed_at) { await client.query('ROLLBACK'); const e = new Error('Reward already claimed.'); e.code = 'CONFLICT'; throw e; }
+    await client.query(
+      `UPDATE weekly_challenge_progress SET claimed_at = NOW()
+         WHERE challenge_id = $1 AND account_id = $2`,
+      [challengeId, accountId]
+    );
+    await client.query('COMMIT');
+    // XP + coin grants (idempotent — claimed_at prevents re-claim).
+    if (row.xp_reward > 0) {
+      await awardSeasonPassXp({
+        accountId, seasonNumber: row.season_number, matchId: null,
+        source: `weekly_challenge_${challengeId}`, xpDelta: row.xp_reward,
+        notes: `Weekly challenge: ${row.title}`,
+      }).catch(() => {});
+    }
+    if (row.coin_reward > 0) {
+      await grantCoins({
+        accountId, delta: row.coin_reward,
+        reason: `weekly_challenge:${challengeId}`,
+        applyDailyCap: false,
+      }).catch(() => {});
+    }
+    return { xp: row.xp_reward, coins: row.coin_reward };
+  } catch (e) { try { await client.query('ROLLBACK'); } catch {}; throw e; }
+  finally { client.release(); }
+}
+
+// ---------- Limited drops ----------
+async function createLimitedDrop({ sku, label, description, kind, priceCents, coinPrice, quantityCap, seasonNumber, availableFrom, availableUntil, createdBy }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO limited_drops (sku, label, description, kind, price_cents, coin_price, quantity_cap, season_number, available_from, available_until, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [sku, label, description, kind, priceCents, coinPrice, quantityCap, seasonNumber, availableFrom, availableUntil, createdBy]
+  );
+  return r.rows[0];
+}
+async function getActiveLimitedDrops() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM limited_drops
+      WHERE available_from <= NOW() AND available_until > NOW()
+        AND (quantity_cap IS NULL OR quantity_sold < quantity_cap)
+      ORDER BY available_until ASC`
+  );
+  return r.rows;
+}
+async function listAllLimitedDrops({ limit = 100 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM limited_drops ORDER BY available_from DESC LIMIT $1`, [limit]
+  );
+  return r.rows;
+}
+async function deactivateLimitedDrop(id) {
+  const p = getPool();
+  await p.query(`UPDATE limited_drops SET available_until = NOW() WHERE id = $1`, [id]);
+}
+
+// ---------- Season pass self-purchase ----------
+async function recordSeasonPassSelfPurchase({ accountId, seasonNumber, stripeSessionId, amountCents, currency = 'aud' }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO season_pass_purchases (account_id, season_number, stripe_session_id, source, status, amount_cents, currency)
+     VALUES ($1, $2, $3, 'purchase', 'pending', $4, $5)
+     ON CONFLICT (account_id, season_number) DO NOTHING
+     RETURNING *`,
+    [accountId, seasonNumber, stripeSessionId, amountCents, currency]
+  );
+  return r.rows[0] || null;
+}
+async function confirmSeasonPassSelfPurchase(stripeSessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE season_pass_purchases SET status = 'active', purchased_at = NOW()
+       WHERE stripe_session_id = $1 AND status = 'pending' RETURNING *`,
+    [stripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
+// ---------- Anonymous gift / extended gift_purchases ----------
+async function createAnonymousGift({ gifterAccountId, recipientAccountId, giftType, stripeSessionId, amountCents, currency = 'aud', anonymous = false, message = null }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO gift_purchases (gifter_account_id, recipient_account_id, gift_type, stripe_session_id, amount_cents, currency, status, anonymous, message)
+     VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
+     ON CONFLICT (stripe_session_id) DO NOTHING RETURNING *`,
+    [gifterAccountId, recipientAccountId, giftType, stripeSessionId, amountCents, currency, anonymous, message]
+  );
+  return r.rows[0] || null;
+}
+
 module.exports = {
   init,
   getPool,
@@ -14422,6 +14982,38 @@ module.exports = {
   getOwnedFrames,
   grantSeasonPassActivation,
   hasSeasonPassActivation,
+  // Task #319 — Season Pass v2 / Teams / Weekly challenges / Limited drops
+  TEAM_CREATION_PRICE_CENTS,
+  TEAM_UPKEEP_PRICE_CENTS,
+  TEAM_UPKEEP_PERIOD_DAYS,
+  SEASON_PASS_PRICE_CENTS,
+  SEASON_PASS_XP_EXTRA,
+  createTeamCheckout,
+  confirmTeamCreation,
+  getTeamById,
+  listTeams,
+  getTeamMembers,
+  getTeamForAccount,
+  updateTeamProfile,
+  inviteToTeam,
+  listTeamInvites,
+  respondToTeamInvite,
+  leaveTeam,
+  getTeamStats,
+  recordTeamUpkeep,
+  confirmTeamUpkeep,
+  createWeeklyChallenge,
+  getActiveWeeklyChallenges,
+  getWeeklyChallengeProgress,
+  bumpWeeklyChallengeProgress,
+  claimWeeklyChallenge,
+  createLimitedDrop,
+  getActiveLimitedDrops,
+  listAllLimitedDrops,
+  deactivateLimitedDrop,
+  recordSeasonPassSelfPurchase,
+  confirmSeasonPassSelfPurchase,
+  createAnonymousGift,
   getOnboardingStatus,
   getOnboardingState,
   isAccountHidden,
