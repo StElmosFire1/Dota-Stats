@@ -113,26 +113,38 @@ else
   local_tree="$(git --no-optional-locks rev-parse HEAD^{tree})"
   remote_tree="$(git --no-optional-locks rev-parse "${remote_sha}^{tree}")"
   if [ "$local_tree" != "$remote_tree" ]; then
-    # Trees differ. Most common cause is a 12-line auto-regen of
-    # artifacts/mockup-sandbox/src/.generated/mockup-components.ts that the
-    # platform performed on its own checkout. Check whether the ONLY diff is
-    # in that one auto-generated file; if so, we treat it as safe to clobber.
-    diff_paths="$(git --no-optional-locks diff --name-only "$remote_sha" HEAD)"
-    only_generated=1
-    while IFS= read -r p; do
-      [ -z "$p" ] && continue
-      case "$p" in
-        artifacts/mockup-sandbox/src/.generated/*) ;;
-        attached_assets/*) ;;
-        *) only_generated=0 ;;
-      esac
-    done <<< "$diff_paths"
-    if [ "$only_generated" -ne 1 ]; then
-      echo "[post-merge] self-heal: refusing — local and remote trees differ outside auto-generated paths:" >&2
-      echo "$diff_paths" >&2
-      exit $push_status
+    # Trees differ. Three classes of divergence we accept; anything else
+    # aborts so a real conflict surfaces instead of being silently clobbered.
+    #
+    # Task #361 — the original gate only allowed mockup auto-regen +
+    # attached_assets, which caused legitimate post-merge pushes to fail
+    # whenever the platform got ahead of us by a few earlier merges
+    # (which is the normal mode of operation: every merge produces a
+    # platform-recommitted SHA, and a few queued merges with non-trivial
+    # diffs are routine). The "remote is an ancestor of HEAD" case is the
+    # textbook safe force-with-lease scenario — HEAD strictly contains
+    # everything on remote plus our new commits, so a force push is just
+    # catching up rather than overwriting unrelated work.
+    if git --no-optional-locks merge-base --is-ancestor "$remote_sha" HEAD; then
+      echo "[post-merge] self-heal: remote is an ancestor of HEAD (we're strictly ahead); safe to push." >&2
+    else
+      diff_paths="$(git --no-optional-locks diff --name-only "$remote_sha" HEAD)"
+      only_generated=1
+      while IFS= read -r p; do
+        [ -z "$p" ] && continue
+        case "$p" in
+          artifacts/mockup-sandbox/src/.generated/*) ;;
+          attached_assets/*) ;;
+          *) only_generated=0 ;;
+        esac
+      done <<< "$diff_paths"
+      if [ "$only_generated" -ne 1 ]; then
+        echo "[post-merge] self-heal: refusing — local and remote trees differ outside auto-generated paths AND remote is not an ancestor:" >&2
+        echo "$diff_paths" >&2
+        exit $push_status
+      fi
+      echo "[post-merge] self-heal: only auto-generated mockup index / attached_assets differ; safe to overwrite." >&2
     fi
-    echo "[post-merge] self-heal: only auto-generated mockup index differs; safe to overwrite." >&2
   else
     echo "[post-merge] self-heal: local and remote trees match exactly." >&2
   fi

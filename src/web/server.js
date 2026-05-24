@@ -5100,6 +5100,34 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #361 — surface every cron's last-ran timestamp + status so an
+  // operator can spot a silently-broken scheduled job from the Config tab
+  // without trawling logs. Read-only, superuser-only — the heartbeats can
+  // include internal context strings we don't want public.
+  router.get('/admin/system/heartbeats', requireSuperuser, async (req, res) => {
+    try {
+      const rows = await db.listCronHeartbeats();
+      // Tag rows whose last_ran_at is older than a per-cron "expected" window
+      // so the UI can highlight overdue jobs without re-deriving the schedule
+      // client-side. pro_winback_dms runs daily at 09:00 Sydney → 36h is a
+      // safe "definitely overdue" threshold (one full skipped day + buffer).
+      const EXPECTED_MAX_AGE_MS = { pro_winback_dms: 36 * 60 * 60 * 1000 };
+      const now = Date.now();
+      const augmented = rows.map(r => {
+        const expected = EXPECTED_MAX_AGE_MS[r.name] || null;
+        const ageMs = r.last_ran_at ? now - new Date(r.last_ran_at).getTime() : null;
+        return {
+          ...r,
+          age_ms: ageMs,
+          overdue: expected != null && ageMs != null && ageMs > expected,
+        };
+      });
+      res.json({ heartbeats: augmented });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   router.get('/admin/overview', requireSuperuser, async (req, res) => {
     try {
       const p = db.getPool();
@@ -13092,8 +13120,14 @@ Return exactly this JSON shape (all fields required, arrays of strings):
   // Sponsorship telemetry — best-effort impression + click counters. Both
   // routes swallow tracking failures so a dropped beacon never breaks the
   // visible UI; the body is intentionally tiny (just an order id).
+  // Task #361 — short-circuit known crawler / headless-browser UAs before the
+  // DB write so the sponsorship trend chart reflects real humans. Beacons
+  // still return `{ok:true}` so the client can't probe the block-list by
+  // diffing response shapes.
+  const { isBot: _isSponsorshipBot } = require('./botUserAgents');
   router.post('/sponsorships/track/impression', express.json(), async (req, res) => {
     try {
+      if (_isSponsorshipBot(req.headers['user-agent'])) return res.json({ ok: true });
       const id = parseInt(req.body?.order_id, 10);
       if (Number.isFinite(id)) await db.recordSponsorshipImpression(id);
       res.json({ ok: true });
@@ -13102,6 +13136,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
 
   router.post('/sponsorships/track/click', express.json(), async (req, res) => {
     try {
+      if (_isSponsorshipBot(req.headers['user-agent'])) return res.json({ ok: true });
       const id = parseInt(req.body?.order_id, 10);
       if (Number.isFinite(id)) await db.recordSponsorshipClick(id);
       res.json({ ok: true });

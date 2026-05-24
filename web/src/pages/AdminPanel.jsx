@@ -2682,6 +2682,80 @@ function BroadcastTickerPanel({ superuserKey }) {
   );
 }
 
+// Task #361 — surfaces the cron_heartbeats table as a small operator-facing
+// readout in the admin Config tab. Each row shows the cron name, when it
+// last ran (local time), its last status (ok / partial / skipped / error),
+// the short summary message recorded by the cron itself, and a red flag if
+// the most recent run is older than the cron's expected window. Read-only.
+function CronHeartbeatsPanel({ superuserKey }) {
+  const [rows, setRows] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+  const load = React.useCallback(async () => {
+    setErr(null);
+    try {
+      const r = await fetch(`/api/admin/system/heartbeats`, {
+        credentials: 'include',
+        headers: { 'X-Superuser-Key': superuserKey || '' },
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      setRows(d.heartbeats || []);
+    } catch (e) { setErr(e.message); setRows([]); }
+  }, [superuserKey]);
+  React.useEffect(() => { load(); }, [load]);
+  const fmtAge = (ms) => {
+    if (ms == null) return '—';
+    const m = Math.round(ms / 60000);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.round(m / 60);
+    if (h < 48) return `${h}h ago`;
+    return `${Math.round(h / 24)}d ago`;
+  };
+  const statusColor = (s) => s === 'ok' ? 'var(--radiant-color)' : s === 'partial' ? '#fbbf24' : s === 'skipped' ? 'var(--text-muted)' : 'var(--dire-color)';
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-cron-heartbeats" className="section-title" style={{ marginBottom: 6 }}>
+        ❤️ Cron heartbeats
+      </h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Each scheduled job writes a row here at the end of its tick. An overdue last-ran
+        timestamp is a real signal that the cron silently broke. Refreshes on tab open.
+      </p>
+      {err && <p style={{ color: 'var(--dire-color)' }}>Error: {err}</p>}
+      {rows == null ? <p style={{ color: 'var(--text-muted)' }}>Loading…</p> : rows.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          No heartbeats recorded yet. Crons write a row the first time they tick after deploy.
+        </p>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+              <th style={{ padding: 6 }}>Cron</th>
+              <th style={{ padding: 6 }}>Last ran</th>
+              <th style={{ padding: 6 }}>Status</th>
+              <th style={{ padding: 6 }}>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.name} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: 6, fontFamily: 'monospace' }}>{r.name}</td>
+                <td style={{ padding: 6, color: r.overdue ? 'var(--dire-color)' : 'var(--text-primary)' }}>
+                  {r.last_ran_at ? new Date(r.last_ran_at).toLocaleString() : '—'}
+                  {r.age_ms != null && <span style={{ marginLeft: 6, color: 'var(--text-muted)' }}>({fmtAge(r.age_ms)})</span>}
+                  {r.overdue && <span style={{ marginLeft: 6, color: 'var(--dire-color)', fontWeight: 700 }}>OVERDUE</span>}
+                </td>
+                <td style={{ padding: 6, color: statusColor(r.last_status), fontWeight: 600 }}>{r.last_status}</td>
+                <td style={{ padding: 6, color: 'var(--text-muted)' }}>{r.last_message || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
 // Read-only visual reference of the full IH ladder (V1 + V3 thresholds).
 // Lives in the admin Config tab so admins can confirm at a glance how
 // every rank is named, what its symbol is, and what MMR cutoff it uses
@@ -3877,6 +3951,7 @@ export default function AdminPanel() {
     { label: 'Rating System', tab: 'seasons', anchor: 'ap-anchor-rating-system', icon: '⚖️', kw: 'trueskill mmr recompute' },
     { label: 'Hero Tier Overrides', tab: 'seasons', anchor: 'ap-anchor-hero-tier', icon: '🏆', kw: 'meta heroes' },
     { label: 'Achievement System', tab: 'seasons', anchor: 'ap-anchor-achievements', icon: '🏅', kw: 'badges unlock' },
+    { label: 'Cron Heartbeats', tab: 'config', anchor: 'ap-anchor-cron-heartbeats', icon: '❤️', kw: 'cron job heartbeat health monitor schedule overdue winback' },
     { label: 'Engagement', tab: 'config', anchor: 'ap-anchor-engagement', icon: '🎯', kw: 'pinned highlights showcase' },
     { label: 'Broadcast Ticker (CMS)', tab: 'config', anchor: 'ap-anchor-broadcast-ticker', icon: '📢', kw: 'announcement banner' },
     { label: 'Welcome Modal (CMS)', tab: 'config', anchor: 'ap-anchor-welcome-modal', icon: '📣', kw: 'popup intro onboarding cta' },
@@ -4205,6 +4280,8 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'config' && (<>
+      {/* ── Cron heartbeats (Task #361) ──────────────────────────────── */}
+      <CronHeartbeatsPanel superuserKey={superuserKey} />
       {/* ── Stripe configuration banner (Task #113) ─────────────────── */}
       <StripeStatusBanner superuserKey={superuserKey} />
       {/* ── Discord auto-join health (Task #127) ─────────────────────── */}

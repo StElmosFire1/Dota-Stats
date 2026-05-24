@@ -1622,6 +1622,21 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_sponsorship_telemetry_daily_day ON sponsorship_telemetry_daily (day)`);
+
+    // Task #361 — minimal "is this cron alive?" heartbeat table. Every cron
+    // we want to monitor writes one row keyed by `name` at the end of its
+    // tick (success or failure), and the admin Config tab surfaces the
+    // last-ran timestamp + status so we can spot a silently-broken cron
+    // without trawling logs. Intentionally cheap: one UPSERT per tick,
+    // bounded by the number of crons we care about (currently 1).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS cron_heartbeats (
+        name TEXT PRIMARY KEY,
+        last_ran_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_status TEXT NOT NULL DEFAULT 'ok',
+        last_message TEXT
+      )
+    `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_sponsorship_slots_tenant ON sponsorship_slots (tenant_id, slug)`);
     // Replace the legacy single-column UNIQUE(slug) with a tenant-aware
     // uniqueness model so a global slot ("home_banner", tenant_id=NULL) and
@@ -8052,22 +8067,45 @@ async function seedPatchNotes(notes) {
   };
   const sorted = [...notes].sort((a, b) => parseVer(a.version) - parseVer(b.version));
 
-  // Guard: after sorting, verify there are no duplicate versions (which would
-  // silently stomp each other during upsert).
-  for (let i = 1; i < sorted.length; i++) {
-    if (parseVer(sorted[i - 1].version) === parseVer(sorted[i].version)) {
-      throw new Error(
-        `[DB] patchNotes.js has duplicate version: v${sorted[i].version}. ` +
-        `Remove the duplicate entry in src/data/patchNotes.js before starting the bot.`
+  // Guard: after sorting, collapse duplicate versions to the first occurrence
+  // and warn once per duplicate. Throwing here used to abort the entire patch-
+  // notes seed (and, until the catch in src/index.js was added, the bot boot
+  // itself) over a single accidental copy-paste. The upsert is keyed on
+  // `version`, so the second copy would silently stomp the first anyway —
+  // emitting a warn and dropping it preserves startup health without hiding
+  // the data hazard.
+  const seen = new Set();
+  const deduped = [];
+  for (const note of sorted) {
+    const key = parseVer(note.version);
+    if (seen.has(key)) {
+      console.warn(
+        `[DB] patchNotes.js has duplicate version: v${note.version}. ` +
+        `Keeping the first occurrence and ignoring this copy. ` +
+        `Remove the duplicate entry in src/data/patchNotes.js when convenient.`
       );
+      continue;
     }
+    seen.add(key);
+    deduped.push(note);
   }
 
   // Upsert by version — preserves user-created notes and sets correct historical dates.
   // New rows get announced_at = NULL so the Discord bot can detect and announce them.
   // ON CONFLICT (existing row): update title/content/author/published_at but DON'T
   // touch announced_at — that would re-announce already-posted notes.
-  for (const note of sorted) {
+  // Newer entries use `notes: [string, ...]` (bullet list) instead of legacy `content`
+  // (pre-formatted markdown string). Coerce both shapes to a single non-null content
+  // string so the NOT NULL constraint never fires and the rendered output matches what
+  // the data file expresses.
+  const toContent = (note) => {
+    if (typeof note.content === 'string' && note.content.length) return note.content;
+    if (Array.isArray(note.notes) && note.notes.length) {
+      return note.notes.map(line => `- ${String(line).trim()}`).join('\n');
+    }
+    return note.title || '(no content)';
+  };
+  for (const note of deduped) {
     await p.query(`
       INSERT INTO patch_notes (version, title, content, author, published_at, announced_at)
       VALUES ($1, $2, $3, $4, $5, NULL)
@@ -8077,9 +8115,9 @@ async function seedPatchNotes(notes) {
         author       = EXCLUDED.author,
         published_at = EXCLUDED.published_at
       WHERE patch_notes.author = 'System'
-    `, [note.version, note.title, note.content, note.author || 'System', note.published_at]);
+    `, [note.version, note.title, toContent(note), note.author || 'System', note.published_at]);
   }
-  console.log(`[DB] Patch notes seeded/updated (${notes.length} entries).`);
+  console.log(`[DB] Patch notes seeded/updated (${deduped.length} entries${deduped.length !== notes.length ? `, ${notes.length - deduped.length} duplicate(s) skipped` : ''}).`);
 }
 
 async function getUnannouncedPatchNotes() {
@@ -13532,7 +13570,15 @@ async function _computeCoachPremiumFirstWeekViewLift() {
       (SELECT AVG(cnt)::float FROM non_premium_counts) AS non_premium_avg
   `);
   const agg = aggQ.rows[0] || {};
-  const MIN_COHORT = 3;
+  // Task #361 — lowered from 3 to 1 so a freshly-launched Premium tier with
+  // a single cohort member can still publish a real ratio, with the UI
+  // showing a "based on N coaches" disclosure so the buyer can judge how
+  // much weight to put on the number. The prior threshold of 3 was meant to
+  // avoid noisy headlines, but in practice it left the lift card stuck on
+  // an empty placeholder for months. Anything with at least one premium
+  // and one non-premium cohort member produces a defensible ratio when
+  // paired with the cohort-size disclosure.
+  const MIN_COHORT = 1;
   const premiumN = agg.premium_n || 0;
   const nonPremiumN = agg.non_premium_n || 0;
   const sufficient = premiumN >= MIN_COHORT && nonPremiumN >= MIN_COHORT;
@@ -13682,6 +13728,33 @@ async function listActiveSponsorshipsForSlot(slug) {
 // ---------- Sponsorship telemetry (Task #320) ----------
 // Best-effort counters — failures are swallowed by callers so a tracking
 // blip never breaks a page render.
+// Task #361 — write/read helpers for the cron_heartbeats table. `status` is
+// a free-form string but in practice we use 'ok' on a clean run and 'error'
+// on a thrown exception; `message` is an optional short context line (e.g.
+// counts sent, error message). UPSERTs by name so repeated ticks just
+// update the same row.
+async function recordCronHeartbeat({ name, status = 'ok', message = null } = {}) {
+  if (!name) return;
+  const p = getPool();
+  try {
+    await p.query(
+      `INSERT INTO cron_heartbeats (name, last_ran_at, last_status, last_message)
+         VALUES ($1, NOW(), $2, $3)
+       ON CONFLICT (name) DO UPDATE SET
+         last_ran_at = EXCLUDED.last_ran_at,
+         last_status = EXCLUDED.last_status,
+         last_message = EXCLUDED.last_message`,
+      [name, String(status).slice(0, 32), message != null ? String(message).slice(0, 500) : null]
+    );
+  } catch (_) { /* heartbeat is observability — never let it break the cron */ }
+}
+
+async function listCronHeartbeats() {
+  const p = getPool();
+  const r = await p.query(`SELECT name, last_ran_at, last_status, last_message FROM cron_heartbeats ORDER BY name ASC`);
+  return r.rows;
+}
+
 async function recordSponsorshipImpression(orderId) {
   if (!orderId) return;
   const p = getPool();
@@ -15761,7 +15834,10 @@ async function createAnonymousGift({ gifterAccountId, recipientAccountId, giftTy
 
 module.exports = {
   init,
+  initSchema: init,
   getPool,
+  recordCronHeartbeat,
+  listCronHeartbeats,
   // Magazine v3 (Task #157) — exposed via the same shape as the rest of `db`.
   magV3: _magV3,
   // Task #316 — engagement loop helpers.

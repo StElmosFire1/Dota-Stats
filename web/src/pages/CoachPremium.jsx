@@ -119,7 +119,12 @@ export default function CoachPremium() {
         {lift?.aggregate?.sufficient && lift.aggregate.ratio != null && lift.aggregate.ratio > 1.05 && (
           <div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-muted)' }}>
             <strong style={{ color: 'var(--amber, #f59e0b)' }}>{lift.aggregate.ratio.toFixed(1)}× more first-week profile views</strong>
-            {' '}than non-Premium coaches, averaged across {lift.aggregate.premium_cohort_n} current Premium coaches.
+            {' '}than non-Premium coaches, based on{' '}
+            {lift.aggregate.premium_cohort_n} Premium coach{lift.aggregate.premium_cohort_n === 1 ? '' : 'es'}
+            {' '}vs {lift.aggregate.non_premium_cohort_n} non-Premium.
+            {lift.aggregate.premium_cohort_n < 3 && (
+              <span style={{ marginLeft: 6, fontStyle: 'italic' }}>(early data — expect this to firm up as more coaches join)</span>
+            )}
           </div>
         )}
         {/* Task #344 — personal savings line for signed-in coaches, with an

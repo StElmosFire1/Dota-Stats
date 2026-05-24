@@ -5664,7 +5664,12 @@ class DiscordBot {
       // gives us per-stage idempotency so re-runs are safe.
       cron.schedule('0 9 * * *', async () => {
         try { await this._sendProWinbackDms(); }
-        catch (e) { console.error('[ProWinback] Daily cron error:', e.message); }
+        catch (e) {
+          console.error('[ProWinback] Daily cron error:', e.message);
+          if (db.recordCronHeartbeat) {
+            await db.recordCronHeartbeat({ name: 'pro_winback_dms', status: 'error', message: e.message }).catch(() => {});
+          }
+        }
       }, { timezone: 'Australia/Sydney' });
       console.log('[Discord] Pro winback DM cron scheduled (09:00 Australia/Sydney).');
 
@@ -6224,8 +6229,16 @@ class DiscordBot {
   // Discord ID, DM a stage-appropriate winback message, then call
   // `markWinbackDmSent` so we don't double-send. Errors are best-effort.
   async _sendProWinbackDms() {
+    // Task #361 — heartbeat so the admin Config tab can spot a silently-
+    // broken cron. We always write a row at the end of the tick (success
+    // or failure), so an overdue last_ran_at is a real signal.
+    let _hbStatus = 'ok';
+    let _hbMessage = null;
     if (!db.listLapsedSubscribersForDm) {
       console.warn('[ProWinback] DB helpers missing — skipping.');
+      if (db.recordCronHeartbeat) {
+        await db.recordCronHeartbeat({ name: 'pro_winback_dms', status: 'skipped', message: 'DB helpers missing' }).catch(() => {});
+      }
       return;
     }
     // The helper takes one stage at a time (stage = the bucket key we record
@@ -6241,7 +6254,14 @@ class DiscordBot {
         console.error('[ProWinback] listLapsedSubscribersForDm stage', s.stage, 'failed:', e.message);
       }
     }
-    if (!queue.length) return;
+    if (!queue.length) {
+      // Heartbeat the no-work tick too, otherwise a quiet day looks identical
+      // to a silently-broken cron in the admin overdue check.
+      if (db.recordCronHeartbeat) {
+        await db.recordCronHeartbeat({ name: 'pro_winback_dms', status: 'ok', message: 'sent=0/0 (no lapsed subscribers in window)' }).catch(() => {});
+      }
+      return;
+    }
     const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
     let sent = 0;
     for (const row of queue) {
@@ -6281,9 +6301,15 @@ class DiscordBot {
         sent++;
       } catch (e) {
         console.warn('[ProWinback] DM error for account', row.account_id, e.message);
+        _hbStatus = 'partial';
+        _hbMessage = `DM error: ${e.message}`;
       }
     }
     if (sent) console.log(`[ProWinback] Sent ${sent}/${queue.length} winback DMs.`);
+    if (db.recordCronHeartbeat) {
+      const summary = `sent=${sent}/${queue.length}${_hbMessage ? ' · ' + _hbMessage : ''}`;
+      await db.recordCronHeartbeat({ name: 'pro_winback_dms', status: _hbStatus, message: summary }).catch(() => {});
+    }
   }
 
   // Task #318 — dunning DM fired from the invoice.payment_failed webhook

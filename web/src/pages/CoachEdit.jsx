@@ -34,9 +34,13 @@ function PremiumLift({ lift }) {
       )}
       {aggregate.sufficient && aggregate.ratio != null && aggregate.ratio > 1.05 && (
         <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text-muted)' }}>
-          Across {aggregate.premium_cohort_n} current Premium coaches, featured placement delivered{' '}
+          Based on {aggregate.premium_cohort_n} Premium coach{aggregate.premium_cohort_n === 1 ? '' : 'es'}
+          {' '}vs {aggregate.non_premium_cohort_n} non-Premium, featured placement delivered{' '}
           <strong style={{ color: 'var(--text-primary)' }}>{aggregate.ratio.toFixed(1)}×</strong> the
-          first-week profile views of non-Premium coaches.
+          first-week profile views.
+          {aggregate.premium_cohort_n < 3 && (
+            <span style={{ marginLeft: 4, fontStyle: 'italic' }}>(early data)</span>
+          )}
         </div>
       )}
     </div>
