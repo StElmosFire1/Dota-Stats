@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "7.52",
+    "title": "'Watch live' badge now visible from every page (Task #346)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Site-wide spectator hook.** The `WatchLiveBadge` component from `web/src/components/HomeWidgets.jsx` is now mounted inside the top-level `<Nav />` in `web/src/App.jsx` with a new `variant=\"nav\"` prop, so visitors on `/heroes`, `/leaderboard`, a player profile, etc. can jump straight into `/spectate/:matchId` without bouncing back to `/` or `/inhouse`. Reuses the existing `/api/inhouse/live-spectate` poll (10s interval, auto-hides when nothing is live) — no new endpoint, no new poller.",
+      "**Compact `variant=\"nav\"` render.** Tightens padding (4px 10px) and font-size (11px) and drops the outer `marginBottom: 16` / flex-end wrapper so the pill fits the navbar row. The original home-widget render (`variant=\"home\"`, the default) is unchanged.",
+      "**Edition scope.** Full edition only — the community edition has no inhouse lobby / live spectator stream."
+    ]
+  },
+  {
     "version": "7.51",
     "title": "Coach Premium upsell now shows your real would-have-saved figure (Task #344)",
     "published_at": "2026-05-24",

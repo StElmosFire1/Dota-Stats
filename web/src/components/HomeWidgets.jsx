@@ -163,8 +163,10 @@ export function LiveInhousePulse() {
 // Task #336 — Watch live badge. Polls /api/inhouse/live-spectate (same probe
 // the inhouse hub uses) and surfaces a small link to /spectate/:matchId
 // whenever the lobbyManager reports an active match. Returns null otherwise
-// so the home page layout is unchanged when nothing is live.
-export function WatchLiveBadge() {
+// so the host layout is unchanged when nothing is live.
+// Task #346 — added `variant="nav"` for the site-header mount so the same
+// signal is visible from every page, not just the home widget column.
+export function WatchLiveBadge({ variant = 'home' } = {}) {
   const [matchId, setMatchId] = useState(null);
 
   useEffect(() => {
@@ -182,27 +184,34 @@ export function WatchLiveBadge() {
 
   if (!matchId) return null;
 
+  const isNav = variant === 'nav';
+  const link = (
+    <Link
+      to={`/spectate/${matchId}`}
+      aria-label={`Watch live match ${matchId}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: isNav ? '4px 10px' : '6px 14px', borderRadius: 999,
+        background: 'rgba(244,67,54,0.16)', color: '#f44336',
+        fontSize: isNav ? 11 : 12, fontWeight: 700, letterSpacing: 0.6,
+        border: '1px solid #f4433655', textDecoration: 'none',
+        fontFamily: 'var(--font-condensed, inherit)',
+        textTransform: 'uppercase',
+      }}
+    >
+      <span aria-hidden="true" style={{
+        display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+        background: '#f44336', animation: 'oa-pulse 2s infinite',
+      }} />
+      🔴 Watch live
+    </Link>
+  );
+
+  if (isNav) return link;
+
   return (
     <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
-      <Link
-        to={`/spectate/${matchId}`}
-        aria-label={`Watch live match ${matchId}`}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '6px 14px', borderRadius: 999,
-          background: 'rgba(244,67,54,0.16)', color: '#f44336',
-          fontSize: 12, fontWeight: 700, letterSpacing: 0.6,
-          border: '1px solid #f4433655', textDecoration: 'none',
-          fontFamily: 'var(--font-condensed, inherit)',
-          textTransform: 'uppercase',
-        }}
-      >
-        <span aria-hidden="true" style={{
-          display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
-          background: '#f44336', animation: 'oa-pulse 2s infinite',
-        }} />
-        🔴 Watch live
-      </Link>
+      {link}
     </div>
   );
 }

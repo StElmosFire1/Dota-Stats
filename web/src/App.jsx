@@ -21,6 +21,7 @@ import OnboardingNudge from './components/OnboardingNudge';
 import DiscordLinkModal from './components/DiscordLinkModal';
 import DiscordRetryBanner from './components/DiscordRetryBanner';
 import SideBanners from './components/SideBanner';
+import { WatchLiveBadge } from './components/HomeWidgets';
 import { getLivePresenceCount } from './api';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
@@ -666,6 +667,12 @@ function Nav() {
           without expanding the wrapped nav. Hidden on desktop via CSS,
           where the same signal already rides on the Players nav link. */}
       <MobileLiveBadge count={liveCount} />
+      {/* Task #346 — site-wide 'Watch live' pill. Polls the same
+          /api/inhouse/live-spectate probe as the home-page widget and
+          auto-hides when nothing is live, so visitors on /heroes,
+          /leaderboard, a player profile, etc. can still jump straight
+          into the spectator stream without bouncing back to home. */}
+      <WatchLiveBadge variant="nav" />
       {/* Task #313 / v6.79 — coin balance pill, signed-in only. */}
       <NavCoinPill accountId={accountId} />
       <div className="nav-links">
