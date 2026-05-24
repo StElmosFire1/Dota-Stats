@@ -75,6 +75,7 @@ const CoachEdit = lazy(() => import('./pages/CoachEdit'));
 const CoachOnboarding = lazy(() => import('./pages/CoachOnboarding'));
 const MyBookings = lazy(() => import('./pages/MyBookings'));
 const SeasonSummary = lazy(() => import('./pages/SeasonSummary'));
+const BuyCoins = lazy(() => import('./pages/BuyCoins'));
 
 function HealthDot() {
   const [health, setHealth] = useState(null);
@@ -1047,6 +1048,7 @@ export default function App() {
                 <Route path="/predictions" element={<Predictions />} />
                 <Route path="/patch-notes" element={<PatchNotes />} />
                 <Route path="/pickem" element={<Pickem />} />
+                <Route path="/coins/buy" element={<BuyCoins />} />
                 <Route path="/sponsorships/inbox" element={<SponsorshipInbox />} />
                 <Route path="/multikills" element={<MultiKills />} />
                 <Route path="/ward-map" element={<WardMap />} />

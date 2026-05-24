@@ -18,6 +18,7 @@ import HeroIcon from '../components/HeroIcon';
 import ProBadge from '../components/ProBadge';
 import PaywallCard from '../components/PaywallCard';
 import WeeklyReportTile from '../components/WeeklyReportTile';
+import HeroMasterySection from '../components/HeroMasterySection';
 import SponsorChip from '../components/SponsorChip';
 import VerifiedBadge from '../components/VerifiedBadge';
 import CoachRecommendationsTile from '../components/CoachRecommendationsTile';
@@ -1645,6 +1646,10 @@ export default function PlayerProfile() {
           filter + show-locked toggle). /players/:id/achievements is open. */}
       <div id="achievements" />
       <AchievementBadges achievements={achievements} />
+
+      {/* Task #316 — per-hero per-position mastery panel. Public; renders
+          nothing when the player has no recorded mastery rows. */}
+      <HeroMasterySection accountId={accountId} />
 
       {/* AUDIT (v5.91 parity pass): PUBLIC — Season Pass tier + XP progress bar.
           /player/:id/season-pass is open. */}

@@ -1,5 +1,23 @@
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, AttachmentBuilder, SlashCommandBuilder, REST, Routes } = require('discord.js');
 const cron = require('node-cron');
+
+// Task #316 — best-effort web-push helper for the weekly-summary cron.
+// Loaded lazily so the bot still boots if web-push isn't installed or
+// VAPID keys aren't configured. If either is missing, every call below
+// is a silent no-op.
+let _webpushLib = null;
+let _webpushReady = false;
+try {
+  _webpushLib = require('web-push');
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    _webpushLib.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'mailto:admin@dota-stats.local',
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY,
+    );
+    _webpushReady = true;
+  }
+} catch (_) { /* web-push not installed — DM path still works */ }
 const { config, getMmrTier } = require('../config');
 const { getStatsService } = require('../stats/statsService');
 const { getSheetsStore } = require('../sheets/sheetsStore');
@@ -5437,6 +5455,38 @@ class DiscordBot {
     }
   }
 
+  // Task #316 — send a single web-push payload to every endpoint registered
+  // for the given account. Prunes 404/410 endpoints inline. Returns the
+  // number of pushes successfully delivered. Silent no-op when web-push
+  // isn't configured or the account has no subscriptions.
+  async _sendWebPushToAccount(accountId, { title, body, url }) {
+    if (!_webpushReady || !_webpushLib) return 0;
+    if (typeof db.getPushSubscriptionsForAccount !== 'function') return 0;
+    let subs = [];
+    try { subs = await db.getPushSubscriptionsForAccount(accountId) || []; }
+    catch (_) { return 0; }
+    const payload = JSON.stringify({ title, body, url });
+    let sent = 0;
+    for (const s of subs) {
+      try {
+        await _webpushLib.sendNotification(
+          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+          payload,
+        );
+        sent++;
+        if (typeof db.touchPushSubscription === 'function') {
+          await db.touchPushSubscription(s.endpoint).catch(() => {});
+        }
+      } catch (err) {
+        if (err && (err.statusCode === 404 || err.statusCode === 410)
+         && typeof db.removePushSubscriptionByEndpoint === 'function') {
+          await db.removePushSubscriptionByEndpoint(s.endpoint).catch(() => {});
+        }
+      }
+    }
+    return sent;
+  }
+
   async start() {
     if (!config.discord.token) throw new Error('DISCORD_TOKEN not configured.');
     await this.client.login(config.discord.token);
@@ -5448,6 +5498,70 @@ class DiscordBot {
         this._postWeeklyRecap();
       }, { timezone: 'UTC' });
       console.log('[Discord] Weekly recap scheduled (Mondays 9am AEST).');
+
+      // Task #316 — per-player weekly summary DM. Sunday 19:00 AEDT
+      // (Sunday 08:00 UTC). Each opted-in player gets a one-line digest
+      // of the previous 7 days plus a link to their profile. Best-effort:
+      // a DM-block on one player never stops the rest of the run.
+      cron.schedule('0 8 * * 0', async () => {
+        try {
+          if (!db.listWeeklySummaryRecipients) return;
+          const ids = await db.listWeeklySummaryRecipients();
+          console.log(`[WeeklySummary] starting for ${ids.length} player(s)`);
+          let sent = 0;
+          for (const accountId of ids) {
+            try {
+              const s = await db.getWeeklyPlayerSummary(accountId);
+              if (!s) continue;
+              const discordId = await db.getDiscordIdByAccountId?.(accountId).catch(() => null);
+              if (!discordId) continue;
+              const user = await this.client.users.fetch(discordId).catch(() => null);
+              if (!user) continue;
+              const arrow = s.rank_delta === 'up' ? '▲' : s.rank_delta === 'down' ? '▼' : '–';
+              const mmrLine = s.mmr_before != null && s.mmr_after != null
+                ? `MMR: ${s.mmr_before} → ${s.mmr_after} (${s.mmr_delta >= 0 ? '+' : ''}${s.mmr_delta} ${arrow})`
+                : `MMR Δ: ${s.mmr_delta >= 0 ? '+' : ''}${s.mmr_delta} ${arrow}`;
+              const topHeroLine = s.top_hero
+                ? `Top hero: ${s.top_hero.hero_name || `#${s.top_hero.hero_id}`} (${s.top_hero.wins}/${s.top_hero.games})`
+                : null;
+              const achLine = s.achievements_unlocked > 0
+                ? `Achievements unlocked: ${s.achievements_unlocked}`
+                : null;
+              const fullWeekUrl = `https://oceinhouse.gg${s.full_week_url || '/'}`;
+              const lines = [
+                `**OCE Inhouse — Your Week**`,
+                `Games: ${s.games}  ·  W/L: ${s.wins}/${s.losses}  ·  Avg PERF: ${s.avg_perf}`,
+                `K/D/A: ${s.kills}/${s.deaths}/${s.assists}  ·  Win rate: ${Math.round(s.win_rate * 100)}%`,
+                mmrLine,
+                topHeroLine, achLine,
+                `View the full week: ${fullWeekUrl}`,
+                `Manage these DMs at https://oceinhouse.gg/settings/notifications`,
+              ].filter(Boolean);
+              await user.send(lines.join('\n'));
+              sent++;
+
+              // Web-push branch — same digest, fired to opted-in subs.
+              // Best-effort; a push failure never blocks the DM run.
+              try {
+                if (typeof db.getPushSubscriptionsForAccount === 'function'
+                 && this._sendWebPushToAccount) {
+                  await this._sendWebPushToAccount(accountId, {
+                    title: 'OCE Inhouse — Your Week',
+                    body: `${s.games} games · ${s.wins}W-${s.losses}L · ${mmrLine}`,
+                    url: s.full_week_url || '/',
+                  });
+                }
+              } catch (_) {}
+            } catch (e) {
+              if (e?.code !== 50007) console.warn(`[WeeklySummary] ${accountId} failed: ${e.message}`);
+            }
+          }
+          console.log(`[WeeklySummary] complete — ${sent}/${ids.length} sent`);
+        } catch (err) {
+          console.error('[WeeklySummary] run failed:', err.message);
+        }
+      }, { timezone: 'UTC' });
+      console.log('[Discord] Weekly summary DMs scheduled (Sundays 19:00 AEDT).');
 
       // Season 10 launch is no longer scheduled automatically. The launch is
       // now triggered exclusively via the superuser "Launch Season 10 Now"

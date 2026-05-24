@@ -1730,12 +1730,37 @@ export const getMyPickemPicks = () => _getJson('/pickem/me');
 //   pickedDurationTier      : 'short' | 'medium' | 'long'  (+5 pts)
 export const submitPickemPick = (
   matchRef, pickedWinner,
-  { pickedFirstBlood = null, pickedTotalKillsBucket = null, pickedDurationTier = null } = {},
+  {
+    pickedFirstBlood = null, pickedTotalKillsBucket = null,
+    pickedDurationTier = null, pickedFirstTower = null,
+    // Task #316 — prop bets v2 (per reviewer): MVP team / comeback / first Rosh.
+    pickedMvpTeam = null, pickedComeback = null, pickedFirstRosh = null,
+  } = {},
 ) =>
   _postJson('/pickem/pick', {
     matchRef, pickedWinner,
     pickedFirstBlood, pickedTotalKillsBucket, pickedDurationTier,
+    pickedFirstTower,
+    pickedMvpTeam, pickedComeback, pickedFirstRosh,
   });
+
+// Task #316 — engagement loop helpers.
+export const getCoinPacks = () => _getJson('/coins/packs');
+export const buyCoinPack = (pack) => _postJson('/coins/buy', { pack });
+export const getMyHeroMastery = () => _getJson('/hero-mastery/me');
+export const getPlayerHeroMastery = (accountId) => _getJson(`/hero-mastery/player/${accountId}`);
+export const getHeroMasteryLeaderboard = (params = {}) => {
+  const q = new URLSearchParams();
+  if (params.heroId)   q.set('hero_id',  params.heroId);
+  if (params.position) q.set('position', params.position);
+  if (params.limit)    q.set('limit',    params.limit);
+  const qs = q.toString();
+  return _getJson('/hero-mastery/leaderboard' + (qs ? `?${qs}` : ''));
+};
+export const placeMatchWager = (matchRef, side, stake) =>
+  _postJson(`/predictions/${encodeURIComponent(matchRef)}/wager`, { side, stake });
+export const getMatchWagers = (matchRef) =>
+  _getJson(`/predictions/${encodeURIComponent(matchRef)}/wager`);
 
 export const getPlayerSponsorships = (accountId) =>
   _getJson(`/players/${accountId}/sponsorships`);

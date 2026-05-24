@@ -182,6 +182,18 @@ async function tick(db, basePort) {
           );
           if (guard.rowCount > 0) {
             log(`Session #${s.id}: auto-flipped to accepting (${players.length} players, captain mode=${winningMode})`);
+            // Task #316 — fire match-imminent web push to every
+            // participant who opted in. Best-effort: never throws.
+            try {
+              const port = basePort || process.env.PORT || 5000;
+              const key = process.env.SUPERUSER_PASSWORD;
+              if (key) {
+                fetch(`http://127.0.0.1:${port}/api/internal/inhouse/${s.id}/imminent-push`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'x-superuser-key': key },
+                }).catch(() => {});
+              }
+            } catch (_) {}
           }
         }
       } else if (s.auto_start_at) {

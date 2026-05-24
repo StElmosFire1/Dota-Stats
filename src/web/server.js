@@ -877,6 +877,36 @@ function createServer(startupStatus = {}) {
             await db.confirmFramePurchase(session.id, frameAccountId, frameId);
             console.log('[Stripe] Frame purchase confirmed:', frameId, 'for account', frameAccountId);
           }
+        } else if (purpose === 'coin_pack') {
+          // Task #316 (reviewer fix) — atomic real-money coin top-up.
+          //
+          // Recovery: if the pre-record at /coins/buy time failed (DB blip),
+          // the coin_pack_purchases row won't exist. Reconstruct it from the
+          // Stripe session metadata before fulfilling — mirrors the gift_pro
+          // recovery branch immediately below. ON CONFLICT in the helper
+          // makes this safe on Stripe retries.
+          try {
+            const metaAccount = Number(session.metadata?.account_id);
+            const metaCoins = Number(session.metadata?.coins);
+            const metaPackId = String(session.metadata?.pack_id || '');
+            if (metaAccount && metaCoins > 0 && metaPackId) {
+              await db.recordCoinPackPurchase({
+                accountId: metaAccount,
+                stripeSessionId: session.id,
+                packId: metaPackId,
+                coins: metaCoins,
+                amountCents: session.amount_total || 0,
+                currency: session.currency || 'aud',
+              }).catch(() => {});
+            }
+          } catch (_) {}
+          // Atomic: balance update + ledger insert + status flip all happen
+          // in one transaction. Errors propagate so Stripe retries; a re-fire
+          // on a completed row is a no-op (returns null) — never double-credits.
+          const completed = await db.creditCoinPackAtomically(session.id);
+          if (completed) {
+            console.log(`[Stripe] coin_pack ${completed.pack_id} credited ${completed.coins} 🪙 to ${completed.account_id}`);
+          }
         } else if (purpose === 'gift_pro') {
           let gift = await db.confirmGiftCheckout(session.id).catch(() => null);
           // Recovery path: if the gift row was never persisted (DB failure at checkout time),
@@ -11314,6 +11344,257 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (e.code === 'INSUFFICIENT_FUNDS') return res.status(402).json({ error: e.message });
       if (e.code === 'ALREADY_OWNED') return res.status(409).json({ error: e.message });
       console.error('[API] /coins/spend:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Task #316 — real-money coin top-ups via Stripe checkout. Catalog is
+  // server-authoritative (browser supplies only the pack id).
+  const COIN_PACKS = Object.freeze({
+    starter:    { id: 'starter',    coins: 500,   priceCents: 499,  label: 'Starter (500 🪙)' },
+    standard:   { id: 'standard',   coins: 1200,  priceCents: 999,  label: 'Standard (1,200 🪙)' },
+    premium:    { id: 'premium',    coins: 2800,  priceCents: 1999, label: 'Premium (2,800 🪙)' },
+    whale:      { id: 'whale',      coins: 7500,  priceCents: 4999, label: 'Whale (7,500 🪙)' },
+  });
+
+  router.get('/coins/packs', async (req, res) => {
+    res.json({ packs: Object.values(COIN_PACKS) });
+  });
+
+  router.post('/coins/buy', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured' });
+      const packId = String(req.body?.pack || '');
+      const pack = COIN_PACKS[packId];
+      if (!pack) return res.status(400).json({ error: 'Unknown coin pack' });
+      const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const origin = `${proto}://${host}`;
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            unit_amount: pack.priceCents,
+            product_data: {
+              name: pack.label,
+              description: `${pack.coins} in-app coins for OCE Inhouse.`,
+            },
+          },
+          quantity: 1,
+        }],
+        success_url: `${origin}/coins/buy?success=1&pack=${encodeURIComponent(pack.id)}`,
+        cancel_url:  `${origin}/coins/buy?cancelled=1`,
+        metadata: {
+          purpose: 'coin_pack',
+          account_id: String(accountId),
+          pack_id: pack.id,
+          coins: String(pack.coins),
+        },
+      });
+      try {
+        await db.recordCoinPackPurchase({
+          accountId,
+          stripeSessionId: session.id,
+          packId: pack.id,
+          coins: pack.coins,
+          amountCents: pack.priceCents,
+          currency: 'aud',
+        });
+      } catch (e) {
+        console.warn('[Coins] recordCoinPackPurchase pre-record failed (will rely on webhook recovery):', e.message);
+      }
+      res.json({ url: session.url, sessionId: session.id });
+    } catch (e) {
+      console.error('[API] /coins/buy:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Task #316 — public hero-mastery endpoints.
+  router.get('/hero-mastery/me', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+    try {
+      res.json({ rows: await db.getHeroMastery(accountId) });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/hero-mastery/player/:accountId', async (req, res) => {
+    try {
+      const aid = parseInt(req.params.accountId, 10);
+      if (!aid) return res.status(400).json({ error: 'Invalid account id' });
+      res.json({ rows: await db.getHeroMastery(aid) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/hero-mastery/leaderboard', async (req, res) => {
+    try {
+      const heroId   = req.query.hero_id   ? parseInt(req.query.hero_id, 10)   : null;
+      const position = req.query.position  ? parseInt(req.query.position, 10)  : null;
+      const limit    = req.query.limit     ? parseInt(req.query.limit, 10)     : 20;
+      res.json({ rows: await db.getTopHeroMastery({ heroId, position, limit }) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Task #316 — match-prediction coin wagers (25/50/100 🪙 → 2× on win).
+  router.post('/predictions/:matchRef/wager', express.json(), async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+    try {
+      const row = await db.createCoinWager({
+        matchRef: req.params.matchRef,
+        accountId,
+        side: String(req.body?.side || ''),
+        stake: req.body?.stake,
+      });
+      res.json({ wager: row });
+    } catch (e) {
+      if (e.code === 'INSUFFICIENT_FUNDS') return res.status(402).json({ error: e.message });
+      if (e.code === 'ALREADY_WAGERED')    return res.status(409).json({ error: e.message });
+      if (e.code === 'BAD_INPUT')          return res.status(400).json({ error: e.message });
+      console.error('[API] /predictions/:matchRef/wager:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/predictions/:matchRef/wager', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      const [all, mine] = await Promise.all([
+        db.getWagersForMatch(req.params.matchRef),
+        accountId ? db.getMyWagerForMatch(req.params.matchRef, accountId) : null,
+      ]);
+      const totals = all.reduce((a, w) => {
+        a[w.side] = (a[w.side] || 0) + Number(w.stake);
+        return a;
+      }, { radiant: 0, dire: 0 });
+      res.json({
+        wagers: all,
+        mine: mine || null,
+        totals,
+        count: all.length,
+      });
+    } catch (e) {
+      console.error('[API] GET /predictions/:matchRef/wager:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Task #316 — live inhouse queue SSE for the homepage widget. Pushes a
+  // snapshot every 5s; client uses native EventSource auto-retry. Public
+  // (no auth) — the queue page itself is already public.
+  router.get('/inhouse/queue/stream', async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    let closed = false;
+    const send = async () => {
+      if (closed) return;
+      try {
+        const pool = db.getPool();
+        const r = await pool.query(
+          `SELECT s.id, s.status, s.min_players, s.created_at
+             FROM inhouse_sessions s
+            WHERE s.status IN ('open','accepting','drafting')
+              AND COALESCE(s.is_diagnostic, false) = false
+            ORDER BY s.id DESC
+            LIMIT 5`
+        );
+        // Task #316 — enrich each session with the queued-player list so
+        // the homepage widget can show identities, ranks, position prefs,
+        // and wait time without an extra round-trip. Anonymous players
+        // (no account link) still count toward `players` but only signed
+        // players appear in the list.
+        const sessions = [];
+        for (const s of r.rows) {
+          let plist = [];
+          try {
+            const pr = await pool.query(
+              `SELECT p.account_id, p.status, p.preferred_positions,
+                      p.registered_at,
+                      COALESCE(n.nickname, 'Player ' || p.account_id::text) AS nickname,
+                      pp.mmr AS rating,
+                      EXTRACT(EPOCH FROM (NOW() - p.registered_at))::int AS wait_seconds
+                 FROM inhouse_session_players p
+                 LEFT JOIN nicknames n ON n.account_id = p.account_id
+                 LEFT JOIN players pp ON pp.account_id = p.account_id
+                WHERE p.session_id = $1
+                  AND p.status IN ('registered','accepted')
+                ORDER BY p.registered_at ASC
+                LIMIT 20`,
+              [s.id],
+            );
+            plist = pr.rows;
+          } catch (_) { /* schema variant — fall through with empty list */ }
+          sessions.push({
+            ...s,
+            players: plist.length,
+            needed: Math.max((s.min_players || 10) - plist.length, 0),
+            queued: plist,
+          });
+        }
+        res.write(`event: snapshot\ndata: ${JSON.stringify({ sessions, ts: Date.now() })}\n\n`);
+      } catch (e) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: e.message })}\n\n`);
+      }
+    };
+    await send();
+    const iv = setInterval(send, 5000);
+    req.on('close', () => { closed = true; clearInterval(iv); });
+  });
+
+  // Task #316 — internal endpoint hit by autoStartTicker on `open → accepting`
+  // transition. Pushes a "match imminent" web push to every participant who
+  // opted in to `match_imminent_push`. Superuser-key gated so only the
+  // ticker (which runs in-process) can invoke it.
+  router.post('/internal/inhouse/:id/imminent-push', async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser only' });
+      if (!_webPushReady()) return res.json({ ok: true, sent: 0, skipped: 'web_push_not_ready' });
+      const sessionId = parseInt(req.params.id, 10);
+      if (!sessionId) return res.status(400).json({ error: 'Bad session id' });
+      const players = await db.getInhouseSessionPlayers(sessionId);
+      const payload = JSON.stringify({
+        title: 'Inhouse match starting!',
+        body: 'Your inhouse lobby is in the accept phase — open the site to accept.',
+        url: '/inhouse',
+      });
+      let sent = 0;
+      for (const player of players) {
+        const aid = Number(player.account_id);
+        if (!aid) continue;
+        try {
+          const enabled = await db.isNotificationEnabled(aid, 'match_imminent_push');
+          if (!enabled) continue;
+        } catch (_) { /* default ON via NOTIFICATION_CATEGORIES */ }
+        try {
+          const subs = await db.getPushSubscriptionsForAccount(aid);
+          for (const s of subs) {
+            try {
+              await webpush.sendNotification(
+                { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+                payload,
+              );
+              await db.touchPushSubscription(s.endpoint);
+              sent++;
+            } catch (err) {
+              if (err && (err.statusCode === 404 || err.statusCode === 410)) {
+                await db.removePushSubscriptionByEndpoint(s.endpoint).catch(() => {});
+              }
+            }
+          }
+        } catch (_) {}
+      }
+      res.json({ ok: true, sent });
+    } catch (e) {
+      console.error('[API] imminent-push:', e.message);
       res.status(500).json({ error: e.message });
     }
   });

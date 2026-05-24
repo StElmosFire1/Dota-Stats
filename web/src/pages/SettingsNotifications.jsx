@@ -18,6 +18,9 @@ const CATEGORY_LABELS = {
   coaching_session_reminder:  { title: 'Coaching: session reminder',  desc: 'DM ~1 hour before a scheduled coaching session.' },
   coaching_review_request:    { title: 'Coaching: review request',    desc: 'DM after a completed session asking you to leave a review.' },
   inhouse_pick_warning:       { title: 'Inhouse: pick warning',     desc: 'Chime + browser notification when you\u2019re the captain on the clock and the per-pick timer is about to auto-pick for you. Use the lead-time selector to control how early it fires.' },
+  // Task #316 — engagement loop opt-ins.
+  weekly_summary:             { title: 'Weekly inhouse summary',    desc: 'Sunday-evening DM + web push with your week of games (W/L, K/D/A, avg PERF).' },
+  match_imminent_push:        { title: 'Match imminent push',       desc: 'Browser push ~5 min before lobby boot so you don\u2019t miss the accept phase.' },
 };
 
 function humaniseCategory(key) {

@@ -6,6 +6,7 @@ import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
 import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
+import LiveQueueWidget from '../components/LiveQueueWidget';
 
 const POSITIONS = [
   { id: 1, label: 'P1 — Carry' },
@@ -700,6 +701,9 @@ export default function Inhouse() {
 
   return (
     <div style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
+      {/* Task #316 — live queue widget: shows in-progress sessions + queued
+          players, falls back to recent matches when the queue is empty. */}
+      <LiveQueueWidget emptyMode="recent" />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', letterSpacing: 0.2 }}>Inhouse Lobby</h1>

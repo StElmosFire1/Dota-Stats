@@ -14,14 +14,16 @@ const sponsorships = require('./sponsorships');
 const pickem = require('./pickem');
 const verifiedBadge = require('./verifiedBadge');
 
-function createMagazineV3Db({ getPool }) {
+function createMagazineV3Db({ getPool, grantCoins = null }) {
   const oneOffs = oneOffPerks.createDb({ getPool });
   return Object.freeze({
     ...oneOffs,
     ...replayQuota.createDb({ getPool }),
     ...weeklyReport.createDb({ getPool }),
     ...sponsorships.createDb({ getPool }),
-    ...pickem.createDb({ getPool, hasOneOffPerk: oneOffs.hasOneOffPerk }),
+    // Task #316 — wire the engagement-loop coin grant into pickem so each
+    // correct winner pick auto-grants 10 🪙 (daily-cap aware) on resolve.
+    ...pickem.createDb({ getPool, hasOneOffPerk: oneOffs.hasOneOffPerk, grantCoins }),
     ...verifiedBadge.createDb({ getPool }),
   });
 }

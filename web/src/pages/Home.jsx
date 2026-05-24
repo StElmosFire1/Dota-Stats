@@ -9,6 +9,7 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
 import { LiveInhousePulse, PlayerOfTheWeek, HotHeroes, FeaturedPlayer } from '../components/HomeWidgets';
+import LiveQueueWidget from '../components/LiveQueueWidget';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -547,6 +548,7 @@ export default function Home() {
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <HomeBanner />
         {tournamentBanner}
+        <LiveQueueWidget />
         <LiveInhousePulse />
         <FeaturedPlayer />
         <div style={{
@@ -575,6 +577,7 @@ export default function Home() {
 
       {tournamentBanner}
 
+      <LiveQueueWidget />
       <LiveInhousePulse />
       <FeaturedPlayer />
       <div style={{

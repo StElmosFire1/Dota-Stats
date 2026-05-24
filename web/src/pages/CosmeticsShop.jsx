@@ -385,7 +385,16 @@ export default function CosmeticsShop() {
       // Frame purchase also affects the legacy ownedFrames list.
       getOwnedFrames().then(list => setOwnedFrames(Array.isArray(list) ? list : [])).catch(() => {});
     } catch (e) {
-      setCoinFlash({ ok: false, msg: e.message || 'Spend failed.' });
+      // Task #316 — surface a top-up link when the spend failed because
+      // the player ran out of coins. Detected via the API's exact error
+      // text since `/coins/spend` throws on HTTP 402 with the same code.
+      const msg = e.message || 'Spend failed.';
+      const isInsufficient = /insufficient/i.test(msg);
+      setCoinFlash({
+        ok: false,
+        msg: isInsufficient ? `${msg} Top up your balance.` : msg,
+        topUpLink: isInsufficient,
+      });
     } finally {
       setCoinBuying(null);
     }
@@ -609,7 +618,12 @@ export default function CosmeticsShop() {
             color: coinFlash.ok ? '#86efac' : '#fca5a5',
             border: `1px solid ${coinFlash.ok ? '#16a34a55' : '#b91c1c55'}`,
             fontSize: 13,
-          }}>{coinFlash.msg}</div>
+          }}>
+            {coinFlash.msg}
+            {coinFlash.topUpLink ? (
+              <> <a href="/coins/buy" style={{ color: '#fbbf24', fontWeight: 600 }}>Buy coins →</a></>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

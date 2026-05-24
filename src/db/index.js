@@ -1567,6 +1567,84 @@ async function init() {
     // toggle-only categories continue to ignore it.
     await p.query(`ALTER TABLE notification_prefs ADD COLUMN IF NOT EXISTS value_int INTEGER`);
 
+    // Task #316 — engagement loop tables.
+    //   hero_mastery       — per (account_id, hero_id, position) games/wins
+    //                        + total perf so we can derive a tier on read.
+    //   match_wagers       — opt-in coin wagering against recorded matches.
+    //                        Stake is debited at create-time (in the wager
+    //                        route), payout is credited by resolveCoinWagers
+    //                        from the recordMatch post-commit hook.
+    //   coin_pack_purchases — Stripe-backed real-money coin top-ups.
+    //                        Idempotent on stripe_session_id.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS hero_mastery (
+        account_id BIGINT NOT NULL,
+        hero_id INTEGER NOT NULL,
+        position SMALLINT NOT NULL,
+        games INTEGER NOT NULL DEFAULT 0,
+        wins INTEGER NOT NULL DEFAULT 0,
+        total_perf REAL NOT NULL DEFAULT 0,
+        last_match_id VARCHAR(50),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (account_id, hero_id, position)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_hero_mastery_hero ON hero_mastery (hero_id, position)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_hero_mastery_account ON hero_mastery (account_id)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS match_wagers (
+        id SERIAL PRIMARY KEY,
+        match_ref VARCHAR(50) NOT NULL,
+        account_id BIGINT NOT NULL,
+        side TEXT NOT NULL CHECK (side IN ('radiant','dire')),
+        stake INTEGER NOT NULL CHECK (stake > 0),
+        payout INTEGER,
+        resolved_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (match_ref, account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_match_wagers_match ON match_wagers (match_ref)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_match_wagers_account ON match_wagers (account_id)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coin_pack_purchases (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        stripe_session_id TEXT NOT NULL UNIQUE,
+        pack_id TEXT NOT NULL,
+        coins INTEGER NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        status TEXT NOT NULL DEFAULT 'pending',
+        completed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coin_pack_account ON coin_pack_purchases (account_id)`);
+
+    // Task #316 — prop bets v2: four new dims alongside the legacy
+    // first-blood / total-kills / duration-tier set. Each `picked_*` is
+    // user input, `actual_*` is what the recorded match showed, and
+    // `points_*` is awarded at resolve time.
+    //   first_tower : 'radiant' | 'dire'
+    //   mvp_team    : 'radiant' | 'dire'  (Discord MVP vote majority)
+    //   comeback    : 'yes'     | 'no'    (winner was ever ≥ 10k gold down)
+    //   first_rosh  : 'radiant' | 'dire' | 'none'
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS picked_first_tower TEXT`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS actual_first_tower TEXT`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS points_first_tower INTEGER`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS picked_mvp_team TEXT`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS actual_mvp_team TEXT`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS points_mvp_team INTEGER`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS picked_comeback TEXT`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS actual_comeback TEXT`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS points_comeback INTEGER`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS picked_first_rosh TEXT`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS actual_first_rosh TEXT`);
+    await p.query(`ALTER TABLE pickem_picks ADD COLUMN IF NOT EXISTS points_first_rosh INTEGER`);
+
     // F7 — Web push subscriptions: one row per (account_id, endpoint).
     // Endpoint is unique across the whole table because a single push
     // endpoint identifies a single browser install.
@@ -2680,6 +2758,53 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
       }
     } catch (e) {
       console.warn(`[Coins] match-complete earn block failed: ${e.message}`);
+    }
+
+    // Task #316 — hero mastery accrual + coin-wager resolution. Best-effort:
+    // failures here never roll back the recorded match.
+    try {
+      const winningTeam = matchStats.radiantWin ? 'radiant' : 'dire';
+      // The PERF service has already run above and persisted per-player
+      // perf into player_stats; re-read just the freshly-written rows so
+      // total_perf reflects the same scores the rest of the site sees.
+      const perfRows = await (async () => {
+        try {
+          const r = await getPool().query(
+            `SELECT account_id, perf FROM player_stats WHERE match_id = $1`,
+            [matchStats.matchId],
+          );
+          const map = new Map();
+          for (const row of r.rows) map.set(Number(row.account_id), Number(row.perf) || 0);
+          return map;
+        } catch (_) { return new Map(); }
+      })();
+      for (const player of matchStats.players) {
+        const accountId = player.accountId ? parseInt(player.accountId) : 0;
+        if (!accountId || accountId === 0) continue;
+        const heroId = Number(player.heroId || player.hero_id) || 0;
+        const position = Number(player.position) || 0;
+        if (!heroId || !position) continue;
+        const won = (player.team === winningTeam);
+        const perf = perfRows.get(accountId) || 0;
+        try {
+          await upsertHeroMastery({
+            accountId, heroId, position, won, perf,
+            matchId: matchStats.matchId,
+          });
+        } catch (e) {
+          console.warn('[HeroMastery] upsert failed for', accountId, e.message);
+        }
+      }
+    } catch (e) {
+      console.warn(`[HeroMastery] block failed: ${e.message}`);
+    }
+    try {
+      const r = await resolveCoinWagers(String(matchStats.matchId), Boolean(matchStats.radiantWin));
+      if (r.resolved > 0) {
+        console.log(`[Wagers] match ${matchStats.matchId}: ${r.resolved} wager(s) resolved, ${r.paid} coins paid out`);
+      }
+    } catch (e) {
+      console.warn(`[Wagers] resolve failed for match ${matchStats.matchId}: ${e.message}`);
     }
 
     return { matchId: matchStats.matchId, achievementGrants };
@@ -10316,6 +10441,11 @@ const NOTIFICATION_CATEGORIES = [
   // player crosses a ladder threshold, `_sendMatchSummary` posts a brief
   // celebration line into the match's stats channel after the embed.
   { key: 'tier_change_announce',       label: 'Public Discord announcement when you tier up/down', default: true },
+  // Task #316 — engagement loop opt-ins. Both default OFF (opt-in) per
+  // product requirement so we don't spam new users; they enable from
+  // /settings/notifications.
+  { key: 'weekly_summary',             label: 'Weekly inhouse summary (Sunday DM + push)', default: false },
+  { key: 'match_imminent_push',        label: 'Match imminent push (≈5 min before lobby boots)', default: false },
 ];
 
 function categoryDef(key) {
@@ -10334,16 +10464,22 @@ function coerceCategoryValue(category, raw) {
 
 async function isNotificationEnabled(accountId, category) {
   if (!accountId || !category) return true; // fail-open
+  // Honour the category's declared default. Categories without an explicit
+  // `default:` are treated as on (back-compat with the pre-Task-#316 shape);
+  // categories declared `default:false` (like `weekly_summary` and
+  // `match_imminent_push`) are strict opt-in — no pref row → disabled.
+  const def = NOTIFICATION_CATEGORIES.find(c => c.key === category);
+  const fallback = def && def.default === false ? false : true;
   const p = getPool();
   try {
     const r = await p.query(
       `SELECT enabled FROM notification_prefs WHERE account_id = $1 AND category = $2`,
       [accountId, category]
     );
-    if (!r.rows.length) return true; // no row = default enabled
+    if (!r.rows.length) return fallback;
     return !!r.rows[0].enabled;
   } catch (e) {
-    return true; // never block a DM on a pref-table failure
+    return fallback;
   }
 }
 
@@ -13028,13 +13164,542 @@ async function upsertScoutingReport(accountId, report) {
 
 // Task #157 — Magazine v3 helpers are produced by a factory that closes over
 // `getPool` so they share the same pool as everything else in this file.
-const _magV3 = require('../monetization/magazineV3').createMagazineV3Db({ getPool });
+// Task #316 — pass grantCoins so pickem can auto-grant 10 🪙 per correct
+// winner pick. Defined as a thunk so we don't depend on grantCoins's
+// hoisted position in the file.
+const _magV3 = require('../monetization/magazineV3').createMagazineV3Db({
+  getPool,
+  grantCoins: (args) => grantCoins(args),
+});
+
+// ─── Task #316 — engagement loop helpers ──────────────────────────────────
+// Hero mastery (per account + hero + position). Position values match the
+// existing positional model (1..5). Tier is derived on read so we don't
+// have to back-fill it on threshold changes.
+async function upsertHeroMastery({ accountId, heroId, position, won, perf, matchId }) {
+  if (!accountId || !heroId || !position) return null;
+  const p = getPool();
+  const winInc = won ? 1 : 0;
+  const perfInc = Number.isFinite(perf) ? Number(perf) : 0;
+  // Capture pre-upsert tier so the post-upsert delta can grant a cosmetic
+  // perk on each new threshold crossing (idempotent via user_one_off_perks
+  // uniqueness).
+  let prevTier = 'Bronze';
+  try {
+    const pr = await p.query(
+      `SELECT games, wins, total_perf FROM hero_mastery
+        WHERE account_id = $1 AND hero_id = $2 AND position = $3`,
+      [accountId, heroId, position],
+    );
+    if (pr.rows[0]) prevTier = _heroMasteryTierRich(pr.rows[0]);
+  } catch (_) {}
+  const r = await p.query(
+    `INSERT INTO hero_mastery (account_id, hero_id, position, games, wins, total_perf, last_match_id, updated_at)
+     VALUES ($1,$2,$3,1,$4,$5,$6,NOW())
+     ON CONFLICT (account_id, hero_id, position) DO UPDATE
+       SET games = hero_mastery.games + 1,
+           wins  = hero_mastery.wins + EXCLUDED.wins,
+           total_perf = hero_mastery.total_perf + EXCLUDED.total_perf,
+           last_match_id = EXCLUDED.last_match_id,
+           updated_at = NOW()
+     RETURNING *`,
+    [accountId, heroId, position, winInc, perfInc, matchId ? String(matchId) : null],
+  );
+  const row = r.rows[0] || null;
+  // Tier-up cosmetic unlock: Gold / Platinum / Diamond each grant a one-off
+  // `cosmetic:mastery_<tier>:<heroId>` perk via `user_one_off_perks`.
+  // Idempotent — the table's unique index on (account_id, perk_key) means
+  // a re-cross of the same threshold is a no-op.
+  if (row) {
+    try {
+      const newTier = _heroMasteryTierRich(row);
+      const order = ['Bronze','Silver','Gold','Platinum','Diamond'];
+      if (order.indexOf(newTier) > order.indexOf(prevTier)
+       && ['Gold','Platinum','Diamond'].includes(newTier)) {
+        const perkKey = `cosmetic:mastery_${newTier.toLowerCase()}:${heroId}`;
+        await p.query(
+          `INSERT INTO user_one_off_perks (account_id, perk_key, source, metadata)
+           VALUES ($1, $2, 'mastery_tier_up', $3::jsonb)
+           ON CONFLICT (account_id, perk_key) DO NOTHING`,
+          [accountId, perkKey, JSON.stringify({
+            hero_id: heroId, position, tier: newTier, match_id: matchId ? String(matchId) : null,
+          })],
+        );
+      }
+    } catch (_) { /* perks table may have a different unique shape — best-effort */ }
+  }
+  return row;
+}
+
+function _heroMasteryTier(games) {
+  if (games >= 50) return 'Grandmaster';
+  // Legacy single-arg signature kept for any callers; the rich tiering
+  // lives in _heroMasteryTierRich below.
+  if (games >= 25) return 'Diamond';
+  if (games >= 10) return 'Gold';
+  if (games >= 5)  return 'Silver';
+  return 'Bronze';
+}
+
+// Task #316 — Bronze → Silver → Gold → Platinum → Diamond progression
+// keyed off games AND win-rate AND average PERF, per product spec.
+// Tiers are derived on read so threshold tweaks never require a backfill.
+function _heroMasteryTierRich({ games, wins, total_perf }) {
+  const wr = games > 0 ? wins / games : 0;
+  const ap = games > 0 ? total_perf / games : 0;
+  if (games >= 30 && wr >= 0.55 && ap >= 7.5) return 'Diamond';
+  if (games >= 20 && wr >= 0.50 && ap >= 7.0) return 'Platinum';
+  if (games >= 10 && wr >= 0.50 && ap >= 6.5) return 'Gold';
+  if (games >= 5)  return 'Silver';
+  return 'Bronze';
+}
+
+async function getHeroMastery(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT hero_id, position, games, wins, total_perf, last_match_id, updated_at
+       FROM hero_mastery
+      WHERE account_id = $1
+      ORDER BY games DESC, total_perf DESC
+      LIMIT 100`,
+    [accountId],
+  );
+  return r.rows.map(row => ({
+    ...row,
+    win_rate: row.games > 0 ? row.wins / row.games : 0,
+    avg_perf: row.games > 0 ? row.total_perf / row.games : 0,
+    tier: _heroMasteryTierRich(row),
+  }));
+}
+
+async function getTopHeroMastery({ heroId = null, position = null, limit = 20 } = {}) {
+  const p = getPool();
+  const where = [];
+  const params = [];
+  if (heroId)   { params.push(heroId);   where.push(`hm.hero_id = $${params.length}`); }
+  if (position) { params.push(position); where.push(`hm.position = $${params.length}`); }
+  params.push(Math.min(Math.max(limit, 1), 100));
+  const r = await p.query(
+    `SELECT hm.account_id, hm.hero_id, hm.position, hm.games, hm.wins, hm.total_perf,
+            COALESCE(n.nickname, hm.account_id::text) AS display_name
+       FROM hero_mastery hm
+       LEFT JOIN nicknames n ON n.account_id = hm.account_id
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+      ORDER BY hm.games DESC, hm.total_perf DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+  return r.rows.map(row => ({
+    ...row,
+    win_rate: row.games > 0 ? row.wins / row.games : 0,
+    avg_perf: row.games > 0 ? row.total_perf / row.games : 0,
+    tier: _heroMasteryTierRich(row),
+  }));
+}
+
+// Coin wagers — opt-in stake against a match's recorded outcome. The stake
+// is debited from coin_balance at create-time via spendCoinsRaw; payout
+// (2× stake on a winning pick) is credited by resolveCoinWagers from the
+// recordMatch post-commit hook. Idempotent on (match_ref, account_id).
+async function createCoinWager({ matchRef, accountId, side, stake }) {
+  if (!accountId || !matchRef || !['radiant', 'dire'].includes(side)) {
+    const e = new Error('Invalid wager input'); e.code = 'BAD_INPUT'; throw e;
+  }
+  const stakeInt = parseInt(stake, 10);
+  if (!Number.isInteger(stakeInt) || ![25, 50, 100].includes(stakeInt)) {
+    const e = new Error('Stake must be one of 25, 50, 100 coins'); e.code = 'BAD_INPUT'; throw e;
+  }
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [accountId]);
+    await client.query(`INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`, [accountId]);
+    const bal = await client.query(
+      `SELECT COALESCE(coin_balance, 0)::int AS balance FROM player_profiles WHERE account_id = $1`,
+      [accountId],
+    );
+    if ((bal.rows[0]?.balance || 0) < stakeInt) {
+      const e = new Error('Insufficient coin balance'); e.code = 'INSUFFICIENT_FUNDS';
+      await client.query('ROLLBACK'); throw e;
+    }
+    // Already-wagered guard (idempotency + "no doubling down").
+    const dup = await client.query(
+      `SELECT id FROM match_wagers WHERE match_ref = $1 AND account_id = $2`,
+      [String(matchRef), accountId],
+    );
+    if (dup.rows.length) {
+      const e = new Error('You already have a wager on this match'); e.code = 'ALREADY_WAGERED';
+      await client.query('ROLLBACK'); throw e;
+    }
+    // Wager-window guard (reviewer fix): if the match has already been
+    // recorded (resolveCoinWagers has either run or will not run again for
+    // any wager created now) OR any sibling wager on this match_ref is
+    // already resolved, the window is closed. Reject up front so the
+    // stake is never debited only to strand the row forever.
+    const closed = await client.query(
+      `SELECT EXISTS (SELECT 1 FROM matches WHERE match_id = $1) AS match_done,
+              EXISTS (SELECT 1 FROM match_wagers WHERE match_ref = $1 AND resolved_at IS NOT NULL) AS sibling_resolved`,
+      [String(matchRef)],
+    );
+    const row = closed.rows[0] || {};
+    if (row.match_done || row.sibling_resolved) {
+      const e = new Error('Wagering for this match is closed — match has already been recorded.');
+      e.code = 'WAGER_WINDOW_CLOSED';
+      await client.query('ROLLBACK'); throw e;
+    }
+    await client.query(
+      `UPDATE player_profiles SET coin_balance = coin_balance - $1 WHERE account_id = $2`,
+      [stakeInt, accountId],
+    );
+    await client.query(
+      `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id)
+       VALUES ($1, $2, 'wager_stake', $3)`,
+      [accountId, -stakeInt, String(matchRef)],
+    );
+    const ins = await client.query(
+      `INSERT INTO match_wagers (match_ref, account_id, side, stake)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [String(matchRef), accountId, side, stakeInt],
+    );
+    await client.query('COMMIT');
+    return ins.rows[0];
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function getWagersForMatch(matchRef) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT mw.*, COALESCE(n.nickname, mw.account_id::text) AS display_name
+       FROM match_wagers mw
+       LEFT JOIN nicknames n ON n.account_id = mw.account_id
+      WHERE mw.match_ref = $1
+      ORDER BY mw.stake DESC, mw.created_at ASC`,
+    [String(matchRef)],
+  );
+  return r.rows;
+}
+
+async function getMyWagerForMatch(matchRef, accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM match_wagers WHERE match_ref = $1 AND account_id = $2`,
+    [String(matchRef), accountId],
+  );
+  return r.rows[0] || null;
+}
+
+// Called from the recordMatch post-commit hook. POOLED settlement:
+// winners get their stake back PLUS a proportional share of the losing
+// pool keyed off their fraction of the winning side's stake. When there
+// are no losers (one-sided wagering) winners just get their stake back —
+// no payouts get conjured out of thin air. When there are no winners,
+// losers' stakes stay in the house (no refund) and the resolved_at marker
+// still lands so we never double-process. Idempotent on resolved_at.
+async function resolveCoinWagers(matchRef, radiantWin) {
+  const p = getPool();
+  const wagers = await p.query(
+    `SELECT * FROM match_wagers WHERE match_ref = $1 AND resolved_at IS NULL`,
+    [String(matchRef)],
+  );
+  if (!wagers.rows.length) return { resolved: 0, paid: 0 };
+  const winningSide = radiantWin ? 'radiant' : 'dire';
+  const winners = wagers.rows.filter(w => w.side === winningSide);
+  const losers  = wagers.rows.filter(w => w.side !== winningSide);
+  const winnersStake = winners.reduce((s, w) => s + Number(w.stake), 0);
+  const losersStake  = losers.reduce((s, w)  => s + Number(w.stake), 0);
+  let paid = 0;
+  for (const w of wagers.rows) {
+    const isWinner = w.side === winningSide;
+    let payout = 0;
+    if (isWinner && winnersStake > 0) {
+      // Stake back + proportional share of the loser pool. Floor to int
+      // to avoid fractional coins; any rounding remainder stays in the
+      // house (well below the 1-coin threshold per wager).
+      const share = Math.floor((Number(w.stake) / winnersStake) * losersStake);
+      payout = Number(w.stake) + share;
+    }
+    const client = await p.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [w.account_id]);
+      const updRow = await client.query(
+        `UPDATE match_wagers SET payout = $1, resolved_at = NOW()
+          WHERE id = $2 AND resolved_at IS NULL RETURNING id`,
+        [payout, w.id],
+      );
+      if (updRow.rowCount && payout > 0) {
+        await client.query(
+          `UPDATE player_profiles
+              SET coin_balance = COALESCE(coin_balance, 0) + $1,
+                  coin_lifetime = COALESCE(coin_lifetime, 0) + $1
+            WHERE account_id = $2`,
+          [payout, w.account_id],
+        );
+        await client.query(
+          `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id)
+           VALUES ($1, $2, 'wager_payout', $3)`,
+          [w.account_id, payout, String(matchRef)],
+        );
+        paid += payout;
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      console.warn('[Wagers] resolve failed for wager', w.id, e.message);
+    } finally {
+      client.release();
+    }
+  }
+  return {
+    resolved: wagers.rows.length,
+    paid,
+    winners: winners.length, losers: losers.length,
+    winningSide,
+  };
+}
+
+// Coin pack purchases — Stripe-backed real-money top-ups.
+async function recordCoinPackPurchase({ accountId, stripeSessionId, packId, coins, amountCents, currency = 'aud' }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coin_pack_purchases (account_id, stripe_session_id, pack_id, coins, amount_cents, currency, status)
+     VALUES ($1,$2,$3,$4,$5,$6,'pending')
+     ON CONFLICT (stripe_session_id) DO NOTHING
+     RETURNING *`,
+    [accountId, stripeSessionId, packId, coins, amountCents, currency],
+  );
+  return r.rows[0] || null;
+}
+
+async function markCoinPackCompleted(stripeSessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coin_pack_purchases
+        SET status = 'completed', completed_at = NOW()
+      WHERE stripe_session_id = $1 AND status <> 'completed'
+      RETURNING *`,
+    [stripeSessionId],
+  );
+  return r.rows[0] || null;
+}
+
+// Task #316 (reviewer fix) — atomic coin-pack fulfillment. Locks the
+// coin_pack_purchases row by stripe_session_id, and within the same
+// transaction inserts a `coin_transactions` row + bumps the player's
+// balance + flips the purchase to 'completed'. Either everything lands
+// or nothing does — paid users can never end up "marked completed but
+// uncredited" on a transient grant failure. Idempotent: a re-fire on
+// an already-completed session is a no-op.
+//
+// Returns the completed purchase row on first success, `null` on idempotent
+// re-fire, throws on missing row.
+async function creditCoinPackAtomically(stripeSessionId) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const row = await client.query(
+      `SELECT * FROM coin_pack_purchases
+        WHERE stripe_session_id = $1
+        FOR UPDATE`,
+      [stripeSessionId],
+    );
+    if (!row.rows[0]) {
+      await client.query('ROLLBACK');
+      throw new Error(`creditCoinPackAtomically: no coin_pack_purchases row for ${stripeSessionId}`);
+    }
+    const purchase = row.rows[0];
+    if (purchase.status === 'completed') {
+      await client.query('COMMIT');
+      return null; // already fulfilled — Stripe retry
+    }
+    const accountId = Number(purchase.account_id);
+    const coins = Number(purchase.coins);
+    await client.query(
+      `INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`,
+      [accountId],
+    );
+    // Per-account advisory lock to serialise with any concurrent grantCoins()
+    // for the same account, keeping the balance update race-free.
+    await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [accountId]);
+    await client.query(
+      `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id)
+       VALUES ($1, $2, 'stripe_topup', NULL)`,
+      [accountId, coins],
+    );
+    await client.query(
+      `UPDATE player_profiles
+          SET coin_balance  = COALESCE(coin_balance, 0)  + $1,
+              coin_lifetime = COALESCE(coin_lifetime, 0) + $1
+        WHERE account_id = $2`,
+      [coins, accountId],
+    );
+    const upd = await client.query(
+      `UPDATE coin_pack_purchases
+          SET status = 'completed', completed_at = NOW()
+        WHERE stripe_session_id = $1
+        RETURNING *`,
+      [stripeSessionId],
+    );
+    await client.query('COMMIT');
+    return upd.rows[0] || null;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Players opted-IN to the weekly summary DM. Default is OFF per
+// requirement, so we only return accounts with an explicit
+// notification_prefs row where enabled = true.
+async function listWeeklySummaryRecipients() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT DISTINCT np.account_id
+       FROM notification_prefs np
+      WHERE np.category = 'weekly_summary'
+        AND np.enabled = true`
+  );
+  return r.rows.map(row => Number(row.account_id));
+}
+
+// One-shot weekly digest for a single player. Aggregates the previous
+// 7 days of recorded matches (anything where the player appears in
+// player_stats). Returns null when the player had no games — caller
+// should skip the DM/push in that case.
+async function getWeeklyPlayerSummary(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT COUNT(*)::int AS games,
+            COUNT(*) FILTER (
+              WHERE (ps.team = 'radiant' AND m.radiant_win = true)
+                 OR (ps.team = 'dire'    AND m.radiant_win = false)
+            )::int AS wins,
+            COALESCE(SUM(ps.kills), 0)::int   AS kills,
+            COALESCE(SUM(ps.deaths), 0)::int  AS deaths,
+            COALESCE(SUM(ps.assists), 0)::int AS assists,
+            COALESCE(AVG(ps.perf), 0)::float  AS avg_perf
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.account_id = $1
+        AND m.date >= NOW() - INTERVAL '7 days'`,
+    [accountId],
+  );
+  const s = r.rows[0];
+  if (!s || !s.games) return null;
+
+  // Task #316 — enrich with MMR delta, top hero, and freshly-unlocked
+  // achievement count over the same 7-day window. Each query is wrapped
+  // so a schema variant in one (e.g. a missing column) can't blank the
+  // whole summary; the DM falls back to the core stats.
+  let mmrDelta = 0;
+  let mmrBefore = null;
+  let mmrAfter = null;
+  try {
+    const mr = await p.query(
+      `WITH window_rows AS (
+         SELECT rh.mmr, rh.recorded_at
+           FROM rating_history rh
+          WHERE rh.player_id = $1
+            AND rh.recorded_at >= NOW() - INTERVAL '7 days'
+       ),
+       baseline AS (
+         SELECT mmr FROM rating_history
+          WHERE player_id = $1 AND recorded_at < NOW() - INTERVAL '7 days'
+          ORDER BY recorded_at DESC LIMIT 1
+       )
+       SELECT (SELECT mmr FROM baseline)                                  AS mmr_before,
+              (SELECT mmr FROM window_rows ORDER BY recorded_at DESC LIMIT 1) AS mmr_after`,
+      [accountId],
+    );
+    mmrBefore = mr.rows[0]?.mmr_before ?? null;
+    mmrAfter  = mr.rows[0]?.mmr_after  ?? null;
+    if (mmrBefore != null && mmrAfter != null) mmrDelta = Math.round(mmrAfter - mmrBefore);
+  } catch (_) {}
+
+  let topHero = null;
+  try {
+    const th = await p.query(
+      `SELECT ps.hero_id, ps.hero_name, COUNT(*)::int AS games,
+              COUNT(*) FILTER (
+                WHERE (ps.team='radiant' AND m.radiant_win=true)
+                   OR (ps.team='dire'    AND m.radiant_win=false)
+              )::int AS wins
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id = $1
+          AND m.date >= NOW() - INTERVAL '7 days'
+          AND ps.hero_id > 0
+        GROUP BY ps.hero_id, ps.hero_name
+        ORDER BY games DESC, wins DESC
+        LIMIT 1`,
+      [accountId],
+    );
+    topHero = th.rows[0] || null;
+  } catch (_) {}
+
+  let achievementsUnlocked = 0;
+  try {
+    const ac = await p.query(
+      `SELECT COUNT(*)::int AS n
+         FROM achievements
+        WHERE player_id = $1
+          AND achieved_at >= NOW() - INTERVAL '7 days'`,
+      [accountId],
+    );
+    achievementsUnlocked = ac.rows[0]?.n || 0;
+  } catch (_) {}
+
+  // Rank delta is a signed coarse signal off mmrDelta — full ladder
+  // crossing detection lives in the ladder service; here we just expose
+  // up/down/flat so the DM can render an arrow without re-querying.
+  const rankDelta = mmrDelta > 25 ? 'up' : mmrDelta < -25 ? 'down' : 'flat';
+
+  return {
+    account_id: accountId,
+    games: s.games,
+    wins: s.wins,
+    losses: s.games - s.wins,
+    kills: s.kills, deaths: s.deaths, assists: s.assists,
+    avg_perf: Math.round(s.avg_perf * 10) / 10,
+    win_rate: s.games > 0 ? s.wins / s.games : 0,
+    mmr_before: mmrBefore, mmr_after: mmrAfter, mmr_delta: mmrDelta,
+    rank_delta: rankDelta,
+    top_hero: topHero,
+    achievements_unlocked: achievementsUnlocked,
+    full_week_url: `/player/${accountId}?range=7d`,
+  };
+}
 
 module.exports = {
   init,
   getPool,
   // Magazine v3 (Task #157) — exposed via the same shape as the rest of `db`.
   magV3: _magV3,
+  // Task #316 — engagement loop helpers.
+  upsertHeroMastery,
+  getHeroMastery,
+  getTopHeroMastery,
+  createCoinWager,
+  getWagersForMatch,
+  getMyWagerForMatch,
+  resolveCoinWagers,
+  recordCoinPackPurchase,
+  markCoinPackCompleted,
+  creditCoinPackAtomically,
+  listWeeklySummaryRecipients,
+  getWeeklyPlayerSummary,
   recordMatch,
   isMatchRecorded,
   isFileHashRecorded,
