@@ -1608,6 +1608,20 @@ async function init() {
     await p.query(`ALTER TABLE sponsorship_slots ADD COLUMN IF NOT EXISTS tenant_id INTEGER`);
     await p.query(`ALTER TABLE sponsorship_orders ADD COLUMN IF NOT EXISTS impressions BIGINT NOT NULL DEFAULT 0`);
     await p.query(`ALTER TABLE sponsorship_orders ADD COLUMN IF NOT EXISTS clicks BIGINT NOT NULL DEFAULT 0`);
+    // Task #349 — per-day impression/click counters so admins + sponsors can
+    // see a 30-day trend chart alongside the lifetime totals. Composite PK
+    // (order_id, day) makes the hot-path UPSERT in
+    // recordSponsorshipImpression/recordSponsorshipClick a single index hit.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS sponsorship_telemetry_daily (
+        order_id INTEGER NOT NULL REFERENCES sponsorship_orders(id) ON DELETE CASCADE,
+        day DATE NOT NULL,
+        impressions BIGINT NOT NULL DEFAULT 0,
+        clicks BIGINT NOT NULL DEFAULT 0,
+        PRIMARY KEY (order_id, day)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_sponsorship_telemetry_daily_day ON sponsorship_telemetry_daily (day)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_sponsorship_slots_tenant ON sponsorship_slots (tenant_id, slug)`);
     // Replace the legacy single-column UNIQUE(slug) with a tenant-aware
     // uniqueness model so a global slot ("home_banner", tenant_id=NULL) and
@@ -13675,6 +13689,18 @@ async function recordSponsorshipImpression(orderId) {
     `UPDATE sponsorship_orders SET impressions = impressions + 1 WHERE id = $1`,
     [orderId]
   );
+  // Task #349 — per-day rollup for the trend chart. UPSERT on (order_id, day)
+  // so concurrent beacons just increment the same row. Best-effort: swallowed
+  // errors keep the visible UI working when the daily table is unavailable.
+  try {
+    await p.query(
+      `INSERT INTO sponsorship_telemetry_daily (order_id, day, impressions, clicks)
+         VALUES ($1, CURRENT_DATE, 1, 0)
+       ON CONFLICT (order_id, day)
+         DO UPDATE SET impressions = sponsorship_telemetry_daily.impressions + 1`,
+      [orderId]
+    );
+  } catch (_) { /* best-effort */ }
 }
 
 async function recordSponsorshipClick(orderId) {
@@ -13684,6 +13710,70 @@ async function recordSponsorshipClick(orderId) {
     `UPDATE sponsorship_orders SET clicks = clicks + 1 WHERE id = $1`,
     [orderId]
   );
+  try {
+    await p.query(
+      `INSERT INTO sponsorship_telemetry_daily (order_id, day, impressions, clicks)
+         VALUES ($1, CURRENT_DATE, 0, 1)
+       ON CONFLICT (order_id, day)
+         DO UPDATE SET clicks = sponsorship_telemetry_daily.clicks + 1`,
+      [orderId]
+    );
+  } catch (_) { /* best-effort */ }
+}
+
+// Task #349 — 30-day trend series. Returns one row per (slot_id, day) summed
+// across every order attached to the slot, ordered chronologically. Days
+// with zero activity are NOT returned — the UI fills the gaps so a slot with
+// sparse traffic still gets a continuous 30-day axis.
+async function getSponsorshipSlotTrends({ days = 30 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT o.slot_id,
+            to_char(t.day, 'YYYY-MM-DD') AS day,
+            SUM(t.impressions)::bigint AS impressions,
+            SUM(t.clicks)::bigint AS clicks
+       FROM sponsorship_telemetry_daily t
+       JOIN sponsorship_orders o ON o.id = t.order_id
+      WHERE t.day >= (CURRENT_DATE - ($1::int - 1))
+      GROUP BY o.slot_id, t.day
+      ORDER BY o.slot_id, t.day`,
+    [days]
+  );
+  return r.rows.map(row => ({
+    slot_id: row.slot_id,
+    day: row.day,
+    impressions: Number(row.impressions || 0),
+    clicks: Number(row.clicks || 0),
+  }));
+}
+
+// Buyer-scoped per-order trend. Same shape as the slot version but keyed by
+// order_id, and filtered to orders owned by the signed-in account (or the
+// buyer_email fallback used elsewhere in the sponsorship API).
+async function getSponsorshipOrderTrendsForBuyer({ accountId = null, buyerEmail = null, days = 30 }) {
+  if (!accountId && !buyerEmail) return [];
+  const p = getPool();
+  const params = [days];
+  const conds = [];
+  if (accountId) { params.push(accountId); conds.push(`o.buyer_account_id = $${params.length}`); }
+  if (buyerEmail) { params.push(buyerEmail); conds.push(`o.buyer_email = $${params.length}`); }
+  const r = await p.query(
+    `SELECT t.order_id,
+            to_char(t.day, 'YYYY-MM-DD') AS day,
+            t.impressions, t.clicks
+       FROM sponsorship_telemetry_daily t
+       JOIN sponsorship_orders o ON o.id = t.order_id
+      WHERE t.day >= (CURRENT_DATE - ($1::int - 1))
+        AND (${conds.join(' OR ')})
+      ORDER BY t.order_id, t.day`,
+    params
+  );
+  return r.rows.map(row => ({
+    order_id: row.order_id,
+    day: row.day,
+    impressions: Number(row.impressions || 0),
+    clicks: Number(row.clicks || 0),
+  }));
 }
 
 async function listAllSponsorshipOrders({ limit = 100 } = {}) {
@@ -15985,6 +16075,8 @@ module.exports = {
   listActiveSponsorshipsForSlot,
   listAllSponsorshipOrders,
   getSponsorshipSlotAnalytics,
+  getSponsorshipSlotTrends,
+  getSponsorshipOrderTrendsForBuyer,
   listSponsorshipOrdersForBuyer,
   listTenants,
   getTenantById,

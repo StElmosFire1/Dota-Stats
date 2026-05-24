@@ -13193,12 +13193,15 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       // Task #342 — include per-slot impression/click/CTR rollup so admins
       // can compare placements without leaving the admin panel. Per-order
       // rows already carry their own impressions/clicks (selected via o.*).
-      const [slots, orders, slot_analytics] = await Promise.all([
+      // Task #349 — also return a 30-day per-slot trend so the admin panel
+      // can draw a sparkline next to each slot row.
+      const [slots, orders, slot_analytics, slot_trends] = await Promise.all([
         db.listSponsorshipSlots(),
         db.listAllSponsorshipOrders({ limit: 200 }),
         db.getSponsorshipSlotAnalytics(),
+        db.getSponsorshipSlotTrends({ days: 30 }),
       ]);
-      res.json({ slots, orders, slot_analytics });
+      res.json({ slots, orders, slot_analytics, slot_trends });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
@@ -13211,8 +13214,13 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     try {
       const accountId = req.session?.accountId || null;
       if (!accountId) return res.status(401).json({ error: 'Sign in required' });
-      const orders = await db.listSponsorshipOrdersForBuyer({ accountId });
-      res.json({ orders });
+      // Task #349 — pair the lifetime totals with a 30-day per-order series
+      // so the sponsorship inbox can render a trend chart per order.
+      const [orders, order_trends] = await Promise.all([
+        db.listSponsorshipOrdersForBuyer({ accountId }),
+        db.getSponsorshipOrderTrendsForBuyer({ accountId, days: 30 }),
+      ]);
+      res.json({ orders, order_trends });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 

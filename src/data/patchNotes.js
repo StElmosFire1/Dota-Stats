@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.54",
+    "title": "Sponsorship impressions and clicks now show a 30-day trend chart (Task #349)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**New `sponsorship_telemetry_daily` table.** Composite PK on `(order_id, day)` with a secondary index on `day`. Written by `recordSponsorshipImpression` and `recordSponsorshipClick` in `src/db/index.js` via `INSERT … ON CONFLICT (order_id, day) DO UPDATE SET impressions = impressions + 1` (and the click equivalent), so concurrent beacons just increment the same row instead of contending. Both UPSERTs are wrapped in a best-effort try/catch — a daily-table outage falls back to the existing lifetime-counter update without breaking the visible UI.",
+      "**Two new aggregation helpers + wired into existing endpoints.** `getSponsorshipSlotTrends({ days: 30 })` returns one row per `(slot_id, day)` summed across every order ever attached to the slot, ordered chronologically. `getSponsorshipOrderTrendsForBuyer({ accountId, buyerEmail, days: 30 })` is the buyer-scoped equivalent keyed by `order_id`. Both are bolted onto the existing routes — `GET /api/admin/sponsorships` now returns a `slot_trends` array alongside `slot_analytics`, and `GET /api/me/sponsorship-orders` returns an `order_trends` array alongside `orders` — so no new routes were needed.",
+      "**`SponsorshipTrendChart` SVG component (dependency-free).** New `web/src/components/SponsorshipTrendChart.jsx` renders two polylines (brass = impressions, amber = clicks) sharing a y-axis scaled to whichever metric is larger. Pads the row list out to a continuous 30-day window ending today so gaps render as zero rather than collapsing the x-axis, and hides itself entirely (showing a muted \"no activity\" label) when every day in the window is zero. Carries a `role=\"img\"` plus `<title>` summary (`Slug X: 30-day trend, 2026-04-24 to 2026-05-24. 1,234 impressions, 56 clicks.`) so screen readers get the same takeaway sighted users get from the line shape.",
+      "**Wired into Admin Panel → Sponsorships and `/sponsorships/inbox`.** Admin Panel's slot-performance table gets a new `30d trend` column with a per-slot sparkline; the inbox's `My sponsorship orders` table gets a per-order sparkline. Both reuse the shared component via a small `trendRowsFor(allRows, key, value)` helper that filters the flat trend response down to a single row's series at render time.",
+      "**Edition scope.** Full edition only — community edition has no sponsorship system."
+    ]
+  },
+  {
     "version": "7.53",
     "title": "Limited-drop cards now show when the drop started (Task #347)",
     "published_at": "2026-05-24",

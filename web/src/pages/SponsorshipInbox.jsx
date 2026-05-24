@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getMySponsorshipInbox, getMySponsorshipOrders, acceptSponsorship, declineSponsorship } from '../api';
+import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
 
 export default function SponsorshipInbox() {
   const [items, setItems] = useState([]);
@@ -10,14 +11,17 @@ export default function SponsorshipInbox() {
   // the orders panel (and vice versa). A 401 from /me/sponsorship-orders is
   // treated as "not signed in / no orders" and quietly hides the section.
   const [orders, setOrders] = useState([]);
+  // Task #349 — per-order 30-day series, fetched on the same call as `orders`
+  // (the endpoint now returns both). Stored flat and filtered per row at render.
+  const [orderTrends, setOrderTrends] = useState([]);
 
   function load() {
     getMySponsorshipInbox()
       .then(d => setItems(d.sponsorships || []))
       .catch(err => setError(err.message));
     getMySponsorshipOrders()
-      .then(d => setOrders(d.orders || []))
-      .catch(() => setOrders([]));
+      .then(d => { setOrders(d.orders || []); setOrderTrends(d.order_trends || []); })
+      .catch(() => { setOrders([]); setOrderTrends([]); });
   }
   useEffect(() => { load(); }, []);
 
@@ -76,6 +80,8 @@ export default function SponsorshipInbox() {
               <th align="right">Impressions</th>
               <th align="right">Clicks</th>
               <th align="right">CTR</th>
+              {/* Task #349 — per-order 30-day trend chart (brass = impressions, amber = clicks). */}
+              <th align="left">30d trend</th>
             </tr></thead>
             <tbody>{orders.map(o => (
               <tr key={o.id} style={{ borderBottom: '1px solid var(--border, #2a2f3a)' }}>
@@ -89,6 +95,12 @@ export default function SponsorshipInbox() {
                 <td style={{ padding: 6, textAlign: 'right' }}>{Number(o.clicks || 0).toLocaleString()}</td>
                 <td style={{ padding: 6, textAlign: 'right' }}>
                   {o.ctr == null ? '—' : `${(o.ctr * 100).toFixed(2)}%`}
+                </td>
+                <td style={{ padding: 6 }}>
+                  <SponsorshipTrendChart
+                    rows={trendRowsFor(orderTrends, 'order_id', o.id)}
+                    label={`Order on ${o.slot_label}`}
+                  />
                 </td>
               </tr>
             ))}</tbody>

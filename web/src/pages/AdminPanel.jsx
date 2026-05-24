@@ -6,6 +6,7 @@ import { useSeason } from '../context/SeasonContext';
 import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
+import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
 import { TierBadge, MMR_TIERS } from './Leaderboard';
 import { ALL_HEROES, getHeroName } from '../heroNames';
 
@@ -5481,7 +5482,10 @@ function SponsorshipsAdminPanel({ superuserKey }) {
           <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
             <th align="left">Slug</th><th align="left">Label</th>
             <th align="right">Impressions</th><th align="right">Clicks</th>
-            <th align="right">CTR</th><th align="right">Active orders</th>
+            <th align="right">CTR</th>
+            {/* Task #349 — 30-day per-slot trend chart (brass = impressions, amber = clicks). */}
+            <th align="left">30d trend</th>
+            <th align="right">Active orders</th>
             <th align="right">Total orders</th>
           </tr></thead>
           <tbody>{data.slot_analytics.map(a => (
@@ -5491,6 +5495,12 @@ function SponsorshipsAdminPanel({ superuserKey }) {
               <td style={{ padding: 6, textAlign: 'right' }}>{Number(a.impressions).toLocaleString()}</td>
               <td style={{ padding: 6, textAlign: 'right' }}>{Number(a.clicks).toLocaleString()}</td>
               <td style={{ padding: 6, textAlign: 'right' }}>{a.ctr == null ? '—' : `${(a.ctr * 100).toFixed(2)}%`}</td>
+              <td style={{ padding: 6 }}>
+                <SponsorshipTrendChart
+                  rows={trendRowsFor(data.slot_trends, 'slot_id', a.id)}
+                  label={`Slot ${a.slug}`}
+                />
+              </td>
               <td style={{ padding: 6, textAlign: 'right' }}>{a.active_count}</td>
               <td style={{ padding: 6, textAlign: 'right', color: 'var(--text-muted)' }}>{a.order_count}</td>
             </tr>
