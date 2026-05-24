@@ -63,6 +63,10 @@ const PREMIUM_FRAMES = [
   'fire',
 ];
 
+// Task #318 — Founders-only frame. Granted automatically when
+// pro_subscriptions.is_founder = TRUE; not individually purchasable.
+const FOUNDER_FRAMES = ['founder'];
+
 // v6.52 / Task #195 — Magazine v3 layout themes. Court & Pitch is the default
 // (free) ink-navy/brass look that ships with the v3 cover graduation. The
 // other five are paid cosmetic-shop themes gated behind the existing Pro
@@ -91,7 +95,7 @@ const VOICE_PACK_EVENTS = [
 
 const ALL_TITLES = [...FREE_TITLES, ...PREMIUM_TITLES];
 const ALL_THEMES = [...FREE_THEMES, ...PREMIUM_THEMES];
-const ALL_FRAMES = [...FREE_FRAMES, ...PREMIUM_FRAMES];
+const ALL_FRAMES = [...FREE_FRAMES, ...PREMIUM_FRAMES, ...FOUNDER_FRAMES];
 
 function isPremiumTitle(title) {
   return PREMIUM_TITLES.includes(title);
@@ -199,6 +203,9 @@ function validateCoverFx(raw) {
 
 function isPremiumFrame(frame) {
   return PREMIUM_FRAMES.includes(frame);
+}
+function isFounderFrame(frame) {
+  return FOUNDER_FRAMES.includes(frame);
 }
 function isValidTitle(title) {
   if (title == null || title === '') return true;
@@ -333,6 +340,7 @@ module.exports = {
   PREMIUM_THEMES,
   FREE_FRAMES,
   PREMIUM_FRAMES,
+  FOUNDER_FRAMES,
   ALL_TITLES,
   ALL_THEMES,
   ALL_FRAMES,
@@ -346,6 +354,7 @@ module.exports = {
   isPremiumTitle,
   isPremiumTheme,
   isPremiumFrame,
+  isFounderFrame,
   isPremiumLayoutTheme,
   isPremiumVoicePack,
   isValidTitle,

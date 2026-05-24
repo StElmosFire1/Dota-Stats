@@ -132,7 +132,7 @@ export default function Pro() {
   const { status, loading: statusLoading } = useProStatus();
   const [pricing, setPricing] = useState(null);
   const [pricingError, setPricingError] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null); // 'monthly' | 'lifetime' | null
   const [error, setError] = useState(null);
   const [searchParams] = useSearchParams();
   const cancelled = searchParams.get('checkout') === 'cancelled';
@@ -145,15 +145,15 @@ export default function Pro() {
     }
   }, [status?.gate_on]);
 
-  async function handleUpgrade() {
+  async function handleUpgrade(plan) {
     setError(null);
-    setBusy(true);
+    setBusy(plan);
     try {
-      const { url } = await createProCheckout();
+      const { url } = await createProCheckout(plan);
       if (url) window.location.href = url;
     } catch (e) {
       setError(e.message);
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -234,42 +234,94 @@ export default function Pro() {
         </div>
       ))}
 
-      {/* Single gold upgrade CTA at the bottom — covers everything above */}
+      {/* Task #318 — two plan cards. Monthly is the default; lifetime is the
+          premium Founders SKU (one-time, includes Founder badge + frame). */}
       {status?.gate_on && !isPro && (
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(245,158,11,0.10) 0%, var(--bg-card) 100%)',
-          border: '1px solid rgba(245,158,11,0.4)',
-          borderRadius: 12, padding: '24px 28px', textAlign: 'center', marginTop: 8,
-        }}>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>One-time payment, lifetime access</div>
-          <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 14 }}>
-            {pricing ? formatPrice(pricing.price_cents, pricing.currency) : (pricingError ? '—' : '…')}
-          </div>
+        <div style={{ marginTop: 8 }}>
           {error && (
-            <div style={{ color: 'var(--accent-red)', fontSize: 13, marginBottom: 10 }}>
+            <div style={{ color: 'var(--accent-red)', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>
               {error}
             </div>
           )}
-          {!status?.signed_in ? (
-            <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+          {!status?.signed_in && (
+            <div style={{
+              color: 'var(--text-muted)', fontSize: 14, marginBottom: 12, textAlign: 'center',
+            }}>
               Sign in with Steam first to upgrade.
             </div>
-          ) : (
-            <button
-              onClick={handleUpgrade}
-              disabled={busy || !pricing}
-              style={{
-                background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
-                color: '#1a1a1a', border: 'none',
-                padding: '12px 32px', borderRadius: 6,
-                fontSize: 15, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
-                letterSpacing: 0.3, opacity: busy ? 0.6 : 1,
-              }}
-            >
-              {busy ? 'Redirecting to Stripe…' : '★ Upgrade to Pro — Unlock Everything Above'}
-            </button>
           )}
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 14 }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16,
+          }}>
+            {/* Monthly plan — default */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(245,158,11,0.10) 0%, var(--bg-card) 100%)',
+              border: '1px solid rgba(245,158,11,0.45)',
+              borderRadius: 12, padding: '22px 24px', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 12, color: '#fbbf24', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700, marginBottom: 6 }}>
+                Most popular
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Pro — Monthly</div>
+              <div style={{ fontSize: 34, fontWeight: 800, marginBottom: 4 }}>
+                {pricing?.monthly ? formatPrice(pricing.monthly.price_cents, pricing.currency) : (pricingError ? '—' : '…')}
+                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}> / month</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+                Cancel any time from Settings → Billing.
+              </div>
+              <button
+                onClick={() => handleUpgrade('monthly')}
+                disabled={!!busy || !pricing || !status?.signed_in}
+                style={{
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+                  color: '#1a1a1a', border: 'none',
+                  padding: '12px 28px', borderRadius: 6,
+                  fontSize: 14, fontWeight: 700,
+                  cursor: busy ? 'wait' : 'pointer',
+                  letterSpacing: 0.3, opacity: busy === 'monthly' ? 0.6 : 1,
+                  width: '100%',
+                }}
+              >
+                {busy === 'monthly' ? 'Redirecting…' : '★ Subscribe Monthly'}
+              </button>
+            </div>
+
+            {/* Lifetime / Founder plan */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(197,169,117,0.14) 0%, var(--bg-card) 100%)',
+              border: '1px solid rgba(197,169,117,0.55)',
+              borderRadius: 12, padding: '22px 24px', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 12, color: 'var(--brass, #c5a975)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700, marginBottom: 6 }}>
+                Founders edition
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Pro — Lifetime</div>
+              <div style={{ fontSize: 34, fontWeight: 800, marginBottom: 4 }}>
+                {pricing?.lifetime ? formatPrice(pricing.lifetime.price_cents, pricing.currency) : (pricingError ? '—' : '…')}
+                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}> · one-time</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+                Lifetime Pro access plus the exclusive <strong style={{ color: 'var(--brass, #c5a975)' }}>♛ Founder</strong> badge and a unique cosmetic frame.
+              </div>
+              <button
+                onClick={() => handleUpgrade('lifetime')}
+                disabled={!!busy || !pricing || !status?.signed_in}
+                style={{
+                  background: 'linear-gradient(135deg, #c5a975 0%, #f5efe2 100%)',
+                  color: '#0d1424', border: 'none',
+                  padding: '12px 28px', borderRadius: 6,
+                  fontSize: 14, fontWeight: 700,
+                  cursor: busy ? 'wait' : 'pointer',
+                  letterSpacing: 0.3, opacity: busy === 'lifetime' ? 0.6 : 1,
+                  width: '100%',
+                }}
+              >
+                {busy === 'lifetime' ? 'Redirecting…' : '♛ Become a Founder'}
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 14, textAlign: 'center' }}>
             Secure payment processed by Stripe. Refunds available within 30 days — contact an admin.
           </div>
         </div>

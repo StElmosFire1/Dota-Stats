@@ -59,7 +59,12 @@ export const PREMIUM_FRAMES = [
   'fire',
 ];
 
-export const ALL_FRAMES = [...FREE_FRAMES, ...PREMIUM_FRAMES];
+// Task #318 — Founders-only frame. Granted automatically to anyone whose
+// pro_subscriptions row has is_founder=true (i.e. legacy lifetime holders
+// + new lifetime SKU buyers). Not purchasable individually.
+export const FOUNDER_FRAMES = ['founder'];
+
+export const ALL_FRAMES = [...FREE_FRAMES, ...PREMIUM_FRAMES, ...FOUNDER_FRAMES];
 
 // Frame display metadata — labels and CSS styles applied to the profile card wrapper.
 export const FRAME_META = {
@@ -69,6 +74,7 @@ export const FRAME_META = {
   'neon-blue':{ label: 'Neon Blue', style: { outline: '2px solid #06b6d4', outlineOffset: '2px', boxShadow: '0 0 12px rgba(6,182,212,0.6)' } },
   cosmic:     { label: 'Cosmic',    style: { outline: '2px solid #a855f7', outlineOffset: '2px', boxShadow: '0 0 12px rgba(168,85,247,0.55)' } },
   fire:       { label: 'Fire',      style: { outline: '2px solid #ef4444', outlineOffset: '2px', boxShadow: '0 0 10px rgba(239,68,68,0.5)' } },
+  founder:    { label: 'Founder',   style: { outline: '3px double #c5a975', outlineOffset: '2px', boxShadow: '0 0 14px rgba(197,169,117,0.7), inset 0 0 8px rgba(245,158,11,0.35)' } },
 };
 
 export const BIO_MAX = 300;

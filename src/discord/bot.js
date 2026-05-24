@@ -5657,6 +5657,17 @@ class DiscordBot {
       this.startCoachingAutoReleaseCron();
       console.log('[Discord] Coaching reminder + auto-release crons scheduled.');
 
+      // Task #318 — lapsed Pro subscriber winback DMs.
+      // Runs once a day at 09:00 Australia/Sydney; fans out 7-day and 30-day
+      // DMs to accounts whose subscription is cancelled/canceled and whose
+      // current_period_end falls in the matching window. `markWinbackDmSent`
+      // gives us per-stage idempotency so re-runs are safe.
+      cron.schedule('0 9 * * *', async () => {
+        try { await this._sendProWinbackDms(); }
+        catch (e) { console.error('[ProWinback] Daily cron error:', e.message); }
+      }, { timezone: 'Australia/Sydney' });
+      console.log('[Discord] Pro winback DM cron scheduled (09:00 Australia/Sydney).');
+
       // Daily season end-date check — runs at midnight Australia/Sydney time
       // (AEDT UTC+11 in summer, AEST UTC+10 in winter — node-cron handles DST).
       // Ensures seasons are closed and announced even if no match is played on
@@ -6205,6 +6216,105 @@ class DiscordBot {
           console.error(`[Achievements] Discord send error (${ch.id}):`, e.message)
         );
       }
+    }
+  }
+
+  // Task #318 — fan-out helper called from the daily cron above. For each
+  // {accountId, stage} returned by `listLapsedSubscribersForDm`, look up the
+  // Discord ID, DM a stage-appropriate winback message, then call
+  // `markWinbackDmSent` so we don't double-send. Errors are best-effort.
+  async _sendProWinbackDms() {
+    if (!db.listLapsedSubscribersForDm) {
+      console.warn('[ProWinback] DB helpers missing — skipping.');
+      return;
+    }
+    // The helper takes one stage at a time (stage = the bucket key we record
+    // into pro_winback_dms; daysAgo = the lookback window). Run both buckets
+    // and tag each returned row with its stage so the DM copy can branch.
+    const STAGES = [{ stage: 7, daysAgo: 7 }, { stage: 30, daysAgo: 30 }];
+    let queue = [];
+    for (const s of STAGES) {
+      try {
+        const rows = await db.listLapsedSubscribersForDm({ stage: s.stage, daysAgo: s.daysAgo });
+        for (const r of rows) queue.push({ ...r, stage: s.stage });
+      } catch (e) {
+        console.error('[ProWinback] listLapsedSubscribersForDm stage', s.stage, 'failed:', e.message);
+      }
+    }
+    if (!queue.length) return;
+    const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+    let sent = 0;
+    for (const row of queue) {
+      try {
+        // Task #318 — honour notification opt-outs. If muted, still mark
+        // the row as sent so we don't requery the same lapsed account
+        // every cron tick. Fail-open on errors (treat as enabled).
+        const optedIn = await db.isNotificationEnabled(row.account_id, 'pro_billing_dm').catch(() => true);
+        if (!optedIn) {
+          await db.markWinbackDmSent({ accountId: row.account_id, subscriptionId: row.subscription_id, stage: row.stage }).catch(() => {});
+          continue;
+        }
+        const discordId = await db.getDiscordIdByAccountId(row.account_id).catch(() => null);
+        if (!discordId) {
+          // No linked Discord — mark as sent so we don't re-query forever.
+          await db.markWinbackDmSent({ accountId: row.account_id, subscriptionId: row.subscription_id, stage: row.stage }).catch(() => {});
+          continue;
+        }
+        const user = await this.client.users.fetch(discordId).catch(() => null);
+        if (!user) {
+          await db.markWinbackDmSent({ accountId: row.account_id, subscriptionId: row.subscription_id, stage: row.stage }).catch(() => {});
+          continue;
+        }
+        const title = row.stage === 7
+          ? '⭐ We miss you — your Pro perks are still waiting'
+          : '⭐ One month on — come back to Pro for half off';
+        const body = row.stage === 7
+          ? `It's been a week since your Pro subscription ended. Resubscribe any time to get your Pro analytics, cosmetics, and Pro badge back — same price, no commitment.`
+          : `You've been off Pro for a month. We'd love to have you back — here's **50% off your first 3 months** if you resubscribe this week. Apply the offer in Settings → Billing.`;
+        const embed = new EmbedBuilder()
+          .setTitle(title)
+          .setColor(0xf59e0b)
+          .setDescription(`${body}\n\n[Reactivate Pro](${siteUrl}/pro) · [Manage billing](${siteUrl}/settings/billing)`)
+          .setFooter({ text: 'Inhouse Stats Pro' });
+        await user.send({ embeds: [embed] }).catch(() => {});
+        await db.markWinbackDmSent({ accountId: row.account_id, subscriptionId: row.subscription_id, stage: row.stage }).catch(() => {});
+        sent++;
+      } catch (e) {
+        console.warn('[ProWinback] DM error for account', row.account_id, e.message);
+      }
+    }
+    if (sent) console.log(`[ProWinback] Sent ${sent}/${queue.length} winback DMs.`);
+  }
+
+  // Task #318 — dunning DM fired from the invoice.payment_failed webhook
+  // branch. `attempt` is the Stripe retry counter (1, 2, 3…); we tailor the
+  // copy by attempt so the first retry is gentle and the third is a final
+  // notice. Best-effort: no Discord link / DM disabled → silent no-op.
+  async notifyProPaymentFailed({ accountId, attempt = 1 }) {
+    try {
+      // Task #318 — honour the `pro_billing_dm` opt-out before DMing.
+      const optedIn = await db.isNotificationEnabled(accountId, 'pro_billing_dm').catch(() => true);
+      if (!optedIn) return;
+      const discordId = await db.getDiscordIdByAccountId(accountId).catch(() => null);
+      if (!discordId) return;
+      const user = await this.client.users.fetch(discordId).catch(() => null);
+      if (!user) return;
+      const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const isFinal = attempt >= 3;
+      const title = isFinal
+        ? '⚠️ Final notice — your Pro subscription is about to be cancelled'
+        : '⚠️ We couldn\'t process your Pro renewal';
+      const body = isFinal
+        ? `Stripe has tried to charge your card ${attempt} times without success. If we don't get a successful payment soon your Pro membership will be cancelled. Update your card now to keep Pro.`
+        : `Your latest Pro renewal payment failed (attempt ${attempt}). Stripe will retry automatically — but you can fix it immediately by updating your card from the billing portal. You still have Pro access during the retry window.`;
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setColor(isFinal ? 0xc62828 : 0xf59e0b)
+        .setDescription(`${body}\n\n[Update card / manage billing](${siteUrl}/settings/billing)`)
+        .setFooter({ text: 'Inhouse Stats Pro' });
+      await user.send({ embeds: [embed] }).catch(() => {});
+    } catch (e) {
+      console.warn('[ProDunning] notifyProPaymentFailed failed:', e.message);
     }
   }
 

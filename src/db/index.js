@@ -1284,17 +1284,22 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_founders_ring_refunds_account ON founders_ring_refunds(account_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_founders_ring_refunds_status ON founders_ring_refunds(status)`);
 
-    // Pro Tier (`pro_tier`) — paid lifetime unlock. One row per purchase.
-    // status: 'pending' (checkout created), 'active' (paid via webhook),
-    // 'refunded' (charge.refunded webhook). isProMember() looks for an
-    // 'active' row keyed on account_id. plan_type is reserved for future
-    // monthly/annual tiers; today only 'lifetime' is issued.
+    // Pro Tier (`pro_tier`) — Task #318: monthly subscription model with
+    // grandfathered lifetime "Founder" holders. status values:
+    //   'pending'   — checkout created, not yet paid
+    //   'active'    — monthly subscription paid + in good standing
+    //   'past_due'  — monthly subscription invoice failed (grace window, Pro still granted)
+    //   'cancelled' — monthly subscription terminated (Pro revoked)
+    //   'lifetime'  — one-time lifetime purchase (Founders + new lifetime SKU)
+    //   'refunded'  — refunded lifetime purchase (Pro revoked)
+    // isProMember() grants Pro for active/lifetime/past_due. Founders (is_founder)
+    // always remain Pro and unlock the exclusive Founder cosmetics.
     await p.query(`
       CREATE TABLE IF NOT EXISTS pro_subscriptions (
         id SERIAL PRIMARY KEY,
         account_id BIGINT NOT NULL,
         plan_type TEXT NOT NULL DEFAULT 'lifetime',
-        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'refunded')),
+        status TEXT NOT NULL DEFAULT 'pending',
         stripe_session_id TEXT UNIQUE,
         stripe_payment_intent TEXT,
         amount_cents INTEGER,
@@ -1305,9 +1310,81 @@ async function init() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // Task #318 migrations — additive ALTERs; safe on re-init.
+    await p.query(`ALTER TABLE pro_subscriptions ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
+    await p.query(`ALTER TABLE pro_subscriptions ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`);
+    await p.query(`ALTER TABLE pro_subscriptions ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE pro_subscriptions ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE pro_subscriptions ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE pro_subscriptions ADD COLUMN IF NOT EXISTS is_founder BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE pro_subscriptions ADD COLUMN IF NOT EXISTS dunning_attempts INTEGER NOT NULL DEFAULT 0`);
+    await p.query(`ALTER TABLE pro_subscriptions ADD COLUMN IF NOT EXISTS last_payment_failed_at TIMESTAMPTZ`);
+    // Drop original CHECK and replace with the expanded one. Auto-named
+    // <table>_<column>_check, but we look it up dynamically since older
+    // deploys may also have had a manual name applied during a hotfix.
+    await p.query(`
+      DO $$
+      DECLARE c TEXT;
+      BEGIN
+        FOR c IN
+          SELECT conname FROM pg_constraint
+          WHERE conrelid = 'pro_subscriptions'::regclass AND contype = 'c'
+        LOOP
+          EXECUTE format('ALTER TABLE pro_subscriptions DROP CONSTRAINT %I', c);
+        END LOOP;
+      END $$;
+    `).catch(() => {});
+    await p.query(`
+      ALTER TABLE pro_subscriptions
+        ADD CONSTRAINT pro_subscriptions_status_check
+        CHECK (status IN ('pending','active','past_due','cancelled','lifetime','refunded'))
+    `).catch(() => {});
+    // One-time backfill: existing 'active' lifetime rows become Founders.
+    await p.query(`
+      UPDATE pro_subscriptions
+         SET is_founder = TRUE,
+             status = 'lifetime',
+             updated_at = NOW()
+       WHERE status = 'active'
+         AND plan_type = 'lifetime'
+         AND is_founder = FALSE
+    `).catch(() => {});
     await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_account ON pro_subscriptions (account_id)`);
-    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_active ON pro_subscriptions (account_id) WHERE status = 'active'`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_active ON pro_subscriptions (account_id) WHERE status IN ('active','lifetime','past_due')`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_pi ON pro_subscriptions (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_sub ON pro_subscriptions (stripe_subscription_id) WHERE stripe_subscription_id IS NOT NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_subscriptions_cust ON pro_subscriptions (stripe_customer_id) WHERE stripe_customer_id IS NOT NULL`);
+
+    // Task #318 — survey of reasons a user gave for cancelling their Pro
+    // monthly subscription. Free-text optional. Admin panel reads from here.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS pro_cancellation_reasons (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        subscription_id INTEGER,
+        reason TEXT NOT NULL,
+        comment TEXT,
+        winback_offered BOOLEAN NOT NULL DEFAULT FALSE,
+        winback_accepted BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_cancel_reasons_account ON pro_cancellation_reasons (account_id)`);
+
+    // Task #318 — winback Discord DM tracker. The cron sends a 7-day and a
+    // 30-day "we miss you" DM to lapsed subscribers; this table prevents
+    // duplicate DMs across restarts.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS pro_winback_dms (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        subscription_id INTEGER,
+        stage TEXT NOT NULL,
+        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (account_id, subscription_id, stage)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_winback_dms_account ON pro_winback_dms (account_id)`);
 
     // ---------- Coaching Marketplace (`coaching_marketplace`) ----------
     // 1:1 paid coaching via Stripe Connect Express. 10% platform take rate.
@@ -10458,6 +10535,10 @@ const NOTIFICATION_CATEGORIES = [
   // /settings/notifications.
   { key: 'weekly_summary',             label: 'Weekly inhouse summary (Sunday DM + push)', default: false },
   { key: 'match_imminent_push',        label: 'Match imminent push (≈5 min before lobby boots)', default: false },
+  // Task #318 — Pro billing DMs (dunning + winback). Default ON so paying
+  // members get notified when their card fails, but listed in settings so
+  // they can mute the marketing-flavoured winback nudges if they prefer.
+  { key: 'pro_billing_dm',             label: 'Pro billing & winback DMs', default: true },
 ];
 
 function categoryDef(key) {
@@ -12471,28 +12552,55 @@ async function grantSeasonPassXpGift({ recipientAccountId, seasonId, xpAmount, s
 async function isProMember(accountId) {
   if (!accountId) return false;
   const p = getPool();
+  // Task #318 — monthly subscriptions grant Pro while active/past_due
+  // (past_due is a Stripe-driven grace window for failed invoices).
+  // Lifetime founders are always Pro.
   const r = await p.query(
     `SELECT 1 FROM pro_subscriptions
-      WHERE account_id = $1 AND status = 'active'
+      WHERE account_id = $1 AND status IN ('active','lifetime','past_due')
       LIMIT 1`,
     [accountId]
   );
   return r.rows.length > 0;
 }
 
-// Returns the most-relevant subscription row for the player (active wins,
-// then most recent pending, then most recent refunded). Used to render the
-// settings/billing page so the player can see receipt details.
+// Task #318 — true iff the player has ever held a lifetime (Founder) row.
+async function isFounder(accountId) {
+  if (!accountId) return false;
+  // Task #318 — Founder entitlement must require a *live* lifetime row, not
+  // just the historical is_founder flag. Otherwise a refunded lifetime
+  // purchase (status flips to 'refunded' via markProRefunded, but the
+  // is_founder flag is preserved for audit) would keep granting access to
+  // the Founder-only frame/badge indefinitely. Status must be 'lifetime'
+  // (the active-grandfather state); refunded/cancelled rows are excluded.
+  const p = getPool();
+  const r = await p.query(
+    `SELECT 1 FROM pro_subscriptions
+      WHERE account_id = $1 AND is_founder = TRUE AND status = 'lifetime'
+      LIMIT 1`,
+    [accountId]
+  );
+  return r.rows.length > 0;
+}
+
+// Returns the most-relevant subscription row for the player. Founder/lifetime
+// wins, then active monthly, then past_due, then pending. Used to render the
+// settings/billing page so the player can see plan / renewal / payment state.
 async function getProSubscription(accountId) {
   if (!accountId) return null;
   const p = getPool();
   const r = await p.query(
     `SELECT id, account_id, plan_type, status, stripe_session_id,
-            stripe_payment_intent, amount_cents, currency,
-            purchased_at, refunded_at, created_at, updated_at
+            stripe_payment_intent, stripe_customer_id, stripe_subscription_id,
+            amount_cents, currency,
+            purchased_at, refunded_at, current_period_end, cancel_at_period_end,
+            cancelled_at, is_founder, dunning_attempts, last_payment_failed_at,
+            created_at, updated_at
        FROM pro_subscriptions
       WHERE account_id = $1
-      ORDER BY (status = 'active') DESC,
+      ORDER BY (status = 'lifetime') DESC,
+               (status = 'active') DESC,
+               (status = 'past_due') DESC,
                (status = 'pending') DESC,
                created_at DESC
       LIMIT 1`,
@@ -12519,37 +12627,219 @@ async function createProCheckout({ accountId, stripeSessionId, planType = 'lifet
 }
 
 // Confirm a pending checkout via webhook. Idempotent: if the row is already
-// active, this is a no-op. Stamps purchased_at + the payment_intent so we
-// can match later charge.refunded events back to the right row.
+// active/lifetime, this is a no-op. Stamps purchased_at + the payment_intent so we
+// can match later charge.refunded events back to the right row. Task #318:
+// lifetime purchases land directly as status='lifetime' + is_founder=true so
+// they survive the Pro-membership query and unlock Founder cosmetics.
 async function confirmProPurchase({ stripeSessionId, stripePaymentIntent = null, amountCents = null, currency = null }) {
   if (!stripeSessionId) throw new Error('confirmProPurchase: stripeSessionId required');
   const p = getPool();
   const r = await p.query(
     `UPDATE pro_subscriptions
-        SET status = 'active',
+        SET status = CASE WHEN plan_type = 'lifetime' THEN 'lifetime' ELSE 'active' END,
+            is_founder = CASE WHEN plan_type = 'lifetime' THEN TRUE ELSE is_founder END,
             stripe_payment_intent = COALESCE($2, stripe_payment_intent),
             amount_cents = COALESCE($3, amount_cents),
             currency = COALESCE($4, currency),
             purchased_at = COALESCE(purchased_at, NOW()),
             updated_at = NOW()
       WHERE stripe_session_id = $1
-      RETURNING id, account_id, status, purchased_at`,
+      RETURNING id, account_id, status, plan_type, is_founder, purchased_at`,
     [stripeSessionId, stripePaymentIntent, amountCents, currency]
   );
   return r.rows[0] || null;
+}
+
+// Task #318 — link a pro_subscriptions row to its Stripe customer + subscription
+// ids. Called from /pro/checkout (subscription mode) after Stripe creates the
+// Checkout Session, so subsequent subscription.* webhooks can find the row.
+async function attachStripeIdsToProRow({ stripeSessionId, stripeCustomerId, stripeSubscriptionId }) {
+  if (!stripeSessionId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE pro_subscriptions
+        SET stripe_customer_id = COALESCE($2, stripe_customer_id),
+            stripe_subscription_id = COALESCE($3, stripe_subscription_id),
+            updated_at = NOW()
+      WHERE stripe_session_id = $1
+      RETURNING id, account_id`,
+    [stripeSessionId, stripeCustomerId || null, stripeSubscriptionId || null]
+  );
+  return r.rows[0] || null;
+}
+
+// Task #318 — apply a Stripe subscription webhook event to the local row.
+// Maps Stripe status -> our state model. Idempotent on stripe_subscription_id.
+// Returns the affected row (account_id is needed for cache invalidation + DM).
+async function applyStripeSubscriptionEvent({
+  stripeSubscriptionId,
+  stripeCustomerId = null,
+  status,                  // raw Stripe status: active|trialing|past_due|unpaid|canceled|incomplete|...
+  currentPeriodEnd = null, // epoch seconds
+  cancelAtPeriodEnd = false,
+  amountCents = null,
+  currency = null,
+}) {
+  if (!stripeSubscriptionId) return null;
+  const p = getPool();
+  let mapped;
+  switch (status) {
+    case 'active':
+    case 'trialing':           mapped = 'active'; break;
+    case 'past_due':
+    case 'unpaid':             mapped = 'past_due'; break;
+    case 'canceled':
+    case 'incomplete_expired': mapped = 'cancelled'; break;
+    case 'incomplete':         mapped = 'pending'; break;
+    default:                   mapped = 'active';
+  }
+  const cpe = currentPeriodEnd ? new Date(currentPeriodEnd * 1000) : null;
+  const cancelledAt = mapped === 'cancelled' ? new Date() : null;
+  const r = await p.query(
+    `UPDATE pro_subscriptions
+        SET status = $2,
+            stripe_customer_id = COALESCE($3, stripe_customer_id),
+            current_period_end = COALESCE($4, current_period_end),
+            cancel_at_period_end = $5,
+            cancelled_at = CASE WHEN $2 = 'cancelled' THEN COALESCE(cancelled_at, $6) ELSE cancelled_at END,
+            amount_cents = COALESCE($7, amount_cents),
+            currency = COALESCE($8, currency),
+            purchased_at = COALESCE(purchased_at, NOW()),
+            updated_at = NOW()
+      WHERE stripe_subscription_id = $1
+      RETURNING id, account_id, status, plan_type, current_period_end, cancel_at_period_end`,
+    [stripeSubscriptionId, mapped, stripeCustomerId, cpe, !!cancelAtPeriodEnd, cancelledAt, amountCents, currency]
+  );
+  return r.rows[0] || null;
+}
+
+// Task #318 — invoice.payment_succeeded handler. Resets dunning counter and
+// promotes any past_due row back to active.
+async function recordProInvoicePaid({ stripeSubscriptionId, currentPeriodEnd = null, amountCents = null, currency = null }) {
+  if (!stripeSubscriptionId) return null;
+  const p = getPool();
+  const cpe = currentPeriodEnd ? new Date(currentPeriodEnd * 1000) : null;
+  const r = await p.query(
+    `UPDATE pro_subscriptions
+        SET status = CASE WHEN status IN ('past_due','pending') THEN 'active' ELSE status END,
+            dunning_attempts = 0,
+            last_payment_failed_at = NULL,
+            current_period_end = COALESCE($2, current_period_end),
+            amount_cents = COALESCE($3, amount_cents),
+            currency = COALESCE($4, currency),
+            updated_at = NOW()
+      WHERE stripe_subscription_id = $1
+      RETURNING id, account_id, status`,
+    [stripeSubscriptionId, cpe, amountCents, currency]
+  );
+  return r.rows[0] || null;
+}
+
+// Task #318 — invoice.payment_failed handler. Marks the row past_due and
+// increments the dunning attempt counter (Stripe retries on its own; we
+// surface the counter in the UI so the user knows to update their card).
+async function recordProInvoiceFailed({ stripeSubscriptionId }) {
+  if (!stripeSubscriptionId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE pro_subscriptions
+        SET status = CASE WHEN status = 'cancelled' THEN status ELSE 'past_due' END,
+            dunning_attempts = dunning_attempts + 1,
+            last_payment_failed_at = NOW(),
+            updated_at = NOW()
+      WHERE stripe_subscription_id = $1
+      RETURNING id, account_id, status, dunning_attempts`,
+    [stripeSubscriptionId]
+  );
+  return r.rows[0] || null;
+}
+
+// Task #318 — record the user's cancellation reason from the winback survey.
+async function recordCancellationReason({ accountId, subscriptionId = null, reason, comment = null, winbackOffered = false, winbackAccepted = false }) {
+  if (!accountId || !reason) throw new Error('recordCancellationReason: accountId + reason required');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO pro_cancellation_reasons (account_id, subscription_id, reason, comment, winback_offered, winback_accepted)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [accountId, subscriptionId, reason, comment, winbackOffered, winbackAccepted]
+  );
+  return r.rows[0];
+}
+
+// Task #318 — admin report.
+async function listCancellationReasons({ limit = 200 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT pcr.id, pcr.account_id, pcr.subscription_id, pcr.reason, pcr.comment,
+            pcr.winback_offered, pcr.winback_accepted, pcr.created_at,
+            COALESCE(rp.display_name, pcr.account_id::text) AS display_name
+       FROM pro_cancellation_reasons pcr
+       LEFT JOIN registered_players rp ON rp.account_id = pcr.account_id
+      ORDER BY pcr.created_at DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return r.rows;
+}
+
+// Task #318 — lapsed-subscriber list for the winback DM cron. Returns rows
+// cancelled in the [olderThanDays - 1, olderThanDays] day window that haven't
+// already received a DM at this stage (founders/lifetime excluded).
+async function listLapsedSubscribersForDm({ stage, daysAgo }) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ps.id AS subscription_id, ps.account_id, ps.cancelled_at, ps.plan_type
+       FROM pro_subscriptions ps
+      WHERE ps.status = 'cancelled'
+        AND ps.is_founder = FALSE
+        AND ps.plan_type = 'monthly'
+        AND ps.cancelled_at IS NOT NULL
+        AND ps.cancelled_at < NOW() - ($1 || ' days')::interval
+        AND ps.cancelled_at >= NOW() - (($1 + 1) || ' days')::interval
+        AND NOT EXISTS (
+          SELECT 1 FROM pro_winback_dms w
+           WHERE w.account_id = ps.account_id
+             AND w.subscription_id = ps.id
+             AND w.stage = $2
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM pro_subscriptions ps2
+           WHERE ps2.account_id = ps.account_id
+             AND ps2.id != ps.id
+             AND ps2.status IN ('active','lifetime','past_due')
+        )`,
+    [daysAgo, stage]
+  );
+  return r.rows;
+}
+
+async function markWinbackDmSent({ accountId, subscriptionId, stage }) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO pro_winback_dms (account_id, subscription_id, stage)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (account_id, subscription_id, stage) DO NOTHING`,
+    [accountId, subscriptionId, stage]
+  );
 }
 
 // Stripe `charge.refunded` handler. Marks any active row with the matching
 // payment_intent as refunded. Returns the affected row (if any).
 async function markProRefunded(stripePaymentIntent) {
   if (!stripePaymentIntent) return null;
+  // Task #318 — widened from `status = 'active'` to cover lifetime
+  // (founder) and past_due rows too. Without this, refunding a lifetime
+  // purchase (now stored as status='lifetime') would no-op and the
+  // founder would keep Pro access despite the refund.
   const p = getPool();
   const r = await p.query(
     `UPDATE pro_subscriptions
         SET status = 'refunded',
             refunded_at = NOW(),
             updated_at = NOW()
-      WHERE stripe_payment_intent = $1 AND status = 'active'
+      WHERE stripe_payment_intent = $1
+        AND status IN ('active','lifetime','past_due')
       RETURNING id, account_id, status, refunded_at`,
     [stripePaymentIntent]
   );
@@ -12558,14 +12848,19 @@ async function markProRefunded(stripePaymentIntent) {
 
 // Admin / debug listing of all active Pro members. Used by the admin panel.
 async function listProMembers() {
+  // Task #318 — include lifetime and past_due rows so the post-backfill
+  // Founders (status='lifetime') still appear, and a single failed
+  // payment doesn't yank a player's ProBadge mid-dunning. is_founder is
+  // exposed so the frontend can pick the brass Founder badge variant.
   const p = getPool();
   const r = await p.query(
     `SELECT ps.id, ps.account_id, ps.plan_type, ps.amount_cents, ps.currency,
-            ps.purchased_at, COALESCE(rp.display_name, ps.account_id::text) AS display_name
+            ps.purchased_at, ps.is_founder,
+            COALESCE(rp.display_name, ps.account_id::text) AS display_name
        FROM pro_subscriptions ps
        LEFT JOIN registered_players rp ON rp.account_id = ps.account_id
-      WHERE ps.status = 'active'
-      ORDER BY ps.purchased_at DESC NULLS LAST, ps.id DESC`
+      WHERE ps.status IN ('active','lifetime','past_due')
+      ORDER BY ps.is_founder DESC, ps.purchased_at DESC NULLS LAST, ps.id DESC`
   );
   return r.rows;
 }
@@ -14140,9 +14435,18 @@ module.exports = {
   listAccountsReadyForAnonymization,
   getPlayerHomeData,
   isProMember,
+  isFounder,
   getProSubscription,
   createProCheckout,
   confirmProPurchase,
+  attachStripeIdsToProRow,
+  applyStripeSubscriptionEvent,
+  recordProInvoicePaid,
+  recordProInvoiceFailed,
+  recordCancellationReason,
+  listCancellationReasons,
+  listLapsedSubscribersForDm,
+  markWinbackDmSent,
   markProRefunded,
   listProMembers,
   // Coaching marketplace

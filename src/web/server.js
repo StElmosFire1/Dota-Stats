@@ -731,9 +731,21 @@ function createServer(startupStatus = {}) {
           } else {
             console.warn('[Stripe] tournament_entry webhook: no entry for session', session.id);
           }
-        } else if (purpose === 'pro_lifetime') {
-          // Pro Tier — lifetime unlock. Flip the pending row to active and
-          // stash the payment_intent so a later refund can find it.
+        } else if (purpose === 'pro_lifetime' || purpose === 'pro_monthly') {
+          // Pro Tier — Task #318. Lifetime → status='lifetime' + is_founder=true
+          // (handled in confirmProPurchase). Monthly → fulfilment happens via
+          // customer.subscription.created/updated; here we just attach the
+          // Stripe customer + subscription ids so subsequent events can find
+          // the row, and flip status to 'active' as a fast-path so the user
+          // sees Pro immediately on /settings/billing without waiting for
+          // the subscription webhook.
+          if (purpose === 'pro_monthly') {
+            await db.attachStripeIdsToProRow({
+              stripeSessionId: session.id,
+              stripeCustomerId: session.customer || null,
+              stripeSubscriptionId: session.subscription || null,
+            }).catch(() => {});
+          }
           const row = await db.confirmProPurchase({
             stripeSessionId: session.id,
             stripePaymentIntent: session.payment_intent || null,
@@ -744,9 +756,9 @@ function createServer(startupStatus = {}) {
             // Drop the cached membership status so the player sees Pro
             // immediately on their next request (no 60s wait).
             try { _proCache.delete(String(row.account_id)); } catch (_) {}
-            console.log('[Stripe] Confirmed Pro purchase', row.id, 'session', session.id, 'account', row.account_id);
+            console.log('[Stripe] Confirmed Pro purchase', row.id, 'session', session.id, 'account', row.account_id, 'plan', row.plan_type);
           } else {
-            console.warn('[Stripe] pro_lifetime webhook: no row for session', session.id);
+            console.warn('[Stripe]', purpose, 'webhook: no row for session', session.id);
           }
         } else if (purpose === 'coaching_booking') {
           // Coaching marketplace — primary success path. Bookings are created
@@ -1158,6 +1170,76 @@ function createServer(startupStatus = {}) {
         if (intent.metadata?.purpose === 'coaching_booking') {
           const refunded = await db.markBookingRefundedByIntent(intent.id).catch(() => null);
           if (refunded) console.log('[Stripe] Coaching booking canceled (PI)', refunded.id);
+        }
+      } else if (
+        event.type === 'customer.subscription.created' ||
+        event.type === 'customer.subscription.updated' ||
+        event.type === 'customer.subscription.deleted'
+      ) {
+        // Task #318 — monthly Pro subscription lifecycle. We rely on
+        // metadata.purpose='pro_monthly' (set on the Checkout Session, which
+        // Stripe copies onto the subscription via subscription_data.metadata)
+        // to ignore subscription events from any non-Pro product. Idempotent
+        // on stripe_subscription_id.
+        const sub = event.data.object;
+        if (sub.metadata?.purpose === 'pro_monthly') {
+          const item = sub.items?.data?.[0];
+          const row = await db.applyStripeSubscriptionEvent({
+            stripeSubscriptionId: sub.id,
+            stripeCustomerId: sub.customer || null,
+            status: event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status,
+            currentPeriodEnd: sub.current_period_end || null,
+            cancelAtPeriodEnd: !!sub.cancel_at_period_end,
+            amountCents: item?.price?.unit_amount ?? null,
+            currency: item?.price?.currency ?? null,
+          }).catch(err => { console.error('[Stripe] applyStripeSubscriptionEvent failed:', err.message); return null; });
+          if (row) {
+            try { _proCache.delete(String(row.account_id)); } catch (_) {}
+            console.log('[Stripe] Pro subscription', event.type, 'account', row.account_id, '->', row.status);
+          } else {
+            console.warn('[Stripe]', event.type, 'no local row for subscription', sub.id);
+          }
+        }
+      } else if (event.type === 'invoice.payment_succeeded') {
+        // Task #318 — Pro monthly renewal. Resets dunning + extends period.
+        const invoice = event.data.object;
+        const subId = invoice.subscription;
+        if (subId && invoice.billing_reason !== 'subscription_create') {
+          // subscription_create is handled by customer.subscription.created;
+          // skipping it here avoids a double-write race on the same row.
+          const row = await db.recordProInvoicePaid({
+            stripeSubscriptionId: subId,
+            currentPeriodEnd: invoice.lines?.data?.[0]?.period?.end || null,
+            amountCents: invoice.amount_paid ?? null,
+            currency: invoice.currency || null,
+          }).catch(() => null);
+          if (row) {
+            try { _proCache.delete(String(row.account_id)); } catch (_) {}
+            console.log('[Stripe] Pro invoice paid', subId, 'account', row.account_id);
+          }
+        }
+      } else if (event.type === 'invoice.payment_failed') {
+        // Task #318 — Pro monthly dunning. Mark past_due so the billing
+        // page can surface a "update card" CTA; Stripe handles smart retries.
+        const invoice = event.data.object;
+        const subId = invoice.subscription;
+        if (subId) {
+          const row = await db.recordProInvoiceFailed({ stripeSubscriptionId: subId })
+            .catch(() => null);
+          if (row) {
+            try { _proCache.delete(String(row.account_id)); } catch (_) {}
+            console.warn('[Stripe] Pro invoice FAILED', subId, 'account', row.account_id, 'attempt', row.dunning_attempts);
+            // Task #318 — dunning DM. Fire-and-forget; bot may not be wired
+            // in dev. Attempt cadence: 1 = soft notice, 2 = reminder, 3+ =
+            // final notice (copy branches inside the helper).
+            const bot = startupStatus.botInstance || null;
+            if (bot?.notifyProPaymentFailed) {
+              bot.notifyProPaymentFailed({
+                accountId: row.account_id,
+                attempt: row.dunning_attempts,
+              }).catch(err => console.warn('[Stripe] dunning DM failed:', err.message));
+            }
+          }
         }
       }
       res.json({ received: true });
@@ -10081,7 +10163,13 @@ NOTES
       if (!cosm.isValidFrame(profileFrameRaw)) {
         return res.status(400).json({ error: 'Unknown profile frame' });
       }
-      if (cosm.isPremiumFrame(profileFrameRaw)) {
+      if (cosm.isFounderFrame && cosm.isFounderFrame(profileFrameRaw)) {
+        // Task #318 — Founder frame is gated by pro_subscriptions.is_founder.
+        const founder = await db.isFounder(accountId).catch(() => false);
+        if (!founder) {
+          return res.status(403).json({ error: 'The Founder frame is reserved for lifetime members.', unpurchased: true });
+        }
+      } else if (cosm.isPremiumFrame(profileFrameRaw)) {
         // Gold frame is Pro-bundled; other premium frames are individually purchasable.
         // All premium frames require either Pro (gold) or a completed frame purchase.
         const frameOwned = await db.hasFrameUnlocked(accountId, profileFrameRaw, isPro);
@@ -10409,19 +10497,28 @@ NOTES
   });
 
   // ---------- Pro Tier endpoints ----------
-  function _proPriceCents() {
-    const n = parseInt(process.env.PRO_LIFETIME_PRICE_CENTS || '2000', 10);
-    return Number.isFinite(n) && n > 0 ? n : 2000;
+  function _proLifetimePriceCents() {
+    // Task #318 — lifetime is now the premium tier (Founders only). Default
+    // bumped from $20 to $50 AUD to reflect its grandfathered status.
+    const n = parseInt(process.env.PRO_LIFETIME_PRICE_CENTS || '5000', 10);
+    return Number.isFinite(n) && n > 0 ? n : 5000;
+  }
+  function _proMonthlyPriceCents() {
+    // Task #318 — default $6 AUD / month. Override via PRO_MONTHLY_PRICE_CENTS.
+    const n = parseInt(process.env.PRO_MONTHLY_PRICE_CENTS || '600', 10);
+    return Number.isFinite(n) && n > 0 ? n : 600;
   }
 
   router.get('/pro/status', async (req, res) => {
     try {
       const accountId = req.session?.accountId || null;
       const isPro = accountId ? await _isProAccount(accountId) : false;
-      const sub = (accountId && isPro) ? await db.getProSubscription(accountId).catch(() => null) : null;
+      const sub = accountId ? await db.getProSubscription(accountId).catch(() => null) : null;
+      const isFounder = !!sub?.is_founder;
       res.json({
         signed_in: Boolean(accountId),
         is_pro: isPro,
+        is_founder: isFounder,
         gate_on: true,
         flag_state: 'on',
         subscription: sub
@@ -10431,6 +10528,16 @@ NOTES
               amount_cents: sub.amount_cents,
               currency: sub.currency,
               purchased_at: sub.purchased_at,
+              // Task #318 — wire dates as epoch seconds (UI multiplies *1000).
+              // sub.current_period_end / cancelled_at come back from pg as
+              // Date objects (TIMESTAMPTZ column); convert before serialising.
+              current_period_end: sub.current_period_end ? Math.floor(new Date(sub.current_period_end).getTime() / 1000) : null,
+              cancel_at_period_end: !!sub.cancel_at_period_end,
+              cancelled_at: sub.cancelled_at ? Math.floor(new Date(sub.cancelled_at).getTime() / 1000) : null,
+              is_founder: isFounder,
+              dunning_attempts: sub.dunning_attempts || 0,
+              last_payment_failed_at: sub.last_payment_failed_at,
+              has_portal: !!sub.stripe_customer_id,
             }
           : null,
       });
@@ -10446,22 +10553,31 @@ NOTES
   // simply don't appear pre-launch.
   router.get('/pro/members', async (req, res) => {
     try {
-      if (!(await _flagOn('pro_tier', req))) return res.json({ member_ids: [] });
+      if (!(await _flagOn('pro_tier', req))) return res.json({ member_ids: [], founder_ids: [] });
       const rows = await db.listProMembers().catch(() => []);
-      res.json({ member_ids: rows.map(r => String(r.account_id)) });
+      // Task #318 — also surface founder_ids so the frontend can render the
+      // brass Founder ProBadge variant (instead of the gold Pro one) on
+      // leaderboards and profile headers without a second round-trip.
+      const member_ids = rows.map(r => String(r.account_id));
+      const founder_ids = rows.filter(r => r.is_founder).map(r => String(r.account_id));
+      res.json({ member_ids, founder_ids });
     } catch (err) {
       console.error('[API] pro/members:', err.message);
-      res.json({ member_ids: [] });
+      res.json({ member_ids: [], founder_ids: [] });
     }
   });
 
   router.get('/pro/pricing', async (req, res) => {
     try {
       if (!(await _flagOn('pro_tier', req))) return res.status(404).json({ error: 'Not found' });
+      // Task #318 — return both monthly (default) and lifetime/founder options.
       res.json({
-        plan_type: 'lifetime',
-        price_cents: _proPriceCents(),
         currency: 'aud',
+        monthly: { plan_type: 'monthly', price_cents: _proMonthlyPriceCents(), interval: 'month' },
+        lifetime: { plan_type: 'lifetime', price_cents: _proLifetimePriceCents(), founder_perk: true },
+        // Back-compat fields some older clients may still read.
+        plan_type: 'monthly',
+        price_cents: _proMonthlyPriceCents(),
       });
     } catch (err) {
       console.error('[API] pro/pricing:', err.message);
@@ -11185,42 +11301,215 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: 'Payments are not configured. Please try again later.' });
       }
+      // Task #318 — plan picker. Default to monthly; lifetime is the
+      // premium Founders-tier one-time SKU.
+      const planType = req.body?.plan === 'lifetime' ? 'lifetime' : 'monthly';
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
-      const priceCents = _proPriceCents();
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'aud',
-            product_data: {
-              name: 'Inhouse Stats — Pro Tier (Lifetime)',
-              description: 'One-time purchase. Unlocks all Pro analytics + premium profile cosmetics.',
+      const successUrl = `${baseUrl}/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = `${baseUrl}/pro?checkout=cancelled`;
+      let session;
+      let priceCents;
+      if (planType === 'lifetime') {
+        priceCents = _proLifetimePriceCents();
+        session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [{
+            price_data: {
+              currency: 'aud',
+              product_data: {
+                name: 'Inhouse Stats Pro — Founders Lifetime',
+                description: 'One-time purchase. Lifetime Pro access + exclusive Founder badge & cosmetic frame.',
+              },
+              unit_amount: priceCents,
             },
-            unit_amount: priceCents,
+            quantity: 1,
+          }],
+          mode: 'payment',
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata: { purpose: 'pro_lifetime', account_id: String(accountId) },
+        });
+      } else {
+        priceCents = _proMonthlyPriceCents();
+        // Prefer a Stripe Dashboard-managed Price (recurring) if configured;
+        // otherwise inline price_data with a recurring interval so existing
+        // deployments don't need to pre-provision a Product before this ships.
+        const priceId = process.env.STRIPE_PRO_MONTHLY_PRICE_ID || null;
+        const lineItem = priceId
+          ? { price: priceId, quantity: 1 }
+          : {
+              price_data: {
+                currency: 'aud',
+                product_data: {
+                  name: 'Inhouse Stats Pro — Monthly',
+                  description: 'Pro analytics + cosmetics. Cancel any time from Settings → Billing.',
+                },
+                unit_amount: priceCents,
+                recurring: { interval: 'month' },
+              },
+              quantity: 1,
+            };
+        session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [lineItem],
+          mode: 'subscription',
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata: { purpose: 'pro_monthly', account_id: String(accountId) },
+          subscription_data: {
+            metadata: { purpose: 'pro_monthly', account_id: String(accountId) },
           },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        success_url: `${baseUrl}/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/pro?checkout=cancelled`,
-        metadata: {
-          purpose: 'pro_lifetime',
-          account_id: String(accountId),
-        },
-      });
+          allow_promotion_codes: true,
+        });
+      }
       await db.createProCheckout({
         accountId,
         stripeSessionId: session.id,
-        planType: 'lifetime',
+        planType,
         amountCents: priceCents,
         currency: 'aud',
       });
       try { _proCache.delete(String(accountId)); } catch (_) {}
-      res.json({ url: session.url });
+      res.json({ url: session.url, plan: planType });
     } catch (err) {
       console.error('[API] pro/checkout:', err.message);
       res.status(500).json({ error: err.message || 'Failed to create checkout' });
+    }
+  });
+
+  // Task #318 — Stripe Customer Portal session. Lets the player update card,
+  // see invoices, and (optionally) cancel from Stripe's hosted UI. We still
+  // expose our own cancel/resume routes so we can run the winback flow first.
+  router.post('/pro/portal', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam.' });
+      const sub = await db.getProSubscription(accountId).catch(() => null);
+      if (!sub?.stripe_customer_id) {
+        return res.status(404).json({ error: 'No billing portal available — Founders and lifetime accounts do not have a recurring subscription.' });
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments are not configured.' });
+      }
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const portal = await stripe.billingPortal.sessions.create({
+        customer: sub.stripe_customer_id,
+        return_url: `${baseUrl}/settings/billing`,
+      });
+      res.json({ url: portal.url });
+    } catch (err) {
+      console.error('[API] pro/portal:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to open billing portal' });
+    }
+  });
+
+  // Task #318 — winback-aware cancel. Records the user's reason + optional
+  // free-text comment, then asks Stripe to cancel-at-period-end (keeps Pro
+  // active until the paid period elapses). To accept the discount offer
+  // first, see /pro/winback below.
+  router.post('/pro/cancel', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam.' });
+      const reason = String(req.body?.reason || '').slice(0, 100) || 'unspecified';
+      const comment = req.body?.comment ? String(req.body.comment).slice(0, 1000) : null;
+      const winbackOffered = !!req.body?.winback_offered;
+      const sub = await db.getProSubscription(accountId).catch(() => null);
+      if (!sub) return res.status(404).json({ error: 'No active subscription.' });
+      if (sub.is_founder || sub.plan_type === 'lifetime') {
+        return res.status(400).json({ error: 'Lifetime / Founder access cannot be cancelled.' });
+      }
+      if (!sub.stripe_subscription_id) {
+        return res.status(400).json({ error: 'No Stripe subscription on file.' });
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments are not configured.' });
+      }
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const updated = await stripe.subscriptions.update(sub.stripe_subscription_id, {
+        cancel_at_period_end: true,
+      });
+      await db.applyStripeSubscriptionEvent({
+        stripeSubscriptionId: updated.id,
+        stripeCustomerId: updated.customer || null,
+        status: updated.status,
+        currentPeriodEnd: updated.current_period_end || null,
+        cancelAtPeriodEnd: !!updated.cancel_at_period_end,
+      }).catch(() => {});
+      await db.recordCancellationReason({
+        accountId, subscriptionId: sub.id, reason, comment,
+        winbackOffered, winbackAccepted: false,
+      }).catch(err => console.warn('[pro/cancel] reason insert failed:', err.message));
+      try { _proCache.delete(String(accountId)); } catch (_) {}
+      res.json({ ok: true, cancel_at_period_end: true, current_period_end: updated.current_period_end });
+    } catch (err) {
+      console.error('[API] pro/cancel:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to cancel subscription' });
+    }
+  });
+
+  router.post('/pro/resume', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam.' });
+      const sub = await db.getProSubscription(accountId).catch(() => null);
+      if (!sub?.stripe_subscription_id) return res.status(404).json({ error: 'No active subscription.' });
+      if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not configured.' });
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const updated = await stripe.subscriptions.update(sub.stripe_subscription_id, {
+        cancel_at_period_end: false,
+      });
+      await db.applyStripeSubscriptionEvent({
+        stripeSubscriptionId: updated.id,
+        stripeCustomerId: updated.customer || null,
+        status: updated.status,
+        currentPeriodEnd: updated.current_period_end || null,
+        cancelAtPeriodEnd: !!updated.cancel_at_period_end,
+      }).catch(() => {});
+      try { _proCache.delete(String(accountId)); } catch (_) {}
+      res.json({ ok: true, cancel_at_period_end: false });
+    } catch (err) {
+      console.error('[API] pro/resume:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to resume subscription' });
+    }
+  });
+
+  // Task #318 — winback discount. Applies STRIPE_WINBACK_COUPON_ID (a 50%-off
+  // 3-month coupon you create in the Stripe dashboard) to the live
+  // subscription. Records that the offer was taken so the admin report can
+  // measure save-rate. No coupon configured → 503 + UI falls through to cancel.
+  router.post('/pro/winback', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam.' });
+      const couponId = process.env.STRIPE_WINBACK_COUPON_ID || null;
+      if (!couponId) return res.status(503).json({ error: 'No winback offer available right now.' });
+      const sub = await db.getProSubscription(accountId).catch(() => null);
+      if (!sub?.stripe_subscription_id) return res.status(404).json({ error: 'No active subscription.' });
+      if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not configured.' });
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      await stripe.subscriptions.update(sub.stripe_subscription_id, { coupon: couponId });
+      const reason = String(req.body?.reason || 'too_expensive').slice(0, 100);
+      await db.recordCancellationReason({
+        accountId, subscriptionId: sub.id, reason,
+        comment: 'Accepted winback discount',
+        winbackOffered: true, winbackAccepted: true,
+      }).catch(() => {});
+      res.json({ ok: true, coupon_applied: true });
+    } catch (err) {
+      console.error('[API] pro/winback:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to apply offer' });
+    }
+  });
+
+  router.get('/admin/pro/cancellation-reasons', requireSuperuser, async (req, res) => {
+    try {
+      const rows = await db.listCancellationReasons({ limit: 500 });
+      res.json({ rows });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   });
 

@@ -288,12 +288,13 @@ export async function getProPricing() {
 export async function getProMembers() {
   return fetchJson('/pro/members');
 }
-export async function createProCheckout() {
+export async function createProCheckout(plan = 'monthly') {
+  // Task #318 — accepts 'monthly' (default) or 'lifetime'.
   const res = await fetch(BASE + '/pro/checkout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: '{}',
+    body: JSON.stringify({ plan }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -301,7 +302,50 @@ export async function createProCheckout() {
     err.status = res.status;
     throw err;
   }
-  return data; // { url }
+  return data; // { url, plan }
+}
+
+// Task #318 — Stripe customer portal (manage card / invoices).
+export async function openProPortal() {
+  const res = await fetch(BASE + '/pro/portal', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to open portal');
+  return data;
+}
+
+export async function cancelProSubscription({ reason, comment, winbackOffered }) {
+  const res = await fetch(BASE + '/pro/cancel', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, comment, winback_offered: !!winbackOffered }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to cancel');
+  return data;
+}
+
+export async function resumeProSubscription() {
+  const res = await fetch(BASE + '/pro/resume', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to resume');
+  return data;
+}
+
+export async function acceptProWinback({ reason }) {
+  const res = await fetch(BASE + '/pro/winback', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to apply offer');
+  return data;
 }
 
 function seasonParam(seasonId) {

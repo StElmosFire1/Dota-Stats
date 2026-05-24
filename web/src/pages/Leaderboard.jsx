@@ -227,7 +227,7 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
                 {p.display_name}
-                {proMembers.has(String(p.account_id)) && <ProBadge size="sm" />}
+                {proMembers.has(String(p.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.account_id) ? 'founder' : 'pro'} />}
               </Link>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -318,7 +318,7 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
                 {p.display_name || `Player ${p.account_id}`}
-                {proMembers.has(String(p.account_id)) && <ProBadge size="sm" />}
+                {proMembers.has(String(p.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.account_id) ? 'founder' : 'pro'} />}
               </Link>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -601,7 +601,7 @@ export default function Leaderboard() {
                             }}
                           >
                             {p.nickname || p.display_name || p.player_id}
-                            {proMembers.has(String(p.player_id)) && <ProBadge size="sm" />}
+                            {proMembers.has(String(p.player_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.player_id) ? 'founder' : 'pro'} />}
                             {/* Round-8: propagate verified-badge to public
                                 surfaces. Inline lazy-mount — VerifiedBadge
                                 returns null when the player has none, so

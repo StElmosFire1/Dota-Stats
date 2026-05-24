@@ -945,7 +945,7 @@ export default function PlayerProfile() {
       {nickname && rating?.display_name && nickname !== rating.display_name && (
         <span style={{ fontSize: 12, color: '#888' }}>({rating.display_name})</span>
       )}
-      {isPlayerPro && <ProBadge size="sm" />}
+      {isPlayerPro && <ProBadge size="sm" variant={proMembers.isFounder?.(accountId) ? 'founder' : 'pro'} />}
       {/* Magazine v3 (Task #157): verified-checkmark propagation. Component
           self-hides when the player has no verified badges. */}
       <VerifiedBadge accountId={accountId} size={14} />
