@@ -8,6 +8,7 @@ import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
+import SponsorshipBanner from '../components/SponsorshipBanner';
 import { LiveInhousePulse, PlayerOfTheWeek, HotHeroes, FeaturedPlayer } from '../components/HomeWidgets';
 import LiveQueueWidget from '../components/LiveQueueWidget';
 import {
@@ -547,6 +548,7 @@ export default function Home() {
     return (
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <HomeBanner />
+        <SponsorshipBanner slug="home_top" style={{ margin: '12px 0' }} />
         {tournamentBanner}
         <LiveQueueWidget />
         <LiveInhousePulse />
@@ -574,6 +576,7 @@ export default function Home() {
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
       <HomeBanner />
+      <SponsorshipBanner slug="home_top" style={{ margin: '12px 0' }} />
 
       {tournamentBanner}
 

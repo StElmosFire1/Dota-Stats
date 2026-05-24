@@ -4167,6 +4167,15 @@ export default function AdminPanel() {
       {/* Coaching Marketplace — pending KYC + open disputes + revenue */}
       <CoachingAdminPanel superuserKey={superuserKey} />
 
+      {/* Task #320 — Commission controls (default + per-coach overrides) */}
+      <CommissionControlsPanel superuserKey={superuserKey} />
+
+      {/* Task #320 — Sponsorship slots + recent orders */}
+      <SponsorshipsAdminPanel superuserKey={superuserKey} />
+
+      {/* Task #320 — White-label tenants (Model A) */}
+      <TenantsAdminPanel superuserKey={superuserKey} />
+
       {/* Tournament Brackets — active tournaments and bracket management */}
       <TournamentBracketPanel />
       </>)}
@@ -5214,6 +5223,382 @@ function CoachingAdminPanel({ superuserKey }) {
       )}
 
       {msg && <p style={{ color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)' }}>{msg}</p>}
+    </section>
+  );
+}
+
+// ───────── Task #320: Commission controls panel ─────────
+function CommissionControlsPanel({ superuserKey }) {
+  const [data, setData] = React.useState(null);
+  const [msg, setMsg] = React.useState('');
+  const [defaultPct, setDefaultPct] = React.useState('');
+
+  const load = React.useCallback(async () => {
+    if (!superuserKey) return;
+    try {
+      const r = await superuserFetch('/api/admin/coaching/commission', {
+        credentials: 'include', headers: { 'X-Superuser-Key': superuserKey },
+      });
+      if (r.status === 404) { setData({ hidden: true }); return; }
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+      const j = await r.json();
+      setData(j);
+      setDefaultPct(((j.default_bps || 0) / 100).toFixed(2));
+    } catch (e) { setMsg(`Error: ${e.message}`); }
+  }, [superuserKey]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const saveDefault = async () => {
+    const bps = Math.round(parseFloat(defaultPct) * 100);
+    if (!Number.isFinite(bps) || bps < 0 || bps > 5000) { setMsg('0–50% only'); return; }
+    const r = await superuserFetch('/api/admin/coaching/commission/default', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+      body: JSON.stringify({ bps }),
+    });
+    if (r.ok) { setMsg(`Default commission saved (${defaultPct}%)`); load(); }
+    else setMsg(`Error: ${(await r.json()).error}`);
+  };
+
+  const saveCoach = async (coach, rawPct, tier) => {
+    let bps = null;
+    if (rawPct !== '' && rawPct != null) {
+      bps = Math.round(parseFloat(rawPct) * 100);
+      if (!Number.isFinite(bps) || bps < 0 || bps > 5000) { setMsg('Coach % must be 0–50'); return; }
+    }
+    const r = await superuserFetch('/api/admin/coaching/commission/coach', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+      body: JSON.stringify({ account_id: coach.account_id, bps, tier }),
+    });
+    if (r.ok) { setMsg(`Saved override for #${coach.account_id}`); load(); }
+    else setMsg(`Error: ${(await r.json()).error}`);
+  };
+
+  if (!data) return <section><h2 id="ap-anchor-commission">💸 Coaching commission</h2><p style={{ color: 'var(--text-muted)' }}>{msg || 'Loading…'}</p></section>;
+  if (data.hidden) return null;
+
+  return (
+    <section>
+      <h2 id="ap-anchor-commission" style={{ marginBottom: 6 }}>💸 Coaching commission</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Site default is applied to every booking unless the coach has an override or is on the premium tier (auto-discount to 7%).
+      </p>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <label htmlFor="default-pct" style={{ fontSize: 13 }}>Site default %:</label>
+        <input id="default-pct" type="number" min="0" max="50" step="0.5" value={defaultPct}
+          onChange={e => setDefaultPct(e.target.value)}
+          style={{ width: 80, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <button type="button" onClick={saveDefault}
+          style={{ padding: '5px 14px', borderRadius: 6, background: 'var(--accent-blue)', color: '#fff', border: 0, cursor: 'pointer', fontSize: 13 }}>
+          Save default
+        </button>
+        <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          (currently {((data.default_bps || 0) / 100).toFixed(2)}%)
+        </span>
+      </div>
+
+      {(data.coaches?.length || 0) > 0 ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th align="left">Coach</th><th align="left">Status</th>
+            <th align="left">Override %</th><th align="left">Auto-tier</th>
+            <th align="left">Premium</th><th align="left">Earnings preview</th><th></th>
+          </tr></thead>
+          <tbody>{data.coaches.map(c => (
+            <CoachCommissionRow key={c.account_id}
+              coach={{ ...c, site_default_bps: data.default_bps }} onSave={saveCoach} />
+          ))}</tbody>
+        </table>
+      ) : <p style={{ color: 'var(--text-muted)' }}>No coaches yet.</p>}
+      {msg && <p style={{ marginTop: 10, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)', fontSize: 13 }}>{msg}</p>}
+    </section>
+  );
+}
+
+function CoachCommissionRow({ coach, onSave }) {
+  // Override % is editable; tier is auto-assigned by completed sessions +
+  // avg rating (see evaluateAndAutoTierCoach in src/db/index.js), but
+  // operators can still nudge a coach up/down for special cases.
+  const [pct, setPct] = React.useState(coach.commission_override_bps != null ? (coach.commission_override_bps / 100).toFixed(2) : '');
+  const [tier, setTier] = React.useState(coach.commission_tier || 'rookie');
+  // Live earnings preview — what would the coach actually pocket today on a
+  // sample $50 session? Recompute effective rate (override → premium → tier).
+  const previewSession = 5000;
+  // Mirror server-side resolveCommissionBpsForCoach: rookies inherit the
+  // admin-set site default (so the global slider is materially active);
+  // established/elite get fixed promotional discounts.
+  const siteDefaultBps = coach.site_default_bps ?? 1000;
+  let effectiveBps;
+  if (pct !== '') effectiveBps = Math.round(parseFloat(pct) * 100) || 0;
+  else if (coach.is_premium) effectiveBps = 700;
+  else if (tier === 'elite') effectiveBps = 1200;
+  else if (tier === 'established') effectiveBps = 1800;
+  else effectiveBps = siteDefaultBps;
+  const fee = Math.round(previewSession * (effectiveBps / 10000));
+  const earnings = previewSession - fee;
+
+  return (
+    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+      <td style={{ padding: 6 }}>{coach.display_name || `#${coach.account_id}`}</td>
+      <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>{coach.status}</td>
+      <td style={{ padding: 6 }}>
+        <input type="number" min="0" max="50" step="0.5" value={pct}
+          onChange={e => setPct(e.target.value)} placeholder="auto"
+          aria-label={`Commission override % for coach ${coach.account_id}`}
+          style={{ width: 70, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+      </td>
+      <td style={{ padding: 6 }}>
+        <select value={tier} onChange={e => setTier(e.target.value)}
+          aria-label={`Auto-tier for coach ${coach.account_id}`}
+          style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 12 }}>
+          <option value="rookie">Rookie (site default)</option>
+          <option value="established">Established (18%)</option>
+          <option value="elite">Elite (12%)</option>
+        </select>
+      </td>
+      <td style={{ padding: 6, fontSize: 12 }}>
+        {coach.is_premium ? <span style={{ color: 'var(--accent-gold, #f59e0b)' }}>⭐ Active</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+      </td>
+      <td style={{ padding: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+        on $50: <strong style={{ color: 'var(--radiant-color)' }}>${(earnings / 100).toFixed(2)}</strong>
+        <br/><span style={{ color: 'var(--text-muted)' }}>(fee ${(fee / 100).toFixed(2)} = {(effectiveBps / 100).toFixed(2)}%)</span>
+      </td>
+      <td style={{ padding: 6 }}>
+        <button type="button" onClick={() => onSave(coach, pct, tier)}
+          style={{ padding: '3px 10px', borderRadius: 4, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}>
+          Save
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+// ───────── Task #320: Sponsorships panel ─────────
+function SponsorshipsAdminPanel({ superuserKey }) {
+  const [data, setData] = React.useState(null);
+  const [msg, setMsg] = React.useState('');
+  const [draft, setDraft] = React.useState({ slug: '', label: '', monthly_price_cents: 5000, description: '', tenant_id: '' });
+
+  const load = React.useCallback(async () => {
+    if (!superuserKey) return;
+    try {
+      const r = await superuserFetch('/api/admin/sponsorships', { credentials: 'include', headers: { 'X-Superuser-Key': superuserKey } });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+      setData(await r.json());
+    } catch (e) { setMsg(`Error: ${e.message}`); }
+  }, [superuserKey]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const createSlot = async () => {
+    if (!draft.slug || !draft.label) { setMsg('slug + label required'); return; }
+    const r = await superuserFetch('/api/admin/sponsorships/slots', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+      body: JSON.stringify(draft),
+    });
+    if (r.ok) { setMsg('Slot created'); setDraft({ slug: '', label: '', monthly_price_cents: 5000, description: '', tenant_id: '' }); load(); }
+    else setMsg(`Error: ${(await r.json()).error}`);
+  };
+
+  const toggleActive = async (slot) => {
+    const r = await superuserFetch(`/api/admin/sponsorships/slots/${slot.id}`, {
+      method: 'PUT', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+      body: JSON.stringify({ is_active: !slot.is_active }),
+    });
+    if (r.ok) load();
+  };
+
+  if (!data) return <section><h2 id="ap-anchor-sponsorships">📣 Sponsorships</h2><p style={{ color: 'var(--text-muted)' }}>{msg || 'Loading…'}</p></section>;
+
+  return (
+    <section>
+      <h2 id="ap-anchor-sponsorships" style={{ marginBottom: 6 }}>📣 Sponsorships</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Define named placements (slug + price) and monitor active orders. Public site reads the active sponsor at <code>/api/sponsorships/active/&lt;slug&gt;</code>.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) auto', gap: 8, marginBottom: 16 }}>
+        <input placeholder="slug (e.g. home_banner)" value={draft.slug}
+          onChange={e => setDraft({ ...draft, slug: e.target.value })}
+          aria-label="New slot slug"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <input placeholder="label" value={draft.label}
+          onChange={e => setDraft({ ...draft, label: e.target.value })}
+          aria-label="New slot label"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <input type="number" placeholder="monthly cents" value={draft.monthly_price_cents}
+          onChange={e => setDraft({ ...draft, monthly_price_cents: parseInt(e.target.value) || 0 })}
+          aria-label="Monthly price in cents"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <input placeholder="description" value={draft.description}
+          onChange={e => setDraft({ ...draft, description: e.target.value })}
+          aria-label="Description"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <input type="number" placeholder="tenant_id (blank = global)" value={draft.tenant_id || ''}
+          onChange={e => setDraft({ ...draft, tenant_id: e.target.value })}
+          aria-label="Tenant ID (blank = global slot)"
+          title="Leave blank for a global slot served on the default tenant. Enter a tenant id to scope this slot to a white-label tenant — it overrides a global slot with the same slug."
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <button type="button" onClick={createSlot}
+          style={{ padding: '6px 16px', borderRadius: 6, background: 'var(--accent-blue)', color: '#fff', border: 0, cursor: 'pointer' }}>
+          + Add slot
+        </button>
+      </div>
+
+      {(data.slots?.length || 0) > 0 ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, fontSize: 13 }}>
+          <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th align="left">Slug</th><th align="left">Label</th>
+            <th align="right">Price/mo</th><th align="left">Active</th><th></th>
+          </tr></thead>
+          <tbody>{data.slots.map(s => (
+            <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td style={{ padding: 6, fontFamily: 'monospace', fontSize: 12 }}>{s.slug}</td>
+              <td style={{ padding: 6 }}>{s.label}</td>
+              <td style={{ padding: 6, textAlign: 'right' }}>${(s.monthly_price_cents / 100).toFixed(2)} {s.currency.toUpperCase()}</td>
+              <td style={{ padding: 6 }}>{s.is_active ? '✓' : '✗'}</td>
+              <td style={{ padding: 6 }}>
+                <button type="button" onClick={() => toggleActive(s)}
+                  style={{ padding: '3px 10px', borderRadius: 4, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}>
+                  {s.is_active ? 'Disable' : 'Enable'}
+                </button>
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
+      ) : <p style={{ color: 'var(--text-muted)' }}>No slots yet.</p>}
+
+      <h3 style={{ marginBottom: 6 }}>Recent orders</h3>
+      {(data.orders?.length || 0) > 0 ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th align="left">When</th><th align="left">Slot</th><th align="left">Sponsor</th>
+            <th align="left">Status</th><th align="right">Amount</th><th align="left">Ends</th>
+          </tr></thead>
+          <tbody>{data.orders.slice(0, 25).map(o => (
+            <tr key={o.id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>{new Date(o.created_at).toLocaleString()}</td>
+              <td style={{ padding: 6, fontSize: 12 }}>{o.slot_label}</td>
+              <td style={{ padding: 6 }}>{o.sponsor_name}</td>
+              <td style={{ padding: 6 }}>{o.status}</td>
+              <td style={{ padding: 6, textAlign: 'right' }}>${(o.amount_cents / 100).toFixed(2)}</td>
+              <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>{new Date(o.ends_at).toLocaleDateString()}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      ) : <p style={{ color: 'var(--text-muted)' }}>No orders yet.</p>}
+      {msg && <p style={{ marginTop: 8, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)', fontSize: 13 }}>{msg}</p>}
+    </section>
+  );
+}
+
+// ───────── Task #320: Tenants (white-label) panel ─────────
+function TenantsAdminPanel({ superuserKey }) {
+  const [tenants, setTenants] = React.useState(null);
+  const [msg, setMsg] = React.useState('');
+  const [draft, setDraft] = React.useState({ slug: '', display_name: '', subdomain: '', plan: 'starter' });
+
+  const load = React.useCallback(async () => {
+    if (!superuserKey) return;
+    try {
+      const r = await superuserFetch('/api/admin/tenants', { credentials: 'include', headers: { 'X-Superuser-Key': superuserKey } });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+      setTenants((await r.json()).tenants || []);
+    } catch (e) { setMsg(`Error: ${e.message}`); }
+  }, [superuserKey]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const create = async () => {
+    if (!draft.slug || !draft.display_name) { setMsg('slug + display_name required'); return; }
+    const r = await superuserFetch('/api/admin/tenants', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+      body: JSON.stringify(draft),
+    });
+    if (r.ok) { setMsg('Tenant created'); setDraft({ slug: '', display_name: '', subdomain: '', plan: 'starter' }); load(); }
+    else setMsg(`Error: ${(await r.json()).error}`);
+  };
+
+  const updateStatus = async (t, status) => {
+    const r = await superuserFetch(`/api/admin/tenants/${t.id}`, {
+      method: 'PUT', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Superuser-Key': superuserKey },
+      body: JSON.stringify({ status }),
+    });
+    if (r.ok) load();
+  };
+
+  if (!tenants) return <section><h2 id="ap-anchor-tenants">🏢 White-label tenants</h2><p style={{ color: 'var(--text-muted)' }}>{msg || 'Loading…'}</p></section>;
+
+  return (
+    <section>
+      <h2 id="ap-anchor-tenants" style={{ marginBottom: 6 }}>🏢 White-label tenants (Model A)</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Sub-brand deployments resolved by Host header (subdomain of <code>TENANT_PARENT_DOMAIN</code> or full custom hostname).
+        Per-row tenant scoping is rolled out incrementally; this panel manages the registry, branding, and billing today.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) auto', gap: 8, marginBottom: 16 }}>
+        <input placeholder="slug" value={draft.slug}
+          onChange={e => setDraft({ ...draft, slug: e.target.value })}
+          aria-label="New tenant slug"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <input placeholder="display name" value={draft.display_name}
+          onChange={e => setDraft({ ...draft, display_name: e.target.value })}
+          aria-label="New tenant display name"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <input placeholder="subdomain (optional)" value={draft.subdomain}
+          onChange={e => setDraft({ ...draft, subdomain: e.target.value })}
+          aria-label="New tenant subdomain"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+        <select value={draft.plan} onChange={e => setDraft({ ...draft, plan: e.target.value })}
+          aria-label="New tenant plan"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+          <option value="starter">starter</option>
+          <option value="pro">pro</option>
+        </select>
+        <button type="button" onClick={create}
+          style={{ padding: '6px 16px', borderRadius: 6, background: 'var(--accent-blue)', color: '#fff', border: 0, cursor: 'pointer' }}>
+          + Add tenant
+        </button>
+      </div>
+
+      {tenants.length > 0 ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th align="left">Slug</th><th align="left">Name</th>
+            <th align="left">Host</th><th align="left">Plan</th>
+            <th align="left">Status</th><th></th>
+          </tr></thead>
+          <tbody>{tenants.map(t => (
+            <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td style={{ padding: 6, fontFamily: 'monospace', fontSize: 12 }}>{t.slug}</td>
+              <td style={{ padding: 6 }}>{t.display_name}</td>
+              <td style={{ padding: 6, fontSize: 12 }}>{t.custom_hostname || (t.subdomain ? `${t.subdomain}.*` : '—')}</td>
+              <td style={{ padding: 6 }}>{t.plan}</td>
+              <td style={{ padding: 6 }}>{t.status}</td>
+              <td style={{ padding: 6 }}>
+                {t.status !== 'suspended' ? (
+                  <button type="button" onClick={() => updateStatus(t, 'suspended')}
+                    aria-label={`Suspend tenant ${t.slug}`}
+                    style={{ padding: '3px 10px', borderRadius: 4, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>
+                    Suspend
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => updateStatus(t, 'active')}
+                    aria-label={`Reactivate tenant ${t.slug}`}
+                    style={{ padding: '3px 10px', borderRadius: 4, background: 'var(--radiant-color)', border: 0, color: '#fff', cursor: 'pointer', fontSize: 12 }}>
+                    Reactivate
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
+      ) : <p style={{ color: 'var(--text-muted)' }}>No tenants yet.</p>}
+      {msg && <p style={{ marginTop: 8, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)', fontSize: 13 }}>{msg}</p>}
     </section>
   );
 }

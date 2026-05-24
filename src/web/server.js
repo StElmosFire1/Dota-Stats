@@ -997,6 +997,38 @@ function createServer(startupStatus = {}) {
           if (completed) {
             console.log(`[Stripe] coin_pack ${completed.pack_id} credited ${completed.coins} 🪙 to ${completed.account_id}`);
           }
+        } else if (purpose === 'sponsorship') {
+          // Task #320 — sponsorship slot purchase. Idempotent on session.id.
+          const updated = await db.markSponsorshipOrderPaid(session.id).catch(() => null);
+          if (updated) {
+            console.log('[Stripe] Sponsorship activated', updated.id, 'slot', session.metadata?.slot_slug);
+          }
+        } else if (purpose === 'coach_premium') {
+          // Task #320 — coach premium subscription. The actual flip to
+          // active happens in the customer.subscription.* branch below;
+          // here we just attach the Stripe customer/subscription ids.
+          const coachAccountId = session.metadata?.coach_account_id;
+          if (coachAccountId) {
+            await db.upsertCoachPremiumPending({
+              coachAccountId,
+              stripeCustomerId: session.customer || null,
+            }).catch(() => {});
+            console.log('[Stripe] coach_premium checkout completed for', coachAccountId);
+          }
+        } else if (purpose === 'tenant_subscription') {
+          // Task #320 — white-label tenant subscription. Flip the tenant
+          // out of 'trialing' on first paid invoice (handled in the
+          // subscription.created branch below); here we just stamp ids.
+          const tenantId = parseInt(session.metadata?.tenant_id, 10);
+          if (tenantId) {
+            await db.setTenantSubscription(tenantId, {
+              stripeCustomerId: session.customer || null,
+              stripeSubscriptionId: session.subscription || null,
+              status: 'active',
+              plan: session.metadata?.plan || null,
+            }).catch(err => console.warn('[Stripe] tenant_subscription checkout:', err.message));
+            console.log('[Stripe] tenant_subscription checkout for tenant', tenantId);
+          }
         } else if (purpose === 'gift_pro') {
           let gift = await db.confirmGiftCheckout(session.id).catch(() => null);
           // Recovery path: if the gift row was never persisted (DB failure at checkout time),
@@ -1228,6 +1260,32 @@ function createServer(startupStatus = {}) {
         // to ignore subscription events from any non-Pro product. Idempotent
         // on stripe_subscription_id.
         const sub = event.data.object;
+        // Task #320 — coach premium subscription lifecycle.
+        if (sub.metadata?.purpose === 'coach_premium') {
+          const coachAccountId = sub.metadata?.coach_account_id;
+          if (coachAccountId) {
+            await db.applyCoachPremiumStripeEvent(coachAccountId, {
+              ...sub,
+              status: event.type === 'customer.subscription.deleted' ? 'cancelled' : sub.status,
+            }).catch(err => console.warn('[Stripe] coach_premium event:', err.message));
+            console.log('[Stripe] coach_premium', event.type, 'coach', coachAccountId, '->', sub.status);
+          }
+        }
+        // Task #320 — tenant subscription lifecycle.
+        if (sub.metadata?.purpose === 'tenant_subscription') {
+          const tenantId = parseInt(sub.metadata?.tenant_id, 10);
+          if (tenantId) {
+            const isDeleted = event.type === 'customer.subscription.deleted';
+            await db.setTenantSubscription(tenantId, {
+              stripeCustomerId: sub.customer || null,
+              stripeSubscriptionId: sub.id,
+              currentPeriodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
+              status: isDeleted ? 'archived' : (sub.status === 'past_due' ? 'past_due' : 'active'),
+              plan: sub.metadata?.plan || null,
+            }).catch(err => console.warn('[Stripe] tenant_subscription event:', err.message));
+            console.log('[Stripe] tenant_subscription', event.type, 'tenant', tenantId, '->', sub.status);
+          }
+        }
         if (sub.metadata?.purpose === 'pro_monthly') {
           const item = sub.items?.data?.[0];
           const row = await db.applyStripeSubscriptionEvent({
@@ -1296,6 +1354,23 @@ function createServer(startupStatus = {}) {
   });
 
   app.use(express.json());
+
+  // Task #320 — Multi-tenant (white-label, Model A) resolution middleware.
+  // Resolves an optional tenant from the request Host header and stashes it
+  // on `req.tenant` for downstream routes/UI. Best-effort: a DB lookup
+  // failure must not break the entire request, so we swallow errors. When
+  // no tenant matches the host the value stays null (default OCE Inhouse
+  // experience). Per-row tenant scoping is NOT yet enforced across the
+  // schema — that's a future incremental rollout — but every route that
+  // wants to scope can read req.tenant.id today.
+  app.use(async (req, _res, next) => {
+    try {
+      req.tenant = await db.getTenantByHost(req.get('host'));
+    } catch (_) {
+      req.tenant = null;
+    }
+    next();
+  });
 
   // Stash `app` on a module-shared symbol so createApiRouter() can reach it
   // when mounting Magazine v3 routes that need to live at the app level
@@ -12295,7 +12370,9 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!stripe) return res.status(503).json({ error: 'Payments are not configured.' });
 
       const amountCents = Math.round((coach.hourly_rate_cents * duration) / 60);
-      const platformFeeCents = Math.round(amountCents * COACHING_TAKE_RATE);
+      // Task #320 — per-coach override + premium tier; falls back to site default.
+      const commissionBps = await db.resolveCommissionBpsForCoach(coach);
+      const platformFeeCents = Math.round(amountCents * (commissionBps / 10000));
       const currency = (coach.currency || 'aud').toLowerCase();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
@@ -12444,6 +12521,10 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         }
         const completed = await db.markBookingCompletedById(booking.id);
         if (completed) finalRow = completed;
+        // Task #320 — re-evaluate the coach's auto-tier (Rookie / Established / Elite)
+        // now that one more completed session is on the books.
+        db.evaluateAndAutoTierCoach(booking.coach_account_id).catch(err =>
+          console.warn('[Task #320] auto-tier after completion failed:', err.message));
         // Review-prompt DM only fires when we actually transition to
         // 'completed' here (i.e. the student was the side that closed it
         // out, since a coach can't unilaterally complete without student
@@ -12687,6 +12768,522 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       res.json({ ok: true, review: created });
     } catch (err) {
       console.error('[API] bookings/:id/review:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ===================================================================
+  // Task #320 — Commission controls, coach premium, sponsorships, tenants
+  // ===================================================================
+
+  // ---- Commission controls (superuser) ----
+  router.get('/admin/coaching/commission', requireSuperuser, async (req, res) => {
+    try {
+      const defaultBps = await db.getCoachingCommissionBps();
+      const coaches = await db.listAllCoaches();
+      // Resolve effective rate per coach so the admin UI can show what
+      // would actually be applied at booking time without the operator
+      // having to recompute the override → premium → tier ladder in their head.
+      const enriched = await Promise.all(coaches.map(async (c) => {
+        const effective = await db.resolveCommissionBpsForCoach(c);
+        return {
+          id: c.id, account_id: c.account_id, display_name: c.display_name || null,
+          status: c.status, hourly_rate_cents: c.hourly_rate_cents,
+          commission_override_bps: c.commission_override_bps,
+          commission_tier: c.commission_tier || 'rookie',
+          is_premium: c.is_premium, premium_until: c.premium_until,
+          effective_bps: effective,
+        };
+      }));
+      res.json({
+        default_bps: defaultBps,
+        default_pct: (defaultBps / 100).toFixed(2),
+        // Rookie inherits the site default (so the global rate is materially
+        // active for most coaches); established/elite are fixed discounts.
+        tier_rates_bps: { rookie: defaultBps, established: 1800, elite: 1200, premium: 700 },
+        coaches: enriched,
+      });
+    } catch (err) {
+      console.error('[API] admin/coaching/commission:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/coaching/commission/default', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const bps = await db.setCoachingCommissionBps(req.body?.bps);
+      res.json({ ok: true, default_bps: bps });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/coaching/commission/coach', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { account_id, bps, tier } = req.body || {};
+      if (!account_id) return res.status(400).json({ error: 'account_id required' });
+      let bpsVal = null;
+      if (bps !== null && bps !== undefined && bps !== '') {
+        bpsVal = parseInt(bps, 10);
+        if (!Number.isFinite(bpsVal) || bpsVal < 0 || bpsVal > 5000) {
+          return res.status(400).json({ error: 'bps must be 0..5000 (or null to clear)' });
+        }
+      }
+      const updated = await db.setCoachCommissionOverride(account_id, { bps: bpsVal, tier });
+      if (!updated) return res.status(404).json({ error: 'Coach not found' });
+      res.json({ ok: true, coach: updated });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ---- Coach premium subscription ----
+  // Lets active coaches subscribe to a paid tier (reduced commission +
+  // featured listing). Uses Stripe Checkout in subscription mode; the
+  // webhook (purpose='coach_premium') flips the row to active.
+  router.post('/coach/premium/checkout', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam first' });
+      const coach = await db.getCoach(accountId);
+      if (!coach) return res.status(400).json({ error: 'Apply to be a coach first.' });
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+      const priceCents = parseInt(process.env.COACH_PREMIUM_PRICE_CENTS, 10) || 999;
+      const currency = (process.env.COACH_PREMIUM_CURRENCY || 'aud').toLowerCase();
+      await db.upsertCoachPremiumPending({ coachAccountId: accountId, priceCents, currency });
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const lineItems = process.env.STRIPE_COACH_PREMIUM_PRICE_ID
+        ? [{ price: process.env.STRIPE_COACH_PREMIUM_PRICE_ID, quantity: 1 }]
+        : [{
+            price_data: {
+              currency,
+              product_data: { name: 'Coach Premium (monthly)', description: 'Reduced platform fee + featured listing on /coaches.' },
+              unit_amount: priceCents,
+              recurring: { interval: 'month' },
+            },
+            quantity: 1,
+          }];
+      const checkout = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        line_items: lineItems,
+        subscription_data: {
+          metadata: { purpose: 'coach_premium', coach_account_id: String(accountId) },
+        },
+        metadata: { purpose: 'coach_premium', coach_account_id: String(accountId) },
+        success_url: `${baseUrl}/coach/edit?premium=success`,
+        cancel_url: `${baseUrl}/coach/edit?premium=cancel`,
+      });
+      res.json({ url: checkout.url });
+    } catch (err) {
+      console.error('[API] coach/premium/checkout:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/coach/premium/status', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const sub = await db.getCoachPremium(accountId);
+      res.json({ subscription: sub });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/coach/premium/cancel', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in' });
+      const sub = await db.getCoachPremium(accountId);
+      if (!sub?.stripe_subscription_id) return res.status(400).json({ error: 'No active subscription' });
+      const stripe = _stripe();
+      if (stripe) {
+        try {
+          await stripe.subscriptions.update(sub.stripe_subscription_id, { cancel_at_period_end: true });
+        } catch (e) {
+          console.warn('[coach/premium/cancel] stripe update failed:', e.message);
+        }
+      }
+      const updated = await db.cancelCoachPremium(accountId);
+      res.json({ ok: true, subscription: updated });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---- Sponsorships ----
+  // Public read: active placements for a given slot slug.
+  router.get('/sponsorships/active/:slug', async (req, res) => {
+    try {
+      // Tenant-scoped: a tenant-specific slot beats a global one with the
+      // same slug. Falls back to global when no tenant matches the host.
+      const tenantId = req.tenant?.id ?? null;
+      const slot = await db.getSponsorshipSlot(req.params.slug, { tenantId });
+      if (!slot) return res.json({ sponsorships: [] });
+      const rows = await db.listActiveSponsorshipsForSlot(slot.slug);
+      // Filter to orders whose slot_id matches the resolved (scoped) slot id,
+      // so a global-slug query in a tenant context can't bleed in default-tenant
+      // sponsors.
+      const scoped = rows.filter(o => o.slot_id === slot.id);
+      res.json({ sponsorships: scoped });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Sponsorship telemetry — best-effort impression + click counters. Both
+  // routes swallow tracking failures so a dropped beacon never breaks the
+  // visible UI; the body is intentionally tiny (just an order id).
+  router.post('/sponsorships/track/impression', express.json(), async (req, res) => {
+    try {
+      const id = parseInt(req.body?.order_id, 10);
+      if (Number.isFinite(id)) await db.recordSponsorshipImpression(id);
+      res.json({ ok: true });
+    } catch (err) { res.json({ ok: false }); }
+  });
+
+  router.post('/sponsorships/track/click', express.json(), async (req, res) => {
+    try {
+      const id = parseInt(req.body?.order_id, 10);
+      if (Number.isFinite(id)) await db.recordSponsorshipClick(id);
+      res.json({ ok: true });
+    } catch (err) { res.json({ ok: false }); }
+  });
+
+  router.get('/sponsorships/slots', async (req, res) => {
+    try {
+      const tenantId = req.tenant?.id ?? null;
+      const slots = await db.listSponsorshipSlots({ activeOnly: true, tenantId });
+      res.json({ slots });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.post('/sponsorships/:slug/checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId || null;
+      const tenantId = req.tenant?.id ?? null;
+      const slot = await db.getSponsorshipSlot(req.params.slug, { tenantId });
+      if (!slot || !slot.is_active) return res.status(404).json({ error: 'Slot unavailable' });
+      const sponsorName = String(req.body?.sponsor_name || '').trim().slice(0, 80);
+      if (!sponsorName) return res.status(400).json({ error: 'sponsor_name required' });
+      const months = Math.min(Math.max(parseInt(req.body?.months) || 1, 1), 12);
+      const amountCents = slot.monthly_price_cents * months;
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      // Validate sponsor_url against an http(s) allowlist before persisting.
+      // Rejects javascript:, data:, file:, etc. — the URL is rendered later as
+      // a clickable <a href> on a public page so any unsafe scheme would be a
+      // stored-XSS vector. Empty/null is fine (sponsor without click-through).
+      let safeSponsorUrl = null;
+      if (req.body?.sponsor_url) {
+        try {
+          const u = new URL(String(req.body.sponsor_url));
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+            return res.status(400).json({ error: 'sponsor_url must be http(s)' });
+          }
+          safeSponsorUrl = u.toString();
+        } catch {
+          return res.status(400).json({ error: 'sponsor_url is not a valid URL' });
+        }
+      }
+      let safeSponsorImageUrl = null;
+      if (req.body?.sponsor_image_url) {
+        try {
+          const u = new URL(String(req.body.sponsor_image_url));
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+            return res.status(400).json({ error: 'sponsor_image_url must be http(s)' });
+          }
+          safeSponsorImageUrl = u.toString();
+        } catch {
+          return res.status(400).json({ error: 'sponsor_image_url is not a valid URL' });
+        }
+      }
+      const endsAt = new Date(Date.now() + months * 30 * 86400 * 1000);
+      const checkout = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: slot.currency,
+            product_data: { name: `Sponsorship: ${slot.label}`, description: `${months} month(s) on ${slot.label}` },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        }],
+        success_url: `${baseUrl}/sponsorships/inbox?status=success`,
+        cancel_url: `${baseUrl}/sponsorships/inbox?status=cancel`,
+        metadata: { purpose: 'sponsorship', slot_slug: slot.slug, sponsor_name: sponsorName },
+      });
+      await db.createSponsorshipOrder({
+        slotId: slot.id, buyerAccountId: accountId, buyerEmail: req.body?.buyer_email || null,
+        sponsorName, sponsorUrl: safeSponsorUrl,
+        sponsorImageUrl: safeSponsorImageUrl,
+        bodyHtml: null,
+        startsAt: new Date(), endsAt, amountCents, currency: slot.currency,
+        stripeSessionId: checkout.id,
+      });
+      res.json({ url: checkout.url });
+    } catch (err) {
+      console.error('[API] sponsorships/checkout:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/admin/sponsorships', requireSuperuser, async (req, res) => {
+    try {
+      const [slots, orders] = await Promise.all([
+        db.listSponsorshipSlots(),
+        db.listAllSponsorshipOrders({ limit: 200 }),
+      ]);
+      res.json({ slots, orders });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.post('/admin/sponsorships/slots', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      // tenant_id is optional — NULL/omitted means a global slot served on
+      // the default tenant; a value scopes the slot to that white-label tenant
+      // and lets it override a global slot of the same slug.
+      const tenantId = req.body?.tenant_id;
+      const slot = await db.createSponsorshipSlot({
+        slug: req.body?.slug, label: req.body?.label,
+        description: req.body?.description,
+        monthlyPriceCents: req.body?.monthly_price_cents,
+        currency: req.body?.currency,
+        tenantId: tenantId === '' || tenantId == null ? null : parseInt(tenantId, 10),
+      });
+      res.json({ ok: true, slot });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  router.put('/admin/sponsorships/slots/:id', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      // Allow editing tenant_id on update (re-scope a slot, or detach to global).
+      const patch = { ...(req.body || {}) };
+      if ('tenant_id' in patch) {
+        patch.tenant_id = (patch.tenant_id === '' || patch.tenant_id == null)
+          ? null : parseInt(patch.tenant_id, 10);
+      }
+      const slot = await db.updateSponsorshipSlot(parseInt(req.params.id), patch);
+      res.json({ ok: true, slot });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  router.delete('/admin/sponsorships/slots/:id', requireSuperuser, async (req, res) => {
+    try {
+      await db.deleteSponsorshipSlot(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  // ---- Multi-tenant (white-label, Model A) ----
+  // Public read of resolved tenant from the current Host header. Used by the
+  // frontend to fetch its branding overrides.
+  router.get('/tenant/current', async (req, res) => {
+    try {
+      const t = req.tenant || await db.getTenantByHost(req.get('host'));
+      if (!t) return res.json({ tenant: null });
+      res.json({
+        tenant: {
+          id: t.id, slug: t.slug, display_name: t.display_name,
+          subdomain: t.subdomain, custom_hostname: t.custom_hostname,
+          branding: t.branding || {}, feature_flags: t.feature_flags || {},
+          status: t.status, plan: t.plan,
+        },
+      });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.get('/admin/tenants', requireSuperuser, async (req, res) => {
+    try {
+      const tenants = await db.listTenants();
+      res.json({ tenants });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.post('/admin/tenants', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const t = await db.createTenant({
+        slug: req.body?.slug, displayName: req.body?.display_name,
+        subdomain: req.body?.subdomain, customHostname: req.body?.custom_hostname,
+        ownerAccountId: req.body?.owner_account_id,
+        branding: req.body?.branding, featureFlags: req.body?.feature_flags,
+        plan: req.body?.plan,
+      });
+      res.json({ ok: true, tenant: t });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  router.put('/admin/tenants/:id', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const t = await db.updateTenant(parseInt(req.params.id), req.body || {});
+      res.json({ ok: true, tenant: t });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  router.get('/admin/tenants/:id/members', requireSuperuser, async (req, res) => {
+    try {
+      const members = await db.listTenantMembers(parseInt(req.params.id));
+      res.json({ members });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.post('/admin/tenants/:id/members', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const m = await db.addTenantMember(parseInt(req.params.id), req.body?.account_id, req.body?.role || 'admin');
+      res.json({ ok: true, member: m });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  router.delete('/admin/tenants/:id/members/:accountId', requireSuperuser, async (req, res) => {
+    try {
+      await db.removeTenantMember(parseInt(req.params.id), req.params.accountId);
+      res.json({ ok: true });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  // ───── Tenant-owner self-service surfaces (Task #320) ─────
+  // Tenant owners/admins manage their own tenant without needing the
+  // superuser key. Guarded by isTenantMember(...) against tenant_members.
+  async function requireTenantMember(req, res, minRole = 'admin') {
+    const accountId = req.session?.accountId;
+    if (!accountId) { res.status(401).json({ error: 'Sign in' }); return null; }
+    const tenantId = parseInt(req.params.id);
+    const tenant = await db.getTenantById(tenantId);
+    if (!tenant) { res.status(404).json({ error: 'Tenant not found' }); return null; }
+    const ok = await db.isTenantMember(tenantId, accountId, minRole);
+    if (!ok) { res.status(403).json({ error: 'Not a tenant manager' }); return null; }
+    return tenant;
+  }
+
+  // Read tenants the signed-in user can manage (registry for their UI).
+  router.get('/tenants/mine', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in' });
+      const all = await db.listTenants();
+      const mine = [];
+      for (const t of all) {
+        if (await db.isTenantMember(t.id, accountId, 'editor')) mine.push(t);
+      }
+      res.json({ tenants: mine });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Owner/admin can edit their own tenant branding + display name.
+  router.put('/tenants/:id', express.json(), async (req, res) => {
+    const tenant = await requireTenantMember(req, res, 'admin');
+    if (!tenant) return;
+    try {
+      // Tenant managers can edit display_name + branding only.
+      // Subdomain, custom hostname, plan, status stay superuser-only.
+      const patch = {};
+      if (req.body?.display_name !== undefined) patch.display_name = String(req.body.display_name).slice(0, 80);
+      if (req.body?.branding !== undefined) patch.branding = req.body.branding;
+      const updated = await db.updateTenant(tenant.id, patch);
+      res.json({ ok: true, tenant: updated });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  // Tenant managers can create + manage their own sponsorship slots.
+  router.post('/tenants/:id/sponsorships/slots', express.json(), async (req, res) => {
+    const tenant = await requireTenantMember(req, res, 'admin');
+    if (!tenant) return;
+    try {
+      const slot = await db.createSponsorshipSlot({
+        slug: req.body?.slug, label: req.body?.label,
+        description: req.body?.description,
+        monthlyPriceCents: req.body?.monthly_price_cents,
+        currency: req.body?.currency,
+        tenantId: tenant.id,
+      });
+      res.json({ ok: true, slot });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  router.get('/tenants/:id/sponsorships/slots', async (req, res) => {
+    const tenant = await requireTenantMember(req, res, 'editor');
+    if (!tenant) return;
+    try {
+      const slots = await db.listSponsorshipSlots({ tenantId: tenant.id });
+      // Filter to slots actually scoped to this tenant (drop global ones).
+      res.json({ slots: slots.filter(s => s.tenant_id === tenant.id) });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Public branding/theme endpoint — resolves from req.tenant set by
+  // Host-header middleware. Frontend bootstraps CSS variables from this
+  // response so the white-label tenant's palette + logo apply at runtime
+  // (Model A theming). Always returns a value (default tenant fallback)
+  // so the frontend can theme unconditionally.
+  router.get('/tenant/theme', (req, res) => {
+    const t = req.tenant;
+    if (!t) {
+      return res.json({
+        tenant_id: null, display_name: 'OCE Inhouse',
+        branding: {}, css_vars: {},
+      });
+    }
+    const b = t.branding || {};
+    // Whitelist the brand fields that map into CSS custom properties so a
+    // tenant cannot inject arbitrary keys into the document.
+    const cssVars = {};
+    if (b.bg_primary) cssVars['--bg-primary'] = String(b.bg_primary);
+    if (b.accent) cssVars['--accent'] = String(b.accent);
+    if (b.gold) cssVars['--gold'] = String(b.gold);
+    if (b.brass) cssVars['--brass'] = String(b.brass);
+    if (b.amber) cssVars['--amber'] = String(b.amber);
+    if (b.ink_navy) cssVars['--ink-navy'] = String(b.ink_navy);
+    res.json({
+      tenant_id: t.id,
+      display_name: t.display_name,
+      branding: { logo_url: b.logo_url || null, favicon_url: b.favicon_url || null },
+      css_vars: cssVars,
+    });
+  });
+
+  // Tenant billing — self-service for the tenant owner.
+  router.post('/tenants/:id/billing/checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in' });
+      const tenantId = parseInt(req.params.id);
+      const tenant = await db.getTenantById(tenantId);
+      if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+      const ok = await db.isTenantMember(tenantId, accountId, 'owner') || _isSu(req);
+      if (!ok) return res.status(403).json({ error: 'Only the tenant owner can manage billing.' });
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+      const plan = req.body?.plan === 'pro' ? 'pro' : 'starter';
+      const priceCents = plan === 'pro'
+        ? (parseInt(process.env.TENANT_PRO_PRICE_CENTS, 10) || 9900)
+        : (parseInt(process.env.TENANT_STARTER_PRICE_CENTS, 10) || 2900);
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const checkout = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: { name: `Tenant — ${plan} plan`, description: `White-label tenant subscription (${tenant.display_name}).` },
+            unit_amount: priceCents,
+            recurring: { interval: 'month' },
+          },
+          quantity: 1,
+        }],
+        subscription_data: { metadata: { purpose: 'tenant_subscription', tenant_id: String(tenantId), plan } },
+        metadata: { purpose: 'tenant_subscription', tenant_id: String(tenantId), plan },
+        success_url: `${baseUrl}/admin?tenant_billing=success`,
+        cancel_url: `${baseUrl}/admin?tenant_billing=cancel`,
+      });
+      res.json({ url: checkout.url });
+    } catch (err) {
+      console.error('[API] tenants/billing/checkout:', err.message);
       res.status(500).json({ error: err.message });
     }
   });

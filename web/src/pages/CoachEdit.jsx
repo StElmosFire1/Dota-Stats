@@ -12,6 +12,7 @@ export default function CoachEdit() {
   const [bookings, setBookings] = useState([]);
   const [rating, setRating] = useState(null);
   const [kyc, setKyc] = useState(null);
+  const [premium, setPremium] = useState(null);
   const [msg, setMsg] = useState('');
 
   const load = async () => {
@@ -25,8 +26,31 @@ export default function CoachEdit() {
       setBookings(d.bookings || []); setRating(d.rating);
       const k = await fetch(`${BASE}/coach/onboarding-status`, { credentials: 'include' });
       if (k.ok) setKyc(await k.json());
+      const ps = await fetch(`${BASE}/coach/premium/status`, { credentials: 'include' });
+      if (ps.ok) setPremium((await ps.json()).subscription);
     } catch (e) { setError(e.message); }
     setLoading(false);
+  };
+
+  const startPremium = async () => {
+    setMsg('');
+    try {
+      const r = await fetch(`${BASE}/coach/premium/checkout`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const d = await r.json();
+      if (d.url) window.location.href = d.url;
+      else setMsg(`Error: ${d.error || 'Could not start checkout'}`);
+    } catch (e) { setMsg(`Error: ${e.message}`); }
+  };
+
+  const cancelPremium = async () => {
+    setMsg('');
+    const r = await fetch(`${BASE}/coach/premium/cancel`, { method: 'POST', credentials: 'include' });
+    const d = await r.json();
+    if (r.ok) { setPremium(d.subscription); setMsg('Premium will cancel at period end.'); }
+    else setMsg(`Error: ${d.error}`);
   };
 
   useEffect(() => { load(); }, []);
@@ -113,6 +137,38 @@ export default function CoachEdit() {
           </div>
         );
       })()}
+
+      {/* Task #320 — Coach Premium subscription card */}
+      <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(197,169,117,0.05))', border: '1px solid var(--brass, #c5a975)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
+        <h3 style={{ marginTop: 0, color: 'var(--amber, #f59e0b)' }}>⭐ Coach Premium</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
+          Featured placement in the coach directory, priority support, and a reduced platform fee (7% vs the site default).
+        </p>
+        {premium && (premium.status === 'active' || premium.status === 'trialing') ? (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--radiant-color)', fontWeight: 600 }}>Active</span>
+            {premium.current_period_end && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Renews {new Date(premium.current_period_end).toLocaleDateString()}
+              </span>
+            )}
+            {!premium.cancel_at_period_end && (
+              <button type="button" onClick={cancelPremium} aria-label="Cancel Coach Premium subscription"
+                style={{ padding: '5px 12px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}>
+                Cancel at period end
+              </button>
+            )}
+            {premium.cancel_at_period_end && (
+              <span style={{ fontSize: 12, color: '#fbbf24' }}>Cancels at period end</span>
+            )}
+          </div>
+        ) : (
+          <button type="button" onClick={startPremium} aria-label="Subscribe to Coach Premium"
+            style={{ padding: '8px 18px', borderRadius: 6, background: 'var(--amber, #f59e0b)', color: '#1a1a1a', border: 0, cursor: 'pointer', fontWeight: 700 }}>
+            Subscribe — $9.99/mo
+          </button>
+        )}
+      </div>
 
       <form onSubmit={save} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
         <h3 style={{ marginTop: 0 }}>Profile</h3>

@@ -1508,6 +1508,147 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coach_sanctions_coach ON coach_sanctions (coach_account_id)`);
 
+    // ---------- Task #320: Commission tiers + coach premium + sponsorships + tenants ----------
+    // Additive ALTERs on `coaches` — per-coach commission overrides + premium tier flag.
+    // `commission_bps` is basis points (e.g. 1000 = 10.00%, NULL = use site default).
+    // `commission_tier` is a label ('default' | 'reduced' | 'partner') used for admin grouping.
+    // `is_premium` mirrors the active state of the coach_premium_subscriptions row so reads
+    // are cheap; it's recomputed via setCoachPremium() on every subscription event.
+    await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS commission_bps INTEGER`);
+    await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS commission_tier TEXT DEFAULT 'rookie'`);
+    await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS commission_override_bps INTEGER`);
+    await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS premium_until TIMESTAMPTZ`);
+
+    // Coach premium subscriptions — monthly Stripe subscription that gives coaches a
+    // reduced commission rate + featured slot on /coaches. One active row per coach.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_premium_subscriptions (
+        id SERIAL PRIMARY KEY,
+        coach_account_id BIGINT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending','active','past_due','cancelled','canceled','refunded')),
+        stripe_customer_id TEXT,
+        stripe_subscription_id TEXT UNIQUE,
+        current_period_end TIMESTAMPTZ,
+        cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+        cancelled_at TIMESTAMPTZ,
+        price_cents INTEGER NOT NULL DEFAULT 999,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coach_premium_status ON coach_premium_subscriptions (status)`);
+
+    // Sponsorship slots — named placements (e.g. 'home_banner', 'leaderboard_tier_3',
+    // 'inhouse_top'). Admins define slots + price; advertisers buy via Stripe.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS sponsorship_slots (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL,
+        label TEXT NOT NULL,
+        description TEXT,
+        monthly_price_cents INTEGER NOT NULL DEFAULT 5000,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Sponsorship orders — one row per purchased placement window.
+    // status: pending → active → expired/refunded/cancelled. Single active
+    // window per (slot, time) enforced at read time (most recent paid wins).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS sponsorship_orders (
+        id SERIAL PRIMARY KEY,
+        slot_id INTEGER NOT NULL REFERENCES sponsorship_slots(id) ON DELETE CASCADE,
+        buyer_account_id BIGINT,
+        buyer_email TEXT,
+        sponsor_name TEXT NOT NULL,
+        sponsor_url TEXT,
+        sponsor_image_url TEXT,
+        body_html TEXT,
+        starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ends_at TIMESTAMPTZ NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending','active','expired','refunded','cancelled')),
+        stripe_session_id TEXT UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_sponsorship_orders_slot ON sponsorship_orders (slot_id, status, starts_at, ends_at)`);
+
+    // Tenant scoping + impression tracking for sponsorships. tenant_id is
+    // nullable — NULL means "global/default tenant" (oceinhouse.gg).
+    await p.query(`ALTER TABLE sponsorship_slots ADD COLUMN IF NOT EXISTS tenant_id INTEGER`);
+    await p.query(`ALTER TABLE sponsorship_orders ADD COLUMN IF NOT EXISTS impressions BIGINT NOT NULL DEFAULT 0`);
+    await p.query(`ALTER TABLE sponsorship_orders ADD COLUMN IF NOT EXISTS clicks BIGINT NOT NULL DEFAULT 0`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_sponsorship_slots_tenant ON sponsorship_slots (tenant_id, slug)`);
+    // Replace the legacy single-column UNIQUE(slug) with a tenant-aware
+    // uniqueness model so a global slot ("home_banner", tenant_id=NULL) and
+    // a tenant-specific override of the same slug can coexist. Two partial
+    // unique indexes — one per (tenant_id, slug) where tenant_id IS NOT NULL,
+    // one on slug where tenant_id IS NULL — keep the override clean.
+    await p.query(`ALTER TABLE sponsorship_slots DROP CONSTRAINT IF EXISTS sponsorship_slots_slug_key`);
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_sponsorship_slots_tenant_slug
+                     ON sponsorship_slots (tenant_id, slug) WHERE tenant_id IS NOT NULL`);
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_sponsorship_slots_global_slug
+                     ON sponsorship_slots (slug) WHERE tenant_id IS NULL`);
+
+    // White-label tenants (Model A foundation). A tenant is a sub-brand reachable
+    // either at a subdomain (e.g. `myleague.oceinhouse.gg`) or a custom hostname.
+    // The full-fat per-table tenant_id partitioning is intentionally NOT yet wired
+    // through the entire schema (that's a multi-week migration); this scaffolding
+    // gives us tenant resolution, branding overrides, and billing now so a future
+    // task can roll the per-row scoping out incrementally.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tenants (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        subdomain TEXT UNIQUE,
+        custom_hostname TEXT UNIQUE,
+        owner_account_id BIGINT,
+        branding JSONB NOT NULL DEFAULT '{}'::jsonb,
+        feature_flags JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status TEXT NOT NULL DEFAULT 'active'
+          CHECK (status IN ('active','suspended','archived','trialing','past_due')),
+        plan TEXT NOT NULL DEFAULT 'starter',
+        stripe_customer_id TEXT,
+        stripe_subscription_id TEXT UNIQUE,
+        current_period_end TIMESTAMPTZ,
+        trial_ends_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants (status)`);
+
+    // tenant_members — users authorised to manage a tenant. role: owner|admin|editor.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tenant_members (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'admin'
+          CHECK (role IN ('owner','admin','editor')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(tenant_id, account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_tenant_members_account ON tenant_members (account_id)`);
+
+    // Seed the default commission rate so deploys don't 0% coaches by accident.
+    await p.query(
+      `INSERT INTO site_settings (key, value) VALUES ('coaching_commission_bps', '2500')
+       ON CONFLICT (key) DO NOTHING`
+    );
+
     // Weekend / special event tournaments
     await p.query(`
       CREATE TABLE IF NOT EXISTS weekend_tournaments (
@@ -13009,6 +13150,463 @@ async function listProMembers() {
 }
 
 // =============================================================================
+// Task #320 — Commission tiers, coach premium, sponsorships, multi-tenant.
+// Commission resolution order (per booking):
+//   1. coach.commission_bps (admin override on the coach row)  — wins if NOT NULL
+//   2. coach.is_premium → 7% (700 bps) discount for paying premium coaches
+//   3. site_settings 'coaching_commission_bps' (seeded 2500 = 25%, the
+//      published Rookie rate; admin-editable via the commission panel)
+// `bps` (basis points) avoids floating-point drift on the platform fee maths.
+// =============================================================================
+const COACH_PREMIUM_COMMISSION_BPS = 700;
+const DEFAULT_COACHING_COMMISSION_BPS = 1000;
+
+async function getCoachingCommissionBps() {
+  const v = await getSetting('coaching_commission_bps');
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 0 && n <= 5000 ? n : DEFAULT_COACHING_COMMISSION_BPS;
+}
+
+async function setCoachingCommissionBps(bps) {
+  const n = parseInt(bps, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 5000) {
+    throw new Error('commission_bps must be 0..5000 (0%..50%)');
+  }
+  await setSetting('coaching_commission_bps', String(n));
+  return n;
+}
+
+// Resolves the effective commission for the given coach row (NOT account_id, the row
+// already in memory — saves a round-trip during booking creation).
+// ── Coach tier system (Task #320) ─────────────────────────────────────
+// Three auto-assigned commission tiers, recomputed on each booking-completed
+// event by evaluateAndAutoTierCoach(). Manual override (commission_override_bps)
+// always wins, then Premium subscription, then tier-derived rate.
+//
+// Promotion rules:
+//   Rookie       — default; 0–14 completed sessions OR rating < 4.5
+//   Established  — 15+ completed sessions AND avg rating >= 4.5
+//   Elite        — 50+ completed sessions AND avg rating >= 4.8
+// Tier rates: only "promotion" tiers (established/elite) carry discounted
+// fixed rates; rookies use the admin-configurable site default. This keeps
+// the global commission slider materially active for the largest cohort of
+// coaches and lets earned tiers act as explicit promotional discounts.
+const COACH_TIER_RATES_BPS = { established: 1800, elite: 1200 };
+function bpsForTier(tier) {
+  return COACH_TIER_RATES_BPS[String(tier || '').toLowerCase()] ?? null;
+}
+
+async function resolveCommissionBpsForCoach(coachRow) {
+  if (!coachRow) return await getCoachingCommissionBps();
+  // 1. Manual admin override always wins.
+  if (coachRow.commission_override_bps != null) return Number(coachRow.commission_override_bps);
+  // 2. Premium subscription (flat 7%).
+  if (coachRow.is_premium) return COACH_PREMIUM_COMMISSION_BPS;
+  // 3. Promotion-tier discount (established/elite only). Rookies fall through.
+  const tierRate = bpsForTier(coachRow.commission_tier);
+  if (tierRate != null) return tierRate;
+  // 4. Site default (the admin-set global rate — applies to rookies and
+  //    coaches with no tier assigned yet).
+  return await getCoachingCommissionBps();
+}
+
+// Re-compute and persist the auto tier for one coach based on the latest
+// completed_sessions + avg rating. Returns the new tier. Safe to call after
+// every booking 'completed' transition or rating insert.
+async function evaluateAndAutoTierCoach(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT
+        (SELECT COUNT(*)::int FROM coaching_bookings
+           WHERE coach_account_id = $1 AND status = 'completed') AS completed,
+        (SELECT ROUND(AVG(rating)::numeric, 2) FROM coaching_reviews
+           WHERE coach_account_id = $1) AS avg_rating`,
+    [accountId]
+  );
+  const completed = r.rows[0]?.completed || 0;
+  const rating = parseFloat(r.rows[0]?.avg_rating) || 0;
+  let tier = 'rookie';
+  if (completed >= 50 && rating >= 4.8) tier = 'elite';
+  else if (completed >= 15 && rating >= 4.5) tier = 'established';
+  await p.query(
+    `UPDATE coaches SET commission_tier = $2,
+            commission_bps = $3, updated_at = NOW()
+       WHERE account_id = $1`,
+    [accountId, tier, bpsForTier(tier)]
+  );
+  return { tier, bps: bpsForTier(tier), completed, avg_rating: rating };
+}
+
+async function setCoachCommissionOverride(accountId, { bps, tier } = {}) {
+  const p = getPool();
+  // bps === null → clear override (revert to auto-tier rate).
+  const r = await p.query(
+    `UPDATE coaches SET commission_override_bps = $2,
+            commission_tier = COALESCE($3, commission_tier),
+            updated_at = NOW()
+       WHERE account_id = $1
+       RETURNING *`,
+    [accountId, bps, tier]
+  );
+  return r.rows[0] || null;
+}
+
+async function getCoachPremium(coachAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM coach_premium_subscriptions WHERE coach_account_id = $1`,
+    [coachAccountId]
+  );
+  return r.rows[0] || null;
+}
+
+async function upsertCoachPremiumPending({ coachAccountId, stripeCustomerId, priceCents = 999, currency = 'aud' }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coach_premium_subscriptions
+       (coach_account_id, status, stripe_customer_id, price_cents, currency)
+     VALUES ($1, 'pending', $2, $3, $4)
+     ON CONFLICT (coach_account_id) DO UPDATE
+       SET stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, coach_premium_subscriptions.stripe_customer_id),
+           updated_at = NOW()
+     RETURNING *`,
+    [coachAccountId, stripeCustomerId || null, priceCents, currency]
+  );
+  return r.rows[0];
+}
+
+// Apply a Stripe subscription event payload. Mirrors `is_premium` + `premium_until`
+// onto the coach row so reads (browsing /coaches) don't need a join.
+async function applyCoachPremiumStripeEvent(coachAccountId, sub) {
+  if (!coachAccountId || !sub) return null;
+  const p = getPool();
+  const status = sub.status === 'trialing' ? 'active' : (sub.status || 'pending');
+  const cpe = sub.current_period_end ? new Date(sub.current_period_end * 1000) : null;
+  const cancelAtPeriodEnd = !!sub.cancel_at_period_end;
+  const cancelledAt = sub.canceled_at ? new Date(sub.canceled_at * 1000) : null;
+  const r = await p.query(
+    `UPDATE coach_premium_subscriptions
+        SET status = $2, stripe_subscription_id = COALESCE(stripe_subscription_id, $3),
+            current_period_end = $4, cancel_at_period_end = $5,
+            cancelled_at = $6, updated_at = NOW()
+      WHERE coach_account_id = $1
+      RETURNING *`,
+    [coachAccountId, status, sub.id || null, cpe, cancelAtPeriodEnd, cancelledAt]
+  );
+  const isActive = ['active', 'past_due'].includes(status);
+  await p.query(
+    `UPDATE coaches SET is_premium = $2, premium_until = $3, updated_at = NOW()
+       WHERE account_id = $1`,
+    [coachAccountId, isActive, cpe]
+  );
+  return r.rows[0] || null;
+}
+
+async function cancelCoachPremium(coachAccountId) {
+  const p = getPool();
+  await p.query(
+    `UPDATE coach_premium_subscriptions
+        SET cancel_at_period_end = TRUE, updated_at = NOW()
+      WHERE coach_account_id = $1`,
+    [coachAccountId]
+  );
+  return await getCoachPremium(coachAccountId);
+}
+
+// ---------- Sponsorship slots ----------
+async function listSponsorshipSlots({ activeOnly = false, tenantId = null } = {}) {
+  const p = getPool();
+  // Tenant scoping: tenant-specific slots OR global (tenant_id IS NULL) when
+  // tenantId provided; otherwise return everything (admin view).
+  const where = [];
+  const args = [];
+  if (activeOnly) where.push('is_active = TRUE');
+  if (tenantId !== null && tenantId !== undefined) {
+    args.push(tenantId);
+    where.push(`(tenant_id = $${args.length} OR tenant_id IS NULL)`);
+  }
+  const sql = `SELECT * FROM sponsorship_slots${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY tenant_id NULLS LAST, slug`;
+  const r = await p.query(sql, args);
+  return r.rows;
+}
+
+async function getSponsorshipSlot(slug, { tenantId = null } = {}) {
+  const p = getPool();
+  // Prefer tenant-specific slot when present, fall back to global.
+  if (tenantId !== null && tenantId !== undefined) {
+    const t = await p.query(
+      `SELECT * FROM sponsorship_slots WHERE slug = $1 AND tenant_id = $2`,
+      [slug, tenantId]
+    );
+    if (t.rows[0]) return t.rows[0];
+  }
+  const r = await p.query(
+    `SELECT * FROM sponsorship_slots WHERE slug = $1 AND tenant_id IS NULL`,
+    [slug]
+  );
+  return r.rows[0] || null;
+}
+
+async function createSponsorshipSlot({ slug, label, description, monthlyPriceCents, currency, tenantId }) {
+  if (!slug || !label) throw new Error('slug + label required');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO sponsorship_slots (slug, label, description, monthly_price_cents, currency, tenant_id)
+     VALUES ($1, $2, $3, COALESCE($4, 5000), COALESCE($5, 'aud'), $6)
+     RETURNING *`,
+    [slug, label, description || null, monthlyPriceCents, currency, tenantId ?? null]
+  );
+  return r.rows[0];
+}
+
+async function updateSponsorshipSlot(id, patch = {}) {
+  const p = getPool();
+  const fields = [];
+  const args = [id];
+  for (const k of ['label', 'description', 'monthly_price_cents', 'currency', 'is_active', 'tenant_id']) {
+    if (patch[k] !== undefined) {
+      args.push(patch[k]);
+      fields.push(`${k} = $${args.length}`);
+    }
+  }
+  if (!fields.length) return await p.query(`SELECT * FROM sponsorship_slots WHERE id = $1`, [id]).then(r => r.rows[0]);
+  const r = await p.query(
+    `UPDATE sponsorship_slots SET ${fields.join(', ')}, updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+    args
+  );
+  return r.rows[0] || null;
+}
+
+async function deleteSponsorshipSlot(id) {
+  const p = getPool();
+  await p.query(`DELETE FROM sponsorship_slots WHERE id = $1`, [id]);
+  return { ok: true };
+}
+
+async function createSponsorshipOrder({
+  slotId, buyerAccountId, buyerEmail, sponsorName, sponsorUrl, sponsorImageUrl,
+  bodyHtml, startsAt, endsAt, amountCents, currency, stripeSessionId,
+}) {
+  if (!slotId || !sponsorName || !endsAt || amountCents == null) {
+    throw new Error('createSponsorshipOrder: slotId, sponsorName, endsAt, amountCents required');
+  }
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO sponsorship_orders
+       (slot_id, buyer_account_id, buyer_email, sponsor_name, sponsor_url,
+        sponsor_image_url, body_html, starts_at, ends_at, amount_cents, currency,
+        stripe_session_id, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8, NOW()),$9,$10,COALESCE($11,'aud'),$12,'pending')
+     RETURNING *`,
+    [slotId, buyerAccountId || null, buyerEmail || null, sponsorName, sponsorUrl || null,
+     sponsorImageUrl || null, bodyHtml || null, startsAt || null, endsAt, amountCents,
+     currency, stripeSessionId || null]
+  );
+  return r.rows[0];
+}
+
+async function markSponsorshipOrderPaid(stripeSessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE sponsorship_orders SET status = 'active', updated_at = NOW()
+       WHERE stripe_session_id = $1 AND status = 'pending'
+       RETURNING *`,
+    [stripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
+async function listActiveSponsorshipsForSlot(slug) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT o.*, s.slug, s.label
+       FROM sponsorship_orders o
+       JOIN sponsorship_slots s ON s.id = o.slot_id
+      WHERE s.slug = $1 AND o.status = 'active'
+        AND o.starts_at <= NOW() AND o.ends_at > NOW()
+      ORDER BY o.starts_at DESC`,
+    [slug]
+  );
+  return r.rows;
+}
+
+// ---------- Sponsorship telemetry (Task #320) ----------
+// Best-effort counters — failures are swallowed by callers so a tracking
+// blip never breaks a page render.
+async function recordSponsorshipImpression(orderId) {
+  if (!orderId) return;
+  const p = getPool();
+  await p.query(
+    `UPDATE sponsorship_orders SET impressions = impressions + 1 WHERE id = $1`,
+    [orderId]
+  );
+}
+
+async function recordSponsorshipClick(orderId) {
+  if (!orderId) return;
+  const p = getPool();
+  await p.query(
+    `UPDATE sponsorship_orders SET clicks = clicks + 1 WHERE id = $1`,
+    [orderId]
+  );
+}
+
+async function listAllSponsorshipOrders({ limit = 100 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT o.*, s.slug AS slot_slug, s.label AS slot_label
+       FROM sponsorship_orders o
+       JOIN sponsorship_slots s ON s.id = o.slot_id
+      ORDER BY o.created_at DESC LIMIT $1`,
+    [limit]
+  );
+  return r.rows;
+}
+
+// ---------- Multi-tenant (white-label, Model A) ----------
+async function listTenants() {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM tenants ORDER BY created_at DESC`);
+  return r.rows;
+}
+
+async function getTenantById(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM tenants WHERE id = $1`, [id]);
+  return r.rows[0] || null;
+}
+
+async function getTenantBySlug(slug) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM tenants WHERE slug = $1`, [slug]);
+  return r.rows[0] || null;
+}
+
+// Resolve a tenant from an HTTP `Host:` header. Strips port, lowercases.
+// Matches custom_hostname first (most specific) then subdomain of the parent
+// domain configured via env TENANT_PARENT_DOMAIN (e.g. 'oceinhouse.gg').
+async function getTenantByHost(rawHost) {
+  if (!rawHost) return null;
+  const host = String(rawHost).toLowerCase().split(':')[0].trim();
+  if (!host) return null;
+  const p = getPool();
+  const direct = await p.query(`SELECT * FROM tenants WHERE custom_hostname = $1 LIMIT 1`, [host]);
+  if (direct.rows[0]) return direct.rows[0];
+  const parent = (process.env.TENANT_PARENT_DOMAIN || '').toLowerCase().trim();
+  if (parent && host.endsWith('.' + parent)) {
+    const sub = host.slice(0, -1 * (parent.length + 1));
+    const bySub = await p.query(`SELECT * FROM tenants WHERE subdomain = $1 LIMIT 1`, [sub]);
+    if (bySub.rows[0]) return bySub.rows[0];
+  }
+  return null;
+}
+
+async function createTenant({
+  slug, displayName, subdomain, customHostname, ownerAccountId, branding, featureFlags, plan,
+}) {
+  if (!slug || !displayName) throw new Error('createTenant: slug + displayName required');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO tenants
+       (slug, display_name, subdomain, custom_hostname, owner_account_id,
+        branding, feature_flags, plan, status)
+     VALUES ($1,$2,$3,$4,$5,COALESCE($6,'{}'::jsonb),COALESCE($7,'{}'::jsonb),
+             COALESCE($8,'starter'),'trialing')
+     RETURNING *`,
+    [slug, displayName, subdomain || null, customHostname || null, ownerAccountId || null,
+     branding ? JSON.stringify(branding) : null,
+     featureFlags ? JSON.stringify(featureFlags) : null, plan]
+  );
+  if (ownerAccountId) {
+    await p.query(
+      `INSERT INTO tenant_members (tenant_id, account_id, role)
+       VALUES ($1, $2, 'owner') ON CONFLICT (tenant_id, account_id) DO NOTHING`,
+      [r.rows[0].id, ownerAccountId]
+    );
+  }
+  return r.rows[0];
+}
+
+async function updateTenant(id, patch = {}) {
+  const p = getPool();
+  const fields = [];
+  const args = [id];
+  for (const k of ['display_name', 'subdomain', 'custom_hostname', 'status', 'plan']) {
+    if (patch[k] !== undefined) { args.push(patch[k]); fields.push(`${k} = $${args.length}`); }
+  }
+  if (patch.branding !== undefined) { args.push(JSON.stringify(patch.branding)); fields.push(`branding = $${args.length}::jsonb`); }
+  if (patch.feature_flags !== undefined) { args.push(JSON.stringify(patch.feature_flags)); fields.push(`feature_flags = $${args.length}::jsonb`); }
+  if (!fields.length) return await getTenantById(id);
+  const r = await p.query(
+    `UPDATE tenants SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    args
+  );
+  return r.rows[0] || null;
+}
+
+async function setTenantSubscription(id, { stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, status, plan }) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE tenants SET
+        stripe_customer_id = COALESCE($2, stripe_customer_id),
+        stripe_subscription_id = COALESCE($3, stripe_subscription_id),
+        current_period_end = COALESCE($4, current_period_end),
+        status = COALESCE($5, status),
+        plan = COALESCE($6, plan),
+        updated_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [id, stripeCustomerId || null, stripeSubscriptionId || null,
+     currentPeriodEnd || null, status || null, plan || null]
+  );
+  return r.rows[0] || null;
+}
+
+async function listTenantMembers(tenantId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT m.*, COALESCE(n.nickname, m.account_id::text) AS nickname
+       FROM tenant_members m
+       LEFT JOIN nicknames n ON n.account_id = m.account_id
+      WHERE tenant_id = $1 ORDER BY role, created_at`,
+    [tenantId]
+  );
+  return r.rows;
+}
+
+async function addTenantMember(tenantId, accountId, role = 'admin') {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO tenant_members (tenant_id, account_id, role) VALUES ($1, $2, $3)
+     ON CONFLICT (tenant_id, account_id) DO UPDATE SET role = EXCLUDED.role
+     RETURNING *`,
+    [tenantId, accountId, role]
+  );
+  return r.rows[0];
+}
+
+async function removeTenantMember(tenantId, accountId) {
+  const p = getPool();
+  await p.query(
+    `DELETE FROM tenant_members WHERE tenant_id = $1 AND account_id = $2 AND role != 'owner'`,
+    [tenantId, accountId]
+  );
+  return { ok: true };
+}
+
+async function isTenantMember(tenantId, accountId, minRole = 'editor') {
+  if (!tenantId || !accountId) return false;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT role FROM tenant_members WHERE tenant_id = $1 AND account_id = $2`,
+    [tenantId, accountId]
+  );
+  if (!r.rows[0]) return false;
+  const ranks = { editor: 1, admin: 2, owner: 3 };
+  return (ranks[r.rows[0].role] || 0) >= (ranks[minRole] || 1);
+}
+
+// =============================================================================
 // Coaching Marketplace (`coaching_marketplace`) helpers.
 // All mutations are best-effort idempotent; status transitions are enforced
 // in the route layer (so admin overrides remain possible). Eligibility is
@@ -13175,7 +13773,10 @@ async function listActiveCoaches({ language, role, hero, maxPriceCents } = {}) {
        ) top_hero ON TRUE
        LEFT JOIN nicknames n ON n.account_id = c.account_id
       WHERE ${conds.join(' AND ')}
-      ORDER BY c.created_at DESC`,
+      -- Premium entitlement: Coach Premium subscribers are featured first in
+      -- the public marketplace listing (one of the paid plan's perks).
+      ORDER BY (c.is_premium IS TRUE AND (c.premium_until IS NULL OR c.premium_until > NOW())) DESC,
+               c.created_at DESC`,
     args
   );
   return r.rows;
@@ -15045,6 +15646,38 @@ module.exports = {
   isCoachEligible,
   getCoach,
   getCoachById,
+  // Task #320
+  getCoachingCommissionBps,
+  setCoachingCommissionBps,
+  resolveCommissionBpsForCoach,
+  evaluateAndAutoTierCoach,
+  recordSponsorshipImpression,
+  recordSponsorshipClick,
+  setCoachCommissionOverride,
+  getCoachPremium,
+  upsertCoachPremiumPending,
+  applyCoachPremiumStripeEvent,
+  cancelCoachPremium,
+  listSponsorshipSlots,
+  getSponsorshipSlot,
+  createSponsorshipSlot,
+  updateSponsorshipSlot,
+  deleteSponsorshipSlot,
+  createSponsorshipOrder,
+  markSponsorshipOrderPaid,
+  listActiveSponsorshipsForSlot,
+  listAllSponsorshipOrders,
+  listTenants,
+  getTenantById,
+  getTenantByHost,
+  getTenantBySlug,
+  createTenant,
+  updateTenant,
+  setTenantSubscription,
+  listTenantMembers,
+  addTenantMember,
+  removeTenantMember,
+  isTenantMember,
   createCoachRow,
   updateCoach,
   setCoachKycActive,
