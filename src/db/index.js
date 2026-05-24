@@ -315,6 +315,12 @@ async function init() {
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch VARCHAR(20)`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS season_id INTEGER REFERENCES seasons(id)`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS team_abilities JSONB`);
+    // Task #363 — full all-chat + chat-wheel log captured from the Java parser
+    // (chat / chatwheel entries already emitted by Parse.onAllChatMessage et
+    // al.). Shape: [{ t, slot, type: 'chat'|'chatwheel', text }] ordered by t.
+    // Surfaced by `<ChatLogPanel>` on /match/:id behind the `chat_log_visible`
+    // feature flag. Old matches stay NULL; the panel hides itself when empty.
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS chat_log JSONB`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
 
@@ -1006,7 +1012,8 @@ async function init() {
          ('mvp_attitude_analytics', 'off', 'Wave 3: MVP rate + attitude trend analytics on player profiles'),
          ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions'),
          ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on'),
-         ('coaching_marketplace', 'on', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.')
+         ('coaching_marketplace', 'on', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.'),
+         ('chat_log_visible', 'preview', 'Task #363 — chat + chat-wheel log on /match/:id. preview = admins/superusers only; on = everyone.')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -2927,13 +2934,14 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
     await client.query('BEGIN');
 
     await client.query(
-      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes, team_abilities, replay_provenance)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes, team_abilities, replay_provenance, chat_log)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        ON CONFLICT (match_id) DO UPDATE SET date = EXCLUDED.date,
          game_timeline = COALESCE(EXCLUDED.game_timeline, matches.game_timeline),
          lane_outcomes = COALESCE(EXCLUDED.lane_outcomes, matches.lane_outcomes),
          team_abilities = COALESCE(EXCLUDED.team_abilities, matches.team_abilities),
-         replay_provenance = COALESCE(EXCLUDED.replay_provenance, matches.replay_provenance)
+         replay_provenance = COALESCE(EXCLUDED.replay_provenance, matches.replay_provenance),
+         chat_log = COALESCE(EXCLUDED.chat_log, matches.chat_log)
          WHERE EXCLUDED.date < NOW() - INTERVAL '10 minutes'`,
       [
         matchStats.matchId,
@@ -2951,6 +2959,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         matchStats.laneOutcomes ? JSON.stringify(matchStats.laneOutcomes) : null,
         matchStats.teamAbilities ? JSON.stringify(matchStats.teamAbilities) : null,
         replayProvenance || null,
+        matchStats.chatLog && matchStats.chatLog.length > 0 ? JSON.stringify(matchStats.chatLog) : null,
       ]
     );
 

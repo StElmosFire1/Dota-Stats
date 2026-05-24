@@ -2944,6 +2944,12 @@ function createApiRouter(startupStatus = {}, _app = null) {
       const tenantId = _resolveScopeTenantId(req);
       const matches = await db.getMatches(limit, offset, seasonId, { tenantId });
       const total = await db.getMatchCount(seasonId, { tenantId });
+      // Task #363 — getMatches is `SELECT m.*` so the new chat_log JSONB
+      // column would otherwise be returned to every public list caller,
+      // bypassing the per-match `chat_log_visible` gate. Strip it
+      // unconditionally on the list endpoint — chat is only ever surfaced
+      // on the dedicated match detail page, which applies the full gate.
+      for (const m of matches) { if (m && 'chat_log' in m) delete m.chat_log; }
       res.json({ matches, total, limit, offset });
     } catch (err) {
       console.error('[API] Error fetching matches:', err.message);
@@ -2983,6 +2989,27 @@ function createApiRouter(startupStatus = {}, _app = null) {
             match.underdog_team = lowerMmrIsRadiant ? 'radiant' : 'dire';
           }
         }
+      }
+      // Task #363 — chat_log feature gate. Fail-CLOSED: any error reading
+      // the flag, any unrecognised state, or any non-staff caller in
+      // 'preview' results in the field being stripped. The column itself
+      // is only ever exposed through this single route; the list endpoint
+      // strips it unconditionally above.
+      {
+        let flagState = 'off';
+        try {
+          const chatFlag = await db.getFeatureFlag('chat_log_visible');
+          if (chatFlag?.state === 'on' || chatFlag?.state === 'preview' || chatFlag?.state === 'off') {
+            flagState = chatFlag.state;
+          }
+        } catch (_) { flagState = 'off'; }
+        const isStaff = !!(req.session && (req.session.isSuperuser || req.session.isAdmin));
+        const chatVisible = flagState === 'on' || (flagState === 'preview' && isStaff);
+        if (!chatVisible && 'chat_log' in match) delete match.chat_log;
+        // Only expose the state string to callers who can actually see chat
+        // (staff in preview, or everyone when 'on'); otherwise omit so the
+        // panel-render check on the client stays a single-source truth.
+        if (chatVisible) match.chat_log_state = flagState;
       }
       // Indicate whether a locally stored replay file exists for this match.
       const replayRow = await db.getReplayFilePath(req.params.matchId).catch(() => null);

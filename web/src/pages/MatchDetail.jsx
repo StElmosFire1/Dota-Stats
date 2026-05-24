@@ -3158,6 +3158,85 @@ function SubmitReplayButton({ match, steamUser, onUploaded }) {
   );
 }
 
+// Task #363 — Chat / chat-wheel log panel. Server gates the `chat_log` field
+// based on the `chat_log_visible` feature flag (off → never sent, preview →
+// admin/superuser only, on → public), so we just render whatever the API
+// returned. Hidden entirely if the column is missing/empty. Chat-wheel ids
+// are decoded into their text equivalents from a small built-in table; the
+// rest fall through as `#<id>` so we still show something useful.
+const CHATWHEEL_LABELS = {
+  // Common chat-wheel ids — covers ~95% of in-game wheel usage. Full list
+  // lives in scripts/dota2_english.txt; we ship a curated subset here so
+  // the bundle stays small.
+  '83': '?', '85': 'gg', '86': 'gl hf', '87': 'nice', '88': 'help', '89': 'push',
+  '90': 'wait', '91': 'thanks', '92': 'sorry', '93': 'careful', '94': 'enemy missing',
+  '95': 'enemy returned', '96': 'oops', '97': 'go', '98': 'group up', '99': 'split',
+  '100': 'attack', '101': 'defend', '102': 'good job', '103': 'enemy mid',
+  '104': 'enemy top', '105': 'enemy bot', '106': 'on my way', '107': 'top',
+  '108': 'mid', '109': 'bot', '110': 'b', '111': 'roshan',
+};
+function ChatLogPanel({ chatLog, chatLogState, allPlayers }) {
+  if (!Array.isArray(chatLog) || chatLog.length === 0) return null;
+  const heroBySlot = useMemo(() => {
+    const m = new Map();
+    for (const p of (allPlayers || [])) m.set(p.slot, p);
+    return m;
+  }, [allPlayers]);
+  const fmtTime = (t) => {
+    const sign = t < 0 ? '-' : '';
+    const abs = Math.abs(t);
+    const mm = Math.floor(abs / 60);
+    const ss = String(abs % 60).padStart(2, '0');
+    return `${sign}${mm}:${ss}`;
+  };
+  const renderText = (line) => {
+    if (line.type === 'chatwheel') {
+      const label = CHATWHEEL_LABELS[line.text] || `#${line.text}`;
+      return <em style={{ color: 'var(--brass, #c5a975)' }}>♪ {label}</em>;
+    }
+    return line.text;
+  };
+  return (
+    <div className="expanded-stats-section">
+      <h3>
+        Chat log{' '}
+        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+          — {chatLog.length} line{chatLog.length === 1 ? '' : 's'}
+          {chatLogState === 'preview' && ' · staff preview'}
+        </span>
+      </h3>
+      <div
+        style={{
+          maxHeight: 360,
+          overflowY: 'auto',
+          background: 'var(--bg-card, #121826)',
+          border: '1px solid var(--border, #1e2939)',
+          borderRadius: 6,
+          padding: '8px 12px',
+          fontSize: 13,
+          lineHeight: 1.55,
+          fontFamily: 'var(--font, sans-serif)',
+        }}
+      >
+        {chatLog.map((line, i) => {
+          const p = heroBySlot.get(line.slot);
+          const teamColor = p?.team === 'radiant' ? '#5dd28b' : p?.team === 'dire' ? '#e76b6b' : '#94a3b8';
+          const name = p?.persona_name || p?.nickname || (line.slot === -1 ? 'system' : `slot ${line.slot}`);
+          return (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '2px 0' }}>
+              <span style={{ color: '#64748b', fontVariantNumeric: 'tabular-nums', minWidth: 48 }}>{fmtTime(line.t)}</span>
+              <span style={{ color: teamColor, fontWeight: 600, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
+              </span>
+              <span style={{ color: '#cbd5e1', wordBreak: 'break-word', flex: 1 }}>{renderText(line)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MatchDetailInner() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -3682,6 +3761,7 @@ function MatchDetailInner() {
       <DamageBreakdownPanel players={allPlayers} />
       <AegisEventsPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <TeamAbilitiesPanel teamAbilities={match.team_abilities} radiantWin={match.radiant_win} />
+      <ChatLogPanel chatLog={match.chat_log} chatLogState={match.chat_log_state} allPlayers={allPlayers} />
       <SmokePerPlayerPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <PowerSpikesPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <NWSwingPanel timeline={match.game_timeline} allPlayers={allPlayers} />

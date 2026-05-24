@@ -463,8 +463,32 @@ class ReplayParser {
     const laningKillsAt10 = {};
     const allPositions = {};      // slot → [{t, x, y}] sampled every 10s throughout game
     const posLastSampled = {};    // slot → last sample time
+    // Task #363 — full all-chat + chat-wheel log. Parse.java already emits
+    // `chat` / `chatwheel` entries for every CDOTAUserMsg_ChatMessage,
+    // CDOTAUserMsg_ChatWheel, CUserMsg_SayText2, and CUserMessageSayText2.
+    // We never persisted them — now captured into a single ordered list and
+    // returned on matchStats.chatLog → matches.chat_log JSONB.
+    const chatLog = [];
+    const MAX_CHAT_LINES = 500;          // hard cap; a 60-min ranked rarely exceeds 150
+    const MAX_CHAT_TEXT_LEN = 512;       // truncate individual lines (Dota cap is ~100, but be defensive)
 
     for (const e of events) {
+      // Task #363 — capture chat / chatwheel before the main switch. These
+      // events carry `slot` (Java sourcePlayerId 0–9) and `key` (message text
+      // or chatwheel id as a stringified int). Some legacy S1 SayText2 lines
+      // have no slot — keep them anonymous (slot = -1) so they still render.
+      if (e.type === 'chat' || e.type === 'chatwheel') {
+        if (chatLog.length < MAX_CHAT_LINES && e.key != null && e.key !== '') {
+          const text = String(e.key).slice(0, MAX_CHAT_TEXT_LEN);
+          chatLog.push({
+            t: e.time || 0,
+            slot: (e.slot != null && e.slot >= 0 && e.slot < 10) ? e.slot : -1,
+            type: e.type,
+            text,
+          });
+        }
+        continue;
+      }
       if (e.type === 'epilogue' && e.key) {
         try {
           // Steam64 IDs are 17-digit integers that exceed JS float64 precision (2^53).
@@ -2454,6 +2478,9 @@ class ReplayParser {
       draft,
       parseMethod: 'odota-parser',
       teamAbilities: hasTeamAbilities ? teamAbilities : null,
+      // Task #363 — chat + chat-wheel log; persisted to matches.chat_log JSONB.
+      // Sorted by time so the UI can render top-to-bottom without re-sorting.
+      chatLog: chatLog.length > 0 ? chatLog.slice().sort((a, b) => a.t - b.t) : null,
       gameTimeline: {
         interval: 30,
         players: playerList.map(p => {

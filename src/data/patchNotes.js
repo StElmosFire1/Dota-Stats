@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "7.57",
+    "title": "Replay parser shortlist + chat log capture end-to-end (Task #363)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**New `docs/parser-upgrade-options.md` shortlist.** 12 candidate parser upgrades scored S/M/L with current status, data unlocked, product feature, and risk: per-tick position trail, teamfight cards, damage-attribution graph, buyback economy, rune control, vision uptime, ward-kill attribution, sells/swaps timeline, ability+talent build, smoke/TP timeline, chat log, plus the already-shipped lane-outcome metric. Backfill cost estimate (~17k matches × ~95s = ~450 parser-hours, ~12 weeks at 200/night) included with a proposed nightly cron rather than a one-shot.",
+      "**Candidate #1 — Chat + chat-wheel log shipped end-to-end.** The Java parser already emits `chat` / `chatwheel` entries (Parse.onAllChatMessage + onChatWheel + S1/S2 SayText2) but `replayParser._aggregateStats` was discarding them. Now captured into `matchStats.chatLog` (cap: 500 lines/match, 512 chars/line) and persisted to a new `matches.chat_log JSONB` column via `recordMatch`. No Java change, no Maven dependency, no jar rebuild — pure Node + DB.",
+      "**Feature flag `chat_log_visible` (preview by default).** New flag seeded at `preview` so admins/superusers see the panel on every newly-parsed match while everyone else waits for the public flip. Server enforces the gate inside `GET /api/matches/:matchId` (strips `chat_log` from the response when state=off, or when state=preview and the viewer isn't staff) so the column is never leaked. Flip `chat_log_visible` → `on` in the admin Config tab to make it public.",
+      "**`<ChatLogPanel>` on `/match/:id`.** Renders below the team-abilities panel: tabular-nums timestamp, team-coloured player name (radiant green / dire red / `-1` slot system grey), chat-wheel ids decoded to their English equivalent via a built-in 30-entry table (full list falls through as `#id`). Auto-hidden when the column is empty or the server stripped the field — old matches show nothing rather than a placeholder.",
+      "**Coverage in `tests/parserChatLog.test.js`.** Exercises `_aggregateStats` against a synthetic event stream: chat + chatwheel lines are pulled out of the main switch, sorted by time, slot mapping preserved, empty/null `key`s skipped, slot `< 0` collapsed to `-1`, individual lines truncated to 512 chars, and the 500-line hard cap honoured. Three test cases; no Java jar / network dependency.",
+      "**Candidate #2 — per-tick position trail / heatmap — deferred** to follow-up Task #366 (needs a real Maven build environment + UI polish pass; sized as standalone work). Backfill plan filed as follow-up Task #367.",
+      "**Gates green:** a11y, community-paywall, parser-jar freshness; the new ALTER COLUMN is idempotent so the migration is safe to re-run on every boot.",
+      "**Edition scope.** Full edition only — community edition is deprecated for new work."
+    ]
+  },
+  {
     "version": "7.56",
     "title": "Security remediation batch — rotated GCP key, Vite CVE, SQL whitelist, env-ify owner ID (Task #362)",
     "published_at": "2026-05-24",
