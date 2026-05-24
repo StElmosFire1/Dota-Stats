@@ -1643,6 +1643,22 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_tenant_members_account ON tenant_members (account_id)`);
 
+    // Task #333 — Per-row tenant scoping on the major user-facing tables.
+    // Nullable INTEGER column; NULL means "the default tenant" (the legacy
+    // OCE Inhouse experience served when no white-label host matches).
+    // This matches the convention already used by sponsorship_slots. Adding
+    // the columns is non-destructive: existing rows stay NULL ("default
+    // tenant"), and inserts/queries that don't know about tenants keep
+    // working exactly as before. Read paths consult `req.tenant?.id`
+    // (set by the host-resolution middleware in src/web/server.js) and
+    // filter by `(tenant_id = $X)` for white-label tenants or
+    // `tenant_id IS NULL` for the default tenant — never both — so two
+    // tenants can't see each other's records.
+    for (const tbl of ['matches', 'tournaments', 'coaches', 'inhouse_sessions']) {
+      await p.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS tenant_id INTEGER`);
+      await p.query(`CREATE INDEX IF NOT EXISTS idx_${tbl}_tenant ON ${tbl} (tenant_id)`);
+    }
+
     // Seed the default commission rate so deploys don't 0% coaches by accident.
     await p.query(
       `INSERT INTO site_settings (key, value) VALUES ('coaching_commission_bps', '2500')
@@ -2200,6 +2216,21 @@ function _sc(seasonId, params, alias) {
   if (seasonId === 'legacy') return ` AND ${alias}.is_legacy = true`;
   params.push(parseInt(seasonId));
   return ` AND ${alias}.season_id = $${params.length}`;
+}
+
+// Task #333 — tenant-scope clause builder. Returns a SQL fragment (already
+// prefixed with ` AND `) plus appends the bind param when needed. Pass
+// tenantId = a positive integer to scope to that white-label tenant; pass
+// null/undefined to scope to the default tenant (rows with NULL tenant_id).
+// Pass the string 'all' to opt out of any tenant filtering (admin-only).
+function _tc(tenantId, params, alias) {
+  if (tenantId === 'all') return '';
+  const a = alias ? `${alias}.` : '';
+  if (tenantId == null) return ` AND ${a}tenant_id IS NULL`;
+  const id = parseInt(tenantId, 10);
+  if (!Number.isFinite(id)) return ` AND ${a}tenant_id IS NULL`;
+  params.push(id);
+  return ` AND ${a}tenant_id = $${params.length}`;
 }
 function _scWhere(seasonId, params, alias) {
   if (!seasonId) return ` WHERE ${alias}.is_legacy = false`;
@@ -3206,10 +3237,11 @@ async function isFileHashRecorded(fileHash) {
   return result.rows.length > 0 ? result.rows[0].match_id : null;
 }
 
-async function getMatches(limit = 50, offset = 0, seasonId = null) {
+async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId } = {}) {
   const p = getPool();
   const params = [limit, offset];
   const seasonClause = _sc(seasonId, params, 'm');
+  const tenantClause = _tc(tenantId, params, 'm');
   // `players` is a JSON array of {team, hero, kills, deaths, assists,
   // account_id, nickname} ordered Radiant→Dire then kills DESC. Used by the
   // Match History list to render hero icons + a "top fragger per side" line
@@ -3228,7 +3260,7 @@ async function getMatches(limit = 50, offset = 0, seasonId = null) {
         ) p2
        ) as players
      FROM matches m
-     WHERE 1=1${seasonClause}
+     WHERE 1=1${seasonClause}${tenantClause}
      ORDER BY m.date DESC
      LIMIT $1 OFFSET $2`,
     params
@@ -3236,17 +3268,23 @@ async function getMatches(limit = 50, offset = 0, seasonId = null) {
   return result.rows;
 }
 
-async function getMatchCount(seasonId = null) {
+async function getMatchCount(seasonId = null, { tenantId } = {}) {
   const p = getPool();
+  const params = [];
+  const tenantClause = _tc(tenantId, params, null);
   if (seasonId === 'legacy') {
-    const result = await p.query('SELECT COUNT(*) as count FROM matches WHERE is_legacy = true');
+    const result = await p.query(`SELECT COUNT(*) as count FROM matches WHERE is_legacy = true${tenantClause}`, params);
     return parseInt(result.rows[0].count);
   }
   if (seasonId) {
-    const result = await p.query('SELECT COUNT(*) as count FROM matches WHERE season_id = $1', [parseInt(seasonId)]);
+    params.unshift(parseInt(seasonId));
+    // Rebuild bind indexes since we prepended season_id at $1.
+    const params2 = [parseInt(seasonId)];
+    const tc = _tc(tenantId, params2, null);
+    const result = await p.query(`SELECT COUNT(*) as count FROM matches WHERE season_id = $1${tc}`, params2);
     return parseInt(result.rows[0].count);
   }
-  const result = await p.query('SELECT COUNT(*) as count FROM matches WHERE is_legacy = false');
+  const result = await p.query(`SELECT COUNT(*) as count FROM matches WHERE is_legacy = false${tenantClause}`, params);
   return parseInt(result.rows[0].count);
 }
 
@@ -9768,12 +9806,12 @@ async function updateSignupRequest(id, { status, adminNotes, reviewedBy }) {
 // Inhouse Sessions (FACEIT-style match accept + draft + DS flow)
 // ============================================================
 
-async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60, minPlayers = 10, lobbyFillSeconds = 30, draftPickSeconds = 30 } = {}) {
+async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60, minPlayers = 10, lobbyFillSeconds = 30, draftPickSeconds = 30, tenantId = null } = {}) {
   const p = getPool();
   const r = await p.query(
-    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds, min_players, lobby_fill_seconds, draft_pick_seconds)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [captainMode, createdBy, notes, acceptPhaseSeconds, minPlayers, lobbyFillSeconds, draftPickSeconds]
+    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds, min_players, lobby_fill_seconds, draft_pick_seconds, tenant_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [captainMode, createdBy, notes, acceptPhaseSeconds, minPlayers, lobbyFillSeconds, draftPickSeconds, tenantId]
   );
   return r.rows[0];
 }
@@ -9784,28 +9822,35 @@ async function getInhouseSession(id) {
   return r.rows[0] || null;
 }
 
-async function listInhouseSessions({ status = null, limit = 50, includeDiagnostic = false } = {}) {
+async function listInhouseSessions({ status = null, limit = 50, includeDiagnostic = false, tenantId } = {}) {
   const p = getPool();
   // Task #297 — by default the public /api/inhouse list excludes diagnostic
   // rows so they never appear in inhouse history. An admin caller can pass
   // includeDiagnostic=true to opt in (no caller currently does).
-  const diagFilter = includeDiagnostic ? '' : 'COALESCE(is_diagnostic, false) = false';
-  if (status) {
-    const where = diagFilter ? `status = $1 AND ${diagFilter}` : 'status = $1';
-    const r = await p.query(`SELECT * FROM inhouse_sessions WHERE ${where} ORDER BY created_at DESC LIMIT $2`, [status, limit]);
-    return r.rows;
-  }
-  const where = diagFilter ? `WHERE ${diagFilter}` : '';
-  const r = await p.query(`SELECT * FROM inhouse_sessions ${where} ORDER BY created_at DESC LIMIT $1`, [limit]);
+  // Task #333 — tenant scope filter.
+  const conds = [];
+  const params = [];
+  if (status) { params.push(status); conds.push(`status = $${params.length}`); }
+  if (!includeDiagnostic) conds.push(`COALESCE(is_diagnostic, false) = false`);
+  const tc = _tc(tenantId, params, null);
+  // _tc returns ` AND <clause>` or ''. Strip leading ' AND ' when adding standalone.
+  if (tc) conds.push(tc.replace(/^\s*AND\s+/, ''));
+  params.push(limit);
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const r = await p.query(`SELECT * FROM inhouse_sessions ${where} ORDER BY created_at DESC LIMIT $${params.length}`, params);
   return r.rows;
 }
 
-async function getActiveInhouseSession() {
+async function getActiveInhouseSession({ tenantId } = {}) {
   const p = getPool();
   // Task #297 — exclude superuser diagnostic sessions so they never surface
   // on /inhouse, the home-page bundle, or any "current session" lookup.
+  // Task #333 — tenant scope.
+  const params = [];
+  const tc = _tc(tenantId, params, null);
   const r = await p.query(
-    `SELECT * FROM inhouse_sessions WHERE status IN ('open','accepting','drafting','server_failed','in_progress') AND COALESCE(is_diagnostic, false) = false ORDER BY created_at DESC LIMIT 1`
+    `SELECT * FROM inhouse_sessions WHERE status IN ('open','accepting','drafting','server_failed','in_progress') AND COALESCE(is_diagnostic, false) = false${tc} ORDER BY created_at DESC LIMIT 1`,
+    params
   );
   return r.rows[0] || null;
 }
@@ -9823,13 +9868,22 @@ async function getOrCreateOpenInhouseSession(defaults = {}) {
     await client.query('BEGIN');
     // Per-key advisory lock — global to the inhouse-create namespace, scoped
     // to the transaction so a crashing client doesn't permanently hold it.
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('inhouse_session_create_v603'))");
+    // Task #333 — tenant-scoped lock + tenant-scoped existing lookup, so each
+    // tenant gets at most one auto-open session (the default tenant lock
+    // bucket stays unchanged for backwards compatibility).
+    const tenantId = defaults.tenantId != null ? parseInt(defaults.tenantId, 10) : null;
+    const lockKey = Number.isFinite(tenantId)
+      ? `inhouse_session_create_v603:t${tenantId}`
+      : 'inhouse_session_create_v603';
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [lockKey]);
     const existing = await client.query(
       // Task #297 — diagnostic sessions are invisible to the auto-create path.
       `SELECT * FROM inhouse_sessions
         WHERE status IN ('open','accepting','drafting','server_failed','in_progress')
           AND COALESCE(is_diagnostic, false) = false
-        ORDER BY created_at DESC LIMIT 1`
+          AND ${Number.isFinite(tenantId) ? 'tenant_id = $1' : 'tenant_id IS NULL'}
+        ORDER BY created_at DESC LIMIT 1`,
+      Number.isFinite(tenantId) ? [tenantId] : []
     );
     if (existing.rows[0]) {
       await client.query('COMMIT');
@@ -9837,8 +9891,8 @@ async function getOrCreateOpenInhouseSession(defaults = {}) {
     }
     const r = await client.query(
       `INSERT INTO inhouse_sessions
-         (captain_mode, created_by, accept_phase_seconds, min_players, lobby_fill_seconds, notes)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+         (captain_mode, created_by, accept_phase_seconds, min_players, lobby_fill_seconds, notes, tenant_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [
         defaults.captainMode || 'highest_rank',
         defaults.createdBy || 'auto',
@@ -9846,6 +9900,7 @@ async function getOrCreateOpenInhouseSession(defaults = {}) {
         Number.isFinite(defaults.minPlayers) ? defaults.minPlayers : 10,
         Number.isFinite(defaults.lobbyFillSeconds) ? defaults.lobbyFillSeconds : 30,
         defaults.notes || null,
+        Number.isFinite(tenantId) ? tenantId : null,
       ]
     );
     await client.query('COMMIT');
@@ -13666,17 +13721,17 @@ async function getCoachById(id) {
 // Insert-on-first-call coach row used by Stripe Connect onboarding. After
 // the row exists, subsequent updateCoach() calls patch fields. The Stripe
 // account id is set once and never overwritten.
-async function createCoachRow({ accountId, stripeAccountId = null, country = 'AU' }) {
+async function createCoachRow({ accountId, stripeAccountId = null, country = 'AU', tenantId = null }) {
   if (!accountId) throw new Error('createCoachRow: accountId required');
   const p = getPool();
   const r = await p.query(
-    `INSERT INTO coaches (account_id, stripe_account_id, country)
-     VALUES ($1, $2, $3)
+    `INSERT INTO coaches (account_id, stripe_account_id, country, tenant_id)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (account_id) DO UPDATE
        SET stripe_account_id = COALESCE(coaches.stripe_account_id, EXCLUDED.stripe_account_id),
            updated_at = NOW()
      RETURNING *`,
-    [accountId, stripeAccountId, country]
+    [accountId, stripeAccountId, country, tenantId]
   );
   return r.rows[0];
 }
@@ -13738,7 +13793,7 @@ async function setCoachStatus(accountId, status) {
 }
 
 // Public browse listing — only active coaches. Filters narrow further.
-async function listActiveCoaches({ language, role, hero, maxPriceCents } = {}) {
+async function listActiveCoaches({ language, role, hero, maxPriceCents, tenantId } = {}) {
   const p = getPool();
   const conds = [`c.status = 'active'`];
   const args = [];
@@ -13747,6 +13802,16 @@ async function listActiveCoaches({ language, role, hero, maxPriceCents } = {}) {
   if (role)     { conds.push(`c.taught_roles ILIKE $${i++}`); args.push(`%${role}%`); }
   if (hero)     { conds.push(`c.taught_heroes ILIKE $${i++}`); args.push(`%${hero}%`); }
   if (maxPriceCents != null) { conds.push(`c.hourly_rate_cents <= $${i++}`); args.push(maxPriceCents); }
+  // Task #333 — tenant scope; null/undefined = default tenant.
+  if (tenantId !== 'all') {
+    if (tenantId == null) {
+      conds.push(`c.tenant_id IS NULL`);
+    } else {
+      const id = parseInt(tenantId, 10);
+      if (Number.isFinite(id)) { conds.push(`c.tenant_id = $${i++}`); args.push(id); }
+      else conds.push(`c.tenant_id IS NULL`);
+    }
+  }
   const r = await p.query(
     `SELECT c.id, c.account_id, c.hourly_rate_cents, c.currency, c.bio,
             c.languages, c.taught_roles, c.taught_heroes, c.intro_video_url,
@@ -16741,10 +16806,23 @@ async function getPlayerBenchmarkAverages(seasonId = null) {
   return result.rows;
 }
 
-async function getTournaments(seasonId = null) {
+async function getTournaments(seasonId = null, { tenantId } = {}) {
   const p = getPool();
   const params = [];
-  const where = seasonId ? `WHERE t.season_id = $${params.push(parseInt(seasonId))}` : '';
+  const conds = [];
+  if (seasonId) conds.push(`t.season_id = $${params.push(parseInt(seasonId))}`);
+  // Task #333 — tenant scope. tenantId == null filters to default tenant
+  // (tenant_id IS NULL); 'all' opts out of any tenant filter (admin-only).
+  if (tenantId !== 'all') {
+    if (tenantId == null) {
+      conds.push(`t.tenant_id IS NULL`);
+    } else {
+      const id = parseInt(tenantId, 10);
+      if (Number.isFinite(id)) conds.push(`t.tenant_id = $${params.push(id)}`);
+      else conds.push(`t.tenant_id IS NULL`);
+    }
+  }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
   const result = await p.query(`
     SELECT t.*, s.name AS season_name,
       (SELECT COUNT(*) FROM tournament_participants tp WHERE tp.tournament_id = t.id) AS participant_count
@@ -16781,6 +16859,7 @@ async function createTournament({
   signupOpenAt = null, signupCloseAt = null,
   bracketSize = null,
   maxParticipants = null, prizeSplit = null,
+  tenantId = null,
 }) {
   const p = getPool();
   const fmt = format || 'single_elim';
@@ -16802,9 +16881,9 @@ async function createTournament({
   }
   const result = await p.query(
     `INSERT INTO tournaments (name, description, season_id, format, bracket_type, bracket_size, status, created_by,
-       tier_number, entry_fee_cents, signup_open_at, signup_close_at, max_participants, prize_split)
+       tier_number, entry_fee_cents, signup_open_at, signup_close_at, max_participants, prize_split, tenant_id)
      VALUES ($1, $2, $3, $4, $5, $6, 'upcoming', $7, $8, $9, $10, $11, $12,
-             COALESCE($13::jsonb, '[50,30,20]'::jsonb))
+             COALESCE($13::jsonb, '[50,30,20]'::jsonb), $14)
      RETURNING *`,
     [
       name,
@@ -16820,6 +16899,7 @@ async function createTournament({
       signupCloseAt ? new Date(signupCloseAt) : null,
       maxParticipants != null && maxParticipants !== '' ? parseInt(maxParticipants) : null,
       splitJson,
+      tenantId != null ? parseInt(tenantId) : null,
     ]
   );
   return result.rows[0];

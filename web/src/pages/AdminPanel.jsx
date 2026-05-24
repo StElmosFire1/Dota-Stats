@@ -5494,6 +5494,79 @@ function SponsorshipsAdminPanel({ superuserKey }) {
   );
 }
 
+// ───────── Task #333: Tenant data-scope filter (admin tooling) ─────────
+// Superuser-only widget that drives the `?tenant_id=` query param on the
+// public list endpoints (/api/matches, /api/tournaments, /api/coaches,
+// /api/inhouse). Pick a tenant to preview its scoped data without changing
+// your Host header; "All tenants" opts out of the filter entirely
+// (cross-tenant admin view). The widget surfaces the resulting counts so
+// admins can confirm isolation visually before deploying a sub-brand.
+function TenantDataScopeFilter({ tenants, superuserKey }) {
+  const [scope, setScope] = React.useState(''); // '' = default tenant, 'all', or numeric id
+  const [counts, setCounts] = React.useState(null);
+  const [err, setErr] = React.useState('');
+
+  const params = React.useMemo(() => {
+    if (scope === '') return '';
+    if (scope === 'all') return '?tenant_id=all';
+    return `?tenant_id=${encodeURIComponent(scope)}`;
+  }, [scope]);
+
+  const refresh = React.useCallback(async () => {
+    setErr('');
+    try {
+      const opts = { credentials: 'include', headers: superuserKey ? { 'X-Superuser-Key': superuserKey } : {} };
+      const [m, t, c, ih] = await Promise.all([
+        fetch(`/api/matches${params}${params ? '&' : '?'}limit=1`, opts).then(r => r.json()),
+        fetch(`/api/tournaments${params}`, opts).then(r => r.json()),
+        fetch(`/api/coaches${params}`, opts).then(r => r.json()).catch(() => ({ coaches: [] })),
+        fetch(`/api/inhouse${params}`, opts).then(r => r.json()),
+      ]);
+      setCounts({
+        matches: m.total ?? (Array.isArray(m.matches) ? m.matches.length : 0),
+        tournaments: Array.isArray(t.tournaments) ? t.tournaments.length : 0,
+        coaches: Array.isArray(c.coaches) ? c.coaches.length : 0,
+        inhouse: Array.isArray(ih.sessions) ? ih.sessions.length : 0,
+      });
+    } catch (e) { setErr(e.message); }
+  }, [params, superuserKey]);
+
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 12, marginBottom: 16, background: 'var(--bg-elevated)' }}>
+      <label htmlFor="tenant-data-scope" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+        Data-scope preview (uses <code>?tenant_id=</code> on public list endpoints)
+      </label>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select id="tenant-data-scope" value={scope} onChange={e => setScope(e.target.value)}
+          aria-label="Tenant data scope"
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+          <option value="">Default tenant (tenant_id IS NULL)</option>
+          <option value="all">All tenants (cross-tenant admin view)</option>
+          {tenants.map(t => (
+            <option key={t.id} value={t.id}>{t.display_name} (#{t.id})</option>
+          ))}
+        </select>
+        <button type="button" onClick={refresh}
+          aria-label="Refresh tenant data scope counts"
+          style={{ padding: '6px 12px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>
+          Refresh
+        </button>
+        {counts && (
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            matches: <strong style={{ color: 'var(--text-primary)' }}>{counts.matches}</strong>
+            {' · '}tournaments: <strong style={{ color: 'var(--text-primary)' }}>{counts.tournaments}</strong>
+            {' · '}coaches: <strong style={{ color: 'var(--text-primary)' }}>{counts.coaches}</strong>
+            {' · '}inhouse sessions: <strong style={{ color: 'var(--text-primary)' }}>{counts.inhouse}</strong>
+          </span>
+        )}
+      </div>
+      {err && <p style={{ marginTop: 6, color: 'var(--dire-color)', fontSize: 12 }}>Error: {err}</p>}
+    </div>
+  );
+}
+
 // ───────── Task #320: Tenants (white-label) panel ─────────
 function TenantsAdminPanel({ superuserKey }) {
   const [tenants, setTenants] = React.useState(null);
@@ -5537,8 +5610,11 @@ function TenantsAdminPanel({ superuserKey }) {
       <h2 id="ap-anchor-tenants" style={{ marginBottom: 6 }}>🏢 White-label tenants (Model A)</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
         Sub-brand deployments resolved by Host header (subdomain of <code>TENANT_PARENT_DOMAIN</code> or full custom hostname).
-        Per-row tenant scoping is rolled out incrementally; this panel manages the registry, branding, and billing today.
+        Per-row tenant scoping (matches, tournaments, coaches, inhouse sessions) is enforced server-side — use the
+        data-scope filter below to inspect a specific tenant's records without changing your Host header.
       </p>
+
+      <TenantDataScopeFilter tenants={tenants} superuserKey={superuserKey} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) auto', gap: 8, marginBottom: 16 }}>
         <input placeholder="slug" value={draft.slug}

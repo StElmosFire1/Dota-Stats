@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "7.44",
+    "title": "Per-row tenant isolation across matches, tournaments, coaches, inhouse sessions (Task #333)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Row-level tenant scoping is now wired through the four big user-facing tables.** `matches`, `tournaments`, `coaches`, and `inhouse_sessions` each gain a nullable `tenant_id INTEGER` column + `idx_<table>_tenant` index via idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS` in `src/db/index.js`. `NULL` means \"the default tenant\" (the legacy OCE Inhouse experience) — same convention already used by `sponsorship_slots`, so backfill is a no-op and existing rows keep working exactly as before. New rows inserted through `createTournament`, `createInhouseSession`, `getOrCreateOpenInhouseSession`, and `createCoachRow` accept an optional `tenantId` so a white-label sub-brand records under its own tenant.",
+      "**Public list endpoints filter by `req.tenant.id`.** `GET /api/matches`, `/api/tournaments`, `/api/coaches`, `/api/inhouse`, and `/api/inhouse/active` now route through a new `_resolveScopeTenantId(req)` helper. Priority: the Host-resolved `req.tenant.id` wins; otherwise a superuser-only `?tenant_id=<id|all>` query param can override scope (admin tooling); otherwise the request resolves to the default tenant (`tenant_id IS NULL`). New `_tc(tenantId, params, alias)` SQL clause builder in `src/db/index.js` keeps the scope logic in one place — pass `'all'` to opt out entirely (admin cross-tenant view).",
+      "**Detail-route IDOR guard.** `GET /api/matches/:matchId`, `/api/tournaments/:id`, `/api/inhouse/:id`, and `/api/coaches/:id` now run the fetched row through a new `_visibleInScope(row, scopeTenantId)` check and return 404 (not 403 — preserves opacity) when a tenant tries to fetch another tenant's record by direct id. Closes the cross-tenant read leak the list-only scope didn't cover.",
+      "**Create-path tenant stamping.** `POST /api/tournaments`, `POST /api/inhouse`, `POST /api/inhouse/join` (auto-create), the leftover-rollover create inside the inhouse complete flow, and both coach-creation paths (`/api/coach/onboard` + the superuser test-promote shortcut) now pass `tenantId: req.tenant?.id || null` so new rows are stamped onto the correct tenant from the moment they're inserted — sub-brand-hosted writes can no longer silently land in the default tenant.",
+      "**Single-tenant invariant for inhouse auto-create.** `getOrCreateOpenInhouseSession` now uses a tenant-scoped advisory lock key (`inhouse_session_create_v603:t<id>`) and a tenant-scoped \"already-open?\" lookup, so each tenant gets at most one auto-open session in flight without blocking other tenants. The default-tenant lock key is unchanged for backwards compatibility.",
+      "**Admin Panel — tenant data-scope preview.** New `<TenantDataScopeFilter/>` widget at the top of the 🏢 White-label tenants panel lets superusers pick \"Default tenant / All tenants / a specific tenant\" and see live counts for matches, tournaments, coaches, and inhouse sessions under that scope. Drives the `?tenant_id=` override so operators can verify isolation before deploying a sub-brand, without having to flip their Host header.",
+      "**Integration test for two-tenant isolation.** New `tests/task333TenantRowIsolation.test.js` seeds three scopes (default + tenant 1 + tenant 2) into an in-memory pg.Pool stub, then asserts that `getMatches` / `getMatchCount` / `getTournaments` / `listActiveCoaches` / `listInhouseSessions` / `getActiveInhouseSession` each return only the rows belonging to the requested tenant, that the row-id sets are pairwise disjoint, and that the `'all'`-scope admin path sees the full union. Runs without a live Postgres.",
+      "**Edition scope.** Full edition only — every change is under `src/` / `web/src/`. No paywall, Stripe, or tenant code touches `community-edition/`."
+    ]
+  },
+  {
     "version": "7.43",
     "title": "Limited-drop cosmetics surfaced in the shop (Task #330)",
     "published_at": "2026-05-24",

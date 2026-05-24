@@ -2795,6 +2795,44 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #333 — Resolve the tenant scope for read endpoints. Priority:
+  //   1. req.tenant (set by the Host-header middleware) → scope to that
+  //      white-label tenant.
+  //   2. Superuser-only ?tenant_id= query parameter → 'all' opts out of any
+  //      tenant filter (cross-tenant admin view); a numeric value scopes to
+  //      that tenant id.
+  //   3. Default (no white-label host, no override) → null = default tenant
+  //      (rows with tenant_id IS NULL — the legacy OCE Inhouse experience).
+  function _isSuFast(req) {
+    if (req.session && req.session.isSuperuser) return true;
+    const pw = process.env.SUPERUSER_PASSWORD;
+    if (pw && req.headers['x-superuser-key'] === pw) return true;
+    return false;
+  }
+  function _resolveScopeTenantId(req) {
+    if (req.tenant?.id) return req.tenant.id;
+    const q = req.query?.tenant_id;
+    if (q != null && q !== '' && _isSuFast(req)) {
+      if (q === 'all') return 'all';
+      const id = parseInt(q, 10);
+      if (Number.isFinite(id)) return id;
+    }
+    return null;
+  }
+  // Task #333 — Detail-route tenant guard. Returns true when `row` (which
+  // must carry a `tenant_id` column) is visible to a caller whose resolved
+  // scope is `scopeTenantId`. 'all' (superuser cross-tenant override) sees
+  // everything; null (default tenant) sees only NULL rows; a numeric scope
+  // sees only rows tagged with that id. Used by detail endpoints to make
+  // IDOR-style cross-tenant reads return 404 instead of leaking the row.
+  function _visibleInScope(row, scopeTenantId) {
+    if (!row) return false;
+    if (scopeTenantId === 'all') return true;
+    const rowTid = row.tenant_id == null ? null : Number(row.tenant_id);
+    if (scopeTenantId == null) return rowTid == null;
+    return rowTid === Number(scopeTenantId);
+  }
+
   function requireSuperuser(req, res, next) {
     // Session-based auth: preferred path for browser operators.
     if (req.session && req.session.isSuperuser) return next();
@@ -2900,8 +2938,12 @@ function createApiRouter(startupStatus = {}, _app = null) {
       const limit = Math.min(parseInt(req.query.limit) || 50, 100);
       const offset = parseInt(req.query.offset) || 0;
       const seasonId = req.query.season_id || null;
-      const matches = await db.getMatches(limit, offset, seasonId);
-      const total = await db.getMatchCount(seasonId);
+      // Task #333 — tenant scope from Host header (req.tenant), with a
+      // superuser-only ?tenant_id= override for admin tooling. ?tenant_id=all
+      // returns every row regardless of tenant.
+      const tenantId = _resolveScopeTenantId(req);
+      const matches = await db.getMatches(limit, offset, seasonId, { tenantId });
+      const total = await db.getMatchCount(seasonId, { tenantId });
       res.json({ matches, total, limit, offset });
     } catch (err) {
       console.error('[API] Error fetching matches:', err.message);
@@ -2913,6 +2955,12 @@ function createApiRouter(startupStatus = {}, _app = null) {
     try {
       const match = await db.getMatch(req.params.matchId);
       if (!match) return res.status(404).json({ error: 'Match not found' });
+      // Task #333 — Tenant scope guard: a tenant must not see another
+      // tenant's match by direct id. Returns 404 (not 403) so the existence
+      // of the row stays opaque to callers in other tenants.
+      if (!_visibleInScope(match, _resolveScopeTenantId(req))) {
+        return res.status(404).json({ error: 'Match not found' });
+      }
       if (match.players && match.players.length > 0) {
         const radiant = match.players.filter(p => p.team === 'radiant' && p.account_id && p.account_id !== '0');
         const dire = match.players.filter(p => p.team === 'dire' && p.account_id && p.account_id !== '0');
@@ -6431,7 +6479,8 @@ NOTES
   router.get('/tournaments', async (req, res) => {
     try {
       const seasonId = req.query.season || null;
-      const data = await db.getTournaments(seasonId);
+      const tenantId = _resolveScopeTenantId(req);
+      const data = await db.getTournaments(seasonId, { tenantId });
       // Disable HTTP caching: stale CDN/browser caches were the root cause of
       // listings showing tournaments that the detail endpoint could no longer
       // resolve after admin edits/deletes. Force fresh on every request.
@@ -6450,6 +6499,10 @@ NOTES
         db.getTournamentParticipants(req.params.id),
         db.getTournamentMatches(req.params.id),
       ]);
+      // Task #333 — Tenant scope guard for direct-by-id read.
+      if (tournament && !_visibleInScope(tournament, _resolveScopeTenantId(req))) {
+        return res.status(404).json({ error: 'Tournament not found' });
+      }
       if (!tournament) {
         // Cross-table fallback: this id may belong to a weekend tournament.
         // Return a 404 with a redirect hint so the frontend can navigate
@@ -6489,6 +6542,10 @@ NOTES
         signupOpenAt, signupCloseAt,
         maxParticipants, prizeSplit,
         createdBy: req.session?.username,
+        // Task #333 — Stamp the host-resolved tenant onto the new row so
+        // sub-brand-hosted tournaments stay isolated. Default tenant (no
+        // Host match) stays NULL, matching the legacy column convention.
+        tenantId: req.tenant?.id || null,
       });
       res.json({ tournament });
     } catch (err) {
@@ -8205,7 +8262,8 @@ NOTES
 
   router.get('/inhouse/active', async (req, res) => {
     try {
-      const session = await db.getActiveInhouseSession();
+      const tenantId = _resolveScopeTenantId(req);
+      const session = await db.getActiveInhouseSession({ tenantId });
       if (!session) return res.json({ session: null });
       const players = await db.getInhouseSessionPlayers(session.id);
       res.json({ session, players });
@@ -8216,7 +8274,12 @@ NOTES
 
   router.get('/inhouse', async (req, res) => {
     try {
-      const sessions = await db.listInhouseSessions({ status: req.query.status || null, limit: parseInt(req.query.limit || '20', 10) });
+      const tenantId = _resolveScopeTenantId(req);
+      const sessions = await db.listInhouseSessions({
+        status: req.query.status || null,
+        limit: parseInt(req.query.limit || '20', 10),
+        tenantId,
+      });
       res.json({ sessions });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -8227,6 +8290,10 @@ NOTES
     try {
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
+      // Task #333 — Tenant scope guard for direct-by-id read.
+      if (!_visibleInScope(session, _resolveScopeTenantId(req))) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
       const players = await db.getInhouseSessionPlayers(session.id);
       res.json({ session, players });
     } catch (err) {
@@ -8326,6 +8393,9 @@ NOTES
       if (gate) return res.status(gate.status).json(gate.body);
       const { session, created } = await db.getOrCreateOpenInhouseSession({
         createdBy: 'auto:' + actor.accountId,
+        // Task #333 — Auto-created sessions belong to the tenant the
+        // player joined under (NULL = default tenant).
+        tenantId: req.tenant?.id || null,
       });
       if (!['open','accepting'].includes(session.status)) {
         return res.status(409).json({
@@ -8527,6 +8597,8 @@ NOTES
         draftPickSeconds: parseInt(draftPickSeconds || '30', 10),
         notes: notes || null,
         createdBy: req.session?.displayName || 'admin',
+        // Task #333 — Admin-created session inherits the host tenant.
+        tenantId: req.tenant?.id || null,
       });
       res.json({ session });
     } catch (err) {
@@ -9505,6 +9577,9 @@ NOTES
               lobbyFillSeconds: session.lobby_fill_seconds || 30,
               notes: 'Auto-created from leftover players',
               createdBy: 'system',
+              // Task #333 — Rollover inherits the closing session's tenant
+              // so leftover players stay inside their sub-brand.
+              tenantId: session.tenant_id == null ? null : Number(session.tenant_id),
             });
           }
           for (const p of leftovers) {
@@ -11786,7 +11861,8 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         });
         stripeAccountId = acct.id;
       }
-      coach = await db.createCoachRow({ accountId, stripeAccountId, country });
+      // Task #333 — Coach belongs to the tenant they applied under.
+      coach = await db.createCoachRow({ accountId, stripeAccountId, country, tenantId: req.tenant?.id || null });
 
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const link = await stripe.accountLinks.create({
@@ -11863,7 +11939,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!accountId) return res.status(400).json({ error: 'account_id required (or sign in first)' });
       const existing = await db.getCoach(accountId);
       const fakeStripeId = existing?.stripe_account_id || `acct_test_${accountId}_${Date.now()}`;
-      await db.createCoachRow({ accountId, stripeAccountId: fakeStripeId, country: 'AU' });
+      await db.createCoachRow({ accountId, stripeAccountId: fakeStripeId, country: 'AU', tenantId: req.tenant?.id || null });
       const coach = await db.setCoachStatus(accountId, 'active');
       res.json({
         ok: true,
@@ -12314,7 +12390,8 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const role = req.query.role || null;
       const hero = req.query.hero || null;
       const maxPriceCents = req.query.max_price_cents ? parseInt(req.query.max_price_cents) : null;
-      const coaches = await db.listActiveCoaches({ language, role, hero, maxPriceCents });
+      const tenantId = _resolveScopeTenantId(req);
+      const coaches = await db.listActiveCoaches({ language, role, hero, maxPriceCents, tenantId });
       res.json({ coaches });
     } catch (err) {
       console.error('[API] coaches:', err.message);
@@ -12337,6 +12414,11 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!coach) return res.status(404).json({ error: 'Coach not found' });
       // Hide non-active coaches from public detail (admins still get them via admin panel).
       if (coach.status !== 'active' && !_isSu(req)) {
+        return res.status(404).json({ error: 'Coach not found' });
+      }
+      // Task #333 — Tenant scope guard: a tenant must not see another
+      // tenant's coach by direct id.
+      if (!_visibleInScope(coach, _resolveScopeTenantId(req))) {
         return res.status(404).json({ error: 'Coach not found' });
       }
       const [availability, reviews, agg, credibility, nick] = await Promise.all([
