@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "7.50",
+    "title": "Sponsorship banners on leaderboard, match, and profile pages (Task #343)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Three new sponsorship slots wired into high-traffic surfaces.** `web/src/pages/Leaderboard.jsx` now renders `<SponsorshipBanner slug=\"leaderboard_top\" />` directly under the page title; `web/src/pages/MatchDetail.jsx` renders `<SponsorshipBanner slug=\"match_sidebar\" />` just above the match header; `web/src/pages/PlayerProfile.jsx` renders `<SponsorshipBanner slug=\"profile_sidebar\" />` at the top of the magazine layout. Each slot fetches independently via the existing `/api/sponsorships/active/:slug` endpoint and silently renders nothing when no active sponsor is assigned, so the surfaces are unchanged until an admin lights them up.",
+      "**No new component logic.** Reuses the existing `SponsorshipBanner` component (which already handles impression/click beacons, `javascript:` URL hardening, FTC-style 'Sponsored by' disclosure, and `rel=\"noopener sponsored nofollow\"`). Admins can create matching slot rows in the existing Sponsorships admin panel using the new slugs — no schema or backend changes required.",
+      "**Edition scope.** Full edition only — community edition is paywall- and monetisation-free by policy."
+    ]
+  },
+  {
     "version": "7.49",
     "title": "Sponsorship slot performance reporting for admins and sponsors (Task #342)",
     "published_at": "2026-05-24",

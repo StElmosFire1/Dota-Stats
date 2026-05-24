@@ -20,6 +20,7 @@ import PaywallCard from '../components/PaywallCard';
 import WeeklyReportTile from '../components/WeeklyReportTile';
 import HeroMasterySection from '../components/HeroMasterySection';
 import SponsorChip from '../components/SponsorChip';
+import SponsorshipBanner from '../components/SponsorshipBanner';
 import VerifiedBadge from '../components/VerifiedBadge';
 import CoachRecommendationsTile from '../components/CoachRecommendationsTile';
 import { VerifiedBadgeOwnerCta } from '../components/VerifiedBadgePurchaseModal';
@@ -1156,6 +1157,7 @@ export default function PlayerProfile() {
   const coverFlair = (showProfileCustomization && ex.flair_unlocked && ex.flair_override) || null;
   return (
     <div className={`magazine-v3 v3-theme-${layoutTheme}`}>
+      <SponsorshipBanner slug="profile_sidebar" style={{ margin: '12px 0' }} />
       <div id="cover" />
       <MagazineCover
         accountId={accountId}

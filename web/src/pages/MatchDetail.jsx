@@ -35,6 +35,7 @@ import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import useProStatus from '../hooks/useProStatus';
 import VerifiedBadge from '../components/VerifiedBadge';
 import Dialog from '../components/Dialog';
+import SponsorshipBanner from '../components/SponsorshipBanner';
 import {
   LineChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts';
@@ -3612,6 +3613,8 @@ function MatchDetailInner() {
           )}
         </div>
       )}
+
+      <SponsorshipBanner slug="match_sidebar" style={{ margin: '12px 0' }} />
 
       <div className="match-detail-header">
         <h1>Match #{match.match_id}</h1>

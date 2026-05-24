@@ -9,6 +9,7 @@ import useProMembers from '../hooks/useProMembers';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 import { FRAME_META } from '../profileCosmetics';
+import SponsorshipBanner from '../components/SponsorshipBanner';
 
 // Medieval tier ladder — top 8 are the heraldic ranks (with /badges/tier-N-name.png art),
 // bottom 3 are the meme fallback tiers retained for sub-Apprentice MMR.
@@ -480,6 +481,8 @@ export default function Leaderboard() {
   return (
     <div>
       <h1 className="page-title">Leaderboard</h1>
+
+      <SponsorshipBanner slug="leaderboard_top" style={{ margin: '12px 0' }} />
 
       {/* Season end conditions banner */}
       {(() => {
