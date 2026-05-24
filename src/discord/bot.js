@@ -3643,6 +3643,135 @@ class DiscordBot {
       }
     })();
 
+    // Task #314 — Optional tier-up/down announcements. Per-player opt-in via
+    // the `tier_change_announce` notification pref (default enabled). Posts a
+    // single bundled callout into the same channel when any player crossed
+    // an 8-tier ladder boundary this match. Tier table mirrors the canonical
+    // `MMR_TIERS` in `web/src/pages/Leaderboard.jsx`. Best-effort; failure
+    // never breaks the embed flow.
+    ;(async () => {
+      const TIERS = [
+        { name: 'Gaben',         emoji: '🎩', min: 4100 },
+        { name: 'Prime Pick',    emoji: '🎯', min: 3800 },
+        { name: 'Apex',          emoji: '⚡', min: 3500 },
+        { name: 'Veteran',       emoji: '🎖️', min: 3200 },
+        { name: 'Established',   emoji: '🥇', min: 2900 },
+        { name: 'Contender',     emoji: '🥈', min: 2600 },
+        { name: 'Challenger',    emoji: '🥉', min: 2300 },
+        { name: 'Rookie',        emoji: '🌱', min: 0    },
+      ];
+      const tierFor = (mmr) => {
+        if (mmr == null || !Number.isFinite(Number(mmr))) return null;
+        const v = Number(mmr);
+        let hit = null;
+        for (const t of [...TIERS].sort((a, b) => a.min - b.min)) {
+          if (v >= t.min) hit = t;
+        }
+        return hit;
+      };
+      try {
+        const db = require('../db');
+        const matchId = matchStats.matchId ? String(matchStats.matchId) : null;
+        if (!matchId) return;
+        const deltas = await db.getMatchMmrDeltas(matchId).catch(() => ({}));
+        if (!deltas || Object.keys(deltas).length === 0) return;
+        const fullMatch = await db.getMatch(matchId).catch(() => null);
+        const nameByAccount = {};
+        for (const p of (fullMatch?.players || [])) {
+          if (p.account_id != null) {
+            nameByAccount[String(p.account_id)] = p.nickname || p.persona_name || null;
+          }
+        }
+        const lines = [];
+        for (const [accountId, d] of Object.entries(deltas)) {
+          if (!d || d.before == null || d.after == null || d.before === d.after) continue;
+          const beforeTier = tierFor(d.before);
+          const afterTier  = tierFor(d.after);
+          if (!beforeTier || !afterTier || beforeTier.name === afterTier.name) continue;
+          const allowed = await db.isNotificationEnabled(accountId, 'tier_change_announce').catch(() => true);
+          if (!allowed) continue;
+          const display = nameByAccount[String(accountId)] || `Player ${accountId}`;
+          const up = d.after > d.before;
+          const headEmoji = up ? '🏆' : '⬇️';
+          const verb = up ? 'tier up' : 'tier drop';
+          lines.push(`${headEmoji} **${display}** ${verb}: ${beforeTier.emoji} ${beforeTier.name} → ${afterTier.emoji} **${afterTier.name}** (${d.before} → ${d.after} MMR)`);
+        }
+        if (lines.length === 0) return;
+        await channel.send({ content: lines.join('\n') }).catch(() => {});
+      } catch (err) {
+        console.error('[TierChangeAnnounce] Send failed:', err.message);
+      }
+    })();
+
+    // Task #314 — Post the shareable recap card (1200×630 by default). The
+    // operator selects which variant to auto-post via `MATCH_RECAP_VARIANT`
+    // env (`classic` | `magazine` | `tournament`). Players can download
+    // either size from the match page. Best-effort; failure never breaks
+    // the embed flow.
+    ;(async () => {
+      try {
+        const { generateRecapCard, VARIANTS } = require('../services/matchRecapCard');
+        const variant = VARIANTS.includes(process.env.MATCH_RECAP_VARIANT)
+          ? process.env.MATCH_RECAP_VARIANT
+          : 'classic';
+        // Pull persisted PERF + MMR deltas straight from the DB so the card
+        // matches what the post-match page shows.
+        const db = require('../db');
+        const matchId = matchStats.matchId ? String(matchStats.matchId) : null;
+        if (!matchId) return;
+        const fullMatch = await db.getMatch(matchId).catch(() => null);
+        const deltas = await db.getMatchMmrDeltas(matchId).catch(() => ({}));
+        if (!fullMatch) return;
+        const players = (fullMatch.players || []).map(p => ({
+          account_id: p.account_id,
+          team: p.team,
+          persona_name: p.nickname || p.persona_name || `Player ${p.account_id || '?'}`,
+          hero_id: parseInt(p.hero_id) || null,
+          hero_name: p.hero_name || null,
+          kills: parseInt(p.kills) || 0,
+          deaths: parseInt(p.deaths) || 0,
+          assists: parseInt(p.assists) || 0,
+          perf: p.perf != null ? Number(p.perf) : null,
+          mmr_delta: deltas[String(p.account_id)]?.delta ?? null,
+        }));
+        const radiantScore = players.filter(p => p.team === 'radiant').reduce((s, p) => s + p.kills, 0);
+        const direScore    = players.filter(p => p.team === 'dire').reduce((s, p) => s + p.kills, 0);
+        const top = [...players].sort((a, b) =>
+          (b.kills - a.kills) || ((b.kills + b.assists) - (a.kills + a.assists)) || (a.deaths - b.deaths))[0];
+        const recapBuf = await generateRecapCard({
+          matchId,
+          variant,
+          size: 'og',
+          radiantWin: !!matchStats.radiantWin,
+          radiantScore,
+          direScore,
+          durationSeconds: parseInt(matchStats.duration) || 0,
+          mvpName: null, // MVP votes happen later
+          mvpHeroName: null,
+          mvpKda: null,
+          topFragger: top ? {
+            name: top.persona_name,
+            kills: top.kills, deaths: top.deaths, assists: top.assists,
+            heroName: this._heroDisplayName(top.hero_name, top.hero_id),
+          } : null,
+          players,
+          highlights: [],
+          siteUrl: (process.env.SITE_URL || 'oceinhouse.gg').replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+        });
+        if (!recapBuf) return;
+        const recapName = `recap_${matchId}_${variant}.png`;
+        await channel.send({ files: [new AttachmentBuilder(recapBuf, { name: recapName })] }).catch(() => {});
+        const extras = config.discord.statsChannelIds.filter(id => id !== channel.id);
+        for (const id of extras) {
+          const ac = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
+          if (!ac) continue;
+          await ac.send({ files: [new AttachmentBuilder(recapBuf, { name: recapName })] }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[MatchRecapCard] Send failed:', err.message);
+      }
+    })();
+
     // Cross-post match embed to any stats channels not already receiving it
     const crossPostIds = config.discord.statsChannelIds.filter(id => id !== channel.id);
     for (const id of crossPostIds) {
@@ -6486,6 +6615,41 @@ class DiscordBot {
     } catch (err) {
       console.warn('[Discord] postMatchShareToHighlights failed:', err.message);
       return { ok: false, code: 'send_failed', error: err.message || 'Failed to post to channel.' };
+    }
+  }
+
+  // Task #314 — post a pre-rendered recap card (operator-picked variant)
+  // into the highlights channel. Same channel-resolution semantics as
+  // postMatchShareToHighlights so the two share-from-the-web flows post to
+  // a consistent destination.
+  async postRecapCardToHighlights({ matchId, buffer, filename, content }) {
+    if (!this.client || !this.client.readyAt) {
+      return { ok: false, code: 'not_ready', error: 'Discord bot is starting up. Try again in a moment.' };
+    }
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      return { ok: false, code: 'bad_payload', error: 'Empty card payload.' };
+    }
+    const channelId = process.env.HIGHLIGHTS_CHANNEL_ID || config.discord.announceChannelId;
+    if (!channelId) {
+      return { ok: false, code: 'not_configured', error: 'No #highlights channel is configured.' };
+    }
+    let channel = this.client.channels.cache.get(channelId);
+    if (!channel) channel = await this.client.channels.fetch(channelId).catch(() => null);
+    if (!channel || typeof channel.send !== 'function') {
+      return { ok: false, code: 'not_found', error: 'Configured highlights channel is unreachable.' };
+    }
+    try {
+      const baseUrl = (process.env.SITE_URL || 'https://oceinhouse.gg').replace(/\/+$/, '');
+      const matchUrl = matchId ? `${baseUrl}/match/${matchId}` : null;
+      const safeContent = (content || (matchUrl ? `🎬 **Match recap** — ${matchUrl}` : '')).slice(0, 1900);
+      const attachment = new AttachmentBuilder(buffer, { name: filename || `match_${matchId || Date.now()}.png` });
+      const payload = { files: [attachment], allowedMentions: { parse: [] } };
+      if (safeContent) payload.content = safeContent;
+      const sent = await channel.send(payload);
+      return { ok: true, channelId, messageId: sent?.id || null };
+    } catch (err) {
+      console.warn('[Discord] postRecapCardToHighlights failed:', err.message);
+      return { ok: false, code: 'send_failed', error: err.message || 'Failed to post recap card.' };
     }
   }
 

@@ -319,6 +319,31 @@ export async function getMatch(matchId) {
 // Task #272 — one-click "Post to #highlights" from the match share popover.
 // Server gates by signed-in + viewer-was-in-match + Discord-linked, and
 // rate-limits per-user-per-match.
+// Task #314 — post-match QOL bundle.
+export async function getNemesisSpotlight(matchId) {
+  const r = await fetch(`${BASE}/matches/${encodeURIComponent(matchId)}/nemesis-spotlight`, { credentials: 'include' });
+  if (r.status === 401) return { spotlight: null };
+  if (!r.ok) throw new Error('Failed to fetch nemesis spotlight');
+  return r.json();
+}
+
+export function recapCardUrl(matchId, { size = 'og', variant = 'classic', download = false } = {}) {
+  const q = new URLSearchParams({ size, variant });
+  if (download) q.set('download', '1');
+  return `${BASE}/matches/${encodeURIComponent(matchId)}/recap-card.png?${q.toString()}`;
+}
+
+export async function shareRecapCardToDiscord(matchId, { size = 'og', variant = 'classic' } = {}) {
+  const r = await fetch(`${BASE}/matches/${encodeURIComponent(matchId)}/share-recap-card`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ size, variant }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'Failed to post recap card');
+  return data;
+}
+
 export async function postMatchToDiscord(matchId) {
   const res = await fetch(BASE + `/matches/${encodeURIComponent(matchId)}/share-to-discord`, {
     method: 'POST',

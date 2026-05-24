@@ -5029,6 +5029,47 @@ async function getMatchDMLog(matchId) {
   return new Set(result.rows.map(r => String(r.account_id)));
 }
 
+// Task #314 — per-match per-player MMR delta. Returns a map keyed by
+// account_id (string) → { before, after, delta, tier_changed }. Uses the
+// existing `rating_history` (one row per player per match, written at the
+// end of recordMatch). `before` is the rating BEFORE the row tagged with
+// this match (i.e. the immediately-preceding rating_history row for the same
+// player by id); `after` is the row tagged with this match. Players with no
+// prior rating row are treated as starting at the default seed mmr (the
+// fallback is exposed so callers can mark "first match").
+async function getMatchMmrDeltas(matchId) {
+  const p = getPool();
+  // Pull every rating_history row for this match.
+  const cur = await p.query(
+    `SELECT player_id, mmr, mu, sigma, id
+       FROM rating_history
+      WHERE match_id = $1`,
+    [String(matchId)]
+  );
+  if (cur.rows.length === 0) return {};
+  const result = {};
+  for (const row of cur.rows) {
+    // Find the immediately-preceding rating row for this player.
+    const prevRes = await p.query(
+      `SELECT mmr FROM rating_history
+        WHERE player_id = $1 AND id < $2
+        ORDER BY id DESC
+        LIMIT 1`,
+      [row.player_id, row.id]
+    );
+    const after = Number(row.mmr) || 0;
+    const before = prevRes.rows.length > 0 ? (Number(prevRes.rows[0].mmr) || 0) : null;
+    const delta = before == null ? null : Math.round(after - before);
+    result[String(row.player_id)] = {
+      before: before == null ? null : Math.round(before),
+      after: Math.round(after),
+      delta,
+      first_match: before == null,
+    };
+  }
+  return result;
+}
+
 async function getMatchRatings(matchId) {
   const p = getPool();
   const result = await p.query(
@@ -10263,6 +10304,10 @@ const NOTIFICATION_CATEGORIES = [
   // deadline at which the warning fires. Allowed: 5/10/15/20. Default 10.
   { key: 'inhouse_pick_warning',       label: 'Inhouse: pick warning (on the clock)', default: true,
     value_default: 10, value_options: [5, 10, 15, 20], value_unit: 's' },
+  // Task #314 — opt-in public tier-up announcement. When enabled and the
+  // player crosses a ladder threshold, `_sendMatchSummary` posts a brief
+  // celebration line into the match's stats channel after the embed.
+  { key: 'tier_change_announce',       label: 'Public Discord announcement when you tier up/down', default: true },
 ];
 
 function categoryDef(key) {
@@ -13056,6 +13101,7 @@ module.exports = {
   logMatchDMSent,
   getMatchDMLog,
   getMatchRatings,
+  getMatchMmrDeltas,
   getPlayerRatingsReceived,
   getDiscordIdsForMatch,
   getTopDuos,

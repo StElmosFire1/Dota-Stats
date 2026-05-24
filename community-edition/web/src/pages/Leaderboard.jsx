@@ -5,7 +5,7 @@ import { useSeason } from '../context/SeasonContext';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 
-const MMR_TIERS = [
+export const MMR_TIERS = [
   { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100, color: '#FFD700',   bg: 'rgba(255,215,0,0.12)',   border: 'rgba(255,215,0,0.45)'    },
   { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 3800, color: '#CE93D8',   bg: 'rgba(156,39,176,0.15)',  border: 'rgba(156,39,176,0.45)'   },
   { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 3500, color: '#90CAF9',   bg: 'rgba(33,150,243,0.12)',  border: 'rgba(33,150,243,0.4)'    },

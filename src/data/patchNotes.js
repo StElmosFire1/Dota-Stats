@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "7.35",
+    "title": "Scoreboard & match QOL (Task #314): per-match MMR deltas, PERF \"why you scored X\" breakdown, nemesis spotlight, shareable recap cards",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**ΔMMR column** added to every match's team table — shows the actual rating change for the match (before → after) with a green/red tint and a first-ranked-match badge. Backed by a new `getMatchMmrDeltas` lookup that joins against the previous `rating_history` row per player.",
+      "**Tier-up banner** surfaces above the team tables whenever a player crossed a tier boundary in the match.",
+      "**PERF breakdown panel** explains *why* each player's PERF score came out where it did — expands a per-player factor list (kill involvement, survival, damage, vision, etc.) sourced from the persisted `perf_breakdown` JSON.",
+      "**Nemesis spotlight** highlights dominance runs, loss streaks, streak-breakers, and lifetime milestones for the signed-in viewer. New `GET /matches/:matchId/nemesis-spotlight` endpoint (returns `{spotlight: null}` for unauthenticated callers).",
+      "**Recap card generator** — `@napi-rs/canvas`-rendered 1200×630 (OG) and 1080×1920 (story) PNGs with three variants: *classic*, *magazine*, *tournament*. Available at `GET /matches/:matchId/recap-card.png?size=&variant=&download=`. The match page has a live preview + style/size picker + download button.",
+      "**Discord auto-post** — every match summary now also posts the recap card (variant chosen via `MATCH_RECAP_VARIANT` env, defaults to *classic*). Full edition gains a `POST /matches/:matchId/share-recap-card` endpoint + a \"Post to Discord\" button that targets the highlights channel.",
+      "**Community edition** receives all the non-paywall pieces: ΔMMR column, PERF breakdown, nemesis spotlight, recap card download + auto-post to its scoreboard channel. No \"share to Discord\" button (no shared highlights channel surface)."
+    ]
+  },
+  {
     "version": "7.34",
     "title": "Founders Rings shop catalog: 10 new individually-sold cover rings + Inscribed (bundled with Founders Pack)",
     "published_at": "2026-05-24",

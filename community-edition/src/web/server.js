@@ -291,6 +291,47 @@ function createServer(startupStatus = {}) {
   return app;
 }
 
+// Task #314 — Build recap-card inputs for the community edition (no Pro/OG
+// helper available, so we resolve everything directly from `db.getMatch`).
+async function _buildCommunityRecapInputs(db, matchId) {
+  const m = await db.getMatch(matchId).catch(() => null);
+  if (!m) return null;
+  const deltas = await db.getMatchMmrDeltas(matchId).catch(() => ({}));
+  const allRaw = Array.isArray(m.players) ? m.players : [];
+  const players = allRaw.map(p => ({
+    account_id: p.account_id,
+    team: p.team,
+    persona_name: p.nickname || p.persona_name || `Player ${p.account_id || '?'}`,
+    hero_id: parseInt(p.hero_id) || null,
+    hero_name: p.hero_name || null,
+    kills: parseInt(p.kills) || 0,
+    deaths: parseInt(p.deaths) || 0,
+    assists: parseInt(p.assists) || 0,
+    perf: p.perf != null ? Number(p.perf) : null,
+    mmr_delta: deltas[String(p.account_id)]?.delta ?? null,
+  }));
+  const radiantScore = players.filter(p => p.team === 'radiant').reduce((s, p) => s + p.kills, 0);
+  const direScore    = players.filter(p => p.team === 'dire').reduce((s, p) => s + p.kills, 0);
+  const top = [...players].sort((a, b) =>
+    (b.kills - a.kills) || ((b.kills + b.assists) - (a.kills + a.assists)) || (a.deaths - b.deaths))[0];
+  const human = h => h ? String(h).replace(/^npc_dota_hero_/, '').replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase()) : null;
+  return {
+    matchId: String(m.match_id),
+    radiantWin: !!m.radiant_win,
+    radiantScore, direScore,
+    durationSeconds: parseInt(m.duration) || 0,
+    mvpName: null, mvpHeroName: null, mvpHeroId: null, mvpKda: null,
+    topFragger: top ? {
+      name: top.persona_name, kills: top.kills, deaths: top.deaths, assists: top.assists,
+      heroName: human(top.hero_name),
+    } : null,
+    players,
+    highlights: [],
+    siteUrl: (process.env.SITE_URL || 'dota.stats.corvidaeinc.com').replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+  };
+}
+
 function createApiRouter(startupStatus = {}) {
   const router = express.Router();
 
@@ -539,10 +580,71 @@ function createApiRouter(startupStatus = {}) {
         console.error('[API] V3 modifier breakdown failed:', modErr.message);
         match.v3_modifiers = { modifiers: [], hasStats: false };
       }
+      // Task #314 — per-match per-player MMR deltas. Best-effort.
+      try {
+        const deltas = await db.getMatchMmrDeltas(req.params.matchId);
+        match.mmr_deltas = deltas || {};
+      } catch (delErr) {
+        console.error('[API] MMR delta lookup failed:', delErr.message);
+        match.mmr_deltas = {};
+      }
+      // Task #314 — per-player PERF "why you scored X" explainer.
+      try {
+        const { explainPerfBreakdown } = require('../perf/perfExplain');
+        for (const p of (match.players || [])) {
+          p.perf_explain = explainPerfBreakdown(p.perf_breakdown) || null;
+        }
+      } catch (peErr) {
+        console.error('[API] PERF explain failed:', peErr.message);
+      }
       res.json(match);
     } catch (err) {
       console.error('[API] Error fetching match:', err.message);
       res.status(500).json({ error: 'Failed to fetch match' });
+    }
+  });
+
+  // Task #314 — Nemesis spotlight (signed-in viewers only).
+  router.get('/matches/:matchId/nemesis-spotlight', async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'Sign in to see nemesis moments.' });
+      }
+      const { getNemesisSpotlight } = require('../services/nemesisSpotlight');
+      const spotlight = await getNemesisSpotlight(db.getPool, req.params.matchId, req.session.accountId);
+      return res.json({ spotlight: spotlight || null });
+    } catch (err) {
+      console.error('[API] nemesis-spotlight failed:', err.message);
+      res.status(500).json({ error: 'Failed to compute nemesis spotlight' });
+    }
+  });
+
+  // Task #314 — Post-match recap card download. Public read-only. Reuses the
+  // shared service so visuals stay identical between editions. The community
+  // build has no `_resolveOgMatch` helper, so we build inputs inline.
+  router.get('/matches/:matchId/recap-card.png', async (req, res) => {
+    try {
+      const { generateRecapCard, SIZES, VARIANTS } = require('../services/matchRecapCard');
+      const matchId = String(req.params.matchId || '');
+      if (!/^[A-Za-z0-9_-]{1,50}$/.test(matchId)) {
+        return res.status(400).json({ error: 'Invalid match id' });
+      }
+      const size = SIZES[req.query.size] ? String(req.query.size) : 'og';
+      const variant = VARIANTS.includes(String(req.query.variant)) ? String(req.query.variant) : 'classic';
+      const inputs = await _buildCommunityRecapInputs(db, matchId);
+      if (!inputs) return res.status(404).json({ error: 'Match not found' });
+      const buf = await generateRecapCard({ ...inputs, size, variant });
+      if (!buf) return res.status(503).json({ error: 'Recap card renderer unavailable' });
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=600');
+      if (req.query.download === '1') {
+        res.setHeader('Content-Disposition',
+          `attachment; filename="match_${matchId}_${variant}_${size}.png"`);
+      }
+      res.end(buf);
+    } catch (err) {
+      console.error('[API] recap-card failed:', err.message);
+      res.status(500).json({ error: 'Failed to generate recap card' });
     }
   });
 

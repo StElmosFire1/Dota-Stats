@@ -22,7 +22,9 @@ class MatchErrorBoundary extends Component {
   }
 }
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, getNemesisSpotlight, recapCardUrl } from '../api';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import { MMR_TIERS } from './Leaderboard';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import ImpactBadge from '../components/ImpactBadge';
@@ -696,6 +698,221 @@ function TimelineGraph({ timeline, allPlayers }) {
   );
 }
 
+// Task #314 — translate an MMR value to its current 8-tier ladder bucket.
+function _tierForMmr(mmr) {
+  if (mmr == null || !Number.isFinite(Number(mmr))) return null;
+  const v = Number(mmr);
+  let match = null;
+  for (const t of MMR_TIERS) {
+    if (t.leaderOnly) continue;
+    if (v >= t.min) match = t;
+  }
+  return match;
+}
+
+// Task #314 — Tier-up celebration banner (signed-in viewer only).
+function TierUpBanner({ mmrDeltas, viewerAccountId }) {
+  if (!viewerAccountId) return null;
+  const d = mmrDeltas[String(viewerAccountId)];
+  if (!d || d.before == null || d.after == null || d.before === d.after) return null;
+  const beforeTier = _tierForMmr(d.before);
+  const afterTier  = _tierForMmr(d.after);
+  if (!beforeTier || !afterTier || beforeTier.name === afterTier.name) return null;
+  const up = d.after > d.before;
+  return (
+    <div role="status"
+      style={{
+        margin: '0.75rem 0', padding: '0.85rem 1rem',
+        background: up
+          ? 'linear-gradient(90deg, rgba(245,158,11,0.18), rgba(197,169,117,0.12))'
+          : 'linear-gradient(90deg, rgba(224,92,92,0.18), rgba(20,28,48,0.4))',
+        border: `1px solid ${up ? 'var(--gold, #f59e0b)' : 'rgba(224,92,92,0.6)'}`,
+        borderRadius: 10,
+        display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap',
+      }}>
+      <span style={{ fontSize: '1.8rem', lineHeight: 1 }}>{up ? '🏆' : '⬇️'}</span>
+      <div style={{ flex: 1, minWidth: 200 }}>
+        <div style={{ fontWeight: 800, color: up ? 'var(--gold, #f59e0b)' : '#fca5a5', letterSpacing: 0.4 }}>
+          {up ? 'TIER UP!' : 'TIER DROP'}
+        </div>
+        <div style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+          {beforeTier.name} → <strong>{afterTier.name}</strong>{' '}
+          <span style={{ color: 'var(--text-secondary)' }}>({d.before} → {d.after} MMR)</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Task #314 — Nemesis spotlight (signed-in viewer only).
+function NemesisSpotlightPanel({ matchId, accountId }) {
+  const [spot, setSpot] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false); setSpot(null);
+    if (!matchId || !accountId) { setLoaded(true); return; }
+    getNemesisSpotlight(matchId)
+      .then(r => { if (!cancelled) { setSpot(r?.spotlight || null); setLoaded(true); } })
+      .catch(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
+  }, [matchId, accountId]);
+  if (!loaded || !spot) return null;
+  const kindLabel = {
+    dominance: '☠️ Nemesis in this match',
+    loss_streak: '😬 Active losing streak',
+    streak_broken: '🎉 Streak broken!',
+    milestone: '⚔️ Rivalry milestone',
+  }[spot.kind] || 'Nemesis spotlight';
+  const accent = spot.kind === 'streak_broken' ? '#4ade80'
+              : spot.kind === 'dominance'     ? '#f87171'
+              : 'var(--brass, #c5a975)';
+  return (
+    <div style={{
+      margin: '0.75rem 0', padding: '0.85rem 1rem',
+      background: 'rgba(13,20,36,0.6)',
+      border: `1px solid ${accent}`, borderRadius: 10,
+    }}>
+      <div style={{ color: accent, fontWeight: 800, letterSpacing: 0.4, marginBottom: 4 }}>{kindLabel}</div>
+      <div style={{ color: 'var(--text-primary)' }}>{spot.headline}</div>
+      {spot.detail && (
+        <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: 4 }}>{spot.detail}</div>
+      )}
+    </div>
+  );
+}
+
+// Task #314 — "Why did I score X?" PERF explainer for the signed-in viewer.
+// Renders the server-computed `perf_explain` payload (translated from the
+// persisted `perf_breakdown` by `community-edition/src/perf/perfExplain.js`).
+function PerfExplainPanel({ allPlayers, viewerAccountId }) {
+  const [open, setOpen] = useState(false);
+  if (!viewerAccountId) return null;
+  const me = (allPlayers || []).find(p => String(p.account_id) === String(viewerAccountId));
+  if (!me) return null;
+  const explain = me.perf_explain;
+  if (!explain || (!explain.helped?.length && !explain.hurt?.length)) return null;
+  const helped = explain.helped || [];
+  const hurt   = explain.hurt   || [];
+  const perfValue = me.perf != null ? Number(me.perf).toFixed(1) : '—';
+  return (
+    <div style={{
+      margin: '0.75rem 0', padding: '0.85rem 1rem',
+      background: 'rgba(13,20,36,0.6)',
+      border: '1px solid var(--brass, #c5a975)', borderRadius: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ color: 'var(--brass, #c5a975)', fontWeight: 800, letterSpacing: 0.4 }}>
+            🔍 Your PERF — {perfValue} / 10
+          </div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            Why you scored what you did this match.
+          </div>
+        </div>
+        <button type="button"
+          onClick={() => setOpen(o => !o)}
+          aria-expanded={open}
+          aria-label={open ? 'Hide PERF breakdown' : 'Show PERF breakdown'}
+          style={{
+            background: 'transparent', color: 'var(--brass, #c5a975)',
+            border: '1px solid var(--brass, #c5a975)', borderRadius: 6,
+            padding: '0.35rem 0.75rem', cursor: 'pointer', fontWeight: 600,
+          }}>
+          {open ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      {open && (
+        <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          <div>
+            <div style={{ color: '#4ade80', fontWeight: 700, fontSize: '0.85rem', marginBottom: 4 }}>What helped</div>
+            {helped.length === 0
+              ? <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Nothing stood out above baseline.</div>
+              : helped.map(i => (
+                  <div key={i.key} style={{ color: 'var(--text-primary)', fontSize: '0.9rem', marginBottom: 4 }}>
+                    • <strong>{i.label}</strong> — {i.blurb}
+                  </div>
+                ))}
+          </div>
+          <div>
+            <div style={{ color: '#f87171', fontWeight: 700, fontSize: '0.85rem', marginBottom: 4 }}>What hurt</div>
+            {hurt.length === 0
+              ? <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Nothing dragged the score down.</div>
+              : hurt.map(i => (
+                  <div key={i.key} style={{ color: 'var(--text-primary)', fontSize: '0.9rem', marginBottom: 4 }}>
+                    • <strong>{i.label}</strong> — {i.blurb}
+                  </div>
+                ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Task #314 — Recap card download panel for community edition.
+// Operator picks style + size, previews the rendered PNG, downloads it.
+// (Discord "post" button is full-edition-only; community has no shared
+// highlights channel surface here.)
+function RecapCardPanel({ matchId }) {
+  const [variant, setVariant] = useState('classic');
+  const [size, setSize] = useState('og');
+  const [cacheBust, setCacheBust] = useState(0);
+  const previewUrl = `${recapCardUrl(matchId, { size, variant })}&t=${cacheBust}`;
+  const downloadUrl = recapCardUrl(matchId, { size, variant, download: true });
+  const VARIANTS = [
+    { value: 'classic', label: 'Classic' },
+    { value: 'magazine', label: 'Magazine' },
+    { value: 'tournament', label: 'Tournament' },
+  ];
+  const SIZES = [
+    { value: 'og', label: '1200×630' },
+    { value: 'story', label: '1080×1920' },
+  ];
+  return (
+    <div style={{
+      margin: '0.75rem 0', padding: '0.85rem 1rem',
+      background: 'rgba(13,20,36,0.6)',
+      border: '1px solid var(--brass, #c5a975)', borderRadius: 10,
+    }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ color: 'var(--brass, #c5a975)', fontWeight: 800, letterSpacing: 0.4 }}>
+            🎬 Recap card
+          </div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            Download a shareable card for this match.
+          </div>
+        </div>
+        <label style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+          Style{' '}
+          <select value={variant} onChange={e => { setVariant(e.target.value); setCacheBust(c => c + 1); }}
+            aria-label="Recap card style"
+            style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--brass, #c5a975)', borderRadius: 4, padding: '0.25rem 0.4rem' }}>
+            {VARIANTS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
+          </select>
+        </label>
+        <label style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+          Size{' '}
+          <select value={size} onChange={e => { setSize(e.target.value); setCacheBust(c => c + 1); }}
+            aria-label="Recap card size"
+            style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--brass, #c5a975)', borderRadius: 4, padding: '0.25rem 0.4rem' }}>
+            {SIZES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </label>
+        <a href={downloadUrl} target="_blank" rel="noopener noreferrer"
+          style={{ background: 'var(--brass, #c5a975)', color: 'var(--ink-navy, #0d1424)', padding: '0.4rem 0.85rem', borderRadius: 6, fontWeight: 700, textDecoration: 'none' }}>
+          Download
+        </a>
+      </div>
+      <div style={{ marginTop: '0.75rem', background: 'rgba(0,0,0,0.25)', borderRadius: 6, overflow: 'hidden', textAlign: 'center' }}>
+        <img src={previewUrl} alt={`Match recap card — ${variant} ${size}`} loading="lazy"
+          style={{ maxWidth: '100%', display: 'inline-block', maxHeight: size === 'story' ? 540 : 320 }} />
+      </div>
+    </div>
+  );
+}
+
 function DraftDisplay({ draft }) {
   if (!draft || draft.length === 0) return null;
   const hasBans = draft.some(d => !d.is_pick);
@@ -1009,7 +1226,7 @@ function ModifierBadge({ entry }) {
   );
 }
 
-function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {}, v3Modifiers = {}, match = null, showMvpBadges = false }) {
+function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, matchId, onPositionUpdate, laneOutcomes, perfRanks = {}, v3Modifiers = {}, mmrDeltas = {}, match = null, showMvpBadges = false }) {
   const allPlayers = allPlayersProp || players;
   const hasDetailedStats = players.some(p => p.gpm > 0 || p.hero_damage > 0);
   const hasItems = players.some(p => p.items && p.items.length > 0);
@@ -1035,6 +1252,7 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
               <th className="col-stat" title="Assists">A</th>
               <th className="col-stat" title="Match Performance Score 1–10: each factor is z-score normalised independently within the match, then combined — kill involvement/assists×0.5 (25%), survival/deaths (15%), hero damage (15%), net worth (10%), vision/dewards (10%), tower damage (10%), stun duration (5%), healing (5%), win bonus (5%). Designed to reward every role.">Perf</th>
               <th className="col-stat" title="TrueSkill V3 performance modifier: scales the player's MMR change by 0.80×–1.20× based on a per-match score that combines K/D/A, GPM/XPM, hero/tower damage, healing, wards, stacks, and a win bonus. Hover each row for the score breakdown.">Mod</th>
+              <th className="col-stat" title="MMR change from this match (before → after).">ΔMMR</th>
               {hasDetailedStats && (
                 <>
                   <th className="col-stat" title="Last Hits">LH</th>
@@ -1111,6 +1329,20 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
                     return <ImpactBadge score={perfRanks[p.slot] ?? null} title={perfRanks[p.slot] != null ? `Match Performance ${perfRanks[p.slot]}/10 (legacy)` : undefined} />;
                   })()}</td>
                   <td className="col-stat"><ModifierBadge entry={v3Modifiers[String(p.account_id)]} /></td>
+                  <td className="col-stat">{(() => {
+                    const d = mmrDeltas[String(p.account_id)];
+                    if (!d || d.delta == null) {
+                      return <span style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>—</span>;
+                    }
+                    const sign = d.delta > 0 ? '+' : '';
+                    const color = d.delta > 0 ? '#4ade80' : d.delta < 0 ? '#f87171' : 'var(--text-secondary)';
+                    const tip = `${d.before ?? '?'} → ${d.after ?? '?'} MMR${d.first_match ? ' (first ranked match)' : ''}`;
+                    return (
+                      <span title={tip} style={{ color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                        {sign}{d.delta}
+                      </span>
+                    );
+                  })()}</td>
                   {hasDetailedStats && (
                     <>
                       <td className="col-stat">{formatNumber(p.last_hits)}</td>
@@ -2614,6 +2846,7 @@ function MatchDetailInner() {
   const { seasons } = useSeason();
   const { isAdmin, adminKey, setShowModal } = useAdmin();
   const { isSuperuser } = useSuperuser();
+  const { steamUser } = useSteamAuth() || {};
   const showMvpBadges = useFeatureFlag('mvp_match_badges');
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -3087,8 +3320,12 @@ function MatchDetailInner() {
 
       <PerfPanel allPlayers={allPlayers} perfRanks={perfRanks} />
 
-      <TeamTable players={radiant} allPlayers={allPlayers} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} match={match} showMvpBadges={showMvpBadges} />
-      <TeamTable players={dire} allPlayers={allPlayers} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} match={match} showMvpBadges={showMvpBadges} />
+      <TierUpBanner mmrDeltas={match.mmr_deltas || {}} viewerAccountId={steamUser?.accountId} />
+      <NemesisSpotlightPanel matchId={matchId} accountId={steamUser?.accountId} />
+      <PerfExplainPanel allPlayers={allPlayers} viewerAccountId={steamUser?.accountId} />
+      <TeamTable players={radiant} allPlayers={allPlayers} teamName="radiant" isWinner={match.radiant_win === true} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} mmrDeltas={match.mmr_deltas || {}} match={match} showMvpBadges={showMvpBadges} />
+      <TeamTable players={dire} allPlayers={allPlayers} teamName="dire" isWinner={match.radiant_win === false} matchId={matchId} onPositionUpdate={handlePositionUpdate} laneOutcomes={laneOutcomes} perfRanks={perfRanks} v3Modifiers={v3ModifierMap} mmrDeltas={match.mmr_deltas || {}} match={match} showMvpBadges={showMvpBadges} />
+      <RecapCardPanel matchId={matchId} />
 
       <ExpandedStats players={allPlayers} />
       <PudgeHookStats players={allPlayers} matchId={matchId} />

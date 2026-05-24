@@ -2812,6 +2812,39 @@ async function getMatchDMLog(matchId) {
   return new Set(result.rows.map(r => String(r.account_id)));
 }
 
+// Task #314 — per-match per-player MMR delta (mirrors src/db/index.js).
+// Returns a map keyed by account_id (string) → { before, after, delta,
+// first_match }. Computed from rating_history rows tagged with this match id;
+// `before` is the immediately-preceding rating row for the same player.
+async function getMatchMmrDeltas(matchId) {
+  const p = getPool();
+  const cur = await p.query(
+    `SELECT player_id, mmr, id FROM rating_history WHERE match_id = $1`,
+    [String(matchId)]
+  );
+  if (cur.rows.length === 0) return {};
+  const result = {};
+  for (const row of cur.rows) {
+    const prevRes = await p.query(
+      `SELECT mmr FROM rating_history
+        WHERE player_id = $1 AND id < $2
+        ORDER BY id DESC
+        LIMIT 1`,
+      [row.player_id, row.id]
+    );
+    const after = Number(row.mmr) || 0;
+    const before = prevRes.rows.length > 0 ? (Number(prevRes.rows[0].mmr) || 0) : null;
+    const delta = before == null ? null : Math.round(after - before);
+    result[String(row.player_id)] = {
+      before: before == null ? null : Math.round(before),
+      after: Math.round(after),
+      delta,
+      first_match: before == null,
+    };
+  }
+  return result;
+}
+
 async function getMatchRatings(matchId) {
   const p = getPool();
   const result = await p.query(
@@ -6459,6 +6492,7 @@ module.exports = {
   getMatchDMLog,
   isNotificationEnabled,
   getMatchRatings,
+  getMatchMmrDeltas,
   getPlayerRatingsReceived,
   getDiscordIdsForMatch,
   getTopDuos,

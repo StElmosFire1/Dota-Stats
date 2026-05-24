@@ -1870,6 +1870,61 @@ class DiscordBot {
       }
     })();
 
+    // Task #314 — shareable post-match recap card (operator picks variant
+    // via MATCH_RECAP_VARIANT env). Best-effort; never blocks the embed.
+    ;(async () => {
+      try {
+        const { generateRecapCard, VARIANTS } = require('../services/matchRecapCard');
+        const variant = VARIANTS.includes(process.env.MATCH_RECAP_VARIANT)
+          ? process.env.MATCH_RECAP_VARIANT : 'classic';
+        const dbMod = require('../db');
+        const matchId = matchStats.matchId ? String(matchStats.matchId) : null;
+        if (!matchId) return;
+        const fullMatch = await dbMod.getMatch(matchId).catch(() => null);
+        if (!fullMatch) return;
+        const deltas = await dbMod.getMatchMmrDeltas(matchId).catch(() => ({}));
+        const players = (fullMatch.players || []).map(p => ({
+          account_id: p.account_id,
+          team: p.team,
+          persona_name: p.nickname || p.persona_name || `Player ${p.account_id || '?'}`,
+          hero_id: parseInt(p.hero_id) || null,
+          hero_name: p.hero_name || null,
+          kills: parseInt(p.kills) || 0,
+          deaths: parseInt(p.deaths) || 0,
+          assists: parseInt(p.assists) || 0,
+          perf: p.perf != null ? Number(p.perf) : null,
+          mmr_delta: deltas[String(p.account_id)]?.delta ?? null,
+        }));
+        const rScore = players.filter(p => p.team === 'radiant').reduce((s, p) => s + p.kills, 0);
+        const dScore = players.filter(p => p.team === 'dire').reduce((s, p) => s + p.kills, 0);
+        const top = [...players].sort((a, b) =>
+          (b.kills - a.kills) || ((b.kills + b.assists) - (a.kills + a.assists)) || (a.deaths - b.deaths))[0];
+        const recapBuf = await generateRecapCard({
+          matchId, variant, size: 'og',
+          radiantWin: !!matchStats.radiantWin,
+          radiantScore: rScore, direScore: dScore,
+          durationSeconds: parseInt(matchStats.duration) || 0,
+          mvpName: null, mvpHeroName: null, mvpKda: null,
+          topFragger: top ? {
+            name: top.persona_name, kills: top.kills, deaths: top.deaths, assists: top.assists,
+            heroName: this._heroDisplayName(top.hero_name, top.hero_id),
+          } : null,
+          players, highlights: [],
+          siteUrl: (process.env.SITE_URL || 'dota.stats.corvidaeinc.com').replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+        });
+        if (!recapBuf) return;
+        const recapName = `recap_${matchId}_${variant}.png`;
+        await channel.send({ files: [new AttachmentBuilder(recapBuf, { name: recapName })] }).catch(() => {});
+        const extras = config.discord.statsChannelIds.filter(id => id !== channel.id);
+        for (const id of extras) {
+          const ac = this.client.channels.cache.get(id) || await this.client.channels.fetch(id).catch(() => null);
+          if (ac) await ac.send({ files: [new AttachmentBuilder(recapBuf, { name: recapName })] }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[MatchRecapCard] Send failed:', err.message);
+      }
+    })();
+
     // Streak callouts — runs for ALL recording paths
     ;(async () => {
       try {

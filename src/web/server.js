@@ -1833,6 +1833,84 @@ function createServer(startupStatus = {}) {
     }
   }
 
+  // Task #314 — Build the full input bag for the post-match recap card.
+  // Reuses `_resolveOgMatch` for the shared header/MVP/top-fragger data,
+  // then layers in per-player roster rows (KDA + persisted PERF + per-match
+  // MMR delta) and a handful of highlight strings used by the magazine
+  // variant. Returns null when the match isn't found.
+  async function _buildRecapInputs(db, matchId) {
+    const og = await _resolveOgMatch(db, matchId);
+    if (!og) return null;
+    const m = await db.getMatch(matchId).catch(() => null);
+    if (!m) return null;
+    const deltas = await db.getMatchMmrDeltas(matchId).catch(() => ({}));
+    const players = (Array.isArray(m.players) ? m.players : []).map(p => {
+      const delta = deltas[String(p.account_id)]?.delta;
+      return {
+        account_id: p.account_id,
+        team: p.team,
+        persona_name: p.nickname || p.persona_name || `Player ${p.account_id || '?'}`,
+        hero_id: parseInt(p.hero_id) || null,
+        hero_name: p.hero_name || null,
+        kills: parseInt(p.kills) || 0,
+        deaths: parseInt(p.deaths) || 0,
+        assists: parseInt(p.assists) || 0,
+        perf: p.perf != null ? Number(p.perf) : null,
+        mmr_delta: delta != null ? Number(delta) : null,
+      };
+    });
+    // MVP KDA for the magazine/tournament headers.
+    let mvpKda = null, mvpHeroId = null;
+    if (m.mvp_account_id) {
+      const mvpRow = (m.players || []).find(p => String(p.account_id) === String(m.mvp_account_id));
+      if (mvpRow) {
+        mvpKda = `${mvpRow.kills || 0}/${mvpRow.deaths || 0}/${mvpRow.assists || 0}`;
+        mvpHeroId = parseInt(mvpRow.hero_id) || null;
+      }
+    }
+    // Highlights: top damage, top GPM, top vision — quick one-liners.
+    const all = m.players || [];
+    const byDmg = [...all].sort((a, b) => (b.hero_damage || 0) - (a.hero_damage || 0))[0];
+    const byGpm = [...all].sort((a, b) => (b.gold_per_min || 0) - (a.gold_per_min || 0))[0];
+    const byVis = [...all].sort((a, b) =>
+      ((b.obs_placed || 0) + (b.sen_placed || 0)) - ((a.obs_placed || 0) + (a.sen_placed || 0)))[0];
+    const highlights = [];
+    if (byDmg && byDmg.hero_damage >= 5000) {
+      highlights.push(`Top damage: ${byDmg.nickname || byDmg.persona_name} (${Math.round((byDmg.hero_damage || 0) / 1000)}k)`);
+    }
+    if (byGpm && byGpm.gold_per_min >= 400) {
+      highlights.push(`Gold king: ${byGpm.nickname || byGpm.persona_name} (${byGpm.gold_per_min} GPM)`);
+    }
+    if (byVis && ((byVis.obs_placed || 0) + (byVis.sen_placed || 0)) >= 6) {
+      const t = (byVis.obs_placed || 0) + (byVis.sen_placed || 0);
+      highlights.push(`Vision: ${byVis.nickname || byVis.persona_name} (${t} wards)`);
+    }
+    const totalKills = all.reduce((s, p) => s + (p.kills || 0), 0);
+    if (totalKills > 0) highlights.push(`${totalKills} total kills`);
+
+    return {
+      matchId: og.matchId,
+      radiantWin: og.radiantWin,
+      radiantScore: og.radiantScore,
+      direScore: og.direScore,
+      durationSeconds: og.durationSeconds,
+      mvpName: og.mvp ? og.mvp.name : null,
+      mvpHeroName: og.mvp ? og.mvp.heroDisplayName : null,
+      mvpHeroId,
+      mvpKda,
+      topFragger: og.topFragger ? {
+        name: og.topFragger.name,
+        kills: og.topFragger.kills,
+        deaths: og.topFragger.deaths,
+        assists: og.topFragger.assists,
+        heroName: og.topFragger.heroDisplayName,
+      } : null,
+      players,
+      highlights,
+      siteUrl: (process.env.SITE_URL || 'oceinhouse.gg').replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+    };
+  }
+
   // Task #268 — Generated 1200×630 match card. Crawlers fetch this when
   // they unfurl `/match/<id>`; we render the top-fragger's hero portrait
   // with the winning side, score, MVP, and top-fragger KDA on top. Falls
@@ -2577,6 +2655,26 @@ function createApiRouter(startupStatus = {}, _app = null) {
         console.error('[API] V3 modifier breakdown failed:', modErr.message);
         match.v3_modifiers = { modifiers: [], hasStats: false };
       }
+      // Task #314 — per-match per-player MMR deltas. Joins rating_history so
+      // each scoreboard row can show "before → after (±delta)". Best-effort.
+      try {
+        const deltas = await db.getMatchMmrDeltas(req.params.matchId);
+        match.mmr_deltas = deltas || {};
+      } catch (delErr) {
+        console.error('[API] MMR delta lookup failed:', delErr.message);
+        match.mmr_deltas = {};
+      }
+      // Task #314 — per-player PERF "why you scored X" explainer. Server-side
+      // translation of `perf_breakdown` into a plain-English helped/hurt list
+      // so the frontend just renders. Best-effort; null when missing.
+      try {
+        const { explainPerfBreakdown } = require('../perf/perfExplain');
+        for (const p of (match.players || [])) {
+          p.perf_explain = explainPerfBreakdown(p.perf_breakdown) || null;
+        }
+      } catch (peErr) {
+        console.error('[API] PERF explain failed:', peErr.message);
+      }
       res.json(match);
     } catch (err) {
       console.error('[API] Error fetching match:', err.message);
@@ -2979,6 +3077,91 @@ function createApiRouter(startupStatus = {}, _app = null) {
       res.json({ success: true, rsvps });
     } catch (err) {
       res.status(500).json({ error: 'Failed to remove RSVP' });
+    }
+  });
+
+  // Task #314 — Nemesis spotlight for the post-match screen. Returns a single
+  // notable rivalry moment (or 404 when nothing notable happened) for the
+  // signed-in viewer. Surfaces in-match dominance, current loss streaks,
+  // streak-breaks, and milestone encounter counts.
+  router.get('/matches/:matchId/nemesis-spotlight', async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'Sign in to see nemesis moments.' });
+      }
+      const { getNemesisSpotlight } = require('../services/nemesisSpotlight');
+      const spotlight = await getNemesisSpotlight(db.getPool, req.params.matchId, req.session.accountId);
+      if (!spotlight) return res.json({ spotlight: null });
+      return res.json({ spotlight });
+    } catch (err) {
+      console.error('[API] nemesis-spotlight failed:', err.message);
+      res.status(500).json({ error: 'Failed to compute nemesis spotlight' });
+    }
+  });
+
+  // Task #314 — Post-match recap card download. Returns the PNG for the
+  // requested size + variant. Public read-only — same trust level as the
+  // match page itself. Cached in-memory by the renderer.
+  router.get('/matches/:matchId/recap-card.png', async (req, res) => {
+    try {
+      const { generateRecapCard, SIZES, VARIANTS } = require('../services/matchRecapCard');
+      const matchId = String(req.params.matchId || '');
+      if (!/^[A-Za-z0-9_-]{1,50}$/.test(matchId)) {
+        return res.status(400).json({ error: 'Invalid match id' });
+      }
+      const size = SIZES[req.query.size] ? String(req.query.size) : 'og';
+      const variant = VARIANTS.includes(String(req.query.variant)) ? String(req.query.variant) : 'classic';
+      const inputs = await _buildRecapInputs(db, matchId);
+      if (!inputs) return res.status(404).json({ error: 'Match not found' });
+      const buf = await generateRecapCard({ ...inputs, size, variant });
+      if (!buf) return res.status(503).json({ error: 'Recap card renderer unavailable' });
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=600');
+      if (req.query.download === '1') {
+        res.setHeader('Content-Disposition',
+          `attachment; filename="match_${matchId}_${variant}_${size}.png"`);
+      }
+      res.end(buf);
+    } catch (err) {
+      console.error('[API] recap-card failed:', err.message);
+      res.status(500).json({ error: 'Failed to generate recap card' });
+    }
+  });
+
+  // Post a recap card to Discord. Signed-in user must have played in the
+  // match (mirrors the existing /share-to-discord gate). Operator-picked
+  // variant via body { variant, size }.
+  router.post('/matches/:matchId/share-recap-card', express.json(), async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'Sign in to post the recap card.' });
+      }
+      const matchId = String(req.params.matchId);
+      const match = await db.getMatch(matchId).catch(() => null);
+      if (!match) return res.status(404).json({ error: 'Match not found' });
+      const players = Array.isArray(match.players) ? match.players : [];
+      const viewer = players.find(p => String(p.account_id) === String(req.session.accountId));
+      if (!viewer) {
+        return res.status(403).json({ error: 'Only players from this match can post the recap card.' });
+      }
+      const { generateRecapCard, SIZES, VARIANTS } = require('../services/matchRecapCard');
+      const size = SIZES[req.body?.size] ? String(req.body.size) : 'og';
+      const variant = VARIANTS.includes(String(req.body?.variant)) ? String(req.body.variant) : 'classic';
+      const inputs = await _buildRecapInputs(db, matchId);
+      if (!inputs) return res.status(404).json({ error: 'Match not found' });
+      const buf = await generateRecapCard({ ...inputs, size, variant });
+      if (!buf) return res.status(503).json({ error: 'Renderer unavailable' });
+      const bot = getDiscordBot();
+      const result = await bot.postRecapCardToHighlights({
+        matchId, buffer: buf, filename: `match_${matchId}_${variant}.png`,
+      }).catch(err => ({ ok: false, error: err.message }));
+      if (!result?.ok) {
+        return res.status(502).json({ error: result?.error || 'Discord post failed' });
+      }
+      return res.json({ ok: true, channelId: result.channelId });
+    } catch (err) {
+      console.error('[API] share-recap-card failed:', err.message);
+      res.status(500).json({ error: 'Failed to share recap card' });
     }
   });
 
