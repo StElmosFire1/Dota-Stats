@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "7.53",
+    "title": "Limited-drop cards now show when the drop started (Task #347)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**\"Started\" line on every limited-drop card.** `web/src/pages/CosmeticsShop.jsx` now renders a muted `Started <local time> · Xh ago` line beside the existing `Ends …` line on each card, so players can tell at a glance whether they're early or late into the window (and how long the original window was). Uses the same `formatAbsoluteEndTime` helper as the end-time line so the timezone/format match exactly, plus a new `formatTimeSince` helper for the compact relative tag (days → hours → minutes; \"just now\" for sub-minute deltas).",
+      "**No API change needed.** `GET /api/limited-drops/active` already returns `available_from` (the DB helper does `SELECT *`), so the client just had to start reading the field. Older rows without `available_from` populated fall through gracefully — the started line simply isn't rendered.",
+      "**Edition scope.** Full edition only — community edition has no limited-drop panel."
+    ]
+  },
+  {
     "version": "7.52",
     "title": "'Watch live' badge now visible from every page (Task #346)",
     "published_at": "2026-05-24",

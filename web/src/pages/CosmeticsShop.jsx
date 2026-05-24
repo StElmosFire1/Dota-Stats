@@ -217,6 +217,33 @@ function formatAbsoluteEndTime(targetMs) {
   }
 }
 
+// Task #347 — compact "Xh ago" / "Xd ago" tag for the drop start time so
+// players can tell at a glance whether they're early or late into the
+// window. Mirrors the granularity of `formatTimeRemaining` (days → hours
+// → minutes) but drops the live seconds digit since the start time is
+// fixed once the drop opens. Returns "just now" for sub-minute deltas
+// and "in …" if `startedAtMs` is somehow still in the future.
+function formatTimeSince(startedAtMs, nowMs) {
+  const ms = nowMs - startedAtMs;
+  if (ms < 0) {
+    const absSec = Math.floor(-ms / 1000);
+    const d = Math.floor(absSec / 86400);
+    const h = Math.floor((absSec % 86400) / 3600);
+    const m = Math.floor((absSec % 3600) / 60);
+    if (d > 0) return `in ${d}d ${h}h`;
+    if (h > 0) return `in ${h}h ${m}m`;
+    return `in ${Math.max(1, m)}m`;
+  }
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) return 'just now';
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ago`;
+  if (h > 0) return `${h}h ${m}m ago`;
+  return `${m}m ago`;
+}
+
 // Mirrors FRAME_PRICES in src/web/server.js. Keep in sync.
 const FRAME_PRICES_CENTS = {
   gold: 299,
@@ -798,6 +825,20 @@ export default function CosmeticsShop() {
                 // figure stays as a secondary line so quick scanners still
                 // see at-a-glance urgency.
                 const endsAtLocal = formatAbsoluteEndTime(endsAtMs);
+                // Task #347 — same treatment for the drop's start time so
+                // players can tell whether they're early or late into the
+                // window (and how long the original window was). Some
+                // older rows may not have `available_from` populated, so
+                // we render the started line conditionally.
+                const startedAtMs = drop.available_from
+                  ? new Date(drop.available_from).getTime()
+                  : null;
+                const startedAtLocal = Number.isFinite(startedAtMs)
+                  ? formatAbsoluteEndTime(startedAtMs)
+                  : null;
+                const startedAgo = Number.isFinite(startedAtMs)
+                  ? formatTimeSince(startedAtMs, nowMs)
+                  : null;
                 const sold = Number(drop.quantity_sold || 0);
                 const cap = drop.quantity_cap != null ? Number(drop.quantity_cap) : null;
                 const soldOut = cap != null && sold >= cap;
@@ -814,6 +855,14 @@ export default function CosmeticsShop() {
                     </span>
                   </span>
                 );
+                // Task #347 — matching "Started" line. Muted because the
+                // urgency cue is the end time; this is here for context
+                // (am I early or late into the window?).
+                const startedLine = startedAtLocal ? (
+                  <span title={new Date(startedAtMs).toString()} style={{ color: 'var(--text-muted)' }}>
+                    Started {startedAtLocal} · {startedAgo}
+                  </span>
+                ) : null;
                 const kindLabel = String(drop.kind || '').replace(/_/g, ' ');
                 const capLabel = cap != null ? `${sold} / ${cap} sold` : null;
                 const subNode = (
@@ -821,6 +870,7 @@ export default function CosmeticsShop() {
                     {kindLabel}
                     {' · '}
                     {endsLine}
+                    {startedLine ? <> {' · '}{startedLine}</> : null}
                     {capLabel ? <> {' · '}{capLabel}</> : null}
                   </span>
                 );
