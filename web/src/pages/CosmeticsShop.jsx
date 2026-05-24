@@ -27,7 +27,7 @@ import {
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { getOwnedFrames, purchaseFrameCheckout, getFoundersRingStatus, buyFoundersRingCheckout,
   listMyFounderRings, setEquippedFounderRing as apiSetEquippedFounderRing,
-  buyFounderRingCheckout, spendCoinsOnSku } from '../api';
+  buyFounderRingCheckout, spendCoinsOnSku, getActiveLimitedDrops } from '../api';
 import FounderRing from '../components/founderRings/FounderRing';
 import {
   FOUNDER_RING_SLUGS, FOUNDER_RING_TIER, FOUNDER_RING_LABEL,
@@ -179,6 +179,23 @@ function AccentPreview({ color }) {
       <div style={{ height: 3, marginTop: 4, background: color, borderRadius: 2, width: '70%' }} />
     </div>
   );
+}
+
+// Task #330 — format the remaining time on a limited drop as a compact
+// "Xd Yh Zm Ws" countdown. Returns "Ended" once the window closes so the
+// panel can hide / disable the card. Keeps zero-padded seconds so the
+// width stays stable as it ticks down.
+function formatTimeRemaining(targetMs, nowMs) {
+  const ms = targetMs - nowMs;
+  if (ms <= 0) return 'Ended';
+  const totalSec = Math.floor(ms / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${String(s).padStart(2, '0')}s`;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
 // Mirrors FRAME_PRICES in src/web/server.js. Keep in sync.
@@ -354,6 +371,16 @@ export default function CosmeticsShop() {
   const [coinInfo, setCoinInfo] = useState(null);
   const [coinBuying, setCoinBuying] = useState(null); // SKU currently in flight
   const [coinFlash, setCoinFlash] = useState(null);   // {ok, msg} for last spend
+  // Task #330 — limited-drop cosmetics. `limitedDrops` is the raw list from
+  // /api/limited-drops/active; `nowMs` ticks every second so each card's
+  // countdown re-renders in place. `dropBuying` is the drop id currently
+  // mid-checkout (Stripe) or mid-spend (coins), so only that one card's
+  // buttons disable. `dropError` surfaces a single error line above the
+  // panel rather than per-card alerts.
+  const [limitedDrops, setLimitedDrops] = useState([]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [dropBuying, setDropBuying] = useState(null);
+  const [dropError, setDropError] = useState(null);
 
   const reloadCoins = React.useCallback(() => {
     if (!signedIn) { setCoinInfo(null); return; }
@@ -364,6 +391,25 @@ export default function CosmeticsShop() {
   }, [signedIn]);
 
   useEffect(() => { reloadCoins(); }, [reloadCoins]);
+
+  // Task #330 — load active limited drops (public endpoint, works signed-out)
+  // and tick `nowMs` every second so each card's countdown re-renders in
+  // place. The ticker is only mounted while there's at least one drop with
+  // a future `available_until`, so the shop doesn't waste a setInterval on
+  // visitors who'll never see a countdown.
+  const reloadLimitedDrops = React.useCallback(() => {
+    getActiveLimitedDrops()
+      .then(d => setLimitedDrops(Array.isArray(d?.drops) ? d.drops : []))
+      .catch(() => setLimitedDrops([]));
+  }, []);
+  useEffect(() => { reloadLimitedDrops(); }, [reloadLimitedDrops]);
+  useEffect(() => {
+    if (!limitedDrops.length) return undefined;
+    const hasFuture = limitedDrops.some(d => new Date(d.available_until).getTime() > Date.now());
+    if (!hasFuture) return undefined;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [limitedDrops]);
 
   const isCoinOwned = React.useCallback((kind, value) => {
     if (!coinInfo?.owned) return false;
@@ -397,6 +443,55 @@ export default function CosmeticsShop() {
       });
     } finally {
       setCoinBuying(null);
+    }
+  }
+
+  // Task #330 — buy a limited drop. Coin path uses the existing
+  // /api/coins/spend endpoint (server validates the sku against
+  // COIN_PRICES). Stripe path routes by `kind` to the existing checkout
+  // for that cosmetic family — we deliberately don't add a new server
+  // route here; the limited-drop row is just a curated, time-boxed
+  // surface over the cosmetics that already have a purchase flow. If
+  // the kind has no Stripe checkout wired, we hide that button and
+  // leave the coin button as the only buy path for that drop.
+  async function buyLimitedDropStripe(drop) {
+    setDropBuying(drop.id); setDropError(null);
+    try {
+      const kind = String(drop.kind || '').toLowerCase();
+      // sku may be a bare value ("cosmic") or namespaced ("frame:cosmic");
+      // strip the prefix so the underlying checkout receives what it expects.
+      const skuRaw = String(drop.sku || '');
+      const skuTail = skuRaw.includes(':') ? skuRaw.split(':').slice(1).join(':') : skuRaw;
+      let url = null;
+      if (kind === 'frame') {
+        // purchaseFrameCheckout returns the full JSON ({ url, ... }), not
+        // a bare URL string — extract `.url` before navigating.
+        const res = await purchaseFrameCheckout(skuTail);
+        url = res?.url || null;
+      } else if (kind === 'founder_ring' || kind === 'founders_ring') {
+        const res = await buyFounderRingCheckout(skuTail);
+        url = res?.url || null;
+      } else {
+        throw new Error(`No Stripe checkout for kind "${drop.kind}". Use the coin button if available.`);
+      }
+      if (url) window.location.assign(url);
+      else setDropError('Checkout did not return a URL.');
+    } catch (err) {
+      setDropError(err?.message || 'Failed to start checkout.');
+    } finally {
+      setDropBuying(null);
+    }
+  }
+  async function buyLimitedDropCoins(drop) {
+    setDropBuying(drop.id); setDropError(null);
+    try {
+      await spendCoinsOnSku(String(drop.sku || ''));
+      reloadCoins();
+      reloadLimitedDrops();
+    } catch (err) {
+      setDropError(err?.message || 'Failed to spend coins.');
+    } finally {
+      setDropBuying(null);
     }
   }
 
@@ -446,7 +541,11 @@ export default function CosmeticsShop() {
     setPurchasingFrame(frameId);
     setPurchaseError(null);
     try {
-      const url = await purchaseFrameCheckout(frameId);
+      // purchaseFrameCheckout returns the full JSON ({ url, ... }); extract
+      // `.url` before navigating (previously this assigned the object as
+      // the href, which silently broke the buy flow).
+      const res = await purchaseFrameCheckout(frameId);
+      const url = res?.url || null;
       if (url) window.location.href = url;
       else setPurchaseError('Could not start checkout.');
     } catch (e) {
@@ -626,6 +725,104 @@ export default function CosmeticsShop() {
           </div>
         ) : null}
       </div>
+
+      {/* Task #330 — "Available now — limited drop" panel. Renders only
+          when /api/limited-drops/active returns at least one row. Each
+          card shows the drop's label, kind, a live countdown to
+          available_until, optional "X / cap sold" when quantity_cap is
+          set, and a buy button per available pricing path (Stripe
+          checkout for price_cents, coin spend for coin_price). Sold-out
+          (quantity_sold ≥ quantity_cap) disables both buttons. Ended
+          drops are filtered out so a stale tick doesn't render after
+          the window closes. */}
+      {limitedDrops.length > 0 && (() => {
+        const active = limitedDrops.filter(d => new Date(d.available_until).getTime() > nowMs);
+        if (!active.length) return null;
+        return (
+          <section style={{ marginBottom: 32 }}>
+            <SectionHeader
+              title="Available now — limited drop"
+              sub="A rotating selection of cosmetics, only available for a short window. Once the timer hits zero (or the cap sells out), they're gone."
+            />
+            {dropError ? (
+              <div role="alert" style={{
+                padding: '8px 12px', marginBottom: 12, borderRadius: 8,
+                border: '1px solid #b91c1c55', background: '#7f1d1d22', color: '#fca5a5',
+                fontSize: 13,
+              }}>{dropError}</div>
+            ) : null}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {active.map(drop => {
+                const endsAtMs = new Date(drop.available_until).getTime();
+                const remaining = formatTimeRemaining(endsAtMs, nowMs);
+                const sold = Number(drop.quantity_sold || 0);
+                const cap = drop.quantity_cap != null ? Number(drop.quantity_cap) : null;
+                const soldOut = cap != null && sold >= cap;
+                const busy = dropBuying === drop.id;
+                const hasStripe = drop.price_cents != null;
+                const hasCoins = drop.coin_price != null;
+                const subParts = [
+                  String(drop.kind || '').replace(/_/g, ' '),
+                  `Ends in ${remaining}`,
+                ];
+                if (cap != null) subParts.push(`${sold} / ${cap} sold`);
+                return (
+                  <CosmeticCard
+                    key={drop.id}
+                    label={drop.label || drop.sku}
+                    sub={subParts.join(' · ')}
+                    badges={
+                      soldOut ? <LockedPill /> : <ProPill />
+                    }
+                    action={
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {drop.description ? (
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{drop.description}</div>
+                        ) : null}
+                        {hasStripe ? (
+                          <button
+                            type="button"
+                            disabled={busy || soldOut || !signedIn}
+                            onClick={() => buyLimitedDropStripe(drop)}
+                            title={!signedIn ? 'Sign in with Steam to buy' : (soldOut ? 'Sold out' : `Buy for ${formatPrice(drop.price_cents)}`)}
+                            style={{
+                              ...actionButtonStyle('buy'),
+                              opacity: (busy || soldOut || !signedIn) ? 0.6 : 1,
+                              cursor: (soldOut || !signedIn) ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {soldOut ? 'Sold out' : busy ? 'Starting checkout…' : `Buy ${formatPrice(drop.price_cents)}`}
+                          </button>
+                        ) : null}
+                        {hasCoins ? (
+                          <button
+                            type="button"
+                            disabled={busy || soldOut || !signedIn}
+                            onClick={() => buyLimitedDropCoins(drop)}
+                            title={!signedIn ? 'Sign in with Steam to spend coins' : (soldOut ? 'Sold out' : `Spend ${drop.coin_price} coins`)}
+                            style={{
+                              ...actionButtonStyle('settings'),
+                              opacity: (busy || soldOut || !signedIn) ? 0.6 : 1,
+                              cursor: (soldOut || !signedIn) ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {soldOut ? 'Sold out' : busy ? 'Unlocking…' : `${hasStripe ? 'or ' : ''}${drop.coin_price} 🪙`}
+                          </button>
+                        ) : null}
+                        {!signedIn ? (
+                          <Link to="/login" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            Sign in to purchase →
+                          </Link>
+                        ) : null}
+                      </div>
+                    }
+                  />
+                );
+              })}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* v6.63 / Task #207 — Founders Pass ring. One-time SKU, capped at
           FOUNDERS_RING_CAP (default 200). Server enforces the cap inside

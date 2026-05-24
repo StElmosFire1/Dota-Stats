@@ -1877,17 +1877,10 @@ export const adminDeleteSpotlight = (superuserKey, id) =>
   superuserJson(`/admin/spotlight/${id}`, { method: 'DELETE', superuserKey });
 
 // ===== Task #319 — Season Pass v2 / Teams / Weekly challenges / Limited drops / Gifting =====
-function _postJson(path, body) {
-  return fetch(BASE + path, {
-    method: 'POST', credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  }).then(async (r) => {
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || `Request failed: ${r.status}`);
-    return d;
-  });
-}
+// (Re-uses the `_getJson` / `_postJson` helpers declared earlier in this file.
+// A second `function _postJson` declaration lived here originally and caused
+// the production build to fail with a redeclaration error; removed in
+// Task #330 since the earlier async version is functionally equivalent.)
 export const createSeasonPassCheckout = () => _postJson('/season-pass/checkout', {});
 export const listTeams = () => _getJson('/teams');
 export const getTeam = (id) => _getJson(`/teams/${id}`);

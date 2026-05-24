@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "7.43",
+    "title": "Limited-drop cosmetics surfaced in the shop (Task #330)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**\"Available now — limited drop\" panel on `/shop`.** `web/src/pages/CosmeticsShop.jsx` now calls `getActiveLimitedDrops()` on mount and renders a top-of-page panel whenever `/api/limited-drops/active` returns rows. Each card shows the drop's label, kind, a live ticking countdown to `available_until`, and (when `quantity_cap` is set) an `X / cap sold` line that flips the card to a `🔒 LOCKED` `Sold out` state once `quantity_sold >= quantity_cap`.",
+      "**Buy paths reuse existing checkouts.** Coin button calls the existing `/api/coins/spend` endpoint via `spendCoinsOnSku(drop.sku)`. Stripe button routes by `drop.kind` to the already-wired checkout for that family (`frame` → `purchaseFrameCheckout`, `founder_ring` → `buyFounderRingCheckout`); deliberately no new server-side purchase route was added — limited drops are a curated, time-boxed surface over cosmetics that already have a purchase flow. A drop with only a `coin_price` simply renders the coin button alone.",
+      "**Ticker is scoped.** The 1s `setInterval` only mounts when there's at least one active drop with a future `available_until`, and clears itself when the list drains, so visitors who don't see a drop pay no render cost. Ended drops are filtered out of the panel rather than rendering as `Ended` placeholders.",
+      "**A11y.** Every button is a real `<button type=\"button\">` with visible text (no icon-only controls) and a `title=` hint for the disabled/sold-out/signed-out states. A11y gate (`npm run check:a11y`) passes."
+    ]
+  },
+  {
     "version": "7.42",
     "title": "Live spectator link on the inhouse hub (Task #325)",
     "published_at": "2026-05-24",
