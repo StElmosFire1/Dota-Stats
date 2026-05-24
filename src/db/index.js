@@ -1418,6 +1418,26 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coaches_status ON coaches (status)`);
 
+    // Task #344 — lightweight per-day profile-view counter so the Premium
+    // upsell can prove the featured-placement lift in clicks, not just in
+    // bottom-of-funnel bookings. Throttled to one row per (coach, viewer-key,
+    // day) via a partial unique index so a single visitor refreshing a coach
+    // page can't inflate the count. `viewer_key` is the viewer's account_id
+    // when signed in, otherwise a salted IP hash so the table never stores
+    // raw IPs.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_profile_views (
+        id SERIAL PRIMARY KEY,
+        coach_account_id BIGINT NOT NULL,
+        viewer_key TEXT NOT NULL,
+        viewed_on DATE NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')::date,
+        viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        source TEXT
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coach_profile_views_coach ON coach_profile_views (coach_account_id, viewed_at)`);
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_profile_views_throttle ON coach_profile_views (coach_account_id, viewer_key, viewed_on)`);
+
     // Weekly availability slots — repeating weekly (no calendar sync v1).
     // day_of_week 0=Sun..6=Sat, times stored as HH:MM strings in slot timezone.
     await p.query(`
@@ -13357,6 +13377,165 @@ async function applyCoachPremiumStripeEvent(coachAccountId, sub) {
   return r.rows[0] || null;
 }
 
+// Task #344 — Compute a coach-specific "what Premium would (or did) save you"
+// figure plus the aggregate first-week booking lift premium coaches actually
+// see. Pulled from existing coaching_bookings + coach_premium_subscriptions
+// rows so there is no new tracking surface to populate.
+//
+// Personal savings: sum the gross amount of the coach's paid/completed
+// bookings in the last `days` window, then compute (current_bps − 700) ⨯ gross
+// for a non-premium coach ("you would have saved $X"), or (default_bps − 700)
+// ⨯ gross for an active premium coach ("you have saved $X vs the standard
+// rate"). Returns null monetary fields when there aren't enough bookings to
+// be meaningful (the route renders a graceful fallback).
+//
+// Aggregate first-week lift: compares paid bookings in the first 7 days of
+// premium activation against the average non-premium coach's first 7 days
+// after coaches.created_at. Returns nulls when sample sizes are too small.
+// Task #344 — Record one profile view per (coach, viewer, UTC day). The
+// partial unique index makes the throttle a no-op on duplicates so callers
+// don't need to pre-check. Failures are swallowed by the caller so a flaky
+// write never breaks the public coach detail render.
+async function recordCoachProfileView({ coachAccountId, viewerKey, source }) {
+  if (!coachAccountId || !viewerKey) return false;
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coach_profile_views (coach_account_id, viewer_key, source)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (coach_account_id, viewer_key, viewed_on) DO NOTHING
+     RETURNING id`,
+    [coachAccountId, String(viewerKey).slice(0, 64), source ? String(source).slice(0, 32) : null]
+  );
+  return r.rowCount > 0;
+}
+
+async function getCoachPremiumLift(coachAccountId, { days = 30 } = {}) {
+  const p = getPool();
+  const coachRow = (await p.query(
+    `SELECT * FROM coaches WHERE account_id = $1`, [coachAccountId]
+  )).rows[0];
+  if (!coachRow) return null;
+
+  const defaultBps = await getCoachingCommissionBps();
+  const premiumBps = COACH_PREMIUM_COMMISSION_BPS;
+  const currentBps = await resolveCommissionBpsForCoach(coachRow);
+  const isPremium = !!coachRow.is_premium;
+
+  const personalQ = await p.query(
+    `SELECT COUNT(*)::int AS booking_count,
+            COALESCE(SUM(amount_cents), 0)::bigint AS gross_cents
+       FROM coaching_bookings
+      WHERE coach_account_id = $1
+        AND status IN ('paid','completed')
+        AND created_at >= NOW() - ($2 || ' days')::interval`,
+    [coachAccountId, String(days)]
+  );
+  const bookingCount = personalQ.rows[0]?.booking_count || 0;
+  const grossCents = Number(personalQ.rows[0]?.gross_cents || 0);
+  const MIN_BOOKINGS_FOR_PERSONAL = 1;
+  const enoughHistory = bookingCount >= MIN_BOOKINGS_FOR_PERSONAL;
+
+  let projectedSavingsCents = null;
+  let actualSavingsCents = null;
+  if (enoughHistory) {
+    if (isPremium) {
+      const diff = Math.max(defaultBps - premiumBps, 0);
+      actualSavingsCents = Math.round(grossCents * diff / 10000);
+    } else {
+      const diff = Math.max(currentBps - premiumBps, 0);
+      projectedSavingsCents = Math.round(grossCents * diff / 10000);
+    }
+  }
+
+  const agg = await _computeCoachPremiumFirstWeekViewLift();
+
+  return {
+    window_days: days,
+    is_premium: isPremium,
+    current_bps: currentBps,
+    premium_bps: premiumBps,
+    default_bps: defaultBps,
+    personal: {
+      booking_count: bookingCount,
+      gross_cents: grossCents,
+      enough_history: enoughHistory,
+      projected_savings_cents: projectedSavingsCents,
+      actual_savings_cents: actualSavingsCents,
+    },
+    aggregate: agg,
+  };
+}
+
+// Task #344 — Aggregate first-week *profile-view* lift premium coaches see
+// vs non-premium coaches. Pulled from the `coach_profile_views` table this
+// task added. Premium cohort is anchored at the first row's created_at in
+// `coach_premium_subscriptions` (the row is inserted at checkout, so this
+// is close enough to activation in practice). Non-premium cohort is
+// anchored at `coaches.created_at`. Both cohorts are restricted to coaches
+// whose anchor is at least 7 days in the past so the first-week window is
+// fully observable. Returns `sufficient: false` (with nulls everywhere
+// except the cohort counts) when either cohort has fewer than 3 coaches —
+// the public pitch page hides the line entirely in that case to avoid
+// publishing a noisy or misleading number.
+async function _computeCoachPremiumFirstWeekViewLift() {
+  const p = getPool();
+  const aggQ = await p.query(`
+    WITH premium_anchors AS (
+      SELECT c.account_id, MIN(s.created_at) AS anchor
+        FROM coaches c
+        JOIN coach_premium_subscriptions s ON s.coach_account_id = c.account_id
+       WHERE s.status IN ('active','past_due','cancelled','canceled')
+       GROUP BY c.account_id
+      HAVING MIN(s.created_at) <= NOW() - INTERVAL '7 days'
+    ),
+    premium_counts AS (
+      SELECT pa.account_id,
+             (SELECT COUNT(*) FROM coach_profile_views v
+               WHERE v.coach_account_id = pa.account_id
+                 AND v.viewed_at >= pa.anchor
+                 AND v.viewed_at <  pa.anchor + INTERVAL '7 days') AS cnt
+        FROM premium_anchors pa
+    ),
+    non_premium_anchors AS (
+      SELECT c.account_id, c.created_at AS anchor
+        FROM coaches c
+        LEFT JOIN coach_premium_subscriptions s ON s.coach_account_id = c.account_id
+       WHERE s.coach_account_id IS NULL
+         AND c.created_at <= NOW() - INTERVAL '7 days'
+    ),
+    non_premium_counts AS (
+      SELECT na.account_id,
+             (SELECT COUNT(*) FROM coach_profile_views v
+               WHERE v.coach_account_id = na.account_id
+                 AND v.viewed_at >= na.anchor
+                 AND v.viewed_at <  na.anchor + INTERVAL '7 days') AS cnt
+        FROM non_premium_anchors na
+    )
+    SELECT
+      (SELECT COUNT(*)::int FROM premium_counts) AS premium_n,
+      (SELECT AVG(cnt)::float FROM premium_counts) AS premium_avg,
+      (SELECT COUNT(*)::int FROM non_premium_counts) AS non_premium_n,
+      (SELECT AVG(cnt)::float FROM non_premium_counts) AS non_premium_avg
+  `);
+  const agg = aggQ.rows[0] || {};
+  const MIN_COHORT = 3;
+  const premiumN = agg.premium_n || 0;
+  const nonPremiumN = agg.non_premium_n || 0;
+  const sufficient = premiumN >= MIN_COHORT && nonPremiumN >= MIN_COHORT;
+  const premiumAvg = agg.premium_avg != null ? Number(agg.premium_avg) : null;
+  const nonPremiumAvg = agg.non_premium_avg != null ? Number(agg.non_premium_avg) : null;
+  const ratio = (sufficient && nonPremiumAvg > 0 && premiumAvg != null)
+    ? premiumAvg / nonPremiumAvg : null;
+  return {
+    premium_cohort_n: premiumN,
+    non_premium_cohort_n: nonPremiumN,
+    premium_first_week_avg_views: premiumAvg,
+    non_premium_first_week_avg_views: nonPremiumAvg,
+    ratio,
+    sufficient,
+  };
+}
+
 async function cancelCoachPremium(coachAccountId) {
   const p = getPool();
   await p.query(
@@ -15790,6 +15969,9 @@ module.exports = {
   recordSponsorshipClick,
   setCoachCommissionOverride,
   getCoachPremium,
+  getCoachPremiumLift,
+  _computeCoachPremiumFirstWeekViewLift,
+  recordCoachProfileView,
   upsertCoachPremiumPending,
   applyCoachPremiumStripeEvent,
   cancelCoachPremium,

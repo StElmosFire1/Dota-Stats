@@ -11,6 +11,7 @@ export default function CoachPremium() {
   const navigate = useNavigate();
   const [eligibility, setEligibility] = useState(null);
   const [premium, setPremium] = useState(null);
+  const [lift, setLift] = useState(null);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
@@ -21,6 +22,10 @@ export default function CoachPremium() {
         if (e.ok) setEligibility(await e.json());
         const p = await fetch(`${BASE}/coach/premium/status`, { credentials: 'include' });
         if (p.ok) setPremium((await p.json()).subscription);
+        // Task #344 — only meaningful for signed-in coaches; route 401/404s
+        // for anyone else and we just skip.
+        const lf = await fetch(`${BASE}/coach/premium/lift`, { credentials: 'include' });
+        if (lf.ok) setLift(await lf.json());
       } catch (_) { /* public page — fail soft */ }
       setLoading(false);
     })();
@@ -108,6 +113,39 @@ export default function CoachPremium() {
           )}
         </div>
         {msg && <p style={{ color: 'var(--dire-color)', marginTop: 12 }}>{msg}</p>}
+        {/* Task #344 — aggregate "Nx more first-week profile views" badge.
+            Public, hidden until the premium cohort is large enough to be
+            honest. */}
+        {lift?.aggregate?.sufficient && lift.aggregate.ratio != null && lift.aggregate.ratio > 1.05 && (
+          <div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-muted)' }}>
+            <strong style={{ color: 'var(--amber, #f59e0b)' }}>{lift.aggregate.ratio.toFixed(1)}× more first-week profile views</strong>
+            {' '}than non-Premium coaches, averaged across {lift.aggregate.premium_cohort_n} current Premium coaches.
+          </div>
+        )}
+        {/* Task #344 — personal savings line for signed-in coaches, with an
+            explicit insufficient-history fallback so a signed-in coach with
+            no bookings yet sees the same hint they get on the editor card
+            rather than a silent gap. */}
+        {lift?.personal && (
+          lift.personal.enough_history ? (
+            (() => {
+              const s = lift.is_premium ? lift.personal.actual_savings_cents : lift.personal.projected_savings_cents;
+              if (s == null) return null;
+              const verb = lift.is_premium ? 'have saved' : 'would have saved';
+              return (
+                <div style={{ marginTop: 12, fontSize: 14, color: 'var(--text-primary)' }}>
+                  Based on your last {lift.window_days} days you {verb}{' '}
+                  <strong style={{ color: 'var(--amber, #f59e0b)' }}>${(s / 100).toFixed(2)}</strong>{' '}
+                  in platform fees at the Premium 7% rate.
+                </div>
+              );
+            })()
+          ) : (
+            <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+              Your personalised savings figure will appear here once you've taken your first paid booking.
+            </div>
+          )
+        )}
         {!loading && eligibility?.signed_in && !eligibility?.has_coach_row && (
           <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 12 }}>
             You'll need to finish coach onboarding (Stripe Connect KYC) before you can subscribe.

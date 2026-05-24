@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.51",
+    "title": "Coach Premium upsell now shows your real would-have-saved figure (Task #344)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Personalised savings on the Premium card.** New `GET /api/coach/premium/lift` aggregates the signed-in coach's last 30 days of paid/completed bookings (`coaching_bookings` rows in `status IN ('paid','completed')`) and computes `(current_bps − 700) × gross / 10000` for non-Premium coaches (\"you would have saved $X\") or `(default_bps − 700) × gross / 10000` for active Premium coaches (\"you have saved $X vs the standard rate\"). Rendered as a new `PremiumLift` line inside the existing `⭐ Coach Premium` card in `web/src/pages/CoachEdit.jsx`, and on the hero of `web/src/pages/CoachPremium.jsx` when signed in as a coach. Both surfaces fall back to a muted \"figure will appear here once you've taken your first paid booking\" hint when `enough_history` is false.",
+      "**New `coach_profile_views` table for top-of-funnel lift.** Lightweight per-day counter throttled by a unique partial index on `(coach_account_id, viewer_key, viewed_on)` so a single visitor refreshing can't inflate the count. Viewer key is the signed-in `account_id` (`a:<id>`) when available, otherwise a `SESSION_SECRET`-salted SHA-256 hash of the request IP (`h:<24-char-hex>`) — raw IPs are never stored. The write is best-effort inside `_coachDetail` in `src/web/server.js` (wrapped in try/catch and skipped when the viewer is the coach themselves), so a telemetry hiccup can never break the public detail page.",
+      "**Aggregate first-week profile-view lift on the public pitch page.** Same `/api/coach/premium/lift` endpoint exposes an aggregate cohort comparison — `COUNT(*) FROM coach_profile_views` in the first 7 days after Premium activation (`MIN(coach_premium_subscriptions.created_at)`) vs the first 7 days after `coaches.created_at` for non-Premium coaches. The pitch hero renders \"**Nx more first-week profile views** than non-Premium coaches\" once both cohorts have ≥ 3 coaches and the ratio is > 1.05; hidden entirely otherwise so we never publish a misleading or under-sampled number. CoachEdit's `PremiumLift` shows the same line at the same threshold.",
+      "**Public/private split on a single endpoint.** Signed-in coaches get the full payload (personal + aggregate). Unauthenticated callers — the public pitch page hero — get an aggregate-only response with `personal: null` computed by a small dedicated helper `db._computeCoachPremiumFirstWeekViewLift()`, so the conversion-trust line still renders without leaking per-account data.",
+      "**Edition scope.** Full edition only — the community edition has no coaching marketplace by policy."
+    ]
+  },
+  {
     "version": "7.50",
     "title": "Sponsorship banners on leaderboard, match, and profile pages (Task #343)",
     "published_at": "2026-05-24",

@@ -12429,6 +12429,25 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         db.getNickname?.(coach.account_id).catch(() => null),
       ]);
       const display_name = (typeof nick === 'string' ? nick : nick?.nickname) || String(coach.account_id);
+      // Task #344 — record one profile view per (coach, viewer, UTC day) so
+      // the Premium upsell can show real featured-placement lift. Viewer key
+      // is the signed-in account_id when available, otherwise a salted hash
+      // of the request IP — we never store raw IPs. Best-effort: a failure
+      // here must never break the public detail render.
+      try {
+        if (coach.status === 'active' && req.session?.accountId !== coach.account_id) {
+          const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim();
+          const ipSalt = process.env.SESSION_SECRET || 'coach-view-salt';
+          const viewerKey = req.session?.accountId
+            ? `a:${req.session.accountId}`
+            : 'h:' + crypto.createHash('sha256').update(ipSalt + '|' + ip).digest('hex').slice(0, 24);
+          await db.recordCoachProfileView({
+            coachAccountId: coach.account_id,
+            viewerKey,
+            source: req.session?.accountId ? 'auth' : 'anon',
+          });
+        }
+      } catch (e) { /* swallow — telemetry must not break the page */ }
       res.json({ coach: { ...coach, display_name }, availability, reviews, rating: agg, credibility });
     } catch (err) {
       console.error('[API] coaches/:id:', err.message);
@@ -12994,6 +13013,37 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const sub = await db.getCoachPremium(accountId);
       res.json({ subscription: sub });
     } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #344 — Personal + aggregate "would-have-saved / featured-lift" stats
+  // for the Premium upsell card. Signed-in coach only; falls back gracefully
+  // when there isn't enough booking history to be meaningful.
+  router.get('/coach/premium/lift', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      const days = Math.max(1, Math.min(parseInt(req.query.days, 10) || 30, 365));
+      // Signed-in coach → full payload (personal savings + aggregate).
+      // Anyone else (public pitch page) → aggregate-only payload so the
+      // "Premium coaches see Nx more first-week bookings" line still renders.
+      if (accountId) {
+        const lift = await db.getCoachPremiumLift(accountId, { days });
+        if (lift) return res.json(lift);
+      }
+      // Aggregate-only fallback for the public pitch page — reuses the same
+      // first-week view-lift query via a tiny stand-alone helper in db so we
+      // never leak per-account data here.
+      const aggregate = await db._computeCoachPremiumFirstWeekViewLift();
+      res.json({
+        window_days: days,
+        is_premium: false,
+        personal: null,
+        aggregate,
+      });
+    } catch (err) {
+      console.error('[API] coach/premium/lift:', err.message);
       res.status(500).json({ error: err.message });
     }
   });

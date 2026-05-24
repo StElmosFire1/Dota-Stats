@@ -4,6 +4,45 @@ import { Link } from 'react-router-dom';
 const BASE = '/api';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Task #344 — Renders the personalised savings + featured-placement lift
+// numbers inside the Premium card. Falls back to "not enough history" copy
+// when the coach hasn't taken enough bookings yet, and hides the aggregate
+// line entirely until the premium cohort is large enough to be honest.
+function PremiumLift({ lift }) {
+  if (!lift) return null;
+  const { is_premium, premium_bps, default_bps, current_bps, window_days, personal, aggregate } = lift;
+  const fmt = (cents) => `$${(cents / 100).toFixed(2)}`;
+  const pct = (bps) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
+  const savings = is_premium ? personal.actual_savings_cents : personal.projected_savings_cents;
+  const verb = is_premium ? 'have saved' : 'would have saved';
+  const compareBps = is_premium ? default_bps : current_bps;
+
+  return (
+    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+      {personal.enough_history && savings != null ? (
+        <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>
+          <strong style={{ color: 'var(--amber, #f59e0b)' }}>{fmt(savings)}</strong>{' '}
+          <span style={{ color: 'var(--text-muted)' }}>
+            — based on your last {window_days} days ({personal.booking_count} booking{personal.booking_count === 1 ? '' : 's'},
+            {' '}{fmt(personal.gross_cents)} gross) you {verb} on platform fees at the Premium {pct(premium_bps)} rate vs your current {pct(compareBps)}.
+          </span>
+        </div>
+      ) : (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+          Your personalised savings figure will appear here once you've taken your first paid booking.
+        </div>
+      )}
+      {aggregate.sufficient && aggregate.ratio != null && aggregate.ratio > 1.05 && (
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text-muted)' }}>
+          Across {aggregate.premium_cohort_n} current Premium coaches, featured placement delivered{' '}
+          <strong style={{ color: 'var(--text-primary)' }}>{aggregate.ratio.toFixed(1)}×</strong> the
+          first-week profile views of non-Premium coaches.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CoachEdit() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,6 +52,7 @@ export default function CoachEdit() {
   const [rating, setRating] = useState(null);
   const [kyc, setKyc] = useState(null);
   const [premium, setPremium] = useState(null);
+  const [lift, setLift] = useState(null);
   const [msg, setMsg] = useState('');
 
   const load = async () => {
@@ -28,6 +68,8 @@ export default function CoachEdit() {
       if (k.ok) setKyc(await k.json());
       const ps = await fetch(`${BASE}/coach/premium/status`, { credentials: 'include' });
       if (ps.ok) setPremium((await ps.json()).subscription);
+      const lf = await fetch(`${BASE}/coach/premium/lift`, { credentials: 'include' });
+      if (lf.ok) setLift(await lf.json());
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
@@ -168,6 +210,7 @@ export default function CoachEdit() {
             Subscribe — $9.99/mo
           </button>
         )}
+        {lift && <PremiumLift lift={lift} />}
       </div>
 
       <form onSubmit={save} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
