@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.49",
+    "title": "Sponsorship slot performance reporting for admins and sponsors (Task #342)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**Per-slot performance table in Admin → Sponsorships.** New `getSponsorshipSlotAnalytics()` in `src/db/index.js` rolls up `SUM(impressions)`, `SUM(clicks)`, and active-vs-total order counts grouped by slot (LEFT JOIN so a slot with zero orders still appears) and is now returned alongside `slots` + `orders` from `GET /api/admin/sponsorships`. `web/src/pages/AdminPanel.jsx` (`SponsorshipsAdminPanel`) renders a 'Slot performance' table sorted by lifetime impressions, with CTR computed in JS so zero-impression slots show '—' instead of a misleading 0.00%.",
+      "**Per-order impressions/clicks/CTR in the Recent orders table.** Same admin panel — the existing recent-orders table now carries `Impr.`, `Clicks`, `CTR` columns so admins can see how individual sponsor placements are converting, not just aggregate slot performance.",
+      "**Sponsor-side telemetry on `/sponsorships/inbox`.** New `GET /api/me/sponsorship-orders` endpoint (session-gated) returns the signed-in buyer's orders with impressions/clicks/CTR via `listSponsorshipOrdersForBuyer({ accountId })`. `web/src/pages/SponsorshipInbox.jsx` — which the checkout `success_url` already lands on — now shows a 'My sponsorship orders' section underneath the existing inbox so sponsors can see how their paid slots are performing. The section is hidden when there are no buyer orders, so non-buyer visitors are unaffected.",
+      "**No new tracking writes.** The frontend beacons + `recordSponsorshipImpression/Click` already write into `sponsorship_orders.impressions` / `.clicks`; this task is read-only reporting on top of the existing counters. A time-series chart was the optional stretch and is intentionally deferred since the schema only stores aggregate counts.",
+      "**Edition scope.** Full edition only — the community edition has no sponsorship system."
+    ]
+  },
+  {
     "version": "7.48",
     "title": "Limited-drop countdown shows your local end time (Task #338)",
     "published_at": "2026-05-24",

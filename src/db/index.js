@@ -13519,6 +13519,73 @@ async function listAllSponsorshipOrders({ limit = 100 } = {}) {
   return r.rows;
 }
 
+// Task #342 — sponsorship telemetry reporting.
+// Per-slot rollup of impressions/clicks/CTR across every order ever attached
+// to the slot, plus active-order counts so admins can see where the live
+// inventory sits. CTR is computed in JS rather than SQL so a zero-impression
+// slot reads as `null` (not 0%) and the UI can render "—" instead of a
+// misleading 0.00%.
+async function getSponsorshipSlotAnalytics() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT s.id, s.slug, s.label, s.tenant_id,
+            COALESCE(SUM(o.impressions), 0)::bigint AS impressions,
+            COALESCE(SUM(o.clicks), 0)::bigint AS clicks,
+            COUNT(o.id)::int AS order_count,
+            COUNT(*) FILTER (
+              WHERE o.status = 'active'
+                AND o.starts_at <= NOW() AND o.ends_at > NOW()
+            )::int AS active_count
+       FROM sponsorship_slots s
+       LEFT JOIN sponsorship_orders o ON o.slot_id = s.id
+      GROUP BY s.id
+      ORDER BY impressions DESC, s.slug`
+  );
+  return r.rows.map(row => {
+    const impressions = Number(row.impressions || 0);
+    const clicks = Number(row.clicks || 0);
+    return {
+      ...row,
+      impressions,
+      clicks,
+      ctr: impressions > 0 ? clicks / impressions : null,
+    };
+  });
+}
+
+// Buyer-scoped order list with the same telemetry shape so a sponsor can see
+// CTR on the orders they've paid for. Scoped to either account id (preferred,
+// matches the signed-in session) or buyer_email as a fallback for orders
+// purchased while signed out.
+async function listSponsorshipOrdersForBuyer({ accountId = null, buyerEmail = null }) {
+  if (!accountId && !buyerEmail) return [];
+  const p = getPool();
+  const params = [];
+  const conds = [];
+  if (accountId) { params.push(accountId); conds.push(`o.buyer_account_id = $${params.length}`); }
+  if (buyerEmail) { params.push(buyerEmail); conds.push(`o.buyer_email = $${params.length}`); }
+  const r = await p.query(
+    `SELECT o.id, o.slot_id, o.sponsor_name, o.sponsor_url, o.starts_at, o.ends_at,
+            o.amount_cents, o.currency, o.status, o.impressions, o.clicks,
+            o.created_at, s.slug AS slot_slug, s.label AS slot_label
+       FROM sponsorship_orders o
+       JOIN sponsorship_slots s ON s.id = o.slot_id
+      WHERE ${conds.join(' OR ')}
+      ORDER BY o.created_at DESC`,
+    params
+  );
+  return r.rows.map(row => {
+    const impressions = Number(row.impressions || 0);
+    const clicks = Number(row.clicks || 0);
+    return {
+      ...row,
+      impressions,
+      clicks,
+      ctr: impressions > 0 ? clicks / impressions : null,
+    };
+  });
+}
+
 // ---------- Multi-tenant (white-label, Model A) ----------
 async function listTenants() {
   const p = getPool();
@@ -15735,6 +15802,8 @@ module.exports = {
   markSponsorshipOrderPaid,
   listActiveSponsorshipsForSlot,
   listAllSponsorshipOrders,
+  getSponsorshipSlotAnalytics,
+  listSponsorshipOrdersForBuyer,
   listTenants,
   getTenantById,
   getTenantByHost,

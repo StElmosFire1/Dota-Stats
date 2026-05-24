@@ -1811,6 +1811,8 @@ export const getPlayerSponsorships = (accountId) =>
 export const getPlayerVerifiedBadges = (accountId) =>
   _getJson(`/players/${accountId}/verified-badges`);
 export const getMySponsorshipInbox = () => _getJson('/me/sponsorships/inbox');
+// Task #342 — buyer-scoped sponsorship-order telemetry (impressions/clicks/CTR).
+export const getMySponsorshipOrders = () => _getJson('/me/sponsorship-orders');
 export const acceptSponsorship = (id) => _postJson(`/sponsorships/${id}/accept`);
 export const declineSponsorship = (id) => _postJson(`/sponsorships/${id}/decline`);
 export const createSponsorshipCheckout = (payload) =>

@@ -1,15 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { getMySponsorshipInbox, acceptSponsorship, declineSponsorship } from '../api';
+import { getMySponsorshipInbox, getMySponsorshipOrders, acceptSponsorship, declineSponsorship } from '../api';
 
 export default function SponsorshipInbox() {
   const [items, setItems] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Task #342 — sponsor-side stats for orders the signed-in user has paid for.
+  // Loaded independently so an unauthenticated/empty inbox doesn't suppress
+  // the orders panel (and vice versa). A 401 from /me/sponsorship-orders is
+  // treated as "not signed in / no orders" and quietly hides the section.
+  const [orders, setOrders] = useState([]);
 
   function load() {
     getMySponsorshipInbox()
       .then(d => setItems(d.sponsorships || []))
       .catch(err => setError(err.message));
+    getMySponsorshipOrders()
+      .then(d => setOrders(d.orders || []))
+      .catch(() => setOrders([]));
   }
   useEffect(() => { load(); }, []);
 
@@ -48,6 +56,44 @@ export default function SponsorshipInbox() {
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Task #342 — buyer-side telemetry. Hidden when the signed-in user
+          has no sponsorship orders; otherwise shows impressions, clicks,
+          and CTR per order so a sponsor can decide whether to renew. */}
+      {orders.length > 0 && (
+        <section style={{ marginTop: 24 }}>
+          <h3>My sponsorship orders</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+            Lifetime impressions and clicks for the slots you've sponsored. CTR shows "—" until your placement has been served.
+          </p>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ borderBottom: '2px solid var(--brass, #c5a975)' }}>
+              <th align="left">Slot</th>
+              <th align="left">Sponsor name</th>
+              <th align="left">Status</th>
+              <th align="left">Ends</th>
+              <th align="right">Impressions</th>
+              <th align="right">Clicks</th>
+              <th align="right">CTR</th>
+            </tr></thead>
+            <tbody>{orders.map(o => (
+              <tr key={o.id} style={{ borderBottom: '1px solid var(--border, #2a2f3a)' }}>
+                <td style={{ padding: 6 }}>{o.slot_label}</td>
+                <td style={{ padding: 6 }}>{o.sponsor_name}</td>
+                <td style={{ padding: 6 }}>{o.status}</td>
+                <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                  {o.ends_at ? new Date(o.ends_at).toLocaleDateString() : '—'}
+                </td>
+                <td style={{ padding: 6, textAlign: 'right' }}>{Number(o.impressions || 0).toLocaleString()}</td>
+                <td style={{ padding: 6, textAlign: 'right' }}>{Number(o.clicks || 0).toLocaleString()}</td>
+                <td style={{ padding: 6, textAlign: 'right' }}>
+                  {o.ctr == null ? '—' : `${(o.ctr * 100).toFixed(2)}%`}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </section>
       )}
     </div>
   );

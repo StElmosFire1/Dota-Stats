@@ -13140,11 +13140,29 @@ Return exactly this JSON shape (all fields required, arrays of strings):
 
   router.get('/admin/sponsorships', requireSuperuser, async (req, res) => {
     try {
-      const [slots, orders] = await Promise.all([
+      // Task #342 — include per-slot impression/click/CTR rollup so admins
+      // can compare placements without leaving the admin panel. Per-order
+      // rows already carry their own impressions/clicks (selected via o.*).
+      const [slots, orders, slot_analytics] = await Promise.all([
         db.listSponsorshipSlots(),
         db.listAllSponsorshipOrders({ limit: 200 }),
+        db.getSponsorshipSlotAnalytics(),
       ]);
-      res.json({ slots, orders });
+      res.json({ slots, orders, slot_analytics });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Task #342 — buyer-scoped sponsorship orders + telemetry. Used by the
+  // sponsorship inbox page (where checkout's success_url lands) so sponsors
+  // can see CTR + impressions on the orders they've paid for. Requires a
+  // signed-in session; falls back to buyer_email match for orders bought
+  // while signed out and later associated with the same account.
+  router.get('/me/sponsorship-orders', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId || null;
+      if (!accountId) return res.status(401).json({ error: 'Sign in required' });
+      const orders = await db.listSponsorshipOrdersForBuyer({ accountId });
+      res.json({ orders });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 

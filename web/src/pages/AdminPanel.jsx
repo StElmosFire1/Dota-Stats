@@ -5470,23 +5470,60 @@ function SponsorshipsAdminPanel({ superuserKey }) {
         </table>
       ) : <p style={{ color: 'var(--text-muted)' }}>No slots yet.</p>}
 
+      {/* Task #342 — per-slot impression/click/CTR rollup so admins can
+          compare placements and price them correctly at renewal time. */}
+      <h3 style={{ marginBottom: 6 }}>Slot performance</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
+        Lifetime impressions, clicks, and CTR across every order ever attached to the slot. CTR shows "—" when a slot has had no impressions yet.
+      </p>
+      {(data.slot_analytics?.length || 0) > 0 ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, fontSize: 13 }}>
+          <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th align="left">Slug</th><th align="left">Label</th>
+            <th align="right">Impressions</th><th align="right">Clicks</th>
+            <th align="right">CTR</th><th align="right">Active orders</th>
+            <th align="right">Total orders</th>
+          </tr></thead>
+          <tbody>{data.slot_analytics.map(a => (
+            <tr key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td style={{ padding: 6, fontFamily: 'monospace', fontSize: 12 }}>{a.slug}</td>
+              <td style={{ padding: 6 }}>{a.label}</td>
+              <td style={{ padding: 6, textAlign: 'right' }}>{Number(a.impressions).toLocaleString()}</td>
+              <td style={{ padding: 6, textAlign: 'right' }}>{Number(a.clicks).toLocaleString()}</td>
+              <td style={{ padding: 6, textAlign: 'right' }}>{a.ctr == null ? '—' : `${(a.ctr * 100).toFixed(2)}%`}</td>
+              <td style={{ padding: 6, textAlign: 'right' }}>{a.active_count}</td>
+              <td style={{ padding: 6, textAlign: 'right', color: 'var(--text-muted)' }}>{a.order_count}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      ) : <p style={{ color: 'var(--text-muted)' }}>No slot telemetry yet.</p>}
+
       <h3 style={{ marginBottom: 6 }}>Recent orders</h3>
       {(data.orders?.length || 0) > 0 ? (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>
             <th align="left">When</th><th align="left">Slot</th><th align="left">Sponsor</th>
             <th align="left">Status</th><th align="right">Amount</th><th align="left">Ends</th>
+            <th align="right">Impr.</th><th align="right">Clicks</th><th align="right">CTR</th>
           </tr></thead>
-          <tbody>{data.orders.slice(0, 25).map(o => (
-            <tr key={o.id} style={{ borderBottom: '1px solid var(--border)' }}>
-              <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>{new Date(o.created_at).toLocaleString()}</td>
-              <td style={{ padding: 6, fontSize: 12 }}>{o.slot_label}</td>
-              <td style={{ padding: 6 }}>{o.sponsor_name}</td>
-              <td style={{ padding: 6 }}>{o.status}</td>
-              <td style={{ padding: 6, textAlign: 'right' }}>${(o.amount_cents / 100).toFixed(2)}</td>
-              <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>{new Date(o.ends_at).toLocaleDateString()}</td>
-            </tr>
-          ))}</tbody>
+          <tbody>{data.orders.slice(0, 25).map(o => {
+            const impressions = Number(o.impressions || 0);
+            const clicks = Number(o.clicks || 0);
+            const ctr = impressions > 0 ? clicks / impressions : null;
+            return (
+              <tr key={o.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>{new Date(o.created_at).toLocaleString()}</td>
+                <td style={{ padding: 6, fontSize: 12 }}>{o.slot_label}</td>
+                <td style={{ padding: 6 }}>{o.sponsor_name}</td>
+                <td style={{ padding: 6 }}>{o.status}</td>
+                <td style={{ padding: 6, textAlign: 'right' }}>${(o.amount_cents / 100).toFixed(2)}</td>
+                <td style={{ padding: 6, fontSize: 12, color: 'var(--text-muted)' }}>{new Date(o.ends_at).toLocaleDateString()}</td>
+                <td style={{ padding: 6, textAlign: 'right' }}>{impressions.toLocaleString()}</td>
+                <td style={{ padding: 6, textAlign: 'right' }}>{clicks.toLocaleString()}</td>
+                <td style={{ padding: 6, textAlign: 'right' }}>{ctr == null ? '—' : `${(ctr * 100).toFixed(2)}%`}</td>
+              </tr>
+            );
+          })}</tbody>
         </table>
       ) : <p style={{ color: 'var(--text-muted)' }}>No orders yet.</p>}
       {msg && <p style={{ marginTop: 8, color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)', fontSize: 13 }}>{msg}</p>}
