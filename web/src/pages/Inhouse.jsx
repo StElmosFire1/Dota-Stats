@@ -319,6 +319,24 @@ export default function Inhouse() {
   // "Sign in with Steam to join" gate even after a successful sign-in.
   const myAccountId = steamUser?.accountId ? Number(steamUser.accountId) : null;
   const pollRef = useRef(null);
+  // Task #325 — live spectator probe. Polls /api/inhouse/live-spectate so the
+  // hub can surface a "Watch live" affordance whenever the lobbyManager has
+  // an active match, regardless of whether the session row already has it.
+  const [liveSpectate, setLiveSpectate] = useState({ matchId: null });
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const data = await api('/inhouse/live-spectate');
+        if (alive) setLiveSpectate(data || { matchId: null });
+      } catch (_) {
+        if (alive) setLiveSpectate({ matchId: null });
+      }
+    };
+    tick();
+    const t = setInterval(tick, 10000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
 
   // v5.92 — sound + browser-notification alerts on every event that needs
   // a human input. Mute toggle in the lobby header persists in localStorage.
@@ -877,6 +895,23 @@ export default function Inhouse() {
                   fontSize: 11, fontWeight: 700, letterSpacing: 0.6,
                   border: `1px solid ${statusStyle.fg === 'var(--text-muted)' ? 'var(--border)' : statusStyle.fg}33`,
                 }}>● {statusStyle.label}</span>
+                {/* Task #325 — Watch live link. Shown whenever the bot's
+                    lobbyManager reports an active matchId, which lines up
+                    with the in-progress state of this session card. */}
+                {liveSpectate.matchId && (
+                  <Link
+                    to={`/spectate/${liveSpectate.matchId}`}
+                    aria-label={`Watch live match ${liveSpectate.matchId}`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '3px 10px', borderRadius: 999,
+                      background: 'rgba(244,67,54,0.16)', color: '#f44336',
+                      fontSize: 11, fontWeight: 700, letterSpacing: 0.6,
+                      border: '1px solid #f4433655', textDecoration: 'none',
+                    }}>
+                    🔴 Watch live
+                  </Link>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                 <span style={{

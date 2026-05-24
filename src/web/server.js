@@ -5763,6 +5763,28 @@ function createApiRouter(startupStatus = {}, _app = null) {
     req.on('aborted', cleanup);
   });
 
+  // Task #325 — lightweight probe so the inhouse hub can decide whether to
+  // show a "Watch live" button without opening the spectator SSE stream.
+  // Returns the matchId of whatever the lobbyManager currently has active
+  // (any state past lobby creation), or `{ matchId: null }` otherwise.
+  // Public read — same trust as the underlying spectate SSE.
+  router.get('/inhouse/live-spectate', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const { getLobbyManager } = require('../lobby/lobbyManager');
+      const lm = getLobbyManager && getLobbyManager();
+      const cl = lm && lm.currentLobby;
+      if (cl && cl.matchId) {
+        return res.json({
+          matchId: String(cl.matchId),
+          lobbyName: cl.name || null,
+          state: lm.state || null,
+        });
+      }
+    } catch (_) {}
+    res.json({ matchId: null });
+  });
+
   router.get('/available-stats', (req, res) => {
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', 'attachment; filename="available_replay_stats.txt"');

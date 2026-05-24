@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "7.42",
+    "title": "Live spectator link on the inhouse hub (Task #325)",
+    "published_at": "2026-05-24",
+    "notes": [
+      "**\"Watch live\" affordance on the inhouse hub.** Whenever the bot's `lobbyManager` reports an active matchId, a red `🔴 Watch live` pill renders next to the session-status pill on `/inhouse` and links straight to the existing `/spectate/:matchId` SSE page. The pill is a real `<Link>` with an `aria-label`, so it's keyboard-reachable and screen-reader-friendly out of the box.",
+      "**Lightweight live-probe endpoint.** New `GET /api/inhouse/live-spectate` returns `{ matchId, lobbyName, state }` from `lobbyManager.currentLobby` (or `{ matchId: null }` when nothing is in flight). Public read — same trust boundary as the underlying `/api/spectate/:matchId` SSE. The inhouse page polls it every 10s so the button appears/disappears as the bot's lobby transitions in/out of an active match, without forcing every visitor to open an SSE connection.",
+      "**Edition scope.** Full edition only — community edition has no spectator page, so no community surface is touched."
+    ]
+  },
+  {
     "version": "7.41",
     "title": "Coaching commission controls + Coach Premium + sponsorships + white-label tenants (Task #320)",
     "published_at": "2026-05-24",
