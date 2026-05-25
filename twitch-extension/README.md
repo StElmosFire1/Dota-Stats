@@ -59,16 +59,20 @@ panel/overlay re-poll within 30 s. To force an immediate refresh, click the
 3. Add `https://oceinhouse.gg` to the *Allowlist for URL Fetching Domains*
    (Console → Capabilities). Without this Twitch's CSP blocks the `fetch()`
    calls from inside the iframe.
-4. Zip the four directories at the root of `twitch-extension/`:
+4. Zip the four directories at the root of `twitch-extension/`. **`shared/`
+   must be included** — every surface HTML file imports
+   `../shared/styles.css` and `../shared/api.js`, so omitting it leaves the
+   hosted iframe with no styling and no fetch helpers (panel/config/overlay
+   silently fail). The provided `npm run package` script does this for you:
 
    ```bash
    cd twitch-extension
-   zip -r oi-twitch-ext.zip config panel video_overlay
+   npm run package    # → oi-twitch-ext.zip with config/ panel/ video_overlay/ shared/
    ```
 
    The README, `package.json`, and `test/` directory are intentionally
-   excluded from the upload — only the three surface dirs are needed by
-   Twitch's hosted iframe runtime.
+   excluded from the upload — only the three surface dirs plus `shared/`
+   are needed by Twitch's hosted iframe runtime.
 5. Upload the zip on the *Files* tab. Move the version to *Hosted Test* →
    then *Released*. Manual review by Twitch staff is the last gate (out of
    scope for this task).

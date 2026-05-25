@@ -563,24 +563,14 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
 // values they need to fill it in.
 function TwitchExtensionSection({ accountId }) {
   const aid = accountId || '';
-  // Default to the canonical prod host; on dev/staging show the current
-  // origin so a tester can try the local harness against this server.
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const configUrl = `${origin}/twitch-extension/config/index.html`;
   const [copied, setCopied] = React.useState(null);
-  const copy = async (key, value) => {
+  const copy = async (value) => {
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(key);
-      setTimeout(() => setCopied(c => c === key ? null : c), 1800);
+      setCopied(value);
+      setTimeout(() => setCopied(c => c === value ? null : c), 1800);
     } catch (_) {}
   };
-  const items = [
-    { key: 'aid', label: 'Your account id', value: aid || '(sign in to see your id)',
-      hint: 'Paste this into the Twitch extension\u2019s config page after you install it on your channel.' },
-    { key: 'cfg', label: 'Extension config preview', value: configUrl,
-      hint: 'Open this URL in a browser to preview the broadcaster config page locally. The published Twitch extension renders the same page inside the Twitch dashboard.' },
-  ];
   return (
     <section style={{ marginTop: 24 }} aria-labelledby="twitch-ext-heading">
       <h2 id="twitch-ext-heading" style={{ marginBottom: 8 }}>Twitch extension</h2>
@@ -589,23 +579,28 @@ function TwitchExtensionSection({ accountId }) {
         win/loss streak, and last 5 matches in the panel under your stream.
         It\u2019s read-only and uses public endpoints \u2014 no secrets, no Twitch OAuth.
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {items.map(it => (
-          <div key={it.key} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
-              <div style={{ fontWeight: 600 }}>{it.label}</div>
-              <button type="button" className="btn" onClick={() => copy(it.key, it.value)}
-                aria-label={`Copy ${it.label}`}
-                disabled={!aid && it.key === 'aid'}>
-                {copied === it.key ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
-            <code style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', wordBreak: 'break-all' }}>
-              {it.value}
-            </code>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>{it.hint}</div>
-          </div>
-        ))}
+      <ol style={{ margin: '0 0 14px 18px', padding: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        <li>Open <strong>Creator Dashboard \u2192 Extensions</strong> on Twitch and search for <em>OCE Inhouse</em>.</li>
+        <li>Install it and activate it as a Panel (and, optionally, as a Video Overlay).</li>
+        <li>Open its <em>Configure</em> tab and paste your account id (below) into the box, then click <em>Save</em>.</li>
+      </ol>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+          <div style={{ fontWeight: 600 }}>Your account id</div>
+          <button type="button" className="btn"
+            onClick={() => aid && copy(aid)}
+            aria-label="Copy your account id"
+            disabled={!aid}>
+            {copied === aid && aid ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <code style={{ display: 'block', fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+          {aid || '(sign in to see your id)'}
+        </code>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+          The extension stores this value in Twitch\u2019s broadcaster configuration service \u2014
+          set it once and every viewer\u2019s panel + overlay re-poll automatically.
+        </div>
       </div>
     </section>
   );
