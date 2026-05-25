@@ -8357,6 +8357,86 @@ async function getPlayerTimeOfDayHeatmap(accountId, seasonId = null) {
 
 // Top-N items per signature hero (most-played heroes for this player), filtering
 // out consumables / wards / bottle so we surface real build choices.
+// ── Task #377 — seasonal item benchmarks (position-locked) ───────────────────
+// Aggregates per-(position, item) average first-purchase time across every
+// player_stats row in the given season (or all-time when seasonId is null).
+// Returns { byPosition: { [pos]: { [item]: { avgT, n } } } }.
+//
+// Used by both the per-match item-benchmark panel (renders deltas per player
+// cell, colour-coded vs the player's position baseline) and the player-profile
+// item-benchmarks section. Cheap: one full table scan over player_stats joined
+// to matches, JSONB aggregation in PG.
+async function getSeasonalItemBenchmarks(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  let whereSeason = '';
+  if (seasonId != null) { params.push(seasonId); whereSeason = `AND m.season_id = $${params.length}`; }
+  // Unnest jsonb_each_text on item_first_times so we get one row per (player,
+  // position, item, time). NULLIF guards against 0/empty entries.
+  const sql = `
+    SELECT ps.position::int AS position,
+           kv.key            AS item,
+           AVG((kv.value)::int)::int AS avg_t,
+           COUNT(*)::int     AS n
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      , LATERAL jsonb_each_text(ps.item_first_times) AS kv
+     WHERE ps.item_first_times IS NOT NULL
+       AND ps.position IS NOT NULL AND ps.position > 0
+       AND m.is_legacy = false
+       ${whereSeason}
+     GROUP BY ps.position, kv.key
+     HAVING COUNT(*) >= 3
+  `;
+  const { rows } = await p.query(sql, params).catch(() => ({ rows: [] }));
+  const byPosition = {};
+  for (const r of rows) {
+    if (!byPosition[r.position]) byPosition[r.position] = {};
+    byPosition[r.position][r.item] = { avgT: r.avg_t, n: r.n };
+  }
+  return { byPosition, seasonId };
+}
+
+// Per-player avg first-purchase per item, optionally season-scoped, alongside
+// the seasonal baseline for that player's most-played position so the
+// frontend can render "your Blink 11:30 vs Pos-1 avg 12:30 (−1:00)" rows.
+async function getPlayerItemBenchmarks(accountId, seasonId = null) {
+  const p = getPool();
+  const params = [accountId];
+  let whereSeason = '';
+  if (seasonId != null) { params.push(seasonId); whereSeason = `AND m.season_id = $${params.length}`; }
+  const sql = `
+    SELECT ps.position::int AS position,
+           kv.key            AS item,
+           AVG((kv.value)::int)::int AS avg_t,
+           COUNT(*)::int     AS n
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+      , LATERAL jsonb_each_text(ps.item_first_times) AS kv
+     WHERE ps.account_id = $1
+       AND ps.item_first_times IS NOT NULL
+       AND ps.position IS NOT NULL AND ps.position > 0
+       AND m.is_legacy = false
+       ${whereSeason}
+     GROUP BY ps.position, kv.key
+  `;
+  const { rows } = await p.query(sql, params).catch(() => ({ rows: [] }));
+  // Determine primary position (the one with the most item rows) so the
+  // frontend has a sensible default benchmark to compare against.
+  const positionCounts = {};
+  for (const r of rows) positionCounts[r.position] = (positionCounts[r.position] || 0) + r.n;
+  const primaryPosition = Object.keys(positionCounts).sort((a, b) => positionCounts[b] - positionCounts[a])[0] || null;
+  const byPosition = {};
+  for (const r of rows) {
+    if (!byPosition[r.position]) byPosition[r.position] = {};
+    byPosition[r.position][r.item] = { avgT: r.avg_t, n: r.n };
+  }
+  // Pull the seasonal baseline so the panel can render deltas without a
+  // second round-trip.
+  const baseline = await getSeasonalItemBenchmarks(seasonId).catch(() => ({ byPosition: {} }));
+  return { accountId, seasonId, primaryPosition: primaryPosition ? parseInt(primaryPosition, 10) : null, byPosition, baseline: baseline.byPosition };
+}
+
 async function getPlayerHeroItems(accountId, { topHeroes = 6, topItems = 6 } = {}) {
   const p = getPool();
   const SKIP_ITEMS = new Set([
@@ -16624,6 +16704,8 @@ module.exports = {
   getPlayerNemesis,
   getPlayerTimeOfDayHeatmap,
   getPlayerHeroItems,
+  getSeasonalItemBenchmarks,
+  getPlayerItemBenchmarks,
   getPlayerSeasonWrapped,
   getPlayerHallOfFamePlaques,
   getHomeStats,

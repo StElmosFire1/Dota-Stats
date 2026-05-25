@@ -22,7 +22,7 @@ class MatchErrorBoundary extends Component {
   }
 }
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord, getNemesisSpotlight, recapCardUrl, shareRecapCardToDiscord, submitPlayerReplayChunked, getUploadStatus } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord, getNemesisSpotlight, recapCardUrl, shareRecapCardToDiscord, submitPlayerReplayChunked, getUploadStatus, getSeasonalItemBenchmarks } from '../api';
 import { MMR_TIERS } from './Leaderboard';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -3154,11 +3154,15 @@ function ThroneDpmPanel({ throneDpm }) {
 }
 
 // ── ItemBenchmarkPanel (Task #377) ───────────────────────────────────────────
-// Per-player table of first-purchase timestamps for major items. Each column
-// is an item; cells show MM:SS or '—'. Compact and only renders rows for
-// players who bought at least one major item. Hidden when no player carries
+// Per-player table of first-purchase timestamps for major items, with
+// position-locked **delta vs the seasonal baseline** rendered per cell. A
+// player's Blink at 11:30 against a Pos-1 seasonal avg of 12:30 renders as
+// `11:30` in green with `-1:00` underneath; slower than baseline renders red.
+// `benchmarks.byPosition[pos][item].avgT` is the seasonal average (in seconds)
+// for that (position, item) pair. Cells without a baseline (rare item, sparse
+// data) fall back to the raw time. Hidden when no player carries
 // item_first_times (legacy / un-parsed matches).
-function ItemBenchmarkPanel({ players }) {
+function ItemBenchmarkPanel({ players, benchmarks }) {
   const rows = (players || []).filter(p => p.item_first_times && Object.keys(p.item_first_times).length > 0);
   if (!rows.length) return null;
   // Sort columns by earliest purchase time across all players — surfaces the
@@ -3172,9 +3176,17 @@ function ItemBenchmarkPanel({ players }) {
   const cols = Object.keys(itemFirstByCol).sort((a, b) => itemFirstByCol[a] - itemFirstByCol[b]);
   if (!cols.length) return null;
   const prettify = n => n.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const byPosition = benchmarks?.byPosition || {};
+  const fmtDelta = secs => {
+    const sign = secs < 0 ? '-' : '+';
+    const abs = Math.abs(secs);
+    const mm = Math.floor(abs / 60);
+    const ss = String(abs % 60).padStart(2, '0');
+    return `${sign}${mm}:${ss}`;
+  };
   return (
     <div className="expanded-stats-section">
-      <h3>Item Benchmarks <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— first-purchase time per major item</span></h3>
+      <h3>Item Benchmarks <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— first-purchase time per major item, delta vs seasonal position baseline</span></h3>
       <div className="scoreboard-wrapper">
         <table className="scoreboard compact">
           <thead>
@@ -3189,9 +3201,26 @@ function ItemBenchmarkPanel({ players }) {
                 <td className="col-player"><PlayerLink player={p} index={i} /></td>
                 {cols.map(c => {
                   const t = (p.item_first_times || {})[c];
+                  const baseline = p.position && byPosition[p.position] ? byPosition[p.position][c] : null;
+                  let color = '#facc15', delta = null, deltaColor = '#64748b';
+                  if (t != null && baseline?.avgT) {
+                    const d = t - baseline.avgT;
+                    delta = fmtDelta(d);
+                    if (d <= -30) { color = '#4ade80'; deltaColor = '#4ade80'; }
+                    else if (d >= 30) { color = '#f87171'; deltaColor = '#f87171'; }
+                    else { color = '#facc15'; deltaColor = '#94a3b8'; }
+                  } else if (t == null) {
+                    color = '#475569';
+                  }
                   return (
-                    <td key={c} className="col-stat" style={{ color: t != null ? '#facc15' : '#475569', fontFamily: 'monospace' }}>
+                    <td key={c} className="col-stat" style={{ color, fontFamily: 'monospace', verticalAlign: 'top' }}>
                       {t != null ? formatDuration(t) : '—'}
+                      {delta && (
+                        <div style={{ fontSize: 10, color: deltaColor, fontWeight: 600, marginTop: 2 }}
+                             title={`Seasonal avg for Pos ${p.position}: ${formatDuration(baseline.avgT)} (n=${baseline.n})`}>
+                          {delta}
+                        </div>
+                      )}
                     </td>
                   );
                 })}
@@ -3200,6 +3229,11 @@ function ItemBenchmarkPanel({ players }) {
           </tbody>
         </table>
       </div>
+      {!Object.keys(byPosition).length && (
+        <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
+          Seasonal baseline unavailable — showing raw times. Deltas appear once enough matches in this season have item-purchase data.
+        </div>
+      )}
     </div>
   );
 }
@@ -3797,6 +3831,23 @@ function MatchDetailInner() {
   const [postedDiscord, setPostedDiscord] = useState(false);
   const [postDiscordError, setPostDiscordError] = useState(null);
   const [match, setMatch] = useState(null);
+  // Task #377 — seasonal item benchmarks for the ItemBenchmarkPanel deltas.
+  // Re-fetched whenever the match's season changes; null while loading or on
+  // failure, which the panel handles by falling back to raw times.
+  const [itemBenchmarks, setItemBenchmarks] = useState(null);
+  // Task #377 — once we know the match's season, load the seasonal
+  // (position-locked) item benchmarks so ItemBenchmarkPanel can render
+  // deltas. Re-runs when the season changes; failures fall back to raw times.
+  // Placed below the `match`/`setItemBenchmarks` state declarations to avoid
+  // a TDZ on hoist-ordering inside the function body.
+  useEffect(() => {
+    if (!match) return;
+    let cancelled = false;
+    getSeasonalItemBenchmarks(match.season_id || null)
+      .then(d => { if (!cancelled) setItemBenchmarks(d); })
+      .catch(() => { if (!cancelled) setItemBenchmarks(null); });
+    return () => { cancelled = true; };
+  }, [match?.season_id]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showDelete, setShowDelete] = useState(false);
@@ -3814,6 +3865,9 @@ function MatchDetailInner() {
 
   useEffect(() => {
     setLoading(true);
+    // Reset benchmarks on match change; the post-load effect refetches them
+    // once we know the season.
+    setItemBenchmarks(null);
     getMatch(matchId)
       .then(m => {
         setMatch(m);
@@ -4317,7 +4371,7 @@ function MatchDetailInner() {
       <FirstBloodChainPanel chain={match.first_blood_chain} snowball={match.snowball_score} allPlayers={allPlayers} />
       <ThroneDpmPanel throneDpm={match.throne_dpm} />
       <ComebackMetricPanel timeline={match.game_timeline} allPlayers={allPlayers} comebackFactor={match.comeback_factor} />
-      <ItemBenchmarkPanel players={allPlayers} />
+      <ItemBenchmarkPanel players={allPlayers} benchmarks={itemBenchmarks} />
       {/* Re-aggregate hits POST /api/admin/reparse-replay/:matchId which is
           superuser-gated (`requireSuperuser`), so only show the button to
           superusers — admins would see a 403. */}

@@ -468,6 +468,20 @@ export async function getPlayerTimeOfDay(accountId, seasonId = null) {
   const q = seasonId ? `?season=${seasonId}` : '';
   return fetchJson(`/players/${accountId}/time-of-day${q}`);
 }
+// Task #377 — seasonal item-purchase benchmarks (position-locked).
+export async function getSeasonalItemBenchmarks(seasonId = null) {
+  const r = await fetch(`/api/seasons/${seasonId == null ? 'all' : seasonId}/item-benchmarks`);
+  if (!r.ok) throw new Error('Failed to load seasonal item benchmarks');
+  return r.json();
+}
+
+export async function getPlayerItemBenchmarks(accountId, seasonId = null) {
+  const qs = seasonId != null ? `?season=${seasonId}` : '';
+  const r = await fetch(`/api/players/${accountId}/item-benchmarks${qs}`);
+  if (!r.ok) throw new Error('Failed to load player item benchmarks');
+  return r.json();
+}
+
 export async function getPlayerHeroItems(accountId) {
   return fetchJson(`/players/${accountId}/hero-items`);
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks } from '../api';
 import Dialog from '../components/Dialog';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
@@ -188,6 +188,54 @@ const ACHIEVEMENT_GROUP_ORDER = [
   'Totals', 'Economy', 'Damage', 'Healing', 'Vision', 'KDA',
   'Community', 'Secret',
 ];
+
+// ── ItemBenchmarksSection (Task #377) ────────────────────────────────────────
+// Aggregates the player's avg first-purchase per item against the seasonal
+// position baseline, rendering one row per major item sorted by absolute delta
+// so the most distinctive (fastest / slowest vs league) items surface first.
+// Hidden when the player has no item rows in this season.
+function ItemBenchmarksSection({ data }) {
+  if (!data || !data.byPosition || !data.primaryPosition) return null;
+  const pos = data.primaryPosition;
+  const mine = data.byPosition[pos] || {};
+  const base = (data.baseline && data.baseline[pos]) || {};
+  const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const fmtDelta = s => {
+    const sign = s < 0 ? '-' : '+';
+    const abs = Math.abs(s);
+    return `${sign}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
+  };
+  const rows = Object.keys(mine).map(item => {
+    const myT = mine[item].avgT;
+    const baseT = base[item]?.avgT ?? null;
+    const delta = baseT != null ? myT - baseT : null;
+    return { item, myT, n: mine[item].n, baseT, delta };
+  }).filter(r => r.delta != null);
+  if (!rows.length) return null;
+  rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const top = rows.slice(0, 12);
+  const prettify = n => n.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ fontSize: 18, marginBottom: 4 }}>Item benchmarks <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400 }}>— avg first-purchase time vs Pos {pos} seasonal average</span></h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+        {top.map(r => {
+          const c = r.delta <= -30 ? '#4ade80' : r.delta >= 30 ? '#f87171' : '#facc15';
+          return (
+            <div key={r.item} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{prettify(r.item)}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>
+                {fmt(r.myT)} <span style={{ color: '#64748b' }}>vs {fmt(r.baseT)}</span>
+                <span style={{ marginLeft: 8, color: c, fontWeight: 700 }}>{fmtDelta(r.delta)}</span>
+              </div>
+              <div style={{ fontSize: 10, color: '#64748b' }}>n={r.n}</div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function AchievementBadges({ achievements }) {
   const [showLocked, setShowLocked] = React.useState(false);
@@ -839,6 +887,19 @@ export default function PlayerProfile() {
       const key = accountId?.toString();
       if (key && map[key] != null) setImpactScore(map[key].score);
     }).catch(() => {});
+  }, [accountId, seasonId]);
+
+  // Task #377 — player item benchmarks (per-position avg first-purchase time
+  // vs seasonal baseline). Fetched once per (account, season) and rendered as
+  // a compact section below the achievements rail.
+  const [itemBenchmarks, setItemBenchmarks] = useState(null);
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    getPlayerItemBenchmarks(accountId, seasonId).then(d => {
+      if (!cancelled) setItemBenchmarks(d);
+    }).catch(() => { if (!cancelled) setItemBenchmarks(null); });
+    return () => { cancelled = true; };
   }, [accountId, seasonId]);
 
   // v5.82 — fetch the #1 leaderboard player so we can promote their MmrBadge
@@ -1651,6 +1712,9 @@ export default function PlayerProfile() {
           filter + show-locked toggle). /players/:id/achievements is open. */}
       <div id="achievements" />
       <AchievementBadges achievements={achievements} />
+
+      {/* Task #377 — player item-purchase benchmarks vs seasonal position baseline. */}
+      <ItemBenchmarksSection data={itemBenchmarks} />
 
       {/* Task #316 — per-hero per-position mastery panel. Public; renders
           nothing when the player has no recorded mastery rows. */}

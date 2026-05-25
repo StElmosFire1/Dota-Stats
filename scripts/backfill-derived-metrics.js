@@ -12,14 +12,89 @@
  *
  * Usage:
  *   node scripts/backfill-derived-metrics.js [--limit=N] [--dry-run]
+ *   node scripts/backfill-derived-metrics.js --reparse-replays [--limit=N]
+ *
+ * `--reparse-replays` switches modes: instead of the timeline-derivable
+ * backfill, it walks matches with a stored replay AND missing throne_dpm,
+ * calls the same code path the superuser "Re-aggregate from stored replay"
+ * button uses (parseReplayFull → reparseMatchFromStats), and populates
+ * throne_dpm + per-player item_first_times as well. Serialized (no parallel
+ * Java parser invocations) and logs progress / failures per match. Skip if
+ * the parser isn't ready.
  */
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
+const reparseReplays = args.includes('--reparse-replays');
 const limitArg = args.find(a => a.startsWith('--limit='));
 const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : null;
 
+async function reparseReplaysMode() {
+  const db = require('../src/db');
+  await db.connect();
+  const pool = db.getPool();
+  const fs = require('fs');
+  const { sql } = { sql: `
+    SELECT m.match_id
+      FROM matches m
+     WHERE m.is_legacy = false
+       AND m.throne_dpm IS NULL
+       AND EXISTS (SELECT 1 FROM match_replay_files r WHERE r.match_id = m.match_id)
+     ORDER BY m.date DESC
+     ${limit ? `LIMIT ${limit}` : ''}
+  ` };
+  // `match_replay_files` is the table getReplayFilePath reads. If your schema
+  // names it differently, swap the EXISTS subquery — but every prod deploy
+  // I've seen has it.
+  let rows;
+  try { rows = (await pool.query(sql)).rows; }
+  catch (e) {
+    console.error('[backfill] --reparse-replays could not list replays:', e.message);
+    console.error('  If your installation stores replay paths in matches.replay_file_path instead of match_replay_files, edit the script.');
+    await pool.end(); process.exit(2);
+  }
+  console.log(`[backfill] --reparse-replays: ${rows.length} match(es) with stored replays missing throne_dpm`);
+  // The replay parser module exports `{ getReplayParser }` (factory) — grab
+  // the singleton and ensure the Java parser service is up before we start
+  // walking matches.
+  const { getReplayParser } = require('../src/replay/replayParser');
+  const replayParser = getReplayParser();
+  if (typeof replayParser?.startParserService === 'function') {
+    try { await replayParser.startParserService(); } catch (e) { /* checked below */ }
+  }
+  if (!replayParser?.parserReady || typeof replayParser.parseReplayFull !== 'function') {
+    console.error('[backfill] Java replay parser is not ready. Run `npm run build:parser` then retry.');
+    await pool.end(); process.exit(2);
+  }
+  let done = 0, failed = 0;
+  for (const { match_id: matchId } of rows) {
+    const row = await db.getReplayFilePath(matchId).catch(() => null);
+    if (!row?.replay_file_path || !fs.existsSync(row.replay_file_path)) {
+      console.warn(`[backfill] ${matchId}: replay path missing on disk, skipping.`);
+      failed++; continue;
+    }
+    try {
+      const matchStats = await replayParser.parseReplayFull(row.replay_file_path);
+      if (!matchStats || matchStats.matchId.toString() !== String(matchId)) {
+        console.warn(`[backfill] ${matchId}: parsed match ID mismatch (${matchStats?.matchId}), skipping.`);
+        failed++; continue;
+      }
+      await db.reparseMatchFromStats(matchId, matchStats, null);
+      done++;
+      console.log(`[backfill] ${matchId}: reparsed (${done}/${rows.length})`);
+    } catch (e) {
+      failed++;
+      console.error(`[backfill] ${matchId}: reparse failed — ${e.message}`);
+    }
+  }
+  console.log(`[backfill] --reparse-replays done. reparsed=${done} failed=${failed}`);
+  console.log('[backfill] Recalculating ratings...');
+  try { await db.recalculateAllRatings(); } catch (e) { console.error('[backfill] recalc failed:', e.message); }
+  await pool.end();
+}
+
 async function main() {
+  if (reparseReplays) return reparseReplaysMode();
   const db = require('../src/db');
   await db.connect();
   const pool = db.getPool();

@@ -6491,6 +6491,32 @@ NOTES
     }
   });
 
+  // Task #377 — seasonal item-purchase benchmarks (position-locked).
+  // Public read: it's aggregate league data, same trust level as positionStats.
+  router.get('/seasons/:seasonId/item-benchmarks', async (req, res) => {
+    try {
+      const seasonId = req.params.seasonId === 'all' ? null : parseInt(req.params.seasonId, 10);
+      const data = await db.getSeasonalItemBenchmarks(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] item-benchmarks (season):', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #377 — per-player item benchmarks + seasonal baseline.
+  router.get('/players/:accountId/item-benchmarks', async (req, res) => {
+    try {
+      const accountId = req.params.accountId;
+      const seasonId = req.query.season ? parseInt(req.query.season, 10) : null;
+      const data = await db.getPlayerItemBenchmarks(accountId, seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] item-benchmarks (player):', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.get('/players/:id/hero-items', async (req, res) => {
     try {
       const accountId = BigInt(req.params.id);
