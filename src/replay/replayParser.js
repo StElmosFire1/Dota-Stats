@@ -460,6 +460,12 @@ class ReplayParser {
     const wardPlacements = {};
     const wardDeaths = [];   // { type, ownerSlot, t, killed } — populated from obs_left/sen_left events
     const gameEvents = [];
+    // Task #376 — runes_log entries (`{type:'runes_log', time, slot, key}` where
+    // key is the rune-type id). CreateParsedDataBlob already emits these for
+    // every CHAT_MESSAGE_RUNE_PICKUP; the aggregator previously dropped them
+    // and only kept the per-player `rune_pickups` integer. Capture into a
+    // per-pickup list so the UI can show team/type/time control.
+    const runePickups = [];
     const laningKillsAt10 = {};
     const allPositions = {};      // slot → [{t, x, y}] sampled every 10s throughout game
     const posLastSampled = {};    // slot → last sample time
@@ -477,6 +483,22 @@ class ReplayParser {
       // events carry `slot` (Java sourcePlayerId 0–9) and `key` (message text
       // or chatwheel id as a stringified int). Some legacy S1 SayText2 lines
       // have no slot — keep them anonymous (slot = -1) so they still render.
+      // Task #376 — runes_log capture. Single emit per pickup with the rune
+      // type id in `key`. The matching `runes` event is only used by
+      // CreateParsedDataBlob to bump the player's per-type histogram; we keep
+      // both shapes for back-compat but persist the cheaper `runes_log` list.
+      if (e.type === 'runes_log' && e.slot != null && e.slot >= 0 && e.slot < 10) {
+        const runeType = parseInt(e.key);
+        if (!Number.isNaN(runeType)) {
+          runePickups.push({
+            t: e.time || 0,
+            slot: e.slot,
+            team: e.slot < 5 ? 'radiant' : 'dire',
+            runeType,
+          });
+        }
+        continue;
+      }
       if (e.type === 'chat' || e.type === 'chatwheel') {
         if (chatLog.length < MAX_CHAT_LINES && e.key != null && e.key !== '') {
           const text = String(e.key).slice(0, MAX_CHAT_TEXT_LEN);
@@ -2533,9 +2555,70 @@ class ReplayParser {
           };
         }),
         events: gameEvents.sort((a, b) => a.t - b.t),
+        // Task #376 — surface previously-ignored parser events as first-class
+        // panels on the match page. These all already existed inside
+        // _aggregateStats but never made it into the persisted blob.
+        wardDeaths: wardDeaths.slice().sort((a, b) => a.t - b.t),
+        runePickups: runePickups.slice().sort((a, b) => a.t - b.t),
+        // Pre-computed lane outcomes summary so the UI doesn't have to
+        // re-derive it from per-player `laning_nw`. Each entry: { lane,
+        // radiantNW, direNW, radiantXP, direXP, radiantKills, direKills,
+        // winner: 'radiant'|'dire'|'even' }.
+        laneOutcomesSummary: this._computeLaneOutcomesSummary(
+          players, laningNwAt10, laningXpAt10, laningKillsAt10, detectedPositions
+        ),
       },
       laneOutcomes,
     };
+  }
+
+  // Task #376 — produce a compact per-lane summary the UI can render directly.
+  // Pulls from the same `laningNwAt10` / `laningXpAt10` / `laningKillsAt10` maps
+  // the Stratz lane-score calculator uses, but groups by lane and adds a
+  // canonical winner. Returns [] when lane data is unavailable (very old
+  // replays / partial parses).
+  _computeLaneOutcomesSummary(players, laningNwAt10, laningXpAt10, laningKillsAt10, detectedPositions) {
+    if (!detectedPositions || Object.keys(detectedPositions).length === 0) return [];
+    const groups = {
+      bottom: { radiant: [], dire: [] },
+      mid:    { radiant: [], dire: [] },
+      top:    { radiant: [], dire: [] },
+    };
+    for (const [slotStr, pos] of Object.entries(detectedPositions)) {
+      const slot = parseInt(slotStr);
+      if (!pos) continue;
+      const team = slot < 5 ? 'radiant' : 'dire';
+      let lane;
+      if (pos === 2) lane = 'mid';
+      else if (pos === 1 || pos === 5) lane = team === 'radiant' ? 'bottom' : 'top';
+      else if (pos === 3 || pos === 4) lane = team === 'radiant' ? 'top' : 'bottom';
+      else continue;
+      groups[lane][team].push(slot);
+    }
+    const sumByGetter = (slots, getter) => slots.reduce((s, slot) => s + (getter(slot) || 0), 0);
+    const out = [];
+    for (const lane of ['bottom', 'mid', 'top']) {
+      const r = groups[lane].radiant, d = groups[lane].dire;
+      if (r.length === 0 && d.length === 0) continue;
+      const rNW = sumByGetter(r, s => (laningNwAt10[s] || {}).nw);
+      const dNW = sumByGetter(d, s => (laningNwAt10[s] || {}).nw);
+      const rXP = sumByGetter(r, s => (laningXpAt10[s] || {}).xp);
+      const dXP = sumByGetter(d, s => (laningXpAt10[s] || {}).xp);
+      // laningKillsAt10[slot] is `{k, d, a}` (built earlier in the file).
+      // Sum the kill component only.
+      const rK  = sumByGetter(r, s => (laningKillsAt10[s] || {}).k);
+      const dK  = sumByGetter(d, s => (laningKillsAt10[s] || {}).k);
+      const nwAdv = rNW - dNW;
+      const winner = Math.abs(nwAdv) <= 500 ? 'even' : (nwAdv > 0 ? 'radiant' : 'dire');
+      out.push({
+        lane, radiantSlots: r, direSlots: d,
+        radiantNW: rNW, direNW: dNW,
+        radiantXP: rXP, direXP: dXP,
+        radiantKills: rK, direKills: dK,
+        nwAdvantage: nwAdv, winner,
+      });
+    }
+    return out;
   }
 
   _computeStratzLaneOutcomes(detectedPositions, players, laningNwAt10, laningXpAt10, laneCs10min, laningKillsAt10) {

@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "7.61",
+    "title": "Parser big-M bundle: runes, couriers, lane outcomes, ward deaths (Task #376)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**Three new match-page panels surfacing previously-ignored parser events.** `<RuneControlPanel>` shows per-team bounty/power/wisdom/shield/etc pickups with a per-pickup timeline. `<CourierKillsPanel>` shows who killed whose courier, when, and the gold swing. `<LaneOutcomesPanel>` shows the net worth / XP / kill differential at 10 minutes per lane with a canonical winner badge (Radiant / Dire / Even). All three auto-hide when the underlying data isn't present.",
+      "**Ward-death overlay on `<WardMapPanel>`.** Toggle (✕ Deaths on/off, `role=switch` + `aria-checked` for the a11y gate) draws an X over every dewarded position, coloured by ward-owner team. Natural 6-min expiries are excluded — only kills the parser attributed to an attacker are shown. Respects the existing observer/sentry and per-player chip filters.",
+      "**Parser pipeline now captures `runes_log` events.** The Java parser (`CreateParsedDataBlob.handleRunePickup`) was already emitting `{type:'runes_log', time, slot, key=runeTypeId}` for every `CHAT_MESSAGE_RUNE_PICKUP`, but `replayParser._aggregateStats` only read the integer `rune_pickups` count and dropped the per-event detail. Now collected into a sorted `timeline.runePickups` list with `{t, slot, team, runeType}`.",
+      "**Lane-outcome summary pre-computed in the aggregator.** New `_computeLaneOutcomesSummary(players, laningNwAt10, laningXpAt10, laningKillsAt10, detectedPositions)` groups by lane (bottom/mid/top), sums per-team NW/XP/kills, and tags a winner using a ±500g threshold for 'even'. Shipped on `timeline.laneOutcomesSummary` so the UI doesn't have to re-derive it from per-player scoreboard columns. Independent of the existing `match.lane_outcomes` Stratz-formula score (which the team tables still consume).",
+      "**Ward deaths and courier-kill events ride the timeline blob too.** `timeline.wardDeaths` (already built locally for the support report) is now persisted alongside `events`/`players`. Courier kills were already in `timeline.events` (`type:'courier'`) via the `npcNameToSlot` map — the new panel just reads them. No new DB columns, no migration — everything reuses the existing `matches.game_timeline` JSONB column.",
+      "**Superuser: 'Re-aggregate from stored replay' button** on `/match/:id` (only when `match.has_replay` is true). Calls the existing `POST /api/admin/reparse-replay/:matchId` endpoint (`requireSuperuser`, runs `replayParser.parseReplayFull` on the cached .dem and writes the new `matchStats` blob via `db.reparseMatchFromStats`). Lets us backfill the new panels onto historical matches one at a time without a bulk migration.",
+      "**Edition scope.** Full edition only — community edition is deprecated for new work."
+    ]
+  },
+  {
     "version": "7.60",
     "title": "Engagement bundle: Rivals leaderboard + /this-week AI recap page (Task #364 follow-up)",
     "published_at": "2026-05-25",

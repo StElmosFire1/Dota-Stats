@@ -2411,11 +2411,14 @@ function drawWardDiamond(ctx, px, py, r) {
   ctx.lineTo(px - r, py);
   ctx.closePath();
 }
-function WardMapPanel({ players }) {
+function WardMapPanel({ players, wardDeaths = [] }) {
   const canvasRef = useRef(null);
   const mapImg = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [wardFilter, setWardFilter] = useState('both');
+  // Task #376 — toggle for the ward-death overlay (X marks where enemies
+  // dewarded). Off by default to keep the map readable for vision review.
+  const [showDeaths, setShowDeaths] = useState(false);
   // null = all players; otherwise a Set of hero_name strings that are shown
   const [playerFilter, setPlayerFilter] = useState(null);
 
@@ -2498,7 +2501,33 @@ function WardMapPanel({ players }) {
         }
       }
     }
-  }, [filteredPlayers, mapLoaded, wardFilter, hasWards]);
+    // Task #376 — overlay ward deaths (X marks where the ward was killed).
+    // Owner team determines colour; only deaths the killer actually caused
+    // (`killed: true`) are drawn — natural 6-min expiries are skipped.
+    if (showDeaths) {
+      for (const d of wardDeaths) {
+        if (!d.killed || d.x == null || d.y == null) continue;
+        if (d.type === 'obs' && !showObs) continue;
+        if (d.type === 'sen' && !showSen) continue;
+        if (d.ownerSlot != null) {
+          const ownerTeam = d.ownerSlot < 5 ? 'radiant' : 'dire';
+          if (playerFilter !== null) {
+            const ownerHero = players.find(p => p.slot === d.ownerSlot)?.hero_name;
+            if (ownerHero && !playerFilter.has(ownerHero)) continue;
+          }
+          ctx.strokeStyle = (ownerTeam === 'radiant' ? radiantColor : direColor);
+        } else {
+          ctx.strokeStyle = '#ffffff';
+        }
+        const { px, py } = wardToCanvasCoords(d.x, d.y, W, H);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px - 4, py - 4); ctx.lineTo(px + 4, py + 4);
+        ctx.moveTo(px + 4, py - 4); ctx.lineTo(px - 4, py + 4);
+        ctx.stroke();
+      }
+    }
+  }, [filteredPlayers, mapLoaded, wardFilter, hasWards, showDeaths, wardDeaths, players, playerFilter]);
 
   if (!hasWards) return null;
 
@@ -2518,6 +2547,21 @@ function WardMapPanel({ players }) {
             }}>{l}</button>
           ))}
         </div>
+        {wardDeaths.some(d => d.killed && d.x != null && d.y != null) && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showDeaths}
+            aria-label="Toggle ward-death overlay"
+            onClick={() => setShowDeaths(v => !v)}
+            style={{
+              background: showDeaths ? 'rgba(248,113,113,0.18)' : 'var(--bg-secondary)',
+              color: showDeaths ? '#f87171' : 'var(--text-muted)',
+              border: `1px solid ${showDeaths ? '#f87171' : 'var(--border)'}`,
+              borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            }}
+          >✕ Deaths {showDeaths ? 'on' : 'off'}</button>
+        )}
       </div>
 
       {/* Player chips */}
@@ -2571,6 +2615,237 @@ function WardMapPanel({ players }) {
         width={500} height={500}
         style={{ width: '100%', maxWidth: 500, borderRadius: 8, border: '1px solid #334155', display: 'block' }}
       />
+    </div>
+  );
+}
+
+// ── RuneControlPanel (Task #376) ─────────────────────────────────────────────
+// Renders the parser's per-pickup `runePickups` list (CHAT_MESSAGE_RUNE_PICKUP)
+// grouped by team and rune type. The aggregator previously kept only the
+// integer `rune_pickups` per player; this panel uses the new per-event list
+// in `timeline.runePickups`. Hidden when the replay didn't surface any
+// (very old parses or partial runs).
+const RUNE_TYPES = {
+  0: { label: 'Double Damage', icon: '⚔️', color: '#ef4444' },
+  1: { label: 'Haste',         icon: '⚡',  color: '#f59e0b' },
+  2: { label: 'Illusion',      icon: '👥',  color: '#a78bfa' },
+  3: { label: 'Invisibility',  icon: '🫥',  color: '#94a3b8' },
+  4: { label: 'Regeneration',  icon: '💗',  color: '#4ade80' },
+  5: { label: 'Bounty',        icon: '🪙',  color: '#facc15' },
+  6: { label: 'Arcane',        icon: '🔮',  color: '#22d3ee' },
+  7: { label: 'Water',         icon: '💧',  color: '#60a5fa' },
+  8: { label: 'Wisdom',        icon: '🦉',  color: '#34d399' },
+  9: { label: 'Shield',        icon: '🛡️',  color: '#fbbf24' },
+};
+function RuneControlPanel({ timeline, allPlayers }) {
+  const runes = timeline?.runePickups || [];
+  if (!runes.length) return null;
+  const slotToName = {};
+  allPlayers.forEach(p => { slotToName[p.slot] = p.nickname || p.persona_name || `Player ${p.slot}`; });
+  const teamTotals = { radiant: { _total: 0 }, dire: { _total: 0 } };
+  for (const r of runes) {
+    const t = teamTotals[r.team] || teamTotals.radiant;
+    t[r.runeType] = (t[r.runeType] || 0) + 1;
+    t._total += 1;
+  }
+  const allTypeIds = [...new Set(runes.map(r => r.runeType))].sort((a, b) => a - b);
+  return (
+    <div className="expanded-stats-section">
+      <h3>Rune Control <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— bounty / power / wisdom / shield pickups</span></h3>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+        {['radiant', 'dire'].map(team => {
+          const totals = teamTotals[team];
+          const color = team === 'radiant' ? '#4ade80' : '#f87171';
+          return (
+            <div key={team} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                <strong style={{ color, textTransform: 'capitalize' }}>{team}</strong>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{totals._total} pickups</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {allTypeIds.map(tid => {
+                  const meta = RUNE_TYPES[tid] || { label: `Type ${tid}`, icon: '?', color: '#64748b' };
+                  const n = totals[tid] || 0;
+                  return (
+                    <span key={tid} title={meta.label} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      background: '#0f172a', border: `1px solid ${meta.color}40`,
+                      borderRadius: 6, padding: '3px 8px', fontSize: 12,
+                      color: n > 0 ? meta.color : '#475569', fontWeight: 600,
+                    }}>
+                      <span aria-hidden="true">{meta.icon}</span>
+                      <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{meta.label.split(' ')[0]}</span>
+                      <span>{n}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <details>
+        <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>
+          Full pickup timeline ({runes.length})
+        </summary>
+        <div style={{ maxHeight: 240, overflowY: 'auto', marginTop: 8, fontSize: 12 }}>
+          {runes.map((r, i) => {
+            const meta = RUNE_TYPES[r.runeType] || { label: `Type ${r.runeType}`, icon: '?', color: '#64748b' };
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0', borderBottom: '1px solid #1e293b' }}>
+                <span style={{ width: 48, color: '#64748b', fontFamily: 'monospace' }}>{formatDuration(r.t)}</span>
+                <span style={{ color: meta.color }} aria-hidden="true">{meta.icon}</span>
+                <span style={{ width: 110, color: meta.color }}>{meta.label}</span>
+                <span style={{ color: DOTA_PLAYER_COLORS[r.slot % 10] }}>{slotToName[r.slot] || `Slot ${r.slot}`}</span>
+              </div>
+            );
+          })}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+// ── CourierKillsPanel (Task #376) ────────────────────────────────────────────
+// Pulls courier kills out of `timeline.events` (type:'courier' is pushed by
+// _aggregateStats whenever the killer's NPC matches a courier/donkey unit).
+// Each row: timestamp + killer + which team's courier died + the gold swing
+// (Dota's courier respawn cost — flat 100g this patch, but we display the
+// "denied gold to enemy" framing).
+function CourierKillsPanel({ timeline, allPlayers }) {
+  const events = (timeline?.events || []).filter(e => e.type === 'courier');
+  if (!events.length) return null;
+  const slotToName = {};
+  allPlayers.forEach(p => { slotToName[p.slot] = p.nickname || p.persona_name || `Player ${p.slot}`; });
+  // Courier death awards 30 gold to the killer (Dota 7.x); the courier is
+  // unavailable for the respawn duration (~75s), so the practical swing is
+  // 30 gold + the courier-buyback cost the victim pays to skip the respawn.
+  const COURIER_BOUNTY = 30;
+  return (
+    <div className="expanded-stats-section">
+      <h3>Courier Kills <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— who killed whose courier, when, and the gold swing</span></h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-stat" style={{ textAlign: 'left' }}>Time</th>
+              <th className="col-player">Killer</th>
+              <th className="col-stat">Victim Team</th>
+              <th className="col-stat" title="Gold the killer receives for the courier kill (flat bounty + denied courier productivity)">Swing</th>
+            </tr>
+          </thead>
+          <tbody>
+            {events.map((e, i) => {
+              const killer = slotToName[e.killerSlot] || `Slot ${e.killerSlot}`;
+              const killerColor = e.killerSlot >= 0 && e.killerSlot < 5 ? '#4ade80' : '#f87171';
+              const victimColor = e.killedTeam === 'radiant' ? '#4ade80' : '#f87171';
+              return (
+                <tr key={i}>
+                  <td className="col-stat" style={{ textAlign: 'left', fontFamily: 'monospace', color: '#94a3b8' }}>{formatDuration(e.t)}</td>
+                  <td className="col-player" style={{ color: killerColor }}>{killer}</td>
+                  <td className="col-stat" style={{ color: victimColor, textTransform: 'capitalize' }}>{e.killedTeam}</td>
+                  <td className="col-stat" style={{ color: '#facc15' }}>+{COURIER_BOUNTY}g</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── LaneOutcomesPanel (Task #376) ────────────────────────────────────────────
+// Renders `timeline.laneOutcomesSummary` — net worth / XP / kill differential
+// at 10min per lane, plus a canonical winner. Independent of per-player
+// laning_nw rendered in the scoreboard so admins can see lane equity at a
+// glance without scanning the team tables.
+function LaneOutcomesPanel({ timeline }) {
+  const summary = timeline?.laneOutcomesSummary || [];
+  if (!summary.length) return null;
+  const LANE_LABELS = { bottom: 'Bottom Lane', mid: 'Mid Lane', top: 'Top Lane' };
+  return (
+    <div className="expanded-stats-section">
+      <h3>Lane Outcomes <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— net worth / XP / kill differential at 10 min</span></h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        {summary.map((lane) => {
+          const winnerColor = lane.winner === 'radiant' ? '#4ade80' : lane.winner === 'dire' ? '#f87171' : '#94a3b8';
+          const winnerLabel = lane.winner === 'even' ? 'Even' : lane.winner === 'radiant' ? 'Radiant won' : 'Dire won';
+          const nwBars = lane.radiantNW + lane.direNW;
+          const rPct = nwBars > 0 ? (lane.radiantNW / nwBars) * 100 : 50;
+          return (
+            <div key={lane.lane} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                <strong>{LANE_LABELS[lane.lane] || lane.lane}</strong>
+                <span style={{ color: winnerColor, fontSize: 12, fontWeight: 600 }}>{winnerLabel}</span>
+              </div>
+              <div style={{ background: '#0f172a', borderRadius: 4, height: 6, overflow: 'hidden', display: 'flex', marginBottom: 8 }}>
+                <div style={{ width: `${rPct}%`, background: '#4ade80' }} />
+                <div style={{ width: `${100 - rPct}%`, background: '#f87171' }} />
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 4 }}>
+                <span>Net worth</span>
+                <span style={{ color: '#4ade80' }}>{fmtLargeNum(lane.radiantNW)}</span>
+                <span style={{ color: '#f87171' }}>{fmtLargeNum(lane.direNW)}</span>
+                <span>Experience</span>
+                <span style={{ color: '#4ade80' }}>{fmtLargeNum(lane.radiantXP)}</span>
+                <span style={{ color: '#f87171' }}>{fmtLargeNum(lane.direXP)}</span>
+                <span>Kills</span>
+                <span style={{ color: '#4ade80' }}>{lane.radiantKills}</span>
+                <span style={{ color: '#f87171' }}>{lane.direKills}</span>
+                <span>NW Δ</span>
+                <span style={{ gridColumn: 'span 2', color: lane.nwAdvantage > 0 ? '#4ade80' : lane.nwAdvantage < 0 ? '#f87171' : '#94a3b8', textAlign: 'right' }}>
+                  {lane.nwAdvantage > 0 ? '+' : ''}{fmtLargeNum(lane.nwAdvantage)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── ReaggregateButton (Task #376, admin-only) ────────────────────────────────
+// Calls the existing POST /api/admin/reparse-replay/:matchId endpoint which
+// re-runs `replayParser.parseReplayFull` on the stored .dem file and writes
+// the fresh matchStats blob (including the new game_timeline.wardDeaths /
+// runePickups / laneOutcomesSummary) back to the DB. No new endpoint added.
+function ReaggregateButton({ matchId, hasReplay }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  if (!hasReplay) return null;
+  const onClick = async () => {
+    if (busy) return;
+    if (!window.confirm('Re-aggregate this match from the stored .dem file? Existing stats will be overwritten with the new parse.')) return;
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/reparse-replay/${matchId}`, { method: 'POST', credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setMsg('Re-aggregated — refresh to see new panels.');
+    } catch (err) {
+      setMsg(`Failed: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ margin: '8px 0', fontSize: 12 }}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={busy}
+        aria-label="Re-aggregate match stats from the stored replay"
+        style={{
+          padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+          background: busy ? '#1e293b' : 'var(--accent-blue, #1d4ed8)',
+          color: '#fff', border: '1px solid var(--border)', cursor: busy ? 'wait' : 'pointer',
+        }}
+      >
+        {busy ? 'Re-aggregating…' : '🔁 Re-aggregate from stored replay'}
+      </button>
+      {msg && <span style={{ marginLeft: 10, color: msg.startsWith('Failed') ? '#f87171' : '#4ade80' }}>{msg}</span>}
     </div>
   );
 }
@@ -3860,9 +4135,18 @@ function MatchDetailInner() {
       <KillHeatmapPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <TeamfightPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <SupportReportPanel players={allPlayers} timeline={match.game_timeline} />
-      <WardMapPanel players={allPlayers} />
+      <WardMapPanel players={allPlayers} wardDeaths={match.game_timeline?.wardDeaths || []} />
+      <LaneOutcomesPanel timeline={match.game_timeline} />
+      <RuneControlPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <CourierKillsPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <DeathTimingPanel timeline={match.game_timeline} allPlayers={allPlayers} duration={match.duration} />
       <ComebackMetricPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      {/* Re-aggregate hits POST /api/admin/reparse-replay/:matchId which is
+          superuser-gated (`requireSuperuser`), so only show the button to
+          superusers — admins would see a 403. */}
+      {isSuperuser && (
+        <ReaggregateButton matchId={matchId} hasReplay={!!match.has_replay} />
+      )}
 
       <MatchNotes matchId={matchId} isAdmin={isAdmin} adminKey={adminKey} />
 
