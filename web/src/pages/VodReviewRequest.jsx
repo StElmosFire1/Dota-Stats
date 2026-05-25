@@ -65,6 +65,9 @@ export default function VodReviewRequest() {
             placeholder="https://… (link to a .dem file or replay viewer)"
             style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
         </label>
+        <p style={{ margin: '4px 0 -4px', fontSize: 12, color: 'var(--text-muted)' }}>
+          Got a raw <code>.dem</code> file? You can upload it on the next page (after payment) on the review's detail page — up to 300&nbsp;MB.
+        </p>
         <label>Your question (≥10 chars)<br/>
           <textarea required rows={5} value={form.question} onChange={e => setForm(f => ({ ...f, question: e.target.value }))}
             placeholder="What do you want feedback on? e.g. itemisation, decision-making in the mid-game, lane mistakes…"

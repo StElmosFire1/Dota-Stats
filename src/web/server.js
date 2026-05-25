@@ -14507,7 +14507,17 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const isParty = [v.coach_account_id, v.student_account_id].map(String).includes(String(accountId));
       if (!isParty && !_isSu(req)) return res.status(403).json({ error: 'Forbidden' });
       const notes = await db.listVodNotes(v.id);
-      res.json({ review: v, notes, is_coach: String(v.coach_account_id) === String(accountId) });
+      // Hide the raw on-disk file path — surface the auth-gated download URL.
+      const safe = { ...v };
+      if (safe.replay_url && safe.replay_url.startsWith('file://')) {
+        safe.replay_url = `/api/vod-reviews/${v.id}/replay-download`;
+      }
+      res.json({
+        review: safe,
+        notes,
+        is_coach: String(v.coach_account_id) === String(accountId),
+        is_student: String(v.student_account_id) === String(accountId),
+      });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -14578,8 +14588,107 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         return res.status(502).json({ error: `Stripe capture failed: ${e.message}` });
       }
       await db.setVodStatus(v.id, 'delivered');
+      // Best-effort student notification — Discord DM + web-push. Failure
+      // here must not unwind the delivery; the status flip is the source
+      // of truth and the student will see it on the dashboard regardless.
+      try {
+        const bot = getDiscordBot();
+        if (bot && typeof bot.sendDmToAccount === 'function') {
+          const link = `${process.env.SITE_URL || ''}/vod-reviews/${v.id}`;
+          await bot.sendDmToAccount(v.student_account_id, {
+            content: `Your VOD review from **${v.coach_name || 'your coach'}** has been delivered.\nOpen it: ${link}`,
+          }).catch(() => {});
+        }
+      } catch (_) { /* best-effort */ }
+      try {
+        if (webpush && typeof db.getPushSubscriptionsForAccount === 'function') {
+          const subs = await db.getPushSubscriptionsForAccount(v.student_account_id).catch(() => []);
+          const payload = JSON.stringify({
+            title: 'VOD review delivered',
+            body: `${v.coach_name || 'Your coach'} has finished annotating your replay.`,
+            url: `/vod-reviews/${v.id}`,
+          });
+          for (const sub of (subs || [])) {
+            webpush.sendNotification(sub, payload).catch(() => {});
+          }
+        }
+      } catch (_) { /* best-effort */ }
       res.json({ ok: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Student: upload a raw .dem replay for VOD review (alternative to
+  // match_id / replay_url). Stores the file under UPLOAD_DIR with a
+  // randomised name, sets vod_review.replay_url to the served path so the
+  // coach can fetch it. Caller must own the review and it must still be
+  // pending/paid/in_progress (not delivered or refunded).
+  const vodReplayUpload = multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => { ensureDir(UPLOAD_DIR); cb(null, UPLOAD_DIR); },
+      filename: (req, file, cb) => { cb(null, `vod-${req.params.id}-${Date.now()}-${Math.random().toString(36).slice(2)}.dem`); },
+    }),
+    limits: { fileSize: 300 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (file.originalname.endsWith('.dem') || file.originalname.endsWith('.dem.bz2') || file.mimetype === 'application/octet-stream') cb(null, true);
+      else cb(new Error('Only .dem replay files are accepted'));
+    },
+  });
+  router.post('/vod-reviews/:id/upload-replay', vodReplayUpload.single('replay'), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) { try { fs.unlinkSync(req.file.path); } catch {} return res.status(401).json({ error: 'Sign in with Steam' }); }
+      const v = await db.getVodReview(parseInt(req.params.id));
+      if (!v) { try { fs.unlinkSync(req.file.path); } catch {} return res.status(404).json({ error: 'Not found' }); }
+      if (String(v.student_account_id) !== String(accountId)) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+        return res.status(403).json({ error: 'Only the requesting student can upload' });
+      }
+      if (!['pending', 'paid', 'in_progress'].includes(v.status)) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+        return res.status(400).json({ error: `Cannot attach replay in status: ${v.status}` });
+      }
+      if (!req.file) return res.status(400).json({ error: 'No .dem file provided' });
+      // The served URL points at the file via the existing upload-served
+      // path. Coach can fetch with their session — we don't gate the file
+      // route itself, but the random filename keeps it unguessable.
+      // Store the absolute on-disk path so the download endpoint below can
+      // serve it via the auth-gated route. The served URL is /api-prefixed
+      // and ownership-checked, not a direct static path.
+      const url = `/api/vod-reviews/${v.id}/replay-download`;
+      await db.setVodReplayUrl(v.id, `file://${req.file.path}`);
+      res.json({ ok: true, replay_url: url });
+    } catch (err) {
+      if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Download the uploaded .dem for a VOD review. Both the requesting
+  // student and the assigned coach (and superusers) may fetch it.
+  router.get('/vod-reviews/:id/replay-download', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).end();
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const v = await db.getVodReview(parseInt(req.params.id));
+      if (!v) return res.status(404).json({ error: 'Not found' });
+      const isParty = [v.coach_account_id, v.student_account_id].map(String).includes(String(accountId));
+      if (!isParty && !_isSu(req)) return res.status(403).json({ error: 'Forbidden' });
+      if (!v.replay_url || !v.replay_url.startsWith('file://')) {
+        return res.status(404).json({ error: 'No uploaded replay on file' });
+      }
+      const onDisk = v.replay_url.slice('file://'.length);
+      // Constrain to UPLOAD_DIR to prevent path traversal via DB tampering.
+      const resolved = path.resolve(onDisk);
+      if (!resolved.startsWith(path.resolve(UPLOAD_DIR) + path.sep)) {
+        return res.status(400).json({ error: 'Invalid replay path' });
+      }
+      if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'Replay file missing' });
+      res.download(resolved, `vod-${v.id}.dem`);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Student: refund-cancel an undelivered VOD review (paid/in_progress).

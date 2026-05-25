@@ -23,7 +23,7 @@ export default function VodReviewDetail() {
 
   if (error) return <div style={{ padding: 24, color: 'var(--dire-color)' }}>{error}</div>;
   if (!data) return <div style={{ padding: 24 }}>Loading…</div>;
-  const { review, notes, is_coach } = data;
+  const { review, notes, is_coach, is_student } = data;
 
   const addNote = async (e) => {
     e.preventDefault();
@@ -56,6 +56,18 @@ export default function VodReviewDetail() {
   };
 
   const canEdit = is_coach && ['paid', 'in_progress'].includes(review.status);
+  const canUpload = is_student && ['pending', 'paid', 'in_progress'].includes(review.status);
+
+  const uploadReplay = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      await api.uploadVodReplay(review.id, file);
+      load();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); e.target.value = ''; }
+  };
 
   return (
     <div style={{ maxWidth: 900, margin: '24px auto', padding: 16 }}>
@@ -73,7 +85,7 @@ export default function VodReviewDetail() {
             )}
             {review.replay_url && (
               <div style={{ fontSize: 13, marginTop: 4 }}>
-                Replay: <a href={review.replay_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>external link ↗</a>
+                Replay: <a href={review.replay_url} target={review.replay_url.startsWith('/api/') ? '_self' : '_blank'} rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>{review.replay_url.startsWith('/api/') ? 'download .dem ↓' : 'external link ↗'}</a>
               </div>
             )}
           </div>
@@ -97,6 +109,21 @@ export default function VodReviewDetail() {
           <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{review.question}</div>
         </div>
       </div>
+
+      {canUpload && (
+        <div style={{ background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+            {review.replay_url ? 'Replace uploaded replay' : 'Upload a raw .dem replay (optional)'}
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 8px' }}>
+            Use this if the match wasn't recorded by the bot. Max 300 MB. Only you and your coach can download it.
+          </p>
+          <label style={{ display: 'inline-block' }}>
+            <input type="file" accept=".dem,.dem.bz2,application/octet-stream" onChange={uploadReplay} disabled={busy}
+              aria-label="Upload replay .dem file" />
+          </label>
+        </div>
+      )}
 
       <h3>Timestamped notes</h3>
       {notes.length === 0 ? (

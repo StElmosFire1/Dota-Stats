@@ -16151,6 +16151,15 @@ async function setVodReviewStripeSession(id, stripeSessionId) {
   );
 }
 
+async function setVodReplayUrl(id, replayUrl) {
+  const p = getPool();
+  await p.query(`ALTER TABLE coach_vod_reviews ADD COLUMN IF NOT EXISTS replay_url TEXT`).catch(() => {});
+  await p.query(
+    `UPDATE coach_vod_reviews SET replay_url = $2, updated_at = NOW() WHERE id = $1`,
+    [parseInt(id), replayUrl ? String(replayUrl).slice(0, 500) : null]
+  );
+}
+
 async function markVodPaidBySession(stripeSessionId, paymentIntent) {
   const p = getPool();
   const r = await p.query(
@@ -18754,6 +18763,7 @@ module.exports = {
   listCoachVodReviews,
   listStudentVodReviews,
   setVodReviewStripeSession,
+  setVodReplayUrl,
   markVodPaidBySession,
   markVodCancelledBySession,
   markVodRefundedByIntent,

@@ -1854,6 +1854,13 @@ export const deleteVodNote = async (reviewId, noteId) => {
 };
 export const deliverVodReview = (id) => _postJson(`/vod-reviews/${id}/deliver`, {});
 export const refundVodReview = (id) => _postJson(`/vod-reviews/${id}/refund`, {});
+export const uploadVodReplay = async (id, file) => {
+  const fd = new FormData();
+  fd.append('replay', file);
+  const res = await fetch(`${BASE}/vod-reviews/${id}/upload-replay`, { method: 'POST', credentials: 'same-origin', body: fd });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+  return res.json();
+};
 export const getCoachEarnings = (ym) => _getJson('/me/coach/earnings' + (ym ? `?ym=${ym}` : ''));
 
 // Task #314 / v7.34 — Founders Ring catalog.
