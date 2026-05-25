@@ -913,7 +913,13 @@ export default function Heroes({ defaultTab }) {
 
   useEffect(() => {
     getAvailableHeroPatches(seasonId)
-      .then((d) => setAvailablePatches(d.patches || []))
+      .then((d) => {
+        const list = d.patches || [];
+        setAvailablePatches(list);
+        // Task #382 — default the picker to the current (latest) patch when
+        // one is available; users can still pick "All patches" explicitly.
+        if (list.length > 0 && list[0]) setPatch(list[0]);
+      })
       .catch(() => setAvailablePatches([]));
   }, [seasonId]);
 

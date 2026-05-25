@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getDraftSuggestions } from '../api';
+import { getDraftSuggestions, getHeroCounterScores } from '../api';
 import { getHeroName, getHeroImageUrl, ALL_HERO_IDS } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
 
@@ -77,8 +77,23 @@ export default function DraftAssistant() {
     setLoading(true);
     setError(null);
     try {
-      const d = await getDraftSuggestions({ allies, enemies, banned, position, seasonId });
-      setSuggestions(d.suggestions || []);
+      // Task #382 — consume the shared /heroes/counter-scores endpoint when
+      // enemies are present so the Draft Assistant's "vs Enemies" column and
+      // ordering are driven by the *same* counter scorer the new /heroes
+      // Counter-pick tab uses. Both endpoints share `_computeHeroCounterMap`
+      // server-side, so this is belt-and-braces alignment.
+      const [d, counterRes] = await Promise.all([
+        getDraftSuggestions({ allies, enemies, banned, position, seasonId }),
+        enemies.length > 0
+          ? getHeroCounterScores({ enemies, position, seasonId }).catch(() => ({ suggestions: [] }))
+          : Promise.resolve({ suggestions: [] }),
+      ]);
+      const counterByHero = new Map((counterRes.suggestions || []).map(c => [c.hero_id, c]));
+      const merged = (d.suggestions || []).map(s => {
+        const c = counterByHero.get(s.hero_id);
+        return c ? { ...s, counter_wr: c.counter_wr } : s;
+      });
+      setSuggestions(merged);
     } catch (e) {
       setError(e.message);
     } finally {
