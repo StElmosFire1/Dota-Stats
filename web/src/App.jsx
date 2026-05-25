@@ -116,6 +116,13 @@ const CoachEdit = lazy(() => import('./pages/CoachEdit'));
 const CoachOnboarding = lazy(() => import('./pages/CoachOnboarding'));
 const CoachPremium = lazy(() => import('./pages/CoachPremium'));
 const MyBookings = lazy(() => import('./pages/MyBookings'));
+const GroupSessions = lazy(() => import('./pages/GroupSessions'));
+const MyGroupSessions = lazy(() => import('./pages/MyGroupSessions'));
+const CoachGroupSessionsManage = lazy(() => import('./pages/CoachGroupSessionsManage'));
+const VodReviewRequest = lazy(() => import('./pages/VodReviewRequest'));
+const MyVodReviews = lazy(() => import('./pages/MyVodReviews'));
+const VodReviewDetail = lazy(() => import('./pages/VodReviewDetail'));
+const CoachEarnings = lazy(() => import('./pages/CoachEarnings'));
 const SeasonSummary = lazy(() => import('./pages/SeasonSummary'));
 const BuyCoins = lazy(() => import('./pages/BuyCoins'));
 
@@ -1259,6 +1266,13 @@ function AppRoutes() {
                 <Route path="/coach/onboarding" element={<CoachOnboarding />} />
                 <Route path="/coach/premium" element={<CoachPremium />} />
                 <Route path="/me/bookings" element={<MyBookings />} />
+                <Route path="/group-sessions" element={<GroupSessions />} />
+                <Route path="/me/coaching/group" element={<MyGroupSessions />} />
+                <Route path="/coach/group-sessions" element={<CoachGroupSessionsManage />} />
+                <Route path="/coaches/:id/vod-review" element={<VodReviewRequest />} />
+                <Route path="/me/coaching/vod" element={<MyVodReviews />} />
+                <Route path="/vod-reviews/:id" element={<VodReviewDetail />} />
+                <Route path="/coach/earnings" element={<CoachEarnings />} />
                 <Route path="/pro" element={<Pro />} />
                 <Route path="/shop" element={<CosmeticsShop />} />
                 <Route path="/season-pass" element={<SeasonPass />} />

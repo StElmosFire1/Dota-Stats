@@ -1616,6 +1616,95 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coach_sanctions_coach ON coach_sanctions (coach_account_id)`);
 
+    // ---------- Task #384: Coaching v2 — group sessions + async VOD review ----------
+    // Group sessions: one coach hosts, up to N students each pay a per-seat
+    // fee. Same destination-charge / manual-capture pattern as 1:1 bookings
+    // so refunds are clean (no money has moved until the coach marks the
+    // session completed and we capture each seat's PaymentIntent).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_group_sessions (
+        id SERIAL PRIMARY KEY,
+        coach_account_id BIGINT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        scheduled_at TIMESTAMPTZ NOT NULL,
+        duration_minutes INTEGER NOT NULL DEFAULT 90,
+        capacity INTEGER NOT NULL DEFAULT 6,
+        price_per_seat_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        status TEXT NOT NULL DEFAULT 'open'
+          CHECK (status IN ('open','full','in_progress','completed','cancelled')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cgs_coach ON coach_group_sessions (coach_account_id, scheduled_at)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cgs_upcoming ON coach_group_sessions (status, scheduled_at)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_group_session_seats (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES coach_group_sessions(id) ON DELETE CASCADE,
+        student_account_id BIGINT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending','paid','refunded','cancelled')),
+        stripe_session_id TEXT UNIQUE,
+        stripe_payment_intent TEXT,
+        amount_cents INTEGER NOT NULL,
+        platform_fee_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        refunded_at TIMESTAMPTZ,
+        captured_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cgss_session ON coach_group_session_seats (session_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cgss_student ON coach_group_session_seats (student_account_id)`);
+    // Partial unique index: prevent the same student from holding two live
+    // seats on the same session (cancelled/refunded ones don't block).
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cgss_unique_live
+                     ON coach_group_session_seats (session_id, student_account_id)
+                     WHERE status IN ('pending','paid')`);
+
+    // Async VOD review: student picks a match (or arbitrary match_id),
+    // writes a question, pays. Coach delivers timestamped annotations on
+    // the ReplayViewer surface. Fund capture lands on `deliver`. Refund
+    // path same as 1:1 (cancel PI if uncaptured, refund if captured).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_vod_reviews (
+        id SERIAL PRIMARY KEY,
+        coach_account_id BIGINT NOT NULL,
+        student_account_id BIGINT NOT NULL,
+        match_id BIGINT,
+        question TEXT NOT NULL,
+        price_cents INTEGER NOT NULL,
+        platform_fee_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending','paid','in_progress','delivered','refunded','cancelled')),
+        stripe_session_id TEXT UNIQUE,
+        stripe_payment_intent TEXT,
+        delivered_at TIMESTAMPTZ,
+        refunded_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cvr_coach ON coach_vod_reviews (coach_account_id, status)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cvr_student ON coach_vod_reviews (student_account_id, status)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_vod_review_notes (
+        id SERIAL PRIMARY KEY,
+        review_id INTEGER NOT NULL REFERENCES coach_vod_reviews(id) ON DELETE CASCADE,
+        t_seconds INTEGER NOT NULL DEFAULT 0,
+        text TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cvrn_review ON coach_vod_review_notes (review_id, t_seconds)`);
+
     // ---------- Task #320: Commission tiers + coach premium + sponsorships + tenants ----------
     // Additive ALTERs on `coaches` — per-coach commission overrides + premium tier flag.
     // `commission_bps` is basis points (e.g. 1000 = 10.00%, NULL = use site default).
@@ -15714,6 +15803,503 @@ async function listCoachSanctions(coachAccountId = null) {
   return r.rows;
 }
 
+// ---------- Task #384: Coaching v2 helpers ----------
+
+// Group sessions ------------------------------------------------------------
+async function createGroupSession({ coachAccountId, title, description, scheduledAt, durationMinutes, capacity, pricePerSeatCents, currency = 'aud' }) {
+  if (!coachAccountId || !title || !scheduledAt) throw new Error('createGroupSession: required fields missing');
+  const cap = Math.min(Math.max(parseInt(capacity) || 6, 2), 8);
+  const dur = Math.min(Math.max(parseInt(durationMinutes) || 90, 30), 240);
+  const price = parseInt(pricePerSeatCents);
+  if (!Number.isFinite(price) || price < 500) throw new Error('price must be ≥ 500 cents');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coach_group_sessions
+       (coach_account_id, title, description, scheduled_at, duration_minutes, capacity, price_per_seat_cents, currency)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [coachAccountId, String(title).slice(0,200), description ? String(description).slice(0,2000) : null,
+     new Date(scheduledAt).toISOString(), dur, cap, price, String(currency || 'aud').toLowerCase()]
+  );
+  return r.rows[0];
+}
+
+async function getGroupSession(id) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT gs.*, COALESCE(n.nickname, gs.coach_account_id::text) AS coach_name,
+            (SELECT COUNT(*)::int FROM coach_group_session_seats s
+              WHERE s.session_id = gs.id AND s.status IN ('paid')) AS seats_taken
+       FROM coach_group_sessions gs
+       LEFT JOIN nicknames n ON n.account_id = gs.coach_account_id
+      WHERE gs.id = $1`,
+    [parseInt(id)]
+  );
+  return r.rows[0] || null;
+}
+
+async function listOpenGroupSessions({ limit = 50 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT gs.*, COALESCE(n.nickname, gs.coach_account_id::text) AS coach_name,
+            (SELECT COUNT(*)::int FROM coach_group_session_seats s
+              WHERE s.session_id = gs.id AND s.status = 'paid') AS seats_taken
+       FROM coach_group_sessions gs
+       LEFT JOIN nicknames n ON n.account_id = gs.coach_account_id
+      WHERE gs.status IN ('open','full') AND gs.scheduled_at > NOW() - INTERVAL '2 hours'
+      ORDER BY gs.scheduled_at ASC
+      LIMIT $1`,
+    [Math.min(limit, 200)]
+  );
+  return r.rows;
+}
+
+async function listGroupSessionsForCoach(coachAccountId, { limit = 100 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT gs.*,
+            (SELECT COUNT(*)::int FROM coach_group_session_seats s
+              WHERE s.session_id = gs.id AND s.status = 'paid') AS seats_taken
+       FROM coach_group_sessions gs
+      WHERE gs.coach_account_id = $1
+      ORDER BY gs.scheduled_at DESC
+      LIMIT $2`,
+    [coachAccountId, Math.min(limit, 500)]
+  );
+  return r.rows;
+}
+
+async function listSeatsForSession(sessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT s.*, COALESCE(n.nickname, s.student_account_id::text) AS student_name
+       FROM coach_group_session_seats s
+       LEFT JOIN nicknames n ON n.account_id = s.student_account_id
+      WHERE s.session_id = $1
+      ORDER BY s.created_at ASC`,
+    [parseInt(sessionId)]
+  );
+  return r.rows;
+}
+
+async function listStudentGroupSeats(studentAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT s.*, gs.title, gs.scheduled_at, gs.duration_minutes, gs.coach_account_id,
+            COALESCE(n.nickname, gs.coach_account_id::text) AS coach_name
+       FROM coach_group_session_seats s
+       JOIN coach_group_sessions gs ON gs.id = s.session_id
+       LEFT JOIN nicknames n ON n.account_id = gs.coach_account_id
+      WHERE s.student_account_id = $1
+      ORDER BY gs.scheduled_at DESC
+      LIMIT 200`,
+    [studentAccountId]
+  );
+  return r.rows;
+}
+
+async function createGroupSeat({ sessionId, studentAccountId, stripeSessionId, amountCents, platformFeeCents, currency }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coach_group_session_seats
+       (session_id, student_account_id, stripe_session_id, amount_cents, platform_fee_cents, currency)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (stripe_session_id) DO NOTHING
+     RETURNING *`,
+    [sessionId, studentAccountId, stripeSessionId, amountCents, platformFeeCents, String(currency || 'aud').toLowerCase()]
+  );
+  return r.rows[0] || null;
+}
+
+// Atomic seat reservation: locks the session row, counts seats that already
+// consume capacity (pending+paid), rejects if full, inserts a pending seat
+// with a NULL stripe_session_id (caller attaches it after Checkout creation).
+// Throws on capacity overflow or duplicate-live-seat collision so the route
+// can map to a clean 400/409.
+async function reserveGroupSeat({ sessionId, studentAccountId, amountCents, platformFeeCents, currency }) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const sess = await client.query(
+      `SELECT id, capacity, status FROM coach_group_sessions WHERE id = $1 FOR UPDATE`,
+      [sessionId]
+    );
+    if (sess.rows.length === 0) throw new Error('Session not found');
+    const gs = sess.rows[0];
+    if (!['open', 'full'].includes(gs.status)) throw new Error('Session not open for signups');
+    const count = await client.query(
+      `SELECT COUNT(*)::int AS n FROM coach_group_session_seats
+        WHERE session_id = $1 AND status IN ('pending', 'paid')`,
+      [sessionId]
+    );
+    if (count.rows[0].n >= gs.capacity) throw new Error('Session full');
+    let seat;
+    try {
+      const ins = await client.query(
+        `INSERT INTO coach_group_session_seats
+           (session_id, student_account_id, stripe_session_id, amount_cents, platform_fee_cents, currency, status)
+         VALUES ($1,$2,NULL,$3,$4,$5,'pending')
+         RETURNING *`,
+        [sessionId, studentAccountId, amountCents, platformFeeCents, String(currency || 'aud').toLowerCase()]
+      );
+      seat = ins.rows[0];
+    } catch (err) {
+      // Hits idx_cgss_unique_live (one live seat per student per session).
+      if (err.code === '23505') throw new Error('You already hold a seat on this session');
+      throw err;
+    }
+    // If this fills the session, flip its status now (still inside the txn).
+    if (count.rows[0].n + 1 >= gs.capacity) {
+      await client.query(
+        `UPDATE coach_group_sessions SET status = 'full', updated_at = NOW()
+          WHERE id = $1 AND status = 'open'`,
+        [sessionId]
+      );
+    }
+    await client.query('COMMIT');
+    return seat;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Re-open a session whose capacity has freed up. Safe to call after any
+// seat moves out of pending/paid (cancelled/refunded/released). Only
+// flips 'full' -> 'open'; never touches 'completed' or 'cancelled'.
+async function reopenGroupSessionIfRoom(sessionId) {
+  const p = getPool();
+  await p.query(
+    `UPDATE coach_group_sessions gs
+        SET status = 'open', updated_at = NOW()
+      WHERE gs.id = $1
+        AND gs.status = 'full'
+        AND (SELECT COUNT(*) FROM coach_group_session_seats s
+              WHERE s.session_id = gs.id AND s.status IN ('pending','paid')) < gs.capacity`,
+    [sessionId]
+  );
+}
+
+async function attachStripeSessionToGroupSeat(seatId, stripeSessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_group_session_seats
+        SET stripe_session_id = $2, updated_at = NOW()
+      WHERE id = $1 AND stripe_session_id IS NULL
+      RETURNING *`,
+    [seatId, stripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
+// Compensating delete used by the join route if Checkout creation fails
+// after we've already reserved the seat. Only deletes if still pending and
+// no Stripe linkage was attached.
+async function releaseUnattachedGroupSeat(seatId) {
+  const p = getPool();
+  await p.query(
+    `DELETE FROM coach_group_session_seats
+      WHERE id = $1 AND status = 'pending' AND stripe_session_id IS NULL`,
+    [seatId]
+  );
+}
+
+async function markGroupSeatPaidBySession(stripeSessionId, paymentIntent) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_group_session_seats
+        SET status = 'paid', stripe_payment_intent = COALESCE($2, stripe_payment_intent), updated_at = NOW()
+      WHERE stripe_session_id = $1 AND status = 'pending'
+      RETURNING *`,
+    [stripeSessionId, paymentIntent || null]
+  );
+  return r.rows[0] || null;
+}
+
+async function markGroupSeatCancelledBySession(stripeSessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_group_session_seats
+        SET status = 'cancelled', updated_at = NOW()
+      WHERE stripe_session_id = $1 AND status = 'pending'
+      RETURNING *`,
+    [stripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
+async function markGroupSeatRefundedByIntent(paymentIntent) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_group_session_seats
+        SET status = 'refunded', refunded_at = NOW(), updated_at = NOW()
+      WHERE stripe_payment_intent = $1 AND status IN ('paid')
+      RETURNING *`,
+    [paymentIntent]
+  );
+  return r.rows[0] || null;
+}
+
+async function markGroupSeatCapturedByIntent(paymentIntent) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_group_session_seats
+        SET captured_at = NOW(), updated_at = NOW()
+      WHERE stripe_payment_intent = $1 AND status = 'paid' AND captured_at IS NULL
+      RETURNING *`,
+    [paymentIntent]
+  );
+  return r.rows[0] || null;
+}
+
+async function getGroupSeatById(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM coach_group_session_seats WHERE id = $1`, [parseInt(id)]);
+  return r.rows[0] || null;
+}
+
+async function setGroupSessionStatus(id, status) {
+  const valid = ['open','full','in_progress','completed','cancelled'];
+  if (!valid.includes(status)) throw new Error('invalid status');
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_group_sessions SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [parseInt(id), status]
+  );
+  return r.rows[0] || null;
+}
+
+// VOD reviews ---------------------------------------------------------------
+async function createVodReview({ coachAccountId, studentAccountId, matchId, question, priceCents, platformFeeCents, currency = 'aud' }) {
+  if (!coachAccountId || !studentAccountId || !question) throw new Error('createVodReview: required fields missing');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coach_vod_reviews
+       (coach_account_id, student_account_id, match_id, question, price_cents, platform_fee_cents, currency)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [coachAccountId, studentAccountId, matchId ? String(matchId) : null,
+     String(question).slice(0,4000), parseInt(priceCents), parseInt(platformFeeCents), String(currency).toLowerCase()]
+  );
+  return r.rows[0];
+}
+
+async function getVodReview(id) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT v.*,
+            COALESCE(nc.nickname, v.coach_account_id::text) AS coach_name,
+            COALESCE(ns.nickname, v.student_account_id::text) AS student_name
+       FROM coach_vod_reviews v
+       LEFT JOIN nicknames nc ON nc.account_id = v.coach_account_id
+       LEFT JOIN nicknames ns ON ns.account_id = v.student_account_id
+      WHERE v.id = $1`,
+    [parseInt(id)]
+  );
+  return r.rows[0] || null;
+}
+
+async function listCoachVodReviews(coachAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT v.*, COALESCE(n.nickname, v.student_account_id::text) AS student_name
+       FROM coach_vod_reviews v
+       LEFT JOIN nicknames n ON n.account_id = v.student_account_id
+      WHERE v.coach_account_id = $1
+      ORDER BY v.created_at DESC LIMIT 200`,
+    [coachAccountId]
+  );
+  return r.rows;
+}
+
+async function listStudentVodReviews(studentAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT v.*, COALESCE(n.nickname, v.coach_account_id::text) AS coach_name
+       FROM coach_vod_reviews v
+       LEFT JOIN nicknames n ON n.account_id = v.coach_account_id
+      WHERE v.student_account_id = $1
+      ORDER BY v.created_at DESC LIMIT 200`,
+    [studentAccountId]
+  );
+  return r.rows;
+}
+
+async function setVodReviewStripeSession(id, stripeSessionId) {
+  const p = getPool();
+  await p.query(
+    `UPDATE coach_vod_reviews SET stripe_session_id = $2, updated_at = NOW() WHERE id = $1`,
+    [parseInt(id), stripeSessionId]
+  );
+}
+
+async function markVodPaidBySession(stripeSessionId, paymentIntent) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_vod_reviews
+        SET status = 'paid', stripe_payment_intent = COALESCE($2, stripe_payment_intent), updated_at = NOW()
+      WHERE stripe_session_id = $1 AND status = 'pending'
+      RETURNING *`,
+    [stripeSessionId, paymentIntent || null]
+  );
+  return r.rows[0] || null;
+}
+
+async function markVodCancelledBySession(stripeSessionId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_vod_reviews SET status = 'cancelled', updated_at = NOW()
+      WHERE stripe_session_id = $1 AND status = 'pending' RETURNING *`,
+    [stripeSessionId]
+  );
+  return r.rows[0] || null;
+}
+
+async function markVodRefundedByIntent(paymentIntent) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_vod_reviews SET status = 'refunded', refunded_at = NOW(), updated_at = NOW()
+      WHERE stripe_payment_intent = $1 AND status IN ('paid','in_progress','delivered') RETURNING *`,
+    [paymentIntent]
+  );
+  return r.rows[0] || null;
+}
+
+async function setVodStatus(id, status) {
+  const valid = ['pending','paid','in_progress','delivered','refunded','cancelled'];
+  if (!valid.includes(status)) throw new Error('invalid VOD status');
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_vod_reviews
+        SET status = $2,
+            delivered_at = CASE WHEN $2 = 'delivered' THEN NOW() ELSE delivered_at END,
+            updated_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [parseInt(id), status]
+  );
+  return r.rows[0] || null;
+}
+
+async function addVodNote({ reviewId, tSeconds, text }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coach_vod_review_notes (review_id, t_seconds, text)
+     VALUES ($1,$2,$3) RETURNING *`,
+    [parseInt(reviewId), Math.max(0, parseInt(tSeconds) || 0), String(text || '').slice(0, 2000)]
+  );
+  return r.rows[0];
+}
+
+async function listVodNotes(reviewId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM coach_vod_review_notes WHERE review_id = $1 ORDER BY t_seconds ASC, id ASC`,
+    [parseInt(reviewId)]
+  );
+  return r.rows;
+}
+
+async function deleteVodNote(noteId, reviewId) {
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM coach_vod_review_notes WHERE id = $1 AND review_id = $2 RETURNING id`,
+    [parseInt(noteId), parseInt(reviewId)]
+  );
+  return r.rows[0] || null;
+}
+
+// Coach earnings — monthly aggregate across all revenue streams.
+// `ym` is "YYYY-MM" in the coach's local sense; we compute in UTC because
+// Stripe's reporting is UTC. For each month we sum:
+//   - 1:1 bookings completed in that month
+//   - group session seats captured in that month
+//   - VOD reviews delivered in that month
+// Net = gross − platform_fee − stripe_fee_est. Stripe fee is *estimated*
+// (1.75% + 30c AUD) — Stripe's actual fee lives in the BalanceTransaction
+// API; for an internal dashboard the estimate is close enough.
+function _estStripeFeeCents(amountCents, currency = 'aud') {
+  // AU domestic card pricing approx. Same shape works for USD too.
+  return Math.round(amountCents * 0.0175) + 30;
+}
+
+async function getCoachEarningsMonth({ coachAccountId, ym }) {
+  if (!coachAccountId) throw new Error('coachAccountId required');
+  // Compute window
+  let start, end;
+  if (ym && /^\d{4}-\d{2}$/.test(ym)) {
+    const [y, m] = ym.split('-').map(n => parseInt(n, 10));
+    start = new Date(Date.UTC(y, m - 1, 1));
+    end = new Date(Date.UTC(y, m, 1));
+  } else {
+    const now = new Date();
+    start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  }
+  const p = getPool();
+  const rows = [];
+
+  const b = await p.query(
+    `SELECT id, amount_cents, platform_fee_cents, currency, completed_at, slot_start_at,
+            'booking' AS kind
+       FROM coaching_bookings
+      WHERE coach_account_id = $1 AND status = 'completed'
+        AND completed_at >= $2 AND completed_at < $3
+      ORDER BY completed_at ASC`,
+    [coachAccountId, start.toISOString(), end.toISOString()]
+  );
+  for (const r of b.rows) rows.push({
+    kind: 'booking', id: r.id, when: r.completed_at,
+    amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
+    stripe_fee_cents: _estStripeFeeCents(r.amount_cents, r.currency),
+    currency: r.currency,
+  });
+
+  const g = await p.query(
+    `SELECT s.id, s.amount_cents, s.platform_fee_cents, s.currency, s.captured_at,
+            gs.title, gs.scheduled_at
+       FROM coach_group_session_seats s
+       JOIN coach_group_sessions gs ON gs.id = s.session_id
+      WHERE gs.coach_account_id = $1 AND s.status = 'paid' AND s.captured_at IS NOT NULL
+        AND s.captured_at >= $2 AND s.captured_at < $3`,
+    [coachAccountId, start.toISOString(), end.toISOString()]
+  );
+  for (const r of g.rows) rows.push({
+    kind: 'group_seat', id: r.id, when: r.captured_at, title: r.title,
+    amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
+    stripe_fee_cents: _estStripeFeeCents(r.amount_cents, r.currency),
+    currency: r.currency,
+  });
+
+  const v = await p.query(
+    `SELECT id, price_cents AS amount_cents, platform_fee_cents, currency, delivered_at, match_id
+       FROM coach_vod_reviews
+      WHERE coach_account_id = $1 AND status = 'delivered'
+        AND delivered_at >= $2 AND delivered_at < $3`,
+    [coachAccountId, start.toISOString(), end.toISOString()]
+  );
+  for (const r of v.rows) rows.push({
+    kind: 'vod_review', id: r.id, when: r.delivered_at, match_id: r.match_id,
+    amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
+    stripe_fee_cents: _estStripeFeeCents(r.amount_cents, r.currency),
+    currency: r.currency,
+  });
+
+  rows.sort((a, b) => new Date(a.when) - new Date(b.when));
+  const totals = rows.reduce((acc, r) => {
+    acc.gross += r.amount_cents;
+    acc.platform_fee += r.platform_fee_cents;
+    acc.stripe_fee += r.stripe_fee_cents;
+    return acc;
+  }, { gross: 0, platform_fee: 0, stripe_fee: 0 });
+  totals.net = totals.gross - totals.platform_fee - totals.stripe_fee;
+  return {
+    ym: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`,
+    start: start.toISOString(), end: end.toISOString(),
+    rows, totals,
+  };
+}
+
 // Lifetime platform revenue = sum of platform_fee_cents on completed bookings.
 async function getCoachingPlatformRevenue() {
   const p = getPool();
@@ -18127,6 +18713,37 @@ module.exports = {
   applyCoachSanction,
   listCoachSanctions,
   getCoachingPlatformRevenue,
+  // Task #384 — Coaching v2
+  createGroupSession,
+  getGroupSession,
+  listOpenGroupSessions,
+  listGroupSessionsForCoach,
+  listSeatsForSession,
+  listStudentGroupSeats,
+  createGroupSeat,
+  reserveGroupSeat,
+  attachStripeSessionToGroupSeat,
+  releaseUnattachedGroupSeat,
+  reopenGroupSessionIfRoom,
+  markGroupSeatPaidBySession,
+  markGroupSeatCancelledBySession,
+  markGroupSeatRefundedByIntent,
+  markGroupSeatCapturedByIntent,
+  getGroupSeatById,
+  setGroupSessionStatus,
+  createVodReview,
+  getVodReview,
+  listCoachVodReviews,
+  listStudentVodReviews,
+  setVodReviewStripeSession,
+  markVodPaidBySession,
+  markVodCancelledBySession,
+  markVodRefundedByIntent,
+  setVodStatus,
+  addVodNote,
+  listVodNotes,
+  deleteVodNote,
+  getCoachEarningsMonth,
   addPushSubscription,
   removePushSubscriptionByEndpoint,
   getPushSubscriptionsForAccount,

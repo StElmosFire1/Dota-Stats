@@ -973,6 +973,41 @@ function createServer(startupStatus = {}) {
           } else {
             console.warn('[Stripe] coaching_booking webhook: no booking for session', session.id);
           }
+        } else if (purpose === 'coaching_group_seat') {
+          // Task #384 — group session seat. Same manual-capture pattern as
+          // 1:1 bookings; we flip the seat row to 'paid' and let the coach
+          // capture funds on session completion.
+          const seat = await db.markGroupSeatPaidBySession(session.id, session.payment_intent || null);
+          if (seat) {
+            console.log('[Stripe] Group seat paid (session)', seat.id);
+            try {
+              // Auto-flip the session to 'full' if capacity now reached.
+              const gs = await db.getGroupSession(seat.session_id);
+              if (gs && gs.seats_taken >= gs.capacity && gs.status === 'open') {
+                await db.setGroupSessionStatus(gs.id, 'full').catch(() => {});
+              }
+            } catch (_) {}
+          } else {
+            console.warn('[Stripe] coaching_group_seat webhook: no seat for session', session.id);
+          }
+        } else if (purpose === 'coaching_vod_review') {
+          // Task #384 — async VOD review purchase. Funds held in escrow
+          // until the coach delivers; capture happens then.
+          const row = await db.markVodPaidBySession(session.id, session.payment_intent || null);
+          if (row) {
+            console.log('[Stripe] VOD review paid (session)', row.id);
+            try {
+              const bot = getDiscordBot();
+              if (bot && bot.users && row.coach_account_id) {
+                // Best-effort: notify coach via existing DM channel if available.
+                // No dedicated method — keep it quiet so we don't crash on
+                // bots that don't have this wired up. The dashboard is the
+                // primary surface.
+              }
+            } catch (_) {}
+          } else {
+            console.warn('[Stripe] coaching_vod_review webhook: no row for session', session.id);
+          }
         } else if (purpose === 'verified_badge' || purpose === 'org_sponsorship' || purpose === 'one_off_perk') {
           // Task #157 — Magazine v3 monetization purposes are dispatched to
           // a self-contained handler so the giant webhook switch stays small.
@@ -1369,6 +1404,12 @@ function createServer(startupStatus = {}) {
         if (purpose === 'coaching_booking') {
           const cancelled = await db.markBookingCancelledBySession(session.id).catch(() => null);
           if (cancelled) console.log('[Stripe] Coaching booking async payment failed (slot freed)', cancelled.id);
+        } else if (purpose === 'coaching_group_seat') {
+          const cancelled = await db.markGroupSeatCancelledBySession(session.id).catch(() => null);
+          if (cancelled) console.log('[Stripe] Group seat async payment failed', cancelled.id);
+        } else if (purpose === 'coaching_vod_review') {
+          const cancelled = await db.markVodCancelledBySession(session.id).catch(() => null);
+          if (cancelled) console.log('[Stripe] VOD review async payment failed', cancelled.id);
         }
       } else if (event.type === 'charge.refunded') {
         // Refund handler — match by payment_intent so we revoke the right
@@ -1387,6 +1428,13 @@ function createServer(startupStatus = {}) {
           if (refundedBooking) {
             console.log('[Stripe] Refunded coaching booking', refundedBooking.id);
           }
+          const refundedSeat = await db.markGroupSeatRefundedByIntent(pi).catch(() => null);
+          if (refundedSeat) {
+            console.log('[Stripe] Refunded group seat', refundedSeat.id);
+            await db.reopenGroupSessionIfRoom(refundedSeat.session_id).catch(() => {});
+          }
+          const refundedVod = await db.markVodRefundedByIntent(pi).catch(() => null);
+          if (refundedVod) console.log('[Stripe] Refunded VOD review', refundedVod.id);
         }
       } else if (event.type === 'payment_intent.succeeded') {
         // With manual capture, payment_intent.succeeded only fires AFTER
@@ -1399,6 +1447,12 @@ function createServer(startupStatus = {}) {
         if (intent.metadata?.purpose === 'coaching_booking') {
           const row = await db.markBookingCompletedByIntent(intent.id).catch(() => null);
           if (row) console.log('[Stripe] Coaching booking captured (PI safety net)', row.id);
+        } else if (intent.metadata?.purpose === 'coaching_group_seat') {
+          const seat = await db.markGroupSeatCapturedByIntent(intent.id).catch(() => null);
+          if (seat) console.log('[Stripe] Group seat captured (PI)', seat.id);
+        } else if (intent.metadata?.purpose === 'coaching_vod_review') {
+          // VOD reviews capture on delivery — this is just an audit log.
+          console.log('[Stripe] VOD review PI captured', intent.id);
         }
       } else if (event.type === 'account.updated') {
         // Stripe Connect Express KYC completion. We require BOTH
@@ -1429,6 +1483,15 @@ function createServer(startupStatus = {}) {
           if (cancelled) {
             console.log('[Stripe] Coaching booking checkout expired (slot freed)', cancelled.id);
           }
+        } else if (session.metadata?.purpose === 'coaching_group_seat') {
+          const cancelled = await db.markGroupSeatCancelledBySession(session.id).catch(() => null);
+          if (cancelled) {
+            console.log('[Stripe] Group seat checkout expired', cancelled.id);
+            await db.reopenGroupSessionIfRoom(cancelled.session_id).catch(() => {});
+          }
+        } else if (session.metadata?.purpose === 'coaching_vod_review') {
+          const cancelled = await db.markVodCancelledBySession(session.id).catch(() => null);
+          if (cancelled) console.log('[Stripe] VOD review checkout expired', cancelled.id);
         }
       } else if (event.type === 'payment_intent.canceled') {
         // Backup: payment_intent.cancel is what we call from no-show /
@@ -1439,6 +1502,15 @@ function createServer(startupStatus = {}) {
         if (intent.metadata?.purpose === 'coaching_booking') {
           const refunded = await db.markBookingRefundedByIntent(intent.id).catch(() => null);
           if (refunded) console.log('[Stripe] Coaching booking canceled (PI)', refunded.id);
+        } else if (intent.metadata?.purpose === 'coaching_group_seat') {
+          const refunded = await db.markGroupSeatRefundedByIntent(intent.id).catch(() => null);
+          if (refunded) {
+            console.log('[Stripe] Group seat PI canceled', refunded.id);
+            await db.reopenGroupSessionIfRoom(refunded.session_id).catch(() => {});
+          }
+        } else if (intent.metadata?.purpose === 'coaching_vod_review') {
+          const refunded = await db.markVodRefundedByIntent(intent.id).catch(() => null);
+          if (refunded) console.log('[Stripe] VOD review PI canceled', refunded.id);
         }
       } else if (
         event.type === 'customer.subscription.created' ||
@@ -14015,6 +14087,547 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     } catch (err) {
       console.error('[API] bookings/:id/review:', err.message);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ===================================================================
+  // Task #384 — Coaching v2: group sessions + async VOD review + earnings
+  // ===================================================================
+
+  // List upcoming open group sessions (public-ish — student must sign in
+  // to actually book, but the listing is browseable).
+  router.get('/group-sessions', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const rows = await db.listOpenGroupSessions({ limit: 100 });
+      res.json({ sessions: rows });
+    } catch (err) {
+      console.error('[API] group-sessions:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/group-sessions/:id', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const gs = await db.getGroupSession(parseInt(req.params.id));
+      if (!gs) return res.status(404).json({ error: 'Not found' });
+      // Only the host coach sees the full seat roster (PII); students see
+      // just the count.
+      const accountId = req.session?.accountId;
+      const isHost = accountId && String(accountId) === String(gs.coach_account_id);
+      const seats = isHost ? await db.listSeatsForSession(gs.id) : [];
+      res.json({ session: gs, seats, is_host: isHost });
+    } catch (err) {
+      console.error('[API] group-sessions/:id:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Coach creates a group session. Must be an active coach with a payout
+  // account (we'll send checkout funds destination-charge style).
+  router.post('/me/coach/group-sessions', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoach(accountId);
+      if (!coach || coach.status !== 'active') return res.status(403).json({ error: 'Active coach only' });
+      if (!coach.stripe_account_id) return res.status(400).json({ error: 'Connect a payout account first' });
+      const { title, description, scheduled_at, duration_minutes, capacity, price_per_seat_cents } = req.body || {};
+      if (!title || !scheduled_at || !price_per_seat_cents) {
+        return res.status(400).json({ error: 'title, scheduled_at, price_per_seat_cents required' });
+      }
+      const scheduled = new Date(scheduled_at);
+      if (isNaN(scheduled.getTime()) || scheduled.getTime() < Date.now() + 30 * 60_000) {
+        return res.status(400).json({ error: 'scheduled_at must be ≥ 30 minutes in the future' });
+      }
+      const gs = await db.createGroupSession({
+        coachAccountId: coach.account_id,
+        title, description, scheduledAt: scheduled.toISOString(),
+        durationMinutes: duration_minutes, capacity, pricePerSeatCents: price_per_seat_cents,
+        currency: coach.currency || 'aud',
+      });
+      res.json({ ok: true, session: gs });
+    } catch (err) {
+      console.error('[API] me/coach/group-sessions POST:', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Coach: list own group sessions for management UI.
+  router.get('/me/coach/group-sessions', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoach(accountId);
+      if (!coach) return res.status(403).json({ error: 'Not a coach' });
+      const rows = await db.listGroupSessionsForCoach(coach.account_id);
+      res.json({ sessions: rows });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Coach: cancel a group session. Refunds all paid seats by cancelling
+  // their (uncaptured) PaymentIntents — manual capture means no money
+  // has actually moved, so the auth-release is fee-free.
+  router.post('/me/coach/group-sessions/:id/cancel', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const gs = await db.getGroupSession(parseInt(req.params.id));
+      if (!gs) return res.status(404).json({ error: 'Not found' });
+      if (String(gs.coach_account_id) !== String(accountId)) return res.status(403).json({ error: 'Not your session' });
+      if (['completed', 'cancelled'].includes(gs.status)) return res.status(400).json({ error: 'Already finalised' });
+      const stripe = _stripe();
+      const seats = await db.listSeatsForSession(gs.id);
+      const failed = [];
+      for (const seat of seats) {
+        if (seat.status === 'paid' && seat.stripe_payment_intent && stripe) {
+          try {
+            await stripe.paymentIntents.cancel(seat.stripe_payment_intent);
+            await db.markGroupSeatRefundedByIntent(seat.stripe_payment_intent).catch(() => {});
+          } catch (e) {
+            console.warn('[group-session/cancel] PI cancel failed', seat.id, e.message);
+            failed.push({ seat_id: seat.id, error: e.message });
+          }
+        } else if (seat.status === 'pending') {
+          if (seat.stripe_session_id) {
+            await db.markGroupSeatCancelledBySession(seat.stripe_session_id).catch(() => {});
+          } else {
+            await db.releaseUnattachedGroupSeat(seat.id).catch(() => {});
+          }
+        }
+      }
+      // If any captured-funds-bearing seat failed to refund, do NOT flip the
+      // session to cancelled — the operator needs to retry / reconcile.
+      if (failed.length > 0) {
+        return res.status(502).json({ error: 'Some seats failed to refund — retry or reconcile in Stripe dashboard', failed });
+      }
+      await db.setGroupSessionStatus(gs.id, 'cancelled');
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] group-sessions/cancel:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Coach: mark session completed. Captures all paid seats' PaymentIntents
+  // synchronously so funds actually move to the coach's Connect account.
+  router.post('/me/coach/group-sessions/:id/complete', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const gs = await db.getGroupSession(parseInt(req.params.id));
+      if (!gs) return res.status(404).json({ error: 'Not found' });
+      if (String(gs.coach_account_id) !== String(accountId)) return res.status(403).json({ error: 'Not your session' });
+      if (gs.status === 'completed') return res.json({ ok: true });
+      if (gs.status === 'cancelled') return res.status(400).json({ error: 'Session was cancelled' });
+      const stripe = _stripe();
+      const seats = await db.listSeatsForSession(gs.id);
+      let captured = 0;
+      const failed = [];
+      for (const seat of seats) {
+        if (seat.status !== 'paid' || seat.captured_at) continue;
+        if (!seat.stripe_payment_intent || !stripe) {
+          // Paid seat that can't be captured (missing PI or Stripe down) is
+          // an integrity failure — count it as fail-closed so the coach
+          // can't accidentally finalise a session with uncollected funds.
+          failed.push({ seat_id: seat.id, error: !stripe ? 'Stripe unavailable' : 'Missing payment intent' });
+          continue;
+        }
+        try {
+          await stripe.paymentIntents.capture(seat.stripe_payment_intent);
+          await db.markGroupSeatCapturedByIntent(seat.stripe_payment_intent).catch(() => {});
+          captured++;
+        } catch (e) {
+          console.warn('[group-session/complete] capture failed seat', seat.id, e.message);
+          failed.push({ seat_id: seat.id, error: e.message });
+        }
+      }
+      // Fail-closed: if any paid seat couldn't be captured, leave the
+      // session in its current status so the coach can retry. Captures
+      // that did succeed are already recorded — retry is idempotent.
+      if (failed.length > 0) {
+        return res.status(502).json({
+          error: 'Some seat captures failed — retry or reconcile in Stripe dashboard',
+          captured, failed,
+        });
+      }
+      await db.setGroupSessionStatus(gs.id, 'completed');
+      res.json({ ok: true, captured });
+    } catch (err) {
+      console.error('[API] group-sessions/complete:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Student: join a group session (Stripe Checkout for one seat).
+  router.post('/group-sessions/:id/join', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const studentAccountId = req.session?.accountId;
+      if (!studentAccountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const gs = await db.getGroupSession(parseInt(req.params.id));
+      if (!gs) return res.status(404).json({ error: 'Not found' });
+      if (!['open'].includes(gs.status)) return res.status(400).json({ error: 'Session not open for signups' });
+      if (gs.seats_taken >= gs.capacity) return res.status(400).json({ error: 'Session full' });
+      if (String(gs.coach_account_id) === String(studentAccountId)) {
+        return res.status(400).json({ error: "You can't join your own session" });
+      }
+      const coach = await db.getCoach(gs.coach_account_id);
+      if (!coach?.stripe_account_id) return res.status(400).json({ error: 'Coach payout account missing' });
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured' });
+
+      const commissionBps = await db.resolveCommissionBpsForCoach(coach);
+      const platformFeeCents = Math.round(gs.price_per_seat_cents * (commissionBps / 10000));
+      const currency = (gs.currency || 'aud').toLowerCase();
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+
+      // Atomic seat reservation: row-locks the session, counts pending+paid
+      // seats, rejects if full or duplicate. Seat is inserted with NULL
+      // stripe_session_id and we attach it after Checkout creation. If
+      // Checkout fails we delete the unattached reservation so a transient
+      // Stripe outage can't permanently steal a seat slot.
+      let seat;
+      try {
+        seat = await db.reserveGroupSeat({
+          sessionId: gs.id, studentAccountId,
+          amountCents: gs.price_per_seat_cents,
+          platformFeeCents, currency,
+        });
+      } catch (err) {
+        const status = /already hold/.test(err.message) ? 409 : 400;
+        return res.status(status).json({ error: err.message });
+      }
+
+      let checkout;
+      try {
+        checkout = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          mode: 'payment',
+          line_items: [{
+            price_data: {
+              currency,
+              product_data: { name: `Group session — ${gs.title}`, description: `${gs.duration_minutes}m group coaching seat (up to ${gs.capacity} students).` },
+              unit_amount: gs.price_per_seat_cents,
+            },
+            quantity: 1,
+          }],
+          payment_intent_data: {
+            capture_method: 'manual',
+            application_fee_amount: platformFeeCents,
+            transfer_data: { destination: coach.stripe_account_id },
+            metadata: {
+              purpose: 'coaching_group_seat',
+              group_session_id: String(gs.id),
+              coach_account_id: String(gs.coach_account_id),
+              student_account_id: String(studentAccountId),
+            },
+          },
+          success_url: `${baseUrl}/me/coaching/group?checkout=success`,
+          cancel_url: `${baseUrl}/group-sessions/${gs.id}?checkout=cancelled`,
+          expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+          metadata: {
+            purpose: 'coaching_group_seat',
+            group_session_id: String(gs.id),
+            coach_account_id: String(gs.coach_account_id),
+            student_account_id: String(studentAccountId),
+          },
+        });
+      } catch (err) {
+        await db.releaseUnattachedGroupSeat(seat.id).catch(() => {});
+        await db.reopenGroupSessionIfRoom(gs.id).catch(() => {});
+        throw err;
+      }
+      const attached = await db.attachStripeSessionToGroupSeat(seat.id, checkout.id);
+      if (!attached) {
+        await db.releaseUnattachedGroupSeat(seat.id).catch(() => {});
+        await db.reopenGroupSessionIfRoom(gs.id).catch(() => {});
+        return res.status(500).json({ error: 'Seat reservation race — please retry' });
+      }
+      res.json({ url: checkout.url, seat_id: seat.id });
+    } catch (err) {
+      console.error('[API] group-sessions/:id/join:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Student: list own seats for "My coaching" page.
+  router.get('/me/coaching/group-seats', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const rows = await db.listStudentGroupSeats(accountId);
+      res.json({ seats: rows });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ----- Async VOD review -----
+
+  // Student: request a VOD review from a specific coach. Creates the row
+  // and a Stripe Checkout in escrow; capture lands when the coach delivers.
+  router.post('/coaches/:id/vod-review', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const studentAccountId = req.session?.accountId;
+      if (!studentAccountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoachById(parseInt(req.params.id));
+      if (!coach || coach.status !== 'active') return res.status(404).json({ error: 'Coach unavailable' });
+      if (!coach.stripe_account_id) return res.status(400).json({ error: 'Coach payout account missing' });
+      if (String(coach.account_id) === String(studentAccountId)) {
+        return res.status(400).json({ error: "You can't review your own VOD" });
+      }
+      const { match_id, question, price_cents } = req.body || {};
+      if (!question || String(question).trim().length < 10) {
+        return res.status(400).json({ error: 'question (≥10 chars) required' });
+      }
+      // Pricing: student picks within bounds — coach's hourly rate is the
+      // ceiling, $10 floor. Keeps spam-bidding under control.
+      const price = parseInt(price_cents) || Math.max(2000, Math.round(coach.hourly_rate_cents * 0.5));
+      if (price < 1000 || price > (coach.hourly_rate_cents || 30000)) {
+        return res.status(400).json({ error: `price_cents must be between 1000 and ${coach.hourly_rate_cents}` });
+      }
+      const commissionBps = await db.resolveCommissionBpsForCoach(coach);
+      const platformFeeCents = Math.round(price * (commissionBps / 10000));
+      const currency = (coach.currency || 'aud').toLowerCase();
+
+      const review = await db.createVodReview({
+        coachAccountId: coach.account_id,
+        studentAccountId,
+        matchId: match_id || null,
+        question: String(question).trim(),
+        priceCents: price,
+        platformFeeCents,
+        currency,
+      });
+
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured' });
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const checkout = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency,
+            product_data: { name: `Async VOD review`, description: `Match ${match_id || 'n/a'} — review from ${coach.display_name || 'coach'}.` },
+            unit_amount: price,
+          },
+          quantity: 1,
+        }],
+        payment_intent_data: {
+          capture_method: 'manual',
+          application_fee_amount: platformFeeCents,
+          transfer_data: { destination: coach.stripe_account_id },
+          metadata: {
+            purpose: 'coaching_vod_review',
+            vod_review_id: String(review.id),
+            coach_account_id: String(coach.account_id),
+            student_account_id: String(studentAccountId),
+          },
+        },
+        success_url: `${baseUrl}/me/coaching/vod?checkout=success`,
+        cancel_url: `${baseUrl}/coaches/${coach.id}?checkout=cancelled`,
+        expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+        metadata: {
+          purpose: 'coaching_vod_review',
+          vod_review_id: String(review.id),
+          coach_account_id: String(coach.account_id),
+          student_account_id: String(studentAccountId),
+        },
+      });
+      await db.setVodReviewStripeSession(review.id, checkout.id);
+      res.json({ url: checkout.url, review_id: review.id });
+    } catch (err) {
+      console.error('[API] vod-review POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/me/coaching/vod', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const asStudent = await db.listStudentVodReviews(accountId);
+      const coach = await db.getCoach(accountId);
+      const asCoach = coach ? await db.listCoachVodReviews(coach.account_id) : [];
+      res.json({ as_student: asStudent, as_coach: asCoach });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/vod-reviews/:id', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const v = await db.getVodReview(parseInt(req.params.id));
+      if (!v) return res.status(404).json({ error: 'Not found' });
+      const isParty = [v.coach_account_id, v.student_account_id].map(String).includes(String(accountId));
+      if (!isParty && !_isSu(req)) return res.status(403).json({ error: 'Forbidden' });
+      const notes = await db.listVodNotes(v.id);
+      res.json({ review: v, notes, is_coach: String(v.coach_account_id) === String(accountId) });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Coach: add a timestamped annotation. Coach must be the assigned coach
+  // and the review must be paid+ (not pending/refunded/cancelled).
+  router.post('/vod-reviews/:id/notes', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const v = await db.getVodReview(parseInt(req.params.id));
+      if (!v) return res.status(404).json({ error: 'Not found' });
+      if (String(v.coach_account_id) !== String(accountId)) return res.status(403).json({ error: 'Only the assigned coach can annotate' });
+      if (!['paid', 'in_progress'].includes(v.status)) {
+        return res.status(400).json({ error: `Cannot annotate in status: ${v.status}` });
+      }
+      const note = await db.addVodNote({
+        reviewId: v.id,
+        tSeconds: req.body?.t_seconds,
+        text: req.body?.text,
+      });
+      // First note flips to in_progress so the student sees activity.
+      if (v.status === 'paid') await db.setVodStatus(v.id, 'in_progress').catch(() => {});
+      res.json({ ok: true, note });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/vod-reviews/:id/notes/:noteId', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const v = await db.getVodReview(parseInt(req.params.id));
+      if (!v) return res.status(404).json({ error: 'Not found' });
+      if (String(v.coach_account_id) !== String(accountId)) return res.status(403).json({ error: 'Forbidden' });
+      const removed = await db.deleteVodNote(parseInt(req.params.noteId), v.id);
+      if (!removed) return res.status(404).json({ error: 'Note not found' });
+      res.json({ ok: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Coach: mark VOD delivered. Captures funds, then status=delivered.
+  router.post('/vod-reviews/:id/deliver', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const v = await db.getVodReview(parseInt(req.params.id));
+      if (!v) return res.status(404).json({ error: 'Not found' });
+      if (String(v.coach_account_id) !== String(accountId)) return res.status(403).json({ error: 'Forbidden' });
+      if (!['paid', 'in_progress'].includes(v.status)) return res.status(400).json({ error: `Cannot deliver in status: ${v.status}` });
+      const notes = await db.listVodNotes(v.id);
+      if (notes.length === 0) return res.status(400).json({ error: 'Add at least one annotation before delivering' });
+      const stripe = _stripe();
+      // Strict gating: only flip to 'delivered' if Stripe actually captured.
+      // Otherwise the student is owed money we never collected.
+      if (!v.stripe_payment_intent || !stripe) {
+        return res.status(503).json({ error: 'Payment intent missing — cannot deliver' });
+      }
+      try {
+        await stripe.paymentIntents.capture(v.stripe_payment_intent);
+      } catch (e) {
+        console.warn('[vod-review/deliver] capture failed:', e.message);
+        return res.status(502).json({ error: `Stripe capture failed: ${e.message}` });
+      }
+      await db.setVodStatus(v.id, 'delivered');
+      res.json({ ok: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Student: refund-cancel an undelivered VOD review (paid/in_progress).
+  router.post('/vod-reviews/:id/refund', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const v = await db.getVodReview(parseInt(req.params.id));
+      if (!v) return res.status(404).json({ error: 'Not found' });
+      const isStudent = String(v.student_account_id) === String(accountId);
+      const isCoach = String(v.coach_account_id) === String(accountId);
+      if (!isStudent && !isCoach && !_isSu(req)) return res.status(403).json({ error: 'Forbidden' });
+      if (!['paid', 'in_progress'].includes(v.status)) return res.status(400).json({ error: `Cannot refund in status: ${v.status}` });
+      const stripe = _stripe();
+      // Strict gating: only flip to 'refunded' once Stripe confirms the PI is
+      // released. If PI is missing entirely (e.g. checkout never completed
+      // payment), still mark refunded — there's nothing to release.
+      if (v.stripe_payment_intent && stripe) {
+        try {
+          await stripe.paymentIntents.cancel(v.stripe_payment_intent);
+        } catch (e) {
+          console.warn('[vod-review/refund] cancel failed:', e.message);
+          return res.status(502).json({ error: `Stripe cancel failed: ${e.message}` });
+        }
+        await db.markVodRefundedByIntent(v.stripe_payment_intent).catch(() => {});
+      } else {
+        await db.setVodStatus(v.id, 'refunded');
+      }
+      res.json({ ok: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ----- Coach monthly earnings dashboard -----
+  router.get('/me/coach/earnings', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoach(accountId);
+      if (!coach) return res.status(403).json({ error: 'Not a coach' });
+      const ym = String(req.query.ym || '').trim() || null;
+      const data = await db.getCoachEarningsMonth({ coachAccountId: coach.account_id, ym });
+      res.json(data);
+    } catch (err) {
+      console.error('[API] me/coach/earnings:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/me/coach/earnings.csv', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).send('Not found');
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).send('Sign in');
+      const coach = await db.getCoach(accountId);
+      if (!coach) return res.status(403).send('Not a coach');
+      const ym = String(req.query.ym || '').trim() || null;
+      const data = await db.getCoachEarningsMonth({ coachAccountId: coach.account_id, ym });
+      const esc = (v) => {
+        if (v == null) return '';
+        const s = String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const lines = ['kind,id,when,title_or_match,amount_cents,platform_fee_cents,stripe_fee_cents,net_cents,currency'];
+      for (const r of data.rows) {
+        const net = r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents;
+        lines.push([r.kind, r.id, r.when, r.title || r.match_id || '', r.amount_cents,
+                    r.platform_fee_cents, r.stripe_fee_cents, net, r.currency].map(esc).join(','));
+      }
+      lines.push('');
+      lines.push(`TOTAL,,,,${data.totals.gross},${data.totals.platform_fee},${data.totals.stripe_fee},${data.totals.net},`);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="coach-earnings-${data.ym}.csv"`);
+      res.send(lines.join('\n'));
+    } catch (err) {
+      console.error('[API] me/coach/earnings.csv:', err.message);
+      res.status(500).send(err.message);
     }
   });
 

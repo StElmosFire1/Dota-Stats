@@ -1833,6 +1833,29 @@ async function _postJson(path, body) {
   return data;
 }
 
+// Task #384 — Coaching v2: group sessions, async VOD review, earnings.
+export const listOpenGroupSessions = () => _getJson('/group-sessions');
+export const getGroupSession = (id) => _getJson(`/group-sessions/${id}`);
+export const joinGroupSession = (id) => _postJson(`/group-sessions/${id}/join`, {});
+export const listMyGroupSeats = () => _getJson('/me/coaching/group-seats');
+export const listMyCoachGroupSessions = () => _getJson('/me/coach/group-sessions');
+export const createGroupSession = (payload) => _postJson('/me/coach/group-sessions', payload);
+export const cancelGroupSession = (id) => _postJson(`/me/coach/group-sessions/${id}/cancel`, {});
+export const completeGroupSession = (id) => _postJson(`/me/coach/group-sessions/${id}/complete`, {});
+export const requestVodReview = (coachId, payload) => _postJson(`/coaches/${coachId}/vod-review`, payload);
+export const listMyVodReviews = () => _getJson('/me/coaching/vod');
+export const getVodReview = (id) => _getJson(`/vod-reviews/${id}`);
+export const addVodNote = (id, payload) => _postJson(`/vod-reviews/${id}/notes`, payload);
+export const deleteVodNote = async (reviewId, noteId) => {
+  const res = await fetch(`${BASE}/vod-reviews/${reviewId}/notes/${noteId}`, { method: 'DELETE', credentials: 'same-origin' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || 'Failed');
+  return data;
+};
+export const deliverVodReview = (id) => _postJson(`/vod-reviews/${id}/deliver`, {});
+export const refundVodReview = (id) => _postJson(`/vod-reviews/${id}/refund`, {});
+export const getCoachEarnings = (ym) => _getJson('/me/coach/earnings' + (ym ? `?ym=${ym}` : ''));
+
 // Task #314 / v7.34 — Founders Ring catalog.
 export const listMyFounderRings = () => _getJson('/me/founder-rings');
 export const setEquippedFounderRing = (sku) => _postJson('/me/equipped-ring', { sku });

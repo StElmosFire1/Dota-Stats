@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "7.69",
+    "title": "Coaching v2 — Group sessions, async VOD review, coach earnings (Task #384)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**Group coaching sessions.** Coaches can now schedule one-host / many-student sessions (2–8 seats). New tables `coach_group_sessions` + `coach_group_session_seats` with a partial unique index that prevents one student from holding two live seats on the same session. New `/group-sessions` page lists open upcoming sessions; students click **Join** and pay one seat via Stripe Checkout. Same destination-charge / manual-capture (escrow) pattern as 1:1 bookings — funds sit on Stripe until the coach marks the session complete, at which point all paid seats capture in a single sweep. Cancelling a session refunds every paid seat by cancelling the uncaptured PaymentIntent (no Stripe fees, no money movement). Coaches manage their schedule from the new `/coach/group-sessions` page (create / complete / cancel with confirm dialogs).",
+      "**Async VOD review.** New tables `coach_vod_reviews` + `coach_vod_review_notes`. Student requests a review on `/coaches/:id/vod-review` — picks an optional match ID, writes a question (≥10 chars), sets an offer bounded by `$10 ≤ price ≤ coach.hourly_rate`. Funds escrow until the coach delivers. The coach annotates on `/vod-reviews/:id`: each note has a `t_seconds` timestamp and links into `/replay/:matchId?t=…` so the student can jump straight to the moment in the existing ReplayViewer. Adding the first note auto-flips the review from `paid` to `in_progress` so the student sees activity. Coach hits **Deliver** to capture the PaymentIntent and flip to `delivered`; either party can hit **Refund** before delivery to cancel the PI cleanly.",
+      "**Coach monthly earnings dashboard.** New `/coach/earnings` page shows gross / platform-take / Stripe-fees (estimated at AU domestic-card pricing — 1.75% + 30c) / net for any of the last 12 months, rolled up across all three revenue streams (1:1 bookings, group session seats, VOD reviews). One-click CSV export at `GET /api/me/coach/earnings.csv?ym=YYYY-MM` for accountant hand-off. Aggregation lives in `db.getCoachEarningsMonth()` so any future stream (e.g. tournament coaching, sponsorship payouts) plugs in by appending to one helper.",
+      "**Stripe webhook switch.** Three new purposes wired (`coaching_group_seat`, `coaching_vod_review`) into every relevant event: `checkout.session.completed`, `checkout.session.async_payment_succeeded`/`failed`, `checkout.session.expired`, `charge.refunded`, `payment_intent.succeeded` (safety-net capture for group seats), `payment_intent.canceled`. Group seats expose a `seats_taken >= capacity` auto-flip to `status='full'` on the success path so the listing UI doesn't keep showing a full session as joinable.",
+      "**A11y.** All new clickable shapes use `<button type=\"button\">` with `aria-label`s on icon-only / context-only buttons. Month selectors carry explicit labels; CSV export is a regular `<a download>`. The a11y gate stays green (no new dialog usage — request forms are full-page surfaces, not modals).",
+      "**Edition scope.** Full edition only — community edition routes / paywall gate untouched. Webhook + DB helpers added to `src/db/index.js` + `src/web/server.js`; the community edition's separate copies are deliberately not patched."
+    ]
+  },
+  {
     "version": "7.68",
     "title": "Team v2 — Roster history, scrim scheduler, leagues + bracket (Task #383)",
     "published_at": "2026-05-25",
