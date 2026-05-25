@@ -71,6 +71,11 @@ export default function VodReviewDetail() {
                 Match: <Link to={`/replay/${review.match_id}?vodReview=${review.id}`} style={{ color: 'var(--accent)' }}>#{review.match_id}</Link>
               </div>
             )}
+            {review.replay_url && (
+              <div style={{ fontSize: 13, marginTop: 4 }}>
+                Replay: <a href={review.replay_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>external link ↗</a>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {is_coach && ['paid', 'in_progress'].includes(review.status) && notes.length > 0 && (

@@ -16072,17 +16072,34 @@ async function setGroupSessionStatus(id, status) {
 }
 
 // VOD reviews ---------------------------------------------------------------
-async function createVodReview({ coachAccountId, studentAccountId, matchId, question, priceCents, platformFeeCents, currency = 'aud' }) {
+async function createVodReview({ coachAccountId, studentAccountId, matchId, replayUrl, question, priceCents, platformFeeCents, currency = 'aud' }) {
   if (!coachAccountId || !studentAccountId || !question) throw new Error('createVodReview: required fields missing');
+  if (!matchId && !replayUrl) throw new Error('createVodReview: matchId or replayUrl required');
   const p = getPool();
+  // Additive column for raw-replay uploads (URL to a hosted .dem or Dotabuff/
+  // Stratz/etc link) when the student is reviewing a match the bot didn't
+  // record. Safe to ALTER on every boot — IF NOT EXISTS makes it idempotent.
+  await p.query(`ALTER TABLE coach_vod_reviews ADD COLUMN IF NOT EXISTS replay_url TEXT`).catch(() => {});
   const r = await p.query(
     `INSERT INTO coach_vod_reviews
-       (coach_account_id, student_account_id, match_id, question, price_cents, platform_fee_cents, currency)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+       (coach_account_id, student_account_id, match_id, replay_url, question, price_cents, platform_fee_cents, currency)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [coachAccountId, studentAccountId, matchId ? String(matchId) : null,
+     replayUrl ? String(replayUrl).slice(0, 500) : null,
      String(question).slice(0,4000), parseInt(priceCents), parseInt(platformFeeCents), String(currency).toLowerCase()]
   );
   return r.rows[0];
+}
+
+// Hard-delete a still-pending VOD review — used to clean up orphans when
+// Stripe Checkout creation fails between row insert and session attach.
+async function deletePendingVodReview(id) {
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM coach_vod_reviews WHERE id = $1 AND status = 'pending' AND stripe_session_id IS NULL RETURNING id`,
+    [parseInt(id)]
+  );
+  return r.rows[0] || null;
 }
 
 async function getVodReview(id) {
@@ -18732,6 +18749,7 @@ module.exports = {
   getGroupSeatById,
   setGroupSessionStatus,
   createVodReview,
+  deletePendingVodReview,
   getVodReview,
   listCoachVodReviews,
   listStudentVodReviews,

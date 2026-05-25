@@ -14393,9 +14393,19 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (String(coach.account_id) === String(studentAccountId)) {
         return res.status(400).json({ error: "You can't review your own VOD" });
       }
-      const { match_id, question, price_cents } = req.body || {};
+      const { match_id, replay_url, question, price_cents } = req.body || {};
       if (!question || String(question).trim().length < 10) {
         return res.status(400).json({ error: 'question (≥10 chars) required' });
+      }
+      // Student must provide at least one of: a recorded match id, or a URL
+      // pointing at a hosted replay (.dem link, Dotabuff/Stratz/etc).
+      const mid = (match_id && String(match_id).trim()) || null;
+      const rurl = (replay_url && String(replay_url).trim()) || null;
+      if (!mid && !rurl) {
+        return res.status(400).json({ error: 'Provide a match_id or replay_url' });
+      }
+      if (rurl && !/^https?:\/\//i.test(rurl)) {
+        return res.status(400).json({ error: 'replay_url must be http(s)' });
       }
       // Pricing: student picks within bounds — coach's hourly rate is the
       // ceiling, $10 floor. Keeps spam-bidding under control.
@@ -14410,7 +14420,8 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const review = await db.createVodReview({
         coachAccountId: coach.account_id,
         studentAccountId,
-        matchId: match_id || null,
+        matchId: mid,
+        replayUrl: rurl,
         question: String(question).trim(),
         priceCents: price,
         platformFeeCents,
@@ -14418,40 +14429,52 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       });
 
       const stripe = _stripe();
-      if (!stripe) return res.status(503).json({ error: 'Payments not configured' });
+      if (!stripe) {
+        // Clean up the orphan pending row so it doesn't sit in the DB forever.
+        await db.deletePendingVodReview(review.id).catch(() => {});
+        return res.status(503).json({ error: 'Payments not configured' });
+      }
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
-      const checkout = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        mode: 'payment',
-        line_items: [{
-          price_data: {
-            currency,
-            product_data: { name: `Async VOD review`, description: `Match ${match_id || 'n/a'} — review from ${coach.display_name || 'coach'}.` },
-            unit_amount: price,
+      let checkout;
+      try {
+        checkout = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          mode: 'payment',
+          line_items: [{
+            price_data: {
+              currency,
+              product_data: { name: `Async VOD review`, description: `Match ${mid || rurl || 'n/a'} — review from ${coach.display_name || 'coach'}.` },
+              unit_amount: price,
+            },
+            quantity: 1,
+          }],
+          payment_intent_data: {
+            capture_method: 'manual',
+            application_fee_amount: platformFeeCents,
+            transfer_data: { destination: coach.stripe_account_id },
+            metadata: {
+              purpose: 'coaching_vod_review',
+              vod_review_id: String(review.id),
+              coach_account_id: String(coach.account_id),
+              student_account_id: String(studentAccountId),
+            },
           },
-          quantity: 1,
-        }],
-        payment_intent_data: {
-          capture_method: 'manual',
-          application_fee_amount: platformFeeCents,
-          transfer_data: { destination: coach.stripe_account_id },
+          success_url: `${baseUrl}/me/coaching/vod?checkout=success`,
+          cancel_url: `${baseUrl}/coaches/${coach.id}?checkout=cancelled`,
+          expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
           metadata: {
             purpose: 'coaching_vod_review',
             vod_review_id: String(review.id),
             coach_account_id: String(coach.account_id),
             student_account_id: String(studentAccountId),
           },
-        },
-        success_url: `${baseUrl}/me/coaching/vod?checkout=success`,
-        cancel_url: `${baseUrl}/coaches/${coach.id}?checkout=cancelled`,
-        expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
-        metadata: {
-          purpose: 'coaching_vod_review',
-          vod_review_id: String(review.id),
-          coach_account_id: String(coach.account_id),
-          student_account_id: String(studentAccountId),
-        },
-      });
+        });
+      } catch (e) {
+        // Stripe call failed — delete the still-pending row so the student
+        // can retry cleanly and we don't accumulate orphans.
+        await db.deletePendingVodReview(review.id).catch(() => {});
+        throw e;
+      }
       await db.setVodReviewStripeSession(review.id, checkout.id);
       res.json({ url: checkout.url, review_id: review.id });
     } catch (err) {
