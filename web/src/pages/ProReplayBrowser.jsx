@@ -243,9 +243,24 @@ export default function ProReplayBrowser() {
                     >
                       Analyze in Draft
                     </button>
-                    {m.has_replay && (
+                    {m.has_local_replay ? (
+                      // In-app replay viewer only works when we've also
+                      // recorded + parsed this match locally (timeline
+                      // present in `matches`). Pro-only matches that
+                      // exist solely on OpenDota fall through to the
+                      // external link below so the row action is never
+                      // a dead end.
                       <Link to={`/replay/${m.match_id}`} aria-label={`Open replay viewer for ${m.match_id}`}>Replay</Link>
-                    )}
+                    ) : m.has_replay ? (
+                      <a
+                        href={`https://www.opendota.com/matches/${m.match_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Open match ${m.match_id} on OpenDota (replay available)`}
+                      >
+                        Replay ↗
+                      </a>
+                    ) : null}
                   </td>
                 </tr>
               ))}

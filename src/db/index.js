@@ -16527,6 +16527,11 @@ async function listProMatches({
                       radiant_win, duration, start_time, patch,
                       radiant_picks, dire_picks, radiant_bans, dire_bans,
                       has_replay,
+                      EXISTS (
+                        SELECT 1 FROM matches m
+                        WHERE m.match_id = pro_matches.match_id::text
+                          AND m.game_timeline IS NOT NULL
+                      ) AS has_local_replay,
                       ${LEAGUE_TIER_RANK_SQL} AS league_prestige_rank
                FROM pro_matches
                WHERE ${where.join(' AND ')}
