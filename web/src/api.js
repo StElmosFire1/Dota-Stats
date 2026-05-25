@@ -2003,8 +2003,9 @@ export const generateLeagueBracket = (leagueId) =>
   _postJson(`/leagues/${leagueId}/generate-bracket`, {});
 export const setLeagueMatchWinner = (leagueMatchId, payload) =>
   _postJson(`/league-matches/${leagueMatchId}/winner`, payload);
-export const attachMatchToLeague = (matchId, league_id) =>
-  _postJson(`/matches/${matchId}/attach-league`, { league_id });
+export const attachMatchToLeague = (matchId, payload) =>
+  _postJson(`/matches/${matchId}/attach-league`,
+    typeof payload === 'object' && payload !== null ? payload : { league_id: payload });
 export const getActiveWeeklyChallenges = () => _getJson('/weekly-challenges/active');
 export const getMyWeeklyChallenges = () => _getJson('/me/weekly-challenges').catch(() => ({ challenges: [] }));
 export const claimWeeklyChallenge = (id) => _postJson(`/weekly-challenges/${id}/claim`, {});

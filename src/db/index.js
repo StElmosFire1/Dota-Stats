@@ -2400,6 +2400,10 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_league_matches_league ON league_matches(league_id, bracket, round, slot)`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS league_id INTEGER REFERENCES leagues(id) ON DELETE SET NULL`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league_id) WHERE league_id IS NOT NULL`);
+    // Task #383 r3 — let inhouse sessions carry an optional league_id so the
+    // captain/operator can tag a lobby up-front and have the recorded match
+    // inherit the league association at /inhouse/:id/complete time.
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS league_id INTEGER REFERENCES leagues(id) ON DELETE SET NULL`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS team_upkeep_payments (
@@ -10690,12 +10694,12 @@ async function updateSignupRequest(id, { status, adminNotes, reviewedBy }) {
 // Inhouse Sessions (FACEIT-style match accept + draft + DS flow)
 // ============================================================
 
-async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60, minPlayers = 10, lobbyFillSeconds = 30, draftPickSeconds = 30, tenantId = null } = {}) {
+async function createInhouseSession({ captainMode = 'highest_rank', createdBy = null, notes = null, acceptPhaseSeconds = 60, minPlayers = 10, lobbyFillSeconds = 30, draftPickSeconds = 30, tenantId = null, leagueId = null } = {}) {
   const p = getPool();
   const r = await p.query(
-    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds, min_players, lobby_fill_seconds, draft_pick_seconds, tenant_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [captainMode, createdBy, notes, acceptPhaseSeconds, minPlayers, lobbyFillSeconds, draftPickSeconds, tenantId]
+    `INSERT INTO inhouse_sessions (captain_mode, created_by, notes, accept_phase_seconds, min_players, lobby_fill_seconds, draft_pick_seconds, tenant_id, league_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [captainMode, createdBy, notes, acceptPhaseSeconds, minPlayers, lobbyFillSeconds, draftPickSeconds, tenantId, leagueId]
   );
   return r.rows[0];
 }
@@ -10921,7 +10925,7 @@ function listVolunteerAccountIds(volunteersObj, validAccountIdSet = null) {
 
 async function updateInhouseSession(id, fields) {
   const p = getPool();
-  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes','captain_volunteers','auto_balance_meta','draft_pick_seconds','draft_pick_deadline_at'];
+  const allowed = ['status','captain_mode','match_password','server_ip','server_port','match_id','captain1_account_id','captain2_account_id','team1_is_radiant','accept_phase_starts_at','accept_phase_seconds','started_at','completed_at','notes','min_players','lobby_fill_seconds','auto_start_at','captain_mode_votes','captain_volunteers','auto_balance_meta','draft_pick_seconds','draft_pick_deadline_at','league_id'];
   const sets = [];
   const vals = [];
   for (const k of Object.keys(fields)) {

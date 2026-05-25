@@ -9079,7 +9079,7 @@ NOTES
 
   router.post('/inhouse', requireSuperuser, express.json(), async (req, res) => {
     try {
-      const { captainMode, acceptPhaseSeconds, notes, minPlayers, lobbyFillSeconds, draftPickSeconds } = req.body || {};
+      const { captainMode, acceptPhaseSeconds, notes, minPlayers, lobbyFillSeconds, draftPickSeconds, leagueId } = req.body || {};
       const session = await db.createInhouseSession({
         captainMode: captainMode || 'highest_rank',
         acceptPhaseSeconds: parseInt(acceptPhaseSeconds || '60', 10),
@@ -9090,6 +9090,10 @@ NOTES
         createdBy: req.session?.displayName || 'admin',
         // Task #333 — Admin-created session inherits the host tenant.
         tenantId: req.tenant?.id || null,
+        // Task #383 r3 — optional league tag at lobby-creation time so the
+        // recorded match inherits the league_id when /inhouse/:id/complete
+        // runs.
+        leagueId: Number.isFinite(parseInt(leagueId, 10)) ? parseInt(leagueId, 10) : null,
       });
       res.json({ session });
     } catch (err) {
@@ -10048,6 +10052,13 @@ NOTES
         match_id: matchId,
         completed_at: new Date(),
       });
+      // Task #383 r3 — if the lobby was tagged with a league at creation
+      // time, propagate that league_id onto matches.league_id so the
+      // league standings and bracket can pick it up without a manual
+      // operator step. Best-effort — never fails the complete.
+      if (matchId && session?.league_id) {
+        try { await db.attachMatchToLeague({ matchId, leagueId: session.league_id }); } catch (_) {}
+      }
 
       // v5.75: re-queue any players who were in the lobby but not picked /
       // not in the active match (team = 0 OR declined). They get auto-rolled
@@ -14946,7 +14957,9 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const team = await db.updateTeamProfile(teamId, accountId, req.body || {});
       res.json({ team });
     } catch (e) {
-      if (e.code === 'FORBIDDEN') return res.status(403).json({ error: e.message });
+      if (e.code === 'FORBIDDEN')   return res.status(403).json({ error: e.message });
+      if (e.code === 'BAD_REQUEST') return res.status(400).json({ error: e.message });
+      if (e.code === 'CONFLICT')    return res.status(409).json({ error: e.message });
       res.status(500).json({ error: e.message });
     }
   });
@@ -15192,7 +15205,20 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const leagueId = req.body?.league_id != null ? parseInt(req.body.league_id, 10) : null;
       const row = await db.attachMatchToLeague({ matchId, leagueId });
       if (!row) return res.status(404).json({ error: 'Match not found.' });
-      res.json(row);
+      // Task #383 r3 — operator-driven auto-fill of a specific bracket
+      // slot. If the operator picked a league_match (slot) + winning team,
+      // record the winner against that slot too — this is the explicit
+      // mapping workflow that lets the bracket update from a recorded
+      // match without us having to derive team_a/team_b from the match.
+      let bracketUpdate = null;
+      const leagueMatchId = req.body?.league_match_id != null ? parseInt(req.body.league_match_id, 10) : null;
+      const winnerTeamId  = req.body?.winner_team_id  != null ? parseInt(req.body.winner_team_id,  10) : null;
+      if (Number.isFinite(leagueMatchId) && Number.isFinite(winnerTeamId)) {
+        try {
+          bracketUpdate = await db.setLeagueMatchWinner({ leagueMatchId, winnerTeamId, matchId });
+        } catch (be) { bracketUpdate = { error: be.message }; }
+      }
+      res.json({ ...row, bracketUpdate });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

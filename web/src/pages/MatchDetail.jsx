@@ -3815,18 +3815,40 @@ function LeagueAttachControl({ matchId, currentLeagueId }) {
   const { isSuperuser } = useSuperuser();
   const [leagues, setLeagues] = React.useState([]);
   const [picked, setPicked] = React.useState(currentLeagueId ? String(currentLeagueId) : '');
+  const [leagueDetail, setLeagueDetail] = React.useState(null);
+  const [slotId, setSlotId] = React.useState('');
+  const [winnerId, setWinnerId] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState('');
   React.useEffect(() => {
     if (!isSuperuser) return;
     listLeagues().then(d => setLeagues(d.leagues || [])).catch(() => {});
   }, [isSuperuser]);
+  React.useEffect(() => {
+    setSlotId(''); setWinnerId(''); setLeagueDetail(null);
+    if (!picked) return;
+    import('../api').then(api => api.getLeague(picked)).then(setLeagueDetail).catch(() => {});
+  }, [picked]);
   if (!isSuperuser) return null;
+  const openSlots = (leagueDetail?.matches || []).filter(m => m.team_a_id && m.team_b_id && !m.winner_team_id);
+  const selectedSlot = openSlots.find(s => String(s.id) === slotId);
+  const teamName = (id) => {
+    const t = (leagueDetail?.teams || []).find(x => x.team_id === id);
+    return t ? `${t.name || t.tag || ('Team ' + id)}` : ('Team ' + id);
+  };
   const onSave = async () => {
     setBusy(true); setMsg('');
     try {
-      await attachMatchToLeague(matchId, picked ? parseInt(picked, 10) : null);
-      setMsg('✅ Saved');
+      const payload = { league_id: picked ? parseInt(picked, 10) : null };
+      if (slotId && winnerId) {
+        payload.league_match_id = parseInt(slotId, 10);
+        payload.winner_team_id  = parseInt(winnerId, 10);
+      }
+      const r = await attachMatchToLeague(matchId, payload);
+      const slotMsg = r?.bracketUpdate?.error
+        ? ' — bracket: ' + r.bracketUpdate.error
+        : (r?.bracketUpdate?.ok ? ' — bracket cell updated' : '');
+      setMsg('✅ Saved' + slotMsg);
     } catch (e) { setMsg('❌ ' + e.message); }
     finally { setBusy(false); }
   };
@@ -3842,6 +3864,29 @@ function LeagueAttachControl({ matchId, currentLeagueId }) {
           <option key={l.id} value={l.id}>{l.name} ({l.format})</option>
         ))}
       </select>
+      {picked && openSlots.length > 0 && (
+        <>
+          <label htmlFor="match-league-slot" style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Bracket slot:</label>
+          <select id="match-league-slot" value={slotId} onChange={e => { setSlotId(e.target.value); setWinnerId(''); }}
+            style={{ background: '#0d1117', color: '#e0e0e0', border: '1px solid #444', padding: '0.35rem 0.6rem', borderRadius: 4, fontSize: '0.85rem' }}>
+            <option value="">— none —</option>
+            {openSlots.map(s => (
+              <option key={s.id} value={s.id}>R{s.round} · {teamName(s.team_a_id)} vs {teamName(s.team_b_id)}</option>
+            ))}
+          </select>
+          {selectedSlot && (
+            <>
+              <label htmlFor="match-league-winner" style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Winner:</label>
+              <select id="match-league-winner" value={winnerId} onChange={e => setWinnerId(e.target.value)}
+                style={{ background: '#0d1117', color: '#e0e0e0', border: '1px solid #444', padding: '0.35rem 0.6rem', borderRadius: 4, fontSize: '0.85rem' }}>
+                <option value="">— pick —</option>
+                <option value={selectedSlot.team_a_id}>{teamName(selectedSlot.team_a_id)}</option>
+                <option value={selectedSlot.team_b_id}>{teamName(selectedSlot.team_b_id)}</option>
+              </select>
+            </>
+          )}
+        </>
+      )}
       <button type="button" onClick={onSave} disabled={busy}
         style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.35rem 0.9rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
         {busy ? 'Saving…' : 'Save'}
