@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { getProMatches, getProMatchLeagues, getProMatchPatches } from '../api';
 import { getHeroName, getHeroImageUrl, ALL_HERO_IDS } from '../heroNames';
 import SortableTh from '../components/SortableTh';
@@ -244,14 +244,7 @@ export default function ProReplayBrowser() {
                       Analyze in Draft
                     </button>
                     {m.has_replay && (
-                      <a
-                        href={`https://www.opendota.com/matches/${m.match_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label={`Open match ${m.match_id} on OpenDota (replay available)`}
-                      >
-                        Replay
-                      </a>
+                      <Link to={`/replay/${m.match_id}`} aria-label={`Open replay viewer for ${m.match_id}`}>Replay</Link>
                     )}
                   </td>
                 </tr>

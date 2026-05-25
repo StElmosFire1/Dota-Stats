@@ -13,7 +13,7 @@ import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
 // lobby-only cosmetic; see web/src/lib/voicePack.js for the rationale.
 // The hook file stays on disk for now in case we want to reuse the
 // polling shape for a different in-website-only event class.
-import { FeatureFlagsProvider, useFeatureFlag } from './context/FeatureFlagsContext';
+import { FeatureFlagsProvider, useFeatureFlag, useFeatureFlags } from './context/FeatureFlagsContext';
 import WelcomeModal from './components/WelcomeModal';
 import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
@@ -39,7 +39,15 @@ const ProReplayBrowser = lazy(() => import('./pages/ProReplayBrowser'));
 // link would still mount the page and surface an error toast — this
 // guard redirects home instead so the surface is *invisible* in `off`.
 function ProReplaysGuard() {
-  const enabled = useFeatureFlag('pro_replay_browser');
+  const { flags, loading } = useFeatureFlags();
+  // Hold the redirect until the resolved flag map has arrived. Without
+  // this we'd briefly mount ProReplayBrowser during the initial flag
+  // fetch (useFeatureFlag defaults unknown keys to true), defeating the
+  // "fully invisible when off" intent.
+  if (loading) return null;
+  const enabled = Object.prototype.hasOwnProperty.call(flags, 'pro_replay_browser')
+    ? Boolean(flags.pro_replay_browser)
+    : true;
   if (!enabled) return <Navigate to="/" replace />;
   return <ProReplayBrowser />;
 }
