@@ -1025,7 +1025,8 @@ async function init() {
          ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on'),
          ('coaching_marketplace', 'on', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.'),
          ('chat_log_visible', 'preview', 'Task #363 — chat + chat-wheel log on /match/:id. preview = admins/superusers only; on = everyone.'),
-         ('public_api', 'preview', 'Task #371 — public /v1 API + outbound webhooks. preview = superuser keys only; on = available to all users (free + Pro tiers).')
+         ('public_api', 'preview', 'Task #371 — public /v1 API + outbound webhooks. preview = superuser keys only; on = available to all users (free + Pro tiers).'),
+         ('pro_replay_browser', 'preview', 'Task #378 — searchable browser of recent OpenDota pro matches with draft analyze + replay deep-links. preview = superuser only; on = everyone.')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -2331,6 +2332,42 @@ async function init() {
     // Season pass purchases — record direct self-purchases (not just gifts).
     await p.query(`ALTER TABLE season_pass_purchases ADD COLUMN IF NOT EXISTS amount_cents INTEGER`);
     await p.query(`ALTER TABLE season_pass_purchases ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'aud'`);
+
+    // Task #378 — Pro replay browser. Cached snapshot of recent OpenDota pro
+    // matches so the frontend filter UI doesn't hit the upstream API directly
+    // (1 req/sec rate limit + caches stale by minutes anyway). Synced every
+    // ~6h by src/api/proMatchSyncer.js; rows are append-only / upsert by id.
+    // picks/bans/players are stored as JSONB blobs so we can render the full
+    // draft without a second OpenDota fetch.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS pro_matches (
+        match_id BIGINT PRIMARY KEY,
+        league_id INTEGER,
+        league_name TEXT,
+        league_tier TEXT,
+        radiant_team_id INTEGER,
+        radiant_team_name TEXT,
+        dire_team_id INTEGER,
+        dire_team_name TEXT,
+        radiant_win BOOLEAN,
+        duration INTEGER,
+        start_time BIGINT,
+        patch INTEGER,
+        radiant_picks JSONB NOT NULL DEFAULT '[]'::jsonb,
+        dire_picks JSONB NOT NULL DEFAULT '[]'::jsonb,
+        radiant_bans JSONB NOT NULL DEFAULT '[]'::jsonb,
+        dire_bans JSONB NOT NULL DEFAULT '[]'::jsonb,
+        players JSONB NOT NULL DEFAULT '[]'::jsonb,
+        has_replay BOOLEAN NOT NULL DEFAULT FALSE,
+        details_fetched BOOLEAN NOT NULL DEFAULT FALSE,
+        synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_matches_start ON pro_matches(start_time DESC)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_matches_league ON pro_matches(league_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_matches_details ON pro_matches(details_fetched)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_matches_picks_gin ON pro_matches USING GIN (radiant_picks)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_matches_dpicks_gin ON pro_matches USING GIN (dire_picks)`);
 
     console.log('[DB] Schema migrations applied.');
     return true;
@@ -16308,12 +16345,194 @@ async function listRecentWebhookDeliveries({ accountId, limit = 25 }) {
 }
 // ===== /Task #371 =====
 
+// ===== Task #378 — Pro replay browser =====
+//
+// Cached snapshot of recent OpenDota pro matches. The sync job
+// (src/api/proMatchSyncer.js) calls upsertProMatchHeader on each entry
+// from /proMatches, then upsertProMatchDetails after fetching /matches/:id
+// for picks/bans + players. The list/get helpers below back the
+// /api/pro-matches frontend.
+async function upsertProMatchHeader(row) {
+  if (!row || row.match_id == null) return null;
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO pro_matches (
+       match_id, league_id, league_name, league_tier,
+       radiant_team_id, radiant_team_name, dire_team_id, dire_team_name,
+       radiant_win, duration, start_time, synced_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW())
+     ON CONFLICT (match_id) DO UPDATE SET
+       league_id = COALESCE(EXCLUDED.league_id, pro_matches.league_id),
+       league_name = COALESCE(EXCLUDED.league_name, pro_matches.league_name),
+       league_tier = COALESCE(EXCLUDED.league_tier, pro_matches.league_tier),
+       radiant_team_id = COALESCE(EXCLUDED.radiant_team_id, pro_matches.radiant_team_id),
+       radiant_team_name = COALESCE(EXCLUDED.radiant_team_name, pro_matches.radiant_team_name),
+       dire_team_id = COALESCE(EXCLUDED.dire_team_id, pro_matches.dire_team_id),
+       dire_team_name = COALESCE(EXCLUDED.dire_team_name, pro_matches.dire_team_name),
+       radiant_win = COALESCE(EXCLUDED.radiant_win, pro_matches.radiant_win),
+       duration = COALESCE(EXCLUDED.duration, pro_matches.duration),
+       start_time = COALESCE(EXCLUDED.start_time, pro_matches.start_time),
+       synced_at = NOW()
+     RETURNING match_id`,
+    [
+      String(row.match_id),
+      row.league_id ?? null,
+      row.league_name ?? null,
+      row.league_tier ?? null,
+      row.radiant_team_id ?? null,
+      row.radiant_team_name ?? null,
+      row.dire_team_id ?? null,
+      row.dire_team_name ?? null,
+      typeof row.radiant_win === 'boolean' ? row.radiant_win : null,
+      row.duration ?? null,
+      row.start_time ?? null,
+    ]
+  );
+  return r.rows[0] || null;
+}
+
+async function upsertProMatchDetails(matchId, details) {
+  if (matchId == null || !details) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE pro_matches SET
+       radiant_picks = $2::jsonb,
+       dire_picks = $3::jsonb,
+       radiant_bans = $4::jsonb,
+       dire_bans = $5::jsonb,
+       players = $6::jsonb,
+       patch = COALESCE($7, patch),
+       has_replay = COALESCE($8, has_replay),
+       radiant_win = COALESCE($9, radiant_win),
+       duration = COALESCE($10, duration),
+       start_time = COALESCE($11, start_time),
+       details_fetched = TRUE,
+       synced_at = NOW()
+     WHERE match_id = $1
+     RETURNING match_id`,
+    [
+      String(matchId),
+      JSON.stringify(details.radiant_picks || []),
+      JSON.stringify(details.dire_picks || []),
+      JSON.stringify(details.radiant_bans || []),
+      JSON.stringify(details.dire_bans || []),
+      JSON.stringify(details.players || []),
+      details.patch ?? null,
+      typeof details.has_replay === 'boolean' ? details.has_replay : null,
+      typeof details.radiant_win === 'boolean' ? details.radiant_win : null,
+      details.duration ?? null,
+      details.start_time ?? null,
+    ]
+  );
+  return r.rows[0] || null;
+}
+
+async function listProMatchesAwaitingDetails(limit = 25) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT match_id FROM pro_matches
+     WHERE details_fetched = FALSE
+     ORDER BY start_time DESC NULLS LAST, match_id DESC
+     LIMIT $1`,
+    [Math.min(Math.max(1, limit | 0), 200)]
+  );
+  return r.rows.map((row) => String(row.match_id));
+}
+
+async function listProMatches({
+  leagueId = null,
+  teamId = null,
+  heroId = null,
+  patch = null,
+  search = null,
+  limit = 50,
+  offset = 0,
+} = {}) {
+  const p = getPool();
+  const args = [];
+  const where = ['details_fetched = TRUE'];
+  if (leagueId != null) { args.push(Number(leagueId)); where.push(`league_id = $${args.length}`); }
+  if (teamId != null) {
+    args.push(Number(teamId));
+    where.push(`(radiant_team_id = $${args.length} OR dire_team_id = $${args.length})`);
+  }
+  if (heroId != null) {
+    // Picks blob is `[{hero_id, player_slot, ...}, ...]`. Use the GIN index
+    // via @> for the radiant side and a parallel check for dire.
+    args.push(JSON.stringify([{ hero_id: Number(heroId) }]));
+    where.push(`(radiant_picks @> $${args.length}::jsonb OR dire_picks @> $${args.length}::jsonb)`);
+  }
+  if (patch != null) { args.push(Number(patch)); where.push(`patch = $${args.length}`); }
+  if (search) {
+    args.push(`%${String(search).toLowerCase()}%`);
+    where.push(`(LOWER(COALESCE(league_name,'')) LIKE $${args.length}
+              OR LOWER(COALESCE(radiant_team_name,'')) LIKE $${args.length}
+              OR LOWER(COALESCE(dire_team_name,'')) LIKE $${args.length})`);
+  }
+  args.push(Math.min(Math.max(1, limit | 0), 200));
+  const limitIdx = args.length;
+  args.push(Math.max(0, offset | 0));
+  const offsetIdx = args.length;
+  const sql = `SELECT match_id, league_id, league_name, league_tier,
+                      radiant_team_id, radiant_team_name,
+                      dire_team_id, dire_team_name,
+                      radiant_win, duration, start_time, patch,
+                      radiant_picks, dire_picks, radiant_bans, dire_bans,
+                      has_replay
+               FROM pro_matches
+               WHERE ${where.join(' AND ')}
+               ORDER BY start_time DESC NULLS LAST, match_id DESC
+               LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+  const r = await p.query(sql, args);
+  return r.rows.map((row) => ({ ...row, match_id: String(row.match_id) }));
+}
+
+async function getProMatch(matchId) {
+  if (matchId == null) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT match_id, league_id, league_name, league_tier,
+            radiant_team_id, radiant_team_name,
+            dire_team_id, dire_team_name,
+            radiant_win, duration, start_time, patch,
+            radiant_picks, dire_picks, radiant_bans, dire_bans,
+            players, has_replay, details_fetched, synced_at
+     FROM pro_matches WHERE match_id = $1`,
+    [String(matchId)]
+  );
+  if (!r.rows[0]) return null;
+  return { ...r.rows[0], match_id: String(r.rows[0].match_id) };
+}
+
+async function listProMatchLeagues({ limit = 100 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT league_id, league_name, league_tier, COUNT(*)::int AS match_count,
+            MAX(start_time) AS latest_start
+     FROM pro_matches
+     WHERE league_id IS NOT NULL AND details_fetched = TRUE
+     GROUP BY league_id, league_name, league_tier
+     ORDER BY latest_start DESC NULLS LAST
+     LIMIT $1`,
+    [Math.min(Math.max(1, limit | 0), 500)]
+  );
+  return r.rows;
+}
+// ===== /Task #378 =====
+
 module.exports = {
   init,
   initSchema: init,
   getPool,
   recordCronHeartbeat,
   listCronHeartbeats,
+  // Task #378 — Pro replay browser
+  upsertProMatchHeader,
+  upsertProMatchDetails,
+  listProMatchesAwaitingDetails,
+  listProMatches,
+  getProMatch,
+  listProMatchLeagues,
   // Task #371
   createApiKey,
   listApiKeysForAccount,

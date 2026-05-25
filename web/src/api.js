@@ -482,6 +482,30 @@ export async function getPlayerItemBenchmarks(accountId, seasonId = null) {
   return r.json();
 }
 
+// Task #378 — Pro replay browser.
+export async function getProMatches(filters = {}) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v == null || v === '') continue;
+    qs.set(k, String(v));
+  }
+  const r = await fetch(`/api/pro-matches${qs.toString() ? `?${qs}` : ''}`, { credentials: 'same-origin' });
+  if (r.status === 404) throw new Error('Pro replay browser is disabled');
+  if (r.status === 403) throw new Error('Pro replay browser is in preview — superuser only');
+  if (!r.ok) throw new Error('Failed to load pro matches');
+  return r.json();
+}
+export async function getProMatchLeagues() {
+  const r = await fetch('/api/pro-matches/leagues', { credentials: 'same-origin' });
+  if (!r.ok) throw new Error('Failed to load pro leagues');
+  return r.json();
+}
+export async function getProMatch(matchId) {
+  const r = await fetch(`/api/pro-matches/${matchId}`, { credentials: 'same-origin' });
+  if (!r.ok) throw new Error('Failed to load pro match');
+  return r.json();
+}
+
 export async function getPlayerHeroItems(accountId) {
   return fetchJson(`/players/${accountId}/hero-items`);
 }

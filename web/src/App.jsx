@@ -31,6 +31,7 @@ const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
 const Heroes = lazy(() => import('./pages/Heroes'));
 const Draft = lazy(() => import('./pages/Draft'));
 const DraftAssistant = lazy(() => import('./pages/DraftAssistant'));
+const ProReplayBrowser = lazy(() => import('./pages/ProReplayBrowser'));
 const Players = lazy(() => import('./pages/Players'));
 const OverallStats = lazy(() => import('./pages/OverallStats'));
 const PositionStats = lazy(() => import('./pages/PositionStats'));
@@ -691,6 +692,7 @@ function Nav() {
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
+          <DropdownItem to="/pro-replays">Pro Replay Browser</DropdownItem>
           <DropdownItem to="/records">Records</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
@@ -1137,6 +1139,7 @@ export default function App() {
                 <Route path="/compare" element={<PlayerTools />} />
                 <Route path="/draft" element={<Draft />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
+                <Route path="/pro-replays" element={<ProReplayBrowser />} />
                 <Route path="/draft-stats" element={<Draft />} />
                 <Route path="/hero-breakdown" element={<Heroes defaultTab="breakdown" />} />
                 <Route path="/hero-position-meta" element={<Heroes defaultTab="meta" />} />

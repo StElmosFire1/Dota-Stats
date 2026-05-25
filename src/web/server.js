@@ -6504,6 +6504,60 @@ NOTES
     }
   });
 
+  // Task #378 — Pro replay browser. Gated by the `pro_replay_browser`
+  // feature flag: state=preview limits the routes to superusers (so we can
+  // dogfood the surface before launch); state=on opens them to everyone;
+  // state=off returns 404 so a probe doesn't even reveal the route exists.
+  async function _proReplayBrowserGate(req, res) {
+    const flag = await db.getFeatureFlag('pro_replay_browser').catch(() => null);
+    if (!flag || flag.state === 'off') { res.status(404).json({ error: 'Not found' }); return false; }
+    if (flag.state === 'preview' && !req.session?.isSuperuser) {
+      res.status(403).json({ error: 'Pro replay browser is in preview — superuser only.' });
+      return false;
+    }
+    return true;
+  }
+  router.get('/pro-matches', async (req, res) => {
+    try {
+      if (!(await _proReplayBrowserGate(req, res))) return;
+      const toInt = (v) => (v == null || v === '' ? null : parseInt(v, 10));
+      const rows = await db.listProMatches({
+        leagueId: toInt(req.query.league_id),
+        teamId:   toInt(req.query.team_id),
+        heroId:   toInt(req.query.hero_id),
+        patch:    toInt(req.query.patch),
+        search:   req.query.q ? String(req.query.q).slice(0, 80) : null,
+        limit:    Math.min(parseInt(req.query.limit || '50', 10) || 50, 200),
+        offset:   Math.max(parseInt(req.query.offset || '0', 10) || 0, 0),
+      });
+      res.json({ matches: rows });
+    } catch (err) {
+      console.error('[API] pro-matches list:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  router.get('/pro-matches/leagues', async (req, res) => {
+    try {
+      if (!(await _proReplayBrowserGate(req, res))) return;
+      const leagues = await db.listProMatchLeagues({ limit: 200 });
+      res.json({ leagues });
+    } catch (err) {
+      console.error('[API] pro-matches leagues:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  router.get('/pro-matches/:matchId', async (req, res) => {
+    try {
+      if (!(await _proReplayBrowserGate(req, res))) return;
+      const row = await db.getProMatch(req.params.matchId);
+      if (!row) return res.status(404).json({ error: 'Pro match not found' });
+      res.json(row);
+    } catch (err) {
+      console.error('[API] pro-matches get:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Task #377 — per-player item benchmarks + seasonal baseline.
   router.get('/players/:accountId/item-benchmarks', async (req, res) => {
     try {

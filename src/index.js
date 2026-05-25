@@ -220,6 +220,25 @@ async function main() {
     console.log('[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)');
   }
 
+  // Task #378 — Pro replay browser sync. Polls OpenDota /proMatches every
+  // ~6h and drains a per-match detail queue (picks/bans/players) at 1 req/s
+  // — gated on the `pro_replay_browser` feature flag state being non-off
+  // (preview or on) so we don't waste OpenDota quota when the surface is
+  // turned off entirely. Failures here never block the bot from starting.
+  try {
+    const db = require('./db');
+    const flag = await db.getFeatureFlag('pro_replay_browser').catch(() => null);
+    if (flag && flag.state !== 'off') {
+      const { getProMatchSyncer } = require('./api/proMatchSyncer');
+      getProMatchSyncer().start();
+      console.log(`[Startup] Pro match syncer: started (flag=${flag.state})`);
+    } else {
+      console.log('[Startup] Pro match syncer: skipped (pro_replay_browser flag is off)');
+    }
+  } catch (err) {
+    console.warn('[Startup] Pro match syncer init failed:', err.message);
+  }
+
   // --- Start Discord ---
   try {
     await bot.start();

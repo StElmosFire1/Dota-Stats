@@ -87,6 +87,46 @@ class OpenDotaClient {
     }
   }
 
+  // Task #378 — Pro replay browser. Fetch the rolling /proMatches feed.
+  // OpenDota returns up to 100 entries per page, paginated via
+  // less_than_match_id. Each entry has the header fields (teams, league,
+  // start, duration, radiant_win) but no picks/bans — those come from
+  // getMatchRaw(matchId) below.
+  async getProMatches(lessThanMatchId = null) {
+    await this._rateLimit();
+    try {
+      const qs = lessThanMatchId ? `?less_than_match_id=${lessThanMatchId}` : '';
+      const res = await fetch(`${OPENDOTA_API}/proMatches${qs}`);
+      if (!res.ok) throw new Error(`OpenDota /proMatches error: ${res.status}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.error('[OpenDota] proMatches fetch error:', err.message);
+      return [];
+    }
+  }
+
+  // Raw /matches/:id (unnormalized) — needed for picks_bans, players[].hero_id,
+  // patch, replay_url. Mirrors getMatch but returns the upstream shape so
+  // proMatchSyncer can split picks vs bans by team and pull hero ids straight
+  // through.
+  async getMatchRaw(matchId) {
+    await this._rateLimit();
+    try {
+      const res = await fetch(`${OPENDOTA_API}/matches/${matchId}`);
+      if (!res.ok) {
+        if (res.status === 404) return null;
+        throw new Error(`OpenDota /matches/${matchId} error: ${res.status}`);
+      }
+      const data = await res.json();
+      if (!data || data.error) return null;
+      return data;
+    } catch (err) {
+      console.error(`[OpenDota] getMatchRaw(${matchId}) error:`, err.message);
+      return null;
+    }
+  }
+
   _normalizeMatch(data) {
     if (!data || data.error) return null;
 

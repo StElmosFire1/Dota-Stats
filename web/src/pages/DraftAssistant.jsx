@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getDraftSuggestions } from '../api';
 import { getHeroName, getHeroImageUrl, ALL_HERO_IDS } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
@@ -27,9 +28,27 @@ function HeroChip({ heroId, onRemove, team }) {
 
 export default function DraftAssistant() {
   const { seasonId } = useSeason();
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [allies, setAllies] = useState([]);
-  const [enemies, setEnemies] = useState([]);
+  // Task #378 — Pro replay browser deep-link. The "Analyze in Draft" button
+  // on /pro-replays navigates here with ?radiant=h1,h2,…&dire=h3,h4,…
+  // Either side maps to allies/enemies — there's no notion of "you" so we
+  // default to radiant=allies. If a `side=dire` param is present we flip
+  // them. Hero ids that aren't numeric are dropped silently.
+  const parseHeroList = (raw) => (raw || '')
+    .split(',')
+    .map((s) => parseInt(s, 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const initialAllies = (() => {
+    const side = searchParams.get('side');
+    return parseHeroList(side === 'dire' ? searchParams.get('dire') : searchParams.get('radiant'));
+  })();
+  const initialEnemies = (() => {
+    const side = searchParams.get('side');
+    return parseHeroList(side === 'dire' ? searchParams.get('radiant') : searchParams.get('dire'));
+  })();
+  const [allies, setAllies] = useState(initialAllies);
+  const [enemies, setEnemies] = useState(initialEnemies);
   const [banned, setBanned] = useState([]);
   const [position, setPosition] = useState(null);
   const [suggestions, setSuggestions] = useState(null);
