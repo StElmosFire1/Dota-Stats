@@ -321,6 +321,17 @@ async function init() {
     // Surfaced by `<ChatLogPanel>` on /match/:id behind the `chat_log_visible`
     // feature flag. Old matches stay NULL; the panel hides itself when empty.
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS chat_log JSONB`);
+    // Task #377 — four new derived per-match metrics, all nullable so legacy
+    // rows stay valid. first_blood_chain: { fbTeam, kills:[{t,killerSlot,...}] }.
+    // snowball_score: 0–100 (% of kills by FB team in 5min after FB).
+    // comeback_factor: 0–100 (max gold deficit the winner overcame, 20k → 100).
+    // throne_dpm: { radiant, dire, radiantTotal, direTotal, radiantWindowSec, direWindowSec }.
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS first_blood_chain JSONB`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS snowball_score SMALLINT`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS comeback_factor SMALLINT`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS throne_dpm JSONB`);
+    // Per-player first-purchase timestamps for major items: { itemName: seconds }.
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS item_first_times JSONB`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
 
@@ -2996,14 +3007,18 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
     await client.query('BEGIN');
 
     await client.query(
-      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes, team_abilities, replay_provenance, chat_log)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      `INSERT INTO matches (match_id, date, duration, game_mode, radiant_win, lobby_name, recorded_by, parse_method, file_hash, patch, season_id, game_timeline, lane_outcomes, team_abilities, replay_provenance, chat_log, first_blood_chain, snowball_score, comeback_factor, throne_dpm)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
        ON CONFLICT (match_id) DO UPDATE SET date = EXCLUDED.date,
          game_timeline = COALESCE(EXCLUDED.game_timeline, matches.game_timeline),
          lane_outcomes = COALESCE(EXCLUDED.lane_outcomes, matches.lane_outcomes),
          team_abilities = COALESCE(EXCLUDED.team_abilities, matches.team_abilities),
          replay_provenance = COALESCE(EXCLUDED.replay_provenance, matches.replay_provenance),
-         chat_log = COALESCE(EXCLUDED.chat_log, matches.chat_log)
+         chat_log = COALESCE(EXCLUDED.chat_log, matches.chat_log),
+         first_blood_chain = COALESCE(EXCLUDED.first_blood_chain, matches.first_blood_chain),
+         snowball_score = COALESCE(EXCLUDED.snowball_score, matches.snowball_score),
+         comeback_factor = COALESCE(EXCLUDED.comeback_factor, matches.comeback_factor),
+         throne_dpm = COALESCE(EXCLUDED.throne_dpm, matches.throne_dpm)
          WHERE EXCLUDED.date < NOW() - INTERVAL '10 minutes'`,
       [
         matchStats.matchId,
@@ -3022,6 +3037,10 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         matchStats.teamAbilities ? JSON.stringify(matchStats.teamAbilities) : null,
         replayProvenance || null,
         matchStats.chatLog && matchStats.chatLog.length > 0 ? JSON.stringify(matchStats.chatLog) : null,
+        matchStats.firstBloodChain ? JSON.stringify(matchStats.firstBloodChain) : null,
+        matchStats.snowballScore != null ? matchStats.snowballScore : null,
+        matchStats.comebackFactor != null ? matchStats.comebackFactor : null,
+        matchStats.throneDpm ? JSON.stringify(matchStats.throneDpm) : null,
       ]
     );
 
@@ -3034,7 +3053,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
     // accepts a single `VALUES ($1,...),($N,...)` statement and binds the
     // flattened params array positionally.
     {
-      const PS_COLS = 73;
+      const PS_COLS = 74;
       const psPlaceholders = [];
       const psParams = [];
       const dmgRows = []; // separate post-pass for the optional damage_* update
@@ -3118,6 +3137,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
           player.hookCastTimes ? JSON.stringify(player.hookCastTimes) : null,
           player.hookCastLog ? JSON.stringify(player.hookCastLog) : null,
           player.diebackCount || 0,
+          player.itemFirstTimes ? JSON.stringify(player.itemFirstTimes) : null,
         );
         if (player.damagePhysical || player.damageMagical || player.damagePure) {
           dmgRows.push({
@@ -3130,7 +3150,7 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
       }
       if (psPlaceholders.length > 0) {
         await client.query(
-          `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log, dieback_count)
+          `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log, dieback_count, item_first_times)
            VALUES ${psPlaceholders.join(',')}`,
           psParams
         );
@@ -9496,7 +9516,7 @@ async function getComebackMatches(seasonId = null) {
   const rows = await p.query(`
     SELECT
       m.match_id, m.date, m.duration, m.radiant_win,
-      m.game_timeline
+      m.game_timeline, m.comeback_factor
     FROM matches m
     WHERE m.game_timeline IS NOT NULL
       AND m.game_timeline->'players' IS NOT NULL
@@ -9556,6 +9576,13 @@ async function getComebackMatches(seasonId = null) {
           duration: row.duration,
           radiant_win: row.radiant_win,
           comeback_team: comebackTeam,
+          // Task #377 — prefer the parser-stored comeback_factor (0–100,
+          // 20k=100) when present so the sort matches the per-match pill.
+          // Fall back to a fresh deficit/200 derivation for legacy rows that
+          // haven't been re-parsed yet.
+          comeback_factor: row.comeback_factor != null
+            ? row.comeback_factor
+            : Math.min(100, Math.round(comebackSize / 200)),
           max_deficit: Math.round(comebackSize),
           radiant_players: radiantNames,
           dire_players: direNames,
@@ -9564,7 +9591,7 @@ async function getComebackMatches(seasonId = null) {
     } catch (_) {}
   }
 
-  comebacks.sort((a, b) => b.max_deficit - a.max_deficit);
+  comebacks.sort((a, b) => (b.comeback_factor - a.comeback_factor) || (b.max_deficit - a.max_deficit));
   return comebacks.slice(0, 20);
 }
 
@@ -9668,7 +9695,11 @@ async function reparseMatchFromStats(matchId, matchStats, patch) {
          game_timeline = COALESCE($6, game_timeline),
          lane_outcomes = COALESCE($7, lane_outcomes),
          team_abilities = COALESCE($8, team_abilities),
-         recorded_by = $9
+         recorded_by = $9,
+         first_blood_chain = COALESCE($11, first_blood_chain),
+         snowball_score    = COALESCE($12, snowball_score),
+         comeback_factor   = COALESCE($13, comeback_factor),
+         throne_dpm        = COALESCE($14, throne_dpm)
        WHERE match_id = $10`,
       [
         matchStats.duration || 0,
@@ -9681,6 +9712,13 @@ async function reparseMatchFromStats(matchId, matchStats, patch) {
         matchStats.teamAbilities ? JSON.stringify(matchStats.teamAbilities) : null,
         recorded_by ? `${recorded_by} [reparsed]` : 'reparse',
         matchId,
+        // Task #377 — surface the derived metrics into the reparse path so the
+        // "Re-aggregate from stored replay" superuser button actually backfills
+        // throne_dpm + comeback_factor + FB chain on legacy matches.
+        matchStats.firstBloodChain ? JSON.stringify(matchStats.firstBloodChain) : null,
+        matchStats.snowballScore != null ? matchStats.snowballScore : null,
+        matchStats.comebackFactor != null ? matchStats.comebackFactor : null,
+        matchStats.throneDpm ? JSON.stringify(matchStats.throneDpm) : null,
       ]
     );
 
@@ -9689,8 +9727,8 @@ async function reparseMatchFromStats(matchId, matchStats, patch) {
       const slot = player.slot || 0;
       const restoredPosition = savedPositions[slot] || player.position || 0;
       await client.query(
-        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log, dieback_count)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73)`,
+        `INSERT INTO player_stats (match_id, account_id, discord_id, persona_name, hero_id, hero_name, team, kills, deaths, assists, last_hits, denies, gpm, xpm, hero_damage, tower_damage, hero_healing, level, net_worth, position, is_captain, obs_placed, sen_placed, creeps_stacked, camps_stacked, damage_taken, slot, rune_pickups, stun_duration, towers_killed, roshans_killed, teamfight_participation, firstblood_claimed, wards_killed, obs_purchased, sen_purchased, buybacks, courier_kills, tp_scrolls_used, double_kills, triple_kills, ultra_kills, rampages, kill_streak, smoke_kills, first_death, lane_cs_10min, has_scepter, has_shard, laning_nw, support_gold_spent, killed_by, ward_placements, nemesis_hero_name, nemesis_kills, hook_attempts, hook_hits, evasion_count, long_range_kills, heal_saves, lifesteal_healing, dusts_used, pull_count, ward_dewarded_count, ward_avg_lifespan, obs_dewarded_count, obs_avg_lifespan, sen_dewarded_count, sen_avg_lifespan, dead_time_seconds, hook_cast_times, hook_cast_log, dieback_count, item_first_times)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73, $74)`,
         [
           matchId, player.accountId || 0, player.discordId || '', player.personaname || '',
           player.heroId || 0, player.heroName || '', player.team || 'radiant',
@@ -9726,6 +9764,7 @@ async function reparseMatchFromStats(matchId, matchStats, patch) {
           player.hookCastTimes ? JSON.stringify(player.hookCastTimes) : null,
           player.hookCastLog ? JSON.stringify(player.hookCastLog) : null,
           player.diebackCount || 0,
+          player.itemFirstTimes ? JSON.stringify(player.itemFirstTimes) : null,
         ]
       );
 

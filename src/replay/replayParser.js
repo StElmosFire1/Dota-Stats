@@ -772,6 +772,13 @@ class ReplayParser {
 
     const heroDamage = {};
     const towerDamage = {};
+    // Task #377 — separate per-team damage to the Ancient (throne). Combined with
+    // duration this yields throne_dpm — how hard each team hit the ancient. We
+    // also stash first/last throne-damage timestamps so the panel can report
+    // "throne under attack for Xs". Kept distinct from per-slot towerDamage
+    // because we want the team aggregate, not a per-player slice.
+    const throneDamage = { radiant: 0, dire: 0 };
+    const throneDamageWindow = { radiantFirst: null, radiantLast: null, direFirst: null, direLast: null };
     const heroHealing = {};
     const damageTaken = {};
     const damageByType = {};  // slot → { physical, magical, pure } — from damage_type bitmask (1=phys, 2=magic, 4=pure)
@@ -1239,6 +1246,23 @@ class ReplayParser {
             towerDamage[attackerSlot] = (towerDamage[attackerSlot] || 0) + e.value;
             if (!tdPoints[attackerSlot]) tdPoints[attackerSlot] = [];
             tdPoints[attackerSlot].push({ t: e.time || 0, cumTd: towerDamage[attackerSlot] });
+          }
+          // Task #377 — throne (Ancient) damage broken out per attacker team.
+          // `fort` matches both goodguys_fort and badguys_fort. Excludes any
+          // building name that's actually a tower/rax (none currently contain
+          // "fort", but be defensive in case Valve renames units).
+          if (victimName && victimName.includes('fort') &&
+              !victimName.includes('tower') && !victimName.includes('rax') && !victimName.includes('barracks')) {
+            const attackerTeam2 = attackerSlot < 5 ? 'radiant' : 'dire';
+            throneDamage[attackerTeam2] += e.value;
+            const t = e.time || 0;
+            if (attackerTeam2 === 'radiant') {
+              if (throneDamageWindow.radiantFirst == null) throneDamageWindow.radiantFirst = t;
+              throneDamageWindow.radiantLast = t;
+            } else {
+              if (throneDamageWindow.direFirst == null) throneDamageWindow.direFirst = t;
+              throneDamageWindow.direLast = t;
+            }
           }
         }
         // Damage taken (both streaming and blob "damage" event — victim is targetname)
@@ -2218,6 +2242,44 @@ class ReplayParser {
         lifestealHealing: (healingByType[slot] || {}).lifesteal || 0,
         dustsUsed: dustsUsed[slot] || 0,
         pullCount: pullCount[slot] || 0,
+        // Task #377 — first-purchase timestamps for "major" items (cost ≈ 2000g+).
+        // Used by the per-match item-benchmark panel and aggregated for the
+        // player-profile item benchmarks. Stored as { item_name: seconds }
+        // with `item_` stripped to keep the JSONB compact. Recipe purchases
+        // are excluded — we want the finished item's first hero-inventory hit.
+        itemFirstTimes: (() => {
+          const MAJOR = new Set([
+            'item_blink','item_overwhelming_blink','item_swift_blink','item_arcane_blink',
+            'item_black_king_bar','item_aghanims_scepter','item_ultimate_scepter','item_aghanims_shard',
+            'item_radiance','item_octarine_core','item_refresher','item_shivas_guard',
+            'item_assault','item_butterfly','item_satanic','item_abyssal_blade','item_heart',
+            'item_mjollnir','item_eye_of_skadi','item_sphere','item_lotus_orb',
+            'item_orchid','item_bloodthorn','item_desolator','item_silver_edge','item_invis_sword',
+            'item_manta','item_sange_and_yasha','item_kaya_and_sange','item_yasha_and_kaya',
+            'item_hurricane_pike','item_bfury','item_basher','item_skadi',
+            'item_force_staff','item_pipe','item_guardian_greaves','item_crimson_guard',
+            'item_meteor_hammer','item_solar_crest','item_diffusal_blade','item_diffusal_blade_2',
+            'item_dagon_5','item_eternal_shroud','item_aether_lens','item_glimmer_cape',
+            'item_ghost','item_rod_of_atos','item_helm_of_the_dominator','item_helm_of_the_overlord',
+            'item_vladmir','item_gungir','item_revenants_brooch','item_harpoon',
+            'item_disperser','item_wind_waker','item_ethereal_blade','item_hand_of_midas',
+            'item_dragon_lance','item_maelstrom','item_yasha','item_sange','item_kaya',
+            'item_cuirass','item_phase_boots','item_power_treads','item_arcane_boots',
+            'item_tranquil_boots','item_travel_boots','item_travel_boots_2',
+            'item_vanguard','item_blade_mail','item_drum_of_endurance','item_mekansm',
+            'item_aeon_disk','item_nullifier','item_monkey_king_bar','item_moon_shard',
+            'item_bloodstone','item_veil_of_discord','item_kaya_and_yasha',
+          ]);
+          const first = {};
+          for (const pu of (itemPurchases[slot] || [])) {
+            const n = pu.itemName;
+            if (!n || !MAJOR.has(n)) continue;
+            const t = pu.time || 0;
+            const key = n.replace(/^item_/, '');
+            if (first[key] == null || t < first[key]) first[key] = t;
+          }
+          return Object.keys(first).length ? first : null;
+        })(),
         deadTimeSeconds: (() => {
           // Prefer exact dead time sourced from entity life-state transitions (hero_respawn
           // events emitted by the Java parser — available from replays parsed with the upgraded
@@ -2296,6 +2358,113 @@ class ReplayParser {
         usedBuckets.add(bestKey);
       }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Task #377 — derived metrics computed once from already-collected data:
+    //   * firstBloodChain: who killed whom in the FB + next 3 kills, with
+    //     snowballScore = % of kills in the 5min after FB scored by the FB team.
+    //   * comebackFactor: max gold deficit the eventual winner overcame, mapped
+    //     to a 0–100 score (20k = 100, linear). Read from per-slot timeline
+    //     samples so we don't need to re-walk combat-log events.
+    //   * throneDpm: per-team damage to the Ancient / minutes of attack,
+    //     surfaced from the dedicated throneDamage counters above.
+    //   * (per player below) itemFirstTimes: first purchase time of each
+    //     "major" item (cost ≥ ~2000g, the usual ladder of timing items).
+    // All four are nullable so legacy matches without timeline/damage data
+    // just persist NULL and the UI auto-hides the panels.
+    // ─────────────────────────────────────────────────────────────────────────
+    let firstBloodChain = null;
+    let snowballScore = null;
+    if (sortedKills.length > 0) {
+      const fb = sortedKills[0];
+      const chainRaw = sortedKills.slice(0, 4);
+      const fbTeam = (fb.killerSlot != null && fb.killerSlot >= 0)
+        ? (fb.killerSlot < 5 ? 'radiant' : 'dire')
+        : null;
+      firstBloodChain = {
+        fbTeam,
+        kills: chainRaw.map(k => ({
+          t: k.t,
+          killerSlot: k.killerSlot,
+          killerTeam: (k.killerSlot != null && k.killerSlot >= 0)
+            ? (k.killerSlot < 5 ? 'radiant' : 'dire') : null,
+          victimSlot: k.victimSlot,
+          victimTeam: (k.victimSlot != null && k.victimSlot >= 0)
+            ? (k.victimSlot < 5 ? 'radiant' : 'dire') : null,
+          bounty: k.killBounty || 0,
+        })),
+      };
+      if (fbTeam) {
+        const windowEnd = fb.t + 300; // 5min after FB
+        const windowKills = sortedKills.filter(k => k.t >= fb.t && k.t <= windowEnd && k.killerSlot >= 0);
+        if (windowKills.length > 0) {
+          const teamKills = windowKills.filter(k => (k.killerSlot < 5 ? 'radiant' : 'dire') === fbTeam).length;
+          snowballScore = Math.round((teamKills / windowKills.length) * 100);
+        }
+      }
+    }
+
+    // Comeback factor — max gold deficit overcome by the eventual winner.
+    // Walk per-slot timelineSamples for a per-tick gold-lead trace.
+    let comebackFactor = null;
+    let comebackMaxDeficit = 0;
+    if (radiantWin !== null) {
+      try {
+        const tickKeys = new Set();
+        for (const slotStr of Object.keys(timelineSamples)) {
+          for (const s of (timelineSamples[slotStr] || [])) tickKeys.add(s.t);
+        }
+        const ticks = [...tickKeys].sort((a, b) => a - b);
+        const slotMaps = {};
+        for (const slotStr of Object.keys(timelineSamples)) {
+          slotMaps[slotStr] = {};
+          for (const s of (timelineSamples[slotStr] || [])) slotMaps[slotStr][s.t] = s;
+        }
+        if (ticks.length >= 5) {
+          let maxDeficit = 0;
+          for (const t of ticks) {
+            let radNw = 0, direNw = 0;
+            for (const slotStr of Object.keys(slotMaps)) {
+              const slot = parseInt(slotStr);
+              const s = slotMaps[slotStr][t];
+              if (!s) continue;
+              const nw = s.nw ?? 0;
+              if (slot < 5) radNw += nw; else direNw += nw;
+            }
+            const winnerNw = radiantWin ? radNw : direNw;
+            const loserNw  = radiantWin ? direNw : radNw;
+            const deficit = loserNw - winnerNw; // positive = winner is behind
+            if (deficit > maxDeficit) maxDeficit = deficit;
+          }
+          comebackMaxDeficit = Math.round(maxDeficit);
+          // Linear: 0g → 0, 20,000g → 100. Cap at 100. Comebacks <2k aren't real comebacks.
+          comebackFactor = comebackMaxDeficit < 2000
+            ? 0
+            : Math.min(100, Math.round((comebackMaxDeficit / 20000) * 100));
+        }
+      } catch (_) { /* leave comebackFactor null */ }
+    }
+
+    // Throne DPM per team — damage / minutes of duration. Only meaningful when
+    // a team actually hit the throne (otherwise DPM is 0 / null).
+    let throneDpm = null;
+    if (throneDamage.radiant > 0 || throneDamage.dire > 0) {
+      const minutes = Math.max(1, duration / 60);
+      throneDpm = {
+        radiant: Math.round(throneDamage.radiant / minutes),
+        dire: Math.round(throneDamage.dire / minutes),
+        radiantTotal: Math.round(throneDamage.radiant),
+        direTotal: Math.round(throneDamage.dire),
+        radiantWindowSec: throneDamageWindow.radiantFirst != null
+          ? Math.round(throneDamageWindow.radiantLast - throneDamageWindow.radiantFirst) : 0,
+        direWindowSec: throneDamageWindow.direFirst != null
+          ? Math.round(throneDamageWindow.direLast - throneDamageWindow.direFirst) : 0,
+      };
+    }
+    console.log(`[Replay] Derived: FB-chain=${firstBloodChain?.kills?.length || 0} snowball=${snowballScore}% comebackDeficit=${comebackMaxDeficit}g comebackFactor=${comebackFactor} throneDpm=${throneDpm ? `R${throneDpm.radiant}/D${throneDpm.dire}` : 'null'}`);
+
+    // Stash for downstream return-blob assembly.
+    this._derivedTask377 = { firstBloodChain, snowballScore, comebackFactor, throneDpm };
 
     // --- Smoke success rate ---
     // For each player's smoke activations, check if a same-team kill happens within 60s
@@ -2500,6 +2669,11 @@ class ReplayParser {
       draft,
       parseMethod: 'odota-parser',
       teamAbilities: hasTeamAbilities ? teamAbilities : null,
+      // Task #377 — derived per-match metrics (nullable; UI auto-hides empties).
+      firstBloodChain: this._derivedTask377?.firstBloodChain || null,
+      snowballScore: this._derivedTask377?.snowballScore ?? null,
+      comebackFactor: this._derivedTask377?.comebackFactor ?? null,
+      throneDpm: this._derivedTask377?.throneDpm || null,
       // Task #363 — chat + chat-wheel log; persisted to matches.chat_log JSONB.
       // Sorted by time so the UI can render top-to-bottom without re-sorting.
       chatLog: chatLog.length > 0 ? chatLog.slice().sort((a, b) => a.t - b.t) : null,

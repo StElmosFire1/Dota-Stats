@@ -3049,8 +3049,163 @@ function DeathTimingPanel({ timeline, allPlayers, duration }) {
   );
 }
 
+// ── FirstBloodChainPanel (Task #377) ─────────────────────────────────────────
+// Shows the first 4 kills of the match (FB + next 3) with team/killer/victim
+// labels and a "snowball score" pill — what % of kills in the 5 minutes after
+// FB were scored by the team that drew FB. >70% = the FB team genuinely
+// snowballed; ~50% = the kill traded out; <30% = the FB team got punished.
+// Hidden when match.first_blood_chain is null (legacy / un-parsed matches).
+function FirstBloodChainPanel({ chain, snowball, allPlayers }) {
+  if (!chain || !Array.isArray(chain.kills) || chain.kills.length === 0) return null;
+  const slotToName = {};
+  allPlayers.forEach(p => { slotToName[p.slot] = p.nickname || p.persona_name || `Player ${p.slot + 1}`; });
+  const fbTeam = chain.fbTeam;
+  let pillColor = '#94a3b8', pillBg = '#1e293b', pillLabel = '—';
+  if (snowball != null) {
+    if (snowball >= 70) { pillColor = '#4ade80'; pillBg = '#14532d'; pillLabel = 'Snowballed'; }
+    else if (snowball >= 45) { pillColor = '#facc15'; pillBg = '#422006'; pillLabel = 'Traded out'; }
+    else { pillColor = '#f87171'; pillBg = '#7f1d1d'; pillLabel = 'Got punished'; }
+  }
+  return (
+    <div className="expanded-stats-section">
+      <h3>First Blood Chain <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— who drew first blood, and what happened in the 5 min after</span></h3>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{
+          padding: '4px 12px', borderRadius: 6, fontSize: 13, fontWeight: 700,
+          background: fbTeam === 'radiant' ? '#14532d' : '#7f1d1d',
+          color: fbTeam === 'radiant' ? '#4ade80' : '#f87171',
+        }}>
+          {fbTeam === 'radiant' ? '🟢 Radiant FB' : fbTeam === 'dire' ? '🔴 Dire FB' : 'No FB'}
+        </div>
+        {snowball != null && (
+          <div style={{ padding: '4px 12px', borderRadius: 6, fontSize: 13, fontWeight: 700, background: pillBg, color: pillColor }}>
+            Snowball {snowball}% — {pillLabel}
+          </div>
+        )}
+        <span style={{ color: '#64748b', fontSize: 12 }}>
+          ({snowball != null ? `${snowball}% of kills in the 5 min after FB were ${fbTeam}'s` : 'snowball score unavailable'})
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {chain.kills.map((k, i) => {
+          const killerColor = k.killerTeam === 'radiant' ? '#4ade80' : '#f87171';
+          const victimColor = k.victimTeam === 'radiant' ? '#4ade80' : '#f87171';
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }}>
+              <span style={{ width: 22, color: '#64748b', fontWeight: 700 }}>{i === 0 ? 'FB' : `#${i + 1}`}</span>
+              <span style={{ width: 50, color: '#94a3b8', fontFamily: 'monospace' }}>{formatDuration(k.t)}</span>
+              <span style={{ color: killerColor, fontWeight: 600 }}>{slotToName[k.killerSlot] || (k.killerSlot < 0 ? 'Creep/tower' : `Slot ${k.killerSlot}`)}</span>
+              <span style={{ color: '#64748b' }}>killed</span>
+              <span style={{ color: victimColor, fontWeight: 600 }}>{slotToName[k.victimSlot] || `Slot ${k.victimSlot}`}</span>
+              {k.bounty > 0 && (
+                <span style={{ marginLeft: 'auto', color: '#facc15', fontFamily: 'monospace', fontSize: 12 }}>+{k.bounty}g</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── ThroneDpmPanel (Task #377) ───────────────────────────────────────────────
+// Per-team damage to the Ancient broken out as total + DPM. The DPM number
+// answers "once they reached the throne, how hard did they hit it" — clutch
+// throne defences (sub-1000 DPM over a long window) vs clean closes (>3000
+// DPM in a short burst) look obviously different. Hidden when no team
+// touched the throne.
+function ThroneDpmPanel({ throneDpm }) {
+  if (!throneDpm) return null;
+  const { radiant = 0, dire = 0, radiantTotal = 0, direTotal = 0, radiantWindowSec = 0, direWindowSec = 0 } = throneDpm;
+  if (radiant === 0 && dire === 0) return null;
+  const fmtK = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  const fmtWindow = s => s <= 0 ? '—' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return (
+    <div className="expanded-stats-section">
+      <h3>Throne DPM <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— how hard each team hit the Ancient</span></h3>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {[
+          { team: 'radiant', color: '#4ade80', dpm: radiant, total: radiantTotal, window: radiantWindowSec },
+          { team: 'dire', color: '#f87171', dpm: dire, total: direTotal, window: direWindowSec },
+        ].map(({ team, color, dpm, total, window }) => (
+          <div key={team} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+              <strong style={{ color, textTransform: 'capitalize', fontSize: 14 }}>{team}</strong>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>attack window {fmtWindow(window)}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 18, alignItems: 'baseline' }}>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: dpm > 0 ? color : '#475569', fontFamily: 'monospace' }}>{fmtK(dpm)}</div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>DPM</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#facc15', fontFamily: 'monospace' }}>{fmtK(total)}</div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>total dmg</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+        DPM = damage to the Ancient / match duration. Long, clutch throne defences show low DPM; clean closes show high DPM.
+      </div>
+    </div>
+  );
+}
+
+// ── ItemBenchmarkPanel (Task #377) ───────────────────────────────────────────
+// Per-player table of first-purchase timestamps for major items. Each column
+// is an item; cells show MM:SS or '—'. Compact and only renders rows for
+// players who bought at least one major item. Hidden when no player carries
+// item_first_times (legacy / un-parsed matches).
+function ItemBenchmarkPanel({ players }) {
+  const rows = (players || []).filter(p => p.item_first_times && Object.keys(p.item_first_times).length > 0);
+  if (!rows.length) return null;
+  // Sort columns by earliest purchase time across all players — surfaces the
+  // items that actually showed up in this match, not a fixed catalog.
+  const itemFirstByCol = {};
+  for (const p of rows) {
+    for (const [item, t] of Object.entries(p.item_first_times || {})) {
+      if (itemFirstByCol[item] == null || t < itemFirstByCol[item]) itemFirstByCol[item] = t;
+    }
+  }
+  const cols = Object.keys(itemFirstByCol).sort((a, b) => itemFirstByCol[a] - itemFirstByCol[b]);
+  if (!cols.length) return null;
+  const prettify = n => n.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return (
+    <div className="expanded-stats-section">
+      <h3>Item Benchmarks <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— first-purchase time per major item</span></h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              {cols.map(c => <th key={c} className="col-stat" title={prettify(c)}>{prettify(c).slice(0, 12)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p, i) => (
+              <tr key={i}>
+                <td className="col-player"><PlayerLink player={p} index={i} /></td>
+                {cols.map(c => {
+                  const t = (p.item_first_times || {})[c];
+                  return (
+                    <td key={c} className="col-stat" style={{ color: t != null ? '#facc15' : '#475569', fontFamily: 'monospace' }}>
+                      {t != null ? formatDuration(t) : '—'}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── ComebackMetricPanel ───────────────────────────────────────────────────────
-function ComebackMetricPanel({ timeline, allPlayers }) {
+function ComebackMetricPanel({ timeline, allPlayers, comebackFactor }) {
   if (!timeline?.players?.length) return null;
 
   const nwAt15 = {}, nwFinal = {};
@@ -3081,9 +3236,28 @@ function ComebackMetricPanel({ timeline, allPlayers }) {
 
   const fmtK = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
+  // Task #377 — comeback factor pill (0-100, scaled max-deficit-overcome by
+  // the winner). Pulled straight from matches.comeback_factor when present;
+  // omitted (no pill) for legacy / un-parsed matches.
+  let factorPill = null;
+  if (comebackFactor != null && comebackFactor > 0) {
+    const f = comebackFactor;
+    let bg = '#1e293b', col = '#94a3b8', label = 'Slight comeback';
+    if (f >= 70) { bg = '#7f1d1d'; col = '#fca5a5'; label = 'Massive comeback'; }
+    else if (f >= 40) { bg = '#422006'; col = '#facc15'; label = 'Real comeback'; }
+    else if (f >= 15) { bg = '#1e3a8a'; col = '#93c5fd'; label = 'Notable comeback'; }
+    factorPill = (
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 12px', borderRadius: 6, background: bg, color: col, fontWeight: 700, fontSize: 13, marginBottom: 10 }}>
+        <span>Comeback factor {f}/100</span>
+        <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 11 }}>— {label}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="expanded-stats-section">
       <h3>Comeback Metric <span style={{ fontSize: 12, color: '#64748b', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— NW rank at 15 min vs final (↑ = climbed)</span></h3>
+      {factorPill}
       <div className="scoreboard-wrapper">
         <table className="scoreboard compact">
           <thead>
@@ -4140,7 +4314,10 @@ function MatchDetailInner() {
       <RuneControlPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <CourierKillsPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <DeathTimingPanel timeline={match.game_timeline} allPlayers={allPlayers} duration={match.duration} />
-      <ComebackMetricPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <FirstBloodChainPanel chain={match.first_blood_chain} snowball={match.snowball_score} allPlayers={allPlayers} />
+      <ThroneDpmPanel throneDpm={match.throne_dpm} />
+      <ComebackMetricPanel timeline={match.game_timeline} allPlayers={allPlayers} comebackFactor={match.comeback_factor} />
+      <ItemBenchmarkPanel players={allPlayers} />
       {/* Re-aggregate hits POST /api/admin/reparse-replay/:matchId which is
           superuser-gated (`requireSuperuser`), so only show the button to
           superusers — admins would see a 403. */}

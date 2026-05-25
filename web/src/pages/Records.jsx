@@ -362,7 +362,8 @@ export default function Records() {
       {!loading && tab === 'comebacks' && (
         <div>
           <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-            Matches where a team overcame a 5,000+ gold deficit to win. Sorted by comeback size.
+            Matches where a team overcame a 5,000+ gold deficit to win. Sorted by comeback factor
+            (parser-derived, 0–100; 20k gold deficit overcome = 100).
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {comebacks.map(match => (
@@ -379,6 +380,15 @@ export default function Records() {
                     <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '1rem' }}>
                       +{match.max_deficit.toLocaleString()}g overcome
                     </div>
+                    {match.comeback_factor != null && match.comeback_factor > 0 && (
+                      <div style={{
+                        padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700,
+                        background: match.comeback_factor >= 70 ? '#7f1d1d' : match.comeback_factor >= 40 ? '#422006' : '#1e3a8a',
+                        color: match.comeback_factor >= 70 ? '#fca5a5' : match.comeback_factor >= 40 ? '#facc15' : '#93c5fd',
+                      }} title="Parser-derived comeback factor (0–100, 20k deficit = 100)">
+                        Factor {match.comeback_factor}
+                      </div>
+                    )}
                   </div>
                   <div style={{ color: '#64748b', fontSize: '0.8rem' }}>
                     {fmtDuration(match.duration)} &bull;{' '}

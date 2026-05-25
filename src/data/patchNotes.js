@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "7.62",
+    "title": "Parser new ideas: first-blood chain, comeback factor, throne DPM, item benchmarks (Task #377)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**`<FirstBloodChainPanel>` on every match page.** Shows the first 4 kills of the match (FB + next 3) with killer/victim team-coloured, alongside a snowball-score pill — *what % of kills in the 5 minutes after FB were scored by the team that drew FB*. ≥70% renders green (Snowballed), 45–69% yellow (Traded out), <45% red (Got punished). Both fields are computed once inside `replayParser._aggregateStats` from the already-sorted `gameEvents` kill list — no extra parser work, no DB join. New `matches.first_blood_chain JSONB` + `matches.snowball_score SMALLINT` columns persist them; legacy matches stay NULL and the panel auto-hides.",
+      "**`<ThroneDpmPanel>` — per-team damage to the Ancient.** New parser counters (`throneDamage` + `throneDamageWindow`) split building damage by `victimName.includes('fort')` and bucket by attacker team, alongside the existing per-slot `tower_damage`. The panel surfaces DPM (damage / match minutes), total damage, and the throne-attack window (first → last throne hit) per side. Long, clutch defences show low DPM over a long window; clean closes show high DPM in a short burst. Stored on `matches.throne_dpm JSONB`.",
+      "**Comeback factor: 0–100 score on the existing Comeback Metric panel + the Records → Greatest Comebacks tab.** Walks per-slot `timelineSamples` once to find the *eventual winner's* max gold deficit, then maps linearly (20,000g = 100). Stored on `matches.comeback_factor SMALLINT`. `<ComebackMetricPanel>` now shows a colour-graded pill above the NW-rank table (≥70 red 'Massive comeback', 40–69 yellow 'Real comeback', 15–39 blue 'Notable'). Records tab re-sorts by factor (then deficit as tiebreaker) and shows the per-row factor pill — replaces the old size-only sort.",
+      "**`<ItemBenchmarkPanel>` — first-purchase timeline for major items.** Per-player parser now emits `itemFirstTimes` ({ itemName: seconds }) for the ~60-item major-cost set (Blink, BKB, Aghs/Shard, Radiance, Octarine, Refresher, the carry ladder, key support items, every boots tier, etc.). Persisted on the new `player_stats.item_first_times JSONB` column and rendered as a compact MM:SS table sorted by earliest-purchase column. Hidden when no player carries the data.",
+      "**`getComebackMatches` prefers `comeback_factor` when present, falls back to the legacy deficit/200 derivation** for un-reparsed matches — keeps the Records tab populated during the backfill window without forcing a re-parse first.",
+      "**Backfill script for legacy matches: `scripts/backfill-derived-metrics.js`.** Walks every match with `game_timeline` and back-fills `first_blood_chain`, `snowball_score`, `comeback_factor` *without* needing a replay re-parse — all three are derivable from the timeline blob the parser already wrote. `throne_dpm` and `item_first_times` still need a replay re-parse (combat-log data isn't in the timeline blob), and the script logs how many matches are eligible for re-parse so we can target them via the existing 'Re-aggregate from stored replay' superuser button. Usage: `node scripts/backfill-derived-metrics.js [--limit=N] [--dry-run]`.",
+      "**Edition scope.** Full edition only — community edition is deprecated for new work."
+    ]
+  },
+  {
     "version": "7.61",
     "title": "Parser big-M bundle: runes, couriers, lane outcomes, ward deaths (Task #376)",
     "published_at": "2026-05-25",
