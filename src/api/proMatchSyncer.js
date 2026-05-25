@@ -42,6 +42,7 @@ function _normalizePlayers(raw) {
     hero_id: p.hero_id || 0,
     player_slot: p.player_slot ?? null,
     is_radiant: p.player_slot != null ? (p.player_slot < 128) : null,
+    lane_role: p.lane_role != null ? Number(p.lane_role) : null,
     kills: p.kills || 0,
     deaths: p.deaths || 0,
     assists: p.assists || 0,

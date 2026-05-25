@@ -500,6 +500,11 @@ export async function getProMatchLeagues() {
   if (!r.ok) throw new Error('Failed to load pro leagues');
   return r.json();
 }
+export async function getProMatchPatches() {
+  const r = await fetch('/api/pro-matches/patches', { credentials: 'same-origin' });
+  if (!r.ok) throw new Error('Failed to load pro patches');
+  return r.json();
+}
 export async function getProMatch(matchId) {
   const r = await fetch(`/api/pro-matches/${matchId}`, { credentials: 'same-origin' });
   if (!r.ok) throw new Error('Failed to load pro match');

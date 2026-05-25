@@ -1026,7 +1026,7 @@ async function init() {
          ('coaching_marketplace', 'on', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.'),
          ('chat_log_visible', 'preview', 'Task #363 — chat + chat-wheel log on /match/:id. preview = admins/superusers only; on = everyone.'),
          ('public_api', 'preview', 'Task #371 — public /v1 API + outbound webhooks. preview = superuser keys only; on = available to all users (free + Pro tiers).'),
-         ('pro_replay_browser', 'preview', 'Task #378 — searchable browser of recent OpenDota pro matches with draft analyze + replay deep-links. preview = superuser only; on = everyone.')
+         ('pro_replay_browser', 'on', 'Task #378 — searchable browser of recent OpenDota pro matches with draft analyze + replay deep-links. on = public (default), preview = superuser only, off = surface fully hidden + sync paused.')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -16439,12 +16439,29 @@ async function listProMatchesAwaitingDetails(limit = 25) {
   return r.rows.map((row) => String(row.match_id));
 }
 
+// League prestige rank used by `sort=prestige`. OpenDota's `league_tier`
+// vocabulary is 'premium' > 'professional' > 'amateur' (with 'excluded' /
+// null treated as lowest). Computed in SQL so we can sort + paginate at
+// the DB layer instead of post-processing in JS.
+const LEAGUE_TIER_RANK_SQL = `
+  CASE LOWER(COALESCE(league_tier, ''))
+    WHEN 'premium'      THEN 4
+    WHEN 'professional' THEN 3
+    WHEN 'amateur'      THEN 2
+    WHEN 'excluded'     THEN 1
+    ELSE 0
+  END`;
+
 async function listProMatches({
   leagueId = null,
   teamId = null,
   heroId = null,
+  position = null,
   patch = null,
+  team = null,
   search = null,
+  sort = 'date',
+  sortDir = 'desc',
   limit = 50,
   offset = 0,
 } = {}) {
@@ -16456,11 +16473,25 @@ async function listProMatches({
     args.push(Number(teamId));
     where.push(`(radiant_team_id = $${args.length} OR dire_team_id = $${args.length})`);
   }
-  if (heroId != null) {
-    // Picks blob is `[{hero_id, player_slot, ...}, ...]`. Use the GIN index
-    // via @> for the radiant side and a parallel check for dire.
+  if (team) {
+    args.push(`%${String(team).toLowerCase()}%`);
+    where.push(`(LOWER(COALESCE(radiant_team_name,'')) LIKE $${args.length}
+              OR LOWER(COALESCE(dire_team_name,'')) LIKE $${args.length})`);
+  }
+  if (heroId != null && position != null) {
+    // Hero + position together: filter via the players blob (which carries
+    // lane_role from OpenDota). Picks alone don't know which player played
+    // which lane, so we have to use players JSONB containment here.
+    args.push(JSON.stringify([{ hero_id: Number(heroId), lane_role: Number(position) }]));
+    where.push(`players @> $${args.length}::jsonb`);
+  } else if (heroId != null) {
+    // Hero only: use the GIN index on picks for the fast path.
     args.push(JSON.stringify([{ hero_id: Number(heroId) }]));
     where.push(`(radiant_picks @> $${args.length}::jsonb OR dire_picks @> $${args.length}::jsonb)`);
+  } else if (position != null) {
+    // Position only (no hero) — still answerable via players containment.
+    args.push(JSON.stringify([{ lane_role: Number(position) }]));
+    where.push(`players @> $${args.length}::jsonb`);
   }
   if (patch != null) { args.push(Number(patch)); where.push(`patch = $${args.length}`); }
   if (search) {
@@ -16469,6 +16500,23 @@ async function listProMatches({
               OR LOWER(COALESCE(radiant_team_name,'')) LIKE $${args.length}
               OR LOWER(COALESCE(dire_team_name,'')) LIKE $${args.length})`);
   }
+
+  const dir = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  let orderBy;
+  switch (String(sort).toLowerCase()) {
+    case 'duration':
+      orderBy = `duration ${dir} NULLS LAST, start_time DESC NULLS LAST, match_id DESC`;
+      break;
+    case 'prestige':
+      // Tiebreak by recency so two premium matches show newest-first.
+      orderBy = `${LEAGUE_TIER_RANK_SQL} ${dir}, start_time DESC NULLS LAST, match_id DESC`;
+      break;
+    case 'date':
+    default:
+      orderBy = `start_time ${dir} NULLS LAST, match_id DESC`;
+      break;
+  }
+
   args.push(Math.min(Math.max(1, limit | 0), 200));
   const limitIdx = args.length;
   args.push(Math.max(0, offset | 0));
@@ -16478,13 +16526,26 @@ async function listProMatches({
                       dire_team_id, dire_team_name,
                       radiant_win, duration, start_time, patch,
                       radiant_picks, dire_picks, radiant_bans, dire_bans,
-                      has_replay
+                      has_replay,
+                      ${LEAGUE_TIER_RANK_SQL} AS league_prestige_rank
                FROM pro_matches
                WHERE ${where.join(' AND ')}
-               ORDER BY start_time DESC NULLS LAST, match_id DESC
+               ORDER BY ${orderBy}
                LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
   const r = await p.query(sql, args);
   return r.rows.map((row) => ({ ...row, match_id: String(row.match_id) }));
+}
+
+// Distinct patch numbers we have details for, newest-first. Powers the
+// Patch dropdown in /pro-replays.
+async function listProMatchPatches() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT DISTINCT patch FROM pro_matches
+     WHERE patch IS NOT NULL AND details_fetched = TRUE
+     ORDER BY patch DESC`
+  );
+  return r.rows.map((row) => row.patch).filter((n) => n != null);
 }
 
 async function getProMatch(matchId) {
@@ -16533,6 +16594,7 @@ module.exports = {
   listProMatches,
   getProMatch,
   listProMatchLeagues,
+  listProMatchPatches,
   // Task #371
   createApiKey,
   listApiKeysForAccount,

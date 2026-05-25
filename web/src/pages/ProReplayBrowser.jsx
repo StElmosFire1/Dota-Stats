@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getProMatches, getProMatchLeagues } from '../api';
+import { getProMatches, getProMatchLeagues, getProMatchPatches } from '../api';
 import { getHeroName, getHeroImageUrl, ALL_HERO_IDS } from '../heroNames';
 import SortableTh from '../components/SortableTh';
 
@@ -43,10 +43,16 @@ export default function ProReplayBrowser() {
   const navigate = useNavigate();
   const [matches, setMatches] = useState([]);
   const [leagues, setLeagues] = useState([]);
+  const [patches, setPatches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [filters, setFilters] = useState({ league_id: '', hero_id: '', q: '' });
-  const [sortKey, setSortKey] = useState('start_time');
+  const [filters, setFilters] = useState({
+    league_id: '', hero_id: '', position: '', patch: '', team: '', q: '',
+  });
+  // Sort + direction are pushed to the server so pagination / row caps line
+  // up. `start_time` keeps `desc` semantics; `prestige` defaults to highest
+  // first; toggling a column you're already on flips the direction.
+  const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
   const toggleSort = (k) => {
     if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -60,7 +66,12 @@ export default function ProReplayBrowser() {
       const d = await getProMatches({
         league_id: filters.league_id || null,
         hero_id: filters.hero_id || null,
+        position: filters.position || null,
+        patch: filters.patch || null,
+        team: filters.team || null,
         q: filters.q || null,
+        sort: sortKey,
+        dir: sortDir,
         limit: 100,
       });
       setMatches(d.matches || []);
@@ -70,27 +81,20 @@ export default function ProReplayBrowser() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, sortKey, sortDir]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     getProMatchLeagues()
       .then((d) => setLeagues(d.leagues || []))
       .catch(() => setLeagues([]));
+    getProMatchPatches()
+      .then((d) => setPatches(d.patches || []))
+      .catch(() => setPatches([]));
   }, []);
 
-  const sorted = useMemo(() => {
-    const arr = [...matches];
-    const dir = sortDir === 'asc' ? 1 : -1;
-    arr.sort((a, b) => {
-      const av = a[sortKey] ?? 0;
-      const bv = b[sortKey] ?? 0;
-      if (av < bv) return -1 * dir;
-      if (av > bv) return  1 * dir;
-      return 0;
-    });
-    return arr;
-  }, [matches, sortKey, sortDir]);
+  // Server handles ordering — render as-is.
+  const sorted = matches;
 
   const heroOptions = useMemo(() => {
     return (ALL_HERO_IDS || [])
@@ -143,13 +147,50 @@ export default function ProReplayBrowser() {
           </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Search teams / league</span>
+          <span style={{ color: 'var(--text-muted)' }}>Position</span>
+          <select
+            value={filters.position}
+            onChange={(e) => setFilters((f) => ({ ...f, position: e.target.value }))}
+            aria-label="Filter by lane role"
+            title={filters.hero_id ? '' : 'Position filter combines with the hero filter via per-match lane role data.'}
+          >
+            <option value="">Any position</option>
+            <option value="1">Safe lane (1)</option>
+            <option value="2">Mid (2)</option>
+            <option value="3">Off lane (3)</option>
+            <option value="4">Soft support (4)</option>
+            <option value="5">Hard support (5)</option>
+          </select>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+          <span style={{ color: 'var(--text-muted)' }}>Patch</span>
+          <select
+            value={filters.patch}
+            onChange={(e) => setFilters((f) => ({ ...f, patch: e.target.value }))}
+            aria-label="Filter by patch"
+          >
+            <option value="">All patches</option>
+            {patches.map((p) => <option key={p} value={p}>Patch {p}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+          <span style={{ color: 'var(--text-muted)' }}>Team name</span>
+          <input
+            type="text"
+            value={filters.team}
+            placeholder="Team Liquid"
+            onChange={(e) => setFilters((f) => ({ ...f, team: e.target.value }))}
+            aria-label="Filter by team name"
+          />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+          <span style={{ color: 'var(--text-muted)' }}>Search (any field)</span>
           <input
             type="text"
             value={filters.q}
-            placeholder="Team Liquid, ESL One…"
+            placeholder="ESL One, BetBoom…"
             onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
-            aria-label="Search team or league name"
+            aria-label="Search any field"
           />
         </label>
       </div>
@@ -169,8 +210,8 @@ export default function ProReplayBrowser() {
           <table className="table" style={{ width: '100%' }}>
             <thead>
               <tr>
-                <SortableTh active={sortKey === 'start_time'} direction={sortDir} onSort={() => toggleSort('start_time')}>Date</SortableTh>
-                <th>League</th>
+                <SortableTh active={sortKey === 'date'} direction={sortDir} onSort={() => toggleSort('date')}>Date</SortableTh>
+                <SortableTh active={sortKey === 'prestige'} direction={sortDir} onSort={() => toggleSort('prestige')}>League</SortableTh>
                 <th>Radiant</th>
                 <th>Dire</th>
                 <th>Radiant picks</th>

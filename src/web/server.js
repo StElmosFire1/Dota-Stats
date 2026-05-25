@@ -6525,14 +6525,28 @@ NOTES
         leagueId: toInt(req.query.league_id),
         teamId:   toInt(req.query.team_id),
         heroId:   toInt(req.query.hero_id),
+        position: toInt(req.query.position),
         patch:    toInt(req.query.patch),
+        team:     req.query.team ? String(req.query.team).slice(0, 80) : null,
         search:   req.query.q ? String(req.query.q).slice(0, 80) : null,
+        sort:     req.query.sort ? String(req.query.sort).slice(0, 16) : 'date',
+        sortDir:  req.query.dir === 'asc' ? 'asc' : 'desc',
         limit:    Math.min(parseInt(req.query.limit || '50', 10) || 50, 200),
         offset:   Math.max(parseInt(req.query.offset || '0', 10) || 0, 0),
       });
       res.json({ matches: rows });
     } catch (err) {
       console.error('[API] pro-matches list:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  router.get('/pro-matches/patches', async (req, res) => {
+    try {
+      if (!(await _proReplayBrowserGate(req, res))) return;
+      const patches = await db.listProMatchPatches();
+      res.json({ patches });
+    } catch (err) {
+      console.error('[API] pro-matches patches:', err.message);
       res.status(500).json({ error: err.message });
     }
   });
