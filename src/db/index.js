@@ -1013,7 +1013,8 @@ async function init() {
          ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions'),
          ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on'),
          ('coaching_marketplace', 'on', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.'),
-         ('chat_log_visible', 'preview', 'Task #363 — chat + chat-wheel log on /match/:id. preview = admins/superusers only; on = everyone.')
+         ('chat_log_visible', 'preview', 'Task #363 — chat + chat-wheel log on /match/:id. preview = admins/superusers only; on = everyone.'),
+         ('public_api', 'preview', 'Task #371 — public /v1 API + outbound webhooks. preview = superuser keys only; on = available to all users (free + Pro tiers).')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -1088,6 +1089,67 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_discord_autojoin_log_ts ON discord_autojoin_log (ts DESC)`);
+
+    // Task #371 — Public API + webhooks. `api_keys` stores hashed tokens (SHA-256)
+    // so a DB leak doesn't expose live keys. `webhook_subscriptions` is per-user
+    // (Pro-only at the route layer) and `webhook_deliveries` is the durable
+    // retry queue scanned by the dispatcher worker in src/web/webhookDispatcher.js.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id BIGSERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        prefix TEXT NOT NULL,
+        label TEXT,
+        tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free','pro')),
+        scopes TEXT[] NOT NULL DEFAULT ARRAY['read']::TEXT[],
+        usage_count BIGINT NOT NULL DEFAULT 0,
+        last_used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        revoked_at TIMESTAMPTZ,
+        owner_was_superuser BOOLEAN NOT NULL DEFAULT false
+      )
+    `);
+    await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS owner_was_superuser BOOLEAN NOT NULL DEFAULT false`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_account ON api_keys (account_id)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+        id BIGSERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        url TEXT NOT NULL,
+        secret TEXT NOT NULL,
+        events TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+        active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_delivery_at TIMESTAMPTZ,
+        last_delivery_ok BOOLEAN,
+        last_delivery_status INTEGER,
+        last_delivery_error TEXT
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_webhook_subs_account ON webhook_subscriptions (account_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_webhook_subs_active ON webhook_subscriptions (active) WHERE active`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS webhook_deliveries (
+        id BIGSERIAL PRIMARY KEY,
+        subscription_id BIGINT NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+        event TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','succeeded','failed')),
+        next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_status_code INTEGER,
+        last_response_body TEXT,
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_due ON webhook_deliveries (status, next_attempt_at) WHERE status = 'pending'`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_sub ON webhook_deliveries (subscription_id, created_at DESC)`);
 
     // Profile customization (`profile_customization`) — per-account cosmetic
     // overrides that render on the public PlayerProfile page. Keyed by
@@ -15841,12 +15903,248 @@ async function createAnonymousGift({ gifterAccountId, recipientAccountId, giftTy
   return r.rows[0] || null;
 }
 
+// ===== Task #371 — Public API + webhooks =====
+const _crypto371 = require('crypto');
+function _hashApiToken(token) {
+  return _crypto371.createHash('sha256').update(String(token)).digest('hex');
+}
+async function createApiKey({ accountId, label = null, tier = 'free', ownerWasSuperuser = false }) {
+  const p = getPool();
+  const raw = `oi_${tier === 'pro' ? 'pro' : 'fre'}_${_crypto371.randomBytes(24).toString('base64url')}`;
+  const tokenHash = _hashApiToken(raw);
+  const prefix = raw.slice(0, 11);
+  const safeTier = tier === 'pro' ? 'pro' : 'free';
+  const r = await p.query(
+    `INSERT INTO api_keys (account_id, token_hash, prefix, label, tier, owner_was_superuser)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, account_id, prefix, label, tier, scopes, usage_count, last_used_at, created_at, revoked_at, owner_was_superuser`,
+    [accountId, tokenHash, prefix, label, safeTier, !!ownerWasSuperuser]
+  );
+  return { ...r.rows[0], token: raw };
+}
+async function listApiKeysForAccount(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, prefix, label, tier, scopes, usage_count, last_used_at, created_at, revoked_at
+     FROM api_keys WHERE account_id = $1 ORDER BY created_at DESC`,
+    [accountId]
+  );
+  return r.rows;
+}
+async function revokeApiKey({ accountId, keyId }) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE api_keys SET revoked_at = NOW()
+     WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL
+     RETURNING id`,
+    [keyId, accountId]
+  );
+  return r.rowCount > 0;
+}
+async function findApiKeyByToken(rawToken) {
+  if (!rawToken) return null;
+  const p = getPool();
+  const hash = _hashApiToken(rawToken);
+  const r = await p.query(
+    `SELECT id, account_id, prefix, label, tier, scopes,
+            usage_count, last_used_at, created_at, revoked_at,
+            owner_was_superuser AS is_owner_superuser
+     FROM api_keys WHERE token_hash = $1`,
+    [hash]
+  );
+  return r.rows[0] || null;
+}
+async function touchApiKeyUsage(keyId) {
+  const p = getPool();
+  await p.query(
+    `UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = NOW() WHERE id = $1`,
+    [keyId]
+  );
+}
+
+const _WEBHOOK_EVENTS = new Set([
+  'match.ended', 'lobby.full', 'tournament.round_started', 'coaching.booked',
+]);
+function listKnownWebhookEvents() { return Array.from(_WEBHOOK_EVENTS); }
+
+async function createWebhookSubscription({ accountId, url, events, secret = null }) {
+  if (!url || !/^https?:\/\//i.test(url)) throw new Error('invalid url');
+  const filtered = (Array.isArray(events) ? events : []).filter(e => _WEBHOOK_EVENTS.has(e));
+  if (!filtered.length) throw new Error('no valid events');
+  const sec = secret || `whsec_${_crypto371.randomBytes(24).toString('base64url')}`;
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO webhook_subscriptions (account_id, url, secret, events)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, account_id, url, secret, events, active, created_at, updated_at`,
+    [accountId, url, sec, filtered]
+  );
+  return r.rows[0];
+}
+async function listWebhookSubscriptionsForAccount(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, url, secret, events, active, created_at, updated_at,
+            last_delivery_at, last_delivery_ok, last_delivery_status, last_delivery_error
+     FROM webhook_subscriptions WHERE account_id = $1 ORDER BY created_at DESC`,
+    [accountId]
+  );
+  return r.rows;
+}
+async function getWebhookSubscriptionById(id) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, url, secret, events, active FROM webhook_subscriptions WHERE id = $1`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+async function deleteWebhookSubscription({ accountId, id }) {
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM webhook_subscriptions WHERE id = $1 AND account_id = $2 RETURNING id`,
+    [id, accountId]
+  );
+  return r.rowCount > 0;
+}
+async function setWebhookSubscriptionActive({ accountId, id, active }) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE webhook_subscriptions SET active = $3, updated_at = NOW()
+     WHERE id = $1 AND account_id = $2 RETURNING id, active`,
+    [id, accountId, !!active]
+  );
+  return r.rows[0] || null;
+}
+async function listWebhookSubscriptionsForEvent(event, { ownerAccountId = null } = {}) {
+  const p = getPool();
+  const params = [event];
+  let sql = `SELECT id, account_id, url, secret, events FROM webhook_subscriptions
+             WHERE active = true AND $1 = ANY(events)`;
+  if (ownerAccountId != null) {
+    params.push(ownerAccountId);
+    sql += ` AND account_id = $${params.length}`;
+  }
+  const r = await p.query(sql, params);
+  return r.rows;
+}
+async function enqueueWebhookDelivery(subscriptionId, event, payload) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO webhook_deliveries (subscription_id, event, payload, next_attempt_at)
+     VALUES ($1, $2, $3::jsonb, NOW())
+     RETURNING id`,
+    [subscriptionId, event, JSON.stringify(payload)]
+  );
+  return r.rows[0].id;
+}
+async function claimDueWebhookDeliveries(limit = 10) {
+  const p = getPool();
+  // Bump next_attempt_at into the future to act as a lightweight lease so
+  // overlapping ticks don't double-deliver.
+  const r = await p.query(
+    `UPDATE webhook_deliveries
+        SET next_attempt_at = NOW() + INTERVAL '2 minutes'
+      WHERE id IN (
+        SELECT id FROM webhook_deliveries
+         WHERE status = 'pending' AND next_attempt_at <= NOW()
+         ORDER BY next_attempt_at ASC
+         LIMIT $1
+         FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id, subscription_id, event, payload, attempts`,
+    [limit]
+  );
+  return r.rows;
+}
+async function markWebhookDeliverySucceeded(id, statusCode, body) {
+  const p = getPool();
+  await p.query(
+    `UPDATE webhook_deliveries
+        SET status = 'succeeded', completed_at = NOW(),
+            last_status_code = $2, last_response_body = $3, attempts = attempts + 1
+      WHERE id = $1`,
+    [id, statusCode || null, (body || '').slice(0, 2048)]
+  );
+  await p.query(
+    `UPDATE webhook_subscriptions s
+        SET last_delivery_at = NOW(), last_delivery_ok = true,
+            last_delivery_status = $2, last_delivery_error = NULL
+       FROM webhook_deliveries d
+      WHERE d.id = $1 AND s.id = d.subscription_id`,
+    [id, statusCode || null]
+  );
+}
+async function markWebhookDeliveryFailed(id, errMsg, final) {
+  const p = getPool();
+  await p.query(
+    `UPDATE webhook_deliveries
+        SET status = $3, last_error = $2, attempts = attempts + 1,
+            completed_at = CASE WHEN $3 = 'failed' THEN NOW() ELSE completed_at END
+      WHERE id = $1`,
+    [id, (errMsg || '').slice(0, 1024), final ? 'failed' : 'pending']
+  );
+  if (final) {
+    await p.query(
+      `UPDATE webhook_subscriptions s
+          SET last_delivery_at = NOW(), last_delivery_ok = false,
+              last_delivery_error = $2
+         FROM webhook_deliveries d
+        WHERE d.id = $1 AND s.id = d.subscription_id`,
+      [id, (errMsg || '').slice(0, 1024)]
+    );
+  }
+}
+async function scheduleWebhookDeliveryRetry(id, attempts, nextAt, errMsg) {
+  const p = getPool();
+  await p.query(
+    `UPDATE webhook_deliveries
+        SET attempts = $2, next_attempt_at = $3, last_error = $4, status = 'pending'
+      WHERE id = $1`,
+    [id, attempts, nextAt, (errMsg || '').slice(0, 1024)]
+  );
+}
+async function listRecentWebhookDeliveries({ accountId, limit = 25 }) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT d.id, d.subscription_id, d.event, d.status, d.attempts,
+            d.last_status_code, d.last_error, d.created_at, d.completed_at, d.next_attempt_at
+       FROM webhook_deliveries d
+       JOIN webhook_subscriptions s ON s.id = d.subscription_id
+      WHERE s.account_id = $1
+      ORDER BY d.created_at DESC
+      LIMIT $2`,
+    [accountId, Math.min(limit, 100)]
+  );
+  return r.rows;
+}
+// ===== /Task #371 =====
+
 module.exports = {
   init,
   initSchema: init,
   getPool,
   recordCronHeartbeat,
   listCronHeartbeats,
+  // Task #371
+  createApiKey,
+  listApiKeysForAccount,
+  revokeApiKey,
+  findApiKeyByToken,
+  touchApiKeyUsage,
+  listKnownWebhookEvents,
+  createWebhookSubscription,
+  listWebhookSubscriptionsForAccount,
+  getWebhookSubscriptionById,
+  deleteWebhookSubscription,
+  setWebhookSubscriptionActive,
+  listWebhookSubscriptionsForEvent,
+  enqueueWebhookDelivery,
+  claimDueWebhookDeliveries,
+  markWebhookDeliverySucceeded,
+  markWebhookDeliveryFailed,
+  scheduleWebhookDeliveryRetry,
+  listRecentWebhookDeliveries,
   // Magazine v3 (Task #157) — exposed via the same shape as the rest of `db`.
   magV3: _magV3,
   // Task #316 — engagement loop helpers.

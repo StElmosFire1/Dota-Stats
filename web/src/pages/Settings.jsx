@@ -74,6 +74,7 @@ export default function Settings() {
           <SectionLink to="/settings/account"        icon="🔗" label="Linked accounts" />
           <SectionLink to="/settings/billing"        icon="💳" label="Subscription &amp; billing" />
           {isCoach && <SectionLink to="/settings/coaching" icon="🎓" label="Coaching" />}
+          <SectionLink to="/settings/api"            icon="🔌" label="API &amp; webhooks" />
           <div style={{ height: 8 }} />
           <SectionLink to="/settings/danger-zone"    icon="⚠️"  label="Danger zone" />
         </nav>

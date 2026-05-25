@@ -38,6 +38,46 @@ const voiceEventQueue = require('./voiceEventQueue');
 // share the same Map). Keyed by stringified account_id; entries TTL after 60s.
 const _proCache = new Map();
 
+// Task #371 — Process-local memo of which `(tournamentId, bracket, round)`
+// tuples have already emitted a `tournament.round_started` webhook so we
+// don't fire duplicates each time a winner is set in the same round. Best-
+// effort: on process restart we may re-emit a round once, which subscribers
+// can dedupe via `X-OI-Delivery`.
+const _emittedTournamentRounds = new Set();
+async function _emitTournamentRoundStarted(tournamentId, matches) {
+  if (!Array.isArray(matches) || !matches.length) return;
+  let dispatchEvent;
+  try { ({ dispatchEvent } = require('./webhookDispatcher')); } catch (_) { return; }
+  // A round is "started" once at least one match in it has BOTH players
+  // populated (i.e. the matchup is decided). Group by bracket+round and
+  // emit per group once.
+  const seen = new Map();
+  for (const m of matches) {
+    if (!m || m.round == null) continue;
+    if (!m.p1_id || !m.p2_id) continue;
+    const key = `${tournamentId}:${m.bracket || 'W'}:${m.round}`;
+    if (_emittedTournamentRounds.has(key)) continue;
+    if (!seen.has(key)) {
+      seen.set(key, { bracket: m.bracket || 'W', round: m.round, matches: [] });
+    }
+    seen.get(key).matches.push({
+      match_id: m.id,
+      slot: m.slot,
+      p1_account_id: m.p1_id,
+      p2_account_id: m.p2_id,
+    });
+  }
+  for (const [key, info] of seen) {
+    _emittedTournamentRounds.add(key);
+    dispatchEvent('tournament.round_started', {
+      tournament_id: Number(tournamentId),
+      bracket: info.bracket,
+      round: info.round,
+      matches: info.matches,
+    }).catch(() => {});
+  }
+}
+
 const CHUNK_DIR = '/tmp/replay-chunks';
 const UPLOAD_DIR = '/tmp/replay-uploads';
 // Replay store: persistent directory where parsed .dem files are kept for download.
@@ -779,6 +819,19 @@ function createServer(startupStatus = {}) {
                 bot.notifyCoachingBookingConfirmed(row).catch(() => {});
               }
             } catch (_) { /* DM dispatch is best-effort */ }
+            // Task #371 — outbound webhook
+            try {
+              const { dispatchEvent } = require('./webhookDispatcher');
+              dispatchEvent('coaching.booked', {
+                booking_id: row.id,
+                coach_id: row.coach_id,
+                student_account_id: row.student_account_id,
+                scheduled_at: row.scheduled_at,
+                duration_minutes: row.duration_minutes,
+                amount_cents: row.amount_cents,
+                currency: row.currency,
+              }).catch(() => {});
+            } catch (_) {}
           } else {
             console.warn('[Stripe] coaching_booking webhook: no booking for session', session.id);
           }
@@ -1377,6 +1430,16 @@ function createServer(startupStatus = {}) {
   // (e.g. the public `/embed/:accountId` widget which must not sit under /api).
   const apiRouter = createApiRouter(startupStatus, app);
   app.use('/api', apiRouter);
+
+  // Task #371 — Public /v1 API + outbound webhooks dispatcher.
+  try {
+    const { createPublicApiRouter } = require('./publicApiRouter');
+    app.use('/v1', createPublicApiRouter());
+    const { startWorker } = require('./webhookDispatcher');
+    startWorker();
+  } catch (err) {
+    console.warn('[PublicAPI] failed to mount:', err.message);
+  }
 
   // Magazine v3 nightly worker — review fix. Generates weekly AI reports,
   // expires stale verified badges, and DMs deliveries via the Discord bot.
@@ -6662,6 +6725,10 @@ NOTES
     try {
       const matches = await db.generateTournamentBracket(req.params.id);
       res.json({ matches });
+      // Task #371 — outbound webhook: tournament.round_started for round 1.
+      try {
+        _emitTournamentRoundStarted(req.params.id, matches).catch(() => {});
+      } catch (_) {}
     } catch (err) {
       console.error('[API] generate bracket error:', err.message);
       res.status(500).json({ error: err.message || 'Failed to generate bracket' });
@@ -6677,6 +6744,11 @@ NOTES
       const tournamentId = matches.length ? matches[0].tournament_id : null;
       const tournament = tournamentId ? await db.getTournamentById(tournamentId) : null;
       res.json({ matches, tournament });
+      // Task #371 — outbound webhook: tournament.round_started when a
+      // new round becomes ready as a result of this winner.
+      if (tournamentId) {
+        try { _emitTournamentRoundStarted(tournamentId, matches).catch(() => {}); } catch (_) {}
+      }
 
       // Discord notification — fire-and-forget
       try {
@@ -10613,6 +10685,177 @@ NOTES
     }
   });
 
+  // ---------- Task #371 — Public API key + webhook management (per-user) ----------
+  router.get('/me/api-keys', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const rows = await db.listApiKeysForAccount(accountId);
+      const isPro = await _isProAccount(accountId);
+      const flag = await db.getFeatureFlag('public_api').catch(() => null);
+      res.json({
+        keys: rows.map(k => ({
+          id: k.id,
+          label: k.label,
+          tier: k.tier,
+          prefix: k.prefix,
+          usage_count: Number(k.usage_count) || 0,
+          last_used_at: k.last_used_at,
+          created_at: k.created_at,
+          revoked_at: k.revoked_at,
+        })),
+        public_api_state: flag?.state || 'off',
+        is_pro: isPro,
+      });
+    } catch (err) {
+      console.error('[API] me/api-keys list:', err.message);
+      res.status(500).json({ error: 'Failed to load API keys' });
+    }
+  });
+
+  router.post('/me/api-keys', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const label = (req.body?.label || '').toString().slice(0, 80) || 'Untitled key';
+      const isPro = await _isProAccount(accountId);
+      const isSuperuser = !!(req.session && req.session.isSuperuser);
+      // Per-user cap: 5 active keys (10 for Pro).
+      const existing = await db.listApiKeysForAccount(accountId);
+      const active = existing.filter(k => !k.revoked_at);
+      const cap = isPro ? 10 : 5;
+      if (active.length >= cap) {
+        return res.status(400).json({ error: `Key limit reached (${cap}). Revoke an existing key first.` });
+      }
+      const key = await db.createApiKey({
+        accountId,
+        label,
+        tier: isPro ? 'pro' : 'free',
+        ownerWasSuperuser: isSuperuser,
+      });
+      // Surface the raw token EXACTLY ONCE — the client must store it.
+      res.json({
+        id: key.id,
+        label: key.label,
+        tier: key.tier,
+        prefix: key.prefix,
+        created_at: key.created_at,
+        token: key.token,
+      });
+    } catch (err) {
+      console.error('[API] me/api-keys create:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create API key' });
+    }
+  });
+
+  router.delete('/me/api-keys/:id', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const keyId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(keyId)) return res.status(400).json({ error: 'Invalid key id' });
+      const ok = await db.revokeApiKey({ accountId, keyId });
+      if (!ok) return res.status(404).json({ error: 'Key not found or already revoked' });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] me/api-keys revoke:', err.message);
+      res.status(500).json({ error: 'Failed to revoke API key' });
+    }
+  });
+
+  router.get('/me/webhooks', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const [subs, deliveries] = await Promise.all([
+        db.listWebhookSubscriptionsForAccount(accountId),
+        db.listRecentWebhookDeliveries({ accountId, limit: 25 }),
+      ]);
+      const isPro = await _isProAccount(accountId);
+      res.json({
+        subscriptions: subs.map(s => ({
+          id: s.id,
+          url: s.url,
+          events: s.events,
+          active: s.active,
+          created_at: s.created_at,
+          last_delivery_at: s.last_delivery_at,
+          last_delivery_ok: s.last_delivery_ok,
+          last_delivery_status: s.last_delivery_status,
+          last_delivery_error: s.last_delivery_error,
+          // Reveal the secret to the owner so they can verify signatures.
+          secret: s.secret,
+        })),
+        deliveries,
+        known_events: db.listKnownWebhookEvents(),
+        is_pro: isPro,
+      });
+    } catch (err) {
+      console.error('[API] me/webhooks list:', err.message);
+      res.status(500).json({ error: 'Failed to load webhooks' });
+    }
+  });
+
+  router.post('/me/webhooks', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const isPro = await _isProAccount(accountId);
+      if (!isPro) return res.status(402).json({ error: 'Outbound webhooks are a Pro feature.' });
+      const url = (req.body?.url || '').toString().trim();
+      const events = Array.isArray(req.body?.events) ? req.body.events : [];
+      const { validateWebhookUrlSync, assertSafeAtDispatch } = require('./webhookUrlGuard');
+      const sync = validateWebhookUrlSync(url);
+      if (!sync.ok) return res.status(400).json({ error: sync.error });
+      const dnsCheck = await assertSafeAtDispatch(url);
+      if (!dnsCheck.ok) return res.status(400).json({ error: dnsCheck.error });
+      const existing = await db.listWebhookSubscriptionsForAccount(accountId);
+      if (existing.length >= 10) {
+        return res.status(400).json({ error: 'Maximum 10 webhook subscriptions per account.' });
+      }
+      const sub = await db.createWebhookSubscription({ accountId, url, events });
+      res.json(sub);
+    } catch (err) {
+      console.error('[API] me/webhooks create:', err.message);
+      res.status(400).json({ error: err.message || 'Failed to create webhook' });
+    }
+  });
+
+  router.patch('/me/webhooks/:id', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+      if (typeof req.body?.active !== 'boolean') {
+        return res.status(400).json({ error: 'Only `active` toggle is supported.' });
+      }
+      const updated = await db.setWebhookSubscriptionActive({
+        accountId, id, active: req.body.active,
+      });
+      if (!updated) return res.status(404).json({ error: 'Webhook not found' });
+      res.json(updated);
+    } catch (err) {
+      console.error('[API] me/webhooks patch:', err.message);
+      res.status(500).json({ error: 'Failed to update webhook' });
+    }
+  });
+
+  router.delete('/me/webhooks/:id', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+      const ok = await db.deleteWebhookSubscription({ accountId, id });
+      if (!ok) return res.status(404).json({ error: 'Webhook not found' });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] me/webhooks delete:', err.message);
+      res.status(500).json({ error: 'Failed to delete webhook' });
+    }
+  });
+
   // ---------- Personalised home + onboarding ----------
   router.get('/me/home', async (req, res) => {
     try {
@@ -14292,6 +14535,26 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
     const recordResult = await db.recordMatch(
       matchStats, '', `web:${ip}`, fileHash, patch, seasonId, opts.replayProvenance || null
     );
+
+    // Task #371 — Outbound webhook: match.ended. Fire-and-forget; the
+    // dispatcher persists to webhook_deliveries so worker retries handle
+    // transient subscriber failures with exponential backoff.
+    try {
+      const { dispatchEvent } = require('./webhookDispatcher');
+      dispatchEvent('match.ended', {
+        match_id: matchStats?.matchId,
+        radiant_win: !!matchStats?.radiantWin,
+        duration: matchStats?.duration || null,
+        season_id: seasonId,
+        patch,
+        players: (matchStats?.players || []).map(p => ({
+          account_id: p.account_id,
+          hero_id: p.hero_id,
+          team: p.team,
+          kills: p.kills, deaths: p.deaths, assists: p.assists,
+        })),
+      }).catch(() => {});
+    } catch (_) {}
 
     // Data quality check + RCON server reset — same pipeline as bot._recordMatchData
     try {

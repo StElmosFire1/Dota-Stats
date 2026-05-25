@@ -159,6 +159,23 @@ async function tick(db, basePort) {
           // First time we hit the threshold — start the grace timer.
           await db.updateInhouseSession(s.id, { auto_start_at: new Date(Date.now() + fillSec * 1000) });
           log(`Session #${s.id}: ${players.length}/${min} reached, auto-start in ${fillSec}s`);
+          // Task #371 — outbound webhook: lobby.full. Fires once per
+          // session per fill — the `!s.auto_start_at` guard above means a
+          // drop-below-min that re-fills will emit again, which is the
+          // desired UX.
+          try {
+            const { dispatchEvent } = require('../web/webhookDispatcher');
+            dispatchEvent('lobby.full', {
+              session_id: s.id,
+              player_count: players.length,
+              min_players: min,
+              auto_start_in_seconds: fillSec,
+              players: players.map(p => ({
+                account_id: p.account_id,
+                position: p.position,
+              })),
+            }).catch(() => {});
+          } catch (_) {}
         } else if (new Date(s.auto_start_at).getTime() <= Date.now()) {
           // v6.03 — resolve the captain-mode vote winner BEFORE flipping the
           // status, so the captain selection that runs at end-of-accept-phase

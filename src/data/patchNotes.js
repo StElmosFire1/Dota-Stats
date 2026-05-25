@@ -1,5 +1,21 @@
 module.exports = [
   {
+    "version": "7.58",
+    "title": "Public /v1 API + outbound webhooks (Task #371)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**Versioned read API at `/v1`.** New `src/web/publicApiRouter.js` exposes 11 read endpoints: `/status`, `/me`, `/matches`, `/matches/:id`, `/leaderboard`, `/profile/:accountId`, `/inhouse/status`, `/tournaments`, `/tournaments/:id`, `/coaches`, `/coaches/:id/availability`. All require an API key via `Authorization: Bearer` or `X-API-Key`. Internal/operator-only fields are stripped before serialisation.",
+      "**Per-key rate limits + tiers.** Free keys get 30 req/min · 1,000 req/day; Pro keys get 120 req/min · 50,000 req/day. Limits are enforced with an in-process minute window plus an IP burst gate via the existing `express-rate-limit` middleware. Every response carries `X-RateLimit-Limit/Remaining/Tier`; over-limit calls return HTTP 429 with `{\"error\":\"rate_limited\"}`.",
+      "**API key management UI.** New `web/src/pages/SettingsApi.jsx` under Settings → API & webhooks (`SectionLink` icon 🔌). Create labelled keys (cap 5 free / 10 Pro), copy the raw token once at creation (we only store SHA-256 hashes), see prefix + usage count + last-used + status, revoke instantly. Backed by `/api/me/api-keys` GET/POST/DELETE on the authenticated session.",
+      "**Outbound webhooks (Pro-only).** New `src/web/webhookDispatcher.js` worker (`startWorker()` tick every 15s) signs each delivery with HMAC-SHA256 over `<timestamp>.<rawBody>` and emits `X-OI-Signature: t=…,v1=…`, `X-OI-Timestamp`, `X-OI-Event`, `X-OI-Delivery`. Six-step exponential backoff: 0s, 30s, 2m, 10m, 1h, 6h (~7h max). Per-subscription delivery log is surfaced in the settings UI. Events: `match.ended`, `lobby.full`, `tournament.round_started`, `coaching.booked`.",
+      "**`match.ended` wired into the replay pipeline.** After `db.recordMatch` in the web replay-job path, `dispatchEvent('match.ended', …)` enqueues a delivery row per active subscription — fire-and-forget so a slow subscriber never blocks parsing. Postgres `FOR UPDATE SKIP LOCKED` claim makes the worker safe across multiple processes.",
+      "**Schema additions.** `api_keys` (token_hash, prefix, label, tier, usage_count, last_used_at, revoked_at, owner_was_superuser), `webhook_subscriptions` (url, events JSONB, secret, active, last_delivery_*), `webhook_deliveries` (event, payload, status pending/succeeded/failed, attempts, next_attempt_at, last_status_code, last_error). All `CREATE IF NOT EXISTS` so the migration is boot-safe.",
+      "**`/api-docs` page.** New `web/src/pages/ApiDocs.jsx` documents auth, rate-limit tiers, every endpoint, the four webhook events, a Node verification snippet for HMAC signatures, and the error code table. Linked from the Settings API page.",
+      "**Feature flag `public_api` (preview by default).** Seeded in `src/db/index.js`. In `preview` the `/v1` router only accepts keys created while the owner was a superuser (`owner_was_superuser=true`) — everyone else can already mint keys ready for the public flip. Flip to `on` in the admin Config tab to launch.",
+      "**Edition scope.** Full edition only — the community edition has no Pro tier and no Stripe surface to gate against."
+    ]
+  },
+  {
     "version": "7.57",
     "title": "Replay parser shortlist + chat log capture end-to-end (Task #363)",
     "published_at": "2026-05-24",
