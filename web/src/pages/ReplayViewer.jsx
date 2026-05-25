@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getReplayTimeline } from '../api';
+import { useParams, useLocation, Link } from 'react-router-dom';
+import { getReplayTimeline, getVodReview, addVodNote, deleteVodNote } from '../api';
 import { getHeroName, getItemImageUrl } from '../heroNames';
+import { useSteamAuth } from '../context/SteamAuthContext';
 
 // Task #315 — Pro-gated 2D minimap replay viewer.
 // • Hero positions sampled every 10s, linearly interpolated for smooth playback.
@@ -72,13 +73,27 @@ const EVENT_META = {
 
 export default function ReplayViewer() {
   const { matchId } = useParams();
+  const location = useLocation();
+  const { steamUser } = useSteamAuth();
+  // Task #384 — Coaching v2: when opened with ?vodReview=ID&t=SECONDS,
+  // overlay timestamped coach annotations onto the timeline and allow the
+  // assigned coach to add/delete notes inline (no separate page needed).
+  const qp = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const vodReviewId = qp.get('vodReview');
+  const initialT = parseFloat(qp.get('t') || '0') || 0;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [t, setT] = useState(0);
+  const [t, setT] = useState(initialT);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(4);
   const [layers, setLayers] = useState({ wards: true, smoke: false, objectives: true });
+  const [vodReview, setVodReview] = useState(null);
+  const [vodNotes, setVodNotes] = useState([]);
+  const [vodIsCoach, setVodIsCoach] = useState(false);
+  const [vodErr, setVodErr] = useState(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
   const canvasRef = useRef(null);
   const imgRef = useRef(null);
   const rafRef = useRef(null);
@@ -92,6 +107,42 @@ export default function ReplayViewer() {
       .catch((err) => { if (alive) { setError(err.message || String(err)); setLoading(false); } });
     return () => { alive = false; };
   }, [matchId]);
+
+  // Load VOD review + notes when ?vodReview=ID is present.
+  const reloadVod = useCallback(() => {
+    if (!vodReviewId) return;
+    getVodReview(vodReviewId)
+      .then((r) => {
+        setVodReview(r.review);
+        setVodNotes(r.notes || []);
+        setVodIsCoach(!!r.is_coach);
+        setVodErr(null);
+      })
+      .catch((e) => setVodErr(e.message || String(e)));
+  }, [vodReviewId]);
+  useEffect(() => { reloadVod(); }, [reloadVod]);
+
+  const addNote = async () => {
+    if (!noteDraft.trim() || noteSaving) return;
+    setNoteSaving(true);
+    try {
+      await addVodNote(vodReviewId, { t_seconds: Math.round(t), body: noteDraft.trim() });
+      setNoteDraft('');
+      reloadVod();
+    } catch (e) {
+      setVodErr(e.message || String(e));
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+  const removeNote = async (noteId) => {
+    try {
+      await deleteVodNote(vodReviewId, noteId);
+      reloadVod();
+    } catch (e) {
+      setVodErr(e.message || String(e));
+    }
+  };
 
   useEffect(() => {
     const img = new Image();
@@ -267,6 +318,13 @@ export default function ReplayViewer() {
             aria-label="Match minimap with player position markers"
           />
           <LayerToggles layers={layers} setLayers={setLayers} />
+          {vodReviewId && vodNotes.length > 0 && (
+            <VodNoteMarkerStrip
+              notes={vodNotes}
+              duration={duration}
+              onSeek={(time) => { setPlaying(false); setT(time); }}
+            />
+          )}
           <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -319,6 +377,22 @@ export default function ReplayViewer() {
               <TeamPanel team="radiant" stats={sidePanel.radStats} totalNw={sidePanel.radNw} />
               <TeamPanel team="dire"    stats={sidePanel.direStats} totalNw={sidePanel.direNw} />
               <ObjectiveFeed feed={sidePanel.feed} now={t} />
+              {vodReviewId && (
+                <VodAnnotationPanel
+                  review={vodReview}
+                  notes={vodNotes}
+                  isCoach={vodIsCoach}
+                  signedIn={!!steamUser}
+                  err={vodErr}
+                  noteDraft={noteDraft}
+                  setNoteDraft={setNoteDraft}
+                  noteSaving={noteSaving}
+                  onAddNote={addNote}
+                  onDeleteNote={removeNote}
+                  onSeek={(time) => { setPlaying(false); setT(time); }}
+                  currentT={t}
+                />
+              )}
             </>
           )}
         </aside>
@@ -491,6 +565,142 @@ function TeamPanel({ team, stats, totalNw }) {
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function VodNoteMarkerStrip({ notes, duration, onSeek }) {
+  const sorted = [...notes].sort((a, b) => a.t_seconds - b.t_seconds);
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginBottom: 4 }}>
+        Coach annotations · click a marker to jump
+      </div>
+      <div style={{
+        position: 'relative', height: 18,
+        background: 'rgba(245,158,11,0.08)',
+        border: '1px solid rgba(245,158,11,0.3)', borderRadius: 4,
+      }}>
+        {sorted.map((n) => {
+          const pct = duration > 0 ? (n.t_seconds / duration) * 100 : 0;
+          return (
+            <button
+              key={n.id}
+              type="button"
+              onClick={() => onSeek(n.t_seconds)}
+              aria-label={`Jump to coach note at ${formatTime(n.t_seconds)}: ${n.body.slice(0, 80)}`}
+              title={`${formatTime(n.t_seconds)} — ${n.body.slice(0, 120)}`}
+              style={{
+                position: 'absolute', top: 1, bottom: 1,
+                left: `calc(${pct}% - 5px)`, width: 10,
+                background: 'var(--amber, #f59e0b)', border: '1px solid #0d1424',
+                borderRadius: 2, cursor: 'pointer', padding: 0,
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function VodAnnotationPanel({
+  review, notes, isCoach, signedIn, err,
+  noteDraft, setNoteDraft, noteSaving, onAddNote, onDeleteNote, onSeek, currentT,
+}) {
+  return (
+    <div style={{
+      border: '1px solid rgba(245,158,11,0.5)', borderRadius: 8, padding: 10, marginTop: 10,
+      background: 'rgba(245,158,11,0.05)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <strong style={{ color: 'var(--amber, #f59e0b)' }}>VOD Review</strong>
+        {review && (
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {review.status}{isCoach ? ' · you are the coach' : ''}
+          </span>
+        )}
+      </div>
+      {!signedIn && (
+        <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Sign in with Steam to view this review.</p>
+      )}
+      {err && <p style={{ fontSize: 12, color: '#ef4444' }}>{err}</p>}
+      {review?.question && (
+        <div style={{ fontSize: 12, marginBottom: 8, padding: 6, background: 'rgba(13,20,36,0.4)', borderRadius: 4 }}>
+          <em>{review.question}</em>
+        </div>
+      )}
+      {notes.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+          No annotations yet{isCoach ? ' — add one below at the current scrub time.' : '.'}
+        </p>
+      ) : (
+        <ol style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 220, overflowY: 'auto' }}>
+          {[...notes].sort((a, b) => a.t_seconds - b.t_seconds).map((n) => (
+            <li key={n.id} style={{ padding: '4px 0', borderBottom: '1px solid rgba(148,163,184,0.1)', fontSize: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => onSeek(n.t_seconds)}
+                  aria-label={`Jump to ${formatTime(n.t_seconds)}`}
+                  style={{
+                    background: 'transparent', border: 'none', color: 'var(--amber, #f59e0b)',
+                    cursor: 'pointer', fontWeight: 700, padding: 0, fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {formatTime(n.t_seconds)}
+                </button>
+                {isCoach && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteNote(n.id)}
+                    aria-label={`Delete note at ${formatTime(n.t_seconds)}`}
+                    style={{
+                      background: 'transparent', border: 'none', color: 'var(--text-muted)',
+                      cursor: 'pointer', fontSize: 11, padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div style={{ marginTop: 2, whiteSpace: 'pre-wrap' }}>{n.body}</div>
+            </li>
+          ))}
+        </ol>
+      )}
+      {isCoach && review && ['paid', 'in_progress'].includes(review.status) && (
+        <div style={{ marginTop: 8, borderTop: '1px solid rgba(148,163,184,0.2)', paddingTop: 8 }}>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+            Add note at {formatTime(currentT)}
+          </label>
+          <textarea
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            placeholder="What should the student notice here?"
+            rows={3}
+            aria-label="Annotation text"
+            style={{
+              width: '100%', boxSizing: 'border-box', padding: 6, fontSize: 12,
+              background: 'rgba(13,20,36,0.6)', color: 'inherit',
+              border: '1px solid var(--border, #334155)', borderRadius: 4, resize: 'vertical',
+            }}
+          />
+          <button
+            type="button"
+            onClick={onAddNote}
+            disabled={!noteDraft.trim() || noteSaving}
+            style={{
+              marginTop: 4, padding: '4px 12px', fontSize: 12, fontWeight: 700,
+              background: 'var(--amber, #f59e0b)', color: '#1a1a1a', border: 'none',
+              borderRadius: 4, cursor: noteDraft.trim() && !noteSaving ? 'pointer' : 'not-allowed',
+              opacity: noteDraft.trim() && !noteSaving ? 1 : 0.5,
+            }}
+          >
+            {noteSaving ? 'Saving…' : 'Add annotation'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

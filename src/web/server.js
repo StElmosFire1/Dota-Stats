@@ -1406,7 +1406,10 @@ function createServer(startupStatus = {}) {
           if (cancelled) console.log('[Stripe] Coaching booking async payment failed (slot freed)', cancelled.id);
         } else if (purpose === 'coaching_group_seat') {
           const cancelled = await db.markGroupSeatCancelledBySession(session.id).catch(() => null);
-          if (cancelled) console.log('[Stripe] Group seat async payment failed', cancelled.id);
+          if (cancelled) {
+            console.log('[Stripe] Group seat async payment failed', cancelled.id);
+            await db.reopenGroupSessionIfRoom(cancelled.session_id).catch(() => {});
+          }
         } else if (purpose === 'coaching_vod_review') {
           const cancelled = await db.markVodCancelledBySession(session.id).catch(() => null);
           if (cancelled) console.log('[Stripe] VOD review async payment failed', cancelled.id);
@@ -14186,7 +14189,11 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const seats = await db.listSeatsForSession(gs.id);
       const failed = [];
       for (const seat of seats) {
-        if (seat.status === 'paid' && seat.stripe_payment_intent && stripe) {
+        if (seat.status === 'paid') {
+          if (!seat.stripe_payment_intent || !stripe) {
+            failed.push({ seat_id: seat.id, error: !stripe ? 'Stripe unavailable' : 'Missing payment intent' });
+            continue;
+          }
           try {
             await stripe.paymentIntents.cancel(seat.stripe_payment_intent);
             await db.markGroupSeatRefundedByIntent(seat.stripe_payment_intent).catch(() => {});
