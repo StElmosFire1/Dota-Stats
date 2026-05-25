@@ -2045,6 +2045,26 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_web_push_account ON web_push_subscriptions (account_id)`);
 
+    // Task #381 — Expo push tokens for the mobile companion app. Mirrors
+    // the shape of web_push_subscriptions: one row per (account_id, token),
+    // unique on the token because a single ExponentPushToken[…] identifies
+    // a single device install. `platform` is 'ios' | 'android' (or null when
+    // the client didn't disclose). The dispatcher reuses the same per-user,
+    // per-category preference gate as the web push pipeline.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS expo_push_tokens (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        platform TEXT,
+        app_version TEXT,
+        device_label TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_expo_push_account ON expo_push_tokens (account_id)`);
+
     // F5 — Tournament prize-split (top 1/2/3 default 50/30/20). JSONB so
     // future tournaments can configure 4-place / 5-place splits without a
     // schema change.
@@ -11591,6 +11611,44 @@ async function touchPushSubscription(endpoint) {
   await p.query(`UPDATE web_push_subscriptions SET last_used_at = NOW() WHERE endpoint = $1`, [endpoint]);
 }
 
+// ---------- Task #381: Expo push tokens (mobile companion app) ----------
+async function addExpoPushToken({ accountId, token, platform = null, appVersion = null, deviceLabel = null }) {
+  if (!accountId || !token) throw new Error('addExpoPushToken: missing required field');
+  const p = getPool();
+  await p.query(
+    `INSERT INTO expo_push_tokens (account_id, token, platform, app_version, device_label, last_used_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (token) DO UPDATE
+       SET account_id = EXCLUDED.account_id,
+           platform = COALESCE(EXCLUDED.platform, expo_push_tokens.platform),
+           app_version = COALESCE(EXCLUDED.app_version, expo_push_tokens.app_version),
+           device_label = COALESCE(EXCLUDED.device_label, expo_push_tokens.device_label),
+           last_used_at = NOW()`,
+    [accountId, token, platform, appVersion, deviceLabel]
+  );
+}
+
+async function removeExpoPushToken(token) {
+  const p = getPool();
+  const r = await p.query(`DELETE FROM expo_push_tokens WHERE token = $1`, [token]);
+  return r.rowCount;
+}
+
+async function getExpoPushTokensForAccount(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, token, platform, app_version, device_label, created_at, last_used_at
+       FROM expo_push_tokens WHERE account_id = $1`,
+    [accountId]
+  );
+  return r.rows;
+}
+
+async function touchExpoPushToken(token) {
+  const p = getPool();
+  await p.query(`UPDATE expo_push_tokens SET last_used_at = NOW() WHERE token = $1`, [token]);
+}
+
 // ---------- Profile customization (`profile_customization`) ----------
 // One row per account. Returns null when the player has never customized.
 async function getPlayerProfileCustomization(accountId) {
@@ -16994,6 +17052,10 @@ module.exports = {
   getPushSubscriptionsForAccount,
   getPushSubscriptionsForAccounts,
   touchPushSubscription,
+  addExpoPushToken,
+  removeExpoPushToken,
+  getExpoPushTokensForAccount,
+  touchExpoPushToken,
   getPlayerNemesis,
   getPlayerTimeOfDayHeatmap,
   getPlayerHeroItems,

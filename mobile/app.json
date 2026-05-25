@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "OCE Inhouse",
+    "slug": "oce-inhouse",
+    "scheme": "oceinhouse",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d1424"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "gg.oceinhouse.mobile"
+    },
+    "android": {
+      "package": "gg.oceinhouse.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0d1424"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiBase": "https://oceinhouse.gg"
+    }
+  }
+}

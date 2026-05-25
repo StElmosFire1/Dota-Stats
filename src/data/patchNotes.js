@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "7.66",
+    "title": "Mobile companion app (Expo, read-only first cut) (Task #381)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**New top-level `mobile/` Expo Router app** \u2014 a read-only iOS/Android companion for oceinhouse.gg. Five screens: Home (live stats + nav), Leaderboard (top 100 MMR), Recent Matches (last 50 games), Match Detail (per-team K/D/A breakdown), and Settings (notification prefs + sign-in). Full edition only \u2014 community edition is deliberately not wired.",
+      "**Steam OpenID sign-in via in-app browser.** Reuses the existing `/auth/steam` \u2192 `/auth/steam/return` \u2192 `/api/auth/complete` token-exchange that the website already runs. The mobile app launches `expo-web-browser` against `/auth/steam?mobile_redirect=oceinhouse://` and the server now honours that param to bounce back into the app's URL scheme with the short-lived token attached. Scheme is strictly allow-listed to the published `oceinhouse://` scheme only (no `exp:`, no http(s)) at both write *and* consume time, so the single-use Steam auth token can never be redirected to an attacker-controlled Expo experience or arbitrary URL. Session cookie is held encrypted-at-rest in `expo-secure-store` and re-attached as `Cookie:` on every request.",
+      "**Expo push notifications** \u2014 new `expo_push_tokens` table (one row per device, unique on token, mirrors `web_push_subscriptions`) + three new endpoints (`POST /api/me/expo-push/register`, `POST /api/me/expo-push/unregister`, `POST /api/me/expo-push/test`). The existing imminent-push dispatcher (`/internal/inhouse/:id/imminent-push`) now fans out to Expo tokens in parallel with VAPID web-push, sharing the same per-account `match_imminent_push` preference gate so toggling a category in either surface is honoured everywhere. Dead Expo tokens (`DeviceNotRegistered` / `InvalidCredentials`) are pruned automatically when the push service rejects them.",
+      "**Settings parity with web push prefs.** The mobile Settings screen reads/writes the same `notification_prefs` rows as `/settings/notifications` on the website \u2014 toggles are shared, not duplicated. Includes a 'Send test push to this device' button that registers an Expo token on demand if the user previously denied permission.",
+      "**Out of scope (intentionally).** No write/mutation flows (no queue join, captain draft, accept phase, hero signup, bookings, payments), no inhouse lobby UI \u2014 the website stays the source of truth. No app-store submission \u2014 first cut is Expo Go + EAS internal dev builds only. No community-edition wiring. Documented in `mobile/README.md`.",
+      "**Pre-deploy gates left untouched.** The a11y gate, community-paywall gate, and parser-freshness gate all scope to `web/src/`, `community-edition/`, and `odota-parser/` respectively \u2014 `mobile/` is exempt by design, so no gate changes were needed."
+    ]
+  },
+  {
     "version": "7.65",
     "title": "Twitch extension companion (Task #380)",
     "published_at": "2026-05-25",

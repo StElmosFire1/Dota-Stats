@@ -27,6 +27,71 @@ try {
 function _webPushReady() {
   return Boolean(webpush && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 }
+
+// Task #381 — Expo push fan-out. Posts up to 100 messages per HTTP call
+// to Expo's push service (no SDK needed; thin wrapper around node-fetch).
+// Returns { sent, removed } where `removed` counts tokens we deleted
+// because Expo reported them as DeviceNotRegistered or InvalidCredentials.
+// `messages` is an array of { to, title, body, data?, sound? } objects.
+async function _sendExpoPush(messages) {
+  if (!Array.isArray(messages) || !messages.length) return { sent: 0, removed: 0 };
+  const fetch = require('node-fetch');
+  let sent = 0;
+  let removed = 0;
+  // Expo accepts up to 100 messages per batch.
+  for (let i = 0; i < messages.length; i += 100) {
+    const batch = messages.slice(i, i + 100);
+    try {
+      const r = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(batch),
+      });
+      const json = await r.json().catch(() => ({}));
+      const tickets = Array.isArray(json?.data) ? json.data : [];
+      for (let j = 0; j < tickets.length; j++) {
+        const t = tickets[j];
+        const token = batch[j]?.to;
+        if (t?.status === 'ok') {
+          sent++;
+          if (token) db.touchExpoPushToken(token).catch(() => {});
+        } else if (t?.status === 'error') {
+          const code = t?.details?.error;
+          if (code === 'DeviceNotRegistered' || code === 'InvalidCredentials') {
+            if (token) {
+              await db.removeExpoPushToken(token).catch(() => {});
+              removed++;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[ExpoPush] batch failed:', err?.message || err);
+    }
+  }
+  return { sent, removed };
+}
+
+// Helper that combines the per-account preference gate + token lookup +
+// fan-out. Mirrors the web-push iteration pattern in /me/push/test and
+// /internal/inhouse/:id/imminent-push. Safe to call even when nobody has
+// a token registered — returns 0/0 quickly.
+async function _fanOutExpoPush(accountId, { title, body, url, data }) {
+  const tokens = await db.getExpoPushTokensForAccount(accountId).catch(() => []);
+  if (!tokens?.length) return { sent: 0, removed: 0 };
+  const messages = tokens.map(t => ({
+    to: t.token,
+    title,
+    body,
+    sound: 'default',
+    data: { ...(data || {}), url: url || '/' },
+  }));
+  return _sendExpoPush(messages);
+}
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
 const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/groqService');
@@ -415,6 +480,34 @@ function createServer(startupStatus = {}) {
   app.get('/auth/steam', authLimiter, (req, res) => {
     const baseUrl = steamBaseUrl(req);
     const returnUrl = `${baseUrl}/auth/steam/return`;
+    // Task #381 — the mobile companion app opens this URL inside an
+    // expo-web-browser auth session and needs the server to redirect
+    // *into the app's URL scheme* (e.g. `oceinhouse://?t=...`) once the
+    // Steam round-trip finishes. We stash the requested redirect in the
+    // session so it survives the cross-domain bounce through Steam,
+    // and the return handler honours it instead of `/?auth=success`.
+    //
+    // SECURITY: we deliberately allow ONLY the published app scheme
+    // `oceinhouse://` and reject everything else (including `exp://`).
+    // A protocol-only check is not enough on its own — `exp://` can
+    // target *any* Expo experience on a device, including an attacker-
+    // controlled one, which would let a phishing flow exfiltrate the
+    // single-use Steam auth token. Restricting to the production scheme
+    // closes that hole. Dev builds also use `oceinhouse://` (set via
+    // `expo.scheme` in mobile/app.json) so this doesn't break local
+    // testing.
+    const mobileRedirect = typeof req.query.mobile_redirect === 'string'
+      ? req.query.mobile_redirect : '';
+    if (mobileRedirect) {
+      try {
+        const u = new URL(mobileRedirect);
+        if (u.protocol === 'oceinhouse:') {
+          req.session.mobileRedirect = mobileRedirect;
+        }
+      } catch (_) { /* malformed → ignore */ }
+    } else if (req.session) {
+      delete req.session.mobileRedirect;
+    }
     const params = new URLSearchParams({
       'openid.mode': 'checkid_setup',
       'openid.ns': 'http://specs.openid.net/auth/2.0',
@@ -491,6 +584,24 @@ function createServer(startupStatus = {}) {
         expires: Date.now() + 120_000,
       });
       console.log('[Steam Auth] success — accountId:', accountId, 'token issued');
+      // Task #381 — if the sign-in was started from the mobile app
+      // (mobile_redirect= was set on /auth/steam), bounce back into the
+      // app's deep-link scheme instead of the website root.
+      const mobileRedirect = req.session?.mobileRedirect || '';
+      if (mobileRedirect) {
+        try {
+          const u = new URL(mobileRedirect);
+          // Re-validate at consumption time (defence-in-depth): even if a
+          // tampered session row somehow held an `exp:` or http(s) value,
+          // we will not redirect the Steam auth token outside the
+          // published app scheme.
+          if (u.protocol === 'oceinhouse:') {
+            u.searchParams.set('t', token);
+            delete req.session.mobileRedirect;
+            return res.redirect(u.toString());
+          }
+        } catch (_) {}
+      }
       res.redirect(`/?auth=success&t=${token}`);
     } catch (err) {
       // SECURITY: log full error server-side, redirect with a generic flag so
@@ -10566,6 +10677,74 @@ NOTES
     }
   });
 
+  // ---------- Task #381: Expo push tokens (mobile companion app) ----------
+  // Register or refresh the signed-in user's Expo push token. Tokens look
+  // like `ExponentPushToken[xxxxxxxxxxxx]`. We deliberately do NOT gate
+  // this behind the `web_push` feature flag — the mobile app is its own
+  // surface and ships independently — but it does require a valid session
+  // (the user must have completed Steam OpenID via the in-app browser).
+  router.post('/me/expo-push/register', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+      // Loose validation — Expo tokens are bracketed strings. We don't try
+      // to police the exact format because Expo's spec allows both
+      // ExponentPushToken[...] and ExpoPushToken[...] variants.
+      if (!token || token.length < 10 || token.length > 200) {
+        return res.status(400).json({ error: 'Invalid Expo push token' });
+      }
+      const platform = ['ios', 'android'].includes(req.body?.platform) ? req.body.platform : null;
+      const appVersion = typeof req.body?.app_version === 'string'
+        ? req.body.app_version.slice(0, 32) : null;
+      const deviceLabel = typeof req.body?.device_label === 'string'
+        ? req.body.device_label.slice(0, 64) : null;
+      await db.addExpoPushToken({ accountId, token, platform, appVersion, deviceLabel });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] expo-push/register:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/expo-push/unregister', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+      if (!token) return res.status(400).json({ error: 'token required' });
+      // Only allow deleting tokens that belong to this account so a
+      // hostile client can't kick another user's device off push.
+      const owned = await db.getExpoPushTokensForAccount(accountId);
+      if (!owned.some(t => t.token === token)) {
+        return res.status(404).json({ error: 'Unknown token for this account' });
+      }
+      await db.removeExpoPushToken(token);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] expo-push/unregister:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/expo-push/test', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const tokens = await db.getExpoPushTokensForAccount(accountId);
+      if (!tokens.length) return res.status(404).json({ error: 'No Expo push tokens for this account' });
+      const result = await _fanOutExpoPush(accountId, {
+        title: 'OCE Inhouse — Test push',
+        body: 'Mobile push notifications are working. Manage these in Settings.',
+        url: '/',
+      });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[API] expo-push/test:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ---------- Vanity slugs + Profile Spotlight (Task #208 / v6.64) ----------
   // Reserved-path deny-list for `/p/<slug>`. Anything that collides with a
   // current top-level route (App.jsx Routes) or a near-miss must NOT be
@@ -13049,16 +13228,16 @@ Return exactly this JSON shape (all fields required, arrays of strings):
   router.post('/internal/inhouse/:id/imminent-push', async (req, res) => {
     try {
       if (!_isSu(req)) return res.status(403).json({ error: 'Superuser only' });
-      if (!_webPushReady()) return res.json({ ok: true, sent: 0, skipped: 'web_push_not_ready' });
+      const webReady = _webPushReady();
       const sessionId = parseInt(req.params.id, 10);
       if (!sessionId) return res.status(400).json({ error: 'Bad session id' });
       const players = await db.getInhouseSessionPlayers(sessionId);
-      const payload = JSON.stringify({
-        title: 'Inhouse match starting!',
-        body: 'Your inhouse lobby is in the accept phase — open the site to accept.',
-        url: '/inhouse',
-      });
+      const title = 'Inhouse match starting!';
+      const body = 'Your inhouse lobby is in the accept phase — open the app to accept.';
+      const url = '/inhouse';
+      const payload = JSON.stringify({ title, body, url });
       let sent = 0;
+      let expoSent = 0;
       for (const player of players) {
         const aid = Number(player.account_id);
         if (!aid) continue;
@@ -13066,25 +13245,34 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           const enabled = await db.isNotificationEnabled(aid, 'match_imminent_push');
           if (!enabled) continue;
         } catch (_) { /* default ON via NOTIFICATION_CATEGORIES */ }
-        try {
-          const subs = await db.getPushSubscriptionsForAccount(aid);
-          for (const s of subs) {
-            try {
-              await webpush.sendNotification(
-                { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-                payload,
-              );
-              await db.touchPushSubscription(s.endpoint);
-              sent++;
-            } catch (err) {
-              if (err && (err.statusCode === 404 || err.statusCode === 410)) {
-                await db.removePushSubscriptionByEndpoint(s.endpoint).catch(() => {});
+        if (webReady) {
+          try {
+            const subs = await db.getPushSubscriptionsForAccount(aid);
+            for (const s of subs) {
+              try {
+                await webpush.sendNotification(
+                  { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+                  payload,
+                );
+                await db.touchPushSubscription(s.endpoint);
+                sent++;
+              } catch (err) {
+                if (err && (err.statusCode === 404 || err.statusCode === 410)) {
+                  await db.removePushSubscriptionByEndpoint(s.endpoint).catch(() => {});
+                }
               }
             }
-          }
+          } catch (_) {}
+        }
+        // Task #381 — parallel fan-out to the mobile app (Expo). Independent
+        // of VAPID readiness so the mobile app keeps working even if the
+        // web push keys haven't been provisioned in this environment.
+        try {
+          const r = await _fanOutExpoPush(aid, { title, body, url, data: { kind: 'inhouse_imminent', session_id: sessionId } });
+          expoSent += r.sent || 0;
         } catch (_) {}
       }
-      res.json({ ok: true, sent });
+      res.json({ ok: true, sent, expo_sent: expoSent });
     } catch (e) {
       console.error('[API] imminent-push:', e.message);
       res.status(500).json({ error: e.message });
