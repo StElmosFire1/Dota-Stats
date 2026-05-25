@@ -8948,6 +8948,311 @@ async function getWeeklyRecap(seasonId = null) {
   };
 }
 
+// Task #382 — Hero counter-pick scorer. Shared core used both by the new
+// /heroes/counter-scores endpoint and the existing /draft-assistant flow,
+// so the two surfaces never disagree. Returns a per-candidate-hero map of
+// { games, wins, wr } when that candidate faced the given enemy heroes
+// (intersected, i.e. matches where the candidate was on the opposite team
+// to ALL of the enemy heroes — single-enemy degenerates to "any match
+// where the candidate faced that hero"). Position-locked when provided.
+async function _computeHeroCounterMap(enemyHeroIds, position, seasonId) {
+  if (!enemyHeroIds || enemyHeroIds.length === 0) return {};
+  const p = getPool();
+  const params = [enemyHeroIds, enemyHeroIds.length];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const posSql = position ? ` AND ps.position = $${params.push(parseInt(position))}` : '';
+  const res = await p.query(
+    `SELECT ps.hero_id,
+            COUNT(*) AS games,
+            SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id > 0${posSql}
+        AND (
+          SELECT COUNT(DISTINCT ps2.hero_id) FROM player_stats ps2
+           WHERE ps2.match_id = ps.match_id
+             AND ps2.team != ps.team
+             AND ps2.hero_id = ANY($1)
+        ) = $2${sc}
+      GROUP BY ps.hero_id
+      HAVING COUNT(*) >= 1`,
+    params
+  );
+  const map = {};
+  for (const r of res.rows) {
+    const g = parseInt(r.games);
+    const w = parseInt(r.wins);
+    map[parseInt(r.hero_id)] = { games: g, wins: w, wr: g > 0 ? w / g : 0 };
+  }
+  return map;
+}
+
+// Position-locked counter-pick scorer used by the new Heroes › Counter-pick
+// tab. Pick up to ~5 enemy heroes + an optional position; get a ranked
+// list of best heroes to pick into them, with games + wr. Replaces the
+// position-blind counter sidebar in /draft-assistant for that use case;
+// the draft assistant itself routes through getDraftSuggestions below
+// which reuses the same _computeHeroCounterMap so the two surfaces never
+// disagree.
+async function getHeroCounterScores(enemyHeroIds, position = null, seasonId = null, { limit = 30, minGames = 1 } = {}) {
+  const enemies = (enemyHeroIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+  if (enemies.length === 0) return [];
+  const p = getPool();
+
+  // Base WR per candidate hero (within position filter + season).
+  const baseParams = [];
+  const baseSc = _sc(seasonId, baseParams, 'm');
+  const baseRes = await p.query(
+    `SELECT ps.hero_id, MAX(ps.hero_name) AS hero_name,
+            COUNT(*) AS games,
+            SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id > 0${position ? ` AND ps.position = $${baseParams.push(parseInt(position))}` : ''}${baseSc}
+      GROUP BY ps.hero_id`,
+    baseParams
+  );
+  const baseMap = {};
+  for (const r of baseRes.rows) {
+    const g = parseInt(r.games);
+    const w = parseInt(r.wins);
+    baseMap[parseInt(r.hero_id)] = {
+      hero_id: parseInt(r.hero_id),
+      hero_name: r.hero_name,
+      base_games: g,
+      base_wr: g > 0 ? w / g : 0.5,
+    };
+  }
+
+  const counterMap = await _computeHeroCounterMap(enemies, position, seasonId);
+
+  const enemySet = new Set(enemies);
+  const out = [];
+  for (const hid of Object.keys(counterMap)) {
+    const h = parseInt(hid);
+    if (enemySet.has(h)) continue;
+    const c = counterMap[h];
+    if (c.games < minGames) continue;
+    const b = baseMap[h] || { hero_name: null, base_wr: 0.5, base_games: 0 };
+    // Score blends counter WR (heavier) with base WR (anchor for low-N).
+    // Sample-size shrink so 1-game 100% picks don't crown the list.
+    const shrink = c.games / (c.games + 4);
+    const score = (c.wr * 0.7 + b.base_wr * 0.3) * shrink + b.base_wr * (1 - shrink);
+    out.push({
+      hero_id: h,
+      hero_name: b.hero_name,
+      games: c.games,
+      wins: c.wins,
+      counter_wr: c.wr,
+      base_wr: b.base_wr,
+      base_games: b.base_games,
+      score,
+    });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, limit);
+}
+
+// Hero-pair + hero-trio synergy aggregates for the Heroes › Synergy tab
+// heat map. Pairs are unordered (LEAST/GREATEST), trios are unordered
+// (sorted ASC). HAVING is conservative to keep the matrix tractable —
+// inhouse leagues run hundreds-to-thousands of games, not millions.
+async function getHeroSynergyMatrix(seasonId = null, { pairMinGames = 2, trioMinGames = 2, pairLimit = 400, trioLimit = 120 } = {}) {
+  const p = getPool();
+
+  const pairParams = [];
+  const pairSc = _sc(seasonId, pairParams, 'm');
+  const pairRes = await p.query(
+    `SELECT LEAST(a.hero_id, b.hero_id) AS hero_a,
+            GREATEST(a.hero_id, b.hero_id) AS hero_b,
+            MAX(CASE WHEN a.hero_id < b.hero_id THEN a.hero_name ELSE b.hero_name END) AS hero_a_name,
+            MAX(CASE WHEN a.hero_id < b.hero_id THEN b.hero_name ELSE a.hero_name END) AS hero_b_name,
+            COUNT(*) AS games,
+            SUM(CASE WHEN (a.team='radiant' AND m.radiant_win) OR (a.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
+       FROM player_stats a
+       JOIN player_stats b ON b.match_id = a.match_id AND b.team = a.team AND b.hero_id > a.hero_id
+       JOIN matches m ON m.match_id = a.match_id
+      WHERE a.hero_id > 0 AND b.hero_id > 0${pairSc}
+      GROUP BY LEAST(a.hero_id, b.hero_id), GREATEST(a.hero_id, b.hero_id)
+      HAVING COUNT(*) >= ${parseInt(pairMinGames)}
+      ORDER BY COUNT(*) DESC, wins DESC
+      LIMIT ${parseInt(pairLimit)}`,
+    pairParams
+  );
+
+  const trioParams = [];
+  const trioSc = _sc(seasonId, trioParams, 'm');
+  const trioRes = await p.query(
+    `SELECT a.hero_id AS hero_a, b.hero_id AS hero_b, c.hero_id AS hero_c,
+            MAX(a.hero_name) AS hero_a_name,
+            MAX(b.hero_name) AS hero_b_name,
+            MAX(c.hero_name) AS hero_c_name,
+            COUNT(*) AS games,
+            SUM(CASE WHEN (a.team='radiant' AND m.radiant_win) OR (a.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
+       FROM player_stats a
+       JOIN player_stats b ON b.match_id = a.match_id AND b.team = a.team AND b.hero_id > a.hero_id
+       JOIN player_stats c ON c.match_id = a.match_id AND c.team = a.team AND c.hero_id > b.hero_id
+       JOIN matches m ON m.match_id = a.match_id
+      WHERE a.hero_id > 0${trioSc}
+      GROUP BY a.hero_id, b.hero_id, c.hero_id
+      HAVING COUNT(*) >= ${parseInt(trioMinGames)}
+      ORDER BY COUNT(*) DESC, wins DESC
+      LIMIT ${parseInt(trioLimit)}`,
+    trioParams
+  );
+
+  const mapPair = (r) => {
+    const g = parseInt(r.games);
+    const w = parseInt(r.wins);
+    return {
+      hero_a: parseInt(r.hero_a),
+      hero_b: parseInt(r.hero_b),
+      hero_a_name: r.hero_a_name,
+      hero_b_name: r.hero_b_name,
+      games: g,
+      wins: w,
+      win_rate: g > 0 ? w / g : 0,
+    };
+  };
+  const mapTrio = (r) => {
+    const g = parseInt(r.games);
+    const w = parseInt(r.wins);
+    return {
+      hero_a: parseInt(r.hero_a),
+      hero_b: parseInt(r.hero_b),
+      hero_c: parseInt(r.hero_c),
+      hero_a_name: r.hero_a_name,
+      hero_b_name: r.hero_b_name,
+      hero_c_name: r.hero_c_name,
+      games: g,
+      wins: w,
+      win_rate: g > 0 ? w / g : 0,
+    };
+  };
+  return {
+    pairs: pairRes.rows.map(mapPair),
+    trios: trioRes.rows.map(mapTrio),
+  };
+}
+
+// Per-patch picks + wins for one hero, newest patches first. Drives the
+// Heroes › Patch Trends chart. Patches with NULL `patch` (older uploads
+// that pre-date the column) are skipped; the page surfaces a "backfill
+// older matches" hint when the result set is empty.
+async function getHeroPatchTrends(heroId, { limit = 8, seasonId = null } = {}) {
+  const hid = parseInt(heroId);
+  if (!Number.isFinite(hid) || hid <= 0) return { patches: [] };
+  const p = getPool();
+  // Total drafts per patch (denominator for pick_rate) — fresh param array
+  // so the $-placeholders line up cleanly when seasonId is bound.
+  const totalsParams = [];
+  const totalsSc = _sc(seasonId, totalsParams, 'm');
+  const totalsRes = await p.query(
+    `SELECT m.patch, COUNT(*) AS total_matches
+       FROM matches m
+      WHERE m.patch IS NOT NULL${totalsSc}
+      GROUP BY m.patch`,
+    totalsParams
+  );
+  const totalsMap = {};
+  for (const r of totalsRes.rows) totalsMap[r.patch] = parseInt(r.total_matches);
+
+  const params = [hid];
+  const sc = _sc(seasonId, params, 'm');
+  const picksRes = await p.query(
+    `SELECT m.patch,
+            COUNT(*) AS picks,
+            SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id = $1 AND m.patch IS NOT NULL${sc}
+      GROUP BY m.patch
+      ORDER BY m.patch DESC
+      LIMIT ${parseInt(limit)}`,
+    params
+  );
+  const patches = picksRes.rows.map((r) => {
+    const picks = parseInt(r.picks);
+    const wins = parseInt(r.wins);
+    const total = totalsMap[r.patch] || 0;
+    return {
+      patch: r.patch,
+      picks,
+      wins,
+      total_matches: total,
+      pick_rate: total > 0 ? picks / total : 0,
+      win_rate: picks > 0 ? wins / picks : 0,
+    };
+  });
+  return { patches };
+}
+
+// Returns hero_id -> previous-patch win rate for the latest two distinct
+// non-null patches present in `matches`. Used by Heroes › Tier List to
+// show movement arrows vs. the previous patch. If only one patch (or
+// none) is present, returns {} and the UI hides arrows.
+async function getHeroPrevPatchWinRates(seasonId = null) {
+  const p = getPool();
+  const params = [];
+  const sc = _sc(seasonId, params, 'm');
+  const patchRes = await p.query(
+    `SELECT DISTINCT m.patch FROM matches m
+      WHERE m.patch IS NOT NULL${sc}
+      ORDER BY m.patch DESC
+      LIMIT 2`,
+    params
+  );
+  if (patchRes.rows.length < 2) return { prev_patch: null, win_rates: {} };
+  const prevPatch = patchRes.rows[1].patch;
+  const wrParams = [prevPatch];
+  const wrSc = _sc(seasonId, wrParams, 'm');
+  const wrRes = await p.query(
+    `SELECT ps.hero_id,
+            COUNT(*) AS games,
+            SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id > 0 AND m.patch = $1${wrSc}
+      GROUP BY ps.hero_id
+      HAVING COUNT(*) >= 2`,
+    wrParams
+  );
+  const map = {};
+  for (const r of wrRes.rows) {
+    const g = parseInt(r.games);
+    const w = parseInt(r.wins);
+    map[parseInt(r.hero_id)] = g > 0 ? w / g : 0;
+  }
+  return { prev_patch: prevPatch, win_rates: map };
+}
+
+// Backfill `matches.patch` for rows that pre-date the column being
+// populated on insert. Uses the static patch-release table in
+// src/data/dotaPatchReleases.js — coarse but good enough for the
+// trend chart. Returns the number of rows updated. Safe to re-run.
+async function backfillMatchPatch({ limit = 5000 } = {}) {
+  const PATCH_RELEASES = require('../data/dotaPatchReleases');
+  const p = getPool();
+  const res = await p.query(
+    `SELECT match_id, date FROM matches
+      WHERE patch IS NULL AND date IS NOT NULL
+      ORDER BY date DESC
+      LIMIT $1`,
+    [parseInt(limit)]
+  );
+  let updated = 0;
+  for (const row of res.rows) {
+    const d = new Date(row.date);
+    if (Number.isNaN(d.getTime())) continue;
+    // newest-first table; first entry whose start <= match.date wins
+    const hit = PATCH_RELEASES.find((e) => d >= new Date(e.start));
+    if (!hit) continue;
+    await p.query(`UPDATE matches SET patch = $1 WHERE match_id = $2`, [hit.patch, row.match_id]);
+    updated += 1;
+  }
+  return { scanned: res.rows.length, updated };
+}
+
 async function getDraftSuggestions(allyHeroIds, enemyHeroIds, bannedHeroIds, position, seasonId = null) {
   const p = getPool();
   const excludeIds = [...allyHeroIds, ...enemyHeroIds, ...bannedHeroIds].filter(Boolean);
@@ -8990,27 +9295,15 @@ async function getDraftSuggestions(allyHeroIds, enemyHeroIds, bannedHeroIds, pos
     }
   }
 
-  let counterBonus = {};
+  // Task #382 — share the counter-pick scorer's map so /draft-assistant
+  // and /heroes/counter-scores never diverge. Position is intentionally
+  // not passed in here (the assistant's "position" param already filters
+  // the candidate base set above, and we want counter WR computed across
+  // all positions the candidate has played vs. these enemies).
+  const counterBonus = {};
   if (enemyHeroIds.length > 0) {
-    const ep = [enemyHeroIds];
-    const esc = seasonId ? ` AND m.season_id = $${ep.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
-    const eRes = await p.query(
-      `SELECT ps.hero_id,
-              COUNT(*) as games,
-              SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) as wins
-       FROM player_stats ps
-       JOIN matches m ON m.match_id = ps.match_id
-       WHERE ps.hero_id > 0
-         AND EXISTS (
-           SELECT 1 FROM player_stats ps2
-           WHERE ps2.match_id = ps.match_id AND ps2.team != ps.team AND ps2.hero_id = ANY($1)
-         )${esc}
-       GROUP BY ps.hero_id HAVING COUNT(*) >= 1`,
-      ep
-    );
-    for (const r of eRes.rows) {
-      counterBonus[r.hero_id] = parseInt(r.wins) / Math.max(parseInt(r.games), 1);
-    }
+    const cmap = await _computeHeroCounterMap(enemyHeroIds, null, seasonId);
+    for (const [hid, v] of Object.entries(cmap)) counterBonus[hid] = v.wr;
   }
 
   return baseRes.rows.map(r => {
@@ -17221,6 +17514,12 @@ module.exports = {
   getPlayerHeroSuggestions,
   getCachedScoutingReport,
   upsertScoutingReport,
+  // Task #382 — Hero meta v2
+  getHeroCounterScores,
+  getHeroSynergyMatrix,
+  getHeroPatchTrends,
+  getHeroPrevPatchWinRates,
+  backfillMatchPatch,
 };
 
 const RECORD_STAT_KEYS = ['kills', 'gpm', 'assists', 'hero_damage', 'tower_damage', 'last_hits'];

@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "7.67",
+    "title": "Hero meta v2 — Synergy matrix, Counter-pick scorer, Patch trends (Task #382)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**`/heroes` now ships three new tabs** alongside the existing Hero Stats / Tier List / Matchups / Pro tabs. Tab nav is now a proper `role=\"tablist\"` with per-tab `aria-selected` + `aria-controls` and matching `role=\"tabpanel\"` regions so screen readers and keyboard users can navigate the page correctly.",
+      "**🤝 Synergy tab** — pair and trio heat-map of which heroes win most often when picked together, click any row to drill straight into the underlying matches (`/matches?heroes=a,b[,c]`). Sortable by games / wins / win-rate via the shared `SortableTh` primitive. Pairs are unordered (deduped via `LEAST/GREATEST`), trios are unordered (sorted ASC), HAVING ≥2 shared games to keep the matrix tractable for inhouse-scale data.",
+      "**🎯 Counter-pick tab** — pick up to 5 enemy heroes + an optional position, get a ranked list of the strongest heroes to pick into that lineup. Scoring blends counter win-rate (heavier) with the candidate's base win-rate, with a sample-size shrinkage factor (`games / (games + 4)`) so a 1-game 100% pick doesn't crown the list. Backed by a new shared `_computeHeroCounterMap()` helper that both the new endpoint **and** the existing Draft Assistant call into, so the two surfaces can never disagree.",
+      "**📈 Patch Trends tab** — pick a hero, see pick rate + win rate per patch for up to the last 8 patches with data, oldest→newest. Bars are pick-rate-relative so movement is easy to read at a glance. Empty-state nudges admins to run the new backfill if older uploads pre-date the `matches.patch` column.",
+      "**Tier List now shows patch-vs-previous movement arrows.** Each tier card gets a ▲/▼ delta next to the win rate when the hero has ≥2 games on the previous patch (current vs. prev win-rate). No layout change — the arrow tucks in next to the existing games/wins/bans line. Hidden when there's only one patch of data, or when the delta is <1pp (noise floor).",
+      "**Four new backend surfaces in `src/db/index.js`** — `getHeroSynergyMatrix()`, `getHeroCounterScores()`, `getHeroPatchTrends()`, `getHeroPrevPatchWinRates()` — exposed via three public read-only API routes (`GET /api/heroes/synergy-matrix`, `GET /api/heroes/counter-scores`, `GET /api/heroes/:id/patch-trends`) and one superuser-only `POST /api/admin/heroes/backfill-patch` that retro-populates `matches.patch` for older uploads using the new newest-first `src/data/dotaPatchReleases.js` release-date table.",
+      "**`getDraftSuggestions()` refactored to share the counter map.** The old inline counter-bonus query block (which used `EXISTS` against any enemy hero) is replaced by a call to the new `_computeHeroCounterMap()`, which uses an intersected count so picks are scored against the full enemy lineup the way captains actually draft. `DraftAssistant.jsx` UI is unchanged — only the underlying numbers improve.",
+      "**Edition scope + paywall.** Full edition only — community edition is deliberately not wired (out of scope for this task and the source-scan paywall gate stays green). The three new tabs are free; the existing `★ Position Meta` and `★ Hero Breakdown` tabs remain Pro-gated, gold-tinted, and behind `PaywallBlur` exactly as before."
+    ]
+  },
+  {
     "version": "7.66",
     "title": "Mobile companion app (Expo, read-only first cut) (Task #381)",
     "published_at": "2026-05-25",

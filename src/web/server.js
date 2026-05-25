@@ -3807,10 +3807,86 @@ function createApiRouter(startupStatus = {}, _app = null) {
     try {
       const seasonId = req.query.season || null;
       const data = await db.getHeroTierList(seasonId);
+      // Task #382 — tier-list movement arrows vs the previous patch. The
+      // tier table itself stays untouched; we just attach prev_win_rate
+      // + delta per hero so the UI can render an arrow next to each card.
+      try {
+        const prev = await db.getHeroPrevPatchWinRates(seasonId);
+        if (prev && prev.prev_patch) {
+          for (const tier of Object.keys(data.tiers || {})) {
+            for (const h of data.tiers[tier]) {
+              const prevWr = prev.win_rates[h.hero_id];
+              h.prev_win_rate = prevWr != null ? prevWr : null;
+              h.win_rate_delta = prevWr != null ? (h.win_rate - prevWr) : null;
+            }
+          }
+          data.prev_patch = prev.prev_patch;
+        }
+      } catch (e) {
+        console.warn('[API] heroes/tier-list prev-patch enrichment skipped:', e.message);
+      }
       res.json(data);
     } catch (err) {
       console.error('[API] heroes/tier-list:', err.message);
       res.status(500).json({ error: 'Failed to fetch hero tier list' });
+    }
+  });
+
+  // Task #382 — Hero meta v2. Three public read-only endpoints powering
+  // the new Heroes tabs (Synergy / Counter-pick / Patch trends). Same
+  // trust level as the existing /heroes endpoints — no paywall.
+  router.get('/heroes/synergy-matrix', async (req, res) => {
+    try {
+      const seasonId = req.query.season || req.query.season_id || null;
+      const data = await db.getHeroSynergyMatrix(seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] heroes/synergy-matrix:', err.message);
+      res.status(500).json({ error: 'Failed to fetch synergy matrix' });
+    }
+  });
+
+  router.get('/heroes/counter-scores', async (req, res) => {
+    try {
+      const seasonId = req.query.season || req.query.season_id || null;
+      const position = req.query.position ? parseInt(req.query.position) : null;
+      const enemies = Array.from(new Set(
+        (req.query.enemies || '')
+          .split(',')
+          .map((s) => parseInt(s, 10))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      )).slice(0, 5);
+      if (enemies.length === 0) {
+        return res.status(400).json({ error: 'enemies query param required (comma-separated hero ids, 1-5)' });
+      }
+      const suggestions = await db.getHeroCounterScores(enemies, position, seasonId);
+      res.json({ enemies, position, suggestions });
+    } catch (err) {
+      console.error('[API] heroes/counter-scores:', err.message);
+      res.status(500).json({ error: 'Failed to compute counter scores' });
+    }
+  });
+
+  router.get('/heroes/:heroId/patch-trends', async (req, res) => {
+    try {
+      const seasonId = req.query.season || req.query.season_id || null;
+      const limit = Math.min(Math.max(parseInt(req.query.limit) || 8, 1), 24);
+      const data = await db.getHeroPatchTrends(parseInt(req.params.heroId), { limit, seasonId });
+      res.json(data);
+    } catch (err) {
+      console.error('[API] heroes/patch-trends:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero patch trends' });
+    }
+  });
+
+  router.post('/admin/heroes/backfill-patch', requireSuperuser, async (req, res) => {
+    try {
+      const limit = Math.min(Math.max(parseInt(req.body?.limit) || 5000, 1), 50000);
+      const result = await db.backfillMatchPatch({ limit });
+      res.json(result);
+    } catch (err) {
+      console.error('[API] admin/heroes/backfill-patch:', err.message);
+      res.status(500).json({ error: err.message || 'Backfill failed' });
     }
   });
 

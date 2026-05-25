@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SortableTh from '../components/SortableTh';
-import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList } from '../api';
+import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList, getHeroSynergyMatrix, getHeroCounterScores, getHeroPatchTrends } from '../api';
 import PaywallCard from '../components/PaywallCard';
 import PaywallBlur from '../components/PaywallBlur';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
@@ -373,6 +373,14 @@ function HeroTierTab() {
                         {h.games}G · {h.wins}W
                         {h.bans > 0 && ` · ${h.bans} bans`}
                         {h.primary_position > 0 && filterPos === 0 && ` · Pos${h.primary_position}`}
+                        {h.win_rate_delta != null && Math.abs(h.win_rate_delta) >= 0.01 && (
+                          <span
+                            title={`Previous patch: ${(h.prev_win_rate * 100).toFixed(1)}%`}
+                            style={{ marginLeft: 6, color: h.win_rate_delta > 0 ? '#4ade80' : '#f87171', fontWeight: 700 }}
+                          >
+                            {h.win_rate_delta > 0 ? '▲' : '▼'} {(Math.abs(h.win_rate_delta) * 100).toFixed(1)}%
+                          </span>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -503,6 +511,370 @@ function HeroMatchupsTab() {
   );
 }
 
+// Task #382 — Hero synergy matrix tab (pairs + trios). Heat-mapped by win
+// rate, clickable cell wires to /matches?heroes=a,b. Public, all-position.
+function HeroSynergyTab() {
+  const { seasonId } = useSeason();
+  const [data, setData] = useState({ pairs: [], trios: [] });
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('pairs');
+  const [sortField, setSortField] = useState('games');
+  const [sortDir, setSortDir] = useState(-1);
+
+  useEffect(() => {
+    setLoading(true);
+    getHeroSynergyMatrix(seasonId)
+      .then(d => setData({ pairs: d.pairs || [], trios: d.trios || [] }))
+      .catch(() => setData({ pairs: [], trios: [] }))
+      .finally(() => setLoading(false));
+  }, [seasonId]);
+
+  const handleSort = (f) => {
+    if (sortField === f) setSortDir(d => -d);
+    else { setSortField(f); setSortDir(-1); }
+  };
+  const sortIcon = (f) => sortField === f ? (sortDir > 0 ? ' ▲' : ' ▼') : '';
+  const wrColor = (wr) => wr >= 0.6 ? '#4ade80' : wr >= 0.5 ? 'var(--text-primary)' : wr >= 0.4 ? 'var(--text-muted)' : '#f87171';
+  const wrBg = (wr) => `rgba(${wr >= 0.5 ? '74,222,128' : '248,113,113'}, ${Math.min(0.45, Math.abs(wr - 0.5) * 1.2)})`;
+
+  const rows = (view === 'pairs' ? data.pairs : data.trios).slice().sort((a, b) => {
+    const av = sortField === 'win_rate' ? a.win_rate : a[sortField];
+    const bv = sortField === 'win_rate' ? b.win_rate : b[sortField];
+    return ((av ?? -1) - (bv ?? -1)) * sortDir;
+  });
+
+  if (loading) return <div className="loading">Loading synergy matrix…</div>;
+  const empty = (view === 'pairs' ? data.pairs : data.trios).length === 0;
+
+  return (
+    <div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Hero teammates ranked by games played together — click a row to see the underlying matches.
+        Heat-mapped by win rate. Includes only pairs/trios with ≥2 shared games.
+      </p>
+      <div role="radiogroup" aria-label="Synergy view" style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {[['pairs', 'Pairs'], ['trios', 'Trios']].map(([k, l]) => (
+          <button
+            key={k}
+            role="radio"
+            aria-checked={view === k}
+            onClick={() => setView(k)}
+            style={{
+              padding: '5px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+              border: '1px solid var(--border)',
+              background: view === k ? 'var(--accent-blue)' : 'var(--bg-card)',
+              color: view === k ? '#fff' : 'var(--text-primary)',
+              fontWeight: view === k ? 700 : 400,
+            }}
+          >{l}</button>
+        ))}
+      </div>
+      {empty ? (
+        <div className="empty-state"><p>Not enough data yet for {view}.</p></div>
+      ) : (
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard">
+            <thead>
+              <tr>
+                <th className="col-player">{view === 'pairs' ? 'Hero pair' : 'Hero trio'}</th>
+                <SortableTh className="col-stat" active={sortField === 'games'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('games')}>Games{sortIcon('games')}</SortableTh>
+                <SortableTh className="col-stat" active={sortField === 'wins'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('wins')}>Wins{sortIcon('wins')}</SortableTh>
+                <SortableTh className="col-stat" active={sortField === 'win_rate'} direction={sortDir > 0 ? 'asc' : 'desc'} onSort={() => handleSort('win_rate')}>Win %{sortIcon('win_rate')}</SortableTh>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const ids = view === 'pairs' ? [r.hero_a, r.hero_b] : [r.hero_a, r.hero_b, r.hero_c];
+                const names = view === 'pairs'
+                  ? [r.hero_a_name, r.hero_b_name]
+                  : [r.hero_a_name, r.hero_b_name, r.hero_c_name];
+                const key = ids.join('-');
+                return (
+                  <tr key={key} style={{ background: wrBg(r.win_rate) }}>
+                    <td className="col-player">
+                      <Link
+                        to={`/matches?heroes=${ids.join(',')}`}
+                        style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                        aria-label={`See matches with ${names.join(' + ')}`}
+                      >
+                        {ids.map((id, i) => {
+                          const img = getHeroImageUrl(id, names[i]);
+                          return (
+                            <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              {img && <img src={img} alt="" style={{ width: 24, height: 14, borderRadius: 2 }} />}
+                              <span>{formatHeroName(names[i] || `Hero ${id}`)}</span>
+                              {i < ids.length - 1 && <span style={{ color: 'var(--text-muted)' }}>+</span>}
+                            </span>
+                          );
+                        })}
+                      </Link>
+                    </td>
+                    <td className="col-stat">{r.games}</td>
+                    <td className="col-stat">{r.wins}</td>
+                    <td className="col-stat" style={{ color: wrColor(r.win_rate), fontWeight: 700 }}>{(r.win_rate * 100).toFixed(1)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Task #382 — Counter-pick scorer tab. Pick up to 5 enemy heroes + an
+// optional position; see the strongest heroes to pick into them ranked
+// by blended (counter WR × base WR) score with sample-size shrinkage.
+function HeroCounterTab() {
+  const { seasonId } = useSeason();
+  const [enemies, setEnemies] = useState([]);
+  const [position, setPosition] = useState(null);
+  const [search, setSearch] = useState('');
+  const [suggestions, setSuggestions] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const allHeroEntries = Object.entries(ALL_HEROES).sort((a, b) => a[1].localeCompare(b[1]));
+  const filtered = search.length >= 1
+    ? allHeroEntries.filter(([id, name]) =>
+        name.toLowerCase().includes(search.toLowerCase()) && !enemies.includes(parseInt(id))
+      ).slice(0, 12)
+    : [];
+
+  const addEnemy = (id) => {
+    if (enemies.length >= 5 || enemies.includes(id)) return;
+    setEnemies([...enemies, id]);
+    setSearch('');
+  };
+  const removeEnemy = (id) => setEnemies(enemies.filter(x => x !== id));
+
+  const compute = async () => {
+    if (enemies.length === 0) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const d = await getHeroCounterScores({ enemies, position, seasonId });
+      setSuggestions(d.suggestions || []);
+    } catch (e) {
+      setError(e.message || 'Failed to compute counter scores');
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+        Pick up to 5 enemy heroes and an optional position, then get a ranked list of heroes that
+        win most often when facing this lineup. Powered by inhouse match history.
+      </p>
+
+      <div className="stat-card" style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Enemy heroes ({enemies.length}/5)</div>
+        <div style={{ minHeight: 36, marginBottom: 10 }}>
+          {enemies.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>No enemy heroes yet</span>}
+          {enemies.map((id) => {
+            const name = getHeroName(id) || `Hero ${id}`;
+            const img = getHeroImageUrl(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => removeEnemy(id)}
+                aria-label={`Remove ${name}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(244,67,54,0.2)', border: '1px solid var(--accent-red)', borderRadius: 16, padding: '3px 8px 3px 4px', margin: 2, cursor: 'pointer', fontSize: 12, color: 'inherit', font: 'inherit' }}
+              >
+                {img && <img src={img} alt="" style={{ width: 20, height: 20, borderRadius: 3 }} />}
+                <span>{name}</span>
+                <span style={{ color: '#888', marginLeft: 2 }}>✕</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }} htmlFor="counter-hero-search">Add enemy hero</label>
+            <input
+              id="counter-hero-search"
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Type hero name…"
+              disabled={enemies.length >= 5}
+              style={{ width: '100%', background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }} htmlFor="counter-position">My position</label>
+            <select
+              id="counter-position"
+              value={position || ''}
+              onChange={e => setPosition(e.target.value ? parseInt(e.target.value) : null)}
+              style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}
+            >
+              <option value="">Any position</option>
+              {[1,2,3,4,5].map(p => <option key={p} value={p}>Pos {p} — {POSITIONS[p]}</option>)}
+            </select>
+          </div>
+          <button className="btn btn-primary" onClick={compute} disabled={loading || enemies.length === 0}>
+            {loading ? 'Computing…' : 'Rank counters'}
+          </button>
+        </div>
+        {filtered.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+            {filtered.map(([id, name]) => {
+              const img = getHeroImageUrl(parseInt(id));
+              return (
+                <button key={id} className="btn btn-small" onClick={() => addEnemy(parseInt(id))} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {img && <img src={img} alt="" style={{ width: 18, height: 18, borderRadius: 2 }} />}
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {error && <div className="error-state" style={{ marginBottom: 12 }}>{error}</div>}
+      {suggestions && (
+        suggestions.length === 0 ? (
+          <div className="empty-state"><p>No inhouse history yet for these enemies at this position.</p></div>
+        ) : (
+          <div className="scoreboard-wrapper">
+            <table className="scoreboard">
+              <thead>
+                <tr>
+                  <th className="col-rank">#</th>
+                  <th className="col-player">Hero</th>
+                  <th className="col-stat" title="Win rate vs these enemies">vs Enemies</th>
+                  <th className="col-stat" title="Overall win rate at this position">Base WR</th>
+                  <th className="col-stat" title="Sample size facing these enemies">Games</th>
+                  <th className="col-stat" title="Blended counter + base score with sample-size shrinkage">Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {suggestions.map((s, i) => {
+                  const name = formatHeroName(getHeroName(s.hero_id) || s.hero_name || `Hero ${s.hero_id}`);
+                  const img = getHeroImageUrl(s.hero_id);
+                  const scoreColor = s.score > 0.55 ? '#4ade80' : s.score < 0.45 ? '#f87171' : 'var(--text-primary)';
+                  return (
+                    <tr key={s.hero_id}>
+                      <td className="col-rank">{i + 1}</td>
+                      <td className="col-player">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {img && <img src={img} alt={name} style={{ width: 28, height: 16, borderRadius: 2 }} />}
+                          <span>{name}</span>
+                        </div>
+                      </td>
+                      <td className="col-stat" style={{ color: s.counter_wr >= 0.5 ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+                        {(s.counter_wr * 100).toFixed(1)}%
+                      </td>
+                      <td className="col-stat" style={{ color: 'var(--text-muted)' }}>{(s.base_wr * 100).toFixed(1)}%</td>
+                      <td className="col-stat" style={{ color: 'var(--text-muted)' }}>{s.games}</td>
+                      <td className="col-stat" style={{ color: scoreColor, fontWeight: 700 }}>{(s.score * 100).toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// Task #382 — Patch trends tab. Pick a hero, see pick rate + win rate
+// over the last N patches as a simple bar chart. Empty state nudges
+// admin to run the backfill if no patched rows exist yet.
+function HeroPatchTrendsTab() {
+  const { seasonId } = useSeason();
+  const [heroId, setHeroId] = useState('');
+  const [patches, setPatches] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const heroOptions = Object.entries(ALL_HEROES).sort((a, b) => a[1].localeCompare(b[1]));
+
+  useEffect(() => {
+    if (!heroId) { setPatches([]); return; }
+    setLoading(true);
+    getHeroPatchTrends(heroId, { limit: 8, seasonId })
+      .then(d => setPatches(d.patches || []))
+      .catch(() => setPatches([]))
+      .finally(() => setLoading(false));
+  }, [heroId, seasonId]);
+
+  const ordered = patches.slice().reverse(); // chronological for the chart
+  const maxPickRate = Math.max(0.0001, ...ordered.map(p => p.pick_rate));
+
+  return (
+    <div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+        Pick + win rate per patch for one hero, oldest to newest (up to last 8 patches with data).
+      </p>
+      <div style={{ marginBottom: 18 }}>
+        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }} htmlFor="trends-hero">Hero</label>
+        <select
+          id="trends-hero"
+          value={heroId}
+          onChange={e => setHeroId(e.target.value)}
+          style={{ padding: '6px 12px', borderRadius: 6, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14 }}
+        >
+          <option value="">— Select a hero —</option>
+          {heroOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+      </div>
+      {loading && <div className="loading">Loading patch trends…</div>}
+      {!loading && heroId && ordered.length === 0 && (
+        <div className="empty-state">
+          <p>No patched matches yet for this hero. Older uploads may not have <code>patch</code> set —
+            an admin can run the patch backfill (<code>POST /api/admin/heroes/backfill-patch</code>)
+            to populate older rows.</p>
+        </div>
+      )}
+      {!loading && ordered.length > 0 && (
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard">
+            <thead>
+              <tr>
+                <th>Patch</th>
+                <th className="col-stat">Picks</th>
+                <th className="col-stat">Wins</th>
+                <th className="col-stat">Win %</th>
+                <th className="col-stat">Pick %</th>
+                <th>Pick-rate trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordered.map(p => {
+                const wrPct = (p.win_rate * 100).toFixed(1);
+                const prPct = (p.pick_rate * 100).toFixed(1);
+                const barWidth = (p.pick_rate / maxPickRate) * 100;
+                const wrColor = p.win_rate >= 0.55 ? '#4ade80' : p.win_rate >= 0.45 ? 'var(--text-primary)' : '#f87171';
+                return (
+                  <tr key={p.patch}>
+                    <td style={{ fontWeight: 700 }}>{p.patch}</td>
+                    <td className="col-stat">{p.picks}</td>
+                    <td className="col-stat">{p.wins}</td>
+                    <td className="col-stat" style={{ color: wrColor, fontWeight: 600 }}>{wrPct}%</td>
+                    <td className="col-stat" style={{ color: 'var(--text-muted)' }}>{prPct}%</td>
+                    <td>
+                      <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 3, height: 8, width: 140, overflow: 'hidden' }}>
+                        <div style={{ width: `${barWidth}%`, height: '100%', background: 'var(--accent-blue)', borderRadius: 3 }} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Heroes({ defaultTab }) {
   const { seasonId } = useSeason();
   const [playedHeroes, setPlayedHeroes] = useState([]);
@@ -616,6 +988,9 @@ export default function Heroes({ defaultTab }) {
   const TABS = [
     { key: 'stats', label: 'Hero Stats' },
     { key: 'tier', label: '🏅 Tier List' },
+    { key: 'synergy', label: '🤝 Synergy' },
+    { key: 'counter', label: '🎯 Counter-pick' },
+    { key: 'trends', label: '📈 Patch Trends' },
     { key: 'matchups', label: '⚔️ Matchups' },
     { key: 'meta', label: '★ Position Meta', pro: true },
     { key: 'breakdown', label: '★ Hero Breakdown', pro: true },
@@ -625,7 +1000,11 @@ export default function Heroes({ defaultTab }) {
     <div>
       <h1 className="page-title">Heroes</h1>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
+      <div
+        role="tablist"
+        aria-label="Hero stats views"
+        style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0, flexWrap: 'wrap' }}
+      >
         {TABS.map(t => {
           const isActive = tab === t.key;
           // Gold-tint Pro tabs so members see at-a-glance which features are part of their subscription.
@@ -635,6 +1014,12 @@ export default function Heroes({ defaultTab }) {
           return (
             <button
               key={t.key}
+              id={`heroes-tab-${t.key}`}
+              role="tab"
+              type="button"
+              aria-selected={isActive}
+              aria-controls={`heroes-tabpanel-${t.key}`}
+              tabIndex={isActive ? 0 : -1}
               onClick={() => setTab(t.key)}
               title={t.pro ? 'Pro feature' : undefined}
               style={{
@@ -649,21 +1034,38 @@ export default function Heroes({ defaultTab }) {
         })}
       </div>
 
-      {tab === 'tier' && <HeroTierTab />}
-      {tab === 'matchups' && <HeroMatchupsTab />}
+      {tab === 'tier' && (
+        <div role="tabpanel" id="heroes-tabpanel-tier" aria-labelledby="heroes-tab-tier"><HeroTierTab /></div>
+      )}
+      {tab === 'synergy' && (
+        <div role="tabpanel" id="heroes-tabpanel-synergy" aria-labelledby="heroes-tab-synergy"><HeroSynergyTab /></div>
+      )}
+      {tab === 'counter' && (
+        <div role="tabpanel" id="heroes-tabpanel-counter" aria-labelledby="heroes-tab-counter"><HeroCounterTab /></div>
+      )}
+      {tab === 'trends' && (
+        <div role="tabpanel" id="heroes-tabpanel-trends" aria-labelledby="heroes-tab-trends"><HeroPatchTrendsTab /></div>
+      )}
+      {tab === 'matchups' && (
+        <div role="tabpanel" id="heroes-tabpanel-matchups" aria-labelledby="heroes-tab-matchups"><HeroMatchupsTab /></div>
+      )}
       {tab === 'meta' && (
-        <PaywallBlur feature="hero_position_meta" minHeight={520}>
-          <HeroMetaTab />
-        </PaywallBlur>
+        <div role="tabpanel" id="heroes-tabpanel-meta" aria-labelledby="heroes-tab-meta">
+          <PaywallBlur feature="hero_position_meta" minHeight={520}>
+            <HeroMetaTab />
+          </PaywallBlur>
+        </div>
       )}
       {tab === 'breakdown' && (
-        <PaywallBlur feature="hero_breakdown" minHeight={520}>
-          <HeroBreakdownTab />
-        </PaywallBlur>
+        <div role="tabpanel" id="heroes-tabpanel-breakdown" aria-labelledby="heroes-tab-breakdown">
+          <PaywallBlur feature="hero_breakdown" minHeight={520}>
+            <HeroBreakdownTab />
+          </PaywallBlur>
+        </div>
       )}
 
       {tab === 'stats' && !loading && (
-        <>
+        <div role="tabpanel" id="heroes-tabpanel-stats" aria-labelledby="heroes-tab-stats">
           <p style={{ color: '#888', marginBottom: '1rem' }}>
             {playedCount} of {totalCount} heroes played &mdash; {totalMatches} matches
             {hasDraftData && `, ${draftMatches} with draft data`}
@@ -830,10 +1232,12 @@ export default function Heroes({ defaultTab }) {
               </tbody>
             </table>
           </div>
-        </>
+        </div>
       )}
 
-      {tab === 'stats' && loading && <div className="loading">Loading hero stats...</div>}
+      {tab === 'stats' && loading && (
+        <div role="tabpanel" id="heroes-tabpanel-stats" aria-labelledby="heroes-tab-stats" className="loading">Loading hero stats...</div>
+      )}
 
       <HeroMetaV2Panel />
     </div>

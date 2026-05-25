@@ -458,6 +458,27 @@ export async function getHeroTierList(seasonId = null) {
   return fetchJson(`/heroes/tier-list${q}`);
 }
 
+// Task #382 — Hero meta v2.
+export async function getHeroSynergyMatrix(seasonId = null) {
+  const q = seasonId ? `?season=${seasonId}` : '';
+  return fetchJson(`/heroes/synergy-matrix${q}`);
+}
+
+export async function getHeroCounterScores({ enemies, position, seasonId } = {}) {
+  const qs = new URLSearchParams();
+  qs.set('enemies', (enemies || []).join(','));
+  if (position) qs.set('position', String(position));
+  if (seasonId) qs.set('season', String(seasonId));
+  return fetchJson(`/heroes/counter-scores?${qs}`);
+}
+
+export async function getHeroPatchTrends(heroId, { limit = 8, seasonId = null } = {}) {
+  const qs = new URLSearchParams();
+  qs.set('limit', String(limit));
+  if (seasonId) qs.set('season', String(seasonId));
+  return fetchJson(`/heroes/${heroId}/patch-trends?${qs}`);
+}
+
 export async function getPlayerHeroSuggestions(accountId, seasonId = null) {
   const q = seasonId ? `?season=${seasonId}` : '';
   return fetchJson(`/player/${accountId}/hero-suggestions${q}`);
