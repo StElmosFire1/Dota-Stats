@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import SeasonSelector from './components/SeasonSelector';
 import AdminLoginModal from './components/AdminLoginModal';
 import SuperuserLoginModal from './components/SuperuserLoginModal';
@@ -13,7 +13,7 @@ import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
 // lobby-only cosmetic; see web/src/lib/voicePack.js for the rationale.
 // The hook file stays on disk for now in case we want to reuse the
 // polling shape for a different in-website-only event class.
-import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
+import { FeatureFlagsProvider, useFeatureFlag } from './context/FeatureFlagsContext';
 import WelcomeModal from './components/WelcomeModal';
 import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
@@ -32,6 +32,17 @@ const Heroes = lazy(() => import('./pages/Heroes'));
 const Draft = lazy(() => import('./pages/Draft'));
 const DraftAssistant = lazy(() => import('./pages/DraftAssistant'));
 const ProReplayBrowser = lazy(() => import('./pages/ProReplayBrowser'));
+
+// Task #378 — runtime route gate. The Pro Replay Browser is gated by the
+// `pro_replay_browser` feature flag (off → fully hidden, preview →
+// superuser only, on → public). The API already 404s, but a SPA deep-
+// link would still mount the page and surface an error toast — this
+// guard redirects home instead so the surface is *invisible* in `off`.
+function ProReplaysGuard() {
+  const enabled = useFeatureFlag('pro_replay_browser');
+  if (!enabled) return <Navigate to="/" replace />;
+  return <ProReplayBrowser />;
+}
 const Players = lazy(() => import('./pages/Players'));
 const OverallStats = lazy(() => import('./pages/OverallStats'));
 const PositionStats = lazy(() => import('./pages/PositionStats'));
@@ -652,6 +663,11 @@ function Nav() {
   // v6.62 / Task #206 — gate the Cosmetics Shop link on signed-in viewers.
   const { steamUser } = useSteamAuth();
   const accountId = steamUser?.accountId;
+  // Task #378 — Pro Replay Browser feature flag. Server resolves `off` →
+  // false for everyone, `preview` → true only for superusers, `on` → true
+  // for all viewers. Hiding the nav link when false makes the "surface
+  // fully hidden" intent match what the API already enforces.
+  const showProReplays = useFeatureFlag('pro_replay_browser');
   // Task #248 — single shared poller for both the desktop NavPlayersLink
   // badge and the mobile-only MobileLiveBadge so we don't fire two
   // /api/presence/live/count requests every 30s.
@@ -692,7 +708,7 @@ function Nav() {
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
-          <DropdownItem to="/pro-replays">Pro Replay Browser</DropdownItem>
+          {showProReplays && <DropdownItem to="/pro-replays">Pro Replay Browser</DropdownItem>}
           <DropdownItem to="/records">Records</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
@@ -1139,7 +1155,7 @@ export default function App() {
                 <Route path="/compare" element={<PlayerTools />} />
                 <Route path="/draft" element={<Draft />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
-                <Route path="/pro-replays" element={<ProReplayBrowser />} />
+                <Route path="/pro-replays" element={<ProReplaysGuard />} />
                 <Route path="/draft-stats" element={<Draft />} />
                 <Route path="/hero-breakdown" element={<Heroes defaultTab="breakdown" />} />
                 <Route path="/hero-position-meta" element={<Heroes defaultTab="meta" />} />

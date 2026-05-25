@@ -14,6 +14,23 @@
 const { getOpenDota } = require('./opendota');
 const db = require('../db');
 
+// Runtime kill-switch. Re-read the feature flag at the top of every tick
+// so an operator flipping `pro_replay_browser` to `off` halts OpenDota
+// polling within one interval — no bot restart required. Returns true if
+// the flag is fetchable and not in the `off` state; on DB error we keep
+// running (don't accidentally kill the job because of a transient query
+// failure) but log the issue.
+async function _flagAllowsSync() {
+  try {
+    const flag = await db.getFeatureFlag('pro_replay_browser');
+    if (!flag) return true; // seed hasn't landed yet
+    return flag.state !== 'off';
+  } catch (err) {
+    console.warn('[ProMatchSync] flag re-check failed, continuing:', err.message);
+    return true;
+  }
+}
+
 const HEADER_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 const DETAILS_BATCH_SIZE = 20; // matches detail-fetched per sweep
 const HEADER_PAGES_PER_SYNC = 2; // ~200 matches per header sweep
@@ -76,6 +93,10 @@ class ProMatchSyncer {
 
   async runOnce() {
     if (this._running) return;
+    if (!(await _flagAllowsSync())) {
+      console.log('[ProMatchSync] sweep skipped — pro_replay_browser is off');
+      return;
+    }
     this._running = true;
     try {
       const opendota = getOpenDota();
@@ -110,6 +131,10 @@ class ProMatchSyncer {
   }
 
   async drainDetails() {
+    if (!(await _flagAllowsSync())) {
+      console.log('[ProMatchSync] details drain skipped — pro_replay_browser is off');
+      return;
+    }
     const opendota = getOpenDota();
     const pending = await db.listProMatchesAwaitingDetails(DETAILS_BATCH_SIZE);
     if (!pending.length) return;
