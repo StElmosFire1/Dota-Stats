@@ -22,10 +22,10 @@ async function request<T = any>(path: string, opts: FetchOpts = {}): Promise<T> 
   if (opts.body && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
-  // The mobile app stores the express-session cookie in SecureStore after
-  // POST /api/auth/complete returns it. We re-attach it manually here
-  // because React Native's fetch does not persist cookies the way a
-  // browser does.
+  // We re-attach the express-session cookie manually here because React
+  // Native's fetch does not persist cookies the way a browser does. The
+  // cookie is captured from /api/auth/complete's Set-Cookie response
+  // header and stored in expo-secure-store.
   const cookie = await getSessionCookie();
   if (cookie) headers['Cookie'] = cookie;
 
@@ -41,18 +41,28 @@ async function request<T = any>(path: string, opts: FetchOpts = {}): Promise<T> 
 }
 
 // ---------- Read-only endpoints (mirror of web/src/api.js) ----------
+// Route shapes verified against src/web/server.js — every path here is
+// real. Earlier drafts used singular variants (/api/match/:id,
+// /api/player/:id, /api/home/stats) that do NOT exist on the server,
+// which would have produced silent 404s in the UI.
 export const api = {
   getMatches: (limit = 50, offset = 0) =>
-    request<{ matches: any[]; total: number }>(
+    request<{ matches: any[]; total: number; limit: number; offset: number }>(
       `/api/matches?limit=${limit}&offset=${offset}`
     ),
   getMatch: (matchId: string | number) =>
-    request<any>(`/api/match/${matchId}`),
+    request<any>(`/api/matches/${matchId}`),
   getLeaderboard: (limit = 100) =>
-    request<{ players: any[] }>(`/api/leaderboard?limit=${limit}`),
+    request<{ players: any[] } | any[]>(`/api/leaderboard?limit=${limit}`),
   getPlayer: (accountId: string | number) =>
-    request<any>(`/api/player/${accountId}`),
-  getHomeStats: () => request<any>(`/api/home/stats`).catch(() => null),
+    request<any>(`/api/players/${accountId}`),
+  getPlayerRecentMatches: (accountId: string | number, limit = 5) =>
+    request<{ account_id: string; matches: any[] }>(
+      `/api/players/${accountId}/recent-matches?limit=${limit}`
+    ),
+  getPlayerStreak: (accountId: string | number) =>
+    request<any>(`/api/players/${accountId}/streak`).catch(() => null),
+  getHomeStats: () => request<any>(`/api/home-stats`).catch(() => null),
 
   // ---------- Auth ----------
   // Trades the short-lived token from /auth/steam/return?t=... for a

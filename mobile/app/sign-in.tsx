@@ -5,9 +5,7 @@ import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../lib/theme';
-import { api, apiBase } from '../lib/api';
-import { setSessionFromSetCookieHeader, setAccountId } from '../lib/session';
-import { registerForPushNotificationsAsync } from '../lib/push';
+import { apiBase } from '../lib/api';
 
 export default function SignIn() {
   const router = useRouter();
@@ -16,14 +14,15 @@ export default function SignIn() {
 
   // Reuses the existing web-site Steam OpenID flow:
   //   1. Open <site>/auth/steam in the in-app browser
-  //   2. After Valve completes auth, the server lands the browser on
-  //      <site>/?auth=success&t=<short-lived-token>
-  //   3. We pass `redirectUrl = oceinhouse://?t=...` via the
-  //      `mobile_redirect` query so server.js sends the user back into the
-  //      app via deep link (handled by app/_layout.tsx).
-  //   Fallback: if the server isn't yet aware of `mobile_redirect`, we
-  //   poll the WebBrowser result and look for the `t` token in the final
-  //   URL ourselves.
+  //   2. After Valve completes auth, the server sends the user back to
+  //      the app via deep link `oceinhouse://?t=<short-lived-token>`
+  //      (because we pass `mobile_redirect` and server.js bounces into
+  //      our scheme — see src/web/server.js).
+  //   3. The token → session exchange is handled in EXACTLY ONE place,
+  //      `app/_layout.tsx`, which listens for the URL event globally.
+  //      Doing the exchange here too would race the layout handler; the
+  //      server-side token is single-use, so whichever loses the race
+  //      sees a spurious "invalid/expired token" error.
   const signIn = async () => {
     setBusy(true);
     setError(null);
@@ -35,23 +34,12 @@ export default function SignIn() {
         setBusy(false);
         return;
       }
-      // The deep-link handler in _layout.tsx will pick this up too, but
-      // we handle it here as well in case the listener missed the event
-      // (e.g. cold start race).
-      const parsed = Linking.parse(result.url);
-      const token =
-        (parsed.queryParams?.t as string | undefined) ||
-        (parsed.queryParams?.token as string | undefined);
-      if (token) {
-        const { setCookie } = await api.authComplete(token);
-        if (setCookie) await setSessionFromSetCookieHeader(setCookie);
-        try {
-          const me = await api.authMe();
-          if (me?.accountId) await setAccountId(me.accountId);
-        } catch {}
-        registerForPushNotificationsAsync().catch(() => {});
-        router.replace('/settings');
-      }
+      // The deep-link handler in _layout.tsx will pick up the URL via
+      // Linking's `url` event and run /api/auth/complete. We just
+      // navigate to Settings; the layout will redirect again to '/' once
+      // the session is established, so the user lands somewhere sensible
+      // regardless of timing.
+      router.replace('/settings');
     } catch (err) {
       setError((err as Error).message);
     } finally {

@@ -50,12 +50,14 @@ task:
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/matches` | Recent matches list |
-| GET | `/api/match/:id` | Match detail |
+| GET | `/api/matches?limit=&offset=` | Paginated recent matches list (page size 25) |
+| GET | `/api/matches/:matchId` | Match detail |
 | GET | `/api/leaderboard` | MMR leaderboard |
-| GET | `/api/player/:id` | Player profile (used downstream) |
+| GET | `/api/players/:accountId` | Player profile (MMR, rank, wins/losses) |
+| GET | `/api/players/:accountId/recent-matches?limit=5` | Last N matches for Home card |
+| GET | `/api/players/:accountId/streak` | Current W/L streak |
 | GET | `/api/auth/me` | Resolve account from session cookie |
-| POST | `/api/auth/complete` | Exchange Steam token → session cookie |
+| GET | `/api/auth/complete?t=<token>` | Exchange Steam token → session cookie (single-use, 2-min TTL) |
 | POST | `/api/auth/logout` | Sign out |
 | GET | `/api/me/notifications` | List push preferences |
 | POST | `/api/me/notifications` | Update push preferences |
@@ -72,8 +74,20 @@ per account and both transports share the same gate.
 
 The Steam OpenID hand-off uses `expo-web-browser`'s `openAuthSessionAsync`
 with the redirect URL `oceinhouse://?t=<token>`. The redirect is handled
-in `app/_layout.tsx` — it calls `POST /api/auth/complete` and stores the
-returned session cookie in `expo-secure-store`.
+in **exactly one place — `app/_layout.tsx`** — which calls
+`GET /api/auth/complete?t=<token>` and stores the returned session cookie
+(captured from the `Set-Cookie` response header) in `expo-secure-store`.
+
+The token is single-use and lives for 2 minutes on the server, so the
+sign-in screen deliberately does NOT also try to consume it — otherwise
+the layout handler and the screen would race and one of them would get a
+spurious "invalid or expired token" error.
+
+The redirect scheme is strictly allow-listed to `oceinhouse://` on the
+server (both when stashing `mobile_redirect` in the session and when
+consuming it after the Steam round-trip). `exp://`, `http(s)://`, and
+everything else are rejected, so the single-use Steam auth token cannot
+be redirected to an attacker-controlled Expo experience.
 
 ## Session storage
 
