@@ -584,23 +584,31 @@ function TwitchExtensionSection({ accountId }) {
         <li>Install it and activate it as a Panel (and, optionally, as a Video Overlay).</li>
         <li>Open its <em>Configure</em> tab and paste your account id (below) into the box, then click <em>Save</em>.</li>
       </ol>
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
-          <div style={{ fontWeight: 600 }}>Your account id</div>
-          <button type="button" className="btn"
-            onClick={() => aid && copy(aid)}
-            aria-label="Copy your account id"
-            disabled={!aid}>
-            {copied === aid && aid ? 'Copied!' : 'Copy'}
-          </button>
-        </div>
-        <code style={{ display: 'block', fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
-          {aid || '(sign in to see your id)'}
-        </code>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-          The extension stores this value in Twitch\u2019s broadcaster configuration service \u2014
-          set it once and every viewer\u2019s panel + overlay re-poll automatically.
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {[
+          { key: 'aid', label: 'Your account id', value: aid || '(sign in to see your id)',
+            canCopy: !!aid,
+            hint: 'The extension stores this value in Twitch\u2019s broadcaster configuration service \u2014 set it once and every viewer\u2019s panel + overlay re-poll automatically.' },
+          { key: 'cfg', label: 'Extension config page', value: 'https://dashboard.twitch.tv/extensions',
+            canCopy: true,
+            hint: 'Where you set the account id above. Open this URL on Twitch, find the OCE Inhouse extension, and click \u201cConfigure\u201d on its tile.' },
+        ].map(it => (
+          <div key={it.key} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+              <div style={{ fontWeight: 600 }}>{it.label}</div>
+              <button type="button" className="btn"
+                onClick={() => it.canCopy && copy(it.value)}
+                aria-label={`Copy ${it.label}`}
+                disabled={!it.canCopy}>
+                {copied === it.value ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <code style={{ display: 'block', fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+              {it.value}
+            </code>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>{it.hint}</div>
+          </div>
+        ))}
       </div>
     </section>
   );

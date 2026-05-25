@@ -1,0 +1,51 @@
+{
+  "$schema_note": "Twitch hosts the canonical extension manifest inside the Developer Console — the upload .zip itself does not contain one. This file is the source of truth for what to enter into the Console so panel / video overlay / config asset paths, anchors, allowlisted fetch domains, and version metadata don't drift between submissions.",
+
+  "name": "OCE Inhouse",
+  "summary": "Show a Dota 2 streamer's OCE Inhouse rank, current W/L streak, and last 5 matches without leaving Twitch.",
+  "description": "Read-only Twitch panel + video overlay for the OCE Inhouse community. Viewers see the broadcaster's current rank/tier, MMR, win/loss streak, and last 5 inhouse matches (hero, KDA, GPM, XPM, result). All data comes from public, unauthenticated endpoints on oceinhouse.gg — no Twitch OAuth, no secrets, no chat interaction.",
+  "author_email": "admin@oceinhouse.gg",
+
+  "version": "0.0.1",
+  "anchor": ["panel", "video_overlay"],
+  "supports_chat": false,
+  "supports_bits": false,
+
+  "asset_paths": {
+    "panel":         "panel/index.html",
+    "video_overlay": "video_overlay/index.html",
+    "config":        "config/index.html"
+  },
+
+  "viewer_urls": {
+    "panel":         "panel/index.html",
+    "video_overlay": "video_overlay/index.html",
+    "config":        "config/index.html",
+    "live_config":   "config/index.html"
+  },
+
+  "panel_height": 480,
+
+  "required_broadcaster_abilities": ["broadcaster_configuration"],
+  "viewer_summary": "Shows the broadcaster's OCE Inhouse stats — read-only, polls every 30 seconds.",
+
+  "allowlisted_config_urls": [],
+  "allowlisted_panel_urls":  [],
+  "whitelisted_urls_for_fetching": [
+    "https://oceinhouse.gg"
+  ],
+
+  "subscriptions": {
+    "configuration_service": true,
+    "pubsub": false,
+    "extension_helper_authentication": true,
+    "viewer_identity_linking": false
+  },
+
+  "package_layout": {
+    "config/":        "Broadcaster configuration page — paste the oceinhouse.gg account id.",
+    "panel/":         "Panel surface (always visible under the player).",
+    "video_overlay/": "Optional video overlay — small live-presence chip top-right of the player.",
+    "shared/":        "Vanilla-JS fetch helpers + CSS imported by all three HTML surfaces. MUST be included in the upload zip."
+  }
+}

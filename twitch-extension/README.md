@@ -5,6 +5,18 @@ streak, and last 5 matches from inside the Twitch player. Built for Task #380.
 
 ## Surfaces
 
+## Manifest
+
+Twitch does not embed a manifest inside the uploaded zip — the canonical
+extension metadata lives in the Developer Console form. `manifest.json` at
+the root of this directory is the **source-of-truth document** for the
+values to enter into that form (asset paths, anchor types, allowlisted
+fetch domains, version). Keep it in sync with whatever is submitted so the
+next operator can see exactly what was last shipped without logging into
+the Twitch dashboard.
+
+## Surfaces
+
 | File | Twitch view | What it does |
 |---|---|---|
 | `config/index.html`        | Broadcaster config page | Paste your `oceinhouse.gg` account id; saved into Twitch's `configuration` service so the panel + overlay can read it on every viewer load. |
