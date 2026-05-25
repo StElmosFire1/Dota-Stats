@@ -79,6 +79,8 @@ const SeasonPass = lazy(() => import('./pages/SeasonPass'));
 const Teams = lazy(() => import('./pages/Teams'));
 const TeamCreate = lazy(() => import('./pages/TeamCreate'));
 const TeamProfile = lazy(() => import('./pages/TeamProfile'));
+const Leagues = lazy(() => import('./pages/Leagues'));
+const LeagueProfile = lazy(() => import('./pages/LeagueProfile'));
 const ProfileDemo = lazy(() => import('./pages/ProfileDemo'));
 const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
@@ -730,6 +732,7 @@ function Nav() {
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
+          <DropdownItem to="/leagues">Leagues</DropdownItem>
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
           <DropdownItem to="/sponsorships">Sponsor a Slot</DropdownItem>
           {/* v6.62 / Task #206 — only signed-in players need the cosmetics shop;
@@ -1262,6 +1265,8 @@ function AppRoutes() {
                 <Route path="/teams" element={<Teams />} />
                 <Route path="/teams/new" element={<TeamCreate />} />
                 <Route path="/teams/:id" element={<TeamProfile />} />
+                <Route path="/leagues" element={<Leagues />} />
+                <Route path="/leagues/:id" element={<LeagueProfile />} />
                 <Route path="/replay/:matchId" element={<ReplayViewer />} />
                 <Route path="/spectate/:matchId" element={<Spectate />} />
     </Routes>

@@ -2268,6 +2268,139 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_team_invites_invitee ON team_invites(invitee_account_id, status)`);
+    // Task #383 — Team v2. Roster history (append-only, populated by a
+    // trigger on team_members so every join / leave / role change is
+    // captured with a [joined_at, left_at) range). Scrim schedule
+    // (captain-of-team-A proposes a match against team-B, captain-of-B
+    // accepts/declines). Roster transfers (two-captain confirm: source
+    // captain initiates, destination captain confirms; only then is the
+    // player moved). Leagues are operator-created with a format and an
+    // auto-generated single-elim bracket; round-robin/double-elim store
+    // the format string but defer auto-bracket generation.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS team_roster_history (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        role TEXT NOT NULL,
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        left_at TIMESTAMPTZ
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_trh_team ON team_roster_history(team_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_trh_account ON team_roster_history(account_id)`);
+    // Trigger keeps team_roster_history in sync with team_members. Safe to
+    // re-run; CREATE OR REPLACE FUNCTION + DROP/CREATE TRIGGER is idempotent.
+    await p.query(`
+      CREATE OR REPLACE FUNCTION oi_trg_team_members_history() RETURNS trigger AS $fn$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          INSERT INTO team_roster_history (team_id, account_id, role, joined_at)
+          VALUES (NEW.team_id, NEW.account_id, NEW.role, NEW.joined_at);
+        ELSIF TG_OP = 'DELETE' THEN
+          UPDATE team_roster_history SET left_at = NOW()
+            WHERE team_id = OLD.team_id AND account_id = OLD.account_id AND left_at IS NULL;
+        ELSIF TG_OP = 'UPDATE' AND OLD.role IS DISTINCT FROM NEW.role THEN
+          UPDATE team_roster_history SET left_at = NOW()
+            WHERE team_id = OLD.team_id AND account_id = OLD.account_id AND left_at IS NULL;
+          INSERT INTO team_roster_history (team_id, account_id, role, joined_at)
+          VALUES (NEW.team_id, NEW.account_id, NEW.role, NOW());
+        END IF;
+        RETURN NULL;
+      END; $fn$ LANGUAGE plpgsql;
+    `);
+    await p.query(`DROP TRIGGER IF EXISTS trg_team_members_history ON team_members`);
+    await p.query(`
+      CREATE TRIGGER trg_team_members_history
+      AFTER INSERT OR UPDATE OR DELETE ON team_members
+      FOR EACH ROW EXECUTE FUNCTION oi_trg_team_members_history();
+    `);
+    // One-time backfill: seed history rows for any current member that has
+    // no open history entry. Idempotent — runs on every boot but the WHERE
+    // clause means it only inserts for missing combos.
+    await p.query(`
+      INSERT INTO team_roster_history (team_id, account_id, role, joined_at)
+      SELECT tm.team_id, tm.account_id, tm.role, tm.joined_at
+      FROM team_members tm
+      WHERE NOT EXISTS (
+        SELECT 1 FROM team_roster_history trh
+        WHERE trh.team_id = tm.team_id AND trh.account_id = tm.account_id AND trh.left_at IS NULL
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS team_scrims (
+        id SERIAL PRIMARY KEY,
+        proposer_team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        opponent_team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        scheduled_at TIMESTAMPTZ NOT NULL,
+        note TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined','cancelled')),
+        proposed_by_account_id BIGINT NOT NULL,
+        responded_by_account_id BIGINT,
+        responded_at TIMESTAMPTZ,
+        match_id VARCHAR(50),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (proposer_team_id <> opponent_team_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_scrims_proposer ON team_scrims(proposer_team_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_scrims_opponent ON team_scrims(opponent_team_id)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS team_roster_transfers (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        from_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+        to_team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        proposed_by_account_id BIGINT NOT NULL,
+        from_approved BOOLEAN NOT NULL DEFAULT FALSE,
+        to_approved BOOLEAN NOT NULL DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed','cancelled','declined')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_transfers_pending ON team_roster_transfers(status, to_team_id) WHERE status = 'pending'`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS leagues (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(120) NOT NULL,
+        slug VARCHAR(64) NOT NULL UNIQUE,
+        format TEXT NOT NULL CHECK (format IN ('round_robin','single_elim','double_elim')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','completed')),
+        description TEXT DEFAULT '',
+        created_by_account_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        starts_at TIMESTAMPTZ
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS league_teams (
+        league_id INTEGER NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        seed INTEGER,
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (league_id, team_id)
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS league_matches (
+        id SERIAL PRIMARY KEY,
+        league_id INTEGER NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+        bracket TEXT NOT NULL DEFAULT 'W' CHECK (bracket IN ('W','L','RR')),
+        round INTEGER NOT NULL DEFAULT 1,
+        slot INTEGER NOT NULL DEFAULT 0,
+        team_a_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+        team_b_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+        winner_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+        match_id VARCHAR(50),
+        scheduled_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_league_matches_league ON league_matches(league_id, bracket, round, slot)`);
+    await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS league_id INTEGER REFERENCES leagues(id) ON DELETE SET NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league_id) WHERE league_id IS NOT NULL`);
+
     await p.query(`
       CREATE TABLE IF NOT EXISTS team_upkeep_payments (
         id SERIAL PRIMARY KEY,
@@ -16376,6 +16509,505 @@ async function confirmTeamUpkeep(stripeSessionId) {
   finally { client.release(); }
 }
 
+// ---------- Task #383 — Team v2 helpers ----------
+async function _isTeamCaptain(teamId, accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT role FROM team_members WHERE team_id = $1 AND account_id = $2`,
+    [teamId, accountId]
+  );
+  const role = r.rows[0]?.role;
+  return role === 'owner' || role === 'captain';
+}
+
+async function getTeamRosterHistory(teamId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT trh.id, trh.team_id, trh.account_id, trh.role, trh.joined_at, trh.left_at,
+            COALESCE(NULLIF(n.nickname, ''), 'Unknown') AS nickname
+       FROM team_roster_history trh
+       LEFT JOIN nicknames n ON n.account_id = trh.account_id
+      WHERE trh.team_id = $1
+      ORDER BY trh.left_at IS NULL DESC, trh.joined_at DESC`,
+    [teamId]
+  );
+  return r.rows.map(row => ({ ...row, account_id: String(row.account_id) }));
+}
+
+async function getTeamRecentMatches(teamId, limit = 20) {
+  const p = getPool();
+  const members = await p.query(`SELECT account_id FROM team_members WHERE team_id = $1`, [teamId]);
+  const ids = members.rows.map(r => r.account_id);
+  if (!ids.length) return [];
+  // Same definition as getTeamStats: a "team match" needs ≥3 members on one side.
+  const r = await p.query(
+    `WITH team_sides AS (
+       SELECT ps.match_id,
+              ps.team,
+              COUNT(*) AS n
+         FROM player_stats ps
+        WHERE ps.account_id = ANY($1::bigint[])
+        GROUP BY ps.match_id, ps.team
+       HAVING COUNT(*) >= 3
+     )
+     SELECT m.match_id, m.date, m.duration, m.radiant_win, m.league_id,
+            ts.team AS team_side, ts.n AS members_on_side,
+            ((ts.team = 'radiant') = m.radiant_win) AS won
+       FROM team_sides ts
+       JOIN matches m ON m.match_id = ts.match_id
+      ORDER BY m.date DESC
+      LIMIT $2`,
+    [ids, limit]
+  );
+  return r.rows;
+}
+
+// Scrim scheduling.
+async function proposeScrim({ proposerTeamId, opponentTeamId, scheduledAt, note, accountId }) {
+  if (!Number.isFinite(proposerTeamId) || !Number.isFinite(opponentTeamId)) {
+    const e = new Error('Both team ids are required.'); e.code = 'BAD_REQUEST'; throw e;
+  }
+  if (proposerTeamId === opponentTeamId) {
+    const e = new Error('A team cannot scrim itself.'); e.code = 'BAD_REQUEST'; throw e;
+  }
+  if (!(await _isTeamCaptain(proposerTeamId, accountId))) {
+    const e = new Error('Only the proposing team\'s captain or owner can schedule a scrim.');
+    e.code = 'FORBIDDEN'; throw e;
+  }
+  const opp = await getTeamById(opponentTeamId);
+  if (!opp) { const e = new Error('Opponent team not found.'); e.code = 'NOT_FOUND'; throw e; }
+  const when = new Date(scheduledAt);
+  if (isNaN(when.getTime())) { const e = new Error('Invalid scheduled time.'); e.code = 'BAD_REQUEST'; throw e; }
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO team_scrims (proposer_team_id, opponent_team_id, scheduled_at, note, proposed_by_account_id, status)
+     VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING *`,
+    [proposerTeamId, opponentTeamId, when, String(note || '').slice(0, 500), accountId]
+  );
+  return r.rows[0];
+}
+
+async function respondToScrim({ scrimId, accountId, accept }) {
+  const p = getPool();
+  const sr = await p.query(`SELECT * FROM team_scrims WHERE id = $1`, [scrimId]);
+  const scrim = sr.rows[0];
+  if (!scrim) { const e = new Error('Scrim not found.'); e.code = 'NOT_FOUND'; throw e; }
+  if (scrim.status !== 'pending') { const e = new Error('Scrim already resolved.'); e.code = 'CONFLICT'; throw e; }
+  if (!(await _isTeamCaptain(scrim.opponent_team_id, accountId))) {
+    const e = new Error('Only the opposing team\'s captain or owner can respond.');
+    e.code = 'FORBIDDEN'; throw e;
+  }
+  const r = await p.query(
+    `UPDATE team_scrims SET status = $2, responded_by_account_id = $3, responded_at = NOW()
+       WHERE id = $1 RETURNING *`,
+    [scrimId, accept ? 'accepted' : 'declined', accountId]
+  );
+  return r.rows[0];
+}
+
+async function cancelScrim({ scrimId, accountId }) {
+  const p = getPool();
+  const sr = await p.query(`SELECT * FROM team_scrims WHERE id = $1`, [scrimId]);
+  const scrim = sr.rows[0];
+  if (!scrim) { const e = new Error('Scrim not found.'); e.code = 'NOT_FOUND'; throw e; }
+  if (scrim.status !== 'pending') { const e = new Error('Scrim already resolved.'); e.code = 'CONFLICT'; throw e; }
+  const eitherCaptain = (await _isTeamCaptain(scrim.proposer_team_id, accountId))
+    || (await _isTeamCaptain(scrim.opponent_team_id, accountId));
+  if (!eitherCaptain) {
+    const e = new Error('Only a captain/owner of either team can cancel.');
+    e.code = 'FORBIDDEN'; throw e;
+  }
+  const r = await p.query(
+    `UPDATE team_scrims SET status = 'cancelled', responded_by_account_id = $2, responded_at = NOW()
+       WHERE id = $1 RETURNING *`,
+    [scrimId, accountId]
+  );
+  return r.rows[0];
+}
+
+async function getTeamSchedule(teamId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ts.*,
+            pt.name AS proposer_name, pt.tag AS proposer_tag,
+            ot.name AS opponent_name, ot.tag AS opponent_tag
+       FROM team_scrims ts
+       JOIN teams pt ON pt.id = ts.proposer_team_id
+       JOIN teams ot ON ot.id = ts.opponent_team_id
+      WHERE ts.proposer_team_id = $1 OR ts.opponent_team_id = $1
+      ORDER BY ts.scheduled_at ASC NULLS LAST`,
+    [teamId]
+  );
+  return r.rows;
+}
+
+// Roster transfer: two-captain confirm. The proposing captain (must be the
+// player's current team's captain — or, if free agent, the destination
+// captain inviting them) creates the request; the destination captain (and
+// source captain when applicable) approves. When both sides have approved
+// the player is moved atomically via the existing team_members table (the
+// AFTER trigger keeps team_roster_history in sync).
+async function proposeRosterTransfer({ accountId, toTeamId, byAccountId }) {
+  const p = getPool();
+  if (!(await _isTeamCaptain(toTeamId, byAccountId))) {
+    const e = new Error('Only the destination team\'s captain or owner can propose a transfer.');
+    e.code = 'FORBIDDEN'; throw e;
+  }
+  const cur = await p.query(`SELECT team_id FROM team_members WHERE account_id = $1`, [accountId]);
+  const fromTeamId = cur.rows[0]?.team_id || null;
+  if (fromTeamId === toTeamId) {
+    const e = new Error('Player is already on this team.'); e.code = 'CONFLICT'; throw e;
+  }
+  // Free-agent transfers are auto-approved on the source side.
+  const fromApproved = fromTeamId === null;
+  const r = await p.query(
+    `INSERT INTO team_roster_transfers
+       (account_id, from_team_id, to_team_id, proposed_by_account_id, from_approved, to_approved, status)
+     VALUES ($1, $2, $3, $4, $5, TRUE, 'pending') RETURNING *`,
+    [accountId, fromTeamId, toTeamId, byAccountId, fromApproved]
+  );
+  return r.rows[0];
+}
+
+async function respondRosterTransfer({ transferId, accountId, approve }) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const tr = await client.query(
+      `SELECT * FROM team_roster_transfers WHERE id = $1 FOR UPDATE`, [transferId]);
+    const t = tr.rows[0];
+    if (!t) { await client.query('ROLLBACK'); const e = new Error('Transfer not found.'); e.code = 'NOT_FOUND'; throw e; }
+    if (t.status !== 'pending') { await client.query('ROLLBACK'); const e = new Error('Transfer already resolved.'); e.code = 'CONFLICT'; throw e; }
+    const isFromCap = t.from_team_id && (await _isTeamCaptain(t.from_team_id, accountId));
+    const isToCap   = await _isTeamCaptain(t.to_team_id, accountId);
+    if (!isFromCap && !isToCap) {
+      await client.query('ROLLBACK');
+      const e = new Error('Only a captain/owner of the source or destination team can respond.');
+      e.code = 'FORBIDDEN'; throw e;
+    }
+    if (!approve) {
+      await client.query(
+        `UPDATE team_roster_transfers SET status = 'declined', completed_at = NOW() WHERE id = $1`, [transferId]);
+      await client.query('COMMIT');
+      return { ok: true, status: 'declined' };
+    }
+    const next = {
+      from_approved: t.from_approved || isFromCap,
+      to_approved:   t.to_approved   || isToCap,
+    };
+    if (next.from_approved && next.to_approved) {
+      // Re-verify current membership matches the transfer's recorded source
+      // before mutating team_members — guards against stale pending transfers
+      // that would otherwise let a long-gone request silently move a player
+      // who has since been traded or left.
+      const cur = await client.query(
+        `SELECT team_id FROM team_members WHERE account_id = $1 FOR UPDATE`,
+        [t.account_id]);
+      const currentTeamId = cur.rows[0]?.team_id || null;
+      if ((currentTeamId || null) !== (t.from_team_id || null)) {
+        await client.query('ROLLBACK');
+        const e = new Error('Player is no longer on the original source team — propose a new transfer.');
+        e.code = 'CONFLICT'; throw e;
+      }
+      if (t.from_team_id) {
+        const del = await client.query(
+          `DELETE FROM team_members WHERE team_id = $1 AND account_id = $2`,
+          [t.from_team_id, t.account_id]);
+        if (del.rowCount !== 1) {
+          await client.query('ROLLBACK');
+          const e = new Error('Source membership row missing at execution time.');
+          e.code = 'CONFLICT'; throw e;
+        }
+      }
+      await client.query(
+        `INSERT INTO team_members (team_id, account_id, role) VALUES ($1, $2, 'member')
+         ON CONFLICT (account_id) DO UPDATE SET team_id = EXCLUDED.team_id, role = 'member', joined_at = NOW()`,
+        [t.to_team_id, t.account_id]);
+      await client.query(
+        `UPDATE team_roster_transfers SET from_approved = TRUE, to_approved = TRUE,
+           status = 'completed', completed_at = NOW() WHERE id = $1`, [transferId]);
+      await client.query('COMMIT');
+      return { ok: true, status: 'completed' };
+    }
+    await client.query(
+      `UPDATE team_roster_transfers SET from_approved = $2, to_approved = $3 WHERE id = $1`,
+      [transferId, next.from_approved, next.to_approved]);
+    await client.query('COMMIT');
+    return { ok: true, status: 'pending', ...next };
+  } catch (e) { try { await client.query('ROLLBACK'); } catch (_) {} throw e; }
+  finally { client.release(); }
+}
+
+async function getPendingTransfersForCaptain(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT t.*, tn.nickname,
+            ft.name AS from_team_name, ft.tag AS from_team_tag,
+            tt.name AS to_team_name, tt.tag AS to_team_tag
+       FROM team_roster_transfers t
+       LEFT JOIN nicknames tn ON tn.account_id = t.account_id
+       LEFT JOIN teams ft ON ft.id = t.from_team_id
+       JOIN teams tt ON tt.id = t.to_team_id
+       LEFT JOIN team_members fm ON fm.team_id = t.from_team_id AND fm.account_id = $1
+       LEFT JOIN team_members tm ON tm.team_id = t.to_team_id AND tm.account_id = $1
+      WHERE t.status = 'pending'
+        AND ( (fm.role IN ('owner','captain')) OR (tm.role IN ('owner','captain')) )
+      ORDER BY t.created_at DESC`,
+    [accountId]
+  );
+  return r.rows;
+}
+
+// ---------- Task #383 — Leagues ----------
+function _slugify(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64);
+}
+
+async function listLeagues() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT l.*,
+            (SELECT COUNT(*) FROM league_teams lt WHERE lt.league_id = l.id)::int AS team_count
+       FROM leagues l
+       ORDER BY CASE l.status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, l.created_at DESC`
+  );
+  return r.rows;
+}
+
+async function getLeague(leagueId) {
+  const p = getPool();
+  const lr = await p.query(`SELECT * FROM leagues WHERE id = $1`, [leagueId]);
+  const league = lr.rows[0];
+  if (!league) return null;
+  const teams = await p.query(
+    `SELECT lt.league_id, lt.team_id, lt.seed, t.name, t.tag, t.color_primary
+       FROM league_teams lt
+       JOIN teams t ON t.id = lt.team_id
+      WHERE lt.league_id = $1
+      ORDER BY lt.seed NULLS LAST, t.name`,
+    [leagueId]
+  );
+  const matches = await p.query(
+    `SELECT lm.*, ta.name AS team_a_name, ta.tag AS team_a_tag,
+            tb.name AS team_b_name, tb.tag AS team_b_tag
+       FROM league_matches lm
+       LEFT JOIN teams ta ON ta.id = lm.team_a_id
+       LEFT JOIN teams tb ON tb.id = lm.team_b_id
+      WHERE lm.league_id = $1
+      ORDER BY lm.bracket, lm.round, lm.slot`,
+    [leagueId]
+  );
+  return { league, teams: teams.rows, matches: matches.rows };
+}
+
+async function getLeagueStandings(leagueId) {
+  const p = getPool();
+  const r = await p.query(
+    `WITH played AS (
+       SELECT team_a_id AS team_id,
+              SUM(CASE WHEN winner_team_id = team_a_id THEN 1 ELSE 0 END)::int AS wins,
+              SUM(CASE WHEN winner_team_id = team_b_id THEN 1 ELSE 0 END)::int AS losses
+         FROM league_matches
+        WHERE league_id = $1 AND winner_team_id IS NOT NULL
+        GROUP BY team_a_id
+       UNION ALL
+       SELECT team_b_id AS team_id,
+              SUM(CASE WHEN winner_team_id = team_b_id THEN 1 ELSE 0 END)::int AS wins,
+              SUM(CASE WHEN winner_team_id = team_a_id THEN 1 ELSE 0 END)::int AS losses
+         FROM league_matches
+        WHERE league_id = $1 AND winner_team_id IS NOT NULL
+        GROUP BY team_b_id
+     )
+     SELECT t.id AS team_id, t.name, t.tag,
+            COALESCE(SUM(p.wins),0)::int AS wins,
+            COALESCE(SUM(p.losses),0)::int AS losses
+       FROM league_teams lt
+       JOIN teams t ON t.id = lt.team_id
+       LEFT JOIN played p ON p.team_id = t.id
+      WHERE lt.league_id = $1
+      GROUP BY t.id, t.name, t.tag
+      ORDER BY wins DESC, losses ASC, t.name`,
+    [leagueId]
+  );
+  return r.rows;
+}
+
+async function createLeague({ name, format, description, createdBy, startsAt }) {
+  const allowed = ['round_robin','single_elim','double_elim'];
+  if (!allowed.includes(format)) { const e = new Error('Invalid format.'); e.code = 'BAD_REQUEST'; throw e; }
+  const cleanName = String(name || '').trim();
+  if (cleanName.length < 3) { const e = new Error('Name too short.'); e.code = 'BAD_REQUEST'; throw e; }
+  const baseSlug = _slugify(cleanName) || ('league-' + Date.now());
+  const p = getPool();
+  // Ensure slug uniqueness by appending -N if needed.
+  let slug = baseSlug;
+  for (let i = 2; i < 50; i++) {
+    const ex = await p.query(`SELECT 1 FROM leagues WHERE slug = $1`, [slug]);
+    if (!ex.rows[0]) break;
+    slug = `${baseSlug}-${i}`;
+  }
+  const r = await p.query(
+    `INSERT INTO leagues (name, slug, format, description, created_by_account_id, starts_at)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [cleanName, slug, format, String(description || ''), createdBy || null, startsAt || null]
+  );
+  return r.rows[0];
+}
+
+async function addLeagueTeam({ leagueId, teamId, seed }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO league_teams (league_id, team_id, seed) VALUES ($1, $2, $3)
+     ON CONFLICT (league_id, team_id) DO UPDATE SET seed = EXCLUDED.seed
+     RETURNING *`,
+    [leagueId, teamId, seed || null]
+  );
+  return r.rows[0];
+}
+
+async function removeLeagueTeam({ leagueId, teamId }) {
+  const p = getPool();
+  await p.query(`DELETE FROM league_teams WHERE league_id = $1 AND team_id = $2`, [leagueId, teamId]);
+  return { ok: true };
+}
+
+// Promote a winning team from (round, slot) into the next round's (slot>>1)
+// match — even slots become team_a in the parent, odd slots become team_b.
+// Used both by setLeagueMatchWinner and by generateLeagueBracket's BYE pass.
+async function _promoteWinnerInBracket(client, leagueId, round, slot, winnerTeamId) {
+  const nextRound = round + 1;
+  const nextSlot = Math.floor(slot / 2);
+  const isASide = (slot % 2) === 0;
+  const existing = await client.query(
+    `SELECT id FROM league_matches
+      WHERE league_id = $1 AND bracket = 'W' AND round = $2 AND slot = $3
+      FOR UPDATE`,
+    [leagueId, nextRound, nextSlot]);
+  if (existing.rows[0]) {
+    const col = isASide ? 'team_a_id' : 'team_b_id';
+    await client.query(
+      `UPDATE league_matches SET ${col} = $2 WHERE id = $1`,
+      [existing.rows[0].id, winnerTeamId]);
+  } else {
+    await client.query(
+      `INSERT INTO league_matches (league_id, bracket, round, slot, team_a_id, team_b_id)
+       VALUES ($1, 'W', $2, $3, $4, $5)`,
+      [leagueId, nextRound, nextSlot,
+        isASide ? winnerTeamId : null,
+        isASide ? null : winnerTeamId]);
+  }
+}
+
+// Generate a single-elim bracket from current league_teams (seed-ordered).
+// Idempotent for an unstarted league: deletes any existing W-bracket matches
+// for this league with no winner_team_id, then creates a fresh round-1 set
+// of slots. Round-robin / double-elim are deferred — caller can still record
+// league_matches manually via the operator UI.
+async function generateLeagueBracket(leagueId) {
+  const p = getPool();
+  const lr = await p.query(`SELECT * FROM leagues WHERE id = $1`, [leagueId]);
+  const league = lr.rows[0];
+  if (!league) { const e = new Error('League not found.'); e.code = 'NOT_FOUND'; throw e; }
+  if (league.format !== 'single_elim') {
+    const e = new Error('Auto-generation is only supported for single-elim leagues; record matches manually for other formats.');
+    e.code = 'BAD_REQUEST'; throw e;
+  }
+  const tr = await p.query(
+    `SELECT team_id, seed FROM league_teams WHERE league_id = $1 ORDER BY seed NULLS LAST`, [leagueId]);
+  const teams = tr.rows.map(r => r.team_id);
+  if (teams.length < 2) { const e = new Error('Need at least 2 teams.'); e.code = 'BAD_REQUEST'; throw e; }
+  // Round up to next power of two — pair top seed vs lowest, etc.
+  let size = 1; while (size < teams.length) size *= 2;
+  while (teams.length < size) teams.push(null); // BYE slots
+  // Standard bracket seeding pairs: 1v8, 4v5, 2v7, 3v6 etc — implement with
+  // recursive seed-list generation.
+  function seedOrder(n) {
+    let order = [1];
+    for (let r = 1; (1 << r) <= n; r++) {
+      const size = 1 << r;
+      const next = [];
+      for (let i = 0; i < order.length; i++) {
+        next.push(order[i]);
+        next.push(size + 1 - order[i]);
+      }
+      order = next;
+    }
+    return order;
+  }
+  const order = seedOrder(size); // 1-indexed
+  const ordered = order.map(i => teams[i - 1] || null);
+  await p.query(
+    `DELETE FROM league_matches WHERE league_id = $1 AND bracket = 'W' AND winner_team_id IS NULL`,
+    [leagueId]);
+  const rows = [];
+  const byes = [];
+  for (let slot = 0; slot < size / 2; slot++) {
+    const a = ordered[slot * 2];
+    const b = ordered[slot * 2 + 1];
+    const byeWinner = (a && !b) ? a : ((b && !a) ? b : null);
+    const r = await p.query(
+      `INSERT INTO league_matches (league_id, bracket, round, slot, team_a_id, team_b_id, winner_team_id)
+       VALUES ($1, 'W', 1, $2, $3, $4, $5) RETURNING *`,
+      [leagueId, slot, a, b, byeWinner]);
+    rows.push(r.rows[0]);
+    if (byeWinner) byes.push({ slot, winner: byeWinner });
+  }
+  // Auto-propagate BYE winners forward so the bracket doesn't strand them
+  // in round 1 (no captain can record a "Win" for an unplayed BYE).
+  for (const b of byes) {
+    await _promoteWinnerInBracket(p, leagueId, 1, b.slot, b.winner);
+  }
+  await p.query(`UPDATE leagues SET status = 'active' WHERE id = $1 AND status = 'pending'`, [leagueId]);
+  return rows;
+}
+
+// Record a winner for a league_match; auto-promote the winner into the next
+// round's slot (slot >> 1) of the W bracket.
+async function setLeagueMatchWinner({ leagueMatchId, winnerTeamId, matchId }) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const lr = await client.query(`SELECT * FROM league_matches WHERE id = $1 FOR UPDATE`, [leagueMatchId]);
+    const m = lr.rows[0];
+    if (!m) { await client.query('ROLLBACK'); const e = new Error('League match not found.'); e.code = 'NOT_FOUND'; throw e; }
+    if (winnerTeamId && winnerTeamId !== m.team_a_id && winnerTeamId !== m.team_b_id) {
+      await client.query('ROLLBACK');
+      const e = new Error('Winner must be one of the two teams in the match.'); e.code = 'BAD_REQUEST'; throw e;
+    }
+    await client.query(
+      `UPDATE league_matches SET winner_team_id = $2, match_id = COALESCE($3, match_id) WHERE id = $1`,
+      [leagueMatchId, winnerTeamId || null, matchId || null]);
+    // Auto-promote into next round (single-elim W bracket only). Stops at
+    // the championship round — a round containing exactly one match has no
+    // successor to feed into, so we don't fabricate a ghost round.
+    if (winnerTeamId && m.bracket === 'W') {
+      const siblingCount = await client.query(
+        `SELECT COUNT(*)::int AS n FROM league_matches
+          WHERE league_id = $1 AND bracket = 'W' AND round = $2`,
+        [m.league_id, m.round]);
+      const isFinal = (siblingCount.rows[0].n <= 1);
+      if (!isFinal) {
+        await _promoteWinnerInBracket(client, m.league_id, m.round, m.slot, winnerTeamId);
+      }
+    }
+    await client.query('COMMIT');
+    return { ok: true };
+  } catch (e) { try { await client.query('ROLLBACK'); } catch (_) {} throw e; }
+  finally { client.release(); }
+}
+
+// Attach an existing matches.match_id to a league. Used by lobby flow when
+// a captain tags a match as a league match; also exposed via admin POST.
+async function attachMatchToLeague({ matchId, leagueId }) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE matches SET league_id = $2 WHERE match_id = $1 RETURNING match_id, league_id`,
+    [matchId, leagueId || null]);
+  return r.rows[0] || null;
+}
+
 // ---------- Weekly challenges ----------
 async function createWeeklyChallenge({ seasonNumber, weekNumber, title, description, metric, target, xpReward, coinReward, startsAt, endsAt }) {
   const p = getPool();
@@ -17284,6 +17916,25 @@ module.exports = {
   respondToTeamInvite,
   leaveTeam,
   getTeamStats,
+  // Task #383 — Team v2 + leagues
+  getTeamRosterHistory,
+  getTeamRecentMatches,
+  proposeScrim,
+  respondToScrim,
+  cancelScrim,
+  getTeamSchedule,
+  proposeRosterTransfer,
+  respondRosterTransfer,
+  getPendingTransfersForCaptain,
+  listLeagues,
+  getLeague,
+  getLeagueStandings,
+  createLeague,
+  addLeagueTeam,
+  removeLeagueTeam,
+  generateLeagueBracket,
+  setLeagueMatchWinner,
+  attachMatchToLeague,
   recordTeamUpkeep,
   confirmTeamUpkeep,
   createWeeklyChallenge,

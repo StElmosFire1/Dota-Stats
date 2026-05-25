@@ -14995,6 +14995,207 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     }
   });
 
+  // ── Task #383 — Team v2 (roster history, scrims, transfers) ──────────────
+  router.get('/teams/:id/roster-history', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid team id.' });
+      res.json({ history: await db.getTeamRosterHistory(id) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/teams/:id/recent-matches', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+      res.json({ matches: await db.getTeamRecentMatches(id, limit) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/teams/:id/schedule', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      res.json({ schedule: await db.getTeamSchedule(id) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/teams/:id/scrims', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const proposerTeamId = parseInt(req.params.id, 10);
+      const opponentTeamId = parseInt(req.body?.opponent_team_id, 10);
+      const scrim = await db.proposeScrim({
+        proposerTeamId, opponentTeamId,
+        scheduledAt: req.body?.scheduled_at,
+        note: req.body?.note,
+        accountId,
+      });
+      res.json({ scrim });
+    } catch (e) {
+      const map = { BAD_REQUEST: 400, NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409 };
+      res.status(map[e.code] || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/scrims/:id/respond', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const scrimId = parseInt(req.params.id, 10);
+      const scrim = await db.respondToScrim({ scrimId, accountId, accept: !!req.body?.accept });
+      res.json({ scrim });
+    } catch (e) {
+      const map = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409 };
+      res.status(map[e.code] || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/scrims/:id/cancel', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const scrimId = parseInt(req.params.id, 10);
+      const scrim = await db.cancelScrim({ scrimId, accountId });
+      res.json({ scrim });
+    } catch (e) {
+      const map = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409 };
+      res.status(map[e.code] || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/teams/:id/roster-transfers', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const toTeamId = parseInt(req.params.id, 10);
+      const playerAccountId = String(req.body?.account_id || '').trim();
+      if (!playerAccountId) return res.status(400).json({ error: 'account_id required.' });
+      const transfer = await db.proposeRosterTransfer({
+        accountId: playerAccountId, toTeamId, byAccountId: accountId,
+      });
+      res.json({ transfer });
+    } catch (e) {
+      const map = { BAD_REQUEST: 400, NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409 };
+      res.status(map[e.code] || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/roster-transfers/:id/respond', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in first.' });
+      const transferId = parseInt(req.params.id, 10);
+      const result = await db.respondRosterTransfer({
+        transferId, accountId, approve: !!req.body?.approve });
+      res.json(result);
+    } catch (e) {
+      const map = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409 };
+      res.status(map[e.code] || 500).json({ error: e.message });
+    }
+  });
+
+  router.get('/me/roster-transfers', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.json({ transfers: [] });
+      res.json({ transfers: await db.getPendingTransfersForCaptain(accountId) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Task #383 — Leagues ──────────────────────────────────────────────────
+  router.get('/leagues', async (req, res) => {
+    try { res.json({ leagues: await db.listLeagues() }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/leagues/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid league id.' });
+      const league = await db.getLeague(id);
+      if (!league) return res.status(404).json({ error: 'League not found.' });
+      const standings = await db.getLeagueStandings(id);
+      res.json({ ...league, standings });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/leagues', express.json(), async (req, res) => {
+    try {
+      if (!req.session?.isSuperuser) return res.status(403).json({ error: 'Superuser only.' });
+      const accountId = req.session?.accountId;
+      const league = await db.createLeague({
+        name: req.body?.name,
+        format: req.body?.format,
+        description: req.body?.description,
+        createdBy: accountId,
+        startsAt: req.body?.starts_at || null,
+      });
+      res.json({ league });
+    } catch (e) {
+      const map = { BAD_REQUEST: 400 };
+      res.status(map[e.code] || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/leagues/:id/teams', express.json(), async (req, res) => {
+    try {
+      if (!req.session?.isSuperuser) return res.status(403).json({ error: 'Superuser only.' });
+      const leagueId = parseInt(req.params.id, 10);
+      const teamId = parseInt(req.body?.team_id, 10);
+      const seed = req.body?.seed != null ? parseInt(req.body.seed, 10) : null;
+      if (!Number.isFinite(teamId)) return res.status(400).json({ error: 'team_id required.' });
+      const row = await db.addLeagueTeam({ leagueId, teamId, seed });
+      res.json({ league_team: row });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.delete('/leagues/:id/teams/:teamId', async (req, res) => {
+    try {
+      if (!req.session?.isSuperuser) return res.status(403).json({ error: 'Superuser only.' });
+      const leagueId = parseInt(req.params.id, 10);
+      const teamId = parseInt(req.params.teamId, 10);
+      res.json(await db.removeLeagueTeam({ leagueId, teamId }));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/leagues/:id/generate-bracket', async (req, res) => {
+    try {
+      if (!req.session?.isSuperuser) return res.status(403).json({ error: 'Superuser only.' });
+      const leagueId = parseInt(req.params.id, 10);
+      const rows = await db.generateLeagueBracket(leagueId);
+      res.json({ matches: rows });
+    } catch (e) {
+      const map = { BAD_REQUEST: 400, NOT_FOUND: 404 };
+      res.status(map[e.code] || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/league-matches/:id/winner', express.json(), async (req, res) => {
+    try {
+      if (!req.session?.isSuperuser) return res.status(403).json({ error: 'Superuser only.' });
+      const leagueMatchId = parseInt(req.params.id, 10);
+      const winnerTeamId = req.body?.winner_team_id != null ? parseInt(req.body.winner_team_id, 10) : null;
+      const matchId = req.body?.match_id ? String(req.body.match_id) : null;
+      const result = await db.setLeagueMatchWinner({ leagueMatchId, winnerTeamId, matchId });
+      res.json(result);
+    } catch (e) {
+      const map = { BAD_REQUEST: 400, NOT_FOUND: 404 };
+      res.status(map[e.code] || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/matches/:matchId/attach-league', express.json(), async (req, res) => {
+    try {
+      if (!req.session?.isSuperuser) return res.status(403).json({ error: 'Superuser only.' });
+      const matchId = String(req.params.matchId);
+      const leagueId = req.body?.league_id != null ? parseInt(req.body.league_id, 10) : null;
+      const row = await db.attachMatchToLeague({ matchId, leagueId });
+      if (!row) return res.status(404).json({ error: 'Match not found.' });
+      res.json(row);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Weekly challenges ────────────────────────────────────────────────────
   router.get('/weekly-challenges/active', async (req, res) => {
     try { res.json({ challenges: await db.getActiveWeeklyChallenges() }); }

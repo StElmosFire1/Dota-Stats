@@ -1977,6 +1977,32 @@ export const editTeam = (teamId, payload) => _postJson(`/teams/${teamId}/edit`, 
 export const inviteToTeam = (teamId, account_id) => _postJson(`/teams/${teamId}/invite`, { account_id });
 export const respondTeamInvite = (inviteId, accept) => _postJson(`/team-invites/${inviteId}/respond`, { accept });
 export const leaveTeam = (teamId) => _postJson(`/teams/${teamId}/leave`, {});
+// Task #383 — Team v2
+export const getTeamRosterHistory = (id) => _getJson(`/teams/${id}/roster-history`);
+export const getTeamRecentMatches = (id) => _getJson(`/teams/${id}/recent-matches`);
+export const getTeamSchedule = (id) => _getJson(`/teams/${id}/schedule`);
+export const proposeScrim = (teamId, payload) => _postJson(`/teams/${teamId}/scrims`, payload);
+export const respondScrim = (scrimId, accept) => _postJson(`/scrims/${scrimId}/respond`, { accept });
+export const cancelScrim = (scrimId) => _postJson(`/scrims/${scrimId}/cancel`, {});
+export const proposeRosterTransfer = (toTeamId, account_id) =>
+  _postJson(`/teams/${toTeamId}/roster-transfers`, { account_id });
+export const respondRosterTransfer = (id, approve) =>
+  _postJson(`/roster-transfers/${id}/respond`, { approve });
+export const getMyRosterTransfers = () =>
+  _getJson('/me/roster-transfers').catch(() => ({ transfers: [] }));
+// Task #383 — Leagues
+export const listLeagues = () => _getJson('/leagues');
+export const getLeague = (id) => _getJson(`/leagues/${id}`);
+export const createLeague = (payload) => _postJson('/leagues', payload);
+export const addLeagueTeam = (leagueId, team_id, seed) =>
+  _postJson(`/leagues/${leagueId}/teams`, { team_id, seed });
+export const removeLeagueTeam = (leagueId, teamId) =>
+  fetch(`/api/leagues/${leagueId}/teams/${teamId}`, { method: 'DELETE', credentials: 'include' })
+    .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(new Error(d.error || `HTTP ${r.status}`))));
+export const generateLeagueBracket = (leagueId) =>
+  _postJson(`/leagues/${leagueId}/generate-bracket`, {});
+export const setLeagueMatchWinner = (leagueMatchId, payload) =>
+  _postJson(`/league-matches/${leagueMatchId}/winner`, payload);
 export const getActiveWeeklyChallenges = () => _getJson('/weekly-challenges/active');
 export const getMyWeeklyChallenges = () => _getJson('/me/weekly-challenges').catch(() => ({ challenges: [] }));
 export const claimWeeklyChallenge = (id) => _postJson(`/weekly-challenges/${id}/claim`, {});
