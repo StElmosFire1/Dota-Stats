@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SortableTh from '../components/SortableTh';
-import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList, getHeroSynergyMatrix, getHeroCounterScores, getHeroPatchTrends } from '../api';
+import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList, getHeroSynergyMatrix, getHeroCounterScores, getHeroPatchTrends, getAvailableHeroPatches } from '../api';
 import PaywallCard from '../components/PaywallCard';
 import PaywallBlur from '../components/PaywallBlur';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
@@ -280,19 +280,20 @@ const TIER_DEFS = [
 
 const POS_LABELS = { 0: 'All', 1: 'Pos 1', 2: 'Pos 2', 3: 'Pos 3', 4: 'Pos 4', 5: 'Pos 5' };
 
-function HeroTierTab() {
+function HeroTierTab({ patch = null }) {
   const { seasonId } = useSeason();
   const [tiers, setTiers] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filterPos, setFilterPos] = useState(0);
+  const [prevPatch, setPrevPatch] = useState(null);
 
   useEffect(() => {
     setLoading(true);
-    getHeroTierList(seasonId)
-      .then(d => setTiers(d.tiers || null))
+    getHeroTierList(seasonId, patch)
+      .then(d => { setTiers(d.tiers || null); setPrevPatch(d.prev_patch || null); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [seasonId]);
+  }, [seasonId, patch]);
 
   const totalHeroes = tiers ? Object.values(tiers).reduce((n, arr) => n + arr.length, 0) : 0;
 
@@ -305,7 +306,9 @@ function HeroTierTab() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0, flex: 1 }}>
-          Heroes with 2+ picks, ranked by inhouse win rate. Tier boundaries: S≥58% · A≥53% · B≥48% · C≥43% · D&lt;43%.
+          {patch
+            ? <>Patch <strong>{patch}</strong> win rates{prevPatch && <> — movement arrows vs patch <strong>{prevPatch}</strong></>}. Heroes need 1+ pick on this patch to appear.</>
+            : <>Heroes with 2+ picks, ranked by inhouse win rate. Tier boundaries: S≥58% · A≥53% · B≥48% · C≥43% · D&lt;43%.</>}
         </p>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[0, 1, 2, 3, 4, 5].map(pos => (
@@ -513,7 +516,7 @@ function HeroMatchupsTab() {
 
 // Task #382 — Hero synergy matrix tab (pairs + trios). Heat-mapped by win
 // rate, clickable cell wires to /matches?heroes=a,b. Public, all-position.
-function HeroSynergyTab() {
+function HeroSynergyTab({ patch = null }) {
   const { seasonId } = useSeason();
   const [data, setData] = useState({ pairs: [], trios: [] });
   const [loading, setLoading] = useState(true);
@@ -523,11 +526,11 @@ function HeroSynergyTab() {
 
   useEffect(() => {
     setLoading(true);
-    getHeroSynergyMatrix(seasonId)
+    getHeroSynergyMatrix(seasonId, patch)
       .then(d => setData({ pairs: d.pairs || [], trios: d.trios || [] }))
       .catch(() => setData({ pairs: [], trios: [] }))
       .finally(() => setLoading(false));
-  }, [seasonId]);
+  }, [seasonId, patch]);
 
   const handleSort = (f) => {
     if (sortField === f) setSortDir(d => -d);
@@ -626,7 +629,7 @@ function HeroSynergyTab() {
 // Task #382 — Counter-pick scorer tab. Pick up to 5 enemy heroes + an
 // optional position; see the strongest heroes to pick into them ranked
 // by blended (counter WR × base WR) score with sample-size shrinkage.
-function HeroCounterTab() {
+function HeroCounterTab({ patch = null }) {
   const { seasonId } = useSeason();
   const [enemies, setEnemies] = useState([]);
   const [position, setPosition] = useState(null);
@@ -654,7 +657,7 @@ function HeroCounterTab() {
     setLoading(true);
     setError(null);
     try {
-      const d = await getHeroCounterScores({ enemies, position, seasonId });
+      const d = await getHeroCounterScores({ enemies, position, seasonId, patch });
       setSuggestions(d.suggestions || []);
     } catch (e) {
       setError(e.message || 'Failed to compute counter scores');
@@ -887,6 +890,12 @@ export default function Heroes({ defaultTab }) {
   const [expandedHero, setExpandedHero] = useState(null);
   const [heroPlayerCache, setHeroPlayerCache] = useState({});
   const [heroPlayerLoading, setHeroPlayerLoading] = useState({});
+  // Task #382 — patch picker (shared across Tier / Synergy / Counter tabs).
+  // Empty string = "All patches" (default for back-compat with the existing
+  // all-time tier list); first non-empty patch option from the DB is the
+  // current patch and is the first non-default item the user sees.
+  const [patch, setPatch] = useState('');
+  const [availablePatches, setAvailablePatches] = useState([]);
 
   useEffect(() => {
     setLoading(true);
@@ -900,6 +909,12 @@ export default function Heroes({ defaultTab }) {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+  }, [seasonId]);
+
+  useEffect(() => {
+    getAvailableHeroPatches(seasonId)
+      .then((d) => setAvailablePatches(d.patches || []))
+      .catch(() => setAvailablePatches([]));
   }, [seasonId]);
 
   const toggleHeroExpand = async (heroId) => {
@@ -1000,6 +1015,31 @@ export default function Heroes({ defaultTab }) {
     <div>
       <h1 className="page-title">Heroes</h1>
 
+      {(tab === 'tier' || tab === 'synergy' || tab === 'counter') && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+          <label htmlFor="heroes-patch-picker" style={{ fontSize: 13, color: 'var(--text-muted)' }}>Patch:</label>
+          <select
+            id="heroes-patch-picker"
+            value={patch}
+            onChange={(e) => setPatch(e.target.value)}
+            style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px', fontSize: 13 }}
+          >
+            <option value="">All patches</option>
+            {availablePatches.length > 0 && availablePatches[0] && (
+              <option value={availablePatches[0]}>{availablePatches[0]} (current)</option>
+            )}
+            {availablePatches.slice(1).map((pv) => (
+              <option key={pv} value={pv}>{pv}</option>
+            ))}
+          </select>
+          {availablePatches.length === 0 && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              No patched matches yet — an admin can run the patch backfill to enable per-patch filtering.
+            </span>
+          )}
+        </div>
+      )}
+
       <div
         role="tablist"
         aria-label="Hero stats views"
@@ -1035,13 +1075,13 @@ export default function Heroes({ defaultTab }) {
       </div>
 
       {tab === 'tier' && (
-        <div role="tabpanel" id="heroes-tabpanel-tier" aria-labelledby="heroes-tab-tier"><HeroTierTab /></div>
+        <div role="tabpanel" id="heroes-tabpanel-tier" aria-labelledby="heroes-tab-tier"><HeroTierTab patch={patch || null} /></div>
       )}
       {tab === 'synergy' && (
-        <div role="tabpanel" id="heroes-tabpanel-synergy" aria-labelledby="heroes-tab-synergy"><HeroSynergyTab /></div>
+        <div role="tabpanel" id="heroes-tabpanel-synergy" aria-labelledby="heroes-tab-synergy"><HeroSynergyTab patch={patch || null} /></div>
       )}
       {tab === 'counter' && (
-        <div role="tabpanel" id="heroes-tabpanel-counter" aria-labelledby="heroes-tab-counter"><HeroCounterTab /></div>
+        <div role="tabpanel" id="heroes-tabpanel-counter" aria-labelledby="heroes-tab-counter"><HeroCounterTab patch={patch || null} /></div>
       )}
       {tab === 'trends' && (
         <div role="tabpanel" id="heroes-tabpanel-trends" aria-labelledby="heroes-tab-trends"><HeroPatchTrendsTab /></div>

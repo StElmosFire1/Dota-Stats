@@ -3806,12 +3806,34 @@ function createApiRouter(startupStatus = {}, _app = null) {
   router.get('/heroes/tier-list', async (req, res) => {
     try {
       const seasonId = req.query.season || null;
+      const patch = req.query.patch ? String(req.query.patch) : null;
       const data = await db.getHeroTierList(seasonId);
-      // Task #382 — tier-list movement arrows vs the previous patch. The
-      // tier table itself stays untouched; we just attach prev_win_rate
-      // + delta per hero so the UI can render an arrow next to each card.
+      // Task #382 — when a specific patch is selected, swap each hero's
+      // games/wins/win_rate to the patch-scoped numbers so the tier list
+      // genuinely reflects "this patch" rather than all-time aggregates.
+      // Heroes with no games on the selected patch are dropped (cells
+      // would otherwise lie about activity in that patch).
+      if (patch) {
+        const patchMap = await db.getHeroPatchWinRates(patch, seasonId);
+        for (const tier of Object.keys(data.tiers || {})) {
+          const kept = [];
+          for (const h of data.tiers[tier]) {
+            const pm = patchMap[h.hero_id];
+            if (!pm) continue;
+            h.games = pm.games;
+            h.wins = pm.wins;
+            h.win_rate = pm.wr;
+            kept.push(h);
+          }
+          data.tiers[tier] = kept;
+        }
+        data.current_patch = patch;
+      }
+      // Movement arrows vs the immediately-preceding patch. When `patch`
+      // is supplied the comparison is current-patch WR vs that patch's
+      // predecessor; when omitted it's the legacy second-newest patch.
       try {
-        const prev = await db.getHeroPrevPatchWinRates(seasonId);
+        const prev = await db.getHeroPrevPatchWinRates(seasonId, patch);
         if (prev && prev.prev_patch) {
           for (const tier of Object.keys(data.tiers || {})) {
             for (const h of data.tiers[tier]) {
@@ -3832,14 +3854,28 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #382 — list of distinct patches present in matches, newest-first.
+  // Powers the /heroes patch picker; the page defaults to the first entry.
+  router.get('/heroes/patches', async (req, res) => {
+    try {
+      const seasonId = req.query.season || req.query.season_id || null;
+      const patches = await db.getAvailablePatches(seasonId);
+      res.json({ patches });
+    } catch (err) {
+      console.error('[API] heroes/patches:', err.message);
+      res.status(500).json({ error: 'Failed to fetch patch list' });
+    }
+  });
+
   // Task #382 — Hero meta v2. Three public read-only endpoints powering
   // the new Heroes tabs (Synergy / Counter-pick / Patch trends). Same
   // trust level as the existing /heroes endpoints — no paywall.
   router.get('/heroes/synergy-matrix', async (req, res) => {
     try {
       const seasonId = req.query.season || req.query.season_id || null;
-      const data = await db.getHeroSynergyMatrix(seasonId);
-      res.json(data);
+      const patch = req.query.patch ? String(req.query.patch) : null;
+      const data = await db.getHeroSynergyMatrix(seasonId, { patch });
+      res.json({ ...data, patch });
     } catch (err) {
       console.error('[API] heroes/synergy-matrix:', err.message);
       res.status(500).json({ error: 'Failed to fetch synergy matrix' });
@@ -3849,6 +3885,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
   router.get('/heroes/counter-scores', async (req, res) => {
     try {
       const seasonId = req.query.season || req.query.season_id || null;
+      const patch = req.query.patch ? String(req.query.patch) : null;
       const position = req.query.position ? parseInt(req.query.position) : null;
       const enemies = Array.from(new Set(
         (req.query.enemies || '')
@@ -3859,8 +3896,8 @@ function createApiRouter(startupStatus = {}, _app = null) {
       if (enemies.length === 0) {
         return res.status(400).json({ error: 'enemies query param required (comma-separated hero ids, 1-5)' });
       }
-      const suggestions = await db.getHeroCounterScores(enemies, position, seasonId);
-      res.json({ enemies, position, suggestions });
+      const suggestions = await db.getHeroCounterScores(enemies, position, seasonId, { patch });
+      res.json({ enemies, position, patch, suggestions });
     } catch (err) {
       console.error('[API] heroes/counter-scores:', err.message);
       res.status(500).json({ error: 'Failed to compute counter scores' });

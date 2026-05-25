@@ -8955,11 +8955,12 @@ async function getWeeklyRecap(seasonId = null) {
 // (intersected, i.e. matches where the candidate was on the opposite team
 // to ALL of the enemy heroes — single-enemy degenerates to "any match
 // where the candidate faced that hero"). Position-locked when provided.
-async function _computeHeroCounterMap(enemyHeroIds, position, seasonId) {
+async function _computeHeroCounterMap(enemyHeroIds, position, seasonId, patch = null) {
   if (!enemyHeroIds || enemyHeroIds.length === 0) return {};
   const p = getPool();
   const params = [enemyHeroIds, enemyHeroIds.length];
   const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  const patchSql = patch ? ` AND m.patch = $${params.push(String(patch))}` : '';
   const posSql = position ? ` AND ps.position = $${params.push(parseInt(position))}` : '';
   const res = await p.query(
     `SELECT ps.hero_id,
@@ -8973,7 +8974,7 @@ async function _computeHeroCounterMap(enemyHeroIds, position, seasonId) {
            WHERE ps2.match_id = ps.match_id
              AND ps2.team != ps.team
              AND ps2.hero_id = ANY($1)
-        ) = $2${sc}
+        ) = $2${sc}${patchSql}
       GROUP BY ps.hero_id
       HAVING COUNT(*) >= 1`,
     params
@@ -8994,21 +8995,22 @@ async function _computeHeroCounterMap(enemyHeroIds, position, seasonId) {
 // the draft assistant itself routes through getDraftSuggestions below
 // which reuses the same _computeHeroCounterMap so the two surfaces never
 // disagree.
-async function getHeroCounterScores(enemyHeroIds, position = null, seasonId = null, { limit = 30, minGames = 1 } = {}) {
+async function getHeroCounterScores(enemyHeroIds, position = null, seasonId = null, { limit = 30, minGames = 1, patch = null } = {}) {
   const enemies = (enemyHeroIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
   if (enemies.length === 0) return [];
   const p = getPool();
 
-  // Base WR per candidate hero (within position filter + season).
+  // Base WR per candidate hero (within position filter + season + patch).
   const baseParams = [];
   const baseSc = _sc(seasonId, baseParams, 'm');
+  const basePatchSql = patch ? ` AND m.patch = $${baseParams.push(String(patch))}` : '';
   const baseRes = await p.query(
     `SELECT ps.hero_id, MAX(ps.hero_name) AS hero_name,
             COUNT(*) AS games,
             SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
        FROM player_stats ps
        JOIN matches m ON m.match_id = ps.match_id
-      WHERE ps.hero_id > 0${position ? ` AND ps.position = $${baseParams.push(parseInt(position))}` : ''}${baseSc}
+      WHERE ps.hero_id > 0${position ? ` AND ps.position = $${baseParams.push(parseInt(position))}` : ''}${baseSc}${basePatchSql}
       GROUP BY ps.hero_id`,
     baseParams
   );
@@ -9024,7 +9026,7 @@ async function getHeroCounterScores(enemyHeroIds, position = null, seasonId = nu
     };
   }
 
-  const counterMap = await _computeHeroCounterMap(enemies, position, seasonId);
+  const counterMap = await _computeHeroCounterMap(enemies, position, seasonId, patch);
 
   const enemySet = new Set(enemies);
   const out = [];
@@ -9057,11 +9059,12 @@ async function getHeroCounterScores(enemyHeroIds, position = null, seasonId = nu
 // heat map. Pairs are unordered (LEAST/GREATEST), trios are unordered
 // (sorted ASC). HAVING is conservative to keep the matrix tractable —
 // inhouse leagues run hundreds-to-thousands of games, not millions.
-async function getHeroSynergyMatrix(seasonId = null, { pairMinGames = 2, trioMinGames = 2, pairLimit = 400, trioLimit = 120 } = {}) {
+async function getHeroSynergyMatrix(seasonId = null, { pairMinGames = 2, trioMinGames = 2, pairLimit = 400, trioLimit = 120, patch = null } = {}) {
   const p = getPool();
 
   const pairParams = [];
   const pairSc = _sc(seasonId, pairParams, 'm');
+  const pairPatchSql = patch ? ` AND m.patch = $${pairParams.push(String(patch))}` : '';
   const pairRes = await p.query(
     `SELECT LEAST(a.hero_id, b.hero_id) AS hero_a,
             GREATEST(a.hero_id, b.hero_id) AS hero_b,
@@ -9072,7 +9075,7 @@ async function getHeroSynergyMatrix(seasonId = null, { pairMinGames = 2, trioMin
        FROM player_stats a
        JOIN player_stats b ON b.match_id = a.match_id AND b.team = a.team AND b.hero_id > a.hero_id
        JOIN matches m ON m.match_id = a.match_id
-      WHERE a.hero_id > 0 AND b.hero_id > 0${pairSc}
+      WHERE a.hero_id > 0 AND b.hero_id > 0${pairSc}${pairPatchSql}
       GROUP BY LEAST(a.hero_id, b.hero_id), GREATEST(a.hero_id, b.hero_id)
       HAVING COUNT(*) >= ${parseInt(pairMinGames)}
       ORDER BY COUNT(*) DESC, wins DESC
@@ -9082,6 +9085,7 @@ async function getHeroSynergyMatrix(seasonId = null, { pairMinGames = 2, trioMin
 
   const trioParams = [];
   const trioSc = _sc(seasonId, trioParams, 'm');
+  const trioPatchSql = patch ? ` AND m.patch = $${trioParams.push(String(patch))}` : '';
   const trioRes = await p.query(
     `SELECT a.hero_id AS hero_a, b.hero_id AS hero_b, c.hero_id AS hero_c,
             MAX(a.hero_name) AS hero_a_name,
@@ -9093,7 +9097,7 @@ async function getHeroSynergyMatrix(seasonId = null, { pairMinGames = 2, trioMin
        JOIN player_stats b ON b.match_id = a.match_id AND b.team = a.team AND b.hero_id > a.hero_id
        JOIN player_stats c ON c.match_id = a.match_id AND c.team = a.team AND c.hero_id > b.hero_id
        JOIN matches m ON m.match_id = a.match_id
-      WHERE a.hero_id > 0${trioSc}
+      WHERE a.hero_id > 0${trioSc}${trioPatchSql}
       GROUP BY a.hero_id, b.hero_id, c.hero_id
       HAVING COUNT(*) >= ${parseInt(trioMinGames)}
       ORDER BY COUNT(*) DESC, wins DESC
@@ -9187,23 +9191,82 @@ async function getHeroPatchTrends(heroId, { limit = 8, seasonId = null } = {}) {
   return { patches };
 }
 
-// Returns hero_id -> previous-patch win rate for the latest two distinct
-// non-null patches present in `matches`. Used by Heroes › Tier List to
-// show movement arrows vs. the previous patch. If only one patch (or
-// none) is present, returns {} and the UI hides arrows.
-async function getHeroPrevPatchWinRates(seasonId = null) {
+// Distinct patches present in `matches` (newest-first). Powers the
+// /heroes patch picker and lets the tier-list movement-arrow logic
+// pick the patch immediately preceding any user-selected patch.
+async function getAvailablePatches(seasonId = null) {
   const p = getPool();
   const params = [];
   const sc = _sc(seasonId, params, 'm');
-  const patchRes = await p.query(
+  const res = await p.query(
     `SELECT DISTINCT m.patch FROM matches m
       WHERE m.patch IS NOT NULL${sc}
       ORDER BY m.patch DESC
-      LIMIT 2`,
+      LIMIT 50`,
     params
   );
-  if (patchRes.rows.length < 2) return { prev_patch: null, win_rates: {} };
-  const prevPatch = patchRes.rows[1].patch;
+  return res.rows.map((r) => r.patch);
+}
+
+// hero_id -> { games, wins, wr } for a single patch. Used by the
+// tier-list route to overlay patch-scoped numbers on top of the
+// existing all-time tier list, so movement arrows compare
+// current-patch WR vs previous-patch WR (apples-to-apples).
+async function getHeroPatchWinRates(patch, seasonId = null) {
+  if (!patch) return {};
+  const p = getPool();
+  const params = [String(patch)];
+  const sc = _sc(seasonId, params, 'm');
+  const res = await p.query(
+    `SELECT ps.hero_id,
+            COUNT(*) AS games,
+            SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id > 0 AND m.patch = $1${sc}
+      GROUP BY ps.hero_id
+      HAVING COUNT(*) >= 1`,
+    params
+  );
+  const map = {};
+  for (const r of res.rows) {
+    const g = parseInt(r.games);
+    const w = parseInt(r.wins);
+    map[parseInt(r.hero_id)] = { games: g, wins: w, wr: g > 0 ? w / g : 0 };
+  }
+  return map;
+}
+
+// Returns hero_id -> previous-patch win rate. If `currentPatch` is
+// supplied, "previous" is the patch immediately before it in DB order;
+// otherwise it's the second-newest patch (legacy default). Used by
+// Heroes › Tier List for movement arrows (always apples-to-apples: WR
+// on patch X vs WR on patch X-1, both patch-scoped).
+async function getHeroPrevPatchWinRates(seasonId = null, currentPatch = null) {
+  const p = getPool();
+  const listParams = [];
+  const listSc = _sc(seasonId, listParams, 'm');
+  let prevPatch = null;
+  if (currentPatch) {
+    listParams.push(String(currentPatch));
+    const r = await p.query(
+      `SELECT DISTINCT m.patch FROM matches m
+        WHERE m.patch IS NOT NULL AND m.patch < $${listParams.length}${listSc}
+        ORDER BY m.patch DESC LIMIT 1`,
+      listParams
+    );
+    if (r.rows.length === 0) return { prev_patch: null, win_rates: {} };
+    prevPatch = r.rows[0].patch;
+  } else {
+    const r = await p.query(
+      `SELECT DISTINCT m.patch FROM matches m
+        WHERE m.patch IS NOT NULL${listSc}
+        ORDER BY m.patch DESC LIMIT 2`,
+      listParams
+    );
+    if (r.rows.length < 2) return { prev_patch: null, win_rates: {} };
+    prevPatch = r.rows[1].patch;
+  }
   const wrParams = [prevPatch];
   const wrSc = _sc(seasonId, wrParams, 'm');
   const wrRes = await p.query(
@@ -17519,6 +17582,8 @@ module.exports = {
   getHeroSynergyMatrix,
   getHeroPatchTrends,
   getHeroPrevPatchWinRates,
+  getHeroPatchWinRates,
+  getAvailablePatches,
   backfillMatchPatch,
 };
 

@@ -453,22 +453,34 @@ export async function getHeroStats(seasonId = null) {
   return fetchJson(`/heroes?x=1${seasonParam(seasonId)}`);
 }
 
-export async function getHeroTierList(seasonId = null) {
-  const q = seasonId ? `?season=${seasonId}` : '';
-  return fetchJson(`/heroes/tier-list${q}`);
+export async function getHeroTierList(seasonId = null, patch = null) {
+  const qs = new URLSearchParams();
+  if (seasonId) qs.set('season', String(seasonId));
+  if (patch) qs.set('patch', String(patch));
+  const q = qs.toString();
+  return fetchJson(`/heroes/tier-list${q ? `?${q}` : ''}`);
 }
 
 // Task #382 — Hero meta v2.
-export async function getHeroSynergyMatrix(seasonId = null) {
+export async function getAvailableHeroPatches(seasonId = null) {
   const q = seasonId ? `?season=${seasonId}` : '';
-  return fetchJson(`/heroes/synergy-matrix${q}`);
+  return fetchJson(`/heroes/patches${q}`);
 }
 
-export async function getHeroCounterScores({ enemies, position, seasonId } = {}) {
+export async function getHeroSynergyMatrix(seasonId = null, patch = null) {
+  const qs = new URLSearchParams();
+  if (seasonId) qs.set('season', String(seasonId));
+  if (patch) qs.set('patch', String(patch));
+  const q = qs.toString();
+  return fetchJson(`/heroes/synergy-matrix${q ? `?${q}` : ''}`);
+}
+
+export async function getHeroCounterScores({ enemies, position, seasonId, patch } = {}) {
   const qs = new URLSearchParams();
   qs.set('enemies', (enemies || []).join(','));
   if (position) qs.set('position', String(position));
   if (seasonId) qs.set('season', String(seasonId));
+  if (patch) qs.set('patch', String(patch));
   return fetchJson(`/heroes/counter-scores?${qs}`);
 }
 
