@@ -84,6 +84,12 @@ const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
 const ReplayViewer = lazy(() => import('./pages/ReplayViewer'));
 const Spectate = lazy(() => import('./pages/Spectate'));
+// Task #379 — Streamer mode + OBS overlays. Three public overlay pages
+// render in a fixed 1920×1080 transparent viewport with no site chrome
+// so OBS browser sources drop them straight onto a stream.
+const OverlayLive = lazy(() => import('./pages/OverlayLive'));
+const OverlayScoreboard = lazy(() => import('./pages/OverlayScoreboard'));
+const OverlayTicker = lazy(() => import('./pages/OverlayTicker'));
 const Social = lazy(() => import('./pages/Social'));
 const HallOfFame = lazy(() => import('./pages/HallOfFame'));
 const PlayerBenchmarks = lazy(() => import('./pages/PlayerBenchmarks'));
@@ -1119,29 +1125,67 @@ function NavbarHeightSync() {
   return null;
 }
 
-export default function App() {
+// Task #379 — Streamer mode + OBS overlays.
+// When the URL path begins with `/overlay/` (the three OBS browser-source
+// routes) OR carries `?streamer=1` (chrome-stripper for any other page a
+// streamer wants to capture clean), we hide every piece of site chrome
+// — nav, footer, side banners, modals, login bars — and add a body class
+// that flips the background to transparent so OBS can composite the page
+// over their gameplay layer without any window-coloured fringe.
+function useStreamerMode() {
+  const location = useLocation();
+  const isOverlayRoute = location.pathname.startsWith('/overlay/');
+  const streamerQuery = new URLSearchParams(location.search).get('streamer') === '1';
+  const isStreamer = isOverlayRoute || streamerQuery;
+  React.useEffect(() => {
+    const body = document.body;
+    if (!body) return undefined;
+    if (isStreamer) body.classList.add('streamer-mode');
+    else body.classList.remove('streamer-mode');
+    if (isOverlayRoute) body.classList.add('overlay-mode');
+    else body.classList.remove('overlay-mode');
+    return () => {
+      body.classList.remove('streamer-mode');
+      body.classList.remove('overlay-mode');
+    };
+  }, [isStreamer, isOverlayRoute]);
+  return { isStreamer, isOverlayRoute };
+}
+
+function AppShell() {
+  const { isStreamer, isOverlayRoute } = useStreamerMode();
   return (
-    <BrowserRouter>
-      <SteamAuthProvider>
-      <AdminProvider>
-        <SuperuserProvider>
-          <FeatureFlagsProvider>
-          <SeasonProvider>
-            <NavbarHeightSync />
-            <BroadcastTicker />
-            <Nav />
-            <AdminLoginModal />
-            <SuperuserLoginModal />
-            <WelcomeModal />
-            <GlobalOnboardingWizard />
-            <GlobalVoicePackEvents />
-            <DiscordLinkModal />
-            <DiscordRetryBanner />
-            <SignInRetryBanner />
-            <SideBanners />
-            <main className="container">
-              <Suspense fallback={<div className="loading">Loading…</div>}>
-              <Routes>
+    <>
+      {!isStreamer && <NavbarHeightSync />}
+      {!isStreamer && <BroadcastTicker />}
+      {!isStreamer && <Nav />}
+      {!isStreamer && <AdminLoginModal />}
+      {!isStreamer && <SuperuserLoginModal />}
+      {!isStreamer && <WelcomeModal />}
+      {!isStreamer && <GlobalOnboardingWizard />}
+      {!isStreamer && <GlobalVoicePackEvents />}
+      {!isStreamer && <DiscordLinkModal />}
+      {!isStreamer && <DiscordRetryBanner />}
+      {!isStreamer && <SignInRetryBanner />}
+      {!isStreamer && <SideBanners />}
+      <main className={isOverlayRoute ? 'overlay-main' : 'container'}>
+        <Suspense fallback={isStreamer ? null : <div className="loading">Loading…</div>}>
+          <Routes>
+            <Route path="/overlay/live/:lobbyId" element={<OverlayLive />} />
+            <Route path="/overlay/scoreboard/:matchId" element={<OverlayScoreboard />} />
+            <Route path="/overlay/ticker/:accountId" element={<OverlayTicker />} />
+            <Route path="/*" element={<AppRoutes />} />
+          </Routes>
+        </Suspense>
+      </main>
+      {!isStreamer && <EditorialFooter />}
+    </>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
                 <Route path="/matches" element={<MatchList />} />
@@ -1220,10 +1264,19 @@ export default function App() {
                 <Route path="/teams/:id" element={<TeamProfile />} />
                 <Route path="/replay/:matchId" element={<ReplayViewer />} />
                 <Route path="/spectate/:matchId" element={<Spectate />} />
-              </Routes>
-              </Suspense>
-            </main>
-            <EditorialFooter />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <SteamAuthProvider>
+      <AdminProvider>
+        <SuperuserProvider>
+          <FeatureFlagsProvider>
+          <SeasonProvider>
+            <AppShell />
           </SeasonProvider>
           </FeatureFlagsProvider>
         </SuperuserProvider>

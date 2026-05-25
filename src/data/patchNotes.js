@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.64",
+    "title": "Streamer mode + OBS overlays (Task #379)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**Three new public overlay routes built for OBS browser sources.** `/overlay/live/:lobbyId` renders the current inhouse lobby's Radiant/Dire rosters as a top-left card; `/overlay/scoreboard/:matchId` renders a full K/D/A · LH/DN · GPM/XPM · Net Worth table for both teams as a bottom card; `/overlay/ticker/:accountId` renders a single-player MMR / W-L / win-rate strip. All three are unauthenticated (OBS can load them directly), set `Cache-Control: no-store`, and refresh on a 5-30s poll so streams stay live.",
+      "**Chrome stripper for any other page on the site.** Append `?streamer=1` to any URL and the navbar, footer, side banners, login bars, and onboarding modals all disappear, and `body` flips to `background: transparent` so OBS can composite the page over gameplay without window-coloured fringe. The new `AppShell` + `useStreamerMode()` hook in `App.jsx` does the conditional render; the overlay routes get the chrome stripper for free since their path starts with `/overlay/`. Overlay routes additionally render inside a fixed 1920×1080 `.overlay-main` viewport so OBS canvases line up.",
+      "**Stream privacy prefs persisted on `player_profiles`.** Three new columns (`stream_hide_mmr`, `stream_hide_region`, `stream_alias`) wired through a new `GET/PUT /api/me/stream-prefs`. Every overlay endpoint accepts `?for=<accountId>` and applies that account's privacy server-side — when the streamer ticks 'Hide my MMR & tier' their MMR is stripped from every overlay (not just the ticker), and `stream_alias` (max 32 chars) replaces their Steam name. The owner check is strict per-row: only the streamer's own row gets re-aliased / MMR-hidden in the live + scoreboard overlays so opponent stats stay readable.",
+      "**Settings UI in `/settings/profile`.** A new 'Streamer setup' section at the bottom of the profile editor exposes the three privacy toggles + a 32-char alias input, copy-URL buttons for all three overlay URLs (pre-filled with the signed-in player's account id), and a live preview iframe with Ticker / Live lobby / Off tabs. Copy buttons carry an `aria-label` per the icon-only-button rule; the iframe carries a `title`; the preview tab buttons use `aria-pressed`. A11y gate green.",
+      "**Edition scope.** Full edition only — community edition has no streamer mode (no overlay routes, no settings section, no DB columns added on its side)."
+    ]
+  },
+  {
     "version": "7.63",
     "title": "Pro Replay Browser — cached OpenDota pro matches with deep-link to Draft Assistant (Task #378)",
     "published_at": "2026-05-25",

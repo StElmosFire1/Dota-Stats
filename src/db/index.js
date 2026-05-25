@@ -1216,6 +1216,13 @@ async function init() {
     // Task #313 / v6.79 — In-app currency. coin_balance = spendable, coin_lifetime = total ever earned (vanity).
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS coin_balance INT NOT NULL DEFAULT 0`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS coin_lifetime INT NOT NULL DEFAULT 0`);
+    // Task #379 — Streamer mode + OBS overlays. Per-player privacy
+    // toggles that apply to publicly-loadable overlay URLs (OBS browser
+    // sources). All NULL/false-by-default so existing players see no
+    // behaviour change until they opt in from /settings/profile.
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stream_hide_mmr BOOLEAN NOT NULL DEFAULT false`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stream_hide_region BOOLEAN NOT NULL DEFAULT false`);
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stream_alias TEXT`);
     await p.query(`
       CREATE TABLE IF NOT EXISTS coin_transactions (
         id BIGSERIAL PRIMARY KEY,

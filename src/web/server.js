@@ -10048,6 +10048,215 @@ NOTES
     }
   });
 
+  // ---------- Task #379: Streamer mode + OBS overlays ----------
+  // GET/PUT the signed-in player's stream-privacy prefs. Stored on
+  // player_profiles (stream_hide_mmr / stream_hide_region / stream_alias).
+  // These three knobs are honoured by the public overlay endpoints below.
+  router.get('/me/stream-prefs', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const pool = db.getPool();
+      const r = await pool.query(
+        `SELECT stream_hide_mmr, stream_hide_region, stream_alias FROM player_profiles WHERE account_id = $1`,
+        [String(accountId)]
+      );
+      const row = r.rows[0] || {};
+      res.json({
+        stream_hide_mmr: !!row.stream_hide_mmr,
+        stream_hide_region: !!row.stream_hide_region,
+        stream_alias: row.stream_alias || '',
+      });
+    } catch (err) {
+      console.error('[API] me/stream-prefs GET:', err.message);
+      res.status(500).json({ error: 'Failed to load stream prefs' });
+    }
+  });
+  router.put('/me/stream-prefs', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const hideMmr = req.body?.stream_hide_mmr === true;
+      const hideRegion = req.body?.stream_hide_region === true;
+      let alias = req.body?.stream_alias;
+      if (alias != null && typeof alias !== 'string') {
+        return res.status(400).json({ error: 'stream_alias must be a string' });
+      }
+      if (typeof alias === 'string') {
+        alias = alias.trim().slice(0, 32);
+        if (alias === '') alias = null;
+      } else {
+        alias = null;
+      }
+      const pool = db.getPool();
+      await pool.query(
+        `INSERT INTO player_profiles (account_id, stream_hide_mmr, stream_hide_region, stream_alias, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (account_id) DO UPDATE
+           SET stream_hide_mmr = EXCLUDED.stream_hide_mmr,
+               stream_hide_region = EXCLUDED.stream_hide_region,
+               stream_alias = EXCLUDED.stream_alias,
+               updated_at = NOW()`,
+        [String(accountId), hideMmr, hideRegion, alias]
+      );
+      res.json({
+        ok: true,
+        stream_hide_mmr: hideMmr,
+        stream_hide_region: hideRegion,
+        stream_alias: alias || '',
+      });
+    } catch (err) {
+      console.error('[API] me/stream-prefs PUT:', err.message);
+      res.status(500).json({ error: 'Failed to save stream prefs' });
+    }
+  });
+
+  // Helper: load a single account's stream prefs. Used by every public
+  // overlay endpoint when `?for=<accountId>` is set so the overlay
+  // respects the streamer's privacy choices without requiring auth.
+  async function _loadStreamPrefs(accountId) {
+    if (!accountId) return null;
+    try {
+      const pool = db.getPool();
+      const r = await pool.query(
+        `SELECT stream_hide_mmr, stream_hide_region, stream_alias FROM player_profiles WHERE account_id = $1`,
+        [String(accountId)]
+      );
+      const row = r.rows[0];
+      if (!row) return { hideMmr: false, hideRegion: false, alias: null };
+      return {
+        hideMmr: !!row.stream_hide_mmr,
+        hideRegion: !!row.stream_hide_region,
+        alias: row.stream_alias || null,
+      };
+    } catch (_) { return { hideMmr: false, hideRegion: false, alias: null }; }
+  }
+  function _applyOverlayPrivacy(player, prefs, ownerAccountId) {
+    if (!player || !prefs) return player;
+    const isOwner = ownerAccountId && String(player.account_id) === String(ownerAccountId);
+    if (isOwner) {
+      if (prefs.alias) player.persona_name = prefs.alias;
+      if (prefs.hideMmr) {
+        delete player.mmr;
+        delete player.mu;
+        delete player.sigma;
+      }
+    }
+    return player;
+  }
+
+  // GET /api/overlay/live/:lobbyId — current live lobby state for an OBS
+  // browser source. `:lobbyId` accepts "current" as an alias for whatever
+  // lobby the bot is presently monitoring. Public; no auth required so OBS
+  // can load the URL directly. Honours `?for=<accountId>` privacy.
+  router.get('/overlay/live/:lobbyId', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const forAccount = req.query.for ? String(req.query.for) : null;
+      const prefs = await _loadStreamPrefs(forAccount);
+      let live = { matchId: null, lobbyName: null, state: null, players: [] };
+      try {
+        const { getLobbyManager } = require('../lobby/lobbyManager');
+        const lm = getLobbyManager && getLobbyManager();
+        const cl = lm && lm.currentLobby;
+        if (cl) {
+          live.matchId = cl.matchId ? String(cl.matchId) : null;
+          live.lobbyName = cl.name || null;
+          live.state = (lm && lm.state) || null;
+          if (Array.isArray(cl.members)) {
+            live.players = cl.members.slice(0, 10).map(m => ({
+              account_id: m.account_id ? String(m.account_id) : null,
+              persona_name: m.name || m.persona_name || '',
+              team: m.team || null,
+              slot: typeof m.slot === 'number' ? m.slot : null,
+            }));
+          }
+        }
+      } catch (_) {}
+      if (prefs && live.players.length) {
+        live.players = live.players.map(p => _applyOverlayPrivacy(p, prefs, forAccount));
+      }
+      if (prefs?.hideRegion) live.region = null;
+      res.json({ lobbyId: String(req.params.lobbyId), ...live, prefs: prefs ? { hideMmr: prefs.hideMmr, hideRegion: prefs.hideRegion, alias: prefs.alias } : null });
+    } catch (err) {
+      res.json({ lobbyId: String(req.params.lobbyId), matchId: null, players: [] });
+    }
+  });
+
+  // GET /api/overlay/scoreboard/:matchId — compact scoreboard snapshot.
+  // Public. Honours `?for=<accountId>` to apply the streamer's privacy.
+  router.get('/overlay/scoreboard/:matchId', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const match = await db.getMatch(req.params.matchId);
+      if (!match) return res.status(404).json({ error: 'Match not found' });
+      const forAccount = req.query.for ? String(req.query.for) : null;
+      const prefs = await _loadStreamPrefs(forAccount);
+      const players = (match.players || []).map(p => {
+        const out = {
+          account_id: p.account_id ? String(p.account_id) : null,
+          persona_name: p.persona_name || '',
+          team: p.team,
+          slot: p.slot,
+          hero_id: p.hero_id,
+          hero_name: p.hero_name,
+          kills: p.kills, deaths: p.deaths, assists: p.assists,
+          last_hits: p.last_hits, denies: p.denies,
+          gpm: p.gpm, xpm: p.xpm,
+          net_worth: p.net_worth, level: p.level,
+        };
+        return _applyOverlayPrivacy(out, prefs, forAccount);
+      });
+      res.json({
+        match_id: String(match.match_id),
+        duration: match.duration,
+        radiant_win: match.radiant_win,
+        radiant_score: match.radiant_score || null,
+        dire_score: match.dire_score || null,
+        players,
+        prefs: prefs ? { hideMmr: prefs.hideMmr, hideRegion: prefs.hideRegion, alias: prefs.alias } : null,
+      });
+    } catch (err) {
+      console.error('[API] overlay/scoreboard:', err.message);
+      res.status(500).json({ error: 'Failed to load scoreboard' });
+    }
+  });
+
+  // GET /api/overlay/ticker/:accountId — single-player ticker (MMR, W/L,
+  // streak, current hero pool top picks). Public. The accountId in the
+  // path IS the streamer's account, so their privacy prefs always apply.
+  router.get('/overlay/ticker/:accountId', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const accountId = String(req.params.accountId);
+      if (!/^\d+$/.test(accountId)) return res.status(400).json({ error: 'Invalid account id' });
+      if (await db.isAccountHidden(accountId).catch(() => false)) {
+        return res.status(404).json({ error: 'Account not available' });
+      }
+      const prefs = await _loadStreamPrefs(accountId);
+      const stats = await db.getPlayerStats(accountId, null).catch(() => null);
+      let rating = null;
+      try { rating = await db.getPlayerRating(accountId); } catch (_) {}
+      const persona = (prefs?.alias) || stats?.persona_name || stats?.display_name || '';
+      const payload = {
+        account_id: accountId,
+        persona_name: persona,
+        games_played: stats?.games_played || 0,
+        wins: stats?.wins || 0,
+        losses: stats?.losses || 0,
+        win_rate: stats?.win_rate ?? null,
+        mmr: prefs?.hideMmr ? null : (rating?.mmr ? Math.round(rating.mmr) : null),
+        tier: prefs?.hideMmr ? null : (rating?.tier || null),
+        region: prefs?.hideRegion ? null : (stats?.region || null),
+        prefs: { hideMmr: !!prefs?.hideMmr, hideRegion: !!prefs?.hideRegion, alias: prefs?.alias || null },
+      };
+      res.json(payload);
+    } catch (err) {
+      console.error('[API] overlay/ticker:', err.message);
+      res.status(500).json({ error: 'Failed to load ticker' });
+    }
+  });
+
   // Task #217 — drain pending voice-pack lifecycle events for the
   // signed-in user. The frontend's useVoicePackEvents hook polls this
   // every few seconds and plays the matching <pack>/<event>.mp3 (with

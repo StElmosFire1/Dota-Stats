@@ -551,6 +551,182 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
 // v6.64 / Task #208 — Vanity slug section wrapper. Real picker logic lives
 // in the shared <VanitySlugPicker /> so both Settings → Profile and the
 // Cosmetics Shop identity card render identical controls.
+// Task #379 — Streamer setup section. Lives at the bottom of /settings/profile.
+// Lets a streamer (a) toggle stream-privacy prefs that flow into every
+// overlay endpoint, (b) copy the three OBS browser-source URLs scoped to
+// their account, and (c) preview the rendered overlays in a live iframe.
+function StreamerSetupSection({ accountId }) {
+  const [prefs, setPrefs] = React.useState({ stream_hide_mmr: false, stream_hide_region: false, stream_alias: '' });
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState(null);
+  const [copied, setCopied] = React.useState(null);
+  const [activePreview, setActivePreview] = React.useState('ticker');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/me/stream-prefs', { credentials: 'include' });
+        if (!r.ok) throw new Error('http ' + r.status);
+        const j = await r.json();
+        if (!cancelled) setPrefs({
+          stream_hide_mmr: !!j.stream_hide_mmr,
+          stream_hide_region: !!j.stream_hide_region,
+          stream_alias: j.stream_alias || '',
+        });
+      } catch (_) {
+        if (!cancelled) setMsg('Could not load your stream prefs.');
+      } finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const save = async () => {
+    setSaving(true); setMsg(null);
+    try {
+      const r = await fetch('/api/me/stream-prefs', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefs),
+      });
+      if (!r.ok) throw new Error('http ' + r.status);
+      setMsg('Saved.');
+    } catch (e) { setMsg('Save failed: ' + (e.message || e)); }
+    finally { setSaving(false); }
+  };
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const aid = accountId || '<your-account-id>';
+  const urls = [
+    { key: 'live', label: 'Live lobby overlay', url: `${origin}/overlay/live/current?for=${aid}`,
+      hint: 'Shows the current inhouse lobby (Radiant/Dire rosters) when the bot is monitoring one.' },
+    { key: 'scoreboard', label: 'Scoreboard overlay', url: `${origin}/overlay/scoreboard/<MATCH_ID>?for=${aid}`,
+      hint: 'Replace <MATCH_ID> with a real match id. Shows K/D/A, LH/DN, GPM, XPM, Net Worth per player.' },
+    { key: 'ticker', label: 'Player ticker overlay', url: `${origin}/overlay/ticker/${aid}`,
+      hint: 'Compact MMR / W-L / win-rate strip scoped to your account. Honours all privacy toggles below.' },
+  ];
+
+  const copy = async (key, url) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(key);
+      setTimeout(() => setCopied(c => c === key ? null : c), 1800);
+    } catch (_) { setMsg('Copy failed — select and copy manually.'); }
+  };
+
+  const previewUrl = (() => {
+    if (activePreview === 'ticker') return `${origin}/overlay/ticker/${aid}`;
+    if (activePreview === 'live') return `${origin}/overlay/live/current?for=${aid}`;
+    return null;
+  })();
+
+  return (
+    <section id="streamer-setup" style={{ marginTop: 24 }} aria-labelledby="streamer-setup-heading">
+      <h2 id="streamer-setup-heading" style={{ marginBottom: 8 }}>Streamer setup</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Drop these URLs into OBS as a Browser Source (1920×1080, transparent background).
+        Use <code>?streamer=1</code> on any other page on this site to hide the navbar, footer, and modals
+        while you screen-share the page.
+      </p>
+
+      {loading ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading your privacy prefs…</div>
+      ) : (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontWeight: 600, marginBottom: 10 }}>Stream privacy</div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={prefs.stream_hide_mmr}
+              onChange={(e) => setPrefs(p => ({ ...p, stream_hide_mmr: e.target.checked }))} />
+            <span>Hide my MMR &amp; tier from every overlay</span>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={prefs.stream_hide_region}
+              onChange={(e) => setPrefs(p => ({ ...p, stream_hide_region: e.target.checked }))} />
+            <span>Hide my region from every overlay</span>
+          </label>
+
+          <div style={{ marginBottom: 10 }}>
+            <label htmlFor="stream-alias-input" style={{ display: 'block', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
+              Stream alias (replaces your Steam name on overlays)
+            </label>
+            <input id="stream-alias-input" type="text" value={prefs.stream_alias} maxLength={32}
+              onChange={(e) => setPrefs(p => ({ ...p, stream_alias: e.target.value }))}
+              placeholder="Leave blank to use your Steam name"
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 13 }} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save privacy prefs'}
+            </button>
+            {msg && <span style={{ fontSize: 13, color: 'var(--text-muted)' }} role="status">{msg}</span>}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+        {urls.map(u => (
+          <div key={u.key} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+              <div style={{ fontWeight: 600 }}>{u.label}</div>
+              <button type="button" className="btn" onClick={() => copy(u.key, u.url)}
+                aria-label={`Copy ${u.label} URL`}>
+                {copied === u.key ? 'Copied ✓' : 'Copy URL'}
+              </button>
+            </div>
+            <input type="text" readOnly value={u.url}
+              aria-label={`${u.label} URL`}
+              onFocus={(e) => e.target.select()}
+              style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'monospace' }} />
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, marginBottom: 0 }}>{u.hint}</p>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 600, marginRight: 8 }}>Preview:</div>
+          {[
+            { id: 'ticker', label: 'Ticker' },
+            { id: 'live', label: 'Live lobby' },
+            { id: 'none', label: 'Off' },
+          ].map(opt => (
+            <button key={opt.id} type="button"
+              onClick={() => setActivePreview(opt.id)}
+              aria-pressed={activePreview === opt.id}
+              className="btn"
+              style={{
+                background: activePreview === opt.id ? 'var(--accent)' : 'var(--bg-secondary)',
+                color: activePreview === opt.id ? 'var(--ink-navy)' : 'var(--text-primary)',
+              }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {previewUrl ? (
+          <div style={{ background: '#1a1a1a', borderRadius: 8, overflow: 'hidden', aspectRatio: '16 / 9' }}>
+            <iframe
+              title={`Overlay preview (${activePreview})`}
+              src={previewUrl}
+              style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+              loading="lazy"
+            />
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Preview off.</p>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, marginBottom: 0 }}>
+          The preview iframe is scaled to fit; OBS renders these at full 1920×1080 with a transparent background.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function VanitySlugSection() {
   return (
     <section id="vanity-slug" style={{ marginTop: 24 }}>
@@ -1576,6 +1752,9 @@ export default function SettingsProfile() {
               {saving ? 'Saving…' : 'Save profile'}
             </button>
           </div>
+
+          {/* Task #379 — Streamer setup (OBS overlay URLs + privacy prefs) */}
+          <StreamerSetupSection accountId={accountId} />
           </div>{/* /.settings-profile-form */}
         </div>
       )}

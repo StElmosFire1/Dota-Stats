@@ -1,0 +1,64 @@
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+
+export default function OverlayTicker() {
+  const { accountId } = useParams();
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(`/api/overlay/ticker/${encodeURIComponent(accountId)}`);
+        if (!r.ok) throw new Error('http ' + r.status);
+        const j = await r.json();
+        if (!cancelled) setData(j);
+      } catch (_) {}
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [accountId]);
+
+  if (!data) return <div className="overlay-root overlay-ticker-root" aria-busy="true" />;
+
+  const wr = data.win_rate != null ? Math.round(data.win_rate * 100) : (
+    data.games_played ? Math.round((data.wins / data.games_played) * 100) : 0
+  );
+
+  return (
+    <div className="overlay-root overlay-ticker-root" role="region" aria-label="Player ticker overlay">
+      <div className="overlay-ticker-card">
+        <div className="overlay-ticker-name">{data.persona_name || '—'}</div>
+        <div className="overlay-ticker-stats">
+          {data.mmr != null && (
+            <div className="overlay-ticker-stat">
+              <div className="overlay-ticker-stat-label">MMR</div>
+              <div className="overlay-ticker-stat-value">{data.mmr}</div>
+            </div>
+          )}
+          {data.tier && (
+            <div className="overlay-ticker-stat">
+              <div className="overlay-ticker-stat-label">Tier</div>
+              <div className="overlay-ticker-stat-value">{data.tier}</div>
+            </div>
+          )}
+          <div className="overlay-ticker-stat">
+            <div className="overlay-ticker-stat-label">W / L</div>
+            <div className="overlay-ticker-stat-value">{data.wins ?? 0} – {data.losses ?? 0}</div>
+          </div>
+          <div className="overlay-ticker-stat">
+            <div className="overlay-ticker-stat-label">Win Rate</div>
+            <div className="overlay-ticker-stat-value">{wr}%</div>
+          </div>
+          {data.region && (
+            <div className="overlay-ticker-stat">
+              <div className="overlay-ticker-stat-label">Region</div>
+              <div className="overlay-ticker-stat-value">{data.region}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

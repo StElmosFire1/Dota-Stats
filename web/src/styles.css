@@ -2117,3 +2117,110 @@ body.light-theme .oa-ticker-track .oa-ticker-dot { color: rgba(245,239,226,0.5);
   17% { opacity: 0.6; }
   18% { opacity: 0.9; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Task #379 — Streamer mode + OBS overlays.
+   `body.streamer-mode` applied when `?streamer=1` or any /overlay/* path
+   is active. Strips chrome (already hidden in React) and removes the
+   site background colour so OBS browser sources composite cleanly.
+   `body.overlay-mode` is a stricter subset (only /overlay/*) used to
+   pin the fixed 1920×1080 viewport. */
+body.streamer-mode {
+  background: transparent !important;
+}
+body.overlay-mode {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.overlay-main {
+  width: 1920px;
+  height: 1080px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  position: relative;
+}
+.overlay-root {
+  width: 1920px;
+  height: 1080px;
+  background: transparent;
+  position: relative;
+  color: var(--text-primary, #e6edf8);
+  font-family: var(--font, 'Inter', system-ui, sans-serif);
+}
+
+/* Live lobby overlay — top-left card */
+.overlay-live-card {
+  position: absolute;
+  top: 32px;
+  left: 32px;
+  background: rgba(13, 20, 36, 0.82);
+  border: 1px solid var(--brass, #c5a975);
+  border-radius: 12px;
+  padding: 18px 22px;
+  min-width: 360px;
+  backdrop-filter: blur(6px);
+}
+.overlay-live-header { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.overlay-live-title { font-family: var(--font-serif, Georgia); font-size: 20px; font-weight: 700; color: var(--brass); }
+.overlay-live-state { font-size: 13px; color: var(--text-muted, #94a6cb); text-transform: uppercase; letter-spacing: 0.1em; }
+.overlay-live-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.overlay-team-label { font-family: var(--font-condensed, 'Oswald'); text-transform: uppercase; letter-spacing: 0.15em; font-size: 12px; margin-bottom: 6px; }
+.overlay-team.radiant .overlay-team-label { color: var(--radiant-color, #34d399); }
+.overlay-team.dire    .overlay-team-label { color: var(--dire-color, #f87171); }
+.overlay-team-row { font-size: 15px; padding: 3px 0; }
+
+/* Scoreboard overlay — full-width bottom card */
+.overlay-scoreboard-card {
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  bottom: 32px;
+  background: rgba(13, 20, 36, 0.86);
+  border: 1px solid var(--brass, #c5a975);
+  border-radius: 12px;
+  padding: 16px 22px;
+  backdrop-filter: blur(6px);
+}
+.overlay-scoreboard-header { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 10px; align-items: baseline; }
+.overlay-scoreboard-title { font-family: var(--font-serif); font-size: 18px; font-weight: 700; color: var(--brass); }
+.overlay-scoreboard-meta { display: flex; gap: 18px; font-size: 14px; color: var(--text-muted); }
+.overlay-scoreboard-meta .win-r { color: var(--radiant-color, #34d399); font-weight: 600; }
+.overlay-scoreboard-meta .win-d { color: var(--dire-color, #f87171); font-weight: 600; }
+.overlay-scoreboard-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+.overlay-scoreboard-table caption {
+  text-align: left; font-family: var(--font-condensed); text-transform: uppercase;
+  letter-spacing: 0.15em; font-size: 11px; padding: 4px 0;
+}
+.overlay-scoreboard-table.radiant caption { color: var(--radiant-color); }
+.overlay-scoreboard-table.dire    caption { color: var(--dire-color); }
+.overlay-scoreboard-table th, .overlay-scoreboard-table td {
+  text-align: left; padding: 4px 8px; border-bottom: 1px solid rgba(197, 169, 117, 0.18);
+}
+.overlay-scoreboard-table th { color: var(--text-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+.overlay-scoreboard-table .ov-name { font-weight: 600; }
+
+/* Ticker overlay — slim bottom strip */
+.overlay-ticker-root { background: transparent; }
+.overlay-ticker-card {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13, 20, 36, 0.86);
+  border: 1px solid var(--brass, #c5a975);
+  border-radius: 999px;
+  padding: 10px 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  backdrop-filter: blur(6px);
+  min-width: 520px;
+}
+.overlay-ticker-name { font-family: var(--font-serif); font-size: 18px; font-weight: 700; color: var(--brass); }
+.overlay-ticker-stats { display: flex; gap: 22px; align-items: center; }
+.overlay-ticker-stat { text-align: center; }
+.overlay-ticker-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-muted); }
+.overlay-ticker-stat-value { font-size: 16px; font-weight: 600; color: var(--text-primary); }
