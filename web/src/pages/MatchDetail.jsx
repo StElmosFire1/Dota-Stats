@@ -2093,6 +2093,95 @@ function SmokePerPlayerPanel({ timeline, allPlayers }) {
   );
 }
 
+// ── BuybackPanel ─────────────────────────────────────────────────────────────
+// Per-player buyback timeline. The parser ships `buybackEvents = [{t, dieback}]`
+// per slot (computed in replayParser using the same 120s window as the
+// `diebackCount` column), so the UI is pure rendering — no chance of drifting
+// from the canonical count.
+// Cost shown is the live gold cost at that game time: 200 + level*9 + time/0.6.
+function BuybackPanel({ timeline, allPlayers, duration }) {
+  if (!timeline || !timeline.players) return null;
+  const playersWithBuybacks = timeline.players.filter(tp => {
+    const ev = tp.buybackEvents || (tp.buybackTimes || []).map(t => ({ t, dieback: false }));
+    return ev.length > 0;
+  });
+  if (playersWithBuybacks.length === 0) return null;
+
+  const slotToInfo = {};
+  allPlayers.forEach(p => { slotToInfo[p.slot] = p; });
+
+  // Live buyback cost formula (Dota 2): 200 + level*9 + time_seconds/0.6.
+  // Level isn't sampled per-second so we approximate from the player's final
+  // level scaled linearly across match duration — close enough for a tooltip.
+  // Falls back to level 1 only when duration is genuinely missing.
+  const buybackCost = (timeSec, finalLevel, durationSec) => {
+    const level = finalLevel && durationSec > 0
+      ? Math.max(1, Math.min(finalLevel, Math.round((timeSec / durationSec) * finalLevel)))
+      : 1;
+    return Math.round(200 + level * 9 + timeSec / 0.6);
+  };
+
+  return (
+    <div className="expanded-stats-section">
+      <h3>Buybacks — Per Player</h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard compact">
+          <thead>
+            <tr>
+              <th className="col-player">Player</th>
+              <th className="col-stat">Buybacks</th>
+              <th className="col-stat">Diebacks</th>
+              <th style={{ textAlign: 'left', paddingLeft: 8, color: '#888', fontWeight: 400, fontSize: '0.78rem' }}>Events</th>
+            </tr>
+          </thead>
+          <tbody>
+            {playersWithBuybacks
+              .map(tp => ({
+                tp,
+                events: tp.buybackEvents || (tp.buybackTimes || []).map(t => ({ t, dieback: false })),
+              }))
+              .sort((a, b) => b.events.length - a.events.length)
+              .map(({ tp, events }, i) => {
+                const info = slotToInfo[tp.slot];
+                const name = info?.nickname || info?.persona_name || `Slot ${tp.slot}`;
+                const color = tp.team === 'radiant' ? '#4ade80' : '#f87171';
+                const diebackCount = events.filter(e => e.dieback).length;
+                return (
+                  <tr key={i}>
+                    <td className="col-player" style={{ color }}>{name}</td>
+                    <td className="col-stat" style={{ fontWeight: 600 }}>{events.length}</td>
+                    <td className="col-stat" style={{ fontWeight: 600, color: diebackCount > 0 ? '#f87171' : 'var(--text-secondary, #888)' }}>{diebackCount}</td>
+                    <td style={{ paddingLeft: 8, fontSize: '0.8rem', color: '#aaa' }}>
+                      {events.map((e, idx) => {
+                        const cost = buybackCost(e.t, info?.level, duration);
+                        return (
+                          <span key={idx} style={{ marginRight: 8 }}>
+                            {formatDuration(e.t)}
+                            <span style={{ color: '#666', marginLeft: 2 }}> ({cost}g)</span>
+                            {e.dieback && (
+                              <span
+                                style={{ color: '#f87171', marginLeft: 4, fontWeight: 600 }}
+                                aria-label="Died again within 120 seconds of buyback"
+                                title="Dieback — died again within 120s"
+                              >
+                                ⚠
+                              </span>
+                            )}
+                            {idx < events.length - 1 ? ',' : ''}
+                          </span>
+                        );
+                      })}
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── NWSwingPanel ─────────────────────────────────────────────────────────────
 function NWSwingPanel({ timeline, allPlayers }) {
   if (!timeline || !timeline.players || timeline.players.length === 0) return null;
@@ -3763,6 +3852,7 @@ function MatchDetailInner() {
       <TeamAbilitiesPanel teamAbilities={match.team_abilities} radiantWin={match.radiant_win} />
       <ChatLogPanel chatLog={match.chat_log} chatLogState={match.chat_log_state} allPlayers={allPlayers} />
       <SmokePerPlayerPanel timeline={match.game_timeline} allPlayers={allPlayers} />
+      <BuybackPanel timeline={match.game_timeline} allPlayers={allPlayers} duration={match.duration} />
       <PowerSpikesPanel timeline={match.game_timeline} allPlayers={allPlayers} />
       <NWSwingPanel timeline={match.game_timeline} allPlayers={allPlayers} />
 

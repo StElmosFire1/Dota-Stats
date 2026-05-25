@@ -2518,6 +2518,18 @@ class ReplayParser {
             })),
             smokeTimes: smokePerPlayer[slot] || [],
             smokeSuccesses: smokeSuccesses[slot] || 0,
+            // Per-buyback dieback flag — true when the player died within 120s
+            // of that buyback. Same window as `diebackCount` in the player
+            // record above; computed once here so the UI can render without
+            // re-doing the join (and so the two surfaces can never drift).
+            buybackEvents: (() => {
+              const bbTimes = buybackTimes[slot] || [];
+              const deathTimes = deathsBySlot[slot] || [];
+              return bbTimes.map(t => ({
+                t,
+                dieback: deathTimes.some(d => d > t && d - t <= 120),
+              }));
+            })(),
           };
         }),
         events: gameEvents.sort((a, b) => a.t - b.t),

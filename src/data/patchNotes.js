@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "7.59",
+    "title": "Parser quick-wins: buyback timeline panel (Task #364 follow-up)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**Buyback events now surfaced on every match page.** The Java parser was already emitting `buyback_log` (blob mode) and `DOTA_COMBATLOG_BUYBACK` (streaming mode) entries, and `replayParser._aggregateStats` was already capturing them into a per-slot `buybackTimes` map — but the timestamps were only used internally for dieback detection and never reached the UI. They're now included in the timeline player record alongside `smokeTimes`/`abilityLog`, so they ride the existing `matches.game_timeline` JSONB column with no new migration.",
+      "**New `<BuybackPanel>` on `/match/:id`.** Renders directly below the smoke-usage panel. Each row shows the player (team-coloured), total buybacks, dieback count (red when > 0), and an inline event log: timestamp + gold cost + a red ⚠ marker for each buyback that ended in a dieback. Auto-hidden when no player bought back in the match.",
+      "**Per-buyback dieback flag is parser-canonical.** The dieback flag (`{t, dieback}`) is computed once inside `replayParser._aggregateStats` next to the existing `diebackCount` column using the same 120s post-buyback window, then shipped on `timeline.players[].buybackEvents`. The UI is pure rendering — no chance of the panel total drifting from the per-player `dieback_count` column even when buybacks and deaths cluster inside the same window.",
+      "**Live cost approximation.** Cost shown per buyback is `200 + level*9 + time/0.6` (the live Dota 2 formula), approximating level from the player's final level scaled linearly across the real `match.duration` (passed into the panel as a prop; the parser timeline payload doesn't carry duration). Not exact, but a tight tooltip — the timestamp + dieback flag are the authoritative bits.",
+      "**Audit pass on the rest of the quick-wins shortlist.** Smoke timeline (`<SmokePerPlayerPanel>` at MatchDetail:2052), ability-leveling log (`<AbilityRow>`/`<TalentBuild>` at MatchDetail:1873), smoke-kills (`smoke_kills` column), buyback count (`buybacks` column), and ward-killer attribution (via `attackername` → `npcNameToSlot` at replayParser:911) are all already shipping. Buyback timeline was the only real gap.",
+      "**Edition scope.** Full edition only — community edition is deprecated for new work."
+    ]
+  },
+  {
     "version": "7.58",
     "title": "Public /v1 API + outbound webhooks (Task #371)",
     "published_at": "2026-05-25",
