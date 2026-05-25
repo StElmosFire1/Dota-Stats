@@ -25,6 +25,9 @@ export default function OverlayTicker() {
   const wr = data.win_rate != null ? Math.round(data.win_rate * 100) : (
     data.games_played ? Math.round((data.wins / data.games_played) * 100) : 0
   );
+  const streak = Number(data.streak || 0);
+  const streakLabel = streak > 0 ? `+${streak} W` : streak < 0 ? `${streak} L` : '—';
+  const streakClass = streak > 0 ? 'streak-win' : streak < 0 ? 'streak-loss' : 'streak-none';
 
   return (
     <div className="overlay-root overlay-ticker-root" role="region" aria-label="Player ticker overlay">
@@ -50,6 +53,10 @@ export default function OverlayTicker() {
           <div className="overlay-ticker-stat">
             <div className="overlay-ticker-stat-label">Win Rate</div>
             <div className="overlay-ticker-stat-value">{wr}%</div>
+          </div>
+          <div className="overlay-ticker-stat">
+            <div className="overlay-ticker-stat-label">Streak</div>
+            <div className={`overlay-ticker-stat-value ${streakClass}`}>{streakLabel}</div>
           </div>
           {data.region && (
             <div className="overlay-ticker-stat">

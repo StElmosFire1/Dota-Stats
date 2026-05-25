@@ -10111,6 +10111,37 @@ NOTES
     }
   });
 
+  // Aggregated read alias — exposes the streamer's privacy prefs (and
+  // their notification categories) under the `/me/preferences` route so
+  // other settings consumers have a single place to fetch all per-user
+  // preference knobs. PUTs still go to the specialised endpoints
+  // (/me/stream-prefs, /me/notifications) so each owns its own validation.
+  router.get('/me/preferences', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const pool = db.getPool();
+      const r = await pool.query(
+        `SELECT stream_hide_mmr, stream_hide_region, stream_alias FROM player_profiles WHERE account_id = $1`,
+        [String(accountId)]
+      );
+      const row = r.rows[0] || {};
+      let categories = [];
+      try { categories = await db.getNotificationPrefs(accountId); } catch (_) {}
+      res.json({
+        stream: {
+          stream_hide_mmr: !!row.stream_hide_mmr,
+          stream_hide_region: !!row.stream_hide_region,
+          stream_alias: row.stream_alias || '',
+        },
+        notifications: categories,
+      });
+    } catch (err) {
+      console.error('[API] me/preferences GET:', err.message);
+      res.status(500).json({ error: 'Failed to load preferences' });
+    }
+  });
+
   // Helper: load a single account's stream prefs. Used by every public
   // overlay endpoint when `?for=<accountId>` is set so the overlay
   // respects the streamer's privacy choices without requiring auth.
@@ -10145,16 +10176,39 @@ NOTES
     return player;
   }
 
+  // Normalise a player team value to 'radiant' | 'dire'. Different code
+  // paths in this codebase represent teams as either a string
+  // ('radiant'/'dire') or a number (0 = radiant, 1 = dire), and lobby
+  // payloads sometimes only carry a numeric `player_slot` (<128 → radiant).
+  // The overlay endpoints must accept all three so live + scoreboard +
+  // ticker render the same rosters everywhere.
+  function _normTeam(p) {
+    if (!p) return null;
+    if (p.team === 'radiant' || p.team === 'dire') return p.team;
+    if (p.team === 0 || p.team === '0') return 'radiant';
+    if (p.team === 1 || p.team === '1') return 'dire';
+    if (typeof p.team_number === 'number') return p.team_number === 0 ? 'radiant' : 'dire';
+    if (typeof p.player_slot === 'number') return p.player_slot < 128 ? 'radiant' : 'dire';
+    if (typeof p.slot === 'number') return p.slot < 5 ? 'radiant' : 'dire';
+    return null;
+  }
+
   // GET /api/overlay/live/:lobbyId — current live lobby state for an OBS
   // browser source. `:lobbyId` accepts "current" as an alias for whatever
-  // lobby the bot is presently monitoring. Public; no auth required so OBS
-  // can load the URL directly. Honours `?for=<accountId>` privacy.
+  // lobby the bot is presently monitoring. Payload includes draft (picks
+  // /bans), live score, and per-player KDA when an in-progress match id
+  // has been linked to the lobby. Public; no auth required so OBS can
+  // load the URL directly. Honours `?for=<accountId>` privacy.
   router.get('/overlay/live/:lobbyId', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
       const forAccount = req.query.for ? String(req.query.for) : null;
       const prefs = await _loadStreamPrefs(forAccount);
-      let live = { matchId: null, lobbyName: null, state: null, players: [] };
+      let live = {
+        matchId: null, lobbyName: null, state: null, players: [],
+        radiant_score: null, dire_score: null, draft: { radiant_picks: [], dire_picks: [], radiant_bans: [], dire_bans: [] },
+        game_time: null,
+      };
       try {
         const { getLobbyManager } = require('../lobby/lobbyManager');
         const lm = getLobbyManager && getLobbyManager();
@@ -10162,24 +10216,69 @@ NOTES
         if (cl) {
           live.matchId = cl.matchId ? String(cl.matchId) : null;
           live.lobbyName = cl.name || null;
-          live.state = (lm && lm.state) || null;
-          if (Array.isArray(cl.members)) {
-            live.players = cl.members.slice(0, 10).map(m => ({
-              account_id: m.account_id ? String(m.account_id) : null,
-              persona_name: m.name || m.persona_name || '',
-              team: m.team || null,
-              slot: typeof m.slot === 'number' ? m.slot : null,
-            }));
+          live.state = (lm && lm.state) || cl.state || null;
+          // Lobby roster — prefer the richer `players` array, fall back to
+          // `members` (older shape). Normalise team so the frontend never
+          // sees raw 0/1 ints.
+          const roster = Array.isArray(cl.players) ? cl.players
+                       : (Array.isArray(cl.members) ? cl.members : []);
+          live.players = roster.slice(0, 10).map(m => ({
+            account_id: m.account_id ? String(m.account_id) : null,
+            persona_name: m.name || m.persona_name || '',
+            team: _normTeam(m),
+            slot: typeof m.slot === 'number' ? m.slot : (typeof m.player_slot === 'number' ? m.player_slot : null),
+            hero_id: m.hero_id || null,
+            kills: m.kills ?? null, deaths: m.deaths ?? null, assists: m.assists ?? null,
+          }));
+          // Live score + draft if the lobby exposes them (set by the GC
+          // game-state updates in lobbyManager).
+          if (typeof cl.radiantScore === 'number') live.radiant_score = cl.radiantScore;
+          if (typeof cl.direScore === 'number') live.dire_score = cl.direScore;
+          if (typeof cl.gameTime === 'number') live.game_time = cl.gameTime;
+          if (cl.draft && typeof cl.draft === 'object') {
+            live.draft = {
+              radiant_picks: Array.isArray(cl.draft.radiant_picks) ? cl.draft.radiant_picks.slice(0, 5) : [],
+              dire_picks:    Array.isArray(cl.draft.dire_picks)    ? cl.draft.dire_picks.slice(0, 5)    : [],
+              radiant_bans:  Array.isArray(cl.draft.radiant_bans)  ? cl.draft.radiant_bans              : [],
+              dire_bans:     Array.isArray(cl.draft.dire_bans)     ? cl.draft.dire_bans                 : [],
+            };
           }
         }
       } catch (_) {}
+      // If the lobby has a linked matchId, pull the persisted snapshot so
+      // KDA/scores from the recorded side fill in even before the GC sends
+      // a live game-state tick. Best effort — failure is silent.
+      if (live.matchId) {
+        try {
+          const m = await db.getMatch(live.matchId);
+          if (m) {
+            if (live.radiant_score == null && m.radiant_score != null) live.radiant_score = m.radiant_score;
+            if (live.dire_score == null && m.dire_score != null) live.dire_score = m.dire_score;
+            const kdaBySlot = new Map();
+            for (const p of (m.players || [])) {
+              const key = String(p.account_id || `slot-${p.slot}`);
+              kdaBySlot.set(key, { kills: p.kills, deaths: p.deaths, assists: p.assists, hero_id: p.hero_id });
+            }
+            live.players = live.players.map(p => {
+              const hit = kdaBySlot.get(String(p.account_id));
+              if (!hit) return p;
+              return { ...p,
+                kills:   p.kills   ?? hit.kills,
+                deaths:  p.deaths  ?? hit.deaths,
+                assists: p.assists ?? hit.assists,
+                hero_id: p.hero_id || hit.hero_id,
+              };
+            });
+          }
+        } catch (_) {}
+      }
       if (prefs && live.players.length) {
         live.players = live.players.map(p => _applyOverlayPrivacy(p, prefs, forAccount));
       }
       if (prefs?.hideRegion) live.region = null;
       res.json({ lobbyId: String(req.params.lobbyId), ...live, prefs: prefs ? { hideMmr: prefs.hideMmr, hideRegion: prefs.hideRegion, alias: prefs.alias } : null });
     } catch (err) {
-      res.json({ lobbyId: String(req.params.lobbyId), matchId: null, players: [] });
+      res.json({ lobbyId: String(req.params.lobbyId), matchId: null, players: [], radiant_score: null, dire_score: null, draft: { radiant_picks: [], dire_picks: [], radiant_bans: [], dire_bans: [] } });
     }
   });
 
@@ -10196,7 +10295,10 @@ NOTES
         const out = {
           account_id: p.account_id ? String(p.account_id) : null,
           persona_name: p.persona_name || '',
-          team: p.team,
+          // Normalise team so the React scoreboard's
+          // `p.team === 'radiant'` filter works regardless of whether the
+          // upstream match row stored team as a string or a numeric.
+          team: _normTeam(p),
           slot: p.slot,
           hero_id: p.hero_id,
           hero_name: p.hero_name,
@@ -10237,6 +10339,30 @@ NOTES
       const stats = await db.getPlayerStats(accountId, null).catch(() => null);
       let rating = null;
       try { rating = await db.getPlayerRating(accountId); } catch (_) {}
+      // Compute current win/loss streak from the most-recent matches for
+      // this account. Positive = win streak, negative = loss streak,
+      // 0 = no decided games. Required by the ticker overlay so streamers
+      // can show "+5 streak" / "-3 streak" beside their MMR.
+      let streak = 0;
+      try {
+        const pool = db.getPool();
+        const r = await pool.query(
+          `SELECT m.radiant_win, ps.team
+             FROM player_stats ps
+             JOIN matches m ON m.match_id = ps.match_id
+            WHERE ps.account_id = $1
+            ORDER BY m.date DESC
+            LIMIT 20`,
+          [String(accountId)]
+        );
+        for (const row of r.rows) {
+          const isRadiant = row.team === 'radiant' || row.team === 0 || row.team === '0';
+          const won = isRadiant === !!row.radiant_win;
+          if (streak === 0) streak = won ? 1 : -1;
+          else if ((won && streak > 0) || (!won && streak < 0)) streak += won ? 1 : -1;
+          else break;
+        }
+      } catch (_) { streak = 0; }
       const persona = (prefs?.alias) || stats?.persona_name || stats?.display_name || '';
       const payload = {
         account_id: accountId,
@@ -10245,6 +10371,7 @@ NOTES
         wins: stats?.wins || 0,
         losses: stats?.losses || 0,
         win_rate: stats?.win_rate ?? null,
+        streak, // positive=win streak, negative=loss streak, 0=none
         mmr: prefs?.hideMmr ? null : (rating?.mmr ? Math.round(rating.mmr) : null),
         tier: prefs?.hideMmr ? null : (rating?.tier || null),
         region: prefs?.hideRegion ? null : (stats?.region || null),
