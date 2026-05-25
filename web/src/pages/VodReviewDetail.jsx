@@ -68,7 +68,7 @@ export default function VodReviewDetail() {
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Coach: <strong>{review.coach_name}</strong> · Student: <strong>{review.student_name}</strong></div>
             {review.match_id && (
               <div style={{ fontSize: 13, marginTop: 4 }}>
-                Match: <Link to={`/replay/${review.match_id}`} style={{ color: 'var(--accent)' }}>#{review.match_id}</Link>
+                Match: <Link to={`/replay/${review.match_id}?vodReview=${review.id}`} style={{ color: 'var(--accent)' }}>#{review.match_id}</Link>
               </div>
             )}
           </div>
@@ -102,7 +102,7 @@ export default function VodReviewDetail() {
             <div key={n.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ minWidth: 70, fontFamily: 'monospace', fontWeight: 700, color: 'var(--accent)' }}>
                 {review.match_id ? (
-                  <Link to={`/replay/${review.match_id}?t=${n.t_seconds}`} style={{ color: 'var(--accent)' }}>{fmtTime(n.t_seconds)}</Link>
+                  <Link to={`/replay/${review.match_id}?vodReview=${review.id}&t=${n.t_seconds}`} style={{ color: 'var(--accent)' }}>{fmtTime(n.t_seconds)}</Link>
                 ) : fmtTime(n.t_seconds)}
               </div>
               <div style={{ flex: 1, whiteSpace: 'pre-wrap' }}>{n.text}</div>

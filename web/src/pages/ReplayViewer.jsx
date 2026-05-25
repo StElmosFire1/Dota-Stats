@@ -126,7 +126,7 @@ export default function ReplayViewer() {
     if (!noteDraft.trim() || noteSaving) return;
     setNoteSaving(true);
     try {
-      await addVodNote(vodReviewId, { t_seconds: Math.round(t), body: noteDraft.trim() });
+      await addVodNote(vodReviewId, { t_seconds: Math.round(t), text: noteDraft.trim() });
       setNoteDraft('');
       reloadVod();
     } catch (e) {
@@ -588,8 +588,8 @@ function VodNoteMarkerStrip({ notes, duration, onSeek }) {
               key={n.id}
               type="button"
               onClick={() => onSeek(n.t_seconds)}
-              aria-label={`Jump to coach note at ${formatTime(n.t_seconds)}: ${n.body.slice(0, 80)}`}
-              title={`${formatTime(n.t_seconds)} — ${n.body.slice(0, 120)}`}
+              aria-label={`Jump to coach note at ${formatTime(n.t_seconds)}: ${(n.text || '').slice(0, 80)}`}
+              title={`${formatTime(n.t_seconds)} — ${(n.text || '').slice(0, 120)}`}
               style={{
                 position: 'absolute', top: 1, bottom: 1,
                 left: `calc(${pct}% - 5px)`, width: 10,
@@ -664,7 +664,7 @@ function VodAnnotationPanel({
                   </button>
                 )}
               </div>
-              <div style={{ marginTop: 2, whiteSpace: 'pre-wrap' }}>{n.body}</div>
+              <div style={{ marginTop: 2, whiteSpace: 'pre-wrap' }}>{n.text || ''}</div>
             </li>
           ))}
         </ol>
