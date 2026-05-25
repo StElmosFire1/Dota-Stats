@@ -52,8 +52,15 @@ export const api = {
     ),
   getMatch: (matchId: string | number) =>
     request<any>(`/api/matches/${matchId}`),
-  getLeaderboard: (limit = 100) =>
-    request<{ players: any[] } | any[]>(`/api/leaderboard?limit=${limit}`),
+  // Server returns `{ leaderboard, useV3: true }` (see /api/leaderboard
+  // in src/web/server.js). We normalise to a plain array so callers don't
+  // have to know about the legacy `players` / array shapes that earlier
+  // builds returned.
+  getLeaderboard: async (limit = 100): Promise<any[]> => {
+    const r = await request<any>(`/api/leaderboard?limit=${limit}`);
+    if (Array.isArray(r)) return r;
+    return r?.leaderboard || r?.players || [];
+  },
   getPlayer: (accountId: string | number) =>
     request<any>(`/api/players/${accountId}`),
   getPlayerRecentMatches: (accountId: string | number, limit = 5) =>

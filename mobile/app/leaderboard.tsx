@@ -14,7 +14,7 @@ export default function LeaderboardScreen() {
     try {
       setError(null);
       const r = await api.getLeaderboard(100);
-      setRows(r.players || []);
+      setRows(r);
     } catch (e) {
       setError((e as Error).message);
     } finally {
