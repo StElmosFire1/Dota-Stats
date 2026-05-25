@@ -94,8 +94,32 @@ export default function TeamProfile() {
           <p style={{ marginTop: 6, fontSize: 13, color: 'var(--text-muted)' }}>
             <strong style={{ color: 'var(--text-primary)' }}>{stats.wins}W – {stats.losses}L</strong>
             {' · '}{stats.win_rate}% win rate · {stats.games} matches
+            {stats.streak ? (
+              <span style={{ marginLeft: 6, color: stats.streak > 0 ? '#22c55e' : '#f08a8a', fontWeight: 700 }}>
+                {stats.streak > 0 ? `W${stats.streak}` : `L${Math.abs(stats.streak)}`} streak
+              </span>
+            ) : null}
+            {stats.avg_mmr ? ` · avg MMR ${stats.avg_mmr}` : ''}
             {upkeepActive ? ` · upkeep paid until ${upkeepUntil.toLocaleDateString()}` : ''}
           </p>
+          {(stats.hero_pool?.length || stats.signature_drafts?.length) ? (
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+              {stats.hero_pool?.length ? (
+                <span><strong style={{ color: 'var(--text-primary)' }}>Hero pool:</strong>{' '}
+                  {stats.hero_pool.map(h => `#${h.hero_id} (${h.games}g ${h.games ? Math.round(100 * h.wins / h.games) : 0}%)`).join(', ')}
+                </span>
+              ) : null}
+              {stats.signature_drafts?.length ? (
+                <span><strong style={{ color: 'var(--text-primary)' }}>Signature drafts:</strong>{' '}
+                  {stats.signature_drafts.map(d => (
+                    <Link key={d.match_id} to={`/match/${d.match_id}`} style={{ marginRight: 6 }}>
+                      #{d.match_id} ({(d.picks || []).slice(0, 5).join('/')})
+                    </Link>
+                  ))}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -359,7 +383,7 @@ function RecentMatchesPanel({ matches }) {
         <tbody>
           {matches.map((m) => (
             <tr key={m.match_id} style={{ borderTop: '1px solid var(--border)' }}>
-              <td style={{ padding: '6px' }}><Link to={`/matches/${m.match_id}`}>{m.match_id}</Link></td>
+              <td style={{ padding: '6px' }}><Link to={`/match/${m.match_id}`}>{m.match_id}</Link></td>
               <td style={{ padding: '6px' }}>{fmtDate(m.date)}</td>
               <td style={{ padding: '6px' }}>{m.team_side}</td>
               <td style={{ padding: '6px', color: m.won ? '#22c55e' : '#f08a8a', fontWeight: 700 }}>
@@ -377,6 +401,7 @@ function RecentMatchesPanel({ matches }) {
 
 function ManagePanel({ team, onChange, setErr, busy, setBusy, transfers, onTransfersChange }) {
   const [form, setForm] = useState({
+    name: team.name || '',
     bio: team.bio || '',
     color_primary: team.color_primary || '#c5a975',
     color_secondary: team.color_secondary || '#0d1424',
@@ -429,6 +454,12 @@ function ManagePanel({ team, onChange, setErr, busy, setBusy, transfers, onTrans
       <section className="card" style={{ padding: 14, marginBottom: 16 }}>
         <h2 style={{ marginTop: 0 }}>Team profile</h2>
         <form onSubmit={save} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Team name</span>
+            <input type="text" minLength={3} maxLength={60} value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              style={{ padding: 8, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'inherit' }} />
+          </label>
           <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Bio</span>
             <textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} rows={3}

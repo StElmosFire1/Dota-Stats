@@ -16354,7 +16354,7 @@ async function getTeamForAccount(accountId) {
   );
   return r.rows[0] || null;
 }
-async function updateTeamProfile(teamId, accountId, { bio, color_primary, color_secondary, frame_id, logo_url }) {
+async function updateTeamProfile(teamId, accountId, { name, bio, color_primary, color_secondary, frame_id, logo_url }) {
   const p = getPool();
   const mr = await p.query(
     `SELECT role FROM team_members WHERE team_id = $1 AND account_id = $2`,
@@ -16365,15 +16365,28 @@ async function updateTeamProfile(teamId, accountId, { bio, color_primary, color_
     e.code = 'FORBIDDEN';
     throw e;
   }
+  let cleanName = null;
+  if (typeof name === 'string') {
+    cleanName = name.trim();
+    if (cleanName.length < 3 || cleanName.length > 60) {
+      const e = new Error('Team name must be 3–60 characters.');
+      e.code = 'BAD_REQUEST'; throw e;
+    }
+    const conflict = await p.query(
+      `SELECT 1 FROM teams WHERE LOWER(name) = LOWER($1) AND id <> $2 AND is_active = TRUE`,
+      [cleanName, teamId]);
+    if (conflict.rows[0]) { const e = new Error('A team with that name already exists.'); e.code = 'CONFLICT'; throw e; }
+  }
   const r = await p.query(
     `UPDATE teams SET
+        name = COALESCE($7, name),
         bio = COALESCE($2, bio),
         color_primary = COALESCE($3, color_primary),
         color_secondary = COALESCE($4, color_secondary),
         frame_id = COALESCE($5, frame_id),
         logo_url = COALESCE($6, logo_url)
       WHERE id = $1 RETURNING *`,
-    [teamId, bio, color_primary, color_secondary, frame_id, logo_url]
+    [teamId, bio, color_primary, color_secondary, frame_id, logo_url, cleanName]
   );
   return r.rows[0];
 }
@@ -16457,24 +16470,80 @@ async function getTeamStats(teamId) {
     `SELECT account_id FROM team_members WHERE team_id = $1`, [teamId]
   );
   const accountIds = members.rows.map(r => r.account_id);
-  if (accountIds.length === 0) return { games: 0, wins: 0, losses: 0, win_rate: 0 };
-  // A "team match" is one where every team member playing was on the same side.
+  if (accountIds.length === 0) {
+    return { games: 0, wins: 0, losses: 0, win_rate: 0, streak: 0,
+      avg_mmr: null, hero_pool: [], signature_drafts: [] };
+  }
+  // A "team match" is one where ≥3 members played on one side.
   const r = await p.query(
-    `SELECT m.match_id, m.radiant_win, ps.team, COUNT(*) AS members_on_side
+    `SELECT m.match_id, m.start_time, m.radiant_win, ps.team, COUNT(*) AS members_on_side
        FROM player_stats ps
        JOIN matches m ON m.match_id = ps.match_id
       WHERE ps.account_id = ANY($1::bigint[])
-      GROUP BY m.match_id, m.radiant_win, ps.team
-      HAVING COUNT(*) >= 3`,
+      GROUP BY m.match_id, m.start_time, m.radiant_win, ps.team
+      HAVING COUNT(*) >= 3
+      ORDER BY m.start_time DESC NULLS LAST`,
     [accountIds]
   );
   let wins = 0, losses = 0;
+  const results = []; // win/loss in chronological-desc order
   for (const row of r.rows) {
     const won = (row.team === 'radiant') === row.radiant_win;
+    results.push(won);
     if (won) wins++; else losses++;
   }
   const games = wins + losses;
-  return { games, wins, losses, win_rate: games ? Math.round((wins / games) * 100) : 0 };
+  // Current streak: signed integer (+wins, -losses) of the most recent run.
+  let streak = 0;
+  if (results.length) {
+    const dir = results[0] ? 1 : -1;
+    for (const w of results) {
+      if ((w ? 1 : -1) !== dir) break;
+      streak += dir;
+    }
+  }
+  // Average MMR across current roster, V3 conservative formula.
+  const mmrRow = await p.query(
+    `SELECT AVG(ROUND((mu - 3 * sigma) * 100) + 5000)::numeric AS avg
+       FROM player_ratings WHERE player_id::bigint = ANY($1::bigint[])`,
+    [accountIds]
+  ).catch(() => ({ rows: [{ avg: null }] }));
+  const avg_mmr = mmrRow.rows[0]?.avg ? Math.round(Number(mmrRow.rows[0].avg)) : null;
+  // Hero pool — top 5 most-played hero ids across all roster matches (any side).
+  const hpRow = await p.query(
+    `SELECT hero_id, COUNT(*)::int AS games,
+            SUM(CASE WHEN (team = 'radiant') = m.radiant_win THEN 1 ELSE 0 END)::int AS wins
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.account_id = ANY($1::bigint[]) AND hero_id > 0
+      GROUP BY hero_id
+      ORDER BY games DESC, wins DESC
+      LIMIT 5`,
+    [accountIds]
+  ).catch(() => ({ rows: [] }));
+  const hero_pool = hpRow.rows;
+  // Signature drafts — the 3 team-match drafts with the highest member count.
+  const teamMatchIds = r.rows.map(row => row.match_id);
+  let signature_drafts = [];
+  if (teamMatchIds.length) {
+    const sdRow = await p.query(
+      `SELECT md.match_id, ARRAY_AGG(md.hero_id ORDER BY md.order_num) AS picks,
+              MAX(m.start_time) AS start_time, BOOL_OR(m.radiant_win) AS radiant_win
+         FROM match_draft md
+         JOIN matches m ON m.match_id = md.match_id
+        WHERE md.match_id = ANY($1::bigint[]) AND md.is_pick = TRUE
+        GROUP BY md.match_id
+        ORDER BY start_time DESC NULLS LAST
+        LIMIT 3`,
+      [teamMatchIds]
+    ).catch(() => ({ rows: [] }));
+    signature_drafts = sdRow.rows;
+  }
+  return {
+    games, wins, losses,
+    win_rate: games ? Math.round((wins / games) * 100) : 0,
+    streak, avg_mmr, hero_pool, signature_drafts,
+  };
 }
 async function recordTeamUpkeep({ teamId, payerAccountId, stripeSessionId, amountCents, currency = 'aud' }) {
   const p = getPool();

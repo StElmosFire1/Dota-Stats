@@ -183,7 +183,7 @@ function BracketCell({ m, isSuperuser, onWinner }) {
       {teamLine(m.team_a_id, m.team_a_name, m.team_a_tag)}
       {teamLine(m.team_b_id, m.team_b_name, m.team_b_tag)}
       {m.match_id && (
-        <Link to={`/matches/${m.match_id}`} style={{ fontSize: 11, textAlign: 'right' }}>view match →</Link>
+        <Link to={`/match/${m.match_id}`} style={{ fontSize: 11, textAlign: 'right' }}>view match →</Link>
       )}
     </div>
   );

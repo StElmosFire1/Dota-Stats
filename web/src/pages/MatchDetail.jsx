@@ -22,7 +22,7 @@ class MatchErrorBoundary extends Component {
   }
 }
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord, getNemesisSpotlight, recapCardUrl, shareRecapCardToDiscord, submitPlayerReplayChunked, getUploadStatus, getSeasonalItemBenchmarks } from '../api';
+import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord, getNemesisSpotlight, recapCardUrl, shareRecapCardToDiscord, submitPlayerReplayChunked, getUploadStatus, getSeasonalItemBenchmarks, listLeagues, attachMatchToLeague } from '../api';
 import { MMR_TIERS } from './Leaderboard';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -3809,6 +3809,48 @@ function ChatLogPanel({ chatLog, chatLogState, allPlayers }) {
   );
 }
 
+// Task #383 — superuser/operator dropdown to tag a recorded match against
+// a league. Sits inside the existing admin-actions row in MatchDetail.
+function LeagueAttachControl({ matchId, currentLeagueId }) {
+  const { isSuperuser } = useSuperuser();
+  const [leagues, setLeagues] = React.useState([]);
+  const [picked, setPicked] = React.useState(currentLeagueId ? String(currentLeagueId) : '');
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+  React.useEffect(() => {
+    if (!isSuperuser) return;
+    listLeagues().then(d => setLeagues(d.leagues || [])).catch(() => {});
+  }, [isSuperuser]);
+  if (!isSuperuser) return null;
+  const onSave = async () => {
+    setBusy(true); setMsg('');
+    try {
+      await attachMatchToLeague(matchId, picked ? parseInt(picked, 10) : null);
+      setMsg('✅ Saved');
+    } catch (e) { setMsg('❌ ' + e.message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.6rem 0.75rem', background: '#0f1923', borderRadius: 6, border: '1px solid #1e293b', marginTop: '0.5rem' }}>
+      <label htmlFor="match-league-select" style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+        League match:
+      </label>
+      <select id="match-league-select" value={picked} onChange={e => setPicked(e.target.value)}
+        style={{ background: '#0d1117', color: '#e0e0e0', border: '1px solid #444', padding: '0.35rem 0.6rem', borderRadius: 4, fontSize: '0.85rem' }}>
+        <option value="">— none —</option>
+        {leagues.map(l => (
+          <option key={l.id} value={l.id}>{l.name} ({l.format})</option>
+        ))}
+      </select>
+      <button type="button" onClick={onSave} disabled={busy}
+        style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.35rem 0.9rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      {msg ? <span style={{ fontSize: '0.8rem', color: msg.startsWith('✅') ? '#4ade80' : '#f87171' }}>{msg}</span> : null}
+    </div>
+  );
+}
+
 function MatchDetailInner() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -4215,6 +4257,8 @@ function MatchDetailInner() {
               {dmMsg}
             </div>
           )}
+
+          <LeagueAttachControl matchId={match.match_id} currentLeagueId={match.league_id} />
 
           {showMeta && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.75rem', background: '#1a1a2e', borderRadius: '6px', border: '1px solid #334155' }}>
