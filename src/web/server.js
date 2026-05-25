@@ -249,19 +249,37 @@ function createServer(startupStatus = {}) {
       // `credentials: true` would re-introduce the vulnerability we just
       // closed.
       if (corsOrigins.includes(origin)) return cb(null, true);
-      // Task #380 — Twitch extension panel/overlay/config iframes are
-      // served from `https://<extension-id>.ext-twitch.tv`. The companion
-      // extension is read-only and hits public, unauthenticated endpoints
-      // (no session cookie required), so allowing this suffix does not
-      // re-introduce the credential-CSRF gap the strict allowlist closes.
+      return cb(null, false);
+    },
+    credentials: true,
+  }));
+
+  // Task #380 — Route-scoped CORS for the Twitch extension's public,
+  // read-only endpoints. Twitch extension iframes are served from
+  // `https://<extension-id>.ext-twitch.tv`, so we allow that hostname
+  // suffix here — BUT only on the three endpoints the extension
+  // actually needs, AND with `credentials: false` so a cross-origin
+  // request from any Twitch iframe can never carry a session cookie.
+  // This intentionally does NOT extend the global allowlist above:
+  // every other authenticated/private route still rejects unknown
+  // origins, so the credential-CSRF gap stays closed.
+  const twitchExtCors = cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
       try {
         const host = new URL(origin).hostname;
         if (host.endsWith('.ext-twitch.tv')) return cb(null, true);
       } catch (_) {}
       return cb(null, false);
     },
-    credentials: true,
-  }));
+    credentials: false,
+    methods: ['GET', 'OPTIONS'],
+  });
+  app.use([
+    '/api/overlay/ticker/:accountId',
+    '/api/overlay/live/current',
+    '/api/players/:accountId/recent-matches',
+  ], twitchExtCors);
 
   // SECURITY (v5.66): SESSION_SECRET is mandatory in production. Without a
   // strong, secret, env-supplied value the session cookie can be forged by an
