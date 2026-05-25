@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OCE Inhouse — Twitch extension config</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  <script src="../shared/api.js"></script>
+</head>
+<body class="config-body">
+  <div class="header">
+    <span class="logo">OCE Inhouse</span>
+    <span class="badge">Setup</span>
+  </div>
+  <form class="config-form" id="form" novalidate>
+    <label for="account-id">Your oceinhouse.gg account id</label>
+    <input
+      id="account-id"
+      type="text"
+      inputmode="numeric"
+      autocomplete="off"
+      pattern="\d{1,12}"
+      placeholder="e.g. 135991380"
+      aria-describedby="account-id-help"
+      required
+    />
+    <p class="help" id="account-id-help">
+      Open your profile page on oceinhouse.gg — the number in the URL after
+      <code>/players/</code> is your account id. The panel + video overlay
+      will show this player's rank, streak, and last 5 matches to viewers.
+    </p>
+    <button type="submit" class="btn" id="save-btn">Save</button>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+  </form>
+  <script src="./config.js"></script>
+</body>
+</html>

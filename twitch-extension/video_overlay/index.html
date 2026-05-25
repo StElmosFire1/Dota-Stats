@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OCE Inhouse — video overlay</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  <script src="../shared/api.js"></script>
+</head>
+<body>
+  <div
+    class="overlay-chip"
+    id="chip"
+    role="status"
+    aria-live="polite"
+    aria-label="OCE Inhouse presence"
+    hidden
+  >
+    <span class="dot" aria-hidden="true"></span>
+    <span id="state">Idle</span>
+    <span class="rank" id="rank"></span>
+  </div>
+  <script src="./overlay.js"></script>
+</body>
+</html>

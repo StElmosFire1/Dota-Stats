@@ -555,6 +555,62 @@ function DiscordLinkSection({ steamUser, refreshMe }) {
 // Lets a streamer (a) toggle stream-privacy prefs that flow into every
 // overlay endpoint, (b) copy the three OBS browser-source URLs scoped to
 // their account, and (c) preview the rendered overlays in a live iframe.
+// Task #380 — Twitch extension companion. Surfaces the broadcaster's
+// account id (read-only, copyable) and the config-page URL they paste
+// into the Twitch extension's broadcaster config tab. No save state of
+// its own — the extension stores the account id in Twitch's
+// configuration service, this tile just helps the streamer find the two
+// values they need to fill it in.
+function TwitchExtensionSection({ accountId }) {
+  const aid = accountId || '';
+  // Default to the canonical prod host; on dev/staging show the current
+  // origin so a tester can try the local harness against this server.
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const configUrl = `${origin}/twitch-extension/config/index.html`;
+  const [copied, setCopied] = React.useState(null);
+  const copy = async (key, value) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(key);
+      setTimeout(() => setCopied(c => c === key ? null : c), 1800);
+    } catch (_) {}
+  };
+  const items = [
+    { key: 'aid', label: 'Your account id', value: aid || '(sign in to see your id)',
+      hint: 'Paste this into the Twitch extension\u2019s config page after you install it on your channel.' },
+    { key: 'cfg', label: 'Extension config preview', value: configUrl,
+      hint: 'Open this URL in a browser to preview the broadcaster config page locally. The published Twitch extension renders the same page inside the Twitch dashboard.' },
+  ];
+  return (
+    <section style={{ marginTop: 24 }} aria-labelledby="twitch-ext-heading">
+      <h2 id="twitch-ext-heading" style={{ marginBottom: 8 }}>Twitch extension</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Install the OCE Inhouse Twitch extension on your channel to show your rank,
+        win/loss streak, and last 5 matches in the panel under your stream.
+        It\u2019s read-only and uses public endpoints \u2014 no secrets, no Twitch OAuth.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.map(it => (
+          <div key={it.key} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+              <div style={{ fontWeight: 600 }}>{it.label}</div>
+              <button type="button" className="btn" onClick={() => copy(it.key, it.value)}
+                aria-label={`Copy ${it.label}`}
+                disabled={!aid && it.key === 'aid'}>
+                {copied === it.key ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <code style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', wordBreak: 'break-all' }}>
+              {it.value}
+            </code>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>{it.hint}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function StreamerSetupSection({ accountId }) {
   const [prefs, setPrefs] = React.useState({ stream_hide_mmr: false, stream_hide_region: false, stream_alias: '' });
   const [loading, setLoading] = React.useState(true);
@@ -1755,6 +1811,8 @@ export default function SettingsProfile() {
 
           {/* Task #379 — Streamer setup (OBS overlay URLs + privacy prefs) */}
           <StreamerSetupSection accountId={accountId} />
+          {/* Task #380 — Twitch extension companion */}
+          <TwitchExtensionSection accountId={accountId} />
           </div>{/* /.settings-profile-form */}
         </div>
       )}

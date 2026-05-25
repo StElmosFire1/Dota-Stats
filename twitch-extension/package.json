@@ -1,0 +1,10 @@
+{
+  "name": "oi-twitch-extension",
+  "version": "0.0.1",
+  "private": true,
+  "description": "OCE Inhouse — Twitch panel + video-overlay companion (read-only).",
+  "scripts": {
+    "dev": "npx --yes http-server . -p 4400 -c-1",
+    "package": "rm -f oi-twitch-ext.zip && zip -r oi-twitch-ext.zip config panel video_overlay"
+  }
+}

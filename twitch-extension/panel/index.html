@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OCE Inhouse — panel</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  <script src="../shared/api.js"></script>
+</head>
+<body class="panel-body">
+  <div class="header">
+    <span class="logo">OCE Inhouse</span>
+    <span class="badge" id="badge">Live</span>
+  </div>
+  <div class="stat-bar" id="stat-bar" aria-live="polite">
+    <div class="stat"><div class="label">Rank</div><div class="value" id="rank">—</div></div>
+    <div class="stat"><div class="label">W / L</div><div class="value" id="wl">—</div></div>
+    <div class="stat"><div class="label">Win rate</div><div class="value" id="wr">—</div></div>
+    <div class="stat"><div class="label">Streak</div><div class="value" id="streak">—</div></div>
+  </div>
+  <div class="body">
+    <div class="muted" id="empty">Loading the streamer\u2019s last 5 matches\u2026</div>
+    <ul id="matches" style="list-style:none;margin:0;padding:0;display:none;"></ul>
+  </div>
+  <script src="./panel.js"></script>
+</body>
+</html>

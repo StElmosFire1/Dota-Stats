@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "7.65",
+    "title": "Twitch extension companion (Task #380)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**New `twitch-extension/` package** \u2014 a Twitch panel + video-overlay companion that surfaces an OCE Inhouse player's rank, current W/L streak, and last 5 matches to viewers without leaving Twitch. Three surfaces (`config/`, `panel/`, `video_overlay/`), all vanilla JS (no React, no bundler) so the uploaded zip stays well under Twitch's 10 MB ceiling. Panel rows expand to KDA/GPM/XPM on hover, focus, click, or Enter/Space \u2014 keyboard-reachable per the frontend a11y rules.",
+      "**Read-only, public endpoints only.** The extension hits `/api/overlay/ticker/<aid>` (rank/streak/W-L), a new `/api/players/<aid>/recent-matches?limit=5` (last 5 matches with KDA/GPM/XPM and result), and `/api/overlay/live/current?for=<aid>` (presence dot). No auth, no secrets in the bundle, polls every 30 s per Twitch's rate-limit policy. Recent-matches is capped at limit=10 to prevent bulk scraping.",
+      "**CORS allowlist extended for `*.ext-twitch.tv`.** The strict allowlist still rejects unknown origins, but the Twitch extension iframe hostname suffix is now accepted so the extension can `fetch()` the JSON directly. Safe because these endpoints don't accept session cookies \u2014 the original credential-CSRF gap stays closed.",
+      "**Local smoke-test harness at `twitch-extension/test/index.html`** stubs `window.Twitch.ext` and hosts all three surface iframes side-by-side, with a base-URL input + Refresh button so the extension can be developed against the local dev server without ever packaging it.",
+      "**Aggregated read alias `GET /api/me/preferences`** \u2014 single endpoint returning both stream-privacy prefs and notification categories so other settings consumers have one place to fetch them. PUTs still go to the specialised endpoints.",
+      "**`/settings/profile` Twitch extension tile** \u2014 copyable account id + config-page URL, the two values the streamer needs to fill in once after installing the extension on their channel.",
+      "**Edition scope.** Full edition only \u2014 community edition has no overlay endpoints, no Twitch extension, and no matching settings tile."
+    ]
+  },
+  {
     "version": "7.64",
     "title": "Streamer mode + OBS overlays (Task #379)",
     "published_at": "2026-05-25",

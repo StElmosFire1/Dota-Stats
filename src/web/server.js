@@ -249,6 +249,15 @@ function createServer(startupStatus = {}) {
       // `credentials: true` would re-introduce the vulnerability we just
       // closed.
       if (corsOrigins.includes(origin)) return cb(null, true);
+      // Task #380 — Twitch extension panel/overlay/config iframes are
+      // served from `https://<extension-id>.ext-twitch.tv`. The companion
+      // extension is read-only and hits public, unauthenticated endpoints
+      // (no session cookie required), so allowing this suffix does not
+      // re-introduce the credential-CSRF gap the strict allowlist closes.
+      try {
+        const host = new URL(origin).hostname;
+        if (host.endsWith('.ext-twitch.tv')) return cb(null, true);
+      } catch (_) {}
       return cb(null, false);
     },
     credentials: true,
@@ -10381,6 +10390,43 @@ NOTES
     } catch (err) {
       console.error('[API] overlay/ticker:', err.message);
       res.status(500).json({ error: 'Failed to load ticker' });
+    }
+  });
+
+  // GET /api/players/:accountId/recent-matches?limit=5 — read-only,
+  // public snapshot of the player's last N matches for the Twitch
+  // extension panel (Task #380). Limited to <=10 rows so it can't be
+  // turned into a bulk-export scrape. Shape mirrors `getMatchHistory`
+  // but keeps only the fields the panel renders so we never leak fields
+  // the public profile page would otherwise omit.
+  router.get('/players/:accountId/recent-matches', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const accountId = String(req.params.accountId);
+      if (!/^\d+$/.test(accountId)) return res.status(400).json({ error: 'Invalid account id' });
+      if (await db.isAccountHidden(accountId).catch(() => false)) {
+        return res.status(404).json({ error: 'Account not available' });
+      }
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
+      const rows = await db.getMatchHistory(accountId, null).catch(() => []);
+      const out = (rows || []).slice(0, limit).map(m => {
+        const isRadiant = m.player_slot != null ? m.player_slot < 128 : null;
+        const won = (isRadiant != null && m.radiant_win != null) ? (isRadiant === m.radiant_win) : null;
+        return {
+          match_id: m.match_id ? String(m.match_id) : null,
+          date: m.date,
+          duration: m.duration,
+          won,
+          hero_id: m.hero_id || null,
+          hero: m.hero || null,
+          kills: m.kills, deaths: m.deaths, assists: m.assists,
+          gpm: m.gpm, xpm: m.xpm,
+        };
+      });
+      res.json({ account_id: accountId, matches: out });
+    } catch (err) {
+      console.error('[API] players/recent-matches:', err.message);
+      res.status(500).json({ error: 'Failed to load recent matches' });
     }
   });
 
