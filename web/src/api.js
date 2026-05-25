@@ -936,6 +936,14 @@ export async function getHeadToHead(a, b, seasonId = null) {
   return fetchJson(`/head-to-head?a=${a}&b=${b}${sp}`);
 }
 
+export async function getPlayerRivals(accountId, seasonId = null, minTotal = 2) {
+  const qs = new URLSearchParams();
+  if (seasonId) qs.set('season_id', seasonId);
+  if (minTotal != null) qs.set('min_total', String(minTotal));
+  const tail = qs.toString() ? `?${qs}` : '';
+  return fetchJson(`/players/${accountId}/rivals${tail}`);
+}
+
 export async function getPlayerComparison(a, b, seasonId = null) {
   const sp = seasonId ? `&season_id=${encodeURIComponent(seasonId)}` : '';
   return fetchJson(`/compare?a=${a}&b=${b}${sp}`);

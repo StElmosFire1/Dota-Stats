@@ -7610,6 +7610,75 @@ async function getHeadToHead(playerA, playerB, seasonId = null) {
   };
 }
 
+// Rivals leaderboard — for a single player, returns every opponent they have
+// faced (across teams) with games played, wins, against, alongside, and last
+// match together. The shape is one row per opponent; the UI ranks them by
+// games-played descending. Mirrors the season-gating convention from
+// getHeadToHead so legacy matches are excluded unless an explicit season is
+// passed. min_total filters out one-off opponents (default 2).
+async function getPlayerRivals(accountId, seasonId = null, minTotal = 2) {
+  const p = getPool();
+  const params = [parseInt(accountId)];
+  const sc = seasonId ? ` AND m.season_id = $${params.push(parseInt(seasonId))}` : ' AND m.is_legacy = false';
+  // Clamp min_total to a sane range and pass as a parameter (not string-interpolated)
+  // so the entire query is parameterised end-to-end.
+  const minTotalClamped = Math.max(1, Math.min(parseInt(minTotal) || 1, 100));
+  const minTotalIdx = params.push(minTotalClamped);
+  // GROUP BY account_id only — opponents whose persona_name varies across
+  // matches would otherwise split into multiple rows. Display name is resolved
+  // post-aggregation via a single nicknames lookup; persona_name falls back to
+  // any (MAX) value observed for the account.
+  const result = await p.query(
+    `WITH agg AS (
+       SELECT
+         o.account_id AS opponent_account_id,
+         MAX(o.persona_name) AS persona_name,
+         COUNT(*) FILTER (WHERE o.team != me.team) AS games_against,
+         COUNT(*) FILTER (WHERE o.team != me.team AND (
+           (me.team='radiant' AND m.radiant_win=true) OR (me.team='dire' AND m.radiant_win=false)
+         )) AS wins_against,
+         COUNT(*) FILTER (WHERE o.team = me.team) AS games_with,
+         COUNT(*) FILTER (WHERE o.team = me.team AND (
+           (me.team='radiant' AND m.radiant_win=true) OR (me.team='dire' AND m.radiant_win=false)
+         )) AS wins_with,
+         COUNT(*) AS total_games,
+         MAX(m.date) AS last_match_at
+       FROM player_stats me
+       JOIN player_stats o ON o.match_id = me.match_id AND o.account_id != me.account_id
+       JOIN matches m ON m.match_id = me.match_id
+       WHERE me.account_id = $1${sc}
+       GROUP BY o.account_id
+       HAVING COUNT(*) >= $${minTotalIdx}
+     )
+     SELECT
+       agg.opponent_account_id,
+       COALESCE(n.nickname, agg.persona_name, 'Player ' || agg.opponent_account_id::text) AS opponent_name,
+       agg.games_against, agg.wins_against,
+       agg.games_with, agg.wins_with,
+       agg.total_games,
+       agg.last_match_at
+     FROM agg
+     LEFT JOIN LATERAL (
+       SELECT nickname FROM nicknames
+       WHERE account_id = agg.opponent_account_id
+       ORDER BY updated_at DESC LIMIT 1
+     ) n ON true
+     ORDER BY agg.total_games DESC, agg.games_against DESC, agg.last_match_at DESC NULLS LAST
+     LIMIT 50`,
+    params
+  );
+  return result.rows.map(r => ({
+    opponent_account_id: parseInt(r.opponent_account_id),
+    opponent_name: r.opponent_name,
+    games_against: parseInt(r.games_against) || 0,
+    wins_against: parseInt(r.wins_against) || 0,
+    games_with: parseInt(r.games_with) || 0,
+    wins_with: parseInt(r.wins_with) || 0,
+    total_games: parseInt(r.total_games) || 0,
+    last_match_at: r.last_match_at,
+  }));
+}
+
 async function getPlayerComparison(playerA, playerB, seasonId = null) {
   const p = getPool();
   async function fetchStats(accountId) {
@@ -16286,6 +16355,7 @@ module.exports = {
   getPlayerRecentRatingHistory,
   getPlayerStreaks,
   getHeadToHead,
+  getPlayerRivals,
   getPlayerComparison,
   getPlayerAchievements,
   checkAndGrantAchievements,

@@ -42,6 +42,7 @@ const PlayerTools = lazy(() => import('./pages/PlayerTools'));
 const Predictions = lazy(() => import('./pages/Predictions'));
 const StatsEditor = lazy(() => import('./pages/StatsEditor'));
 const PatchNotes = lazy(() => import('./pages/PatchNotes'));
+const ThisWeek = lazy(() => import('./pages/ThisWeek'));
 const Pickem = lazy(() => import('./pages/Pickem'));
 const SponsorshipInbox = lazy(() => import('./pages/SponsorshipInbox'));
 const Sponsorships = lazy(() => import('./pages/Sponsorships'));
@@ -685,6 +686,7 @@ function Nav() {
         <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
         <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
+        <Link to="/this-week" className={isActive('/this-week')}>This Week</Link>
         <NavPlayersLink isActive={isActive} count={liveCount} />
         <DropdownMenu label="Tools">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
@@ -1117,6 +1119,7 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
                 <Route path="/matches" element={<MatchList />} />
+                <Route path="/this-week" element={<ThisWeek />} />
                 <Route path="/match/:matchId" element={<MatchDetail />} />
                 <Route path="/match/:matchId/edit" element={<StatsEditor />} />
                 <Route path="/player/:accountId" element={<PlayerProfile />} />

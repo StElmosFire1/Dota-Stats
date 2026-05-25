@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals } from '../api';
 import Dialog from '../components/Dialog';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
@@ -640,6 +640,7 @@ export default function PlayerProfile() {
   const [achievements, setAchievements] = useState([]);
   const [nemesis, setNemesis] = useState([]);
   const [allies, setAllies] = useState([]);
+  const [rivals, setRivals] = useState([]);
   const [rawWinRateHistory, setRawWinRateHistory] = useState([]);
   const [wrWindow, setWrWindow] = useState(5);
   const [predictionStats, setPredictionStats] = useState(null);
@@ -807,7 +808,8 @@ export default function PlayerProfile() {
       getPlayerDurationStats(accountId, seasonId).catch(() => ({ stats: [] })),
       getPlayerCommunityRatings(accountId).catch(() => null),
       getPositionAverages(seasonId).catch(() => ({ averages: [] })),
-    ]).then(([playerData, posData, histData, modHistData, achData, nemData, allyData, wrHistData, predData, counterData, streakData, durData, ratingData, avgData]) => {
+      getPlayerRivals(accountId, seasonId).catch(() => []),
+    ]).then(([playerData, posData, histData, modHistData, achData, nemData, allyData, wrHistData, predData, counterData, streakData, durData, ratingData, avgData, rivalsData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
@@ -815,6 +817,7 @@ export default function PlayerProfile() {
       setAchievements(achData?.achievements || []);
       setNemesis(Array.isArray(nemData) ? nemData : []);
       setAllies(Array.isArray(allyData) ? allyData : []);
+      setRivals(Array.isArray(rivalsData) ? rivalsData : []);
       const rawRows = Array.isArray(wrHistData) ? wrHistData : (wrHistData?.history || []);
       setRawWinRateHistory(rawRows);
       setPredictionStats(predData?.stats || null);
@@ -1778,6 +1781,60 @@ export default function PlayerProfile() {
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* Rivals leaderboard — pairwise head-to-head across all opponents this
+          player has faced. Public (no auth, no Pro). Mirrors the Nemesis card
+          shape but ranks opponents by total games played, not kills. */}
+      {rivals.length > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-title">⚔️ Rivals</h2>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, marginTop: -8 }}>
+            Players this player has faced the most. Wins shown against and alongside.
+          </p>
+          <div className="scoreboard-wrapper">
+            <table className="scoreboard compact">
+              <thead>
+                <tr>
+                  <th className="col-player">Opponent</th>
+                  <th className="col-stat">Against</th>
+                  <th className="col-stat">W–L (vs)</th>
+                  <th className="col-stat">WR vs</th>
+                  <th className="col-stat">Together</th>
+                  <th className="col-stat">W–L (with)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rivals.slice(0, 15).map((r) => {
+                  const lossesVs = r.games_against - r.wins_against;
+                  const lossesWith = r.games_with - r.wins_with;
+                  const wrVs = r.games_against > 0 ? Math.round((r.wins_against / r.games_against) * 100) : null;
+                  const wrColor = wrVs == null ? 'var(--text-muted)' : wrVs >= 55 ? '#4ade80' : wrVs <= 45 ? '#f87171' : 'var(--text-secondary)';
+                  return (
+                    <tr key={r.opponent_account_id}>
+                      <td className="col-player">
+                        <Link to={`/player/${r.opponent_account_id}`} style={{ color: 'var(--accent)' }}>
+                          {r.opponent_name}
+                        </Link>
+                      </td>
+                      <td className="col-stat" style={{ fontWeight: 600 }}>{r.games_against}</td>
+                      <td className="col-stat" style={{ fontFamily: 'var(--font-mono, monospace)' }}>
+                        {r.wins_against}–{lossesVs}
+                      </td>
+                      <td className="col-stat" style={{ fontWeight: 600, color: wrColor }}>
+                        {wrVs == null ? '—' : `${wrVs}%`}
+                      </td>
+                      <td className="col-stat" style={{ color: 'var(--text-muted)' }}>{r.games_with}</td>
+                      <td className="col-stat" style={{ fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-muted)' }}>
+                        {r.wins_with}–{lossesWith}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </section>
       )}

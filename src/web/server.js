@@ -6115,6 +6115,25 @@ NOTES
     }
   });
 
+  // Rivals leaderboard for a single player. Public — no Pro gate, no auth.
+  // Mirrors /players/:accountId/nemesis in scope (per-player aggregation that
+  // any visitor can see). Pair-picker H2H stays Pro-gated as before.
+  router.get('/players/:accountId/rivals', async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { season_id, min_total } = req.query;
+      const data = await db.getPlayerRivals(
+        accountId,
+        season_id || null,
+        min_total ? parseInt(min_total) : 2,
+      );
+      res.json(data);
+    } catch (err) {
+      console.error('[API] rivals error:', err);
+      res.status(500).json({ error: 'Failed to fetch rivals' });
+    }
+  });
+
   router.get('/compare', requirePro('compare_players'), async (req, res) => {
     try {
       const { a, b, season_id } = req.query;

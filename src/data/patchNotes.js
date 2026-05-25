@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.60",
+    "title": "Engagement bundle: Rivals leaderboard + /this-week AI recap page (Task #364 follow-up)",
+    "published_at": "2026-05-25",
+    "notes": [
+      "**Rivals leaderboard on every profile.** Existing head-to-head was a Pro-gated *pair picker* (`/head-to-head`, pick two players manually). The new `Rivals` panel on `/player/:accountId` shows every opponent this player has faced ranked by total games, with W–L records both against (`games_against`/`wins_against`) and alongside (`games_with`/`wins_with`), plus winrate against. Public — no Pro, no auth — mirroring `/players/:accountId/nemesis` in scope.",
+      "**New `db.getPlayerRivals(accountId, seasonId, minTotal=2)` and `/api/players/:accountId/rivals`.** Single self-join on `player_stats` with `COUNT FILTER` for the four buckets, `LEFT JOIN LATERAL` for nickname resolution, season-gated on `m.is_legacy = false` when no season is passed (same convention as `getHeadToHead`). Filters out one-off opponents (default `min_total=2`) and caps results at 50.",
+      "**New `/this-week` page.** AI-generated weekly recap surfaced on the site. Reads from the existing `/api/latest-recap` endpoint which serves the cached row written by the Monday Discord cron (`generateWeeklyRecapBlurb` + `db.saveWeeklyRecap` in `src/discord/bot.js`) — no new generation path, no new cron, no admin button. Renders blurb + top performers (linked to profiles) + fun highlights. Linked from the top nav next to **Matches**.",
+      "**Why no new weekly cron.** The Discord weekly recap already runs every Monday, generates the AI blurb via Groq, and persists `weekly_recaps` rows. The site was the only surface that hadn't been wired up — fixed.",
+      "**Edition scope.** Full edition only — community edition is deprecated for new work."
+    ]
+  },
+  {
     "version": "7.59",
     "title": "Parser quick-wins: buyback timeline panel (Task #364 follow-up)",
     "published_at": "2026-05-25",
