@@ -2671,6 +2671,33 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_matches_picks_gin ON pro_matches USING GIN (radiant_picks)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_pro_matches_dpicks_gin ON pro_matches USING GIN (dire_picks)`);
 
+    // Task #408 — smurf detector (advisory). `smurf_scores` keeps one row per
+    // account with the most recent heuristic score + per-signal breakdown.
+    // `smurf_acknowledgements` keeps every ack/dismiss action so dismissed
+    // accounts can be hidden from the default list without losing history.
+    // Threshold is stored in site_settings under key `smurf_threshold`
+    // (default 60) so it can be tuned without redeploy.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS smurf_scores (
+        account_id BIGINT PRIMARY KEY,
+        score SMALLINT NOT NULL DEFAULT 0,
+        signals JSONB NOT NULL DEFAULT '{}'::jsonb,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_smurf_scores_score ON smurf_scores(score DESC)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS smurf_acknowledgements (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        operator_account_id BIGINT,
+        operator_label TEXT,
+        note TEXT,
+        ack_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_smurf_acks_account ON smurf_acknowledgements(account_id, ack_at DESC)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -3946,6 +3973,102 @@ async function setSetting(key, value) {
     [key, value == null ? null : String(value)]
   );
   return { key, value };
+}
+
+// ── Smurf detector (advisory, Task #408) ────────────────────────────────────
+// Threshold lives in site_settings (admin-editable) so it can be tuned without
+// redeploy. Default 60 if unset / unparseable.
+const SMURF_THRESHOLD_DEFAULT = 60;
+
+async function getSmurfThreshold() {
+  const raw = await getSetting('smurf_threshold').catch(() => null);
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return SMURF_THRESHOLD_DEFAULT;
+  return n;
+}
+
+async function setSmurfThreshold(value) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 100) {
+    throw new Error('smurf_threshold must be an integer 0..100');
+  }
+  await setSetting('smurf_threshold', String(n));
+  return n;
+}
+
+// List scores at or above the threshold. By default ack'd accounts are
+// hidden (still in history). `includeAcknowledged: true` shows everything.
+async function listSmurfScores({ threshold, includeAcknowledged = false, limit = 200 } = {}) {
+  const p = getPool();
+  const t = Number.isFinite(threshold) ? threshold : await getSmurfThreshold();
+  const params = [t, limit];
+  const ackFilter = includeAcknowledged
+    ? ''
+    : `AND NOT EXISTS (
+        SELECT 1 FROM smurf_acknowledgements a
+        WHERE a.account_id = s.account_id
+          AND a.ack_at >= s.computed_at
+      )`;
+  const r = await p.query(`
+    SELECT s.account_id, s.score, s.signals, s.computed_at,
+           n.nickname,
+           (SELECT a.ack_at FROM smurf_acknowledgements a
+              WHERE a.account_id = s.account_id ORDER BY a.ack_at DESC LIMIT 1) AS last_ack_at,
+           (SELECT a.note FROM smurf_acknowledgements a
+              WHERE a.account_id = s.account_id ORDER BY a.ack_at DESC LIMIT 1) AS last_ack_note,
+           (SELECT a.operator_label FROM smurf_acknowledgements a
+              WHERE a.account_id = s.account_id ORDER BY a.ack_at DESC LIMIT 1) AS last_ack_operator
+    FROM smurf_scores s
+    LEFT JOIN nicknames n ON n.account_id = s.account_id
+    WHERE s.score >= $1
+    ${ackFilter}
+    ORDER BY s.score DESC, s.computed_at DESC
+    LIMIT $2
+  `, params);
+  return r.rows;
+}
+
+async function getSmurfScore(accountId) {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT account_id, score, signals, computed_at
+    FROM smurf_scores WHERE account_id = $1
+  `, [accountId]);
+  return r.rows[0] || null;
+}
+
+async function acknowledgeSmurfScore(accountId, { operatorAccountId, operatorLabel, note } = {}) {
+  const p = getPool();
+  const r = await p.query(`
+    INSERT INTO smurf_acknowledgements (account_id, operator_account_id, operator_label, note)
+    VALUES ($1, $2, $3, $4)
+    RETURNING id, account_id, ack_at, note, operator_label
+  `, [accountId, operatorAccountId || null, operatorLabel || null, note || null]);
+  return r.rows[0];
+}
+
+async function listSmurfAcknowledgements(accountId, limit = 50) {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT id, account_id, operator_account_id, operator_label, note, ack_at
+    FROM smurf_acknowledgements WHERE account_id = $1
+    ORDER BY ack_at DESC LIMIT $2
+  `, [accountId, limit]);
+  return r.rows;
+}
+
+async function isSmurfScoreAcknowledged(accountId) {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT 1 FROM smurf_scores s
+    WHERE s.account_id = $1
+      AND EXISTS (
+        SELECT 1 FROM smurf_acknowledgements a
+        WHERE a.account_id = s.account_id AND a.ack_at >= s.computed_at
+      )
+    LIMIT 1
+  `, [accountId]);
+  return r.rows.length > 0;
 }
 
 // ── Feature flags (off / preview / on) ──────────────────────────────────────
@@ -18704,6 +18827,14 @@ module.exports = {
   getSetting,
   getAllSettings,
   setSetting,
+  // Task #408 — smurf detector (advisory).
+  getSmurfThreshold,
+  setSmurfThreshold,
+  listSmurfScores,
+  getSmurfScore,
+  acknowledgeSmurfScore,
+  listSmurfAcknowledgements,
+  isSmurfScoreAcknowledged,
   getAllFeatureFlags,
   getFeatureFlag,
   setFeatureFlag,

@@ -126,6 +126,35 @@ function _findHeader(headers, name) {
   return Object.keys(headers).some(k => k.toLowerCase() === lower);
 }
 
+// ── Smurf detector (advisory, Task #408) ──────────────────────────────────
+export async function getSmurfWatch({ includeAcknowledged = false, threshold = null, superuserKey } = {}) {
+  const qs = new URLSearchParams();
+  if (includeAcknowledged) qs.set('include_acknowledged', '1');
+  if (threshold != null) qs.set('threshold', String(threshold));
+  const q = qs.toString();
+  return superuserJson(`/admin/smurf-watch${q ? `?${q}` : ''}`, { superuserKey });
+}
+
+export async function setSmurfThreshold(value, superuserKey) {
+  return superuserJson('/admin/smurf-watch/threshold', {
+    method: 'POST', body: { value }, superuserKey,
+  });
+}
+
+export async function recomputeSmurfWatch(superuserKey) {
+  return superuserJson('/admin/smurf-watch/recompute', { method: 'POST', superuserKey });
+}
+
+export async function acknowledgeSmurfAccount(accountId, note, superuserKey) {
+  return superuserJson(`/admin/smurf-watch/${encodeURIComponent(accountId)}/acknowledge`, {
+    method: 'POST', body: { note: note || '' }, superuserKey,
+  });
+}
+
+export async function getSmurfAccountDetail(accountId, superuserKey) {
+  return superuserJson(`/admin/smurf-watch/${encodeURIComponent(accountId)}`, { superuserKey });
+}
+
 // ── Feature flags ──────────────────────────────────────────────────────────
 export async function getFeatureFlags(superuserKey) {
   const headers = {};

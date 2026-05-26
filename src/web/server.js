@@ -219,6 +219,39 @@ async function _runAccountDeletionSweep() {
 setTimeout(() => { _runAccountDeletionSweep().catch(() => {}); }, 60_000).unref();
 setInterval(() => { _runAccountDeletionSweep().catch(() => {}); }, 6 * 60 * 60 * 1000).unref();
 
+// Task #408 — Smurf detector (advisory). Nightly recompute of heuristic
+// scores for every active account. Also invoked on-demand from the admin
+// panel via POST /api/admin/smurf-watch/recompute. Best-effort: per-account
+// failures are logged but do not halt the sweep. Module-scope flag prevents
+// the on-demand path from racing the nightly cron.
+let _smurfRecomputeInFlight = false;
+async function _runSmurfRecompute(reason = 'cron') {
+  if (_smurfRecomputeInFlight) {
+    console.log('[Smurf] recompute already in flight, skipping', reason);
+    return { skipped: true };
+  }
+  _smurfRecomputeInFlight = true;
+  const started = Date.now();
+  try {
+    const { recomputeAll } = require('../smurf/smurfScorer');
+    const result = await recomputeAll(db.getPool());
+    const ms = Date.now() - started;
+    console.log(`[Smurf] ${reason} recompute done — scanned=${result.scanned} written=${result.written} in ${ms}ms`);
+    try { await db.recordCronHeartbeat('smurf_recompute', { ok: true, scanned: result.scanned, written: result.written, ms }); } catch (_) {}
+    return { ...result, ms };
+  } catch (e) {
+    console.warn('[Smurf] recompute failed:', e?.message || e);
+    try { await db.recordCronHeartbeat('smurf_recompute', { ok: false, error: e?.message || String(e) }); } catch (_) {}
+    throw e;
+  } finally {
+    _smurfRecomputeInFlight = false;
+  }
+}
+// First run 5 min after boot to avoid stacking with other startup work,
+// then daily.
+setTimeout(() => { _runSmurfRecompute('boot').catch(() => {}); }, 5 * 60_000).unref();
+setInterval(() => { _runSmurfRecompute('cron').catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+
 // Replay store cleanup: runs every 12 hours, deletes expired files from disk.
 setInterval(async () => {
   try {
@@ -7994,7 +8027,75 @@ NOTES
 
   // Allowlist of settings keys writable via this endpoint — prevents the
   // generic key/value store from being abused as a free-form admin scratchpad.
-  const ALLOWED_SETTING_KEYS = new Set(['engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker', 'home_banner', 'side_banners']);
+  const ALLOWED_SETTING_KEYS = new Set(['engagement_milestone_thresholds', 'engagement_referral_xp', 'welcome_modal', 'broadcast_ticker', 'home_banner', 'side_banners', 'smurf_threshold']);
+
+  // ── Smurf detector (advisory, Task #408) ─────────────────────────────────
+  router.get('/admin/smurf-watch', requireSuperuser, async (req, res) => {
+    try {
+      const threshold = await db.getSmurfThreshold();
+      const overrideRaw = req.query.threshold;
+      const overrideNum = overrideRaw == null ? null : parseInt(overrideRaw, 10);
+      const effective = Number.isFinite(overrideNum) && overrideNum >= 0 && overrideNum <= 100
+        ? overrideNum
+        : threshold;
+      const includeAcknowledged = req.query.include_acknowledged === '1';
+      const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
+      const flagged = await db.listSmurfScores({ threshold: effective, includeAcknowledged, limit });
+      res.set('Cache-Control', 'no-store');
+      res.json({ threshold, effective_threshold: effective, include_acknowledged: includeAcknowledged, flagged });
+    } catch (err) {
+      console.error('[API] admin/smurf-watch GET error:', err.message);
+      res.status(500).json({ error: 'Failed to load smurf watch list' });
+    }
+  });
+
+  router.post('/admin/smurf-watch/threshold', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const value = await db.setSmurfThreshold(req.body?.value);
+      res.json({ threshold: value });
+    } catch (err) {
+      res.status(400).json({ error: err.message || 'Failed to set threshold' });
+    }
+  });
+
+  router.post('/admin/smurf-watch/recompute', requireSuperuser, async (req, res) => {
+    try {
+      // Run in the background so the HTTP request returns quickly. The
+      // module-scope in-flight flag prevents concurrent runs.
+      _runSmurfRecompute('admin').catch(() => {});
+      res.json({ started: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to start recompute' });
+    }
+  });
+
+  router.post('/admin/smurf-watch/:accountId/acknowledge', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const accountId = req.params.accountId;
+      if (!/^\d+$/.test(String(accountId))) return res.status(400).json({ error: 'invalid account id' });
+      const note = typeof req.body?.note === 'string' ? req.body.note.slice(0, 500) : null;
+      const operatorAccountId = req.session?.steamUser?.accountId || null;
+      const operatorLabel = req.session?.steamUser?.displayName || 'superuser';
+      const ack = await db.acknowledgeSmurfScore(accountId, { operatorAccountId, operatorLabel, note });
+      res.json({ ack });
+    } catch (err) {
+      console.error('[API] admin/smurf-watch ack error:', err.message);
+      res.status(500).json({ error: 'Failed to acknowledge' });
+    }
+  });
+
+  router.get('/admin/smurf-watch/:accountId', requireSuperuser, async (req, res) => {
+    try {
+      const accountId = req.params.accountId;
+      if (!/^\d+$/.test(String(accountId))) return res.status(400).json({ error: 'invalid account id' });
+      const score = await db.getSmurfScore(accountId);
+      const history = await db.listSmurfAcknowledgements(accountId);
+      res.set('Cache-Control', 'no-store');
+      res.json({ score, history });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load smurf score detail' });
+    }
+  });
 
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.

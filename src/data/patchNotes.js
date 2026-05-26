@@ -1,5 +1,22 @@
 module.exports = [
   {
+    "version": "7.73",
+    "title": "Smurf detector (advisory) (Task #408)",
+    "published_at": "2026-05-26",
+    "notes": [
+      "**New `/admin/smurf-watch` page (superuser-only).** A heuristic scorer flags accounts that look like smurfs based on five signals — shared-lobby graph (30 pts), hero-pool entropy (20 pts), early-game PERF outliers vs claimed TrueSkill bracket peers (20 pts), account age vs MMR climb (20 pts), and best-effort IP/UA fingerprint overlap (10 pts) — summing to a 0–100 score. The page shows flagged accounts above the threshold, with a per-row expandable signal breakdown (value, contribution, detail), a link to each player profile, and an **Acknowledge / Dismiss** action with optional note. Acknowledged accounts are hidden from the default view until a new recompute produces a more recent score; a `Show acknowledged accounts` toggle reveals them anyway.",
+      "**Advisory only — no automated player-facing action.** A flagged account is not auto-banned, not blocked from inhouse, and not hidden from the leaderboard. The list exists to point operators at suspicious accounts; the decision is theirs.",
+      "**Admin-editable threshold** (default 60, stored in `site_settings.smurf_threshold`, validated 0..100). Saving the threshold updates the persisted default; the page also accepts a transient `?threshold=` override for one-off triage.",
+      "**Schema.** `smurf_scores (account_id BIGINT PRIMARY KEY, score SMALLINT, signals JSONB, computed_at TIMESTAMPTZ)` keeps the latest score per account; `smurf_acknowledgements (id, account_id, operator_account_id, operator_label, note, ack_at)` keeps every ack so a dismissed account can resurface if a later recompute produces a higher-confidence score. Indexes on `(score DESC)` and `(account_id, ack_at DESC)`.",
+      "**Scorer** lives in `src/smurf/smurfScorer.js`. `scoreAccount(pool, accountId)` returns `{ score, signals }`. The perf-outlier signal compares first-10-game average PERF against the **peer-cohort median** in the same 250-MMR bracket (via `_buildBracketBaselines`, which `PERCENTILE_CONT(0.5)`s the bracket once per recompute pass), so an above-average score for a 500-MMR player is treated very differently from the same score for a 3000-MMR player. Unrated accounts and sparse brackets degrade the signal to `value: null, weight: 0` rather than guessing. `recomputeAll(pool)` walks every account with ≥ 5 non-legacy matches, builds the session-fingerprint index and the bracket-baselines map once per run, and upserts the result. Per-signal failures are caught locally so one bad row never halts the sweep. The fingerprint signal degrades gracefully (`value: null`, weight 0) when no `ip`/`ua` is present on the connect-pg-simple session payload, since production sessions don't currently stash either.",
+      "**Cron + on-demand.** Nightly recompute on a 24h interval (first run 5 min post-boot to avoid stacking with other startup work), heartbeat reported via `db.recordCronHeartbeat('smurf_recompute', …)` so `/admin/ops` picks it up. `POST /api/admin/smurf-watch/recompute` kicks off an on-demand pass from the page; a module-scope in-flight flag prevents the on-demand path from racing the cron.",
+      "**API.** `GET /admin/smurf-watch[?threshold=&include_acknowledged=1]` returns `{ threshold, effective_threshold, flagged[] }` with nicknames joined and per-account `last_ack_at` / `last_ack_note` / `last_ack_operator`. `POST /admin/smurf-watch/threshold` (validated 0..100), `POST /admin/smurf-watch/recompute`, `POST /admin/smurf-watch/:accountId/acknowledge` (note ≤ 500 chars, operator label captured from session), `GET /admin/smurf-watch/:accountId` for per-account history. All routes go through `requireSuperuser`.",
+      "**A11y.** Acknowledge / Recompute / Save-threshold are real `<button type=\"button\">`s; the per-row Details toggle carries `aria-expanded` + `aria-label`. No new modal surface — the breakdown panel inlines under the row instead. The a11y gate stays green.",
+      "**Out of scope per task brief.** No leaderboard hiding, no inhouse-lobby restriction, no Discord ping, no cross-platform fingerprint correlation, no ML model — strictly the five heuristic signals above plus an operator-only advisory surface.",
+      "**Edition scope.** Full edition only — community edition has no admin panel surface for this and isn't wired."
+    ]
+  },
+  {
     "version": "7.72",
     "title": "Notification preference centre v2 (Task #407)",
     "published_at": "2026-05-26",
