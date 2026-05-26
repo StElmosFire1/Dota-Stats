@@ -2694,6 +2694,98 @@ function createServer(startupStatus = {}) {
     }
   });
 
+  // Task #411 — Share-clip unfurl. The replay viewer's "Share clip" button
+  // produces `/replay/:matchId?t=START&end=END&focus=heroId` links; when a
+  // social crawler (Discord, Slack, Twitter) hits the URL we reply with OG
+  // meta tags that quote the clip window in the title + description so the
+  // unfurl reads like a labelled highlight instead of a generic match link.
+  // Real browsers fall through (next()) to the SPA so the React replay
+  // viewer boots and reads the same query params for autoplay/focus.
+  function _formatClipTime(t) {
+    if (!Number.isFinite(t) || t < 0) return null;
+    const m = Math.floor(t / 60);
+    const s = t % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+  app.get('/replay/:matchId', async (req, res, next) => {
+    const matchId = String(req.params.matchId || '');
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(matchId)) return next();
+    const ua = String(req.get('user-agent') || '');
+    if (!_isSocialUnfurler(ua)) return next();
+    try {
+      const db = require('../db');
+      let title = `Replay · Match #${matchId} · OCE Inhouse`;
+      const descriptionParts = ['Watch this inhouse match in the 2D replay viewer.'];
+      const tStart = parseInt(req.query.t, 10);
+      const tEnd = parseInt(req.query.end, 10);
+      const focus = req.query.focus ? String(req.query.focus).slice(0, 8) : null;
+      const startLabel = _formatClipTime(tStart);
+      const endLabel = _formatClipTime(tEnd);
+      try {
+        const resolved = await _resolveOgMatch(db, matchId);
+        if (resolved) {
+          const winner = resolved.radiantWin ? 'Radiant' : 'Dire';
+          if (startLabel) {
+            title = `Replay clip @ ${startLabel}${endLabel ? `–${endLabel}` : ''} · Match #${matchId} · OCE Inhouse`;
+          } else {
+            title = `Replay · ${winner} wins ${resolved.radiantScore}–${resolved.direScore} · Match #${matchId} · OCE Inhouse`;
+          }
+          descriptionParts.length = 0;
+          descriptionParts.push(`${winner} victory ${resolved.radiantScore}–${resolved.direScore}`);
+          if (startLabel) {
+            descriptionParts.push(endLabel
+              ? `Clip ${startLabel}–${endLabel}`
+              : `Jump to ${startLabel}`);
+          }
+          if (focus) descriptionParts.push(`Focus hero ${focus}`);
+        }
+      } catch (err) {
+        console.warn('[replay-og] meta fetch failed:', err.message);
+      }
+      const description = descriptionParts.join(' · ');
+      const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+      const host = req.get('host') || 'oceinhouse.gg';
+      const origin = `${proto}://${host}`;
+      // Preserve clip params on the canonical URL so a re-share keeps the
+      // same window. The image reuses the generic match card endpoint.
+      const qs = [];
+      if (Number.isFinite(tStart) && tStart >= 0) qs.push(`t=${tStart}`);
+      if (Number.isFinite(tEnd) && tEnd > 0) qs.push(`end=${tEnd}`);
+      if (focus) qs.push(`focus=${encodeURIComponent(focus)}`);
+      const replayUrl = `${origin}/replay/${encodeURIComponent(matchId)}${qs.length ? `?${qs.join('&')}` : ''}`;
+      const imageUrl = `${origin}/og/match/${encodeURIComponent(matchId)}.png`;
+      const eTitle = _escapeHtml(title);
+      const eDesc = _escapeHtml(description);
+      const eUrl = _escapeHtml(replayUrl);
+      const eImage = _escapeHtml(imageUrl);
+      res.status(200).set('Cache-Control', 'public, max-age=300').type('html').send(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+        `<title>${eTitle}</title>` +
+        `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+        `<meta name="description" content="${eDesc}">` +
+        `<link rel="canonical" href="${eUrl}">` +
+        `<meta property="og:type" content="video.other">` +
+        `<meta property="og:site_name" content="OCE Inhouse">` +
+        `<meta property="og:title" content="${eTitle}">` +
+        `<meta property="og:description" content="${eDesc}">` +
+        `<meta property="og:url" content="${eUrl}">` +
+        `<meta property="og:image" content="${eImage}">` +
+        `<meta property="og:image:width" content="1200">` +
+        `<meta property="og:image:height" content="630">` +
+        `<meta property="og:image:alt" content="${eTitle}">` +
+        `<meta name="twitter:card" content="summary_large_image">` +
+        `<meta name="twitter:title" content="${eTitle}">` +
+        `<meta name="twitter:description" content="${eDesc}">` +
+        `<meta name="twitter:image" content="${eImage}">` +
+        `<meta http-equiv="refresh" content="0; url=${eUrl}">` +
+        `</head><body><p><a href="${eUrl}">Replay · Match #${_escapeHtml(matchId)} on OCE Inhouse</a></p></body></html>`
+      );
+    } catch (err) {
+      console.warn('[replay-og] unfurl failed:', err.message);
+      return next();
+    }
+  });
+
   // Task #407 — one-tap unsubscribe endpoint. The service worker exposes
   // an "Unsubscribe" action on every push notification; tapping it lands
   // here with the signed token embedded in the original payload. We flip
@@ -5737,6 +5829,75 @@ function createApiRouter(startupStatus = {}, _app = null) {
     res.json({ running: reparseRunning, status: reparseStatus });
   });
 
+  // Task #411 — admin backfill: re-detect team fights for every match that
+  // has a `game_timeline` JSON but no `match_fights` rows yet. Pure replay
+  // over already-stored data, no .dem files needed. Returns progress so the
+  // admin panel can show "done X / total" and surface any per-match errors.
+  let fightsBackfillRunning = false;
+  let fightsBackfillStatus = null;
+  router.post('/admin/replays/backfill-fights', requireSuperuser, async (req, res) => {
+    if (fightsBackfillRunning) {
+      return res.json({ running: true, status: fightsBackfillStatus });
+    }
+    const limit = Math.max(1, Math.min(5000, parseInt(req.body?.limit, 10) || 2000));
+    let matchIds;
+    try {
+      matchIds = await db.listMatchesMissingFights(limit);
+    } catch (e) {
+      return res.status(500).json({ error: `list failed: ${e.message}` });
+    }
+    if (matchIds.length === 0) {
+      fightsBackfillStatus = { total: 0, done: 0, failed: 0, detected: 0, remaining: 0, phase: 'complete', errors: [] };
+      return res.json({ success: true, queued: 0, message: 'No matches need fights backfill.' });
+    }
+    fightsBackfillRunning = true;
+    fightsBackfillStatus = {
+      total: matchIds.length, done: 0, failed: 0, detected: 0,
+      remaining: matchIds.length, phase: 'running', errors: [],
+    };
+    res.json({ success: true, queued: matchIds.length, message: `Queued ${matchIds.length} matches for fights backfill.` });
+    // Background drain — non-blocking, status polled via the GET below.
+    (async () => {
+      const { detectFights } = require('../replay/fightDetector');
+      for (const matchId of matchIds) {
+        try {
+          const m = await db.getMatch(matchId);
+          const timeline = m && m.game_timeline
+            ? (typeof m.game_timeline === 'string' ? JSON.parse(m.game_timeline) : m.game_timeline)
+            : null;
+          if (!timeline) {
+            fightsBackfillStatus.failed++;
+            fightsBackfillStatus.errors.push({ matchId, error: 'no timeline' });
+          } else {
+            const fights = detectFights({
+              players: timeline.players || [],
+              events: timeline.events || [],
+            });
+            await db.replaceMatchFights(matchId, fights);
+            fightsBackfillStatus.detected += fights.length;
+            fightsBackfillStatus.done++;
+          }
+        } catch (e) {
+          fightsBackfillStatus.failed++;
+          if (fightsBackfillStatus.errors.length < 20) {
+            fightsBackfillStatus.errors.push({ matchId, error: e.message });
+          }
+        }
+        fightsBackfillStatus.remaining = matchIds.length - fightsBackfillStatus.done - fightsBackfillStatus.failed;
+      }
+      fightsBackfillStatus.phase = 'complete';
+      fightsBackfillRunning = false;
+    })().catch(e => {
+      console.error('[Admin] fights backfill drain crashed:', e.message);
+      fightsBackfillRunning = false;
+      if (fightsBackfillStatus) fightsBackfillStatus.phase = 'complete';
+    });
+  });
+
+  router.get('/admin/replays/backfill-fights-status', requireSuperuser, async (req, res) => {
+    res.json({ running: fightsBackfillRunning, status: fightsBackfillStatus });
+  });
+
   // Set all stored replays to never expire.
   router.post('/admin/replays/set-all-permanent', requireSuperuser, async (req, res) => {
     try {
@@ -6406,6 +6567,19 @@ function createApiRouter(startupStatus = {}, _app = null) {
         ['kill', 'tower_kill', 'rax_kill', 'building', 'roshan', 'roshan_kill',
          'tormenter', 'aegis', 'first_blood', 'smoke'].includes(e.type)
       );
+      // Task #411 — auto-detected team fights for the timeline scrub bar +
+      // fight-chip overlay. Prefer the persisted `match_fights` rows; fall
+      // back to the embedded `timeline.fights` so replays parsed since the
+      // upgrade Just Work even before the admin backfill runs.
+      let fights = [];
+      try {
+        const persisted = await db.getMatchFights(match.match_id);
+        fights = persisted.length > 0
+          ? persisted
+          : (Array.isArray(timeline.fights) ? timeline.fights : []);
+      } catch (e) {
+        fights = Array.isArray(timeline.fights) ? timeline.fights : [];
+      }
       res.set('Cache-Control', 'private, max-age=300');
       res.json({
         matchId: String(match.match_id),
@@ -6413,6 +6587,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
         radiantWin: match.radiant_win,
         players,
         events,
+        fights,
       });
     } catch (err) {
       console.error('[API] replay-timeline error:', err.message);

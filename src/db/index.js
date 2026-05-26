@@ -330,6 +330,24 @@ async function init() {
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS snowball_score SMALLINT`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS comeback_factor SMALLINT`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS throne_dpm JSONB`);
+    // Task #411 — auto-detected team fights for the 2D replay viewer v3.
+    // One row per cluster, scoped to the parent match (cascade-delete). The
+    // UNIQUE(match_id, start_s) lets the parser/backfill safely upsert without
+    // duplicating fights on re-run. heroes JSONB = array of player_slot ints.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS match_fights (
+        id SERIAL PRIMARY KEY,
+        match_id VARCHAR(50) NOT NULL REFERENCES matches(match_id) ON DELETE CASCADE,
+        start_s INTEGER NOT NULL,
+        end_s INTEGER NOT NULL,
+        heroes JSONB NOT NULL,
+        winner VARCHAR(10),
+        radiant_deaths SMALLINT DEFAULT 0,
+        dire_deaths SMALLINT DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(match_id, start_s)
+      )`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_match_fights_match ON match_fights(match_id, start_s)`);
     // Per-player first-purchase timestamps for major items: { itemName: seconds }.
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS item_first_times JSONB`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
@@ -3397,6 +3415,77 @@ async function updatePlayerStats(matchId, players) {
   }
 }
 
+// Task #411 — match_fights CRUD helpers (replay viewer v3 team-fight overlay).
+async function getMatchFights(matchId) {
+  const r = await getPool().query(
+    `SELECT start_s, end_s, heroes, winner, radiant_deaths, dire_deaths
+       FROM match_fights WHERE match_id = $1 ORDER BY start_s ASC`,
+    [String(matchId)]
+  );
+  return r.rows.map(row => ({
+    start_s: row.start_s,
+    end_s: row.end_s,
+    heroes: Array.isArray(row.heroes) ? row.heroes : (row.heroes ? JSON.parse(row.heroes) : []),
+    winner: row.winner,
+    radiant_deaths: row.radiant_deaths || 0,
+    dire_deaths: row.dire_deaths || 0,
+  }));
+}
+
+async function replaceMatchFights(matchId, fights) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM match_fights WHERE match_id = $1`, [String(matchId)]);
+    if (Array.isArray(fights) && fights.length > 0) {
+      const COLS = 7;
+      const ph = [];
+      const params = [];
+      for (let i = 0; i < fights.length; i++) {
+        const f = fights[i];
+        const b = i * COLS;
+        ph.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}::jsonb, $${b + 5}, $${b + 6}, $${b + 7})`);
+        params.push(
+          String(matchId),
+          f.start_s | 0,
+          f.end_s | 0,
+          JSON.stringify(Array.isArray(f.heroes) ? f.heroes : []),
+          f.winner || null,
+          f.radiant_deaths | 0,
+          f.dire_deaths | 0,
+        );
+      }
+      await client.query(
+        `INSERT INTO match_fights (match_id, start_s, end_s, heroes, winner, radiant_deaths, dire_deaths)
+         VALUES ${ph.join(',')}
+         ON CONFLICT (match_id, start_s) DO NOTHING`,
+        params
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function listMatchesMissingFights(limit = 200) {
+  const r = await getPool().query(
+    `SELECT m.match_id
+       FROM matches m
+       LEFT JOIN match_fights mf ON mf.match_id = m.match_id
+      WHERE m.game_timeline IS NOT NULL
+        AND mf.id IS NULL
+      ORDER BY m.date DESC
+      LIMIT $1`,
+    [Math.max(1, Math.min(2000, limit | 0))]
+  );
+  return r.rows.map(row => row.match_id);
+}
+
 async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, seasonId, replayProvenance = null) {
   const p = getPool();
   const client = await p.connect();
@@ -3632,6 +3721,18 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
 
     await client.query('COMMIT');
     console.log(`[DB] Recorded match ${matchStats.matchId}`);
+
+    // Task #411 — persist auto-detected team fights (best-effort, post-commit).
+    // Detection happens in `_aggregateStats`; persistence is decoupled so a
+    // failure here doesn't roll back the recorded match.
+    if (Array.isArray(matchStats.fights) && matchStats.fights.length > 0) {
+      try {
+        await replaceMatchFights(matchStats.matchId, matchStats.fights);
+        console.log(`[DB] Recorded ${matchStats.fights.length} team fights for ${matchStats.matchId}`);
+      } catch (e) {
+        console.warn(`[DB] Fight persistence failed for ${matchStats.matchId}: ${e.message}`);
+      }
+    }
 
     // PERF — compute and persist Positive Impact Scores (best-effort, post-commit)
     try {
@@ -19352,6 +19453,10 @@ module.exports = {
   listWeeklySummaryRecipients,
   getWeeklyPlayerSummary,
   recordMatch,
+  // Task #411 — match_fights helpers (replay viewer v3 team-fight overlay).
+  getMatchFights,
+  replaceMatchFights,
+  listMatchesMissingFights,
   isMatchRecorded,
   isFileHashRecorded,
   getMatches,

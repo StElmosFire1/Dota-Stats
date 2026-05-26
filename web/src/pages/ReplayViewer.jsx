@@ -4,6 +4,16 @@ import { getReplayTimeline, getVodReview, addVodNote, deleteVodNote } from '../a
 import { getHeroName, getItemImageUrl } from '../heroNames';
 import { useSteamAuth } from '../context/SteamAuthContext';
 
+// Task #411 — Replay viewer v3.
+// New surfaces layered onto the v1 viewer:
+//   * Team-gold delta sparkline above the timeline (synced to scrub cursor).
+//   * Hover-to-show inventory tooltip on hero markers at the current t.
+//   * Auto-detected team-fight chips along the scrub bar (jump-to-start).
+//   * ?t=START&end=END&focus=heroId share-clip params + "Share clip" button.
+//     When `end` is set, playback halts at that boundary so the clip loops
+//     naturally inside the shared window. `focus=heroId` rings the matching
+//     hero on the minimap so the viewer's attention lands there first.
+
 // Task #315 — Pro-gated 2D minimap replay viewer.
 // • Hero positions sampled every 10s, linearly interpolated for smooth playback.
 // • Ward / smoke / objective overlays toggleable per layer.
@@ -81,6 +91,19 @@ export default function ReplayViewer() {
   const qp = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const vodReviewId = qp.get('vodReview');
   const initialT = parseFloat(qp.get('t') || '0') || 0;
+  // Task #411 — share-clip params. `clipEnd` is null when only `?t=` is set,
+  // in which case we autoplay from t without an upper bound. `focusHeroId`
+  // highlights the matching hero on the minimap with a gold ring + the
+  // sparkline's hover tooltip pre-selects it.
+  const clipEnd = useMemo(() => {
+    const v = parseFloat(qp.get('end') || '');
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }, [qp]);
+  const focusHeroId = useMemo(() => {
+    const v = parseInt(qp.get('focus') || '', 10);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }, [qp]);
+  const autoplayFromUrl = useMemo(() => qp.has('t') || qp.has('end'), [qp]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -88,6 +111,9 @@ export default function ReplayViewer() {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(4);
   const [layers, setLayers] = useState({ wards: true, smoke: false, objectives: true });
+  const [hoveredSlot, setHoveredSlot] = useState(null); // hero hovered on minimap
+  const [hoverPx, setHoverPx] = useState(null);         // {x,y} in canvas px for tooltip anchor
+  const [shareMsg, setShareMsg] = useState('');
   const [vodReview, setVodReview] = useState(null);
   const [vodNotes, setVodNotes] = useState([]);
   const [vodIsCoach, setVodIsCoach] = useState(false);
@@ -159,14 +185,29 @@ export default function ReplayViewer() {
       lastFrameRef.current = now;
       setT((prev) => {
         const next = prev + dt * speed;
-        if (next >= (data.duration || 0)) { setPlaying(false); return data.duration || 0; }
+        const hardEnd = data.duration || 0;
+        // Task #411 — share-clip end boundary. When `?end=` is present and
+        // playback crosses it, pause so the clip loops the intended window.
+        if (clipEnd != null && next >= clipEnd) { setPlaying(false); return clipEnd; }
+        if (next >= hardEnd) { setPlaying(false); return hardEnd; }
         return next;
       });
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [playing, speed, data]);
+  }, [playing, speed, data, clipEnd]);
+
+  // Task #411 — autoplay when the URL is a share-clip link. Fires once after
+  // timeline data lands so the cursor is anchored at `?t=` before play starts.
+  const autoplayedRef = useRef(false);
+  useEffect(() => {
+    if (!data || autoplayedRef.current) return;
+    if (!autoplayFromUrl) return;
+    autoplayedRef.current = true;
+    setT(Math.max(0, Math.min(data.duration || 0, initialT)));
+    setPlaying(true);
+  }, [data, autoplayFromUrl, initialT]);
 
   // Active wards at time t: placed at or before t, and either no death info
   // or destruction time after t. Ward lifetime is ~6 min for obs, 7 for sen
@@ -229,11 +270,28 @@ export default function ReplayViewer() {
         ctx.stroke();
       }
     }
-    // Hero markers.
+    // Hero markers. Task #411 — ring the `focusHeroId` hero in gold and add
+    // a hover halo so the hover-tooltip anchor is unambiguous.
     for (const p of data.players) {
       const pos = interpAt(p.positions, t);
       if (!pos) continue;
       const { px, py } = worldToPixel(pos.x, pos.y, size);
+      const isFocus = focusHeroId != null && p.heroId === focusHeroId;
+      const isHover = hoveredSlot === p.slot;
+      if (isFocus) {
+        ctx.beginPath();
+        ctx.arc(px, py, 11, 0, Math.PI * 2);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+      if (isHover) {
+        ctx.beginPath();
+        ctx.arc(px, py, 13, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
       ctx.beginPath();
       ctx.arc(px, py, 7, 0, Math.PI * 2);
       ctx.fillStyle = p.team === 'radiant' ? '#22c55e' : '#ef4444';
@@ -247,7 +305,40 @@ export default function ReplayViewer() {
       ctx.textBaseline = 'middle';
       ctx.fillText(String(p.slot + 1), px, py);
     }
-  }, [data, t, layers, activeWardsAt]);
+  }, [data, t, layers, activeWardsAt, focusHeroId, hoveredSlot]);
+
+  // Task #411 — minimap hover detection. Walk all hero markers, find the
+  // closest one within HIT_RADIUS px of the cursor; null when the cursor
+  // isn't over any hero. The tooltip layer reads `hoveredSlot` + `hoverPx`.
+  const onCanvasMove = useCallback((e) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !data) return;
+    const rect = canvas.getBoundingClientRect();
+    // Canvas internal size != displayed size; scale the cursor accordingly.
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const cx = (e.clientX - rect.left) * scaleX;
+    const cy = (e.clientY - rect.top) * scaleY;
+    const HIT_RADIUS = 12;
+    let best = null; let bestDist = HIT_RADIUS * HIT_RADIUS;
+    for (const p of data.players) {
+      const pos = interpAt(p.positions, t);
+      if (!pos) continue;
+      const { px, py } = worldToPixel(pos.x, pos.y, canvas.width);
+      const dx = px - cx; const dy = py - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestDist) { bestDist = d2; best = { slot: p.slot, px, py }; }
+    }
+    if (best) {
+      setHoveredSlot(best.slot);
+      // Translate canvas px back to displayed px for the absolute-positioned tooltip.
+      setHoverPx({ x: best.px / scaleX, y: best.py / scaleY });
+    } else if (hoveredSlot != null) {
+      setHoveredSlot(null);
+      setHoverPx(null);
+    }
+  }, [data, t, hoveredSlot]);
+  const onCanvasLeave = useCallback(() => { setHoveredSlot(null); setHoverPx(null); }, []);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -298,6 +389,40 @@ export default function ReplayViewer() {
   if (!data) return null;
   const duration = data.duration || 0;
   const nwLead = (sidePanel?.radNw || 0) - (sidePanel?.direNw || 0);
+  // Task #411 — hovered player + inventory at `t`. Item snapshot is the
+  // last 9 purchases up to `t` (6 inventory + 3 backpack, latest purchases
+  // assumed in slots first — a reasonable proxy since real inventory state
+  // isn't sampled).
+  const hoveredPlayer = (hoveredSlot != null && data) ? data.players.find(p => p.slot === hoveredSlot) : null;
+  const hoveredItems = hoveredPlayer
+    ? (hoveredPlayer.purchases || []).filter(pu => pu.t <= t).slice(-9)
+    : [];
+
+  // Task #411 — Share-clip helper. Copies the current URL with `?t=` (and
+  // optional `?end=` + `?focus=`) to the clipboard so any viewer landing on
+  // the link autoplays the same window.
+  async function handleShareClip() {
+    try {
+      const focusFromHover = hoveredPlayer ? hoveredPlayer.heroId : (focusHeroId || null);
+      const params = new URLSearchParams();
+      params.set('t', String(Math.max(0, Math.floor(t))));
+      const end = Math.floor(Math.min(duration, t + 15));
+      if (end > Math.floor(t)) params.set('end', String(end));
+      if (focusFromHover) params.set('focus', String(focusFromHover));
+      const url = `${window.location.origin}/replay/${encodeURIComponent(matchId)}?${params.toString()}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+        setShareMsg('Link copied to clipboard');
+      } else {
+        // Fallback for older browsers — surface the URL inline so the user
+        // can copy manually rather than failing silently.
+        setShareMsg(url);
+      }
+      setTimeout(() => setShareMsg(''), 4000);
+    } catch (e) {
+      setShareMsg(`Copy failed: ${e.message}`);
+    }
+  }
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto', padding: 20 }}>
@@ -310,13 +435,26 @@ export default function ReplayViewer() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 16 }}>
         <div>
-          <canvas
-            ref={canvasRef}
-            width={640}
-            height={640}
-            style={{ width: '100%', maxWidth: 640, border: '1px solid var(--border, #334155)', borderRadius: 8, background: '#0d1424' }}
-            aria-label="Match minimap with player position markers"
-          />
+          <div style={{ position: 'relative', maxWidth: 640 }}>
+            <canvas
+              ref={canvasRef}
+              width={640}
+              height={640}
+              onMouseMove={onCanvasMove}
+              onMouseLeave={onCanvasLeave}
+              style={{ width: '100%', maxWidth: 640, border: '1px solid var(--border, #334155)', borderRadius: 8, background: '#0d1424', display: 'block', cursor: 'crosshair' }}
+              aria-label="Match minimap with player position markers"
+            />
+            {hoveredPlayer && hoverPx && (
+              <HeroItemTooltip
+                player={hoveredPlayer}
+                items={hoveredItems}
+                t={t}
+                anchorX={hoverPx.x}
+                anchorY={hoverPx.y}
+              />
+            )}
+          </div>
           <LayerToggles layers={layers} setLayers={setLayers} />
           {vodReviewId && vodNotes.length > 0 && (
             <VodNoteMarkerStrip
@@ -325,6 +463,10 @@ export default function ReplayViewer() {
               onSeek={(time) => { setPlaying(false); setT(time); }}
             />
           )}
+          {/* Task #411 — team gold delta sparkline + fight chips, rendered above
+              the scrub bar so both share the same x-axis as the timeline below. */}
+          <GoldDeltaSparkline data={data} t={t} clipEnd={clipEnd} onScrub={(time) => { setPlaying(false); setT(time); }} />
+          <FightChips fights={data.fights || []} duration={duration} t={t} onJump={(time) => { setPlaying(false); setT(time); }} />
           <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -367,6 +509,24 @@ export default function ReplayViewer() {
                 </button>
               ))}
             </div>
+            {/* Task #411 — Share clip. Copies a ?t/?end/?focus link from the
+                current scrub position (with a 15s default window) so the
+                recipient autoplays the same moment. */}
+            <button
+              type="button"
+              onClick={handleShareClip}
+              aria-label={`Share clip starting at ${formatTime(t)}${hoveredPlayer ? ` focused on ${getHeroName ? getHeroName(hoveredPlayer.heroId) : 'hovered hero'}` : ''}`}
+              style={{
+                padding: '6px 12px', borderRadius: 6, fontWeight: 700, cursor: 'pointer',
+                background: 'transparent', color: 'var(--amber, #f59e0b)',
+                border: '1px solid var(--amber, #f59e0b)', fontSize: 12,
+              }}
+            >
+              🔗 Share clip
+            </button>
+            {shareMsg && (
+              <span role="status" style={{ fontSize: 11, color: 'var(--text-muted, #64748b)' }}>{shareMsg}</span>
+            )}
           </div>
           <NetWorthBar lead={nwLead} />
           <GoldXpGraph data={data} t={t} onScrub={(time) => { setPlaying(false); setT(time); }} />
@@ -701,6 +861,220 @@ function VodAnnotationPanel({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Task #411 — hover tooltip showing the hovered hero's current items at `t`.
+// Positioned absolutely over the canvas using anchor coords supplied by the
+// parent's mouse handler. Inventory = last 6 purchases up to `t`, backpack
+// = next 3 (when there are >= 7 items in the slice). Best-effort: the parser
+// only stores purchase times, not slot occupancy, so this is an approximation.
+function HeroItemTooltip({ player, items, t, anchorX, anchorY }) {
+  const inventory = items.slice(-6);
+  const backpack  = items.length > 6 ? items.slice(0, items.length - 6).slice(-3) : [];
+  // Clamp to keep the tooltip inside the canvas wrapper for small viewports.
+  const offsetX = anchorX > 320 ? -200 : 16;
+  const left = Math.max(4, anchorX + offsetX);
+  const top  = Math.max(4, anchorY - 60);
+  return (
+    <div
+      role="tooltip"
+      style={{
+        position: 'absolute', left, top, zIndex: 5, pointerEvents: 'none',
+        background: 'rgba(13,20,36,0.95)', color: 'var(--text, #e2e8f0)',
+        border: `1px solid ${player.team === 'radiant' ? '#22c55e' : '#ef4444'}`,
+        borderRadius: 6, padding: '6px 8px', minWidth: 180, fontSize: 11,
+        boxShadow: '0 6px 18px rgba(0,0,0,0.6)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <strong style={{ color: player.team === 'radiant' ? '#22c55e' : '#ef4444' }}>
+          {(getHeroName && getHeroName(player.heroId)) || `Hero ${player.heroId}`}
+        </strong>
+        <span style={{ color: 'var(--text-muted, #64748b)' }}>{formatTime(t)}</span>
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text-muted, #64748b)', marginBottom: 3 }}>
+        Slot {player.slot + 1}{player.name ? ` · ${player.name}` : ''}
+      </div>
+      {inventory.length === 0 ? (
+        <div style={{ fontStyle: 'italic', color: 'var(--text-muted, #64748b)' }}>No items yet</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 10, color: 'var(--text-muted, #64748b)', marginTop: 2 }}>Inventory</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 22px)', gap: 2, marginTop: 2 }}>
+            {inventory.map((pu, i) => (
+              <img
+                key={`inv-${i}`}
+                src={getItemImageUrl ? getItemImageUrl(pu.item) : ''}
+                alt={shortItemName(pu.item)}
+                title={`${shortItemName(pu.item)} @ ${formatTime(pu.t)}`}
+                style={{ width: 22, height: 16, objectFit: 'cover', borderRadius: 2, background: '#0d1424' }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+      {backpack.length > 0 && (
+        <>
+          <div style={{ fontSize: 10, color: 'var(--text-muted, #64748b)', marginTop: 4 }}>Backpack</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 22px)', gap: 2, marginTop: 2 }}>
+            {backpack.map((pu, i) => (
+              <img
+                key={`bp-${i}`}
+                src={getItemImageUrl ? getItemImageUrl(pu.item) : ''}
+                alt={shortItemName(pu.item)}
+                title={`${shortItemName(pu.item)} @ ${formatTime(pu.t)}`}
+                style={{ width: 22, height: 16, objectFit: 'cover', borderRadius: 2, background: '#0d1424', opacity: 0.65 }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Task #411 — team net-worth delta sparkline. Reuses the per-minute samples
+// already loaded for the GoldXpGraph but plots (rad - dire) as a single
+// signed curve so a single glance shows momentum + lead changes.
+function GoldDeltaSparkline({ data, t, clipEnd, onScrub }) {
+  const ref = useRef(null);
+  const W = 640; const H = 36; const PAD_X = 6;
+  const duration = data.duration || 1;
+  const points = useMemo(() => {
+    const samplesByT = new Map();
+    for (const p of data.players) {
+      for (const s of (p.samples || [])) {
+        const key = Math.round(s.t / 60) * 60;
+        if (!samplesByT.has(key)) samplesByT.set(key, { rad: 0, dire: 0 });
+        const bucket = samplesByT.get(key);
+        if (p.team === 'radiant') bucket.rad += s.nw || 0;
+        else bucket.dire += s.nw || 0;
+      }
+    }
+    return [...samplesByT.entries()].sort((a, b) => a[0] - b[0]).map(([tt, v]) => ({ t: tt, d: v.rad - v.dire }));
+  }, [data]);
+  const maxAbs = useMemo(() => {
+    let m = 1000;
+    for (const p of points) m = Math.max(m, Math.abs(p.d));
+    return m;
+  }, [points]);
+  const xAt = (time) => PAD_X + (time / duration) * (W - 2 * PAD_X);
+  const yAt = (v) => (H / 2) - (v / maxAbs) * (H / 2 - 2);
+  const path = points.length === 0
+    ? ''
+    : points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xAt(p.t).toFixed(1)},${yAt(p.d).toFixed(1)}`).join(' ');
+  // Build a filled area so the sparkline reads as a "river" of lead.
+  const area = points.length === 0
+    ? ''
+    : `${path} L${xAt(points[points.length - 1].t).toFixed(1)},${(H / 2).toFixed(1)} L${xAt(points[0].t).toFixed(1)},${(H / 2).toFixed(1)} Z`;
+
+  const handleClick = (e) => {
+    const rect = ref.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, (x - PAD_X) / (W - 2 * PAD_X)));
+    onScrub(ratio * duration);
+  };
+
+  // Current delta at the scrub cursor — surfaced as a tiny label so the
+  // sparkline + scrub cursor read together at a glance.
+  const cursorDelta = useMemo(() => {
+    if (points.length === 0) return 0;
+    let best = points[0];
+    for (const p of points) { if (p.t <= t) best = p; else break; }
+    return best.d;
+  }, [points, t]);
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 11, color: 'var(--text-muted, #64748b)' }}>
+        <span>Team gold delta · click to scrub</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: cursorDelta >= 0 ? '#22c55e' : '#ef4444' }}>
+          {cursorDelta >= 0 ? 'Rad +' : 'Dire +'}{Math.round(Math.abs(cursorDelta) / 100) / 10}k
+        </span>
+      </div>
+      <svg
+        ref={ref}
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        style={{ marginTop: 4, border: '1px solid var(--border, #334155)', borderRadius: 4, background: 'rgba(13,20,36,0.5)', cursor: 'crosshair', display: 'block' }}
+        onClick={handleClick}
+        role="img"
+        aria-label={`Team gold delta sparkline. Current delta ${cursorDelta >= 0 ? 'radiant +' : 'dire +'}${Math.round(Math.abs(cursorDelta))}.`}
+      >
+        {/* zero line */}
+        <line x1={PAD_X} x2={W - PAD_X} y1={H / 2} y2={H / 2} stroke="rgba(148,163,184,0.25)" strokeDasharray="2 3" />
+        {area && <path d={area} fill={cursorDelta >= 0 ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)'} />}
+        {path && <path d={path} stroke={cursorDelta >= 0 ? '#22c55e' : '#ef4444'} strokeWidth="1.5" fill="none" />}
+        {/* clip window highlight */}
+        {clipEnd != null && (
+          <rect x={xAt(Math.max(0, t - 0))} y={1} width={Math.max(1, xAt(clipEnd) - xAt(t))} height={H - 2}
+            fill="rgba(245,158,11,0.18)" stroke="rgba(245,158,11,0.6)" strokeDasharray="2 2" pointerEvents="none" />
+        )}
+        {/* scrub cursor */}
+        <line x1={xAt(t)} x2={xAt(t)} y1={1} y2={H - 1} stroke="var(--amber, #f59e0b)" strokeWidth="1" />
+      </svg>
+    </div>
+  );
+}
+
+// Task #411 — fight chips strip. One pill per detected team fight, sized
+// proportionally to the fight's duration; clicking jumps the cursor to the
+// fight's start. The chip's border colour encodes the winner so a glance
+// across the bar reads as a series of green/red bumps in the brawl history.
+function FightChips({ fights, duration, t, onJump }) {
+  if (!fights || fights.length === 0) {
+    return (
+      <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted, #64748b)', fontStyle: 'italic' }}>
+        No auto-detected team fights for this match.
+      </div>
+    );
+  }
+  const sorted = [...fights].sort((a, b) => a.start_s - b.start_s);
+  const winnerColor = (w) => w === 'radiant' ? '#22c55e' : w === 'dire' ? '#ef4444' : '#94a3b8';
+  const cap = Math.max(1, duration);
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginBottom: 4 }}>
+        Team fights · {sorted.length} detected · click to jump
+      </div>
+      <div style={{
+        position: 'relative', height: 18,
+        background: 'rgba(148,163,184,0.08)',
+        border: '1px solid var(--border, #334155)', borderRadius: 4,
+      }}>
+        {sorted.map((f, i) => {
+          const left = (f.start_s / cap) * 100;
+          const width = Math.max(0.6, ((f.end_s - f.start_s) / cap) * 100);
+          const active = t >= f.start_s && t <= f.end_s;
+          return (
+            <button
+              key={`${f.start_s}-${i}`}
+              type="button"
+              onClick={() => onJump(f.start_s)}
+              aria-label={`Jump to team fight at ${formatTime(f.start_s)} — ${f.heroes.length} heroes, ${f.winner || 'draw'} winner, ${f.radiant_deaths} radiant deaths, ${f.dire_deaths} dire deaths`}
+              title={`${formatTime(f.start_s)}–${formatTime(f.end_s)} · ${f.heroes.length} heroes · ${(f.winner || 'draw').toUpperCase()} (R${f.radiant_deaths}/D${f.dire_deaths})`}
+              style={{
+                position: 'absolute', top: 1, bottom: 1,
+                left: `${left}%`, width: `${width}%`, minWidth: 8,
+                background: active ? winnerColor(f.winner) : 'rgba(13,20,36,0.5)',
+                border: `1px solid ${winnerColor(f.winner)}`,
+                borderRadius: 3, cursor: 'pointer', padding: 0,
+                opacity: active ? 0.9 : 0.7,
+              }}
+            />
+          );
+        })}
+        {/* scrub cursor */}
+        <div style={{
+          position: 'absolute', top: -2, bottom: -2,
+          left: `calc(${(t / cap) * 100}% - 1px)`, width: 2,
+          background: 'var(--amber, #f59e0b)', pointerEvents: 'none',
+        }} />
+      </div>
     </div>
   );
 }

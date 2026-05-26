@@ -2490,6 +2490,29 @@ class ReplayParser {
     // Stash for downstream return-blob assembly.
     this._derivedTask377 = { firstBloodChain, snowballScore, comebackFactor, throneDpm };
 
+    // Task #411 — auto-detected team fights for the replay viewer v3.
+    // Cluster hero-kill events temporally + spatially; persisted to the new
+    // `match_fights` table by the recordMatch pipeline. Detection runs over
+    // a synthetic timeline-shaped input so the same code path can be reused
+    // for the admin backfill route (which replays against `game_timeline`).
+    try {
+      const { detectFights } = require('./fightDetector');
+      const fightInputPlayers = playerList.map(p => ({
+        slot: p.slot,
+        team: p.team,
+        positions: allPositions[p.slot] || [],
+      }));
+      const detectedFights = detectFights({
+        players: fightInputPlayers,
+        events: gameEvents,
+      });
+      this._derivedTask411 = { fights: detectedFights };
+      console.log(`[Replay] Detected ${detectedFights.length} team fights for ${matchId}`);
+    } catch (e) {
+      console.warn(`[Replay] Fight detection failed for ${matchId}: ${e.message}`);
+      this._derivedTask411 = { fights: [] };
+    }
+
     // --- Smoke success rate ---
     // For each player's smoke activations, check if a same-team kill happens within 60s
     const smokeSuccesses = {};
@@ -2753,6 +2776,10 @@ class ReplayParser {
           };
         }),
         events: gameEvents.sort((a, b) => a.t - b.t),
+        // Task #411 — embed the auto-detected team fights alongside events so
+        // the replay-timeline endpoint can hydrate them straight from the
+        // stored timeline JSON even when match_fights hasn't been backfilled.
+        fights: this._derivedTask411?.fights || [],
         // Task #376 — surface previously-ignored parser events as first-class
         // panels on the match page. These all already existed inside
         // _aggregateStats but never made it into the persisted blob.

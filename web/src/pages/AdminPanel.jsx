@@ -939,6 +939,11 @@ function ReplayManager({ superuserKey }) {
   const [reparseAllLoading, setReparseAllLoading] = useState(false);
   const [setPermanentLoading, setSetPermanentLoading] = useState(false);
   const [setPermanentMsg, setSetPermanentMsg] = useState('');
+  // Task #411 — backfill team-fight detection for matches that have a stored
+  // game_timeline but no match_fights rows yet (i.e. matches parsed before
+  // the v3 viewer landed). Mirrors the reparse-all polling shape.
+  const [fightsBackfillLoading, setFightsBackfillLoading] = useState(false);
+  const [fightsBackfillStatus, setFightsBackfillStatus] = useState(null);
   const authHeader = { 'x-superuser-key': superuserKey };
 
   function load() {
@@ -1012,6 +1017,30 @@ function ReplayManager({ superuserKey }) {
       .finally(() => setReparseAllLoading(false));
   }
 
+  async function handleBackfillFights() {
+    if (!window.confirm('Re-detect team fights for every match with a stored timeline but no fights yet?\n\nReplays in JSON, no .dem files needed — runs in the background.')) return;
+    setFightsBackfillLoading(true);
+    setFightsBackfillStatus(null);
+    try {
+      const { backfillReplayFights, getReplayFightsBackfillStatus } = await import('../api');
+      const d = await backfillReplayFights(superuserKey, { limit: 2000 });
+      setFightsBackfillStatus(d);
+      if (d.queued > 0 || d.running) {
+        const poll = setInterval(async () => {
+          try {
+            const s = await getReplayFightsBackfillStatus(superuserKey);
+            setFightsBackfillStatus(s);
+            if (!s.running && s.status?.phase === 'complete') clearInterval(poll);
+          } catch { clearInterval(poll); }
+        }, 3000);
+      }
+    } catch (e) {
+      setFightsBackfillStatus({ error: e.message });
+    } finally {
+      setFightsBackfillLoading(false);
+    }
+  }
+
   function handleSetAllPermanent() {
     if (!window.confirm('Set ALL stored replays to never expire?')) return;
     setSetPermanentLoading(true);
@@ -1055,7 +1084,42 @@ function ReplayManager({ superuserKey }) {
           onClick={handleReparseAll} disabled={reparseAllLoading}>
           🔄 Re-parse All
         </button>
+        {/* Task #411 — fights backfill for the replay viewer v3 overlay. */}
+        <button
+          type="button"
+          className="btn"
+          style={{ fontSize: '0.8rem', padding: '3px 10px', color: '#f59e0b', borderColor: '#f59e0b' }}
+          onClick={handleBackfillFights}
+          disabled={fightsBackfillLoading}
+          aria-label="Backfill auto-detected team fights for stored replays"
+        >
+          {fightsBackfillLoading ? '⏳ Queuing…' : '⚔️ Backfill fights'}
+        </button>
       </div>
+      {fightsBackfillStatus && (
+        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.82rem' }}>
+          {fightsBackfillStatus.error ? (
+            <span style={{ color: '#f87171' }}>Error: {fightsBackfillStatus.error}</span>
+          ) : fightsBackfillStatus.status ? (
+            <span>
+              Fights backfill: {fightsBackfillStatus.status.phase === 'complete' ? '✓ Complete' : '⏳ Running'} —&nbsp;
+              {fightsBackfillStatus.status.done}/{fightsBackfillStatus.status.total} done,&nbsp;
+              {fightsBackfillStatus.status.failed} failed,&nbsp;
+              {fightsBackfillStatus.status.detected} fights detected,&nbsp;
+              {fightsBackfillStatus.status.remaining} remaining
+              {fightsBackfillStatus.status.errors?.length > 0 && (
+                <div style={{ color: '#f87171', marginTop: 4 }}>
+                  {fightsBackfillStatus.status.errors.slice(0, 5).map((e, i) => (
+                    <div key={i}>{e.matchId}: {e.error}</div>
+                  ))}
+                </div>
+              )}
+            </span>
+          ) : (
+            <span>{fightsBackfillStatus.message}</span>
+          )}
+        </div>
+      )}
       {reparseAllStatus && (
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.82rem' }}>
           {reparseAllStatus.error ? (

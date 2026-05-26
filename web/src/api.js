@@ -1036,6 +1036,22 @@ export async function getReplayTimeline(matchId) {
   return fetchJson(`/matches/${encodeURIComponent(String(matchId))}/replay-timeline`);
 }
 
+// Task #411 — admin: re-detect team fights for every match with a stored
+// game_timeline that has no match_fights rows yet. Backfill runs in the
+// background; poll `getReplayFightsBackfillStatus` until phase === 'complete'.
+export async function backfillReplayFights(superuserKey, opts = {}) {
+  return fetchJson(`/admin/replays/backfill-fights`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ limit: opts.limit || 2000 }),
+  });
+}
+export async function getReplayFightsBackfillStatus(superuserKey) {
+  return fetchJson(`/admin/replays/backfill-fights-status`, {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+}
+
 export async function getDuplicateMatches(adminKey) {
   return fetchJson(`/admin/duplicate-matches`, {
     headers: { 'x-admin-key': adminKey },
