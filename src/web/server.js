@@ -95,6 +95,16 @@ async function _fanOutExpoPush(accountId, { title, body, url, data }) {
   }));
   return _sendExpoPush(messages);
 }
+
+// Task #407 — notification preference centre v2. The shared helper lives
+// in src/notify.js to avoid the server.js ↔ bot.js require cycle; here we
+// just wire up the Expo fan-out so push deliveries reach mobile too.
+const {
+  notify,
+  verifyUnsubscribeToken,
+  setExpoFanOut,
+} = require('../notify');
+setExpoFanOut(_fanOutExpoPush);
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
 const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/groqService');
@@ -2649,6 +2659,47 @@ function createServer(startupStatus = {}) {
       console.warn('[match-og] unfurl failed:', err.message);
       return next();
     }
+  });
+
+  // Task #407 — one-tap unsubscribe endpoint. The service worker exposes
+  // an "Unsubscribe" action on every push notification; tapping it lands
+  // here with the signed token embedded in the original payload. We flip
+  // the matching (event, channel) pref off and render a tiny HTML
+  // confirmation so the link is also forwardable as an email/share link.
+  app.get('/unsubscribe', async (req, res) => {
+    const token = String(req.query.t || '');
+    const claim = verifyUnsubscribeToken(token);
+    if (!claim) {
+      res.status(400).set('Content-Type', 'text/html').send(
+        '<!doctype html><meta charset=utf-8><title>Unsubscribe</title>' +
+        '<style>body{font-family:system-ui,sans-serif;max-width:520px;margin:40px auto;padding:0 16px;line-height:1.5}</style>' +
+        '<h1>Link expired</h1><p>This unsubscribe link is invalid or has expired. Open ' +
+        '<a href="/me/notifications">/me/notifications</a> to manage your preferences.</p>'
+      );
+      return;
+    }
+    try {
+      await db.setNotificationEventPref(claim.accountId, claim.eventKey, claim.channel, false);
+    } catch (e) {
+      res.status(500).set('Content-Type', 'text/html').send(
+        '<!doctype html><meta charset=utf-8><title>Unsubscribe</title>' +
+        '<style>body{font-family:system-ui,sans-serif;max-width:520px;margin:40px auto;padding:0 16px;line-height:1.5}</style>' +
+        '<h1>Could not unsubscribe</h1><p>Sorry, something went wrong. Please open ' +
+        '<a href="/me/notifications">/me/notifications</a> to update your preferences manually.</p>'
+      );
+      return;
+    }
+    const ev = db.eventDef(claim.eventKey);
+    const evLabel = ev ? ev.label : claim.eventKey;
+    const chLabel = claim.channel === 'push' ? 'web push' : 'Discord DM';
+    res.set('Content-Type', 'text/html').send(
+      '<!doctype html><meta charset=utf-8><title>Unsubscribed</title>' +
+      '<style>body{font-family:system-ui,sans-serif;max-width:520px;margin:40px auto;padding:0 16px;line-height:1.5}' +
+      '.btn{display:inline-block;margin-top:12px;padding:8px 14px;border-radius:6px;background:#0d1424;color:#f5efe2;text-decoration:none}</style>' +
+      `<h1>You're unsubscribed</h1><p>You will no longer receive the <strong>${evLabel}</strong> notification via <strong>${chLabel}</strong>.</p>` +
+      '<p>Changed your mind? Re-enable it any time from <a href="/me/notifications">/me/notifications</a>.</p>' +
+      '<a class="btn" href="/me/notifications">Manage notifications</a>'
+    );
   });
 
   const staticPath = path.join(__dirname, '../../web/dist');
@@ -10469,6 +10520,47 @@ NOTES
     }
   });
 
+  // Task #407 — notification preference centre v2. Per-event × per-channel
+  // matrix. Backed by `user_notification_prefs`. Reads always return every
+  // catalogued event so the UI can render the full grid even on first visit.
+  router.get('/me/notification-events', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const events = await db.getNotificationEventMatrix(accountId);
+      res.json({ events, channels: db.NOTIFICATION_CHANNELS });
+    } catch (err) {
+      console.error('[API] me/notification-events GET:', err.message);
+      res.status(500).json({ error: 'Failed to load notification events' });
+    }
+  });
+
+  router.post('/me/notification-events', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const updates = req.body?.updates;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return res.status(400).json({ error: 'updates must be a non-empty array of {event_key, channel, enabled}' });
+      }
+      for (const u of updates) {
+        if (!u || typeof u.event_key !== 'string' || typeof u.channel !== 'string' || typeof u.enabled !== 'boolean') {
+          return res.status(400).json({ error: 'each update must be {event_key: string, channel: string, enabled: boolean}' });
+        }
+        try {
+          await db.setNotificationEventPref(accountId, u.event_key, u.channel, u.enabled);
+        } catch (e) {
+          return res.status(400).json({ error: e.message });
+        }
+      }
+      const events = await db.getNotificationEventMatrix(accountId);
+      res.json({ ok: true, events });
+    } catch (err) {
+      console.error('[API] me/notification-events POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/me/notifications', express.json(), async (req, res) => {
     try {
       const accountId = req.session?.accountId;
@@ -13550,44 +13642,30 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const title = 'Inhouse match starting!';
       const body = 'Your inhouse lobby is in the accept phase — open the app to accept.';
       const url = '/inhouse';
-      const payload = JSON.stringify({ title, body, url });
+      // Task #407 — single send-site via notify(). The v2 helper handles
+      // the lobby_invite/push pref check (with `legacyPush:
+      // match_imminent_push` fall-through so existing opt-outs continue
+      // to mute), fan-out to web push + Expo, and embeds the signed
+      // unsubscribeUrl that the service worker surfaces as a one-tap
+      // action. webReady is no longer relevant — notify() consults its
+      // own lazy VAPID setup and no-ops cleanly when keys are missing.
+      // `notify().push.sent` aggregates web-push + Expo deliveries; the
+      // `expo_sent` field is preserved in the response shape (now 0)
+      // for backward-compat with any caller that reads it separately.
       let sent = 0;
-      let expoSent = 0;
       for (const player of players) {
         const aid = Number(player.account_id);
         if (!aid) continue;
         try {
-          const enabled = await db.isNotificationEnabled(aid, 'match_imminent_push');
-          if (!enabled) continue;
-        } catch (_) { /* default ON via NOTIFICATION_CATEGORIES */ }
-        if (webReady) {
-          try {
-            const subs = await db.getPushSubscriptionsForAccount(aid);
-            for (const s of subs) {
-              try {
-                await webpush.sendNotification(
-                  { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-                  payload,
-                );
-                await db.touchPushSubscription(s.endpoint);
-                sent++;
-              } catch (err) {
-                if (err && (err.statusCode === 404 || err.statusCode === 410)) {
-                  await db.removePushSubscriptionByEndpoint(s.endpoint).catch(() => {});
-                }
-              }
-            }
-          } catch (_) {}
+          const r = await notify(aid, 'lobby_invite', {
+            push: { title, body, url, data: { kind: 'inhouse_imminent', session_id: sessionId } },
+          });
+          sent += r.push?.sent || 0;
+        } catch (e) {
+          console.warn('[API] imminent-push notify failed:', e.message);
         }
-        // Task #381 — parallel fan-out to the mobile app (Expo). Independent
-        // of VAPID readiness so the mobile app keeps working even if the
-        // web push keys haven't been provisioned in this environment.
-        try {
-          const r = await _fanOutExpoPush(aid, { title, body, url, data: { kind: 'inhouse_imminent', session_id: sessionId } });
-          expoSent += r.sent || 0;
-        } catch (_) {}
       }
-      res.json({ ok: true, sent, expo_sent: expoSent });
+      res.json({ ok: true, sent, expo_sent: 0 });
     } catch (e) {
       console.error('[API] imminent-push:', e.message);
       res.status(500).json({ error: e.message });

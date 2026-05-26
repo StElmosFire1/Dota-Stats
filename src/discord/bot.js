@@ -3722,7 +3722,10 @@ class DiscordBot {
           const beforeTier = tierFor(d.before);
           const afterTier  = tierFor(d.after);
           if (!beforeTier || !afterTier || beforeTier.name === afterTier.name) continue;
-          const allowed = await db.isNotificationEnabled(accountId, 'tier_change_announce').catch(() => true);
+          // Task #407 — gate via the v2 (event, channel) helper. Falls
+          // back to the legacy tier_change_announce row when no v2 row
+          // exists, so existing opt-outs keep working unchanged.
+          const allowed = await require('../notify').isEventEnabled(accountId, 'hot_streak', 'discord');
           if (!allowed) continue;
           const display = nameByAccount[String(accountId)] || `Player ${accountId}`;
           const up = d.after > d.before;
@@ -4573,8 +4576,9 @@ class DiscordBot {
         const optedIn = await db.getPlayerReportCardOptOut(reg.discord_id).catch(() => false);
         if (!optedIn) continue;
 
-        // Wave 2 F4 — per-category notification preference gate.
-        const allowed = await db.isNotificationEnabled(reg.account_id_32, 'post_match_dm').catch(() => true);
+        // Task #407 — gate via the v2 (event, channel) helper. Falls
+        // back to the legacy post_match_dm row when no v2 row exists.
+        const allowed = await require('../notify').isEventEnabled(reg.account_id_32, 'match_result', 'discord');
         if (!allowed) continue;
 
         const user = await this.client.users.fetch(reg.discord_id).catch(() => null);
@@ -4853,8 +4857,9 @@ class DiscordBot {
         const optedOut = await db.getPlayerRatingsOptOut(rater.discord_id).catch(() => false);
         if (optedOut) continue;
 
-        // Wave 2 F4 — gate MVP/attitude DM on notification prefs (mvp_vote category covers both steps).
-        const ratingsAllowed = await db.isNotificationEnabled(rater.account_id, 'mvp_vote').catch(() => true);
+        // Task #407 — gate MVP/attitude DM via the v2 mvp_vote event on
+        // the discord channel (falls back to legacy mvp_vote row).
+        const ratingsAllowed = await require('../notify').isEventEnabled(rater.account_id, 'mvp_vote', 'discord');
         if (!ratingsAllowed) continue;
 
         const allOthers = players.filter(p => p.account_id !== rater.account_id);
@@ -4945,9 +4950,12 @@ class DiscordBot {
       // Attitude step: only rate own team
       const ownTeam = session.teammates.filter(p => p.team === session.raterTeam);
 
-      // Wave 2 F4 — gate the attitude DM step on the separate `attitude_vote` category.
-      // If the player has opted out of attitude prompts only, end the session after MVP.
-      const attitudeAllowed = await db.isNotificationEnabled(session.raterAccountId, 'attitude_vote').catch(() => true);
+      // Task #407 — the attitude step shares the v2 `mvp_vote` event but
+      // we still consult the legacy `attitude_vote` category as a
+      // secondary gate so historical per-step opt-outs are preserved.
+      const mvpAllowed = await require('../notify').isEventEnabled(session.raterAccountId, 'mvp_vote', 'discord');
+      const attitudeOptOut = await db.isNotificationEnabled(session.raterAccountId, 'attitude_vote').catch(() => true);
+      const attitudeAllowed = mvpAllowed && attitudeOptOut;
       if (!attitudeAllowed || ownTeam.length === 0) {
         this.pendingRatingSessions.delete(msg.author.id);
         return;
@@ -5217,7 +5225,8 @@ class DiscordBot {
             // Wave 2 F4 — gate schedule reminder DM on notification prefs.
             const reg = await db.getPlayerByDiscordId(rsvp.discord_id).catch(() => null);
             if (reg?.account_id_32) {
-              const allowed = await db.isNotificationEnabled(reg.account_id_32, 'schedule_reminder').catch(() => true);
+              // Task #407 — gate via v2 group_session_reminder event.
+              const allowed = await require('../notify').isEventEnabled(reg.account_id_32, 'group_session_reminder', 'discord');
               if (!allowed) continue;
             }
             const user = await this.client.users.fetch(rsvp.discord_id).catch(() => null);
@@ -6036,13 +6045,11 @@ class DiscordBot {
         { account_id: booking.student_account_id, role: 'student' },
         { account_id: coach.account_id, role: 'coach' },
       ];
+      // Task #407 — single send-site via notify(). The helper consults
+      // user_notification_prefs for `coach_booking_confirmed/discord`
+      // (with legacy fall-through), fetches the Discord user, and sends.
+      const { notify } = require('../notify');
       for (const r of recipients) {
-        const allowed = await db.isNotificationEnabled(r.account_id, 'coaching_booking_confirmed').catch(() => true);
-        if (!allowed) continue;
-        const discordId = await db.getDiscordIdByAccountId(r.account_id).catch(() => null);
-        if (!discordId) continue;
-        const user = await this.client.users.fetch(discordId).catch(() => null);
-        if (!user) continue;
         const when = new Date(booking.slot_start_at).toLocaleString('en-AU', { timeZone: 'Australia/Sydney' });
         const otherName = r.role === 'student'
           ? (coach.display_name || `Coach #${coach.id}`)
@@ -6069,8 +6076,10 @@ class DiscordBot {
           .setTitle('🎓 Coaching booking confirmed')
           .setColor(0x10b981)
           .setDescription(lines.join('\n'))
-          .setFooter({ text: 'Toggle off in /settings/notifications' });
-        await user.send({ embeds: [embed] }).catch(() => {});
+          .setFooter({ text: 'Toggle off in /me/notifications' });
+        await notify(r.account_id, 'coach_booking_confirmed', {
+          discord: { embed },
+        });
       }
     } catch (e) { console.warn('[Coaching] notifyCoachingBookingConfirmed failed:', e.message); }
   }
@@ -6120,13 +6129,10 @@ class DiscordBot {
               { account_id: coach.account_id, name: b.student_name || `Player ${b.student_account_id}` },
             ];
             const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+            // Task #407 — single send-site via notify(); helper gates
+            // on coach_booking_reminder/discord (legacy fallback intact).
+            const { notify } = require('../notify');
             for (const r of recipients) {
-              const allowed = await db.isNotificationEnabled(r.account_id, 'coaching_session_reminder').catch(() => true);
-              if (!allowed) continue;
-              const discordId = await db.getDiscordIdByAccountId(r.account_id).catch(() => null);
-              if (!discordId) continue;
-              const user = await this.client.users.fetch(discordId).catch(() => null);
-              if (!user) continue;
               const when = new Date(b.slot_start_at).toLocaleString('en-AU', { timeZone: 'Australia/Sydney' });
               // Coach gets an extra nudge to click "Mark arrived" — without
               // it the student can unilaterally trigger no-show refund 10
@@ -6135,7 +6141,9 @@ class DiscordBot {
               const extra = isCoach
                 ? `\n👉 When you join voice, click **✓ Mark arrived** on ${siteUrl}/me/bookings so the student can't accidentally trigger a no-show refund.`
                 : '';
-              await user.send(`⏰ Coaching session with **${r.name}** in ~1 hour (${when} Sydney). See you in Discord!${extra}`).catch(() => {});
+              await notify(r.account_id, 'coach_booking_reminder', {
+                discord: { content: `⏰ Coaching session with **${r.name}** in ~1 hour (${when} Sydney). See you in Discord!${extra}` },
+              });
             }
             await db.stampBookingReminderSent(b.id).catch(() => {});
           } catch (e) { console.warn(`[Coaching] reminder failed for booking ${b.id}:`, e.message); }

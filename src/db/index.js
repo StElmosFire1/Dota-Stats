@@ -2069,6 +2069,25 @@ async function init() {
     // toggle-only categories continue to ignore it.
     await p.query(`ALTER TABLE notification_prefs ADD COLUMN IF NOT EXISTS value_int INTEGER`);
 
+    // Task #407 — Notification preference centre v2. Per (account, event,
+    // channel) toggle so a player can keep Discord DMs but mute web push
+    // for the same event (or vice-versa). Composite PK keeps writes
+    // idempotent without needing a SERIAL surrogate. Rows are only ever
+    // inserted when a user changes a toggle — absence of a row means
+    // "use the event's per-channel default", which preserves the
+    // pre-v2 behaviour for everyone who hasn't visited /me/notifications.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS user_notification_prefs (
+        account_id BIGINT NOT NULL,
+        event_key TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (account_id, event_key, channel)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_user_notif_prefs_acct ON user_notification_prefs (account_id)`);
+
     // Task #316 — engagement loop tables.
     //   hero_mastery       — per (account_id, hero_id, position) games/wins
     //                        + total perf so we can derive a tier on read.
@@ -11989,6 +12008,143 @@ async function setNotificationPref(accountId, category, enabled, value) {
   return true;
 }
 
+// ---------- Task #407: Notification preference centre v2 ----------
+// Per (account, event, channel) toggle. Channels: 'discord' and 'push'.
+// A missing row means "use the event's per-channel default", which is
+// how we preserve the pre-v2 behaviour for users who never visit
+// /me/notifications.
+//
+// `legacy` maps a v2 event onto its v1 `notification_prefs.category` so
+// existing opt-outs continue to mute the Discord DM channel without the
+// user having to re-flip anything. The mapping is only consulted when no
+// v2 row exists.
+const NOTIFICATION_CHANNELS = ['discord', 'push'];
+const NOTIFICATION_EVENTS = [
+  { key: 'match_result',            label: 'Match result',                desc: 'Post-match report with your stats.',                         legacy: 'post_match_dm',              defaults: { discord: true,  push: false } },
+  { key: 'mvp_vote',                label: 'MVP vote prompt',             desc: 'DM asking you to nominate a teammate as MVP.',               legacy: 'mvp_vote',                   defaults: { discord: true,  push: false } },
+  { key: 'hot_streak',              label: 'Hot streak shoutout',         desc: 'When you hit a 5- or 10-game win streak.',                   legacy: 'tier_change_announce',       defaults: { discord: true,  push: true  } },
+  { key: 'vod_delivered',           label: 'VOD review delivered',        desc: 'When your coach finishes a VOD review for you.',             legacy: null,                         defaults: { discord: true,  push: true  } },
+  { key: 'group_session_reminder',  label: 'Group session reminder',      desc: 'One-hour reminder before a group coaching session.',         legacy: 'schedule_reminder',          defaults: { discord: true,  push: true  } },
+  { key: 'lobby_invite',            label: 'Lobby invite / match ready',  desc: 'When an inhouse lobby is ready for you to accept.',          legacy: null,                         legacyPush: 'match_imminent_push',    defaults: { discord: true,  push: true  } },
+  { key: 'achievement_unlocked',    label: 'Achievement unlocked',        desc: 'New badge or milestone earned.',                             legacy: null,                         defaults: { discord: false, push: false } },
+  { key: 'prize_pool_change',       label: 'Prize pool change',           desc: 'When a tournament prize pool you are entered in changes.',   legacy: null,                         defaults: { discord: false, push: false } },
+  { key: 'coach_booking_confirmed', label: 'Coach booking confirmed',     desc: 'When a coaching booking is paid and locked in.',             legacy: 'coaching_booking_confirmed', defaults: { discord: true,  push: true  } },
+  { key: 'coach_booking_reminder',  label: 'Coach booking reminder',      desc: 'About one hour before a scheduled coaching session.',        legacy: 'coaching_session_reminder',  defaults: { discord: true,  push: true  } },
+  { key: 'league_scrim_accepted',   label: 'League / scrim accepted',     desc: 'When a league or scrim request you sent is accepted.',       legacy: null,                         defaults: { discord: true,  push: true  } },
+  { key: 'season_rollover',         label: 'Season rollover',             desc: 'When a season ends and new tier placements are issued.',     legacy: null,                         defaults: { discord: true,  push: false } },
+];
+
+function eventDef(eventKey) {
+  return NOTIFICATION_EVENTS.find(e => e.key === eventKey) || null;
+}
+
+// Per-event default for a given channel. Falls back to `false` for unknown
+// (event, channel) tuples so unrelated channels can't accidentally fire.
+function eventDefaultEnabled(eventKey, channel) {
+  const def = eventDef(eventKey);
+  if (!def) return false;
+  return !!def.defaults?.[channel];
+}
+
+// Resolve whether the given (account, event, channel) is enabled.
+// Order: explicit v2 row → legacy v1 `notification_prefs` row (Discord
+// channel only — v1 didn't model channels) → per-event default.
+async function isEventEnabled(accountId, eventKey, channel) {
+  if (!accountId || !eventKey || !NOTIFICATION_CHANNELS.includes(channel)) return false;
+  const def = eventDef(eventKey);
+  if (!def) return false;
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `SELECT enabled FROM user_notification_prefs
+        WHERE account_id = $1 AND event_key = $2 AND channel = $3`,
+      [accountId, eventKey, channel]
+    );
+    if (r.rows.length > 0) return !!r.rows[0].enabled;
+  } catch (_) { /* fall through */ }
+  // Legacy fallback per channel. v1 `notification_prefs` was Discord-only
+  // for almost everything, but `match_imminent_push` was an exception
+  // (used to gate the inhouse imminent web-push). To preserve existing
+  // opt-outs without surprise unmutes, events can declare a separate
+  // `legacyPush` mapping for the push channel.
+  const legacyCategory = channel === 'discord' ? def.legacy
+                        : channel === 'push'    ? def.legacyPush
+                        : null;
+  if (legacyCategory) {
+    try {
+      const r = await p.query(
+        `SELECT enabled FROM notification_prefs WHERE account_id = $1 AND category = $2`,
+        [accountId, legacyCategory]
+      );
+      if (r.rows.length > 0) return !!r.rows[0].enabled;
+    } catch (_) {}
+  }
+  return eventDefaultEnabled(eventKey, channel);
+}
+
+// Returns the full matrix for an account — one row per event with the
+// resolved enabled state per channel and the underlying defaults so the
+// UI can render "(default)" hints. Always returns every catalogued event,
+// even when the user has no rows yet.
+async function getNotificationEventMatrix(accountId) {
+  const p = getPool();
+  let v2Rows = [];
+  let legacyRows = [];
+  try {
+    const r = await p.query(
+      `SELECT event_key, channel, enabled FROM user_notification_prefs WHERE account_id = $1`,
+      [accountId]
+    );
+    v2Rows = r.rows || [];
+  } catch (_) {}
+  try {
+    const r = await p.query(
+      `SELECT category, enabled FROM notification_prefs WHERE account_id = $1`,
+      [accountId]
+    );
+    legacyRows = r.rows || [];
+  } catch (_) {}
+  const v2 = new Map();
+  for (const r of v2Rows) v2.set(`${r.event_key}|${r.channel}`, !!r.enabled);
+  const legacy = new Map();
+  for (const r of legacyRows) legacy.set(r.category, !!r.enabled);
+  return NOTIFICATION_EVENTS.map(e => {
+    const channels = {};
+    for (const ch of NOTIFICATION_CHANNELS) {
+      const key = `${e.key}|${ch}`;
+      let enabled;
+      let source;
+      const legacyCat = ch === 'discord' ? e.legacy
+                       : ch === 'push'    ? e.legacyPush
+                       : null;
+      if (v2.has(key)) {
+        enabled = v2.get(key); source = 'user';
+      } else if (legacyCat && legacy.has(legacyCat)) {
+        enabled = legacy.get(legacyCat); source = 'legacy';
+      } else {
+        enabled = !!e.defaults?.[ch]; source = 'default';
+      }
+      channels[ch] = { enabled, source, default: !!e.defaults?.[ch] };
+    }
+    return { key: e.key, label: e.label, desc: e.desc, channels };
+  });
+}
+
+async function setNotificationEventPref(accountId, eventKey, channel, enabled) {
+  if (!accountId) throw new Error('accountId required');
+  if (!eventDef(eventKey)) throw new Error(`Unknown event_key: ${eventKey}`);
+  if (!NOTIFICATION_CHANNELS.includes(channel)) throw new Error(`Unknown channel: ${channel}`);
+  const p = getPool();
+  await p.query(
+    `INSERT INTO user_notification_prefs (account_id, event_key, channel, enabled, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (account_id, event_key, channel)
+     DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()`,
+    [accountId, eventKey, channel, !!enabled]
+  );
+  return true;
+}
+
 // ---------- F5: Tournament live ----------
 async function getTournamentLive(tournamentId) {
   const p = getPool();
@@ -18684,6 +18840,14 @@ module.exports = {
   getNotificationPrefs,
   setNotificationPref,
   NotificationPrefValidationError,
+  // Task #407 — notification preference centre v2
+  NOTIFICATION_EVENTS,
+  NOTIFICATION_CHANNELS,
+  eventDef,
+  eventDefaultEnabled,
+  isEventEnabled,
+  getNotificationEventMatrix,
+  setNotificationEventPref,
   getTournamentLive,
   setTournamentPrizeSplit,
   getMvpAttitudeTrends,

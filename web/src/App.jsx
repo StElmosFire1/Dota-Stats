@@ -103,6 +103,7 @@ const Inhouse = lazy(() => import('./pages/Inhouse'));
 const PlayerInsights = lazy(() => import('./pages/PlayerInsights'));
 const Join = lazy(() => import('./pages/Join'));
 const SettingsNotifications = lazy(() => import('./pages/SettingsNotifications'));
+const MeNotifications = lazy(() => import('./pages/MeNotifications'));
 const SettingsProfile = lazy(() => import('./pages/SettingsProfile'));
 const Pro = lazy(() => import('./pages/Pro'));
 const SettingsBilling = lazy(() => import('./pages/SettingsBilling'));
@@ -1251,6 +1252,7 @@ function AppRoutes() {
                 <Route path="/hall-of-fame" element={<HallOfFame />} />
                 <Route path="/admin/record-match" element={<RecordMatch />} />
                 <Route path="/join" element={<Join />} />
+                <Route path="/me/notifications" element={<MeNotifications />} />
                 <Route path="/settings" element={<Settings />}>
                   <Route path="profile" element={<SettingsProfile />} />
                   <Route path="notifications" element={<SettingsNotifications />} />
