@@ -18,6 +18,10 @@ const { generateMatchPassword } = require('../services/steamConnectLink');
 
 const _inFlight = new Set();
 
+function _opsReport(ev) {
+  try { require('../web/opsState').reportProvisioner(ev); } catch (_) {}
+}
+
 function _isProvisioned(session) {
   return !!(session && session.match_password && session.status === 'in_progress');
 }
@@ -35,6 +39,7 @@ async function provisionInhouseServer(sessionId, opts = {}) {
     return { ok: false, skipped: 'in_flight' };
   }
   _inFlight.add(id);
+  _opsReport({ inFlight: Array.from(_inFlight) });
   try {
     const cfg = require('../config').config;
     const cur = await db.getInhouseSession(id);
@@ -99,6 +104,7 @@ async function provisionInhouseServer(sessionId, opts = {}) {
           console.warn('[Inhouse] Could not notify Discord of provisioning failure:', e.message);
         }
       }
+      _opsReport({ failure: { sessionId: id, error: rconResult.error } });
       return { ok: false, session: failedSession, rcon: rconResult, error: rconResult.error, failed: true };
     }
 
@@ -110,6 +116,7 @@ async function provisionInhouseServer(sessionId, opts = {}) {
       started_at: new Date(),
       notes: null,
     });
+    _opsReport({ success: { sessionId: id } });
 
     // Discord announcement + voice-channel shuffle. Wrapped so a Discord
     // outage never affects the HTTP response or the calling ticker.
@@ -161,6 +168,7 @@ async function provisionInhouseServer(sessionId, opts = {}) {
     return { ok: false, error: err.message };
   } finally {
     _inFlight.delete(id);
+    _opsReport({ inFlight: Array.from(_inFlight) });
   }
 }
 

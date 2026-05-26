@@ -260,6 +260,30 @@ class ReplayParser {
   }
 
   async parseReplayFull(filePath) {
+    const _opsParseStart = Date.now();
+    let _opsOpsState = null;
+    try { _opsOpsState = require('../web/opsState'); } catch (_) {}
+    // Track concurrent in-flight parses across the singleton parser so the
+    // ops dashboard "Queue depth" tile reflects real backlog. Counts both
+    // running and awaiting-_sendToParser work since both consume the
+    // single parser child-process.
+    if (typeof this._opsQueueDepth !== 'number') this._opsQueueDepth = 0;
+    this._opsQueueDepth += 1;
+    if (_opsOpsState) _opsOpsState.reportParser({ ready: this.parserReady, queueDepth: this._opsQueueDepth });
+    try {
+      const result = await this._parseReplayFullInner(filePath);
+      if (_opsOpsState) _opsOpsState.reportParser({ ready: true, parsedMs: Date.now() - _opsParseStart, error: null });
+      return result;
+    } catch (err) {
+      if (_opsOpsState) _opsOpsState.reportParser({ error: err && err.message ? err.message : String(err) });
+      throw err;
+    } finally {
+      this._opsQueueDepth = Math.max(0, this._opsQueueDepth - 1);
+      if (_opsOpsState) _opsOpsState.reportParser({ queueDepth: this._opsQueueDepth });
+    }
+  }
+
+  async _parseReplayFullInner(filePath) {
     if (!this.parserReady) {
       throw new Error('Parser service is not running. Replay parsing unavailable.');
     }

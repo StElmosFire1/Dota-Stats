@@ -35,6 +35,7 @@ function _webPushReady() {
 // `messages` is an array of { to, title, body, data?, sound? } objects.
 async function _sendExpoPush(messages) {
   if (!Array.isArray(messages) || !messages.length) return { sent: 0, removed: 0 };
+  let _ops = null; try { _ops = require('./opsState'); } catch (_) {}
   const fetch = require('node-fetch');
   let sent = 0;
   let removed = 0;
@@ -53,6 +54,7 @@ async function _sendExpoPush(messages) {
       });
       const json = await r.json().catch(() => ({}));
       const tickets = Array.isArray(json?.data) ? json.data : [];
+      if (_ops) _ops.reportPush({ delivered: true, error: null });
       for (let j = 0; j < tickets.length; j++) {
         const t = tickets[j];
         const token = batch[j]?.to;
@@ -71,6 +73,7 @@ async function _sendExpoPush(messages) {
       }
     } catch (err) {
       console.warn('[ExpoPush] batch failed:', err?.message || err);
+      if (_ops) _ops.reportPush({ error: err?.message || String(err) });
     }
   }
   return { sent, removed };
@@ -887,7 +890,11 @@ function createServer(startupStatus = {}) {
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
       const sig = req.headers['stripe-signature'];
       if (!sig) return res.status(400).send('Missing stripe-signature header');
+      const _opsReceivedAt = Date.now();
       const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      try {
+        require('./opsState').reportStripeWebhook(event?.type || 'unknown', { receivedAt: _opsReceivedAt, processedAt: Date.now() });
+      } catch (_) {}
       // Extracted so both `checkout.session.completed` (sync card payments)
       // and `checkout.session.async_payment_succeeded` (BECS / other async
       // methods enabled by Task #235's automatic_payment_methods swap) run
@@ -1687,6 +1694,21 @@ function createServer(startupStatus = {}) {
   // Stash `app` on a module-shared symbol so createApiRouter() can reach it
   // when mounting Magazine v3 routes that need to live at the app level
   // (e.g. the public `/embed/:accountId` widget which must not sit under /api).
+  // Task #406 — wire 5xx counter for the ops dashboard. Mounted *before*
+  // the API router so it sees every response status that flows through.
+  try {
+    const opsState = require('./opsState');
+    app.use((req, res, next) => {
+      res.on('finish', () => {
+        if (res.statusCode >= 500 && res.statusCode <= 599) {
+          opsState.recordHttp5xx();
+          opsState.pushLog('http', 'error', `${res.statusCode} ${req.method} ${req.originalUrl || req.url}`);
+        }
+      });
+      next();
+    });
+  } catch (_) {}
+
   const apiRouter = createApiRouter(startupStatus, app);
   app.use('/api', apiRouter);
 
@@ -5587,6 +5609,54 @@ function createApiRouter(startupStatus = {}, _app = null) {
       res.json({ heartbeats: augmented });
     } catch (e) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Task #406 — Server-side ops dashboard snapshot. Superuser-only.
+  router.get('/admin/ops/state', requireSuperuser, async (req, res) => {
+    try {
+      const opsState = require('./opsState');
+      // Best-effort refresh of derived live status before snapshotting.
+      try {
+        const { getReplayParser } = require('../replay/replayParser');
+        opsState.reportParser({ ready: !!getReplayParser().parserReady });
+      } catch (_) {}
+      try {
+        const bot = require('../discord/bot').getDiscordBot();
+        opsState.reportDiscord({
+          connected: !!(bot && bot.client && bot.client.ws && bot.client.ws.status === 0),
+          gatewayLatencyMs: bot?.client?.ws?.ping,
+        });
+      } catch (_) {}
+      try {
+        const sc = require('../steam/steamClient').getSteamClient();
+        opsState.reportSteam({ connected: !!(sc && sc.isLoggedIn) });
+      } catch (_) {}
+      const snap = await opsState.snapshot(db);
+      snap.push.webPushReady = _webPushReady();
+      res.set('Cache-Control', 'no-store');
+      res.json(snap);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #406 — filter-friendly log fetch (superuser). The snapshot above
+  // already includes the ring buffer; this route lets the UI poll just the
+  // logs (and apply a source filter server-side) when the operator wants
+  // higher refresh of just the log pane.
+  router.get('/admin/ops/logs', requireSuperuser, async (req, res) => {
+    try {
+      const opsState = require('./opsState');
+      const snap = await opsState.snapshot(db);
+      const source = (req.query.source || '').toString().trim().toLowerCase();
+      const logs = source
+        ? snap.logs.filter(l => (l.source || '').toLowerCase() === source)
+        : snap.logs;
+      res.set('Cache-Control', 'no-store');
+      res.json({ logs });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   });
 

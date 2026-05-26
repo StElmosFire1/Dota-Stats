@@ -33,6 +33,7 @@ class SteamDotaClient extends EventEmitter {
   _setupListeners() {
     this.steamClient.on('loggedOn', () => {
       console.log('[Steam] Logged in successfully.');
+      try { require('../web/opsState').reportSteam({ connected: true, event: 'loggedOn' }); } catch (_) {}
       this.isLoggedIn = true;
       this.steamClient.setPersona(SteamUser.EPersonaState.Online, 'Dota Bot');
 
@@ -127,6 +128,7 @@ class SteamDotaClient extends EventEmitter {
           if (lastSeen !== lobbyId) {
             this._lastSeenLobbyIds.set(steamId64, lobbyId);
             console.log(`[Steam] Friend ${persona.player_name || steamId64} detected in Dota 2 lobby: ${lobbyId}`);
+            try { require('../web/opsState').reportSteam({ event: `friendInLobby:${lobbyId}` }); } catch (_) {}
             this.emit('friendInLobby', {
               steamId64,
               playerName: persona.player_name || steamId64,
@@ -144,15 +146,18 @@ class SteamDotaClient extends EventEmitter {
       this.isGCReady = false;
       if (err.eresult === 34 || err.message === 'LogonSessionReplaced') {
         console.warn('[Steam] Session replaced by another login — Steam disconnected. Bot continues running without Steam.');
+        try { require('../web/opsState').reportSteam({ connected: false, disconnectReason: 'LogonSessionReplaced' }); } catch (_) {}
         this.emit('steamDisconnected', 'LogonSessionReplaced');
       } else {
         console.error('[Steam] Login error:', err.message);
+        try { require('../web/opsState').reportSteam({ connected: false, disconnectReason: err.message }); } catch (_) {}
         this.emit('steamDisconnected', err.message);
       }
     });
 
     this.steamClient.on('disconnected', (eresult, msg) => {
       console.warn(`[Steam] Disconnected: ${msg} (${eresult})`);
+      try { require('../web/opsState').reportSteam({ connected: false, disconnectReason: `${msg} (${eresult})` }); } catch (_) {}
       this.isLoggedIn = false;
       this.isGCReady = false;
     });
@@ -198,6 +203,7 @@ class SteamDotaClient extends EventEmitter {
           if (lastSeen !== lobbyId) {
             this._lastSeenLobbyIds.set(friendId, lobbyId);
             console.log(`[Steam] Friend ${user.player_name || friendId} detected in Dota 2 lobby: ${lobbyId} (via poll)`);
+            try { require('../web/opsState').reportSteam({ event: `friendInLobby:${lobbyId}` }); } catch (_) {}
             this.emit('friendInLobby', {
               steamId64: friendId,
               playerName: user.player_name || friendId,

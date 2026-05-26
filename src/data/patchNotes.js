@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "7.71",
+    "title": "Server-side ops dashboard (Task #406)",
+    "published_at": "2026-05-26",
+    "notes": [
+      "**New `/admin/ops` page (superuser-only).** A single live view of every moving part — parser readiness + queue depth + last parse latency, Steam connection + last event, Discord bot connection + gateway latency, Stripe webhook last-received-per-type + processing lag, dedicated-server provisioner in-flight set + last failure, web-push readiness + subscription count + last delivery error, and a rolling 5xx count for the last 60 minutes. Each tile is colour-coded (green/amber/red) and the page auto-refreshes every 10 seconds. A 100-entry ring-buffered log pane sits underneath, filterable by source.",
+      "**Telemetry collector** (`src/web/opsState.js`) — tiny in-memory module with bounded memory (100-entry log ring, 50-event-type Stripe map, 60-min timestamp window for 5xx). Process-local by design: a restart wipes it, which is the right tradeoff for a live operational view (not history). All reporters are `try { require } catch (_) {}`-wrapped at the callsites so a missing module can never crash a subsystem.",
+      "**Subsystems wired** — `replayParser.parseReplayFull` reports per-parse duration + last error; `steamClient` reports loggedOn / error / disconnected; `discord/bot.js` reports gateway connection on `ready` and re-samples `ws.ping` every 30s; `inhouse/serverProvisioner.js` reports in-flight session ids + last success / failure sessionId + reason; the Stripe webhook handler reports event-type + lag the moment `constructEvent` returns; `_sendExpoPush` reports delivery success / batch error. A response-finish middleware mounted before the API router increments the 5xx counter and drops a log line per 5xx response.",
+      "**API.** `GET /api/admin/ops/state` returns a single snapshot (superuser-only, `Cache-Control: no-store`) with derived live status refreshed at request time (parser ready, Discord ws status + ping, Steam isLoggedIn) and `web_push_subscriptions` count via cheap `COUNT(*)`. Companion `GET /api/admin/ops/logs?source=…` returns just the (optionally filtered) ring buffer for callers that want higher-cadence log polling.",
+      "**Out of scope** (per task brief). No APM / distributed tracing (that's the OpenTelemetry task), no alerting / paging integrations, no historical charts beyond the last 60 minutes — those would each be tasks of their own.",
+      "**Edition scope.** Full edition only — the community edition has a separate server file and doesn't carry the Stripe / push / inhouse-provisioner surfaces this dashboard exists to monitor."
+    ]
+  },
+  {
     "version": "7.70",
     "title": "Stripe earnings reconciliation (Task #405)",
     "published_at": "2026-05-26",

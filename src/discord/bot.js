@@ -522,6 +522,18 @@ class DiscordBot {
   _setupHandlers() {
     this.client.on('ready', async () => {
       console.log(`[Discord] Bot online as ${this.client.user.tag}`);
+      try {
+        const ops = require('../web/opsState');
+        ops.reportDiscord({ connected: true, gatewayLatencyMs: this.client.ws?.ping, event: 'ready' });
+        if (!this._opsPingTimer) {
+          this._opsPingTimer = setInterval(() => {
+            try {
+              const ping = this.client.ws?.ping;
+              ops.reportDiscord({ connected: this.client.ws?.status === 0, gatewayLatencyMs: ping });
+            } catch (_) {}
+          }, 30_000).unref?.();
+        }
+      } catch (_) {}
       this.client.user.setActivity('Dota 2 Inhouse | !help', { type: 3 });
       // Task #221 — register `/whois` and `/profile` Discord application
       // commands so vanity-slug lookups are first-class slash commands
