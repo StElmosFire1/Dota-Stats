@@ -1746,6 +1746,11 @@ async function init() {
     await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS commission_override_bps INTEGER`);
     await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE`);
     await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS premium_until TIMESTAMPTZ`);
+    // Task #410 — opt-in flag that lets the marketplace surface up to 3
+    // anonymised quotes from delivered VOD-review annotations on the coach's
+    // public card / detail page. Default OFF — coaches must explicitly opt
+    // in from /coach/edit before any of their annotation text becomes public.
+    await p.query(`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS review_consent_quotes BOOLEAN NOT NULL DEFAULT FALSE`);
 
     // Coach premium subscriptions — monthly Stripe subscription that gives coaches a
     // reduced commission rate + featured slot on /coaches. One active row per coach.
@@ -15660,6 +15665,10 @@ async function createCoachRow({ accountId, stripeAccountId = null, country = 'AU
 const COACH_EDITABLE_FIELDS = new Set([
   'hourly_rate_cents', 'currency', 'bio', 'languages', 'taught_roles',
   'taught_heroes', 'intro_video_url', 'sample_replays', 'response_time_hours',
+  // Task #410 — opt-in flag for anonymised annotation snippets on the
+  // public marketplace card. Default FALSE in the schema; coaches must
+  // explicitly tick the toggle in /coach/edit.
+  'review_consent_quotes',
 ]);
 async function updateCoach(accountId, patch) {
   if (!accountId) throw new Error('updateCoach: accountId required');
@@ -15668,8 +15677,12 @@ async function updateCoach(accountId, patch) {
   let i = 1;
   for (const [k, v] of Object.entries(patch || {})) {
     if (!COACH_EDITABLE_FIELDS.has(k)) continue;
+    let val = v;
+    if (k === 'review_consent_quotes') {
+      val = (v === true || v === 'true' || v === 'on' || v === 1 || v === '1');
+    }
     sets.push(`${k} = $${i++}`);
-    args.push(v);
+    args.push(val);
   }
   if (!sets.length) return getCoach(accountId);
   args.push(accountId);
@@ -15711,8 +15724,116 @@ async function setCoachStatus(accountId, status) {
   return r.rows[0] || null;
 }
 
+// Task #410 — Compute the next absolute UTC instant ≥ `fromMs` that lands
+// inside one of the coach's weekly recurring availability slots, respecting
+// the slot's stored IANA timezone. Slots are weekly (day_of_week 0=Sun..6),
+// stored as HH:MM strings. We walk forward up to 14 days. Returns null when
+// no slot matches in that window.
+function _tzOffsetMs(tz, utcMs) {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const parts = dtf.formatToParts(new Date(utcMs));
+    const get = (t) => parts.find(p => p.type === t).value;
+    const asIfUtc = Date.UTC(+get('year'), +get('month') - 1, +get('day'),
+                             +get('hour'), +get('minute'), +get('second'));
+    return asIfUtc - utcMs;
+  } catch (_) { return 0; }
+}
+function _nextSlotStartMs(slot, fromMs) {
+  const tz = slot.timezone || 'Australia/Sydney';
+  const m = String(slot.start_time || '').match(/^(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = +m[1], mm = +m[2];
+  const targetDow = parseInt(slot.day_of_week);
+  if (!Number.isFinite(targetDow) || targetDow < 0 || targetDow > 6) return null;
+  for (let day = 0; day < 14; day++) {
+    const probe = fromMs + day * 86400_000;
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+    }).formatToParts(new Date(probe));
+    const get = (t) => parts.find(p => p.type === t).value;
+    const wdMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    if (wdMap[get('weekday')] !== targetDow) continue;
+    const naiveUtc = Date.UTC(+get('year'), +get('month') - 1, +get('day'), hh, mm);
+    const offset = _tzOffsetMs(tz, naiveUtc);
+    const utcMs = naiveUtc - offset;
+    if (utcMs >= fromMs + 30 * 60_000) return utcMs;
+  }
+  return null;
+}
+// Task #410 — Best-effort PII scrub for annotation snippets surfaced on the
+// public marketplace. The source notes are written by coaches in their own
+// VOD reviews and may casually include the student's handle, Steam ID, an
+// email address, a Discord ping, or a "Hi Alex," greeting. None of that
+// should leak even when the coach has opted in to public quoting. We err on
+// the side of redaction — a chopped-up quote is preferable to a doxxed
+// student. Anything we can't confidently redact is omitted entirely by
+// returning null so the snippet is dropped from the response.
+const _PII_PATTERNS = [
+  // URLs / domains that could carry usernames
+  /\bhttps?:\/\/\S+/gi,
+  /\bwww\.\S+/gi,
+  // Email addresses
+  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+  // @mentions / Discord pings (e.g. "@stelmosfire", "<@123456>")
+  /<@!?\d+>/g,
+  /(^|\s)@[A-Za-z0-9_.-]{2,}/g,
+  // Long digit runs — Steam IDs, account IDs, match IDs.
+  /\b\d{5,}\b/g,
+  // Discord username#discriminator
+  /\b[A-Za-z0-9_.-]{2,}#\d{4}\b/g,
+];
+// Greeting patterns. The matched name token after the greeting is the
+// almost-always-the-student identifier, so we drop it.
+const _GREETING_NAME_RE = /\b(hi|hey|hello|thanks|thx|cheers|gg|gj|nice work|good job|hi there)\b[ ,\-]+([A-Z][A-Za-z'-]{1,30})/gi;
+function _anonymiseSnippetText(raw) {
+  if (raw == null) return null;
+  let s = String(raw).replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  // Drop the named-greeting form first so the trailing name isn't preserved
+  // as a stray TitleCase token after later passes.
+  s = s.replace(_GREETING_NAME_RE, (_, greet) => `${greet}`);
+  for (const re of _PII_PATTERNS) s = s.replace(re, '[redacted]');
+  // Collapse repeated [redacted] runs that often emerge after multiple hits
+  // ("[redacted] [redacted]") into a single marker.
+  s = s.replace(/(\[redacted\](\s+\[redacted\])+)/g, '[redacted]');
+  s = s.replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  // If a snippet is now mostly redacted (>40% of its visible chars), drop it
+  // entirely rather than ship an incomprehensible quote. Heuristic, not
+  // formal — we'd rather show one good quote than three nonsense ones.
+  const redactedLen = (s.match(/\[redacted\]/g) || []).length * '[redacted]'.length;
+  if (redactedLen > s.length * 0.4) return null;
+  return s.slice(0, 180);
+}
+
+function _nextAvailableForSlots(slots, fromMs) {
+  let best = null;
+  for (const s of (slots || [])) {
+    const t = _nextSlotStartMs(s, fromMs);
+    if (t != null && (best == null || t < best)) best = t;
+  }
+  return best;
+}
+
 // Public browse listing — only active coaches. Filters narrow further.
-async function listActiveCoaches({ language, role, hero, maxPriceCents, tenantId } = {}) {
+// Task #410 — marketplace discovery upgrade. New params:
+//   minRating         : drop coaches whose avg < this (NULL ratings are kept iff minRating <= 0)
+//   availableThisWeek : drop coaches with no availability slot in the next 7 days
+//   sort              : 'relevance' (default) | 'price_asc' | 'price_desc' |
+//                       'rating' | 'next_available' | 'most_booked'
+// Per-coach extras computed in JS so we keep the SQL flat:
+//   delivered_bookings_count, monthly_bookings, next_available_at,
+//   instant_booking (next_available within 48h), snippets (up to 3, consent-gated).
+async function listActiveCoaches({
+  language, role, hero, maxPriceCents, minPriceCents, tenantId,
+  minRating = null, availableThisWeek = false, sort = 'relevance',
+  withSnippets = true,
+} = {}) {
   const p = getPool();
   const conds = [`c.status = 'active'`];
   const args = [];
@@ -15721,7 +15842,9 @@ async function listActiveCoaches({ language, role, hero, maxPriceCents, tenantId
   if (role)     { conds.push(`c.taught_roles ILIKE $${i++}`); args.push(`%${role}%`); }
   if (hero)     { conds.push(`c.taught_heroes ILIKE $${i++}`); args.push(`%${hero}%`); }
   if (maxPriceCents != null) { conds.push(`c.hourly_rate_cents <= $${i++}`); args.push(maxPriceCents); }
-  // Task #333 — tenant scope; null/undefined = default tenant.
+  // Task #410 — paired with maxPriceCents to give the marketplace a true
+  // price *range* (min + max) rather than just a ceiling.
+  if (minPriceCents != null) { conds.push(`c.hourly_rate_cents >= $${i++}`); args.push(minPriceCents); }
   if (tenantId !== 'all') {
     if (tenantId == null) {
       conds.push(`c.tenant_id IS NULL`);
@@ -15735,20 +15858,20 @@ async function listActiveCoaches({ language, role, hero, maxPriceCents, tenantId
     `SELECT c.id, c.account_id, c.hourly_rate_cents, c.currency, c.bio,
             c.languages, c.taught_roles, c.taught_heroes, c.intro_video_url,
             c.response_time_hours, c.country, c.created_at,
-            -- Task #335 — expose premium entitlement so the public marketplace
-            -- card can render a "Premium" badge alongside the featured ordering.
+            c.review_consent_quotes,
             (c.is_premium IS TRUE AND (c.premium_until IS NULL OR c.premium_until > NOW())) AS is_premium,
             COALESCE(n.nickname, c.account_id::text) AS display_name,
             (SELECT ROUND(AVG(rating)::numeric, 2) FROM coaching_reviews WHERE coach_account_id = c.account_id) AS avg_rating,
             (SELECT COUNT(*)::int FROM coaching_reviews WHERE coach_account_id = c.account_id) AS review_count,
-            -- Inhouse credibility stats joined from ratings so the browse
-            -- card can show MMR / W-L / win rate without an N+1 fetch.
+            (SELECT COUNT(*)::int FROM coaching_bookings
+               WHERE coach_account_id = c.account_id AND status = 'completed') AS delivered_bookings_count,
+            (SELECT COUNT(*)::int FROM coaching_bookings
+               WHERE coach_account_id = c.account_id AND status = 'completed'
+                 AND completed_at >= date_trunc('month', NOW())) AS monthly_bookings,
             (SELECT MAX(mmr)::int FROM ratings WHERE player_id::text = c.account_id::text) AS mmr,
             (SELECT COALESCE(SUM(wins), 0)::int  FROM ratings WHERE player_id::text = c.account_id::text) AS wins,
             (SELECT COALESCE(SUM(losses), 0)::int FROM ratings WHERE player_id::text = c.account_id::text) AS losses,
             (SELECT COALESCE(SUM(games_played), 0)::int FROM ratings WHERE player_id::text = c.account_id::text) AS games_played,
-            -- Top hero from full match history. LATERAL keeps it to one row
-            -- per coach so the outer query stays a flat list.
             top_hero.hero_id  AS top_hero_id,
             top_hero.games    AS top_hero_games
        FROM coaches c
@@ -15759,14 +15882,179 @@ async function listActiveCoaches({ language, role, hero, maxPriceCents, tenantId
           GROUP BY hero_id ORDER BY games DESC LIMIT 1
        ) top_hero ON TRUE
        LEFT JOIN nicknames n ON n.account_id = c.account_id
-      WHERE ${conds.join(' AND ')}
-      -- Premium entitlement: Coach Premium subscribers are featured first in
-      -- the public marketplace listing (one of the paid plan's perks).
-      ORDER BY (c.is_premium IS TRUE AND (c.premium_until IS NULL OR c.premium_until > NOW())) DESC,
-               c.created_at DESC`,
+      WHERE ${conds.join(' AND ')}`,
     args
   );
-  return r.rows;
+  const rows = r.rows;
+  if (!rows.length) return rows;
+
+  // Pull availability for every coach in one query so we can compute the
+  // next-available timestamp and the instant-booking badge without an N+1.
+  const accountIds = rows.map(c => c.account_id);
+  const availRes = await p.query(
+    `SELECT coach_account_id, day_of_week, start_time, end_time, timezone
+       FROM coach_availability_slots
+      WHERE coach_account_id = ANY($1::bigint[])`,
+    [accountIds]
+  );
+  const slotsByCoach = new Map();
+  for (const s of availRes.rows) {
+    const k = String(s.coach_account_id);
+    if (!slotsByCoach.has(k)) slotsByCoach.set(k, []);
+    slotsByCoach.get(k).push(s);
+  }
+  const now = Date.now();
+  for (const c of rows) {
+    const slots = slotsByCoach.get(String(c.account_id)) || [];
+    const next = _nextAvailableForSlots(slots, now);
+    c.next_available_at = next ? new Date(next).toISOString() : null;
+    c.instant_booking = next != null && (next - now) <= 48 * 3600_000;
+  }
+
+  // Optional anonymised quote snippets from delivered VOD reviews — only
+  // for coaches who have ticked the consent flag in /coach/edit. Best-effort:
+  // a failure here must never break the listing.
+  if (withSnippets) {
+    const consentIds = rows.filter(c => c.review_consent_quotes).map(c => c.account_id);
+    if (consentIds.length) {
+      try {
+        const snipRes = await p.query(
+          `SELECT v.coach_account_id, n.text, n.created_at
+             FROM coach_vod_review_notes n
+             JOIN coach_vod_reviews v ON v.id = n.review_id
+            WHERE v.coach_account_id = ANY($1::bigint[])
+              AND v.status = 'delivered'
+              AND n.text IS NOT NULL AND length(trim(n.text)) > 0
+            ORDER BY n.created_at DESC`,
+          [consentIds]
+        );
+        const byCoach = new Map();
+        for (const row of snipRes.rows) {
+          const k = String(row.coach_account_id);
+          if (!byCoach.has(k)) byCoach.set(k, []);
+          const arr = byCoach.get(k);
+          if (arr.length >= 3) continue;
+          // Anonymise via the shared scrubber; drops the snippet entirely
+          // when it's too heavily redacted to be readable.
+          const text = _anonymiseSnippetText(row.text);
+          if (text) arr.push({ text });
+        }
+        for (const c of rows) {
+          if (c.review_consent_quotes) c.snippets = byCoach.get(String(c.account_id)) || [];
+        }
+      } catch (_) { /* swallow — snippets are decorative */ }
+    }
+  }
+
+  // Apply min-rating filter (post-fetch so coaches with NULL avg can pass
+  // when minRating <= 0). avg_rating comes back as a string from ROUND/AVG.
+  let out = rows;
+  const minR = Number(minRating);
+  if (Number.isFinite(minR) && minR > 0) {
+    out = out.filter(c => Number(c.avg_rating) >= minR);
+  }
+  if (availableThisWeek) {
+    const cutoff = now + 7 * 86400_000;
+    out = out.filter(c => c.next_available_at && new Date(c.next_available_at).getTime() <= cutoff);
+  }
+
+  // Sort. Premium always floats above non-premium *within* every sort mode —
+  // it's a paid perk and the only way to push it below would be to remove
+  // the perk. The chosen sort breaks ties inside each premium tier.
+  const premiumKey = (c) => (c.is_premium ? 0 : 1);
+  const cmpBy = {
+    price_asc:      (a, b) => (a.hourly_rate_cents || 0) - (b.hourly_rate_cents || 0),
+    price_desc:     (a, b) => (b.hourly_rate_cents || 0) - (a.hourly_rate_cents || 0),
+    rating:         (a, b) => (Number(b.avg_rating) || 0) - (Number(a.avg_rating) || 0)
+                              || (b.review_count || 0) - (a.review_count || 0),
+    next_available: (a, b) => {
+      const at = a.next_available_at ? new Date(a.next_available_at).getTime() : Infinity;
+      const bt = b.next_available_at ? new Date(b.next_available_at).getTime() : Infinity;
+      return at - bt;
+    },
+    most_booked:    (a, b) => (b.delivered_bookings_count || 0) - (a.delivered_bookings_count || 0),
+    relevance:      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  };
+  const cmp = cmpBy[sort] || cmpBy.relevance;
+  out.sort((a, b) => (premiumKey(a) - premiumKey(b)) || cmp(a, b));
+  return out;
+}
+
+// Task #410 — Coach-of-the-month spotlight tile. Picks the active coach
+// whose (delivered bookings this UTC month) × (avg rating) is highest.
+// Ties broken by total delivered bookings, then created_at. Returns null
+// when nobody has both a completed booking this month AND a rating.
+async function getCoachOfTheMonth({ tenantId } = {}) {
+  const p = getPool();
+  const args = [];
+  const conds = [`c.status = 'active'`];
+  let i = 1;
+  if (tenantId !== 'all') {
+    if (tenantId == null) conds.push(`c.tenant_id IS NULL`);
+    else {
+      const id = parseInt(tenantId, 10);
+      if (Number.isFinite(id)) { conds.push(`c.tenant_id = $${i++}`); args.push(id); }
+      else conds.push(`c.tenant_id IS NULL`);
+    }
+  }
+  const r = await p.query(
+    `SELECT c.id, c.account_id, c.hourly_rate_cents, c.currency, c.bio,
+            c.languages, c.taught_roles, c.created_at,
+            COALESCE(n.nickname, c.account_id::text) AS display_name,
+            (SELECT ROUND(AVG(rating)::numeric, 2)
+               FROM coaching_reviews WHERE coach_account_id = c.account_id) AS avg_rating,
+            (SELECT COUNT(*)::int
+               FROM coaching_reviews WHERE coach_account_id = c.account_id) AS review_count,
+            (SELECT COUNT(*)::int FROM coaching_bookings
+               WHERE coach_account_id = c.account_id AND status = 'completed'
+                 AND completed_at >= date_trunc('month', NOW())) AS monthly_bookings,
+            (SELECT COUNT(*)::int FROM coaching_bookings
+               WHERE coach_account_id = c.account_id AND status = 'completed') AS delivered_bookings_count
+       FROM coaches c
+       LEFT JOIN nicknames n ON n.account_id = c.account_id
+      WHERE ${conds.join(' AND ')}`,
+    args
+  );
+  const ranked = r.rows
+    .map(row => ({
+      ...row,
+      _score: (Number(row.avg_rating) || 0) * (row.monthly_bookings || 0),
+    }))
+    .filter(row => row.monthly_bookings > 0 && Number(row.avg_rating) > 0)
+    .sort((a, b) =>
+      b._score - a._score
+      || (b.delivered_bookings_count || 0) - (a.delivered_bookings_count || 0)
+      // Final tiebreak: older profiles win — they've put in more time.
+      || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+  if (!ranked.length) return null;
+  const winner = ranked[0];
+  delete winner._score;
+  return winner;
+}
+
+// Task #410 — Anonymised quote snippets for the public coach detail page.
+// Same source/consent rules as the listing helper above.
+async function getCoachSnippets(coachAccountId, limit = 3) {
+  if (!coachAccountId) return [];
+  const p = getPool();
+  const coach = await p.query(
+    `SELECT review_consent_quotes FROM coaches WHERE account_id = $1`,
+    [coachAccountId]
+  );
+  if (!coach.rows[0]?.review_consent_quotes) return [];
+  const r = await p.query(
+    `SELECT n.text, n.created_at
+       FROM coach_vod_review_notes n
+       JOIN coach_vod_reviews v ON v.id = n.review_id
+      WHERE v.coach_account_id = $1
+        AND v.status = 'delivered'
+        AND n.text IS NOT NULL AND length(trim(n.text)) > 0
+      ORDER BY n.created_at DESC LIMIT $2`,
+    [coachAccountId, Math.min(Math.max(parseInt(limit) || 3, 1), 10)]
+  );
+  return r.rows
+    .map(row => ({ text: _anonymiseSnippetText(row.text) }))
+    .filter(s => s.text);
 }
 
 // Lightweight credibility stats for a single coach — MMR, win/loss totals,
@@ -19416,6 +19704,10 @@ module.exports = {
   setCoachKycActive,
   setCoachStatus,
   listActiveCoaches,
+  // Task #410 — marketplace discovery
+  getCoachOfTheMonth,
+  getCoachSnippets,
+  __test_anonymiseSnippetText: _anonymiseSnippetText,
   listAllCoaches,
   getCoachAvailability,
   setCoachAvailability,

@@ -13988,9 +13988,18 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const role = req.query.role || null;
       const hero = req.query.hero || null;
       const maxPriceCents = req.query.max_price_cents ? parseInt(req.query.max_price_cents) : null;
+      // Task #410 — marketplace discovery filters / sort
+      const minPriceCents = req.query.min_price_cents ? parseInt(req.query.min_price_cents) : null;
+      const minRating = req.query.min_rating ? parseFloat(req.query.min_rating) : null;
+      const availableThisWeek = req.query.available_this_week === '1' || req.query.available_this_week === 'true';
+      const allowedSorts = new Set(['relevance', 'price_asc', 'price_desc', 'rating', 'next_available', 'most_booked']);
+      const sort = allowedSorts.has(req.query.sort) ? req.query.sort : 'relevance';
       const tenantId = _resolveScopeTenantId(req);
-      const coaches = await db.listActiveCoaches({ language, role, hero, maxPriceCents, tenantId });
-      res.json({ coaches });
+      const [coaches, coachOfTheMonth] = await Promise.all([
+        db.listActiveCoaches({ language, role, hero, maxPriceCents, minPriceCents, tenantId, minRating, availableThisWeek, sort }),
+        db.getCoachOfTheMonth({ tenantId }).catch(() => null),
+      ]);
+      res.json({ coaches, coach_of_the_month: coachOfTheMonth });
     } catch (err) {
       console.error('[API] coaches:', err.message);
       res.status(500).json({ error: err.message });
@@ -14019,12 +14028,15 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!_visibleInScope(coach, _resolveScopeTenantId(req))) {
         return res.status(404).json({ error: 'Coach not found' });
       }
-      const [availability, reviews, agg, credibility, nick] = await Promise.all([
+      const [availability, reviews, agg, credibility, nick, snippets] = await Promise.all([
         db.getCoachAvailability(coach.account_id),
         db.getCoachReviews(coach.account_id, 25),
         db.getCoachAggregateRating(coach.account_id),
         db.getCoachCredibilityStats(coach.account_id).catch(() => null),
         db.getNickname?.(coach.account_id).catch(() => null),
+        // Task #410 — anonymised quote snippets (returns [] when coach
+        // has not opted in, so the response shape is always defined).
+        db.getCoachSnippets(coach.account_id, 3).catch(() => []),
       ]);
       const display_name = (typeof nick === 'string' ? nick : nick?.nickname) || String(coach.account_id);
       // Task #344 — record one profile view per (coach, viewer, UTC day) so
@@ -14046,7 +14058,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           });
         }
       } catch (e) { /* swallow — telemetry must not break the page */ }
-      res.json({ coach: { ...coach, display_name }, availability, reviews, rating: agg, credibility });
+      res.json({ coach: { ...coach, display_name }, availability, reviews, rating: agg, credibility, snippets });
     } catch (err) {
       console.error('[API] coaches/:id:', err.message);
       res.status(500).json({ error: err.message });

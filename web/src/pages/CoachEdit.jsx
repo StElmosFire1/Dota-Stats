@@ -58,6 +58,9 @@ export default function CoachEdit() {
   const [premium, setPremium] = useState(null);
   const [lift, setLift] = useState(null);
   const [msg, setMsg] = useState('');
+  // Task #410 — review-snippet consent toggle. Mirrors `coaches.review_consent_quotes`;
+  // synced from the loaded coach row, written back on Save profile.
+  const [consentQuotes, setConsentQuotes] = useState(false);
 
   const load = async () => {
     setLoading(true); setError(null);
@@ -68,6 +71,7 @@ export default function CoachEdit() {
       const d = await r.json();
       setCoach(d.coach); setAvailability(d.availability || []);
       setBookings(d.bookings || []); setRating(d.rating);
+      setConsentQuotes(!!d.coach?.review_consent_quotes);
       const k = await fetch(`${BASE}/coach/onboarding-status`, { credentials: 'include' });
       if (k.ok) setKyc(await k.json());
       const ps = await fetch(`${BASE}/coach/premium/status`, { credentials: 'include' });
@@ -109,6 +113,11 @@ export default function CoachEdit() {
       const patch = Object.fromEntries(f.entries());
       patch.hourly_rate_cents = parseInt(patch.hourly_rate_dollars || '0') * 100;
       delete patch.hourly_rate_dollars;
+      // Task #410 — the form holds the consent toggle as state, not as a
+      // form field, so plumb the current value in explicitly. Default to
+      // false if the field is missing so we never accidentally re-enable
+      // it after the row was opted out elsewhere.
+      patch.review_consent_quotes = !!consentQuotes;
       const r = await fetch(`${BASE}/coach/me`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -237,6 +246,41 @@ export default function CoachEdit() {
             style={{ padding: 6, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '100%' }} /></label>
           <label>Sample replays: <input name="sample_replays" defaultValue={coach.sample_replays || ''}
             style={{ padding: 6, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '100%' }} /></label>
+
+          {/* Task #410 — Marketplace consent toggle. Off by default; when on,
+              up to 3 anonymised annotation snippets from delivered VOD reviews
+              are surfaced on the public /coaches card + detail page. */}
+          <div style={{ marginTop: 4, padding: 12, borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={consentQuotes}
+              aria-label="Allow anonymised sample annotations from delivered VOD reviews to appear on your public coach profile"
+              onClick={() => setConsentQuotes(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                padding: 0, background: 'transparent', border: 0, cursor: 'pointer',
+                color: 'var(--text-primary)', textAlign: 'left',
+              }}>
+              <span aria-hidden="true" style={{
+                width: 36, height: 20, borderRadius: 999, position: 'relative', flexShrink: 0,
+                background: consentQuotes ? '#22c55e' : 'var(--border)',
+                transition: 'background 120ms ease',
+              }}>
+                <span style={{
+                  position: 'absolute', top: 2, left: consentQuotes ? 18 : 2,
+                  width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                  transition: 'left 120ms ease',
+                }} />
+              </span>
+              <span>
+                <strong>Share anonymised review snippets</strong>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  When on, up to 3 short annotation excerpts from your delivered VOD reviews appear on your public marketplace card. Student names are never shown.
+                </div>
+              </span>
+            </button>
+          </div>
         </div>
         <button type="submit" style={{ marginTop: 12, padding: '8px 16px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700 }}>Save profile</button>
       </form>

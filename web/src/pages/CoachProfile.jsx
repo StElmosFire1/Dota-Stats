@@ -127,7 +127,7 @@ export default function CoachProfile() {
   if (error) return <div style={{ padding: 24 }}><h1>Coach</h1><p style={{ color: 'var(--dire-color)' }}>{error}</p></div>;
   if (!data) return <div style={{ padding: 24 }}>Loading…</div>;
 
-  const { coach, availability, reviews, rating, credibility } = data;
+  const { coach, availability, reviews, rating, credibility, snippets } = data;
   const totalCost = Math.round((coach.hourly_rate_cents * (parseInt(bookForm.duration_minutes) || 60)) / 60);
   // v6.81 — coach.account_id is the Steam account id; only the coach
   // themselves should see the Edit Profile shortcut. Without this, coaches
@@ -273,6 +273,33 @@ export default function CoachProfile() {
           Sessions take place in your community Discord — no built-in video.
         </p>
       </form>
+
+      {/* Task #410 — Anonymised sample annotations from delivered VOD reviews.
+          Only sent by the backend when the coach has ticked the consent toggle
+          in /coach/edit; safe to render unconditionally since the array will
+          be empty otherwise. Up to 3 quotes, student names never shown. */}
+      {Array.isArray(snippets) && snippets.length > 0 && (
+        <section aria-labelledby="coach-snippets-heading" style={{ marginBottom: 24 }}>
+          <h3 id="coach-snippets-heading" style={{ marginBottom: 8 }}>Sample annotations</h3>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 0, marginBottom: 12 }}>
+            Short excerpts from this coach's delivered VOD reviews. Shared with consent — student names removed.
+          </p>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {snippets.slice(0, 3).map((s, i) => (
+              <blockquote key={i}
+                style={{
+                  margin: 0, padding: 12,
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderLeft: '3px solid var(--brass, #c5a975)', borderRadius: 6,
+                  fontStyle: 'italic', fontSize: 13, color: 'var(--text-primary)',
+                  lineHeight: 1.5,
+                }}>
+                “{s.text}”
+              </blockquote>
+            ))}
+          </div>
+        </section>
+      )}
 
       <h3>Recent reviews</h3>
       {reviews?.length === 0 ? (
