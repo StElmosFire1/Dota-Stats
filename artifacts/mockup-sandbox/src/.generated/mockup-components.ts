@@ -24,9 +24,9 @@ export const modules: ModuleMap = {
   "./components/mockups/profile-redesign/ProfileRedesignBoard.tsx": () => import("../components/mockups/profile-redesign/ProfileRedesignBoard.tsx"),
   "./components/mockups/profile-redesign/TacticalDossier.tsx": () => import("../components/mockups/profile-redesign/TacticalDossier.tsx"),
   "./components/mockups/profile-redesign/TrophyWall.tsx": () => import("../components/mockups/profile-redesign/TrophyWall.tsx"),
-  "./components/mockups/voice-packs/Auditioner.tsx": () => import("../components/mockups/voice-packs/Auditioner.tsx"),
   "./components/mockups/shop-redesign/Boutique.tsx": () => import("../components/mockups/shop-redesign/Boutique.tsx"),
   "./components/mockups/shop-redesign/Editorial.tsx": () => import("../components/mockups/shop-redesign/Editorial.tsx"),
   "./components/mockups/shop-redesign/FoundersRingPicker.tsx": () => import("../components/mockups/shop-redesign/FoundersRingPicker.tsx"),
-  "./components/mockups/shop-redesign/Tabbed.tsx": () => import("../components/mockups/shop-redesign/Tabbed.tsx")
+  "./components/mockups/shop-redesign/Tabbed.tsx": () => import("../components/mockups/shop-redesign/Tabbed.tsx"),
+  "./components/mockups/voice-packs/Auditioner.tsx": () => import("../components/mockups/voice-packs/Auditioner.tsx")
 };
