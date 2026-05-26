@@ -1705,6 +1705,36 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_cvrn_review ON coach_vod_review_notes (review_id, t_seconds)`);
 
+    // ---------- Task #405: Stripe earnings reconciliation ----------
+    // Per-charge ledger pulled from Stripe BalanceTransaction so coach
+    // earnings can show *real* fees + net (not the AU domestic-card
+    // estimate). One row per Stripe charge. `source_kind` + `source_id`
+    // points back at the originating row in coaching_bookings /
+    // coach_group_session_seats / coach_vod_reviews so the earnings query
+    // can LEFT JOIN this table cheaply. Unique on charge_id to make the
+    // ingestor idempotent on Stripe retries.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS stripe_fee_ledger (
+        id SERIAL PRIMARY KEY,
+        payment_intent TEXT,
+        charge_id TEXT NOT NULL UNIQUE,
+        balance_tx_id TEXT,
+        gross_cents INTEGER NOT NULL,
+        fee_cents INTEGER NOT NULL,
+        net_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        source_kind TEXT,
+        source_id INTEGER,
+        captured_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_stripe_fee_ledger_source
+                     ON stripe_fee_ledger (source_kind, source_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_stripe_fee_ledger_pi
+                     ON stripe_fee_ledger (payment_intent) WHERE payment_intent IS NOT NULL`);
+
     // ---------- Task #320: Commission tiers + coach premium + sponsorships + tenants ----------
     // Additive ALTERs on `coaches` — per-coach commission overrides + premium tier flag.
     // `commission_bps` is basis points (e.g. 1000 = 10.00%, NULL = use site default).
@@ -16265,65 +16295,189 @@ async function getCoachEarningsMonth({ coachAccountId, ym }) {
   const p = getPool();
   const rows = [];
 
+  // Task #405 — LEFT JOIN stripe_fee_ledger so each row carries the real
+  // BalanceTransaction fee + net when ingested; falls back to the AU
+  // domestic-card estimate otherwise. `reconciled` flips true per row when
+  // a ledger row exists.
   const b = await p.query(
-    `SELECT id, amount_cents, platform_fee_cents, currency, completed_at, slot_start_at,
-            'booking' AS kind
-       FROM coaching_bookings
-      WHERE coach_account_id = $1 AND status = 'completed'
-        AND completed_at >= $2 AND completed_at < $3
-      ORDER BY completed_at ASC`,
+    `SELECT cb.id, cb.amount_cents, cb.platform_fee_cents, cb.currency,
+            cb.completed_at, cb.slot_start_at,
+            sfl.fee_cents AS real_fee_cents, sfl.net_cents AS real_net_cents
+       FROM coaching_bookings cb
+       LEFT JOIN stripe_fee_ledger sfl
+         ON sfl.source_kind = 'booking' AND sfl.source_id = cb.id
+      WHERE cb.coach_account_id = $1 AND cb.status = 'completed'
+        AND cb.completed_at >= $2 AND cb.completed_at < $3
+      ORDER BY cb.completed_at ASC`,
     [coachAccountId, start.toISOString(), end.toISOString()]
   );
-  for (const r of b.rows) rows.push({
-    kind: 'booking', id: r.id, when: r.completed_at,
-    amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
-    stripe_fee_cents: _estStripeFeeCents(r.amount_cents, r.currency),
-    currency: r.currency,
-  });
+  for (const r of b.rows) {
+    const reconciled = r.real_fee_cents != null;
+    rows.push({
+      kind: 'booking', id: r.id, when: r.completed_at,
+      amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
+      stripe_fee_cents: reconciled ? r.real_fee_cents : _estStripeFeeCents(r.amount_cents, r.currency),
+      currency: r.currency,
+      reconciled,
+    });
+  }
 
   const g = await p.query(
     `SELECT s.id, s.amount_cents, s.platform_fee_cents, s.currency, s.captured_at,
-            gs.title, gs.scheduled_at
+            gs.title, gs.scheduled_at,
+            sfl.fee_cents AS real_fee_cents, sfl.net_cents AS real_net_cents
        FROM coach_group_session_seats s
        JOIN coach_group_sessions gs ON gs.id = s.session_id
+       LEFT JOIN stripe_fee_ledger sfl
+         ON sfl.source_kind = 'group_seat' AND sfl.source_id = s.id
       WHERE gs.coach_account_id = $1 AND s.status = 'paid' AND s.captured_at IS NOT NULL
         AND s.captured_at >= $2 AND s.captured_at < $3`,
     [coachAccountId, start.toISOString(), end.toISOString()]
   );
-  for (const r of g.rows) rows.push({
-    kind: 'group_seat', id: r.id, when: r.captured_at, title: r.title,
-    amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
-    stripe_fee_cents: _estStripeFeeCents(r.amount_cents, r.currency),
-    currency: r.currency,
-  });
+  for (const r of g.rows) {
+    const reconciled = r.real_fee_cents != null;
+    rows.push({
+      kind: 'group_seat', id: r.id, when: r.captured_at, title: r.title,
+      amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
+      stripe_fee_cents: reconciled ? r.real_fee_cents : _estStripeFeeCents(r.amount_cents, r.currency),
+      currency: r.currency,
+      reconciled,
+    });
+  }
 
   const v = await p.query(
-    `SELECT id, price_cents AS amount_cents, platform_fee_cents, currency, delivered_at, match_id
-       FROM coach_vod_reviews
-      WHERE coach_account_id = $1 AND status = 'delivered'
-        AND delivered_at >= $2 AND delivered_at < $3`,
+    `SELECT cvr.id, cvr.price_cents AS amount_cents, cvr.platform_fee_cents,
+            cvr.currency, cvr.delivered_at, cvr.match_id,
+            sfl.fee_cents AS real_fee_cents, sfl.net_cents AS real_net_cents
+       FROM coach_vod_reviews cvr
+       LEFT JOIN stripe_fee_ledger sfl
+         ON sfl.source_kind = 'vod_review' AND sfl.source_id = cvr.id
+      WHERE cvr.coach_account_id = $1 AND cvr.status = 'delivered'
+        AND cvr.delivered_at >= $2 AND cvr.delivered_at < $3`,
     [coachAccountId, start.toISOString(), end.toISOString()]
   );
-  for (const r of v.rows) rows.push({
-    kind: 'vod_review', id: r.id, when: r.delivered_at, match_id: r.match_id,
-    amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
-    stripe_fee_cents: _estStripeFeeCents(r.amount_cents, r.currency),
-    currency: r.currency,
-  });
+  for (const r of v.rows) {
+    const reconciled = r.real_fee_cents != null;
+    rows.push({
+      kind: 'vod_review', id: r.id, when: r.delivered_at, match_id: r.match_id,
+      amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
+      stripe_fee_cents: reconciled ? r.real_fee_cents : _estStripeFeeCents(r.amount_cents, r.currency),
+      currency: r.currency,
+      reconciled,
+    });
+  }
 
   rows.sort((a, b) => new Date(a.when) - new Date(b.when));
   const totals = rows.reduce((acc, r) => {
     acc.gross += r.amount_cents;
     acc.platform_fee += r.platform_fee_cents;
     acc.stripe_fee += r.stripe_fee_cents;
+    if (!r.reconciled) acc.unreconciled_rows += 1;
     return acc;
-  }, { gross: 0, platform_fee: 0, stripe_fee: 0 });
+  }, { gross: 0, platform_fee: 0, stripe_fee: 0, unreconciled_rows: 0 });
   totals.net = totals.gross - totals.platform_fee - totals.stripe_fee;
+  totals.fully_reconciled = rows.length > 0 && totals.unreconciled_rows === 0;
   return {
     ym: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`,
     start: start.toISOString(), end: end.toISOString(),
     rows, totals,
   };
+}
+
+// Task #405 — Stripe fee ledger ingestor.
+//
+// Given a Stripe client + a paymentIntent OR chargeId (plus the originating
+// source: booking / group_seat / vod_review), fetch the underlying Charge
+// with its BalanceTransaction expanded and upsert the real fee/net into
+// `stripe_fee_ledger`. Called from the Stripe webhook switch on
+// `charge.succeeded` and as a best-effort follow-up when we fulfil a
+// coaching session/seat/review.
+//
+// Best-effort: any failure (network, missing PI, etc.) is logged but
+// swallowed — the dashboard quietly falls back to the estimate until a
+// later run reconciles the row. Idempotent on charge_id.
+async function upsertStripeFeeFromCharge(stripe, {
+  paymentIntent = null,
+  chargeId = null,
+  sourceKind = null,
+  sourceId = null,
+} = {}) {
+  if (!stripe) return null;
+  if (!paymentIntent && !chargeId) return null;
+  try {
+    let charge = null;
+    if (chargeId) {
+      charge = await stripe.charges.retrieve(chargeId, {
+        expand: ['balance_transaction'],
+      });
+    } else {
+      const pi = await stripe.paymentIntents.retrieve(paymentIntent, {
+        expand: ['latest_charge.balance_transaction'],
+      });
+      charge = pi && pi.latest_charge && typeof pi.latest_charge === 'object'
+        ? pi.latest_charge : null;
+    }
+    if (!charge) return null;
+    const bt = charge.balance_transaction && typeof charge.balance_transaction === 'object'
+      ? charge.balance_transaction : null;
+    if (!bt) return null;
+    const pi = typeof charge.payment_intent === 'string'
+      ? charge.payment_intent : (paymentIntent || null);
+    const capturedAt = charge.created ? new Date(charge.created * 1000).toISOString() : null;
+    const p = getPool();
+    const r = await p.query(
+      `INSERT INTO stripe_fee_ledger
+         (payment_intent, charge_id, balance_tx_id, gross_cents, fee_cents,
+          net_cents, currency, source_kind, source_id, captured_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (charge_id) DO UPDATE SET
+         payment_intent = COALESCE(EXCLUDED.payment_intent, stripe_fee_ledger.payment_intent),
+         balance_tx_id = EXCLUDED.balance_tx_id,
+         gross_cents = EXCLUDED.gross_cents,
+         fee_cents = EXCLUDED.fee_cents,
+         net_cents = EXCLUDED.net_cents,
+         currency = EXCLUDED.currency,
+         source_kind = COALESCE(EXCLUDED.source_kind, stripe_fee_ledger.source_kind),
+         source_id = COALESCE(EXCLUDED.source_id, stripe_fee_ledger.source_id),
+         captured_at = COALESCE(EXCLUDED.captured_at, stripe_fee_ledger.captured_at),
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        pi, charge.id, bt.id,
+        bt.amount, bt.fee, bt.net,
+        String(bt.currency || charge.currency || 'aud').toLowerCase(),
+        sourceKind, sourceId, capturedAt,
+      ]
+    );
+    return r.rows[0] || null;
+  } catch (err) {
+    console.warn('[stripe_fee_ledger] ingest failed:', err && err.message ? err.message : err);
+    return null;
+  }
+}
+
+// Resolve {source_kind, source_id} from a Stripe Charge / PaymentIntent
+// when we don't have it on hand (e.g. arrived via `charge.succeeded`
+// without metadata). Looks the PI up across the three coaching tables.
+async function resolveStripeFeeSourceByIntent(paymentIntent) {
+  if (!paymentIntent) return { sourceKind: null, sourceId: null };
+  const p = getPool();
+  const b = await p.query(
+    `SELECT id FROM coaching_bookings WHERE stripe_payment_intent = $1 LIMIT 1`,
+    [paymentIntent]
+  );
+  if (b.rows[0]) return { sourceKind: 'booking', sourceId: b.rows[0].id };
+  const g = await p.query(
+    `SELECT id FROM coach_group_session_seats WHERE stripe_payment_intent = $1 LIMIT 1`,
+    [paymentIntent]
+  );
+  if (g.rows[0]) return { sourceKind: 'group_seat', sourceId: g.rows[0].id };
+  const v = await p.query(
+    `SELECT id FROM coach_vod_reviews WHERE stripe_payment_intent = $1 LIMIT 1`,
+    [paymentIntent]
+  );
+  if (v.rows[0]) return { sourceKind: 'vod_review', sourceId: v.rows[0].id };
+  return { sourceKind: null, sourceId: null };
 }
 
 // Lifetime platform revenue = sum of platform_fee_cents on completed bookings.
@@ -18772,6 +18926,8 @@ module.exports = {
   listVodNotes,
   deleteVodNote,
   getCoachEarningsMonth,
+  upsertStripeFeeFromCharge,
+  resolveStripeFeeSourceByIntent,
   addPushSubscription,
   removePushSubscriptionByEndpoint,
   getPushSubscriptionsForAccount,

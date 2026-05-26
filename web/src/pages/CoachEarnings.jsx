@@ -74,7 +74,9 @@ export default function CoachEarnings() {
             ))}
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Stripe fees are estimated (1.75% + 30c AU domestic card). Actual fees can be reconciled in the Stripe dashboard.
+            {data.totals.fully_reconciled
+              ? 'All line items below are reconciled against Stripe BalanceTransactions — fees and net payout match your Stripe dashboard exactly.'
+              : 'Rows marked Reconciled show real Stripe fees pulled from the BalanceTransaction; unreconciled rows fall back to the AU domestic-card estimate (1.75% + 30c) until the next reconciliation run.'}
           </p>
 
           <h3 style={{ marginTop: 20 }}>Line items ({data.rows.length})</h3>
@@ -86,12 +88,14 @@ export default function CoachEarnings() {
                 <tr style={{ borderBottom: '2px solid var(--border)' }}>
                   <th align="left">Kind</th><th align="left">When</th><th align="left">Detail</th>
                   <th align="right">Gross</th><th align="right">Platform</th>
-                  <th align="right">Stripe est</th><th align="right">Net</th>
+                  <th align="right">Stripe</th><th align="right">Net</th>
+                  <th align="left">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map(r => {
                   const net = r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents;
+                  const stripeLabel = r.reconciled ? 'Stripe fee' : 'Stripe est';
                   return (
                     <tr key={`${r.kind}-${r.id}`} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: 8, fontSize: 13 }}>{KIND_LABEL[r.kind] || r.kind}</td>
@@ -99,8 +103,23 @@ export default function CoachEarnings() {
                       <td style={{ padding: 8, fontSize: 13 }}>{r.title || r.match_id || '—'}</td>
                       <td style={{ padding: 8, textAlign: 'right' }}>{fmtPrice(r.amount_cents, r.currency)}</td>
                       <td style={{ padding: 8, textAlign: 'right', color: 'var(--amber)' }}>−{fmtPrice(r.platform_fee_cents, r.currency)}</td>
-                      <td style={{ padding: 8, textAlign: 'right', color: 'var(--text-muted)' }}>−{fmtPrice(r.stripe_fee_cents, r.currency)}</td>
+                      <td style={{ padding: 8, textAlign: 'right', color: 'var(--text-muted)' }} title={stripeLabel}>−{fmtPrice(r.stripe_fee_cents, r.currency)}</td>
                       <td style={{ padding: 8, textAlign: 'right', color: 'var(--radiant-color)' }}>{fmtPrice(net, r.currency)}</td>
+                      <td style={{ padding: 8, fontSize: 11 }}>
+                        {r.reconciled ? (
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+                            background: 'rgba(34, 197, 94, 0.15)', color: 'var(--radiant-color)',
+                            border: '1px solid rgba(34, 197, 94, 0.35)', fontWeight: 600,
+                          }} aria-label="Reconciled against Stripe BalanceTransaction">✓ Reconciled</span>
+                        ) : (
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+                            background: 'rgba(245, 158, 11, 0.12)', color: 'var(--amber)',
+                            border: '1px solid rgba(245, 158, 11, 0.35)', fontWeight: 600,
+                          }} aria-label="Stripe fees are estimated; awaiting reconciliation">Estimated</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

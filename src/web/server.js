@@ -951,6 +951,17 @@ function createServer(startupStatus = {}) {
           );
           if (row) {
             console.log('[Stripe] Coaching booking paid (session)', row.id);
+            // Task #405 — best-effort Stripe fee reconciliation. Pulls the
+            // BalanceTransaction off the PaymentIntent's latest_charge and
+            // upserts into stripe_fee_ledger so /coach/earnings shows real
+            // fees instead of the AU domestic-card estimate. Swallows all
+            // errors — webhook fulfilment must never fail on this.
+            if (session.payment_intent) {
+              db.upsertStripeFeeFromCharge(stripe, {
+                paymentIntent: session.payment_intent,
+                sourceKind: 'booking', sourceId: row.id,
+              }).catch(() => {});
+            }
             try {
               const bot = getDiscordBot();
               if (bot && typeof bot.notifyCoachingBookingConfirmed === 'function') {
@@ -980,6 +991,13 @@ function createServer(startupStatus = {}) {
           const seat = await db.markGroupSeatPaidBySession(session.id, session.payment_intent || null);
           if (seat) {
             console.log('[Stripe] Group seat paid (session)', seat.id);
+            // Task #405 — best-effort Stripe fee reconciliation.
+            if (session.payment_intent) {
+              db.upsertStripeFeeFromCharge(stripe, {
+                paymentIntent: session.payment_intent,
+                sourceKind: 'group_seat', sourceId: seat.id,
+              }).catch(() => {});
+            }
             try {
               // Auto-flip the session to 'full' if capacity now reached.
               const gs = await db.getGroupSession(seat.session_id);
@@ -996,6 +1014,13 @@ function createServer(startupStatus = {}) {
           const row = await db.markVodPaidBySession(session.id, session.payment_intent || null);
           if (row) {
             console.log('[Stripe] VOD review paid (session)', row.id);
+            // Task #405 — best-effort Stripe fee reconciliation.
+            if (session.payment_intent) {
+              db.upsertStripeFeeFromCharge(stripe, {
+                paymentIntent: session.payment_intent,
+                sourceKind: 'vod_review', sourceId: row.id,
+              }).catch(() => {});
+            }
             try {
               const bot = getDiscordBot();
               if (bot && bot.users && row.coach_account_id) {
@@ -1413,6 +1438,27 @@ function createServer(startupStatus = {}) {
         } else if (purpose === 'coaching_vod_review') {
           const cancelled = await db.markVodCancelledBySession(session.id).catch(() => null);
           if (cancelled) console.log('[Stripe] VOD review async payment failed', cancelled.id);
+        }
+      } else if (event.type === 'charge.succeeded') {
+        // Task #405 — Stripe fee reconciliation. Fires when a charge clears
+        // (including the manual-capture path used by coaching). We look up
+        // the originating coaching row by PaymentIntent and upsert the
+        // BalanceTransaction fee/net into stripe_fee_ledger. Best-effort —
+        // never throw; the dashboard falls back to the estimate until a
+        // later run reconciles.
+        const charge = event.data.object;
+        const pi = typeof charge.payment_intent === 'string'
+          ? charge.payment_intent : null;
+        try {
+          const { sourceKind, sourceId } = await db.resolveStripeFeeSourceByIntent(pi);
+          if (sourceKind || pi) {
+            await db.upsertStripeFeeFromCharge(stripe, {
+              paymentIntent: pi, chargeId: charge.id,
+              sourceKind, sourceId,
+            });
+          }
+        } catch (e) {
+          console.warn('[Stripe] charge.succeeded ledger upsert failed:', e?.message || e);
         }
       } else if (event.type === 'charge.refunded') {
         // Refund handler — match by payment_intent so we revoke the right
@@ -14753,14 +14799,15 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         const s = String(v);
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       };
-      const lines = ['kind,id,when,title_or_match,amount_cents,platform_fee_cents,stripe_fee_cents,net_cents,currency'];
+      const lines = ['kind,id,when,title_or_match,amount_cents,platform_fee_cents,stripe_fee_cents,net_cents,currency,reconciled'];
       for (const r of data.rows) {
         const net = r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents;
         lines.push([r.kind, r.id, r.when, r.title || r.match_id || '', r.amount_cents,
-                    r.platform_fee_cents, r.stripe_fee_cents, net, r.currency].map(esc).join(','));
+                    r.platform_fee_cents, r.stripe_fee_cents, net, r.currency,
+                    r.reconciled ? 'true' : 'false'].map(esc).join(','));
       }
       lines.push('');
-      lines.push(`TOTAL,,,,${data.totals.gross},${data.totals.platform_fee},${data.totals.stripe_fee},${data.totals.net},`);
+      lines.push(`TOTAL,,,,${data.totals.gross},${data.totals.platform_fee},${data.totals.stripe_fee},${data.totals.net},,${data.totals.fully_reconciled ? 'true' : 'false'}`);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="coach-earnings-${data.ym}.csv"`);
       res.send(lines.join('\n'));

@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "7.70",
+    "title": "Stripe earnings reconciliation (Task #405)",
+    "published_at": "2026-05-26",
+    "notes": [
+      "**Real Stripe fees on `/coach/earnings`.** The dashboard previously showed an *estimated* Stripe fee (1.75% + 30c AU domestic-card). It now reads the actual `fee` + `net` off each charge's `BalanceTransaction` and labels reconciled rows with a green ✓ **Reconciled** pill. Unreconciled rows fall back to the estimate so partially-reconciled months still tally cleanly — no row disappears just because the BalanceTransaction hasn't been ingested yet.",
+      "**New `stripe_fee_ledger` table** — one row per Stripe charge (`payment_intent`, `charge_id` UNIQUE, `balance_tx_id`, `gross_cents`, `fee_cents`, `net_cents`, `currency`, `source_kind`, `source_id`, `captured_at`). Idempotent on `charge_id` via `ON CONFLICT DO UPDATE`, indexed on `(source_kind, source_id)` so the earnings LEFT JOIN is cheap, and on `payment_intent` for late-reconciliation lookups.",
+      "**Ingestor** — `db.upsertStripeFeeFromCharge(stripe, { paymentIntent | chargeId, sourceKind, sourceId })` retrieves the charge with `expand:['balance_transaction']` (or pulls it via `paymentIntents.retrieve` → `latest_charge.balance_transaction`) and upserts the row. Wired into the Stripe webhook switch on a new **`charge.succeeded`** branch (resolves `source_kind`/`source_id` from the PaymentIntent across `coaching_bookings` / `coach_group_session_seats` / `coach_vod_reviews`) AND fired best-effort from each of the three coaching `checkout.session.completed` success paths so the ledger is usually populated within seconds of payment. Every ingestor call is wrapped in `.catch(() => {})` — webhook fulfilment must never fail because Stripe rate-limited a BalanceTransaction fetch.",
+      "**Earnings query rewrite.** `db.getCoachEarningsMonth()` now LEFT JOINs `stripe_fee_ledger` per row, prefers `sfl.fee_cents` when present, and tags each row `reconciled: true|false`. Totals expose `unreconciled_rows` + `fully_reconciled` so the dashboard can switch between the all-clean copy and the partial-reconciliation copy.",
+      "**CSV export.** `GET /api/me/coach/earnings.csv` gained a final `reconciled` column (`true`/`false` per row, plus a TOTAL row tagged with the month's `fully_reconciled` boolean) so the accountant hand-off can tell at a glance which line items are Stripe-grade and which are still estimated.",
+      "**Out of scope.** Stripe Connect transfer reconciliation lives in a separate ledger (not touched here). Refund-fee reconciliation goes only as far as what the BalanceTransaction already returns. Historical backfill of pre-feature months can be done later with a small one-shot script; not shipped in this cut.",
+      "**Edition scope.** Full edition only — community edition is paywall-free, has no coach earnings dashboard, and isn't wired."
+    ]
+  },
+  {
     "version": "7.69",
     "title": "Coaching v2 — Group sessions, async VOD review, coach earnings (Task #384)",
     "published_at": "2026-05-25",
