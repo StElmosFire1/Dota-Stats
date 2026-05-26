@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SortableTh from '../components/SortableTh';
-import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList, getHeroSynergyMatrix, getHeroCounterScores, getHeroPatchTrends, getAvailableHeroPatches } from '../api';
+import { getHeroStats, getHeroMeta, getHeroPlayers, getPlayerHeroProfiles, getHeroMatchups, getHeroTierList, getHeroSynergyMatrix, getHeroCounterScores, getHeroPatchTrends, getAvailableHeroPatches, getHeroPatchDiff } from '../api';
 import PaywallCard from '../components/PaywallCard';
 import PaywallBlur from '../components/PaywallBlur';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
@@ -1013,6 +1013,7 @@ export default function Heroes({ defaultTab }) {
     { key: 'counter', label: '🎯 Counter-pick' },
     { key: 'trends', label: '📈 Patch Trends' },
     { key: 'matchups', label: '⚔️ Matchups' },
+    { key: 'diff', label: '📊 Patch Diff' },
     { key: 'meta', label: '★ Position Meta', pro: true },
     { key: 'breakdown', label: '★ Hero Breakdown', pro: true },
   ];
@@ -1094,6 +1095,11 @@ export default function Heroes({ defaultTab }) {
       )}
       {tab === 'matchups' && (
         <div role="tabpanel" id="heroes-tabpanel-matchups" aria-labelledby="heroes-tab-matchups"><HeroMatchupsTab /></div>
+      )}
+      {tab === 'diff' && (
+        <div role="tabpanel" id="heroes-tabpanel-diff" aria-labelledby="heroes-tab-diff">
+          <HeroPatchDiffTab availablePatches={availablePatches} />
+        </div>
       )}
       {tab === 'meta' && (
         <div role="tabpanel" id="heroes-tabpanel-meta" aria-labelledby="heroes-tab-meta">
@@ -1288,6 +1294,157 @@ export default function Heroes({ defaultTab }) {
       <HeroMetaV2Panel />
     </div>
   );
+}
+
+// Task #409 — Patch Diff tab. Side-by-side patch comparison with
+// per-hero deltas in WR, pick rate, ban rate, and position-distribution.
+// Default sort is by |Δ win rate|; top movers float to the top with a
+// gold accent. Public, no paywall — same trust as the other diff/list
+// tabs on this page.
+function HeroPatchDiffTab({ availablePatches }) {
+  const { seasonId } = useSeason();
+  const [fromPatch, setFromPatch] = useState('');
+  const [toPatch, setToPatch] = useState('');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [sortBy, setSortBy] = useState('wr_delta');
+  const [minGames, setMinGames] = useState(3);
+
+  useEffect(() => {
+    if (!fromPatch && !toPatch && availablePatches.length >= 2) {
+      setToPatch(availablePatches[0]);
+      setFromPatch(availablePatches[1]);
+    }
+  }, [availablePatches, fromPatch, toPatch]);
+
+  useEffect(() => {
+    if (!fromPatch || !toPatch || fromPatch === toPatch) { setData(null); return; }
+    setLoading(true);
+    setErr('');
+    getHeroPatchDiff({ from: fromPatch, to: toPatch, seasonId })
+      .then((d) => setData(d))
+      .catch((e) => { setErr(e.message || 'Failed to load diff'); setData(null); })
+      .finally(() => setLoading(false));
+  }, [fromPatch, toPatch, seasonId]);
+
+  if (availablePatches.length < 2) {
+    return (
+      <p style={{ color: 'var(--text-muted)' }}>
+        Patch diff needs at least two patches of matches. An admin can run the patch backfill to enable this view.
+      </p>
+    );
+  }
+
+  const rows = (data?.heroes || []).filter((h) => Math.max(h.from.games, h.to.games) >= minGames);
+  const sorted = [...rows].sort((a, b) => {
+    const av = sortMetric(a, sortBy);
+    const bv = sortMetric(b, sortBy);
+    return Math.abs(bv) - Math.abs(av);
+  });
+  const topMoverIds = new Set(sorted.slice(0, 5).map((r) => r.hero_id));
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label htmlFor="diff-from" style={{ fontSize: 13, color: 'var(--text-muted)' }}>From:</label>
+        <select id="diff-from" value={fromPatch} onChange={(e) => setFromPatch(e.target.value)}
+          style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px' }}>
+          {availablePatches.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <label htmlFor="diff-to" style={{ fontSize: 13, color: 'var(--text-muted)' }}>To:</label>
+        <select id="diff-to" value={toPatch} onChange={(e) => setToPatch(e.target.value)}
+          style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px' }}>
+          {availablePatches.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <label htmlFor="diff-min" style={{ fontSize: 13, color: 'var(--text-muted)' }}>Min games:</label>
+        <input id="diff-min" type="number" min={1} max={50} value={minGames}
+          onChange={(e) => setMinGames(Math.max(1, parseInt(e.target.value) || 1))}
+          style={{ width: 60, background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px' }} />
+        <label htmlFor="diff-sort" style={{ fontSize: 13, color: 'var(--text-muted)' }}>Sort by |Δ|:</label>
+        <select id="diff-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+          style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px' }}>
+          <option value="wr_delta">Win rate</option>
+          <option value="pick_delta">Pick rate</option>
+          <option value="ban_delta">Ban rate</option>
+        </select>
+      </div>
+      {err && <p style={{ color: '#f87171', fontSize: 13 }}>{err}</p>}
+      {fromPatch === toPatch && <p style={{ color: 'var(--text-muted)' }}>Pick two different patches to compare.</p>}
+      {loading && <div className="loading">Loading patch diff…</div>}
+      {!loading && data && (
+        <>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 0 }}>
+            {data.from_patch} ({data.from_total_matches} matches) → {data.to_patch} ({data.to_total_matches} matches).
+            Top 5 movers highlighted in gold.
+          </p>
+          <div className="scoreboard-wrapper">
+            <table className="scoreboard">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>Hero</th>
+                  <th>{data.from_patch} WR</th>
+                  <th>{data.to_patch} WR</th>
+                  <th>Δ WR</th>
+                  <th>Δ Pick%</th>
+                  <th>Δ Ban%</th>
+                  <th>Position shift</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.slice(0, 80).map((h) => {
+                  const isMover = topMoverIds.has(h.hero_id);
+                  const wrA = h.from.win_rate;
+                  const wrB = h.to.win_rate;
+                  const dWr = h.delta.win_rate;
+                  const dPick = h.delta.pick_rate;
+                  const dBan = h.delta.ban_rate;
+                  const img = getHeroImageUrl(h.hero_id);
+                  const posLabels = ['1','2','3','4','5'];
+                  const biggestShift = h.delta.pos_shift.reduce((acc, v, i) => Math.abs(v) > Math.abs(acc.v) ? { v, i } : acc, { v: 0, i: 0 });
+                  return (
+                    <tr key={h.hero_id} style={{ background: isMover ? 'rgba(245,158,11,0.08)' : '' }}>
+                      <td style={{ textAlign: 'left' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {img && <img src={img} alt={h.hero_name || ''} style={{ width: 28, height: 16, borderRadius: 2 }} />}
+                          <span style={{ color: isMover ? 'var(--gold, #c5a975)' : undefined, fontWeight: isMover ? 700 : 400 }}>
+                            {formatHeroName(h.hero_name || getHeroName(h.hero_id))}
+                          </span>
+                        </div>
+                      </td>
+                      <td>{wrA != null ? `${(wrA * 100).toFixed(0)}%` : '—'} <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({h.from.games})</span></td>
+                      <td>{wrB != null ? `${(wrB * 100).toFixed(0)}%` : '—'} <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({h.to.games})</span></td>
+                      <td style={{ color: dWr == null ? '#555' : dWr >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+                        {dWr == null ? '—' : `${dWr >= 0 ? '+' : ''}${(dWr * 100).toFixed(1)}pp`}
+                      </td>
+                      <td style={{ color: dPick >= 0 ? '#4ade80' : '#f87171' }}>
+                        {`${dPick >= 0 ? '+' : ''}${(dPick * 100).toFixed(1)}%`}
+                      </td>
+                      <td style={{ color: dBan >= 0 ? '#fb923c' : 'var(--text-muted)' }}>
+                        {`${dBan >= 0 ? '+' : ''}${(dBan * 100).toFixed(1)}%`}
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {Math.abs(biggestShift.v) < 0.05 ? <span style={{ color: 'var(--text-muted)' }}>—</span> : (
+                          <span style={{ color: biggestShift.v > 0 ? '#4ade80' : '#f87171' }}>
+                            Pos {posLabels[biggestShift.i]} {biggestShift.v > 0 ? '+' : ''}{(biggestShift.v * 100).toFixed(0)}%
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+function sortMetric(h, key) {
+  if (key === 'pick_delta') return h.delta.pick_rate || 0;
+  if (key === 'ban_delta') return h.delta.ban_rate || 0;
+  return h.delta.win_rate || 0;
 }
 
 function HeroMetaV2Panel() {

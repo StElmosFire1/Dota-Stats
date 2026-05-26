@@ -520,6 +520,42 @@ export async function getHeroPatchTrends(heroId, { limit = 8, seasonId = null } 
   return fetchJson(`/heroes/${heroId}/patch-trends?${qs}`);
 }
 
+// Task #409 — patch diff + draft trainer.
+export async function getHeroPatchDiff({ from, to, seasonId } = {}) {
+  const qs = new URLSearchParams();
+  qs.set('from', String(from));
+  qs.set('to', String(to));
+  if (seasonId) qs.set('season', String(seasonId));
+  return fetchJson(`/heroes/patch-diff?${qs}`);
+}
+
+export async function simulateDraftPick({ allies, enemies, bans, action = 'pick', position = null, seasonId = null } = {}) {
+  const r = await fetch('/api/heroes/draft-trainer/simulate-pick', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allies, enemies, bans, action, position, season_id: seasonId }),
+  });
+  if (!r.ok) throw new Error('Failed to simulate pick');
+  return r.json();
+}
+
+export async function saveDraftTrainerRun({ side, picksA, picksB, bans, predictedAdvantage } = {}) {
+  const r = await fetch('/api/heroes/draft-trainer/runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ side, picks_a: picksA, picks_b: picksB, bans, predicted_advantage: predictedAdvantage }),
+  });
+  if (!r.ok) {
+    if (r.status === 401) throw new Error('Sign in to save trainer runs');
+    throw new Error('Failed to save trainer run');
+  }
+  return r.json();
+}
+
+export async function getDraftTrainerAccuracy(accountId) {
+  return fetchJson(`/player/${accountId}/draft-trainer-accuracy`);
+}
+
 export async function getPlayerHeroSuggestions(accountId, seasonId = null) {
   const q = seasonId ? `?season=${seasonId}` : '';
   return fetchJson(`/player/${accountId}/hero-suggestions${q}`);

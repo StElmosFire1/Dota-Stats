@@ -31,6 +31,7 @@ const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
 const Heroes = lazy(() => import('./pages/Heroes'));
 const Draft = lazy(() => import('./pages/Draft'));
 const DraftAssistant = lazy(() => import('./pages/DraftAssistant'));
+const DraftTrainer = lazy(() => import('./pages/DraftTrainer'));
 const ProReplayBrowser = lazy(() => import('./pages/ProReplayBrowser'));
 
 // Task #378 — runtime route gate. The Pro Replay Browser is gated by the
@@ -1220,6 +1221,7 @@ function AppRoutes() {
                 <Route path="/compare" element={<PlayerTools />} />
                 <Route path="/draft" element={<Draft />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
+                <Route path="/heroes/draft-trainer" element={<DraftTrainer />} />
                 <Route path="/pro-replays" element={<ProReplaysGuard />} />
                 <Route path="/draft-stats" element={<Draft />} />
                 <Route path="/hero-breakdown" element={<Heroes defaultTab="breakdown" />} />

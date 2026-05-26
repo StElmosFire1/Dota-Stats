@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks, getDraftTrainerAccuracy } from '../api';
 import Dialog from '../components/Dialog';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
@@ -687,6 +687,7 @@ export default function PlayerProfile() {
   const [modifierHistory, setModifierHistory] = useState([]);
   const [achievements, setAchievements] = useState([]);
   const [nemesis, setNemesis] = useState([]);
+  const [trainerAccuracy, setTrainerAccuracy] = useState(null);
   const [allies, setAllies] = useState([]);
   const [rivals, setRivals] = useState([]);
   const [rawWinRateHistory, setRawWinRateHistory] = useState([]);
@@ -838,6 +839,11 @@ export default function PlayerProfile() {
       .then(d => setHeroSuggestions(d))
       .catch(() => setHeroSuggestions({ suggestions: [] }));
   }, [accountId, seasonId]);
+
+  useEffect(() => {
+    if (!accountId) return;
+    getDraftTrainerAccuracy(accountId).then(setTrainerAccuracy).catch(() => setTrainerAccuracy(null));
+  }, [accountId]);
 
   useEffect(() => {
     setLoading(true);
@@ -1899,6 +1905,35 @@ export default function PlayerProfile() {
                 })}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {/* Task #409 — Draft Trainer rolling accuracy. Hidden when the
+          player has zero recorded runs so the section doesn't clutter
+          profiles of users who've never used the trainer. */}
+      {trainerAccuracy && trainerAccuracy.runs > 0 && (
+        <section style={{ marginBottom: 24, padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+          <h2 className="section-title" style={{ marginTop: 0, marginBottom: 8 }}>🎯 Draft Trainer accuracy</h2>
+          <p style={{ margin: '4px 0 8px 0', fontSize: 13, color: 'var(--text-muted)' }}>
+            How often the trainer's predicted advantage matched the actual outcome when this draft was later played in a real inhouse.
+          </p>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'baseline' }}>
+            <div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: trainerAccuracy.accuracy == null ? 'var(--text-muted)' : trainerAccuracy.accuracy >= 0.6 ? '#4ade80' : trainerAccuracy.accuracy >= 0.45 ? 'var(--text-primary)' : '#f87171' }}>
+                {trainerAccuracy.accuracy == null ? '—' : `${(trainerAccuracy.accuracy * 100).toFixed(0)}%`}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>rolling accuracy</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20 }}>{trainerAccuracy.correct} / {trainerAccuracy.matched}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>graded runs</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20 }}>{trainerAccuracy.runs}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>total runs</div>
+            </div>
+            <Link to="/heroes/draft-trainer" style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--accent-blue)' }}>Open trainer →</Link>
           </div>
         </section>
       )}

@@ -4143,6 +4143,111 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #409 — patch diff. Compare two patches side-by-side with
+  // per-hero deltas (WR, pick rate, ban rate, position distribution).
+  // Public, read-only — same trust as the other /heroes endpoints.
+  router.get('/heroes/patch-diff', async (req, res) => {
+    try {
+      const seasonId = req.query.season || req.query.season_id || null;
+      const fromPatch = req.query.from ? String(req.query.from) : null;
+      const toPatch = req.query.to ? String(req.query.to) : null;
+      if (!fromPatch || !toPatch) {
+        return res.status(400).json({ error: 'from and to query params required (patch strings, e.g. 7.36 and 7.37)' });
+      }
+      const data = await db.getHeroPatchDiff(fromPatch, toPatch, seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] heroes/patch-diff:', err.message);
+      res.status(500).json({ error: 'Failed to compute patch diff' });
+    }
+  });
+
+  // Task #409 — draft trainer. The simulate-pick endpoint is a thin
+  // wrapper around the existing counter-pick scorer; the engine picks
+  // the highest-scoring legal hero for its current position slot. Public
+  // (no auth required) so unsigned users can play the trainer; only the
+  // /runs save path requires a signed-in account.
+  router.post('/heroes/draft-trainer/simulate-pick', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const allies = (Array.isArray(body.allies) ? body.allies : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+      const enemies = (Array.isArray(body.enemies) ? body.enemies : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+      const bans = (Array.isArray(body.bans) ? body.bans : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+      const action = body.action === 'ban' ? 'ban' : 'pick';
+      const position = body.position ? parseInt(body.position) : null;
+      const seasonId = body.season_id || body.season || null;
+      // From the engine's POV its allies are the request's enemies (it
+      // picks/bans for the opposite side); we evaluate "best counter
+      // into the user's allies" so the engine plays toward beating the
+      // hero(es) the user has revealed.
+      const engineEnemies = action === 'pick' ? allies : enemies;
+      const exclude = new Set([...allies, ...enemies, ...bans]);
+      let candidates = [];
+      if (engineEnemies.length > 0) {
+        candidates = await db.getHeroCounterScores(engineEnemies, position, seasonId, { limit: 50 });
+      }
+      // Filter out anything already picked or banned, take the top hit.
+      candidates = candidates.filter((c) => !exclude.has(c.hero_id));
+      if (candidates.length === 0) {
+        // Fall back to position-best heroes when nothing scored.
+        const fallback = await db.getDraftSuggestions([], [], [...allies, ...enemies, ...bans], position, seasonId);
+        candidates = (fallback || []).slice(0, 20).map((r) => ({
+          hero_id: parseInt(r.hero_id),
+          hero_name: r.hero_name,
+          score: Number(r.score || 0),
+          counter_wr: null,
+          base_wr: r.base_wr,
+          games: parseInt(r.games || 0),
+        }));
+      }
+      const pick = candidates[0] || null;
+      res.json({ action, position, pick, alternatives: candidates.slice(1, 5) });
+    } catch (err) {
+      console.error('[API] heroes/draft-trainer/simulate-pick:', err.message);
+      res.status(500).json({ error: 'Failed to simulate pick' });
+    }
+  });
+
+  router.post('/heroes/draft-trainer/runs', async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'Sign in to save trainer runs' });
+      }
+      const body = req.body || {};
+      const side = body.side === 'B' ? 'B' : 'A';
+      const picksA = Array.isArray(body.picks_a) ? body.picks_a : [];
+      const picksB = Array.isArray(body.picks_b) ? body.picks_b : [];
+      const bans = Array.isArray(body.bans) ? body.bans : [];
+      const predicted = Number(body.predicted_advantage) || 0;
+      const out = await db.recordDraftTrainerRun({
+        accountId: req.session.accountId,
+        side,
+        picksA, picksB, bans,
+        predictedAdvantage: predicted,
+      });
+      // Best-effort evaluation against existing matches — non-fatal.
+      db.evaluateUnmatchedDraftRuns({ accountId: req.session.accountId, limit: 20 }).catch(() => {});
+      res.json({ ok: true, id: out.id });
+    } catch (err) {
+      console.error('[API] heroes/draft-trainer/runs:', err.message);
+      res.status(500).json({ error: 'Failed to save trainer run' });
+    }
+  });
+
+  router.get('/player/:id/draft-trainer-accuracy', async (req, res) => {
+    try {
+      const accountId = parseInt(req.params.id);
+      if (!Number.isFinite(accountId) || accountId <= 0) {
+        return res.status(400).json({ error: 'invalid account id' });
+      }
+      const data = await db.getDraftTrainerAccuracy(accountId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] player/draft-trainer-accuracy:', err.message);
+      res.status(500).json({ error: 'Failed to fetch trainer accuracy' });
+    }
+  });
+
   router.post('/admin/heroes/backfill-patch', requireSuperuser, async (req, res) => {
     try {
       const limit = Math.min(Math.max(parseInt(req.body?.limit) || 5000, 1), 50000);

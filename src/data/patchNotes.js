@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "7.74",
+    "title": "Hero meta v3 — patch diff + draft trainer (Task #409)",
+    "published_at": "2026-05-26",
+    "notes": [
+      "**New `/heroes` › Patch Diff tab.** Side-by-side comparison of two patches with per-hero deltas in win rate, pick rate, ban rate, and position distribution. Top 5 movers (by |Δ| of the chosen metric) float to the top with a gold accent; the picker defaults to the two newest patches present in the database. A min-games filter (default 3) hides noisy single-game outliers; the sort key toggles between |Δ WR| / |Δ pick rate| / |Δ ban rate|. Powered by a new `GET /api/heroes/patch-diff?from=&to=&season=` endpoint that aggregates picks (and bans from `match_draft` when present) with a single `_getHeroPatchAggregates` helper run in parallel for each side.",
+      "**New `/heroes/draft-trainer` page (lazy-loaded).** Captain-mode simulator — pick your side (A or B), the engine picks/bans for the other side using the existing `getHeroCounterScores` counter-pick engine. The CM sequence is 7-4-4-4-3-2 (24 actions). Finishing the draft scores a predicted advantage by comparing the counter-WR of your actual line-up against the best-available counter set (clamped to [-1, +1]), with a one-line verdict (`strong favourite` → `underdog`) and explanation. Engine turns auto-advance; user picks are committed via a searchable hero grid where every tile is a real `<button type=\"button\">` with `aria-label`.",
+      "**Trainer accuracy persistence.** Completed runs by signed-in users are saved to a new `draft_trainer_runs` table (`account_id, side, picks_a, picks_b, bans, predicted_advantage, matched_match_id, matched_outcome, evaluated_at, created_at`). `evaluateUnmatchedDraftRuns` looks for any real non-legacy match whose 5+5 picks (sorted, set-equal) match the recorded draft on either side; when found, it records the outcome from the user's POV and marks `sign(predicted_advantage) === outcome` as correct. The hook is fired best-effort right after each save so accuracy starts climbing immediately when a match is already in the DB.",
+      "**Profile widget.** Players with ≥ 1 saved run get a new `🎯 Draft Trainer accuracy` section on their profile (`/player/:id`) showing rolling accuracy (correct / matched), total runs, and a deep-link back to the trainer. Hidden when there are no runs so unused profiles don't grow a dead section. Fed by `GET /api/player/:id/draft-trainer-accuracy`.",
+      "**Engine reuse, not a new scorer.** Both surfaces piggyback on the existing v2 infrastructure: `getHeroCounterScores` / `_computeHeroCounterMap` for trainer picks, `getHeroPatchWinRates` aggregation patterns for the diff. No new ratings/Elo and no ML — the trainer is a teaching aid that uses the same numbers `/heroes/counter-pick` already shows.",
+      "**API surface (all public, read-only except the save path).** `GET /api/heroes/patch-diff`, `POST /api/heroes/draft-trainer/simulate-pick` (anonymous-OK so users can play before signing in), `POST /api/heroes/draft-trainer/runs` (requires `req.session.accountId`; returns 401 otherwise), `GET /api/player/:id/draft-trainer-accuracy`. Save responses kick off an async accuracy evaluation pass scoped to that account.",
+      "**A11y.** Hero-grid tiles, reset, and side-picker radios are real form controls with labels; the search input has `aria-label`; tab strip continues to use the existing `role=\"tablist\"` infrastructure on `/heroes`. No new modals — the verdict card inlines under the draft."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.73",
     "title": "Smurf detector (advisory) (Task #408)",
     "published_at": "2026-05-26",

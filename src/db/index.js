@@ -2698,6 +2698,32 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_smurf_acks_account ON smurf_acknowledgements(account_id, ack_at DESC)`);
 
+    // Task #409 — draft trainer runs. Each row records a captain-phase
+    // simulation completed by a signed-in user. `predicted_advantage` is
+    // the engine-scored A-side advantage at the end of the draft (range
+    // roughly [-1, 1], positive means user side favoured). `matched_*`
+    // columns are populated lazily by `evaluateUnmatchedDraftRuns` when a
+    // real inhouse match with the same hero composition is found in the
+    // database. Accuracy is computed as (correct/matched) — a run is
+    // "correct" when sign(predicted_advantage) matches the real outcome.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS draft_trainer_runs (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        side TEXT NOT NULL,
+        picks_a JSONB NOT NULL DEFAULT '[]'::jsonb,
+        picks_b JSONB NOT NULL DEFAULT '[]'::jsonb,
+        bans JSONB NOT NULL DEFAULT '[]'::jsonb,
+        predicted_advantage REAL NOT NULL DEFAULT 0,
+        matched_match_id VARCHAR(50),
+        matched_outcome SMALLINT,
+        evaluated_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_dtr_account ON draft_trainer_runs(account_id, created_at DESC)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_dtr_unmatched ON draft_trainer_runs(id) WHERE matched_outcome IS NULL`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -9712,6 +9738,238 @@ async function backfillMatchPatch({ limit = 5000 } = {}) {
     updated += 1;
   }
   return { scanned: res.rows.length, updated };
+}
+
+// Task #409 — patch diff. Per-hero aggregate for a single patch:
+// games, wins, picks/(picks+bans) "pick rate", ban rate, and a coarse
+// position distribution (share of picks at each of pos 1..5). Returned
+// from `getHeroPatchDiff` paired so the frontend can compute deltas.
+async function _getHeroPatchAggregates(patch, seasonId) {
+  const p = getPool();
+  const params = [String(patch)];
+  const sc = _sc(seasonId, params, 'm');
+  const matchesRes = await p.query(
+    `SELECT COUNT(*)::int AS total FROM matches m WHERE m.patch = $1${sc}`,
+    params
+  );
+  const totalMatches = parseInt(matchesRes.rows[0]?.total || 0);
+  if (totalMatches === 0) {
+    return { patch: String(patch), total_matches: 0, heroes: {} };
+  }
+
+  const picksRes = await p.query(
+    `SELECT ps.hero_id,
+            MAX(ps.hero_name) AS hero_name,
+            COUNT(*)::int AS games,
+            SUM(CASE WHEN (ps.team='radiant' AND m.radiant_win) OR (ps.team='dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins,
+            SUM(CASE WHEN ps.position = 1 THEN 1 ELSE 0 END)::int AS pos1,
+            SUM(CASE WHEN ps.position = 2 THEN 1 ELSE 0 END)::int AS pos2,
+            SUM(CASE WHEN ps.position = 3 THEN 1 ELSE 0 END)::int AS pos3,
+            SUM(CASE WHEN ps.position = 4 THEN 1 ELSE 0 END)::int AS pos4,
+            SUM(CASE WHEN ps.position = 5 THEN 1 ELSE 0 END)::int AS pos5
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id > 0 AND m.patch = $1${sc}
+      GROUP BY ps.hero_id`,
+    params
+  );
+
+  // Bans come from match_draft if available; tolerate the table being
+  // missing or empty so the diff still works on legacy data.
+  const heroes = {};
+  for (const r of picksRes.rows) {
+    const hid = parseInt(r.hero_id);
+    heroes[hid] = {
+      hero_id: hid,
+      hero_name: r.hero_name,
+      games: parseInt(r.games),
+      wins: parseInt(r.wins),
+      bans: 0,
+      pos: [0, parseInt(r.pos1), parseInt(r.pos2), parseInt(r.pos3), parseInt(r.pos4), parseInt(r.pos5)],
+    };
+  }
+  try {
+    const bansRes = await p.query(
+      `SELECT md.hero_id, COUNT(*)::int AS bans
+         FROM match_draft md
+         JOIN matches m ON m.match_id = md.match_id
+        WHERE md.is_pick = false AND md.hero_id > 0 AND m.patch = $1${sc}
+        GROUP BY md.hero_id`,
+      params
+    );
+    for (const r of bansRes.rows) {
+      const hid = parseInt(r.hero_id);
+      if (!heroes[hid]) {
+        heroes[hid] = { hero_id: hid, hero_name: null, games: 0, wins: 0, bans: 0, pos: [0, 0, 0, 0, 0, 0] };
+      }
+      heroes[hid].bans = parseInt(r.bans);
+    }
+  } catch (_) { /* match_draft optional */ }
+  return { patch: String(patch), total_matches: totalMatches, heroes };
+}
+
+async function getHeroPatchDiff(fromPatch, toPatch, seasonId = null) {
+  if (!fromPatch || !toPatch) throw new Error('fromPatch and toPatch required');
+  const [a, b] = await Promise.all([
+    _getHeroPatchAggregates(fromPatch, seasonId),
+    _getHeroPatchAggregates(toPatch, seasonId),
+  ]);
+  const allHeroes = new Set([...Object.keys(a.heroes), ...Object.keys(b.heroes)].map(Number));
+  const rows = [];
+  for (const hid of allHeroes) {
+    const ha = a.heroes[hid] || { hero_id: hid, hero_name: null, games: 0, wins: 0, bans: 0, pos: [0,0,0,0,0,0] };
+    const hb = b.heroes[hid] || { hero_id: hid, hero_name: null, games: 0, wins: 0, bans: 0, pos: [0,0,0,0,0,0] };
+    const wrA = ha.games > 0 ? ha.wins / ha.games : null;
+    const wrB = hb.games > 0 ? hb.wins / hb.games : null;
+    const pickRateA = a.total_matches > 0 ? ha.games / a.total_matches : 0;
+    const pickRateB = b.total_matches > 0 ? hb.games / b.total_matches : 0;
+    const banRateA = a.total_matches > 0 ? ha.bans / a.total_matches : 0;
+    const banRateB = b.total_matches > 0 ? hb.bans / b.total_matches : 0;
+    const totA = ha.pos.slice(1).reduce((s, v) => s + v, 0) || 1;
+    const totB = hb.pos.slice(1).reduce((s, v) => s + v, 0) || 1;
+    const posShareA = ha.pos.slice(1).map((v) => v / totA);
+    const posShareB = hb.pos.slice(1).map((v) => v / totB);
+    const posShift = posShareA.map((_, i) => posShareB[i] - posShareA[i]);
+    rows.push({
+      hero_id: hid,
+      hero_name: hb.hero_name || ha.hero_name,
+      from: { games: ha.games, wins: ha.wins, win_rate: wrA, pick_rate: pickRateA, ban_rate: banRateA, pos_share: posShareA },
+      to: { games: hb.games, wins: hb.wins, win_rate: wrB, pick_rate: pickRateB, ban_rate: banRateB, pos_share: posShareB },
+      delta: {
+        win_rate: (wrA != null && wrB != null) ? (wrB - wrA) : null,
+        pick_rate: pickRateB - pickRateA,
+        ban_rate: banRateB - banRateA,
+        pos_shift: posShift,
+      },
+    });
+  }
+  return {
+    from_patch: String(fromPatch),
+    to_patch: String(toPatch),
+    from_total_matches: a.total_matches,
+    to_total_matches: b.total_matches,
+    heroes: rows,
+  };
+}
+
+// Task #409 — draft trainer persistence + accuracy roll-up. A run is
+// recorded when the user finishes a captain-phase simulation. Matching
+// against a real match is best-effort: we look for any match in the
+// same season whose 5+5 picks match exactly (ignoring side), and call
+// the run "correct" if sign(predicted_advantage) matches the real
+// outcome from the user's side perspective.
+async function recordDraftTrainerRun({ accountId, side, picksA, picksB, bans, predictedAdvantage }) {
+  if (!accountId) throw new Error('accountId required');
+  const p = getPool();
+  const sideClean = side === 'B' ? 'B' : 'A';
+  const cleanIds = (arr) => (Array.isArray(arr) ? arr.map(Number).filter((n) => Number.isFinite(n) && n > 0) : []);
+  const a = cleanIds(picksA);
+  const b = cleanIds(picksB);
+  const bn = cleanIds(bans);
+  const res = await p.query(
+    `INSERT INTO draft_trainer_runs (account_id, side, picks_a, picks_b, bans, predicted_advantage)
+     VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6)
+     RETURNING id, created_at`,
+    [parseInt(accountId), sideClean, JSON.stringify(a), JSON.stringify(b), JSON.stringify(bn), Number(predictedAdvantage) || 0]
+  );
+  return { id: res.rows[0].id, created_at: res.rows[0].created_at };
+}
+
+async function evaluateUnmatchedDraftRuns({ accountId = null, limit = 100 } = {}) {
+  const p = getPool();
+  const params = [];
+  const where = ['matched_outcome IS NULL'];
+  if (accountId) {
+    params.push(parseInt(accountId));
+    where.push(`account_id = $${params.length}`);
+  }
+  params.push(parseInt(limit));
+  const runsRes = await p.query(
+    `SELECT id, account_id, side, picks_a, picks_b, predicted_advantage
+       FROM draft_trainer_runs
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC
+      LIMIT $${params.length}`,
+    params
+  );
+  let evaluated = 0;
+  for (const run of runsRes.rows) {
+    const a = (Array.isArray(run.picks_a) ? run.picks_a : []).map(Number).filter(Boolean).sort((x, y) => x - y);
+    const b = (Array.isArray(run.picks_b) ? run.picks_b : []).map(Number).filter(Boolean).sort((x, y) => x - y);
+    if (a.length < 5 || b.length < 5) continue;
+    // Find a real match whose radiant+dire picks (sorted, as a set) match.
+    const matchRes = await p.query(
+      `SELECT m.match_id, m.radiant_win,
+              ARRAY_AGG(ps.hero_id ORDER BY ps.hero_id) FILTER (WHERE ps.team='radiant') AS radiant,
+              ARRAY_AGG(ps.hero_id ORDER BY ps.hero_id) FILTER (WHERE ps.team='dire') AS dire
+         FROM matches m
+         JOIN player_stats ps ON ps.match_id = m.match_id
+        WHERE m.is_legacy = false AND ps.hero_id > 0
+        GROUP BY m.match_id, m.radiant_win
+       HAVING COUNT(ps.hero_id) = 10
+          AND (
+            (ARRAY_AGG(ps.hero_id ORDER BY ps.hero_id) FILTER (WHERE ps.team='radiant') = $1::int[]
+             AND ARRAY_AGG(ps.hero_id ORDER BY ps.hero_id) FILTER (WHERE ps.team='dire') = $2::int[])
+            OR
+            (ARRAY_AGG(ps.hero_id ORDER BY ps.hero_id) FILTER (WHERE ps.team='radiant') = $2::int[]
+             AND ARRAY_AGG(ps.hero_id ORDER BY ps.hero_id) FILTER (WHERE ps.team='dire') = $1::int[])
+          )
+        ORDER BY m.date DESC NULLS LAST
+        LIMIT 1`,
+      [a, b]
+    );
+    if (matchRes.rows.length === 0) continue;
+    const m = matchRes.rows[0];
+    const radiantArr = (m.radiant || []).map(Number);
+    const aIsRadiant = JSON.stringify(radiantArr) === JSON.stringify(a);
+    const userIsA = run.side === 'A';
+    const userWon = aIsRadiant ? (userIsA ? m.radiant_win : !m.radiant_win) : (userIsA ? !m.radiant_win : m.radiant_win);
+    const outcome = userWon ? 1 : 0;
+    await p.query(
+      `UPDATE draft_trainer_runs
+          SET matched_match_id = $1, matched_outcome = $2, evaluated_at = NOW()
+        WHERE id = $3`,
+      [m.match_id, outcome, run.id]
+    );
+    evaluated += 1;
+  }
+  return { scanned: runsRes.rows.length, evaluated };
+}
+
+async function getDraftTrainerAccuracy(accountId, { limit = 50 } = {}) {
+  if (!accountId) return { runs: 0, matched: 0, correct: 0, accuracy: null, recent: [] };
+  const p = getPool();
+  const res = await p.query(
+    `SELECT id, side, predicted_advantage, matched_match_id, matched_outcome,
+            created_at, evaluated_at
+       FROM draft_trainer_runs
+      WHERE account_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [parseInt(accountId), parseInt(limit)]
+  );
+  let matched = 0;
+  let correct = 0;
+  for (const r of res.rows) {
+    if (r.matched_outcome == null) continue;
+    matched += 1;
+    const predicted = Number(r.predicted_advantage) >= 0 ? 1 : 0;
+    if (predicted === parseInt(r.matched_outcome)) correct += 1;
+  }
+  return {
+    runs: res.rows.length,
+    matched,
+    correct,
+    accuracy: matched > 0 ? correct / matched : null,
+    recent: res.rows.slice(0, 10).map((r) => ({
+      id: r.id,
+      side: r.side,
+      predicted_advantage: Number(r.predicted_advantage),
+      matched_match_id: r.matched_match_id,
+      matched_outcome: r.matched_outcome,
+      created_at: r.created_at,
+    })),
+  };
 }
 
 async function getDraftSuggestions(allyHeroIds, enemyHeroIds, bannedHeroIds, position, seasonId = null) {
@@ -19405,6 +19663,10 @@ module.exports = {
   getHeroPatchWinRates,
   getAvailablePatches,
   backfillMatchPatch,
+  getHeroPatchDiff,
+  recordDraftTrainerRun,
+  evaluateUnmatchedDraftRuns,
+  getDraftTrainerAccuracy,
 };
 
 const RECORD_STAT_KEYS = ['kills', 'gpm', 'assists', 'hero_damage', 'tower_damage', 'last_hits'];
