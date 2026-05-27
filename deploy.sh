@@ -53,6 +53,15 @@ echo "==> Verifying frontend accessibility (Task #164 — house rule gate)..."
 # triad, or if a raw <th onClick> reappears (must use SortableTh).
 node scripts/check-a11y.js
 
+echo "==> Verifying money-path test coverage (Task #416)..."
+# Hard gate: refuse to deploy if any of the money-path test files fail.
+# Covers every Stripe webhook purpose x event-type combination, the three
+# refund fail-closed routes (1:1 booking, group seat, VOD), and the inhouse
+# server-provisioner single-flight race. A failure here aborts the deploy
+# BEFORE PM2 is touched, so a Stripe / refund / race regression can never
+# replace a working production process with a broken one.
+npm run check:money-paths
+
 echo "==> Installing frontend dependencies..."
 cd web
 npm install --silent

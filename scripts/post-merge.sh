@@ -27,6 +27,15 @@ echo "[post-merge] Verifying frontend accessibility (Task #164 — house rule ga
 # BEFORE the frontend build so a regression fails fast.
 node scripts/check-a11y.js
 
+echo "[post-merge] Verifying money-path test coverage (Task #416 — Stripe webhooks + refund fail-closed + group-seat race)..."
+# Hard gate: refuse to push if any of the money-path test files fail.
+# This covers every Stripe webhook purpose x event-type combination,
+# the three refund fail-closed routes (1:1 booking, group seat, VOD),
+# and the inhouse server-provisioner single-flight race. A failure here
+# means a Stripe / refund / race regression has landed and aborts the
+# GitHub push BEFORE prod ever sees it.
+npm run check:money-paths
+
 echo "[post-merge] Verifying no Pro-paywall imports in community web source (Task #301)..."
 # Fast-feedback gate: resolve-aware source scan over community-edition/web/src/.
 # Prints line-numbered errors and is aware of the local no-op useProStatus

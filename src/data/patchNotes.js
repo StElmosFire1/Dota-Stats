@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "7.81",
+    "title": "Money-path test coverage (Task #416)",
+    "published_at": "2026-05-27",
+    "notes": [
+      "**New test file** `tests/moneyPathsCoverage.test.js` adds 21 integration tests that close the coverage gaps in the Stripe-touching surface — every test runs against the in-process Express app with a stubbed Stripe SDK + a Proxy-backed `db` stub, so the whole file completes in under three seconds with no live network and no real DB.",
+      "**Webhook coverage.** Extends the existing `stripeWebhookAsyncPayment` / `stripeWebhookRefundsKyc` files with the two coaching purposes they missed: `coaching_group_seat` and `coaching_vod_review`. For each purpose we now assert `checkout.session.completed` (paid AND unpaid), `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `payment_intent.succeeded` (group-seat capture), and `payment_intent.canceled` — plus a `charge.refunded` test that proves a single refund event flips both the group-seat row AND the VOD row by intent id (the webhook calls every `markXRefundedByIntent` helper, not just `markBookingRefundedByIntent`).",
+      "**Refund fail-closed.** Three new tests prove the route-level Stripe wrappers never flip a DB row to `refunded`/`cancelled` when the Stripe API throws: `/bookings/:id/no-show-refund` (1:1 booking → must return 502 with no `markBookingRefunded` call), `/me/coach/group-sessions/:id/cancel` (group session → must return 502 with no `setGroupSessionStatus('cancelled')` and no `markGroupSeatRefundedByIntent`), and `/vod-reviews/:id/refund` (VOD review → must return 502 with no `setVodStatus` and no `markVodRefundedByIntent`). Each path is paired with a happy-path counterpart so the happy path keeps working.",
+      "**Race coverage.** New concurrency test fires 5 simultaneous `POST /api/group-sessions/:id/join` calls against a capacity-3 session. `db.reserveGroupSeat` is mocked with a serialised counter that mirrors the SQL `FOR UPDATE` + capacity-check pattern in `db.reserveGroupSeat`. Asserts exactly 3 reservations succeed, 2 are rejected with HTTP 400 \"Session full\", and Stripe checkout creation is invoked exactly 3 times — i.e. no over-booking past capacity. The inhouse server-provisioner single-flight race is already covered by `tests/inhouseServerProvisioner.test.js` and was left as-is.",
+      "**Test infrastructure.** The stubbing pattern matches the existing money-path tests (`stubModule()` cache poisoning + a Proxy `db` stub + `setInterval` unref so the bot's background tickers don't keep node alive). Two small additions: a `_findRouterRoute` helper that walks the api router mounted at `/api` (the existing helpers only reached `app`-level routes like the webhook), and a `_runRoute` helper that walks every layer on a router route so `express.json()` middleware is a no-op over a pre-parsed body.",
+      "**Deploy gate.** New `npm run check:money-paths` script runs only the money-path test files (`moneyPathsCoverage` + `stripeWebhookAsyncPayment` + `stripeWebhookRefundsKyc` + `inhouseServerProvisioner`) — 71 tests in ~3.4s with no live network. Wired into `scripts/post-merge.sh` (aborts the GitHub push) AND `deploy.sh` (aborts the full-edition prod deploy BEFORE PM2 is touched), so a Stripe / refund / race regression can no longer reach origin/main or replace a working PM2 process. Community-edition `deploy.sh` is intentionally NOT wired — community edition is paywall-free and ships none of the Stripe surface.",
+      "**Out of scope.** Pre-existing failures in `pickem`, `adminRouteManifest`, and a couple of source-guard tests are untouched by this work — they were already red before this batch and are unrelated to the money paths."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.80",
     "title": "Public API v2 + developer portal (Task #415)",
     "published_at": "2026-05-27",
