@@ -52,6 +52,7 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
   const runId = run.id;
   let passed = 0, failed = 0;
   const failureSummaries = [];
+  const failingScreenshots = [];
 
   try {
     const playwright = _tryRequire('playwright');
@@ -86,8 +87,41 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
       ignoreHTTPSErrors: true,
     });
 
+    // Synthetic Steam login for authenticated journeys. POSTs the shared
+    // bearer + an allow-listed accountId to /auth/steam/test-login, which
+    // sets the session cookie on the Playwright context. When either env
+    // var is missing the login is skipped — auth: true journeys then
+    // record as 'skipped' with a clear reason rather than crashing the
+    // whole run.
+    let authReady = false, authSkipReason = null;
+    if (process.env.SMOKE_TEST_LOGIN_TOKEN && process.env.SMOKE_TEST_ACCOUNT_IDS) {
+      try {
+        const loginRes = await context.request.post(url + '/auth/steam/test-login', {
+          headers: {
+            'Authorization': `Bearer ${process.env.SMOKE_TEST_LOGIN_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          data: {},
+          timeout: 10_000,
+        });
+        if (loginRes.ok()) authReady = true;
+        else authSkipReason = `test-login returned HTTP ${loginRes.status()}`;
+      } catch (e) {
+        authSkipReason = `test-login request failed: ${e.message}`;
+      }
+    } else {
+      authSkipReason = 'SMOKE_TEST_LOGIN_TOKEN / SMOKE_TEST_ACCOUNT_IDS not configured';
+    }
+
     try {
       for (const j of JOURNEYS) {
+        if (j.auth && !authReady) {
+          await db.recordBrowserSmokeStep({
+            runId, stepKey: j.key, label: j.label, status: 'skipped',
+            reason: `auth journey skipped — ${authSkipReason}`,
+          });
+          continue;
+        }
         const stepStart = Date.now();
         let status = 'ok', reason = null;
         let screenshotPath = null, baselinePath = null, diffPath = null;
@@ -168,7 +202,15 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
           diffPath:       diffPath       ? path.relative(REPO_ROOT, diffPath)       : null,
           diffPixels, diffRatio,
         });
-        if (status === 'ok') passed++; else { failed++; failureSummaries.push(`• ${j.label}: ${reason}`); }
+        if (status === 'ok') passed++;
+        else {
+          failed++;
+          failureSummaries.push(`• ${j.label}: ${reason}`);
+          // Prefer the diff image (visualises what broke), fall back to the
+          // current screenshot. The DM caps at 4 attachments.
+          if (diffPath) failingScreenshots.push(diffPath);
+          else if (screenshotPath) failingScreenshots.push(screenshotPath);
+        }
       }
     } finally {
       await context.close().catch(() => {});
@@ -180,7 +222,7 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
       status, totalSteps: JOURNEYS.length, passedSteps: passed, failedSteps: failed,
       notes: failed === 0 ? null : `Failures:\n${failureSummaries.join('\n')}`,
     });
-    if (failed > 0) await _alertOwner(runId, failed, failureSummaries);
+    if (failed > 0) await _alertOwner(runId, failed, failureSummaries, failingScreenshots);
     return { runId, status, passed, failed };
   } catch (err) {
     await db.finishBrowserSmokeRun(runId, {
@@ -194,7 +236,7 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
   }
 }
 
-async function _alertOwner(runId, failed, summaries) {
+async function _alertOwner(runId, failed, summaries, failingScreenshots = []) {
   try {
     const { getDiscordBot } = require('../discord/bot');
     const bot = getDiscordBot();
@@ -203,8 +245,11 @@ async function _alertOwner(runId, failed, summaries) {
       `🧪 **Browser smoke test alert** — run #${runId} reported ${failed} failing step(s):\n` +
       summaries.slice(0, 10).join('\n') +
       (summaries.length > 10 ? `\n…and ${summaries.length - 10} more.` : '') +
-      `\n\nReview: ${process.env.PUBLIC_BASE_URL || ''}/admin/feature-health (Smoke runs tab).`;
-    await bot._dmOwner(msg);
+      `\n\nReview: ${process.env.PUBLIC_BASE_URL || ''}/admin/browser-smoke/${runId}`;
+    // Attach up to 4 failing screenshots (Discord caps DMs at 10 files /
+    // 25MB total — we keep well under that). Files must exist on disk.
+    const files = failingScreenshots.filter(p => p && fs.existsSync(p)).slice(0, 4);
+    await bot._dmOwner(msg, { files });
   } catch (_) { /* alerting must never break the runner */ }
 }
 

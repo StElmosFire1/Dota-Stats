@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
-import { getFeatureHealth, runFeatureHealth } from '../api';
+import { getFeatureHealth, runFeatureHealth, listBrowserSmokeRuns, triggerBrowserSmokeRun } from '../api';
 
 function fmtTime(ts) {
   if (!ts) return '—';
@@ -32,6 +33,95 @@ function StatusBadge({ status }) {
       <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: s.dot }} />
       {s.label}
     </span>
+  );
+}
+
+// Task #426 — Embedded "Browser smoke runs" panel. Shows the latest 5
+// automated Playwright runs, a "▶ Run smoke now" button that kicks one
+// off server-side, and a link through to the full /admin/browser-smoke
+// page with per-step screenshots + baseline approval.
+function BrowserSmokePanel({ superuserKey }) {
+  const [runs, setRuns] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const reload = useCallback(async () => {
+    if (!superuserKey) return;
+    try {
+      const data = await listBrowserSmokeRuns(superuserKey);
+      setRuns(Array.isArray(data?.runs) ? data.runs.slice(0, 5) : []);
+    } catch (e) { /* silent — panel is supplementary */ }
+  }, [superuserKey]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  // Poll every 5s while a run is in flight so the row flips on its own.
+  useEffect(() => {
+    if (!runs.some(r => r.status === 'running' || r.status === 'queued')) return;
+    const t = setInterval(reload, 5000);
+    return () => clearInterval(t);
+  }, [runs, reload]);
+
+  const onRun = async () => {
+    setBusy(true); setErr(null);
+    try { await triggerBrowserSmokeRun(superuserKey); await reload(); }
+    catch (e) { setErr(e.message || 'Failed to start.'); }
+    setBusy(false);
+  };
+
+  const pill = (s) => {
+    const m = {
+      ok:      { bg: '#1f4d24', fg: '#7ee07e' },
+      failed:  { bg: '#4d1f1f', fg: '#ff8a8a' },
+      error:   { bg: '#4d1f1f', fg: '#ff8a8a' },
+      running: { bg: '#1f3a4d', fg: '#7ec0ff' },
+      queued:  { bg: '#2a2a2a', fg: '#aaa' },
+      skipped: { bg: '#3a3a3a', fg: '#bbb' },
+    }[s] || { bg: '#2a2a2a', fg: '#aaa' };
+    return (
+      <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: m.bg, color: m.fg }}>
+        {String(s || '—').toUpperCase()}
+      </span>
+    );
+  };
+
+  return (
+    <section style={{ marginBottom: 18, padding: 12, borderRadius: 8, background: '#161616', border: '1px solid #2a2a2a' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <strong style={{ fontSize: 14 }}>Browser smoke runs</strong>
+        <span style={{ color: '#888', fontSize: 12 }}>real-browser Playwright suite — ~14 user journeys, perceptual diff vs baselines</span>
+        <div style={{ flex: 1 }} />
+        <button
+          type="button" className="btn btn-primary" style={{ fontSize: 12, padding: '4px 10px' }}
+          onClick={onRun} disabled={busy}
+          aria-label="Run browser smoke suite now"
+        >{busy ? 'Starting…' : '▶ Run smoke now'}</button>
+        <Link to="/admin/browser-smoke" className="btn" style={{ fontSize: 12, padding: '4px 10px' }}>
+          Open full view →
+        </Link>
+      </div>
+      {err && <div style={{ color: '#ff8a8a', marginTop: 6, fontSize: 12 }}>{err}</div>}
+      {runs.length === 0 && (
+        <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+          No browser-smoke runs yet — click ▶ Run smoke now or wait for the Sunday 03:00 OCE cron.
+        </div>
+      )}
+      {runs.length > 0 && (
+        <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
+          {runs.map(r => (
+            <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, padding: '4px 0' }}>
+              <Link to={`/admin/browser-smoke/${r.id}`}>#{r.id}</Link>
+              {pill(r.status)}
+              <span style={{ color: '#888' }}>{r.trigger}</span>
+              <span style={{ color: '#888' }}>{r.started_at ? fmtTime(r.started_at) : ''}</span>
+              <span style={{ color: '#7ee07e' }}>{r.passed_steps} ok</span>
+              {r.failed_steps > 0 && <span style={{ color: '#ff8a8a' }}>· {r.failed_steps} failed</span>}
+              <span style={{ color: '#666' }}>/ {r.total_steps}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -115,6 +205,9 @@ export default function AdminFeatureHealth() {
           background: '#4d1f1f', color: '#ffb3b3', fontSize: 13,
         }}>{error}</div>
       )}
+
+      <BrowserSmokePanel superuserKey={superuserKey} />
+
 
       <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
         <span>{rows.length} probes</span>

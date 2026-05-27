@@ -677,6 +677,50 @@ function createServer(startupStatus = {}) {
     res.redirect(`${STEAM_OPEN_ID}?${params}`);
   });
 
+  // Task #426 — Synthetic Steam test-login for the browser-smoke suite.
+  //
+  // Authenticated journeys (player profile, coach earnings, inhouse seat
+  // registration) can't be exercised by the Playwright suite without going
+  // through Steam OpenID, and we don't want the smoke runner round-tripping
+  // through Steam every cron tick. This endpoint accepts a shared bearer
+  // token + an env-allowlisted accountId, sets `req.session.accountId`
+  // exactly the same way the real Steam return handler does, and returns
+  // 200. Disabled by default — fails closed with 404 when either env var
+  // is unset. The allow-list is intentional: even with the token, only
+  // explicit account IDs can log in this way.
+  //
+  // Env vars:
+  //   SMOKE_TEST_LOGIN_TOKEN   — shared bearer secret (matches the runner)
+  //   SMOKE_TEST_ACCOUNT_IDS   — comma-separated list of permitted Dota
+  //                              accountIds (the 32-bit form, not steamId64)
+  app.post('/auth/steam/test-login', authLimiter, express.json(), async (req, res) => {
+    const token = process.env.SMOKE_TEST_LOGIN_TOKEN;
+    const allowList = (process.env.SMOKE_TEST_ACCOUNT_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!token || !allowList.length) return res.status(404).json({ error: 'not configured' });
+    const provided = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    if (provided !== token) return res.status(401).json({ error: 'unauthorized' });
+    const accountId = String((req.body && req.body.accountId) || allowList[0]);
+    if (!allowList.includes(accountId)) return res.status(403).json({ error: 'accountId not in SMOKE_TEST_ACCOUNT_IDS allow-list' });
+    try {
+      const pool = db.getPool();
+      const lookup = await pool.query(
+        `SELECT COALESCE(n.nickname, ps.persona_name) AS display_name
+           FROM player_stats ps
+           LEFT JOIN nicknames n ON n.account_id = ps.account_id
+          WHERE ps.account_id = $1
+          ORDER BY ps.id DESC LIMIT 1`,
+        [accountId]
+      );
+      req.session.accountId = accountId;
+      req.session.steamId64 = (BigInt(accountId) + 76561197960265728n).toString();
+      req.session.displayName = lookup.rows[0]?.display_name || `smoke-test-${accountId}`;
+      console.log('[Steam Auth] test-login success — accountId:', accountId);
+      res.json({ ok: true, accountId, displayName: req.session.displayName });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/auth/steam/return', authLimiter, async (req, res) => {
     try {
       if (req.query['openid.mode'] !== 'id_res') {

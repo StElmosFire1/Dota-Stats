@@ -2912,10 +2912,24 @@ class DiscordBot {
     }
   }
 
-  async _dmOwner(message) {
+  async _dmOwner(message, opts = {}) {
     try {
       const user = await this.client.users.fetch(OWNER_DISCORD_ID);
-      if (user) await user.send(message);
+      if (!user) return;
+      // Backwards-compatible signature: old callers pass a string and get a
+      // plain text DM. New callers (Task #426 browser-smoke alerter) can
+      // pass `{ files: [...absolute paths...] }` to attach screenshots —
+      // each path becomes an AttachmentBuilder and is sent in the same DM.
+      const files = Array.isArray(opts.files) ? opts.files.filter(Boolean) : [];
+      if (files.length) {
+        const attachments = files.map(p => {
+          const name = require('path').basename(p);
+          return new AttachmentBuilder(p, { name });
+        });
+        await user.send({ content: String(message), files: attachments });
+      } else {
+        await user.send(String(message));
+      }
     } catch (e) {
       console.warn('[Owner DM] failed:', e.message);
     }
