@@ -2,10 +2,43 @@ const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const db = require('../db');
 
-const TIER_LIMITS = {
-  free: { perMinute: 30, perDay: 1000 },
-  pro:  { perMinute: 120, perDay: 50000 },
+// Task #415 — defaults for the v2 product. Per-key `rate_per_min` on the
+// `api_keys` row overrides these when set. The anon limit is what the
+// IP-scoped pre-auth limiter and the unauthenticated /status endpoint use.
+const DEFAULTS = {
+  anonPerMinute: 60,
+  freePerMinute: 60,
+  proPerMinute: 600,
 };
+const TIER_LIMITS = {
+  free: { perMinute: DEFAULTS.freePerMinute, perDay: 1000 },
+  pro:  { perMinute: DEFAULTS.proPerMinute, perDay: 50000 },
+};
+
+// Task #415 — scope required to call each endpoint. Endpoints not listed
+// here are key-but-scope-free (any non-revoked key works). The legacy
+// `read` scope from Task #371 implies every `read:*` scope so older keys
+// keep working unchanged.
+const ENDPOINT_SCOPES = {
+  'GET /matches': 'read:matches',
+  'GET /matches/:matchId': 'read:matches',
+  'GET /leaderboard': 'read:leaderboard',
+  'GET /profile/:accountId': 'read:players',
+  'GET /teams': 'read:teams',
+  'GET /teams/:id': 'read:teams',
+  'POST /webhooks': 'write:webhooks',
+  'GET /webhooks': 'write:webhooks',
+  'DELETE /webhooks/:id': 'write:webhooks',
+};
+
+function _hasScope(keyRow, required) {
+  if (!required) return true;
+  const scopes = Array.isArray(keyRow?.scopes) ? keyRow.scopes : [];
+  if (scopes.includes(required)) return true;
+  // Legacy wildcard: any `read:*` scope is satisfied by the catch-all `read`.
+  if (required.startsWith('read:') && scopes.includes('read')) return true;
+  return false;
+}
 
 function _stripInternalFields(match) {
   if (!match || typeof match !== 'object') return match;
@@ -20,6 +53,34 @@ function _stripInternalFields(match) {
     });
   }
   return safe;
+}
+
+function requireScope(scope) {
+  return (req, res, next) => {
+    if (!_hasScope(req.apiKey, scope)) {
+      return res.status(403).json({
+        error: 'insufficient_scope',
+        required_scope: scope,
+        message: `This endpoint requires the "${scope}" scope. Grant it on your key in Settings → API & webhooks.`,
+      });
+    }
+    next();
+  };
+}
+
+// Task #415 — webhook management is a Pro-tier perk (matches the
+// session-based /api/me/webhooks policy in server.js). Free-tier keys can
+// hold the `write:webhooks` scope in principle but every webhook endpoint
+// also requires the caller to be on a Pro key, so a downgraded account
+// can't keep managing subscriptions through the API.
+function requireProTier(req, res, next) {
+  if (req.apiKeyTier !== 'pro') {
+    return res.status(403).json({
+      error: 'pro_required',
+      message: 'Webhook management is a Pro perk. Upgrade your account or use a Pro-tier key.',
+    });
+  }
+  next();
 }
 
 async function _requireApiKey(req, res, next) {
@@ -49,7 +110,6 @@ async function _requireApiKey(req, res, next) {
     if (!keyRow || keyRow.revoked_at) {
       return res.status(401).json({ error: 'invalid_api_key' });
     }
-    // In preview mode, only superuser-owned keys may call. (Owner-only dogfood.)
     if (flag.state === 'preview' && !keyRow.is_owner_superuser) {
       return res.status(503).json({
         error: 'public_api_preview',
@@ -57,16 +117,18 @@ async function _requireApiKey(req, res, next) {
       });
     }
     const tier = keyRow.tier === 'pro' ? 'pro' : 'free';
-    const limits = TIER_LIMITS[tier];
+    const tierLimits = TIER_LIMITS[tier];
+    const perMinute = Number.isFinite(Number(keyRow.rate_per_min)) && Number(keyRow.rate_per_min) > 0
+      ? Number(keyRow.rate_per_min)
+      : tierLimits.perMinute;
+    const perDay = tierLimits.perDay;
 
-    // Per-key, per-minute counter (in-process, best-effort).
     const now = Date.now();
     const minuteBucket = Math.floor(now / 60_000);
-    const dayBucket = new Date(now).toISOString().slice(0, 10); // YYYY-MM-DD UTC
+    const dayBucket = new Date(now).toISOString().slice(0, 10);
     const minuteKey = `m:${keyRow.id}:${minuteBucket}`;
     const dayKey = `d:${keyRow.id}:${dayBucket}`;
     const counters = _requireApiKey._counters;
-    // GC old buckets opportunistically.
     for (const [k, v] of counters) {
       if (v.expires < now) counters.delete(k);
     }
@@ -77,7 +139,6 @@ async function _requireApiKey(req, res, next) {
     }
     let dBucket = counters.get(dayKey);
     if (!dBucket) {
-      // Expire shortly after end-of-UTC-day.
       const tomorrow = Date.UTC(
         new Date(now).getUTCFullYear(),
         new Date(now).getUTCMonth(),
@@ -88,30 +149,29 @@ async function _requireApiKey(req, res, next) {
     }
     mBucket.count += 1;
     dBucket.count += 1;
-    res.set('X-RateLimit-Limit', String(limits.perMinute));
-    res.set('X-RateLimit-Remaining', String(Math.max(0, limits.perMinute - mBucket.count)));
+    res.set('X-RateLimit-Limit', String(perMinute));
+    res.set('X-RateLimit-Remaining', String(Math.max(0, perMinute - mBucket.count)));
     res.set('X-RateLimit-Tier', tier);
-    res.set('X-RateLimit-Daily-Limit', String(limits.perDay));
-    res.set('X-RateLimit-Daily-Remaining', String(Math.max(0, limits.perDay - dBucket.count)));
-    if (mBucket.count > limits.perMinute) {
+    res.set('X-RateLimit-Daily-Limit', String(perDay));
+    res.set('X-RateLimit-Daily-Remaining', String(Math.max(0, perDay - dBucket.count)));
+    if (mBucket.count > perMinute) {
       return res.status(429).json({
         error: 'rate_limited',
         scope: 'per_minute',
-        message: `Per-minute limit (${limits.perMinute}) exceeded for tier "${tier}".`,
+        message: `Per-minute limit (${perMinute}) exceeded for key.`,
         retry_after_seconds: 60 - (Math.floor(now / 1000) % 60),
       });
     }
-    if (dBucket.count > limits.perDay) {
+    if (dBucket.count > perDay) {
       const msToEod = Math.max(1, Math.ceil((dBucket.expires - now) / 1000));
       return res.status(429).json({
         error: 'rate_limited',
         scope: 'per_day',
-        message: `Daily limit (${limits.perDay}) exceeded for tier "${tier}".`,
+        message: `Daily limit (${perDay}) exceeded for tier "${tier}".`,
         retry_after_seconds: msToEod,
       });
     }
 
-    // Cumulative usage counter is persisted on the key row (best-effort).
     db.touchApiKeyUsage(keyRow.id).catch(() => {});
 
     req.apiKey = keyRow;
@@ -127,36 +187,43 @@ _requireApiKey._counters = new Map();
 function createPublicApiRouter() {
   const router = express.Router();
 
-  // CORS is intentionally permissive for the public API surface.
   router.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Authorization, X-API-Key, Content-Type');
     res.set('Access-Control-Max-Age', '600');
     if (req.method === 'OPTIONS') return res.status(204).end();
     next();
   });
 
-  // Coarse anti-abuse limiter applied before key lookup, by IP.
+  // Task #415 — IP-scoped anon limiter (default 60/min). Applied only to
+  // unauthenticated surface (`/status`) so it can't shadow the per-key
+  // limit on keyed `/v1/*` traffic — Pro keys need to be able to burst at
+  // 600+/min from a single integration host.
   const ipLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 240,
+    max: DEFAULTS.anonPerMinute,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'ip_rate_limited' },
   });
-  router.use(ipLimiter);
 
-  // Status endpoint — unauthenticated so integrators can check availability.
-  router.get('/status', async (req, res) => {
+  router.get('/status', ipLimiter, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const flag = await db.getFeatureFlag('public_api').catch(() => null);
     res.json({
       ok: true,
       version: 'v1',
+      product_version: 'v2',
       state: flag?.state || 'off',
-      events: ['match.ended', 'lobby.full', 'tournament.round_started', 'coaching.booked'],
-      docs: '/api-docs',
+      events: db.listKnownWebhookEvents(),
+      scopes: db.listKnownApiScopes(),
+      defaults: {
+        anon_per_minute: DEFAULTS.anonPerMinute,
+        free_per_minute: DEFAULTS.freePerMinute,
+        pro_per_minute: DEFAULTS.proPerMinute,
+      },
+      docs: '/developers',
     });
   });
 
@@ -169,12 +236,14 @@ function createPublicApiRouter() {
       label: k.label,
       tier: req.apiKeyTier,
       account_id: k.account_id,
+      scopes: k.scopes || [],
+      rate_per_min: k.rate_per_min ?? null,
       created_at: k.created_at,
       last_used_at: k.last_used_at,
     });
   });
 
-  router.get('/matches', async (req, res) => {
+  router.get('/matches', requireScope(ENDPOINT_SCOPES['GET /matches']), async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
       const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
@@ -204,7 +273,7 @@ function createPublicApiRouter() {
     }
   });
 
-  router.get('/matches/:matchId', async (req, res) => {
+  router.get('/matches/:matchId', requireScope(ENDPOINT_SCOPES['GET /matches/:matchId']), async (req, res) => {
     try {
       const m = await db.getMatch(req.params.matchId);
       if (!m) return res.status(404).json({ error: 'not_found' });
@@ -215,7 +284,7 @@ function createPublicApiRouter() {
     }
   });
 
-  router.get('/leaderboard', async (req, res) => {
+  router.get('/leaderboard', requireScope(ENDPOINT_SCOPES['GET /leaderboard']), async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
       const seasonId = req.query.season_id ? parseInt(req.query.season_id, 10) : null;
@@ -240,7 +309,7 @@ function createPublicApiRouter() {
     }
   });
 
-  router.get('/profile/:accountId', async (req, res) => {
+  router.get('/profile/:accountId', requireScope(ENDPOINT_SCOPES['GET /profile/:accountId']), async (req, res) => {
     try {
       const accountId = String(req.params.accountId).replace(/[^0-9]/g, '');
       if (!accountId) return res.status(400).json({ error: 'invalid_account_id' });
@@ -399,15 +468,115 @@ function createPublicApiRouter() {
     }
   });
 
+  // Task #415 — teams listing for the `read:teams` scope.
+  router.get('/teams', requireScope(ENDPOINT_SCOPES['GET /teams']), async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+      const list = await db.listTeams({ limit });
+      res.json({
+        teams: (list || []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          tag: t.tag || null,
+          owner_account_id: t.owner_account_id || null,
+          member_count: t.member_count ?? null,
+          created_at: t.created_at,
+        })),
+        limit,
+      });
+    } catch (err) {
+      console.error('[v1] /teams error:', err.message);
+      res.status(500).json({ error: 'fetch_failed' });
+    }
+  });
+
+  router.get('/teams/:id', requireScope(ENDPOINT_SCOPES['GET /teams/:id']), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid_id' });
+      const [team, members] = await Promise.all([
+        db.getTeamById(id),
+        db.getTeamMembers(id).catch(() => []),
+      ]);
+      if (!team) return res.status(404).json({ error: 'not_found' });
+      res.json({
+        id: team.id,
+        name: team.name,
+        tag: team.tag || null,
+        owner_account_id: team.owner_account_id || null,
+        created_at: team.created_at,
+        members: (members || []).map((m) => ({
+          account_id: m.account_id,
+          display_name: m.nickname || null,
+          role: m.role,
+          joined_at: m.joined_at,
+        })),
+      });
+    } catch (err) {
+      console.error('[v1] /teams/:id error:', err.message);
+      res.status(500).json({ error: 'fetch_failed' });
+    }
+  });
+
+  // Task #415 — programmatic webhook management for `write:webhooks` keys.
+  // Bound to the key's owning account so a key can only manage that owner's
+  // subscriptions.
+  router.get('/webhooks', requireScope(ENDPOINT_SCOPES['GET /webhooks']), requireProTier, async (req, res) => {
+    try {
+      const subs = await db.listWebhookSubscriptionsForAccount(req.apiKey.account_id);
+      res.json({
+        subscriptions: subs.map((s) => ({
+          id: s.id, url: s.url, events: s.events, active: s.active,
+          created_at: s.created_at, secret: s.secret,
+        })),
+      });
+    } catch (err) {
+      console.error('[v1] /webhooks list error:', err.message);
+      res.status(500).json({ error: 'fetch_failed' });
+    }
+  });
+
+  router.post('/webhooks', express.json(), requireScope(ENDPOINT_SCOPES['POST /webhooks']), requireProTier, async (req, res) => {
+    try {
+      const url = (req.body?.url || '').toString().trim();
+      const events = Array.isArray(req.body?.events) ? req.body.events : [];
+      const { validateWebhookUrlSync, assertSafeAtDispatch } = require('./webhookUrlGuard');
+      const sync = validateWebhookUrlSync(url);
+      if (!sync.ok) return res.status(400).json({ error: 'invalid_url', message: sync.error });
+      const dnsCheck = await assertSafeAtDispatch(url);
+      if (!dnsCheck.ok) return res.status(400).json({ error: 'invalid_url', message: dnsCheck.error });
+      const sub = await db.createWebhookSubscription({
+        accountId: req.apiKey.account_id, url, events,
+      });
+      res.status(201).json(sub);
+    } catch (err) {
+      console.error('[v1] /webhooks create error:', err.message);
+      res.status(400).json({ error: 'create_failed', message: err.message });
+    }
+  });
+
+  router.delete('/webhooks/:id', requireScope(ENDPOINT_SCOPES['DELETE /webhooks/:id']), requireProTier, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid_id' });
+      const ok = await db.deleteWebhookSubscription({ accountId: req.apiKey.account_id, id });
+      if (!ok) return res.status(404).json({ error: 'not_found' });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[v1] /webhooks delete error:', err.message);
+      res.status(500).json({ error: 'delete_failed' });
+    }
+  });
+
   router.use((req, res) => {
     res.status(404).json({
       error: 'unknown_endpoint',
       message: `No public API endpoint at ${req.method} ${req.originalUrl}.`,
-      docs: '/api-docs',
+      docs: '/developers',
     });
   });
 
   return router;
 }
 
-module.exports = { createPublicApiRouter, TIER_LIMITS };
+module.exports = { createPublicApiRouter, TIER_LIMITS, DEFAULTS, ENDPOINT_SCOPES };

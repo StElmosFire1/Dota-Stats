@@ -12371,6 +12371,8 @@ NOTES
           label: k.label,
           tier: k.tier,
           prefix: k.prefix,
+          scopes: k.scopes || ['read'],
+          rate_per_min: k.rate_per_min ?? null,
           usage_count: Number(k.usage_count) || 0,
           last_used_at: k.last_used_at,
           created_at: k.created_at,
@@ -12378,6 +12380,7 @@ NOTES
         })),
         public_api_state: flag?.state || 'off',
         is_pro: isPro,
+        known_scopes: db.listKnownApiScopes(),
       });
     } catch (err) {
       console.error('[API] me/api-keys list:', err.message);
@@ -12399,11 +12402,16 @@ NOTES
       if (active.length >= cap) {
         return res.status(400).json({ error: `Key limit reached (${cap}). Revoke an existing key first.` });
       }
+      // Task #415 — accept optional scopes + per-key rate limit on creation.
+      const scopes = Array.isArray(req.body?.scopes) ? req.body.scopes : null;
+      const ratePerMin = req.body?.rate_per_min ?? null;
       const key = await db.createApiKey({
         accountId,
         label,
         tier: isPro ? 'pro' : 'free',
         ownerWasSuperuser: isSuperuser,
+        scopes,
+        ratePerMin,
       });
       // Surface the raw token EXACTLY ONCE — the client must store it.
       res.json({
@@ -12411,12 +12419,37 @@ NOTES
         label: key.label,
         tier: key.tier,
         prefix: key.prefix,
+        scopes: key.scopes,
+        rate_per_min: key.rate_per_min ?? null,
         created_at: key.created_at,
         token: key.token,
       });
     } catch (err) {
       console.error('[API] me/api-keys create:', err.message);
       res.status(500).json({ error: err.message || 'Failed to create API key' });
+    }
+  });
+
+  // Task #415 — edit a key's scopes / per-key rate / label.
+  router.patch('/me/api-keys/:id', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const keyId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(keyId)) return res.status(400).json({ error: 'Invalid key id' });
+      const patch = {};
+      if (Array.isArray(req.body?.scopes)) patch.scopes = req.body.scopes;
+      if (req.body?.rate_per_min !== undefined) patch.ratePerMin = req.body.rate_per_min;
+      if (typeof req.body?.label === 'string') patch.label = req.body.label;
+      const updated = await db.updateApiKey({ accountId, keyId, ...patch });
+      if (!updated) return res.status(404).json({ error: 'Key not found or already revoked' });
+      res.json({
+        id: updated.id, label: updated.label, tier: updated.tier, prefix: updated.prefix,
+        scopes: updated.scopes, rate_per_min: updated.rate_per_min ?? null,
+      });
+    } catch (err) {
+      console.error('[API] me/api-keys patch:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to update key' });
     }
   });
 
@@ -17516,9 +17549,15 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
     // Task #371 — Outbound webhook: match.ended. Fire-and-forget; the
     // dispatcher persists to webhook_deliveries so worker retries handle
     // transient subscriber failures with exponential backoff.
+    //
+    // Task #415 — Also fire match.finalized once parsed stats are present.
+    // Same trigger point because this codepath only runs after a full parse
+    // succeeded — match.ended remains for backwards compatibility, while
+    // match.finalized carries an explicit `version` field so subscribers can
+    // pin against a stable schema.
     try {
       const { dispatchEvent } = require('./webhookDispatcher');
-      dispatchEvent('match.ended', {
+      const endedPayload = {
         match_id: matchStats?.matchId,
         radiant_win: !!matchStats?.radiantWin,
         duration: matchStats?.duration || null,
@@ -17529,6 +17568,34 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
           hero_id: p.hero_id,
           team: p.team,
           kills: p.kills, deaths: p.deaths, assists: p.assists,
+        })),
+      };
+      dispatchEvent('match.ended', endedPayload).catch(() => {});
+      dispatchEvent('match.finalized', {
+        version: 1,
+        match_id: matchStats?.matchId,
+        radiant_win: !!matchStats?.radiantWin,
+        duration: matchStats?.duration || null,
+        season_id: seasonId,
+        patch,
+        recorded_at: new Date().toISOString(),
+        players: (matchStats?.players || []).map(p => ({
+          account_id: p.account_id,
+          hero_id: p.hero_id,
+          team: p.team,
+          slot: p.slot ?? null,
+          kills: p.kills, deaths: p.deaths, assists: p.assists,
+          last_hits: p.last_hits ?? null,
+          denies: p.denies ?? null,
+          gpm: p.gold_per_min ?? null,
+          xpm: p.xp_per_min ?? null,
+          hero_damage: p.hero_damage ?? null,
+          tower_damage: p.tower_damage ?? null,
+          hero_healing: p.hero_healing ?? null,
+          net_worth: p.net_worth ?? null,
+          level: p.level ?? null,
+          items: [p.item_0, p.item_1, p.item_2, p.item_3, p.item_4, p.item_5]
+            .filter(x => x != null),
         })),
       }).catch(() => {});
     } catch (_) {}

@@ -2,11 +2,23 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
 const EVENT_DESCRIPTIONS = {
-  'match.ended': 'A match was recorded and parsed.',
+  'match.ended': 'A match was recorded and parsed (legacy event, kept for back-compat).',
+  'match.finalized': 'Match parsed with full stats — versioned, stable payload (recommended).',
   'lobby.full': 'An inhouse lobby reached 10 players.',
   'tournament.round_started': 'A new tournament round bracket went live.',
   'coaching.booked': 'A coaching session was booked and paid.',
 };
+
+const SCOPE_DESCRIPTIONS = {
+  'read': 'Legacy catch-all read (implies every read:* scope).',
+  'read:matches': 'List + read match details.',
+  'read:players': 'Read player profiles and stats.',
+  'read:leaderboard': 'Read MMR + PERF leaderboard.',
+  'read:teams': 'List + read teams and members.',
+  'write:webhooks': 'Create / delete webhook subscriptions on this account via /v1/webhooks.',
+};
+
+const DEFAULT_NEW_SCOPES = ['read:matches', 'read:leaderboard'];
 
 function fmtDate(s) {
   if (!s) return '—';
@@ -35,7 +47,10 @@ export default function SettingsApi() {
   const [error, setError] = useState(null);
   const [newKey, setNewKey] = useState(null);
   const [keyLabel, setKeyLabel] = useState('');
+  const [keyScopes, setKeyScopes] = useState(new Set(DEFAULT_NEW_SCOPES));
+  const [keyRate, setKeyRate] = useState('');
   const [creatingKey, setCreatingKey] = useState(false);
+  const [editing, setEditing] = useState(null); // {id, scopes:Set, rate}
   const [whUrl, setWhUrl] = useState('');
   const [whEvents, setWhEvents] = useState(new Set());
   const [creatingWh, setCreatingWh] = useState(false);
@@ -62,15 +77,22 @@ export default function SettingsApi() {
   const createKey = async () => {
     setCreatingKey(true);
     try {
+      const body = {
+        label: keyLabel || 'Untitled key',
+        scopes: Array.from(keyScopes),
+      };
+      if (keyRate.trim()) body.rate_per_min = parseInt(keyRate, 10) || null;
       const r = await fetch('/api/me/api-keys', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: keyLabel || 'Untitled key' }),
+        body: JSON.stringify(body),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || 'Failed to create key');
       setNewKey(data);
       setKeyLabel('');
+      setKeyScopes(new Set(DEFAULT_NEW_SCOPES));
+      setKeyRate('');
       load();
     } catch (e) {
       alert(e.message);
@@ -87,6 +109,32 @@ export default function SettingsApi() {
       alert(d?.error || 'Failed to revoke');
       return;
     }
+    load();
+  };
+
+  const beginEdit = (k) => setEditing({
+    id: k.id,
+    scopes: new Set(k.scopes || ['read']),
+    rate: k.rate_per_min != null ? String(k.rate_per_min) : '',
+  });
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const body = {
+      scopes: Array.from(editing.scopes),
+      rate_per_min: editing.rate.trim() ? parseInt(editing.rate, 10) : null,
+    };
+    const r = await fetch(`/api/me/api-keys/${editing.id}`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d?.error || 'Failed to save');
+      return;
+    }
+    setEditing(null);
     load();
   };
 
@@ -133,9 +181,26 @@ export default function SettingsApi() {
   const state = keysData?.public_api_state || 'off';
   const isPro = !!keysData?.is_pro;
   const keys = keysData?.keys || [];
+  const knownScopes = keysData?.known_scopes || Object.keys(SCOPE_DESCRIPTIONS);
   const subs = webhooksData?.subscriptions || [];
   const deliveries = webhooksData?.deliveries || [];
   const knownEvents = webhooksData?.known_events || Object.keys(EVENT_DESCRIPTIONS);
+
+  const scopeToggle = (set, setter, scope) => (
+    <label key={scope} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 10, fontSize: 13 }}>
+      <input
+        type="checkbox"
+        checked={set.has(scope)}
+        aria-label={`Scope ${scope}`}
+        onChange={(e) => {
+          const next = new Set(set);
+          if (e.target.checked) next.add(scope); else next.delete(scope);
+          setter(next);
+        }}
+      />
+      <code>{scope}</code>
+    </label>
+  );
 
   return (
     <div>
@@ -143,7 +208,7 @@ export default function SettingsApi() {
         <h2 style={{ margin: 0 }}>Public API &amp; webhooks</h2>
         <p style={{ color: 'var(--text-muted)', marginTop: 6 }}>
           Build stream-deck buttons, Discord bots, leaderboard mirrors and dashboards on top of the
-          OCE Inhouse data. <Link to="/api-docs">Read the docs →</Link>
+          OCE Inhouse data. <Link to="/developers">Open the developer portal →</Link>
         </p>
         {state !== 'on' && (
           <div style={{
@@ -166,9 +231,9 @@ export default function SettingsApi() {
         <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
           Tier: <strong>{isPro ? 'Pro' : 'Free'}</strong>
           {' · '}
-          {isPro ? '120 req/min · 50,000 req/day' : '30 req/min · 1,000 req/day'}
+          Default rate: {isPro ? '600 req/min' : '60 req/min'} (set a per-key override below)
           {!isPro && (
-            <> · <Link to="/pro">Upgrade to Pro</Link> for higher quotas and webhooks.</>
+            <> · <Link to="/pro">Upgrade to Pro</Link> for higher default quotas and webhooks.</>
           )}
         </div>
 
@@ -184,8 +249,11 @@ export default function SettingsApi() {
               display: 'block', padding: 8, background: 'rgba(0,0,0,0.15)',
               borderRadius: 4, fontSize: 13, wordBreak: 'break-all',
             }}>{newKey.token}</code>
+            <div style={{ fontSize: 12, marginTop: 6 }}>
+              Scopes: {(newKey.scopes || []).map(s => <code key={s} style={{ marginRight: 4 }}>{s}</code>)}
+            </div>
             <div style={{ marginTop: 8 }}>
-              <button type="button" className="btn" onClick={() => copyToClipboard(newKey.token)}>
+              <button type="button" className="btn" aria-label="Copy new API key" onClick={() => copyToClipboard(newKey.token)}>
                 Copy
               </button>{' '}
               <button type="button" className="btn" onClick={() => setNewKey(null)}>
@@ -195,18 +263,39 @@ export default function SettingsApi() {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-          <label style={{ flex: 1, minWidth: 220 }}>
-            <span className="visually-hidden">Key label</span>
-            <input
-              type="text"
-              placeholder="Key label (e.g. Stream Deck)"
-              value={keyLabel}
-              onChange={(e) => setKeyLabel(e.target.value)}
-              maxLength={80}
-              style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)' }}
-            />
-          </label>
+        <div style={{
+          padding: 12, marginBottom: 14, borderRadius: 8,
+          background: 'var(--bg-hover)', border: '1px solid var(--border)',
+        }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <label style={{ flex: 2, minWidth: 200 }}>
+              <span className="visually-hidden">Key label</span>
+              <input
+                type="text"
+                placeholder="Key label (e.g. Stream Deck)"
+                value={keyLabel}
+                onChange={(e) => setKeyLabel(e.target.value)}
+                maxLength={80}
+                style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)' }}
+              />
+            </label>
+            <label style={{ flex: 1, minWidth: 140 }}>
+              <span className="visually-hidden">Custom rate per minute</span>
+              <input
+                type="number"
+                min={1}
+                max={10000}
+                placeholder={`Rate/min (default ${isPro ? 600 : 60})`}
+                value={keyRate}
+                onChange={(e) => setKeyRate(e.target.value)}
+                style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)' }}
+              />
+            </label>
+          </div>
+          <div role="group" aria-label="Scopes for new key" style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Scopes:</div>
+            {knownScopes.map(s => scopeToggle(keyScopes, setKeyScopes, s))}
+          </div>
           <button type="button" className="btn primary" onClick={createKey} disabled={creatingKey}>
             {creatingKey ? 'Creating…' : 'Create key'}
           </button>
@@ -221,6 +310,8 @@ export default function SettingsApi() {
                 <th style={{ padding: 6 }}>Label</th>
                 <th style={{ padding: 6 }}>Prefix</th>
                 <th style={{ padding: 6 }}>Tier</th>
+                <th style={{ padding: 6 }}>Scopes</th>
+                <th style={{ padding: 6 }}>Rate/min</th>
                 <th style={{ padding: 6 }}>Usage</th>
                 <th style={{ padding: 6 }}>Last used</th>
                 <th style={{ padding: 6 }}>Status</th>
@@ -228,27 +319,76 @@ export default function SettingsApi() {
               </tr>
             </thead>
             <tbody>
-              {keys.map((k) => (
-                <tr key={k.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: 6 }}>{k.label || '—'}</td>
-                  <td style={{ padding: 6 }}><code>{k.prefix}…</code></td>
-                  <td style={{ padding: 6 }}>{k.tier}</td>
-                  <td style={{ padding: 6, fontVariantNumeric: 'tabular-nums' }}>{k.usage_count}</td>
-                  <td style={{ padding: 6 }}>{fmtDate(k.last_used_at)}</td>
-                  <td style={{ padding: 6 }}>
-                    {k.revoked_at
-                      ? <span style={{ color: 'var(--text-muted)' }}>revoked</span>
-                      : <span style={{ color: 'var(--amber)' }}>active</span>}
-                  </td>
-                  <td style={{ padding: 6 }}>
-                    {!k.revoked_at && (
-                      <button type="button" className="btn" onClick={() => revokeKey(k.id)}>
-                        Revoke
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {keys.map((k) => {
+                const isEditing = editing && editing.id === k.id;
+                return (
+                  <tr key={k.id} style={{ borderTop: '1px solid var(--border)', verticalAlign: 'top' }}>
+                    <td style={{ padding: 6 }}>{k.label || '—'}</td>
+                    <td style={{ padding: 6 }}><code>{k.prefix}…</code></td>
+                    <td style={{ padding: 6 }}>{k.tier}</td>
+                    <td style={{ padding: 6, fontSize: 12 }}>
+                      {isEditing ? (
+                        <div role="group" aria-label={`Scopes for key ${k.id}`}>
+                          {knownScopes.map(s => (
+                            <label key={s} style={{ display: 'block', fontSize: 12 }}>
+                              <input
+                                type="checkbox"
+                                checked={editing.scopes.has(s)}
+                                aria-label={`Scope ${s}`}
+                                onChange={(e) => {
+                                  const next = new Set(editing.scopes);
+                                  if (e.target.checked) next.add(s); else next.delete(s);
+                                  setEditing({ ...editing, scopes: next });
+                                }}
+                              /> <code>{s}</code>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        (k.scopes || []).map(s => <code key={s} style={{ marginRight: 4 }}>{s}</code>)
+                      )}
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          min={1}
+                          max={10000}
+                          value={editing.rate}
+                          aria-label={`Rate per minute for key ${k.id}`}
+                          onChange={(e) => setEditing({ ...editing, rate: e.target.value })}
+                          style={{ width: 80, padding: 4 }}
+                          placeholder={isPro ? '600' : '60'}
+                        />
+                      ) : (
+                        k.rate_per_min ?? <span style={{ color: 'var(--text-muted)' }}>default</span>
+                      )}
+                    </td>
+                    <td style={{ padding: 6, fontVariantNumeric: 'tabular-nums' }}>{k.usage_count}</td>
+                    <td style={{ padding: 6 }}>{fmtDate(k.last_used_at)}</td>
+                    <td style={{ padding: 6 }}>
+                      {k.revoked_at
+                        ? <span style={{ color: 'var(--text-muted)' }}>revoked</span>
+                        : <span style={{ color: 'var(--amber)' }}>active</span>}
+                    </td>
+                    <td style={{ padding: 6, whiteSpace: 'nowrap' }}>
+                      {!k.revoked_at && (
+                        isEditing ? (
+                          <>
+                            <button type="button" className="btn primary" aria-label="Save key changes" onClick={saveEdit}>Save</button>{' '}
+                            <button type="button" className="btn" aria-label="Cancel edit" onClick={() => setEditing(null)}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" className="btn" aria-label={`Edit key ${k.label || k.id}`} onClick={() => beginEdit(k)}>Edit</button>{' '}
+                            <button type="button" className="btn" aria-label={`Revoke key ${k.label || k.id}`} onClick={() => revokeKey(k.id)}>Revoke</button>
+                          </>
+                        )
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -263,7 +403,7 @@ export default function SettingsApi() {
         </h3>
         <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
           We send a signed POST to your URL when a subscribed event happens. Signatures use
-          HMAC-SHA256 — see <Link to="/api-docs">/api-docs</Link> for the exact verification snippet.
+          HMAC-SHA256 — see the <Link to="/developers">developer portal</Link> for the exact verification snippet.
         </div>
 
         {!isPro ? (
@@ -280,6 +420,7 @@ export default function SettingsApi() {
               <input
                 type="url"
                 placeholder="https://your-service.example/oi-webhook"
+                aria-label="Webhook URL"
                 value={whUrl}
                 onChange={(e) => setWhUrl(e.target.value)}
                 style={{ padding: 8, borderRadius: 6, border: '1px solid var(--border)' }}
@@ -290,6 +431,7 @@ export default function SettingsApi() {
                     <input
                       type="checkbox"
                       checked={whEvents.has(ev)}
+                      aria-label={`Event ${ev}`}
                       onChange={(e) => {
                         const next = new Set(whEvents);
                         if (e.target.checked) next.add(ev); else next.delete(ev);
@@ -339,10 +481,11 @@ export default function SettingsApi() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <button type="button" className="btn"
                                 aria-pressed={s.active}
+                                aria-label={s.active ? 'Pause webhook' : 'Resume webhook'}
                                 onClick={() => toggleWebhook(s.id, !s.active)}>
                           {s.active ? 'Pause' : 'Resume'}
                         </button>
-                        <button type="button" className="btn" onClick={() => deleteWebhook(s.id)}>
+                        <button type="button" className="btn" aria-label="Delete webhook" onClick={() => deleteWebhook(s.id)}>
                           Delete
                         </button>
                       </div>

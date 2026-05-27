@@ -1141,6 +1141,8 @@ async function init() {
       )
     `);
     await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS owner_was_superuser BOOLEAN NOT NULL DEFAULT false`);
+    // Task #415 — per-key custom rate limit (req/min). NULL = use tier default.
+    await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rate_per_min INTEGER`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_account ON api_keys (account_id)`);
 
     await p.query(`
@@ -19511,24 +19513,48 @@ const _crypto371 = require('crypto');
 function _hashApiToken(token) {
   return _crypto371.createHash('sha256').update(String(token)).digest('hex');
 }
-async function createApiKey({ accountId, label = null, tier = 'free', ownerWasSuperuser = false }) {
+// Task #415 — valid scope set for keyed access. `read` is the legacy
+// wildcard from Task #371 (it implies every `read:*` scope so old keys keep
+// working). `write:webhooks` lets a key manage its owner's subscriptions
+// through /v1/webhooks without a browser session.
+const _API_SCOPES = new Set([
+  'read', 'read:matches', 'read:players', 'read:leaderboard', 'read:teams', 'write:webhooks',
+]);
+function listKnownApiScopes() { return Array.from(_API_SCOPES); }
+function _normaliseScopes(input) {
+  if (!Array.isArray(input) || !input.length) return ['read'];
+  const cleaned = Array.from(new Set(
+    input.map(s => String(s || '').trim()).filter(s => _API_SCOPES.has(s))
+  ));
+  return cleaned.length ? cleaned : ['read'];
+}
+function _normaliseRate(input) {
+  if (input == null || input === '') return null;
+  const n = parseInt(input, 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // Hard cap so a misconfigured key can't shadow infra-level limits.
+  return Math.min(n, 10000);
+}
+async function createApiKey({ accountId, label = null, tier = 'free', ownerWasSuperuser = false, scopes = null, ratePerMin = null }) {
   const p = getPool();
   const raw = `oi_${tier === 'pro' ? 'pro' : 'fre'}_${_crypto371.randomBytes(24).toString('base64url')}`;
   const tokenHash = _hashApiToken(raw);
   const prefix = raw.slice(0, 11);
   const safeTier = tier === 'pro' ? 'pro' : 'free';
+  const safeScopes = _normaliseScopes(scopes);
+  const safeRate = _normaliseRate(ratePerMin);
   const r = await p.query(
-    `INSERT INTO api_keys (account_id, token_hash, prefix, label, tier, owner_was_superuser)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, account_id, prefix, label, tier, scopes, usage_count, last_used_at, created_at, revoked_at, owner_was_superuser`,
-    [accountId, tokenHash, prefix, label, safeTier, !!ownerWasSuperuser]
+    `INSERT INTO api_keys (account_id, token_hash, prefix, label, tier, owner_was_superuser, scopes, rate_per_min)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, account_id, prefix, label, tier, scopes, rate_per_min, usage_count, last_used_at, created_at, revoked_at, owner_was_superuser`,
+    [accountId, tokenHash, prefix, label, safeTier, !!ownerWasSuperuser, safeScopes, safeRate]
   );
   return { ...r.rows[0], token: raw };
 }
 async function listApiKeysForAccount(accountId) {
   const p = getPool();
   const r = await p.query(
-    `SELECT id, account_id, prefix, label, tier, scopes, usage_count, last_used_at, created_at, revoked_at
+    `SELECT id, account_id, prefix, label, tier, scopes, rate_per_min, usage_count, last_used_at, created_at, revoked_at
      FROM api_keys WHERE account_id = $1 ORDER BY created_at DESC`,
     [accountId]
   );
@@ -19544,12 +19570,28 @@ async function revokeApiKey({ accountId, keyId }) {
   );
   return r.rowCount > 0;
 }
+async function updateApiKey({ accountId, keyId, scopes = undefined, ratePerMin = undefined, label = undefined }) {
+  const p = getPool();
+  const sets = [];
+  const params = [keyId, accountId];
+  if (scopes !== undefined) { params.push(_normaliseScopes(scopes)); sets.push(`scopes = $${params.length}`); }
+  if (ratePerMin !== undefined) { params.push(_normaliseRate(ratePerMin)); sets.push(`rate_per_min = $${params.length}`); }
+  if (label !== undefined) { params.push(String(label || '').slice(0, 80)); sets.push(`label = $${params.length}`); }
+  if (!sets.length) return null;
+  const r = await p.query(
+    `UPDATE api_keys SET ${sets.join(', ')}
+     WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL
+     RETURNING id, account_id, prefix, label, tier, scopes, rate_per_min, usage_count, last_used_at, created_at, revoked_at`,
+    params
+  );
+  return r.rows[0] || null;
+}
 async function findApiKeyByToken(rawToken) {
   if (!rawToken) return null;
   const p = getPool();
   const hash = _hashApiToken(rawToken);
   const r = await p.query(
-    `SELECT id, account_id, prefix, label, tier, scopes,
+    `SELECT id, account_id, prefix, label, tier, scopes, rate_per_min,
             usage_count, last_used_at, created_at, revoked_at,
             owner_was_superuser AS is_owner_superuser
      FROM api_keys WHERE token_hash = $1`,
@@ -19566,7 +19608,7 @@ async function touchApiKeyUsage(keyId) {
 }
 
 const _WEBHOOK_EVENTS = new Set([
-  'match.ended', 'lobby.full', 'tournament.round_started', 'coaching.booked',
+  'match.ended', 'match.finalized', 'lobby.full', 'tournament.round_started', 'coaching.booked',
 ]);
 function listKnownWebhookEvents() { return Array.from(_WEBHOOK_EVENTS); }
 
@@ -19980,6 +20022,8 @@ module.exports = {
   listProMatchPatches,
   // Task #371
   createApiKey,
+  updateApiKey,
+  listKnownApiScopes,
   listApiKeysForAccount,
   revokeApiKey,
   findApiKeyByToken,

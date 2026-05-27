@@ -114,6 +114,7 @@ const SettingsAccount = lazy(() => import('./pages/SettingsAccount'));
 const SettingsDangerZone = lazy(() => import('./pages/SettingsDangerZone'));
 const SettingsApi = lazy(() => import('./pages/SettingsApi'));
 const ApiDocs = lazy(() => import('./pages/ApiDocs'));
+const Developers = lazy(() => import('./pages/Developers'));
 const Coaches = lazy(() => import('./pages/Coaches'));
 const CoachProfile = lazy(() => import('./pages/CoachProfile'));
 const CoachEdit = lazy(() => import('./pages/CoachEdit'));
@@ -1267,6 +1268,7 @@ function AppRoutes() {
                   <Route path="danger-zone" element={<SettingsDangerZone />} />
                 </Route>
                 <Route path="/api-docs" element={<ApiDocs />} />
+                <Route path="/developers" element={<Developers />} />
                 <Route path="/coaches" element={<Coaches />} />
                 <Route path="/coaches/:id" element={<CoachProfile />} />
                 <Route path="/coach/:id" element={<CoachProfile />} />
