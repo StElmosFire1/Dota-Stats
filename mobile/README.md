@@ -1,25 +1,39 @@
-# OCE Inhouse — Mobile companion (Task #381)
+# OCE Inhouse — Mobile companion (Task #381, write actions added in #414)
 
-Read-only Expo app for [oceinhouse.gg](https://oceinhouse.gg). Full edition
-only — the community edition is intentionally not wired up.
+Expo app for [oceinhouse.gg](https://oceinhouse.gg). Full edition only —
+the community edition is intentionally not wired up.
 
-## What's in scope (v0.1)
+## What's in scope (v0.2 — Task #414)
 
-- Home, Leaderboard, Recent Matches, Match Detail, Settings.
-- Steam OpenID sign-in via the in-app browser (`expo-web-browser`).
-- Expo push notifications, registered against the new server-side
-  `expo_push_tokens` table.
-- Notification preferences mirror the website's web-push prefs (same
-  `notification_prefs` rows, so toggles are shared across web + mobile).
+Read-only surface from v0.1 (Home, Leaderboard, Recent Matches, Match
+Detail, Settings, Steam sign-in, Expo push registration), PLUS the most-
+requested write actions:
+
+- Lobby ready-check accept / decline
+  (`POST /api/inhouse/:id/accept` and `/decline`).
+- Post-match MVP vote
+  (`POST /api/matches/:id/mvp-vote` — added in #414).
+- Scrim respond — accept / decline
+  (`POST /api/scrims/:id/respond`).
+- Roster-transfer respond — approve / decline
+  (`POST /api/roster-transfers/:id/respond`).
+- Coach booking, both 1:1 and VOD (cash or plan redemption)
+  (`POST /api/coaches/:id/book`, `POST /api/coaches/:id/vod-review`).
+- Coach booking-reminder ack
+  (`POST /api/bookings/:id/reminder-ack` — added in #414).
+
+Push notifications encode the action URL as `data.url` (e.g.
+`/action/ready-check/123`). Tapping the push opens straight onto that
+screen via the deep-link router in `app/_layout.tsx`. A 401 from any
+write action raises a single app-wide reauth modal.
 
 ## Out of scope (intentionally)
 
-- Any write/mutation flow (queue join, captain draft, accept phase, hero
-  signup, coaching bookings, payments).
-- The inhouse lobby UI — the website stays the source of truth.
+- Any other write/mutation flow (admin panel, queue management,
+  captain draft).
+- Offline queueing of write actions.
+- iOS / Android app-store submission (EAS build pipeline only).
 - Community-edition wiring.
-- App-store submission. This first cut is for Expo Go + internal EAS dev
-  builds only.
 
 ## Running locally
 

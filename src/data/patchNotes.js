@@ -1,5 +1,21 @@
 module.exports = [
   {
+    "version": "7.79",
+    "title": "Mobile companion v2 — write actions (Task #414)",
+    "published_at": "2026-05-27",
+    "notes": [
+      "**Six write actions on mobile.** The Expo companion app (`mobile/`) graduates from read-only to read+act. Users can now (1) accept/decline a lobby ready-check, (2) cast their post-match MVP vote, (3) accept/decline a scrim proposal, (4) approve/decline a roster-transfer, (5) book a coach for either a 1:1 session or a VOD review — including plan redemption — and (6) acknowledge a coaching booking reminder. Each action is a dedicated deep-link screen under `mobile/app/action/<kind>/[id].tsx` with one-tap confirm, busy/ok/error states, and a shared `<ActionShell>` chrome so the UX is identical across kinds.",
+      "**Push → deep-link routing.** Existing fan-out pushes already encode `data.url` (e.g. `/action/ready-check/123`). `app/_layout.tsx` now listens for `Notifications.addNotificationResponseReceivedListener` and forwards the URL to Expo Router, so tapping a push lands directly on the right confirm screen. The same handler also accepts custom-scheme deep links of the form `oceinhouse:///action/<kind>/<id>?…` for share/test entry points.",
+      "**Shared session, no new auth.** All write actions reuse the existing Steam OpenID → `oi.sid` session cookie that the v0.1 read-only app already manages via `expo-secure-store`. No new auth path. A 401 from any write call routes through the new `setOnUnauthorized` hook in `mobile/lib/api.ts` and raises a single, coalesced app-wide **Session expired** modal in `_layout.tsx` — “Sign in again” clears the cookie and routes to `/sign-in`, “Not now” dismisses.",
+      "**Two new server endpoints.** `POST /api/matches/:matchId/mvp-vote` (validates the voter and candidate played on the same team in this match and the vote is inside the 24h window, then writes via `saveMatchRating`) and `POST /api/bookings/:id/reminder-ack` (student-only, gated by the existing `_coachingOn` flag, writes `coaching_bookings.reminder_acked_at`). All four other write paths reuse the existing routes — `/api/inhouse/:id/accept|decline`, `/api/scrims/:id/respond`, `/api/roster-transfers/:id/respond`, `/api/coaches/:id/book` and `/api/coaches/:id/vod-review` — which already accept the mobile session cookie unchanged.",
+      "**Schema.** One additive column: `coaching_bookings.reminder_acked_at TIMESTAMPTZ` (`ALTER … ADD COLUMN IF NOT EXISTS`, no backfill needed). Paired with `db.ackBookingReminder(id, accountId)` which only writes if the row's `student_account_id` matches the caller and the column is still NULL — idempotent and authorization-safe.",
+      "**A11y.** Every clickable on every new screen is a real `<Pressable accessibilityRole=\"button\">` with descriptive `accessibilityLabel`; MVP teammate cards use `accessibilityRole=\"radio\"` + `accessibilityState.selected`; reauth modal carries `accessibilityViewIsModal` + `role=\"alert\"`; status messages use `accessibilityLiveRegion=\"polite\"`. No hover-only reveals. The web `check:a11y` gate is unchanged — it scans `web/src/` only, mobile RN code is out of its scope.",
+      "**Out of scope.** No new write actions beyond the six above, no offline queueing of pending actions, no app-store submission — this still ships via EAS dev builds / Expo Go.",
+      "**Edition scope.** Full edition only. The community edition stays paywall-free by policy and its mobile companion remains intentionally unwired."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.78",
     "title": "Coaching v3 — recurring student plans (Task #413)",
     "published_at": "2026-05-27",

@@ -14,6 +14,28 @@ export function apiBase(): string {
 
 type FetchOpts = RequestInit & { auth?: boolean };
 
+// Task #414 — single, app-wide 401 handler. The session-expiry modal in
+// app/_layout.tsx subscribes here; every write-action screen routes its
+// fetches through `request()` so when the express-session cookie has
+// expired we surface a reauth prompt exactly once per drop instead of
+// every screen rolling its own error UI. Pluggable so unit tests don't
+// need a React tree.
+type UnauthorizedHandler = () => void;
+let _onUnauthorized: UnauthorizedHandler | null = null;
+export function setOnUnauthorized(fn: UnauthorizedHandler | null) {
+  _onUnauthorized = fn;
+}
+
+export class ApiError extends Error {
+  status: number;
+  body: any;
+  constructor(message: string, status: number, body: any) {
+    super(message);
+    this.status = status;
+    this.body = body;
+  }
+}
+
 async function request<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -35,7 +57,10 @@ async function request<T = any>(path: string, opts: FetchOpts = {}): Promise<T> 
   const payload = isJson ? await res.json().catch(() => null) : await res.text();
   if (!res.ok) {
     const msg = (isJson && (payload as any)?.error) || res.statusText || 'Request failed';
-    throw new Error(`[${res.status}] ${msg}`);
+    if (res.status === 401 && _onUnauthorized) {
+      try { _onUnauthorized(); } catch (_) {}
+    }
+    throw new ApiError(msg, res.status, payload);
   }
   return payload as T;
 }
@@ -117,4 +142,55 @@ export const api = {
     request<{ ok: true; sent: number; removed: number }>(`/api/me/expo-push/test`, {
       method: 'POST',
     }),
+
+  // ---------- Task #414 — write actions ----------
+  // All routes below already accept the mobile session cookie (see audit
+  // in mobile/README.md). Two server-side endpoints were added in #414:
+  // POST /api/matches/:id/mvp-vote and POST /api/bookings/:id/reminder-ack.
+  // The rest pre-existed for the web app.
+  inhouseAccept: (sessionId: string | number) =>
+    request<{ player: any }>(`/api/inhouse/${sessionId}/accept`, { method: 'POST' }),
+  inhouseDecline: (sessionId: string | number) =>
+    request<{ player: any }>(`/api/inhouse/${sessionId}/decline`, { method: 'POST' }),
+  castMvpVote: (matchId: string | number, ratedAccountId: string | number) =>
+    request<{ ok: true; match_id: number; rated_account_id: string }>(
+      `/api/matches/${matchId}/mvp-vote`,
+      { method: 'POST', body: JSON.stringify({ rated_account_id: String(ratedAccountId) }) }
+    ),
+  respondScrim: (scrimId: string | number, accept: boolean) =>
+    request<{ scrim: any }>(`/api/scrims/${scrimId}/respond`, {
+      method: 'POST', body: JSON.stringify({ accept }),
+    }),
+  respondRosterTransfer: (transferId: string | number, approve: boolean) =>
+    request<any>(`/api/roster-transfers/${transferId}/respond`, {
+      method: 'POST', body: JSON.stringify({ approve }),
+    }),
+  bookCoach: (coachId: string | number, body: {
+    slot_start_at: string;
+    duration_minutes?: number;
+    use_plan?: boolean;
+  }) =>
+    request<{ url: string | null; booking_id?: number; plan_redeemed?: boolean }>(
+      `/api/coaches/${coachId}/book`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
+  requestVodReview: (coachId: string | number, body: {
+    match_id?: string | number;
+    replay_url?: string;
+    question: string;
+    price_cents?: number;
+    use_plan?: boolean;
+  }) =>
+    request<{ url: string | null; review_id?: number; plan_redeemed?: boolean }>(
+      `/api/coaches/${coachId}/vod-review`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
+  ackBookingReminder: (bookingId: string | number) =>
+    request<{ ok: true; booking: any }>(`/api/bookings/${bookingId}/reminder-ack`, {
+      method: 'POST',
+    }),
+
+  // Read-side helpers used by action screens for context (player names etc).
+  getCoach: (coachId: string | number) =>
+    request<any>(`/api/coaches/${coachId}`).catch(() => null),
 };

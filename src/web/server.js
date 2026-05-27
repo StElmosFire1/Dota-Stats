@@ -4033,6 +4033,51 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #414 — MVP vote HTTP endpoint. The legacy MVP flow runs through
+  // a Discord-DM rating session (see _initiateRatingSession in
+  // src/discord/bot.js); the mobile companion app needed a parallel REST
+  // surface so a one-tap push action can record the same vote. Server-
+  // side checks: signed-in via Steam session, voter was a participant in
+  // the match, candidate was a teammate (same team), match isn't older
+  // than 24h (mirrors the rating-session window). Idempotent — re-voting
+  // overwrites via the ON CONFLICT in db.saveMatchRating.
+  router.post('/matches/:matchId/mvp-vote', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to vote.' });
+      const matchId = parseInt(req.params.matchId, 10);
+      if (!matchId) return res.status(400).json({ error: 'invalid match id' });
+      const ratedRaw = req.body?.rated_account_id;
+      const ratedAccountId = ratedRaw != null ? String(ratedRaw).trim() : '';
+      if (!ratedAccountId) return res.status(400).json({ error: 'rated_account_id required' });
+      if (String(ratedAccountId) === String(accountId)) {
+        return res.status(400).json({ error: "You can't vote for yourself." });
+      }
+      const match = await db.getMatch(matchId);
+      if (!match) return res.status(404).json({ error: 'Match not found' });
+      // 24h voting window — matches start_time is unix seconds.
+      const startMs = (parseInt(match.start_time, 10) || 0) * 1000;
+      const durationMs = (parseInt(match.duration, 10) || 0) * 1000;
+      const endMs = startMs + durationMs;
+      if (startMs && Date.now() - endMs > 24 * 60 * 60 * 1000) {
+        return res.status(400).json({ error: 'Voting window for this match has closed.' });
+      }
+      const players = match.players || [];
+      const voter = players.find(p => String(p.account_id) === String(accountId));
+      if (!voter) return res.status(403).json({ error: 'You did not play in this match.' });
+      const candidate = players.find(p => String(p.account_id) === String(ratedAccountId));
+      if (!candidate) return res.status(400).json({ error: 'Candidate did not play in this match.' });
+      if (candidate.team !== voter.team) {
+        return res.status(400).json({ error: 'MVP votes are for teammates only.' });
+      }
+      await db.saveMatchRating(matchId, accountId, ratedAccountId, null, true);
+      res.json({ ok: true, match_id: matchId, rated_account_id: ratedAccountId });
+    } catch (err) {
+      console.error('[API] matches/:matchId/mvp-vote:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Task #314 — Nemesis spotlight for the post-match screen. Returns a single
   // notable rivalry moment (or 404 when nothing notable happened) for the
   // signed-in viewer. Surfaces in-match dominance, current loss streaks,
@@ -14788,6 +14833,28 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       res.json({ ok: true, booking: updated });
     } catch (err) {
       console.error('[API] bookings/:id/coach-arrived:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #414 — student ack of the one-hour-out reminder push. Surfaced
+  // by the mobile companion's "Got it" one-tap button on the
+  // booking-reminder action screen. Student-only; while the booking is
+  // still `paid` (i.e. slot upcoming). Idempotent.
+  router.post('/bookings/:id/reminder-ack', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const id = parseInt(req.params.id, 10);
+      if (!id) return res.status(400).json({ error: 'invalid booking id' });
+      const updated = await db.ackBookingReminder(id, accountId);
+      if (!updated) {
+        return res.status(404).json({ error: 'Booking not found, not yours, or no longer ackable.' });
+      }
+      res.json({ ok: true, booking: updated });
+    } catch (err) {
+      console.error('[API] bookings/:id/reminder-ack:', err.message);
       res.status(500).json({ error: err.message });
     }
   });

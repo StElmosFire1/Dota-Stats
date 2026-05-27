@@ -1597,6 +1597,10 @@ async function init() {
     // was created in an earlier round without `coach_arrived_at`. Following
     // the codebase's standard ADD COLUMN IF NOT EXISTS pattern.
     await p.query(`ALTER TABLE coaching_bookings ADD COLUMN IF NOT EXISTS coach_arrived_at TIMESTAMPTZ`);
+    // Task #414 — mobile companion v2. Student stamps this when they tap
+    // "Got it" on the one-hour-out reminder push, so the dashboard can
+    // surface "student acknowledged" beside "reminder sent" for coaches.
+    await p.query(`ALTER TABLE coaching_bookings ADD COLUMN IF NOT EXISTS reminder_acked_at TIMESTAMPTZ`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_coach ON coaching_bookings (coach_account_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_student ON coaching_bookings (student_account_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_coaching_bookings_status ON coaching_bookings (status)`);
@@ -17065,6 +17069,26 @@ async function stampBookingReminderSent(id) {
   );
 }
 
+// Task #414 — student ack of the one-hour-out reminder push from the mobile
+// companion app. Only the booking's student may ack, and only while the
+// booking is still `paid` (i.e. funds held, slot upcoming). Idempotent —
+// re-ack on an already-acked row just bumps updated_at. Returns the row,
+// or null when the booking doesn't exist or the caller isn't the student.
+async function ackBookingReminder(id, studentAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coaching_bookings
+        SET reminder_acked_at = COALESCE(reminder_acked_at, NOW()),
+            updated_at = NOW()
+      WHERE id = $1
+        AND student_account_id = $2
+        AND status = 'paid'
+      RETURNING *`,
+    [id, studentAccountId]
+  );
+  return r.rows[0] || null;
+}
+
 // Validate a proposed booking slot against the coach's published weekly
 // availability (in the coach's own timezone) AND ensure it doesn't overlap
 // any existing live booking. Returns { ok: true } or { ok: false, reason }.
@@ -20390,6 +20414,7 @@ module.exports = {
   getCoachCredibilityStats,
   listBookingsDueForReminder,
   stampBookingReminderSent,
+  ackBookingReminder,
   createCoachingReview,
   getCoachReviews,
   getCoachAggregateRating,
