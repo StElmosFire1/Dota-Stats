@@ -1723,6 +1723,97 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_cvrn_review ON coach_vod_review_notes (review_id, t_seconds)`);
 
+    // ---------- Task #413: Coaching v3 — recurring student plans ----------
+    // Coaches sell recurring subscriptions (Stripe Billing) bundling a monthly
+    // quota of 1:1 sessions / group seats / VOD reviews. A student with an
+    // active subscription books at $0 against quota until exhausted; once
+    // exhausted (or for non-subscribers) the existing pay-per-use Checkout
+    // path still applies. Plans use destination charges (application_fee_percent)
+    // so platform commission lands on every invoice; capture happens on each
+    // renewal automatically via Stripe Billing.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_plans (
+        id SERIAL PRIMARY KEY,
+        coach_account_id BIGINT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft','active','archived')),
+        price_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        billing_interval TEXT NOT NULL DEFAULT 'month'
+          CHECK (billing_interval IN ('month')),
+        quota_sessions INTEGER NOT NULL DEFAULT 0,
+        quota_group_seats INTEGER NOT NULL DEFAULT 0,
+        quota_vod_reviews INTEGER NOT NULL DEFAULT 0,
+        stripe_product_id TEXT,
+        stripe_price_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coach_plans_coach ON coach_plans (coach_account_id, status)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_plan_subscriptions (
+        id SERIAL PRIMARY KEY,
+        plan_id INTEGER NOT NULL REFERENCES coach_plans(id) ON DELETE RESTRICT,
+        coach_account_id BIGINT NOT NULL,
+        student_account_id BIGINT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending','active','past_due','cancelled','canceled','incomplete','unpaid')),
+        stripe_customer_id TEXT,
+        stripe_subscription_id TEXT UNIQUE,
+        current_period_start TIMESTAMPTZ,
+        current_period_end TIMESTAMPTZ,
+        cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+        cancelled_at TIMESTAMPTZ,
+        used_sessions INTEGER NOT NULL DEFAULT 0,
+        used_group_seats INTEGER NOT NULL DEFAULT 0,
+        used_vod_reviews INTEGER NOT NULL DEFAULT 0,
+        period_anchor TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cps_coach ON coach_plan_subscriptions (coach_account_id, status)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cps_student ON coach_plan_subscriptions (student_account_id, status)`);
+    // At most one live (pending/active/past_due) subscription per
+    // (plan, student) so a double-checkout race can't bill the same student twice.
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cps_live_unique
+                     ON coach_plan_subscriptions (plan_id, student_account_id)
+                     WHERE status IN ('pending','active','past_due')`);
+
+    // Per-invoice ledger for plan billing — each Stripe invoice.paid event
+    // appends a row so coach earnings can show real plan revenue alongside
+    // 1:1 / group / VOD line items. Idempotent on stripe_invoice_id.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS coach_plan_invoices (
+        id SERIAL PRIMARY KEY,
+        subscription_id INTEGER NOT NULL REFERENCES coach_plan_subscriptions(id) ON DELETE CASCADE,
+        plan_id INTEGER NOT NULL,
+        coach_account_id BIGINT NOT NULL,
+        student_account_id BIGINT NOT NULL,
+        stripe_invoice_id TEXT NOT NULL UNIQUE,
+        stripe_charge_id TEXT,
+        stripe_payment_intent TEXT,
+        amount_cents INTEGER NOT NULL,
+        platform_fee_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_cpi_coach_paid ON coach_plan_invoices (coach_account_id, paid_at)`);
+
+    // Cross-reference columns: when a booking / group seat / VOD review is
+    // consumed against a subscription quota, we stamp the subscription id
+    // (and zero out the amount/fee) so the earnings query can distinguish
+    // plan-redemptions from cash sales.
+    await p.query(`ALTER TABLE coaching_bookings ADD COLUMN IF NOT EXISTS plan_subscription_id INTEGER`);
+    await p.query(`ALTER TABLE coach_group_session_seats ADD COLUMN IF NOT EXISTS plan_subscription_id INTEGER`);
+    await p.query(`ALTER TABLE coach_vod_reviews ADD COLUMN IF NOT EXISTS plan_subscription_id INTEGER`);
+
     // ---------- Task #405: Stripe earnings reconciliation ----------
     // Per-charge ledger pulled from Stripe BalanceTransaction so coach
     // earnings can show *real* fees + net (not the AU domestic-card
@@ -15251,6 +15342,375 @@ async function _computeCoachPremiumFirstWeekViewLift() {
   };
 }
 
+// ---------- Task #413: Coaching v3 — recurring student plans ----------
+
+async function listCoachPlans(coachAccountId, { includeArchived = false } = {}) {
+  const p = getPool();
+  const where = ['coach_account_id = $1'];
+  if (!includeArchived) where.push(`status <> 'archived'`);
+  const r = await p.query(
+    `SELECT * FROM coach_plans WHERE ${where.join(' AND ')} ORDER BY created_at DESC`,
+    [coachAccountId]
+  );
+  return r.rows;
+}
+
+async function listActiveCoachPlans(coachAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, coach_account_id, name, description, price_cents, currency,
+            billing_interval, quota_sessions, quota_group_seats, quota_vod_reviews,
+            stripe_price_id
+       FROM coach_plans
+      WHERE coach_account_id = $1 AND status = 'active' AND stripe_price_id IS NOT NULL
+      ORDER BY price_cents ASC`,
+    [coachAccountId]
+  );
+  return r.rows;
+}
+
+async function getCoachPlan(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM coach_plans WHERE id = $1`, [parseInt(id, 10)]);
+  return r.rows[0] || null;
+}
+
+async function createCoachPlan({
+  coachAccountId, name, description = null,
+  priceCents, currency = 'aud',
+  quotaSessions = 0, quotaGroupSeats = 0, quotaVodReviews = 0,
+  stripeProductId = null, stripePriceId = null,
+}) {
+  if (!coachAccountId) throw new Error('createCoachPlan: coachAccountId required');
+  if (!name || !String(name).trim()) throw new Error('createCoachPlan: name required');
+  if (!Number.isFinite(priceCents) || priceCents < 500) throw new Error('createCoachPlan: priceCents must be >= 500');
+  const totalQuota = (quotaSessions | 0) + (quotaGroupSeats | 0) + (quotaVodReviews | 0);
+  if (totalQuota <= 0) throw new Error('createCoachPlan: at least one quota field must be > 0');
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO coach_plans
+      (coach_account_id, name, description, price_cents, currency,
+       quota_sessions, quota_group_seats, quota_vod_reviews,
+       stripe_product_id, stripe_price_id, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft')
+     RETURNING *`,
+    [coachAccountId, String(name).slice(0, 120), description ? String(description).slice(0, 1000) : null,
+     priceCents, String(currency).toLowerCase(),
+     quotaSessions | 0, quotaGroupSeats | 0, quotaVodReviews | 0,
+     stripeProductId, stripePriceId]
+  );
+  return r.rows[0];
+}
+
+async function updateCoachPlan(id, coachAccountId, patch = {}) {
+  const p = getPool();
+  const sets = [];
+  const args = [parseInt(id, 10), coachAccountId];
+  const allowText = { name: 120, description: 1000 };
+  for (const [k, max] of Object.entries(allowText)) {
+    if (patch[k] !== undefined) {
+      args.push(patch[k] == null ? null : String(patch[k]).slice(0, max));
+      sets.push(`${k} = $${args.length}`);
+    }
+  }
+  if (patch.status !== undefined) {
+    if (!['draft', 'active', 'archived'].includes(patch.status)) {
+      throw new Error('updateCoachPlan: invalid status');
+    }
+    args.push(patch.status);
+    sets.push(`status = $${args.length}`);
+  }
+  if (patch.stripe_product_id !== undefined) {
+    args.push(patch.stripe_product_id);
+    sets.push(`stripe_product_id = $${args.length}`);
+  }
+  if (patch.stripe_price_id !== undefined) {
+    args.push(patch.stripe_price_id);
+    sets.push(`stripe_price_id = $${args.length}`);
+  }
+  if (!sets.length) return await getCoachPlan(id);
+  sets.push(`updated_at = NOW()`);
+  const r = await p.query(
+    `UPDATE coach_plans SET ${sets.join(', ')}
+      WHERE id = $1 AND coach_account_id = $2 RETURNING *`,
+    args
+  );
+  return r.rows[0] || null;
+}
+
+async function getCoachPlanSubscription(id) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ps.*, pl.name AS plan_name, pl.price_cents, pl.currency,
+            pl.quota_sessions, pl.quota_group_seats, pl.quota_vod_reviews,
+            pl.stripe_price_id
+       FROM coach_plan_subscriptions ps
+       JOIN coach_plans pl ON pl.id = ps.plan_id
+      WHERE ps.id = $1`,
+    [parseInt(id, 10)]
+  );
+  return r.rows[0] || null;
+}
+
+async function getActivePlanSubscriptionForStudent(coachAccountId, studentAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ps.*, pl.name AS plan_name, pl.price_cents, pl.currency,
+            pl.quota_sessions, pl.quota_group_seats, pl.quota_vod_reviews
+       FROM coach_plan_subscriptions ps
+       JOIN coach_plans pl ON pl.id = ps.plan_id
+      WHERE ps.coach_account_id = $1 AND ps.student_account_id = $2
+        AND ps.status IN ('active','past_due')
+      ORDER BY ps.created_at DESC
+      LIMIT 1`,
+    [coachAccountId, studentAccountId]
+  );
+  return r.rows[0] || null;
+}
+
+async function upsertCoachPlanSubscriptionPending({
+  planId, coachAccountId, studentAccountId, stripeCustomerId = null,
+}) {
+  const p = getPool();
+  // Unique partial index on (plan_id, student_account_id) where status is
+  // live blocks double-inserts; do a conflict-safe lookup-or-insert.
+  const existing = await p.query(
+    `SELECT * FROM coach_plan_subscriptions
+      WHERE plan_id = $1 AND student_account_id = $2
+        AND status IN ('pending','active','past_due')
+      LIMIT 1`,
+    [planId, studentAccountId]
+  );
+  if (existing.rows[0]) return existing.rows[0];
+  const r = await p.query(
+    `INSERT INTO coach_plan_subscriptions
+       (plan_id, coach_account_id, student_account_id, status, stripe_customer_id)
+     VALUES ($1,$2,$3,'pending',$4)
+     RETURNING *`,
+    [planId, coachAccountId, studentAccountId, stripeCustomerId]
+  );
+  return r.rows[0];
+}
+
+// Apply a Stripe subscription event payload. Resets quota counters when the
+// billing period rolls forward (period_anchor change) so each invoice cycle
+// gives the student a fresh allocation. Matches first by stripe_subscription_id,
+// then by metadata to attach the first event after Checkout.
+async function applyCoachPlanSubscriptionStripeEvent(sub, { planId, coachAccountId, studentAccountId } = {}) {
+  if (!sub) return null;
+  const p = getPool();
+  const status = sub.status === 'trialing' ? 'active' : (sub.status || 'pending');
+  const cps = sub.current_period_start ? new Date(sub.current_period_start * 1000) : null;
+  const cpe = sub.current_period_end ? new Date(sub.current_period_end * 1000) : null;
+  const cancelAtPeriodEnd = !!sub.cancel_at_period_end;
+  const cancelledAt = sub.canceled_at ? new Date(sub.canceled_at * 1000) : null;
+  const customerId = typeof sub.customer === 'string' ? sub.customer : (sub.customer?.id || null);
+
+  // Attach the subscription_id to the pending row from checkout if we have
+  // the metadata triplet but no row keyed by sub.id yet.
+  let row = (await p.query(
+    `SELECT * FROM coach_plan_subscriptions WHERE stripe_subscription_id = $1 LIMIT 1`,
+    [sub.id]
+  )).rows[0];
+  if (!row && planId && coachAccountId && studentAccountId) {
+    const attach = await p.query(
+      `UPDATE coach_plan_subscriptions
+          SET stripe_subscription_id = $4,
+              stripe_customer_id = COALESCE($5, stripe_customer_id),
+              updated_at = NOW()
+        WHERE plan_id = $1 AND coach_account_id = $2 AND student_account_id = $3
+          AND status = 'pending' AND stripe_subscription_id IS NULL
+        RETURNING *`,
+      [planId, coachAccountId, studentAccountId, sub.id, customerId]
+    );
+    row = attach.rows[0] || null;
+  }
+  if (!row) return null;
+
+  const anchorChanged = cps && (!row.period_anchor || new Date(row.period_anchor).getTime() !== cps.getTime());
+  const resetSql = anchorChanged
+    ? `used_sessions = 0, used_group_seats = 0, used_vod_reviews = 0,`
+    : '';
+  const upd = await p.query(
+    `UPDATE coach_plan_subscriptions
+        SET status = $2,
+            stripe_customer_id = COALESCE($3, stripe_customer_id),
+            current_period_start = COALESCE($4, current_period_start),
+            current_period_end = COALESCE($5, current_period_end),
+            cancel_at_period_end = $6,
+            cancelled_at = COALESCE($7, cancelled_at),
+            period_anchor = COALESCE($4, period_anchor),
+            ${resetSql}
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [row.id, status, customerId, cps, cpe, cancelAtPeriodEnd, cancelledAt]
+  );
+  return upd.rows[0] || null;
+}
+
+// Atomically consume one quota slot for the given kind. Returns the updated
+// subscription row when the increment succeeded, or null when no quota
+// remains (which the caller treats as a "fall back to pay-per-use" signal).
+// kind ∈ 'sessions' | 'group_seats' | 'vod_reviews'.
+async function consumeCoachPlanQuota(subscriptionId, kind) {
+  const cols = {
+    sessions: ['used_sessions', 'quota_sessions'],
+    group_seats: ['used_group_seats', 'quota_group_seats'],
+    vod_reviews: ['used_vod_reviews', 'quota_vod_reviews'],
+  };
+  const c = cols[kind];
+  if (!c) throw new Error('consumeCoachPlanQuota: invalid kind');
+  const [usedCol, quotaCol] = c;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_plan_subscriptions ps
+        SET ${usedCol} = ${usedCol} + 1, updated_at = NOW()
+       FROM coach_plans pl
+      WHERE ps.id = $1 AND pl.id = ps.plan_id
+        AND ps.status IN ('active','past_due')
+        AND ps.${usedCol} < pl.${quotaCol}
+      RETURNING ps.*, pl.${quotaCol} AS quota_limit`,
+    [parseInt(subscriptionId, 10)]
+  );
+  return r.rows[0] || null;
+}
+
+// Compensating release used when the downstream booking insert fails after a
+// successful quota debit. Bounded by max(used - 1, 0) so a double-call can't
+// underflow the counter.
+async function refundCoachPlanQuota(subscriptionId, kind) {
+  const cols = {
+    sessions: 'used_sessions',
+    group_seats: 'used_group_seats',
+    vod_reviews: 'used_vod_reviews',
+  };
+  const usedCol = cols[kind];
+  if (!usedCol) return null;
+  const p = getPool();
+  await p.query(
+    `UPDATE coach_plan_subscriptions
+        SET ${usedCol} = GREATEST(${usedCol} - 1, 0), updated_at = NOW()
+      WHERE id = $1`,
+    [parseInt(subscriptionId, 10)]
+  );
+}
+
+async function listCoachPlanSubscribers(coachAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ps.*, pl.name AS plan_name, pl.price_cents, pl.currency,
+            pl.quota_sessions, pl.quota_group_seats, pl.quota_vod_reviews,
+            COALESCE(ns.nickname, ps.student_account_id::text) AS student_name
+       FROM coach_plan_subscriptions ps
+       JOIN coach_plans pl ON pl.id = ps.plan_id
+       LEFT JOIN nicknames ns ON ns.account_id = ps.student_account_id
+      WHERE ps.coach_account_id = $1
+        AND ps.status IN ('active','past_due','pending')
+      ORDER BY ps.created_at DESC`,
+    [coachAccountId]
+  );
+  return r.rows;
+}
+
+async function listStudentPlanSubscriptions(studentAccountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ps.*, pl.name AS plan_name, pl.price_cents, pl.currency,
+            pl.quota_sessions, pl.quota_group_seats, pl.quota_vod_reviews,
+            COALESCE(nc.nickname, ps.coach_account_id::text) AS coach_name,
+            c.id AS coach_id
+       FROM coach_plan_subscriptions ps
+       JOIN coach_plans pl ON pl.id = ps.plan_id
+       LEFT JOIN coaches c ON c.account_id = ps.coach_account_id
+       LEFT JOIN nicknames nc ON nc.account_id = ps.coach_account_id
+      WHERE ps.student_account_id = $1
+      ORDER BY ps.created_at DESC`,
+    [studentAccountId]
+  );
+  return r.rows;
+}
+
+async function markCoachPlanSubscriptionCancelAtPeriodEnd(subscriptionId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coach_plan_subscriptions
+        SET cancel_at_period_end = TRUE, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [parseInt(subscriptionId, 10)]
+  );
+  return r.rows[0] || null;
+}
+
+// Record a paid plan invoice (called from `invoice.payment_succeeded` webhook).
+// Idempotent on stripe_invoice_id so Stripe retries are safe.
+async function recordCoachPlanInvoicePaid({
+  stripeSubscriptionId, stripeInvoiceId, stripeChargeId = null, stripePaymentIntent = null,
+  amountCents, applicationFeeCents = 0, currency = 'aud', paidAt = null,
+}) {
+  if (!stripeInvoiceId || !stripeSubscriptionId) return null;
+  const p = getPool();
+  const sub = (await p.query(
+    `SELECT id, plan_id, coach_account_id, student_account_id
+       FROM coach_plan_subscriptions WHERE stripe_subscription_id = $1`,
+    [stripeSubscriptionId]
+  )).rows[0];
+  if (!sub) return null;
+  const r = await p.query(
+    `INSERT INTO coach_plan_invoices
+       (subscription_id, plan_id, coach_account_id, student_account_id,
+        stripe_invoice_id, stripe_charge_id, stripe_payment_intent,
+        amount_cents, platform_fee_cents, currency, paid_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11, NOW()))
+     ON CONFLICT (stripe_invoice_id) DO UPDATE SET
+        stripe_charge_id = COALESCE(EXCLUDED.stripe_charge_id, coach_plan_invoices.stripe_charge_id),
+        stripe_payment_intent = COALESCE(EXCLUDED.stripe_payment_intent, coach_plan_invoices.stripe_payment_intent),
+        amount_cents = EXCLUDED.amount_cents,
+        platform_fee_cents = EXCLUDED.platform_fee_cents
+     RETURNING *`,
+    [sub.id, sub.plan_id, sub.coach_account_id, sub.student_account_id,
+     stripeInvoiceId, stripeChargeId, stripePaymentIntent,
+     amountCents | 0, applicationFeeCents | 0, String(currency || 'aud').toLowerCase(), paidAt]
+  );
+  return r.rows[0];
+}
+
+// MRR + retained-students tiles for the earnings dashboard. MRR = sum of
+// active subscription monthly prices. Retained = subscribers whose first
+// invoice was at least 30d before the start of the queried month and who
+// have at least one paid invoice within the queried month.
+async function getCoachPlanMetricsForMonth(coachAccountId, startIso, endIso) {
+  const p = getPool();
+  const mrrQ = await p.query(
+    `SELECT COALESCE(SUM(pl.price_cents), 0)::bigint AS mrr_cents,
+            COUNT(*)::int AS active_subscribers
+       FROM coach_plan_subscriptions ps
+       JOIN coach_plans pl ON pl.id = ps.plan_id
+      WHERE ps.coach_account_id = $1
+        AND ps.status IN ('active','past_due')`,
+    [coachAccountId]
+  );
+  const retainedQ = await p.query(
+    `SELECT COUNT(DISTINCT ps.id)::int AS retained
+       FROM coach_plan_subscriptions ps
+       JOIN coach_plan_invoices inv ON inv.subscription_id = ps.id
+      WHERE ps.coach_account_id = $1
+        AND inv.paid_at >= $2 AND inv.paid_at < $3
+        AND EXISTS (
+          SELECT 1 FROM coach_plan_invoices earlier
+           WHERE earlier.subscription_id = ps.id
+             AND earlier.paid_at < $2
+        )`,
+    [coachAccountId, startIso, endIso]
+  );
+  return {
+    mrr_cents: Number(mrrQ.rows[0]?.mrr_cents || 0),
+    active_subscribers: mrrQ.rows[0]?.active_subscribers || 0,
+    retained_subscribers: retainedQ.rows[0]?.retained || 0,
+  };
+}
+
 async function cancelCoachPremium(coachAccountId) {
   const p = getPool();
   await p.query(
@@ -17332,6 +17792,36 @@ async function getCoachEarningsMonth({ coachAccountId, ym }) {
     });
   }
 
+  // Task #413 — include paid plan invoices for this coach in the same month.
+  // Stripe Billing charges these via destination charges with
+  // application_fee_percent, so the platform commission is already on the
+  // invoice; no separate Stripe-fee estimate runs here (we surface what
+  // Stripe actually settled). reconciled=true because the amount is the
+  // exact invoice total Stripe charged.
+  const inv = await p.query(
+    `SELECT cpi.id, cpi.amount_cents, cpi.platform_fee_cents, cpi.currency,
+            cpi.paid_at, cpi.stripe_invoice_id,
+            pl.name AS plan_name,
+            sfl.fee_cents AS real_fee_cents
+       FROM coach_plan_invoices cpi
+       JOIN coach_plans pl ON pl.id = cpi.plan_id
+       LEFT JOIN stripe_fee_ledger sfl
+         ON sfl.payment_intent = cpi.stripe_payment_intent
+       WHERE cpi.coach_account_id = $1
+         AND cpi.paid_at >= $2 AND cpi.paid_at < $3`,
+    [coachAccountId, start.toISOString(), end.toISOString()]
+  );
+  for (const r of inv.rows) {
+    const reconciled = r.real_fee_cents != null;
+    rows.push({
+      kind: 'plan_invoice', id: r.id, when: r.paid_at, title: r.plan_name,
+      amount_cents: r.amount_cents, platform_fee_cents: r.platform_fee_cents,
+      stripe_fee_cents: reconciled ? r.real_fee_cents : _estStripeFeeCents(r.amount_cents, r.currency),
+      currency: r.currency,
+      reconciled,
+    });
+  }
+
   rows.sort((a, b) => new Date(a.when) - new Date(b.when));
   const totals = rows.reduce((acc, r) => {
     acc.gross += r.amount_cents;
@@ -17342,10 +17832,17 @@ async function getCoachEarningsMonth({ coachAccountId, ym }) {
   }, { gross: 0, platform_fee: 0, stripe_fee: 0, unreconciled_rows: 0 });
   totals.net = totals.gross - totals.platform_fee - totals.stripe_fee;
   totals.fully_reconciled = rows.length > 0 && totals.unreconciled_rows === 0;
+
+  // Task #413 — MRR + retained-students tiles for the earnings dashboard.
+  const planMetrics = await getCoachPlanMetricsForMonth(
+    coachAccountId, start.toISOString(), end.toISOString()
+  ).catch(() => ({ mrr_cents: 0, active_subscribers: 0, retained_subscribers: 0 }));
+
   return {
     ym: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`,
     start: start.toISOString(), end: end.toISOString(),
     rows, totals,
+    plan_metrics: planMetrics,
   };
 }
 
@@ -19819,6 +20316,23 @@ module.exports = {
   upsertCoachPremiumPending,
   applyCoachPremiumStripeEvent,
   cancelCoachPremium,
+  // Task #413 — coach plans (recurring student subscriptions)
+  listCoachPlans,
+  listActiveCoachPlans,
+  getCoachPlan,
+  createCoachPlan,
+  updateCoachPlan,
+  getCoachPlanSubscription,
+  getActivePlanSubscriptionForStudent,
+  upsertCoachPlanSubscriptionPending,
+  applyCoachPlanSubscriptionStripeEvent,
+  consumeCoachPlanQuota,
+  refundCoachPlanQuota,
+  listCoachPlanSubscribers,
+  listStudentPlanSubscriptions,
+  markCoachPlanSubscriptionCancelAtPeriodEnd,
+  recordCoachPlanInvoicePaid,
+  getCoachPlanMetricsForMonth,
   listSponsorshipSlots,
   getSponsorshipSlot,
   createSponsorshipSlot,

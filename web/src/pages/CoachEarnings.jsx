@@ -14,6 +14,7 @@ const KIND_LABEL = {
   booking: '1:1 booking',
   group_seat: 'Group session seat',
   vod_review: 'VOD review',
+  plan_invoice: 'Plan subscription',
 };
 
 export default function CoachEarnings() {
@@ -73,6 +74,28 @@ export default function CoachEarnings() {
               </div>
             ))}
           </div>
+          {/* Task #413 — recurring-revenue tiles. MRR sums every active
+              plan_subscription's monthly price right now (not just this
+              month); retained = subscribers with a paid invoice in this
+              month who also had at least one earlier paid invoice, i.e.
+              renewals rather than first-time signups. */}
+          {data.plan_metrics && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+              {[
+                ['MRR (active plans)', data.plan_metrics.mrr_cents, 'var(--gold)'],
+                ['Active subscribers', null, 'var(--text-primary)', data.plan_metrics.active_subscribers],
+                ['Retained this month', null, 'var(--radiant-color)', data.plan_metrics.retained_subscribers],
+              ].map(([label, cents, color, count]) => (
+                <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--brass)', borderRadius: 10, padding: 14 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{label}</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color, marginTop: 4 }}>
+                    {cents != null ? `${fmtPrice(cents)} / mo` : count}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             {data.totals.fully_reconciled
               ? 'All line items below are reconciled against Stripe BalanceTransactions — fees and net payout match your Stripe dashboard exactly.'

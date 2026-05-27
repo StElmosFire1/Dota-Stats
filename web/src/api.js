@@ -1993,6 +1993,37 @@ export const uploadVodReplay = async (id, file) => {
 };
 export const getCoachEarnings = (ym) => _getJson('/me/coach/earnings' + (ym ? `?ym=${ym}` : ''));
 
+// Task #413 — Coaching v3: recurring student plans.
+export const listMyCoachPlans = () => _getJson('/coach/plans');
+export const createCoachPlan = (payload) => _postJson('/coach/plans', payload);
+export const updateCoachPlan = async (id, patch) => {
+  const res = await fetch(`${BASE}/coach/plans/${id}`, {
+    method: 'PATCH', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || 'Failed');
+  return data;
+};
+export const publishCoachPlan = (id) => _postJson(`/coach/plans/${id}/publish`, {});
+export const listCoachPlansPublic = (coachId) => _getJson(`/coaches/${coachId}/plans`);
+export const subscribeCoachPlan = (coachId, planId) =>
+  _postJson(`/coaches/${coachId}/plans/${planId}/subscribe`, {});
+export const listMyPlanSubscriptions = () => _getJson('/me/coaching/plan-subscriptions');
+export const listMyCoachPlanSubscribers = () => _getJson('/me/coach/plan-subscribers');
+export const cancelPlanSubscription = (id) =>
+  _postJson(`/me/coaching/plan-subscriptions/${id}/cancel`, {});
+
+// Convenience overloads — pass `{ usePlan: true }` to redeem against the
+// student's active subscription quota rather than paying via Stripe.
+export const bookCoachWithPlan = (coachId, payload) =>
+  _postJson(`/coaches/${coachId}/book`, { ...payload, use_plan: true });
+export const joinGroupSessionWithPlan = (id) =>
+  _postJson(`/group-sessions/${id}/join`, { use_plan: true });
+export const requestVodReviewWithPlan = (coachId, payload) =>
+  _postJson(`/coaches/${coachId}/vod-review`, { ...payload, use_plan: true });
+
 // Task #314 / v7.34 — Founders Ring catalog.
 export const listMyFounderRings = () => _getJson('/me/founder-rings');
 export const setEquippedFounderRing = (sku) => _postJson('/me/equipped-ring', { sku });

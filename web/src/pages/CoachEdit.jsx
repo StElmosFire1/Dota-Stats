@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import * as api from '../api';
 
 const BASE = '/api';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -285,6 +286,9 @@ export default function CoachEdit() {
         <button type="submit" style={{ marginTop: 12, padding: '8px 16px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700 }}>Save profile</button>
       </form>
 
+      {/* Task #413 — Coaching v3: recurring student plans editor. */}
+      <CoachPlansPanel />
+
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
         <h3 style={{ marginTop: 0 }}>Weekly availability</h3>
         {availability.map((s, i) => (
@@ -338,6 +342,157 @@ export default function CoachEdit() {
         <p style={{ marginTop: 20, color: 'var(--text-muted)' }}>
           Average rating: {rating.avg_rating ? `★ ${rating.avg_rating} (${rating.review_count})` : 'No ratings yet'}
         </p>
+      )}
+    </div>
+  );
+}
+
+// Task #413 — coach plan editor. Coaches create draft plans (price + quotas),
+// publish them (creates a Stripe Product+Price under the hood), and see a
+// roster of current subscribers. Plans cannot be hard-deleted once they have
+// subscribers — only archived (hides from public, doesn't cancel actives).
+function CoachPlansPanel() {
+  const [plans, setPlans] = useState([]);
+  const [subs, setSubs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState('');
+  const [form, setForm] = useState({
+    name: '', description: '', price_dollars: 49,
+    quota_sessions: 2, quota_group_seats: 0, quota_vod_reviews: 1,
+  });
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const [p, s] = await Promise.all([
+        api.listMyCoachPlans().catch(() => ({ plans: [] })),
+        api.listMyCoachPlanSubscribers().catch(() => ({ subscribers: [] })),
+      ]);
+      setPlans(p.plans || []);
+      setSubs(s.subscribers || []);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { reload(); }, []);
+
+  const create = async (e) => {
+    e.preventDefault();
+    setMsg('');
+    try {
+      const payload = {
+        name: form.name,
+        description: form.description || null,
+        price_cents: Math.round(parseFloat(form.price_dollars || 0) * 100),
+        quota_sessions: parseInt(form.quota_sessions, 10) || 0,
+        quota_group_seats: parseInt(form.quota_group_seats, 10) || 0,
+        quota_vod_reviews: parseInt(form.quota_vod_reviews, 10) || 0,
+      };
+      await api.createCoachPlan(payload);
+      setForm({ name: '', description: '', price_dollars: 49, quota_sessions: 2, quota_group_seats: 0, quota_vod_reviews: 1 });
+      await reload();
+      setMsg('Draft plan created — click Publish to make it available to students.');
+    } catch (err) { setMsg(`Error: ${err.message}`); }
+  };
+
+  const publish = async (id) => {
+    setMsg('');
+    try { await api.publishCoachPlan(id); await reload(); setMsg('Plan published.'); }
+    catch (err) { setMsg(`Error: ${err.message}`); }
+  };
+  const archive = async (id) => {
+    setMsg('');
+    try { await api.updateCoachPlan(id, { status: 'archived' }); await reload(); }
+    catch (err) { setMsg(`Error: ${err.message}`); }
+  };
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--brass, #c5a975)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
+      <h3 style={{ marginTop: 0, color: 'var(--brass, #c5a975)' }}>📦 Recurring student plans</h3>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
+        Sell a monthly bundle to repeat students. Each subscription gives the student a quota of 1:1 sessions, group-session seats, and VOD reviews per billing cycle. Stripe Billing handles renewals automatically.
+      </p>
+
+      {loading ? <div>Loading…</div> : (
+        <>
+          {plans.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>You haven't created any plans yet.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
+              <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
+                <th align="left">Plan</th><th align="left">Price</th><th align="left">Quota / mo</th>
+                <th align="left">Status</th><th></th>
+              </tr></thead>
+              <tbody>{plans.map(pl => (
+                <tr key={pl.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: 6 }}><strong>{pl.name}</strong>{pl.description ? <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{pl.description}</div> : null}</td>
+                  <td style={{ padding: 6 }}>${(pl.price_cents / 100).toFixed(2)} {String(pl.currency).toUpperCase()}/mo</td>
+                  <td style={{ padding: 6 }}>
+                    {pl.quota_sessions > 0 && <div>{pl.quota_sessions} × 1:1</div>}
+                    {pl.quota_group_seats > 0 && <div>{pl.quota_group_seats} × group seat</div>}
+                    {pl.quota_vod_reviews > 0 && <div>{pl.quota_vod_reviews} × VOD review</div>}
+                  </td>
+                  <td style={{ padding: 6 }}>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: 999, fontWeight: 600, fontSize: 11,
+                      background: pl.status === 'active' ? 'rgba(34,197,94,0.15)' : pl.status === 'archived' ? 'rgba(120,120,120,0.15)' : 'rgba(245,158,11,0.15)',
+                      color: pl.status === 'active' ? 'var(--radiant-color)' : pl.status === 'archived' ? 'var(--text-muted)' : 'var(--amber)',
+                    }}>{pl.status}</span>
+                  </td>
+                  <td style={{ padding: 6, textAlign: 'right' }}>
+                    {pl.status === 'draft' && (
+                      <button type="button" onClick={() => publish(pl.id)} aria-label={`Publish plan ${pl.name}`}
+                        style={{ padding: '4px 10px', borderRadius: 6, border: 0, background: 'var(--accent)', color: '#fff', cursor: 'pointer', marginRight: 6 }}>Publish</button>
+                    )}
+                    {pl.status !== 'archived' && (
+                      <button type="button" onClick={() => archive(pl.id)} aria-label={`Archive plan ${pl.name}`}
+                        style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>Archive</button>
+                    )}
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+
+          {subs.length > 0 && (
+            <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6 }}>
+              <strong style={{ fontSize: 13 }}>Active subscribers ({subs.length})</strong>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+                {subs.slice(0, 8).map(s => (
+                  <div key={s.id}>
+                    {s.student_name} — {s.plan_name} ({s.used_sessions}/{s.quota_sessions} 1:1, {s.used_group_seats}/{s.quota_group_seats} group, {s.used_vod_reviews}/{s.quota_vod_reviews} VOD) — {s.status}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={create} style={{ marginTop: 14, padding: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6 }}>
+            <strong style={{ fontSize: 13 }}>New plan</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginTop: 8 }}>
+              <label style={{ fontSize: 12 }}>Name<input required maxLength={120} value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                style={{ width: '100%', padding: 6, marginTop: 2, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} /></label>
+              <label style={{ fontSize: 12 }}>Price (AUD/mo)<input required type="number" min={5} max={2000} step={1}
+                value={form.price_dollars} onChange={e => setForm(f => ({ ...f, price_dollars: e.target.value }))}
+                style={{ width: '100%', padding: 6, marginTop: 2, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} /></label>
+              <label style={{ fontSize: 12 }}>1:1 sessions / mo<input type="number" min={0} max={50}
+                value={form.quota_sessions} onChange={e => setForm(f => ({ ...f, quota_sessions: e.target.value }))}
+                style={{ width: '100%', padding: 6, marginTop: 2, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} /></label>
+              <label style={{ fontSize: 12 }}>Group seats / mo<input type="number" min={0} max={50}
+                value={form.quota_group_seats} onChange={e => setForm(f => ({ ...f, quota_group_seats: e.target.value }))}
+                style={{ width: '100%', padding: 6, marginTop: 2, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} /></label>
+              <label style={{ fontSize: 12 }}>VOD reviews / mo<input type="number" min={0} max={50}
+                value={form.quota_vod_reviews} onChange={e => setForm(f => ({ ...f, quota_vod_reviews: e.target.value }))}
+                style={{ width: '100%', padding: 6, marginTop: 2, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} /></label>
+            </div>
+            <label style={{ fontSize: 12, display: 'block', marginTop: 8 }}>Description (optional)
+              <textarea rows={2} maxLength={1000} value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                style={{ width: '100%', padding: 6, marginTop: 2, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
+            </label>
+            <button type="submit" style={{ marginTop: 8, padding: '6px 14px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700 }}>Create draft plan</button>
+          </form>
+          {msg && <p style={{ color: msg.startsWith('Error') ? 'var(--dire-color)' : 'var(--radiant-color)', marginTop: 8, fontSize: 13 }} role="status">{msg}</p>}
+        </>
       )}
     </div>
   );

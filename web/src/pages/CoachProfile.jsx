@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import * as api from '../api';
 
 const BASE = '/api';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -214,6 +215,9 @@ export default function CoachProfile() {
         </table>
       )}
 
+      {/* Task #413 — public-facing plans panel + subscribe CTA. */}
+      <CoachPlansPublic coachId={id} signedIn={!!steamUser?.accountId} currency={coach.currency} />
+
       <h3>Book a session</h3>
       <form onSubmit={handleBook} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
@@ -301,7 +305,7 @@ export default function CoachProfile() {
         </section>
       )}
 
-      <h3>Recent reviews</h3>
+      <h3 id="reviews-heading">Recent reviews</h3>
       {reviews?.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>No reviews yet.</p>
       ) : (
@@ -316,5 +320,79 @@ export default function CoachProfile() {
         ))}</div>
       )}
     </div>
+  );
+}
+
+// Task #413 — public plans card on the coach profile page. Lists the coach's
+// active published plans and offers a Subscribe CTA that kicks off a Stripe
+// Checkout subscription session. Signed-out students see a "Sign in to
+// subscribe" hint instead of a dead button.
+function CoachPlansPublic({ coachId, signedIn, currency }) {
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    api.listCoachPlansPublic(coachId)
+      .then(d => setPlans(d.plans || []))
+      .catch(() => setPlans([]))
+      .finally(() => setLoading(false));
+  }, [coachId]);
+
+  if (loading) return null;
+  if (!plans.length) return null;
+
+  const subscribe = async (planId) => {
+    setErr(''); setBusyId(planId);
+    try {
+      const r = await api.subscribeCoachPlan(coachId, planId);
+      if (r.url) window.location.href = r.url;
+    } catch (e) { setErr(e.message); }
+    finally { setBusyId(null); }
+  };
+
+  return (
+    <section aria-labelledby="coach-plans-heading" style={{ marginBottom: 20 }}>
+      <h3 id="coach-plans-heading">📦 Monthly plans</h3>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
+        Subscribe for a recurring bundle of sessions, group seats, and VOD reviews at a discount vs paying per booking.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+        {plans.map(pl => (
+          <div key={pl.id} style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--brass, #c5a975)',
+            borderRadius: 10, padding: 14,
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{pl.name}</div>
+            <div style={{ fontSize: 20, color: 'var(--gold, #f59e0b)', fontWeight: 700, marginTop: 4 }}>
+              {formatPrice(pl.price_cents, pl.currency || currency)}<span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 400 }}> / month</span>
+            </div>
+            {pl.description && <p style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{pl.description}</p>}
+            <ul style={{ fontSize: 13, paddingLeft: 18, margin: '8px 0' }}>
+              {pl.quota_sessions > 0 && <li>{pl.quota_sessions} × 1:1 session{pl.quota_sessions === 1 ? '' : 's'} / mo</li>}
+              {pl.quota_group_seats > 0 && <li>{pl.quota_group_seats} × group session seat{pl.quota_group_seats === 1 ? '' : 's'} / mo</li>}
+              {pl.quota_vod_reviews > 0 && <li>{pl.quota_vod_reviews} × VOD review{pl.quota_vod_reviews === 1 ? '' : 's'} / mo</li>}
+            </ul>
+            {signedIn ? (
+              <button type="button" disabled={busyId === pl.id}
+                onClick={() => subscribe(pl.id)}
+                aria-label={`Subscribe to plan ${pl.name}`}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 6,
+                  background: 'var(--accent)', color: '#fff', border: 0,
+                  cursor: busyId === pl.id ? 'wait' : 'pointer', fontWeight: 700,
+                }}>
+                {busyId === pl.id ? 'Redirecting…' : 'Subscribe'}
+              </button>
+            ) : (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Sign in with Steam to subscribe.</p>
+            )}
+          </div>
+        ))}
+      </div>
+      {err && <p role="status" style={{ color: 'var(--dire-color)', fontSize: 13, marginTop: 8 }}>{err}</p>}
+    </section>
   );
 }

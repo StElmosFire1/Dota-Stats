@@ -1633,6 +1633,19 @@ function createServer(startupStatus = {}) {
             console.log('[Stripe] coach_premium', event.type, 'coach', coachAccountId, '->', sub.status);
           }
         }
+        // Task #413 — coach plan (student recurring subscription) lifecycle.
+        if (sub.metadata?.purpose === 'coach_plan') {
+          const planId = parseInt(sub.metadata?.plan_id, 10);
+          const coachAccountId = sub.metadata?.coach_account_id;
+          const studentAccountId = sub.metadata?.student_account_id;
+          await db.applyCoachPlanSubscriptionStripeEvent({
+            ...sub,
+            status: event.type === 'customer.subscription.deleted' ? 'cancelled' : sub.status,
+          }, { planId, coachAccountId, studentAccountId })
+            .catch(err => console.warn('[Stripe] coach_plan event:', err.message));
+          console.log('[Stripe] coach_plan', event.type, 'plan', planId,
+            'student', studentAccountId, '->', sub.status);
+        }
         // Task #320 — tenant subscription lifecycle.
         if (sub.metadata?.purpose === 'tenant_subscription') {
           const tenantId = parseInt(sub.metadata?.tenant_id, 10);
@@ -1682,6 +1695,30 @@ function createServer(startupStatus = {}) {
           if (row) {
             try { _proCache.delete(String(row.account_id)); } catch (_) {}
             console.log('[Stripe] Pro invoice paid', subId, 'account', row.account_id);
+          }
+        }
+        // Task #413 — coach plan recurring invoice. Stripe Billing fires this
+        // on every renewal; we record the paid amount into coach_plan_invoices
+        // so the earnings dashboard reflects real subscription revenue.
+        // Idempotent on stripe_invoice_id. We detect plan invoices by looking
+        // up the subscription_id against our local plan-subscriptions table
+        // rather than trusting metadata (which Stripe doesn't always echo on
+        // invoice objects).
+        if (subId) {
+          const planRow = await db.recordCoachPlanInvoicePaid({
+            stripeSubscriptionId: subId,
+            stripeInvoiceId: invoice.id,
+            stripeChargeId: invoice.charge || null,
+            stripePaymentIntent: invoice.payment_intent || null,
+            amountCents: invoice.amount_paid ?? 0,
+            applicationFeeCents: invoice.application_fee_amount ?? 0,
+            currency: invoice.currency || 'aud',
+            paidAt: invoice.status_transitions?.paid_at
+              ? new Date(invoice.status_transitions.paid_at * 1000)
+              : (invoice.created ? new Date(invoice.created * 1000) : null),
+          }).catch(err => { console.warn('[Stripe] coach_plan invoice paid:', err.message); return null; });
+          if (planRow) {
+            console.log('[Stripe] coach_plan invoice paid', invoice.id, 'subscription', subId);
           }
         }
       } else if (event.type === 'invoice.payment_failed') {
@@ -14384,6 +14421,45 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const slotCheck = await db.validateBookingSlot(coach.account_id, slotStart.toISOString(), duration);
       if (!slotCheck.ok) return res.status(400).json({ error: slotCheck.reason });
 
+      // Task #413 — redeem a 1:1 session against an active plan subscription.
+      // Caller opts in by passing `use_plan: true`; we look up the student's
+      // active sub on this coach, atomically debit one session from the
+      // quota, and short-circuit Stripe — the booking row is inserted at
+      // amount=0, status=paid, with plan_subscription_id stamped so earnings
+      // can distinguish redemptions from cash bookings. Falls through to the
+      // cash path on no-active-sub / quota-exhausted so the student sees a
+      // single book button regardless of payment method.
+      if (req.body?.use_plan) {
+        const sub = await db.getActivePlanSubscriptionForStudent(coach.account_id, studentAccountId);
+        if (!sub) return res.status(400).json({ error: 'No active plan subscription with this coach' });
+        if (!sub.quota_sessions || sub.quota_sessions <= 0) {
+          return res.status(400).json({ error: "Your plan doesn't include 1:1 sessions" });
+        }
+        const debited = await db.consumeCoachPlanQuota(sub.id, 'sessions');
+        if (!debited) return res.status(409).json({ error: 'No 1:1 sessions remaining this period' });
+        try {
+          const booking = await db.createBooking({
+            coachAccountId: coach.account_id,
+            studentAccountId,
+            slotStartAt: slotStart.toISOString(),
+            durationMinutes: duration,
+            amountCents: 0,
+            platformFeeCents: 0,
+            currency: (coach.currency || 'aud').toLowerCase(),
+          });
+          // Stamp the subscription id + mark paid (no money is moving).
+          const p = db.getPool();
+          await p.query(
+            `UPDATE coaching_bookings SET plan_subscription_id = $2, status = 'paid', updated_at = NOW() WHERE id = $1`,
+            [booking.id, sub.id]
+          );
+          return res.json({ url: null, booking_id: booking.id, plan_redeemed: true });
+        } catch (err) {
+          await db.refundCoachPlanQuota(sub.id, 'sessions').catch(() => {});
+          throw err;
+        }
+      }
+
       const stripe = _stripe();
       if (!stripe) return res.status(503).json({ error: 'Payments are not configured.' });
 
@@ -14985,6 +15061,42 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       }
       const coach = await db.getCoach(gs.coach_account_id);
       if (!coach?.stripe_account_id) return res.status(400).json({ error: 'Coach payout account missing' });
+
+      // Task #413 — redeem a group seat against an active plan subscription.
+      // Same atomic-debit pattern as the 1:1 path; on success we insert a
+      // seat row marked status='paid' with plan_subscription_id stamped and
+      // skip Stripe entirely. Failure of the seat reservation refunds the
+      // quota so the student isn't silently charged a slot they didn't get.
+      if (req.body?.use_plan) {
+        const sub = await db.getActivePlanSubscriptionForStudent(coach.account_id, studentAccountId);
+        if (!sub) return res.status(400).json({ error: 'No active plan subscription with this coach' });
+        if (!sub.quota_group_seats || sub.quota_group_seats <= 0) {
+          return res.status(400).json({ error: "Your plan doesn't include group seats" });
+        }
+        const debited = await db.consumeCoachPlanQuota(sub.id, 'group_seats');
+        if (!debited) return res.status(409).json({ error: 'No group seats remaining this period' });
+        try {
+          const seat = await db.reserveGroupSeat({
+            sessionId: gs.id, studentAccountId,
+            amountCents: 0, platformFeeCents: 0,
+            currency: (gs.currency || 'aud').toLowerCase(),
+          });
+          const p = db.getPool();
+          await p.query(
+            `UPDATE coach_group_session_seats
+                SET plan_subscription_id = $2, status = 'paid', updated_at = NOW()
+              WHERE id = $1`,
+            [seat.id, sub.id]
+          );
+          return res.json({ url: null, seat_id: seat.id, plan_redeemed: true });
+        } catch (err) {
+          await db.refundCoachPlanQuota(sub.id, 'group_seats').catch(() => {});
+          await db.reopenGroupSessionIfRoom(gs.id).catch(() => {});
+          const status = /already hold/.test(err.message) ? 409 : 400;
+          return res.status(status).json({ error: err.message });
+        }
+      }
+
       const stripe = _stripe();
       if (!stripe) return res.status(503).json({ error: 'Payments not configured' });
 
@@ -15113,6 +15225,41 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const commissionBps = await db.resolveCommissionBpsForCoach(coach);
       const platformFeeCents = Math.round(price * (commissionBps / 10000));
       const currency = (coach.currency || 'aud').toLowerCase();
+
+      // Task #413 — redeem a VOD review against an active plan subscription.
+      // Mirrors the 1:1 + group seat paths: atomic debit, $0 row marked paid,
+      // plan_subscription_id stamped, no Stripe round-trip. Refunds quota
+      // on insert failure so the student doesn't lose a slot to a transient
+      // DB error.
+      if (req.body?.use_plan) {
+        const sub = await db.getActivePlanSubscriptionForStudent(coach.account_id, studentAccountId);
+        if (!sub) return res.status(400).json({ error: 'No active plan subscription with this coach' });
+        if (!sub.quota_vod_reviews || sub.quota_vod_reviews <= 0) {
+          return res.status(400).json({ error: "Your plan doesn't include VOD reviews" });
+        }
+        const debited = await db.consumeCoachPlanQuota(sub.id, 'vod_reviews');
+        if (!debited) return res.status(409).json({ error: 'No VOD reviews remaining this period' });
+        try {
+          const review = await db.createVodReview({
+            coachAccountId: coach.account_id,
+            studentAccountId,
+            matchId: mid, replayUrl: rurl,
+            question: String(question).trim(),
+            priceCents: 0, platformFeeCents: 0, currency,
+          });
+          const p = db.getPool();
+          await p.query(
+            `UPDATE coach_vod_reviews
+                SET plan_subscription_id = $2, status = 'paid', updated_at = NOW()
+              WHERE id = $1`,
+            [review.id, sub.id]
+          );
+          return res.json({ url: null, review_id: review.id, plan_redeemed: true });
+        } catch (err) {
+          await db.refundCoachPlanQuota(sub.id, 'vod_reviews').catch(() => {});
+          throw err;
+        }
+      }
 
       const review = await db.createVodReview({
         coachAccountId: coach.account_id,
@@ -15617,6 +15764,278 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       });
     } catch (err) {
       console.error('[API] coach/premium/lift:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ===================================================================
+  // Task #413 — Coaching v3: recurring student plans
+  // ===================================================================
+  //
+  // Coaches sell monthly Stripe-Billing subscriptions bundling a quota of
+  // 1:1 sessions / group-session seats / VOD reviews. Students subscribe via
+  // Stripe Checkout (mode='subscription'); destination-charge plumbing routes
+  // the platform commission via `application_fee_percent` on every invoice.
+  // The webhook switch (above) records each `invoice.payment_succeeded` into
+  // `coach_plan_invoices` so the earnings dashboard can surface real plan
+  // revenue, and `customer.subscription.*` events flip status + reset quota
+  // counters when the billing period rolls forward.
+
+  // Coach creates a new plan. Always starts as 'draft' — coach must hit
+  // `/coach/plans/:id/publish` (which also creates the Stripe Product +
+  // Price) before students can subscribe. Splitting create vs publish keeps
+  // the Stripe round-trip out of the form-validation hot path and means a
+  // typo-then-fix doesn't litter Stripe with orphan products.
+  router.post('/coach/plans', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoach(accountId);
+      if (!coach) return res.status(403).json({ error: 'Not a coach' });
+      const { name, description, price_cents, quota_sessions, quota_group_seats, quota_vod_reviews } = req.body || {};
+      const priceCents = parseInt(price_cents, 10);
+      if (!Number.isFinite(priceCents) || priceCents < 500 || priceCents > 200_000) {
+        return res.status(400).json({ error: 'price_cents must be 500..200000' });
+      }
+      const plan = await db.createCoachPlan({
+        coachAccountId: accountId,
+        name, description,
+        priceCents,
+        currency: (coach.currency || 'aud').toLowerCase(),
+        quotaSessions: Math.min(Math.max(parseInt(quota_sessions, 10) || 0, 0), 50),
+        quotaGroupSeats: Math.min(Math.max(parseInt(quota_group_seats, 10) || 0, 0), 50),
+        quotaVodReviews: Math.min(Math.max(parseInt(quota_vod_reviews, 10) || 0, 0), 50),
+      });
+      res.json({ plan });
+    } catch (err) {
+      console.error('[API] coach/plans POST:', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Coach lists their own plans (any status). Public route below
+  // (`/coaches/:id/plans`) is filtered to `status='active'`.
+  router.get('/coach/plans', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const plans = await db.listCoachPlans(accountId, { includeArchived: true });
+      res.json({ plans });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.patch('/coach/plans/:id', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const id = parseInt(req.params.id, 10);
+      const existing = await db.getCoachPlan(id);
+      if (!existing || String(existing.coach_account_id) !== String(accountId)) {
+        return res.status(404).json({ error: 'Plan not found' });
+      }
+      const patch = {};
+      if (req.body?.name !== undefined) patch.name = req.body.name;
+      if (req.body?.description !== undefined) patch.description = req.body.description;
+      if (req.body?.status !== undefined) patch.status = req.body.status;
+      const plan = await db.updateCoachPlan(id, accountId, patch);
+      res.json({ plan });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Publish a draft plan: creates a Stripe Product + Price (recurring monthly)
+  // and stores the price id on the plan row, then flips status to 'active'.
+  // Idempotent: a plan that already has a stripe_price_id just gets its
+  // status flipped (and reused on subsequent publish calls).
+  router.post('/coach/plans/:id/publish', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const id = parseInt(req.params.id, 10);
+      const plan = await db.getCoachPlan(id);
+      if (!plan || String(plan.coach_account_id) !== String(accountId)) {
+        return res.status(404).json({ error: 'Plan not found' });
+      }
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured' });
+      let { stripe_product_id, stripe_price_id } = plan;
+      if (!stripe_price_id) {
+        const product = stripe_product_id
+          ? await stripe.products.retrieve(stripe_product_id).catch(() => null)
+          : await stripe.products.create({
+              name: `Coach plan — ${plan.name}`,
+              metadata: { purpose: 'coach_plan', plan_id: String(plan.id), coach_account_id: String(plan.coach_account_id) },
+            });
+        if (!product) return res.status(500).json({ error: 'Stripe product creation failed' });
+        const price = await stripe.prices.create({
+          product: product.id,
+          unit_amount: plan.price_cents,
+          currency: (plan.currency || 'aud').toLowerCase(),
+          recurring: { interval: 'month' },
+          metadata: { purpose: 'coach_plan', plan_id: String(plan.id) },
+        });
+        stripe_product_id = product.id;
+        stripe_price_id = price.id;
+      }
+      const updated = await db.updateCoachPlan(id, accountId, {
+        status: 'active',
+        stripe_product_id, stripe_price_id,
+      });
+      res.json({ plan: updated });
+    } catch (err) {
+      console.error('[API] coach/plans/:id/publish:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Public: list a coach's active plans (so the booking page can show
+  // "Subscribe to a monthly plan instead" alongside the per-session price).
+  router.get('/coaches/:id/plans', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const coach = await db.getCoachById(parseInt(req.params.id, 10));
+      if (!coach || coach.status !== 'active') return res.json({ plans: [] });
+      const plans = await db.listActiveCoachPlans(coach.account_id);
+      res.json({ plans });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Student subscribes to a coach plan via Stripe Checkout (subscription mode).
+  // Uses destination charges (application_fee_percent) so every recurring
+  // invoice routes the platform commission automatically — no manual capture
+  // step required, because the underlying booking redemptions are $0.
+  router.post('/coaches/:id/plans/:planId/subscribe', express.json(), async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const studentAccountId = req.session?.accountId;
+      if (!studentAccountId) return res.status(401).json({ error: 'Sign in with Steam to subscribe' });
+      const coach = await db.getCoachById(parseInt(req.params.id, 10));
+      if (!coach || coach.status !== 'active') return res.status(404).json({ error: 'Coach not found' });
+      if (!coach.stripe_account_id) return res.status(400).json({ error: 'Coach has no payout account' });
+      if (String(coach.account_id) === String(studentAccountId)) {
+        return res.status(400).json({ error: "You can't subscribe to yourself" });
+      }
+      const plan = await db.getCoachPlan(parseInt(req.params.planId, 10));
+      if (!plan || String(plan.coach_account_id) !== String(coach.account_id)) {
+        return res.status(404).json({ error: 'Plan not found' });
+      }
+      if (plan.status !== 'active' || !plan.stripe_price_id) {
+        return res.status(400).json({ error: 'Plan is not published' });
+      }
+      // Reject if the student already has a live (active/past_due/pending)
+      // subscription to this plan — Stripe would happily create a second
+      // billing cycle, but the partial unique index in the DB would reject
+      // the row anyway and we'd be left with a paid-for-but-unrecorded
+      // subscription on Stripe's side.
+      const existing = await db.getActivePlanSubscriptionForStudent(coach.account_id, studentAccountId);
+      if (existing && existing.plan_id === plan.id) {
+        return res.status(409).json({ error: 'You already have an active subscription to this plan' });
+      }
+
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments not configured' });
+
+      await db.upsertCoachPlanSubscriptionPending({
+        planId: plan.id,
+        coachAccountId: coach.account_id,
+        studentAccountId,
+      });
+
+      // Commission percent (basis points → percentage with 4 decimals,
+      // Stripe accepts up to 4dp on application_fee_percent).
+      const commissionBps = await db.resolveCommissionBpsForCoach(coach);
+      const appFeePct = Math.round((commissionBps / 100) * 100) / 100;
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const checkout = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
+        subscription_data: {
+          application_fee_percent: appFeePct,
+          transfer_data: { destination: coach.stripe_account_id },
+          metadata: {
+            purpose: 'coach_plan',
+            plan_id: String(plan.id),
+            coach_account_id: String(coach.account_id),
+            student_account_id: String(studentAccountId),
+          },
+        },
+        success_url: `${baseUrl}/me/coaching?plan_subscribe=success`,
+        cancel_url: `${baseUrl}/coaches/${coach.id}?plan_subscribe=cancelled`,
+        metadata: {
+          purpose: 'coach_plan',
+          plan_id: String(plan.id),
+          coach_account_id: String(coach.account_id),
+          student_account_id: String(studentAccountId),
+        },
+      });
+      res.json({ url: checkout.url });
+    } catch (err) {
+      console.error('[API] coach plan subscribe:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Student: list own coach plan subscriptions.
+  router.get('/me/coaching/plan-subscriptions', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const subs = await db.listStudentPlanSubscriptions(accountId);
+      res.json({ subscriptions: subs });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Coach: list current subscribers.
+  router.get('/me/coach/plan-subscribers', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const coach = await db.getCoach(accountId);
+      if (!coach) return res.status(403).json({ error: 'Not a coach' });
+      const subscribers = await db.listCoachPlanSubscribers(accountId);
+      res.json({ subscribers });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Cancel-at-period-end (either side). Server flips `cancel_at_period_end`
+  // on Stripe; webhook will sync the local row + final cancellation state.
+  router.post('/me/coaching/plan-subscriptions/:id/cancel', async (req, res) => {
+    try {
+      if (!(await _coachingOn(req))) return res.status(404).json({ error: 'Not found' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const sub = await db.getCoachPlanSubscription(parseInt(req.params.id, 10));
+      if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+      const isParty = String(sub.student_account_id) === String(accountId)
+                   || String(sub.coach_account_id) === String(accountId);
+      if (!isParty) return res.status(403).json({ error: 'Forbidden' });
+      const stripe = _stripe();
+      if (stripe && sub.stripe_subscription_id) {
+        try {
+          await stripe.subscriptions.update(sub.stripe_subscription_id, { cancel_at_period_end: true });
+        } catch (e) {
+          console.warn('[plan-subscription/cancel] stripe update failed:', e.message);
+        }
+      }
+      const updated = await db.markCoachPlanSubscriptionCancelAtPeriodEnd(sub.id);
+      res.json({ subscription: updated });
+    } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
