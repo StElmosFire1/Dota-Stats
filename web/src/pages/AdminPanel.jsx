@@ -4186,6 +4186,7 @@ export default function AdminPanel() {
             { to: '/players', label: '👥 Players & Nicknames' },
             { to: '/patch-notes', label: '📋 Patch Notes' },
             { to: '/matches', label: '📊 Match List' },
+            { to: '/admin/smoke-test', label: '🧪 Smoke-test runs' },
           ].map(({ to, label }) => (
             <Link key={to} to={to} className="btn" style={{ textDecoration: 'none' }}>{label}</Link>
           ))}

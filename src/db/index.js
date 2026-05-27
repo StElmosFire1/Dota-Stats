@@ -2947,6 +2947,27 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_dtr_account ON draft_trainer_runs(account_id, created_at DESC)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_dtr_unmatched ON draft_trainer_runs(id) WHERE matched_outcome IS NULL`);
 
+    // Task #479 — smoke-test runs. A single row per operator-initiated smoke
+    // test pass. `template` snapshots the section/item structure at run-start
+    // so changes to the base template (or to subsequent patch notes) don't
+    // mutate a run already in flight. `state` is the per-item status+notes
+    // object indexed [sectionKey][itemKey].
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS smoke_test_runs (
+        id SERIAL PRIMARY KEY,
+        started_by_account_id BIGINT,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        submitted_at TIMESTAMPTZ,
+        base_release_version TEXT,
+        template JSONB NOT NULL DEFAULT '[]'::jsonb,
+        state JSONB NOT NULL DEFAULT '{}'::jsonb,
+        summary JSONB,
+        overall_notes TEXT NOT NULL DEFAULT ''
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_str_started_at ON smoke_test_runs(started_at DESC)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_str_submitted_at ON smoke_test_runs(submitted_at DESC NULLS FIRST)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -21499,6 +21520,14 @@ module.exports = {
   setTournamentPrizeSplits,
   finalizeTournamentPayouts,
   getTournamentPayouts,
+  // Task #479 — smoke-test runs
+  createSmokeTestRun,
+  getSmokeTestRun,
+  listSmokeTestRuns,
+  getLatestSubmittedSmokeTestRun,
+  updateSmokeTestRunItem,
+  updateSmokeTestRunOverallNotes,
+  submitSmokeTestRun,
   createWeekendTournament,
   getWeekendTournaments,
   getWeekendTournamentById,
@@ -23818,4 +23847,139 @@ async function getWeekendTournamentScores(startDate, endDate, gamesToCount = 3) 
   }).sort((a, b) => b.total_score - a.total_score);
 
   return leaderboard;
+}
+
+// ─── Smoke-test runs (Task #479) ───────────────────────────────────────────
+
+async function createSmokeTestRun({ accountId, baseReleaseVersion, template, state }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO smoke_test_runs
+       (started_by_account_id, base_release_version, template, state)
+     VALUES ($1, $2, $3::jsonb, $4::jsonb)
+     RETURNING *`,
+    [accountId || null, baseReleaseVersion || null, JSON.stringify(template || []), JSON.stringify(state || {})]
+  );
+  return r.rows[0];
+}
+
+async function getSmokeTestRun(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM smoke_test_runs WHERE id = $1`, [parseInt(id, 10)]);
+  return r.rows[0] || null;
+}
+
+async function listSmokeTestRuns({ limit = 50 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, started_by_account_id, started_at, submitted_at,
+            base_release_version, summary
+       FROM smoke_test_runs
+       ORDER BY started_at DESC
+       LIMIT $1`,
+    [Math.min(parseInt(limit, 10) || 50, 500)]
+  );
+  return r.rows;
+}
+
+async function getLatestSubmittedSmokeTestRun() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, base_release_version, submitted_at
+       FROM smoke_test_runs
+       WHERE submitted_at IS NOT NULL
+       ORDER BY submitted_at DESC
+       LIMIT 1`
+  );
+  return r.rows[0] || null;
+}
+
+// Patch a single cell of state. Returns updated run.
+async function updateSmokeTestRunItem(id, sectionKey, itemKey, { status, note } = {}) {
+  if (typeof sectionKey !== 'string' || !sectionKey) throw new Error('sectionKey required');
+  if (typeof itemKey !== 'string' || !itemKey) throw new Error('itemKey required');
+  const allowed = ['pending', 'ok', 'flag'];
+  if (status !== undefined && !allowed.includes(status)) throw new Error('invalid status');
+  const p = getPool();
+  const cell = {};
+  if (status !== undefined) cell.status = status;
+  if (note !== undefined) cell.note = String(note || '');
+  // Build a jsonb_set chain. Initialise the section object if missing.
+  const r = await p.query(
+    `UPDATE smoke_test_runs
+       SET state = jsonb_set(
+             jsonb_set(
+               COALESCE(state, '{}'::jsonb),
+               ARRAY[$2::text],
+               COALESCE(state -> $2, '{}'::jsonb),
+               true
+             ),
+             ARRAY[$2::text, $3::text],
+             COALESCE(state -> $2 -> $3, '{}'::jsonb) || $4::jsonb,
+             true
+           )
+       WHERE id = $1 AND submitted_at IS NULL
+       RETURNING *`,
+    [parseInt(id, 10), sectionKey, itemKey, JSON.stringify(cell)]
+  );
+  return r.rows[0] || null;
+}
+
+async function updateSmokeTestRunOverallNotes(id, notes) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE smoke_test_runs
+       SET overall_notes = $2,
+           state = jsonb_set(COALESCE(state, '{}'::jsonb), ARRAY['_overall'],
+                             jsonb_build_object('notes', $2::text), true)
+       WHERE id = $1 AND submitted_at IS NULL
+       RETURNING *`,
+    [parseInt(id, 10), String(notes || '')]
+  );
+  return r.rows[0] || null;
+}
+
+// Submit a run atomically. To eliminate the race between submit and in-flight
+// item/notes saves, we open a txn, SELECT ... FOR UPDATE the row to take a row
+// lock (any concurrent item UPDATE waits), recompute the summary from the
+// current state inside the lock, then UPDATE submitted_at + summary. After the
+// COMMIT, any item-update UPDATEs that were waiting will run but their
+// `WHERE submitted_at IS NULL` clause will silently no-op, which is the
+// intended "frozen after submit" semantics.
+async function submitSmokeTestRun(id /*, options unused */) {
+  const tmpl = require('../data/smokeTestTemplate');
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const sel = await client.query(
+      `SELECT template, state, submitted_at
+         FROM smoke_test_runs
+        WHERE id = $1
+        FOR UPDATE`,
+      [parseInt(id, 10)]
+    );
+    if (sel.rowCount === 0 || sel.rows[0].submitted_at) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const template = sel.rows[0].template || [];
+    const state = sel.rows[0].state || {};
+    const summary = tmpl.summariseState(template, state);
+    const r = await client.query(
+      `UPDATE smoke_test_runs
+          SET submitted_at = NOW(),
+              summary = $2::jsonb
+        WHERE id = $1 AND submitted_at IS NULL
+        RETURNING *`,
+      [parseInt(id, 10), JSON.stringify(summary)]
+    );
+    await client.query('COMMIT');
+    return r.rows[0] || null;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw err;
+  } finally {
+    client.release();
+  }
 }

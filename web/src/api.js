@@ -2238,3 +2238,23 @@ export const adminCreateLimitedDrop = (payload) => _postJson('/admin/limited-dro
 export const adminDeactivateLimitedDrop = (id) => _postJson(`/admin/limited-drops/${id}/deactivate`, {});
 export const giftCoins = ({ recipientAccountId, packId, anonymous, message }) =>
   _postJson('/gift/coins', { recipientAccountId, packId, anonymous, message });
+
+// ── Task #479 — Smoke-test runs (superuser) ────────────────────────────────
+export const adminListSmokeTestRuns = (superuserKey) =>
+  superuserJson('/admin/smoke-test/runs', { superuserKey });
+export const adminStartSmokeTestRun = (superuserKey) =>
+  superuserJson('/admin/smoke-test/runs', { method: 'POST', superuserKey });
+export const adminGetSmokeTestRun = (superuserKey, id) =>
+  superuserJson(`/admin/smoke-test/runs/${id}`, { superuserKey });
+export const adminUpdateSmokeTestItem = (superuserKey, id, payload) =>
+  superuserJson(`/admin/smoke-test/runs/${id}/items`, {
+    method: 'PATCH', body: payload, superuserKey,
+  });
+export const adminUpdateSmokeTestOverallNotes = (superuserKey, id, notes) =>
+  superuserJson(`/admin/smoke-test/runs/${id}/overall-notes`, {
+    method: 'POST', body: { notes }, superuserKey,
+  });
+export const adminSubmitSmokeTestRun = (superuserKey, id) =>
+  superuserJson(`/admin/smoke-test/runs/${id}/submit`, { method: 'POST', superuserKey });
+export const adminSmokeTestRunExportUrl = (id) =>
+  `/api/admin/smoke-test/runs/${id}/export.md`;

@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.86",
+    "title": "Live smoke-test checklist tool (Task #479)",
+    "published_at": "2026-05-27",
+    "notes": [
+      "**New `/admin/smoke-test` admin page (superuser, full edition only).** Replaces the manual `docs/site-smoke-test.md` paste-and-tick workflow with a stateful per-release verification runner. Each run snapshots a base checklist of 23 sections (~140 items) covering nav/auth, profile, leaderboards, matches, replays, inhouse lobbies, draft/captain flow, tournaments, prize pools, coaching marketplace, Pro/cosmetics/shop, Stripe webhooks, admin panel, push/Discord notifications, and the a11y house rules — then auto-injects one extra `🆕 Release: vX.YZ` section per patch note shipped since the most recent submitted run, with one verification item per top-level bullet plus a per-section free-form notes slot.",
+      "**Stateful and resumable.** New `smoke_test_runs` table (id, started_by_account_id, started_at, submitted_at, base_release_version, template JSONB, state JSONB, summary JSONB). Per-item status pills are pending / ok / flag (radiogroup, keyboard-operable, screen-reader-labelled) and per-item notes auto-save on blur. Closing the tab mid-run loses nothing — the run stays open until explicitly submitted, at which point it freezes read-only and the next new run uses ITS `base_release_version` as the cutoff for which patch notes to auto-inject.",
+      "**Markdown export.** Every run exposes `GET /api/admin/smoke-test/runs/:id/export.md` (also linked from the editor + list view as `↗ Export .md`), rendering the snapshotted template + state + summary counts as paste-back markdown that's a drop-in replacement for the old `docs/site-smoke-test.md` workflow.",
+      "**Wired into Quick Links.** Admin Panel → Overview tab → Quick Links has a new `🧪 Smoke-test runs` tile next to Patch Notes and Match List. List view shows summary counts (`ok / flag / pending of total`), submission timestamps, and the release version stamped at start.",
+      "**Module + helpers.** New `src/data/smokeTestTemplate.js` exports `BASE_SECTIONS`, `buildTemplateForRun`, `buildInitialState`, `summariseState`, `exportRunAsMarkdown`. New `db` helpers: `createSmokeTestRun`, `getSmokeTestRun`, `listSmokeTestRuns`, `getLatestSubmittedSmokeTestRun`, `updateSmokeTestRunItem`, `updateSmokeTestRunOverallNotes`, `submitSmokeTestRun`. The 'since' cutoff is resolved by version-index lookup in `src/data/patchNotes` (newest-first) so the auto-injection survives version renames by safely defaulting to the newest few rather than the whole history."
+    ]
+  },
+  {
     "version": "7.85",
     "title": "Refund-fee reconciliation on coach earnings (Task #421)",
     "published_at": "2026-05-27",

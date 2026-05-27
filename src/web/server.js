@@ -6306,6 +6306,131 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // ─── Task #479 — Smoke-test runs ─────────────────────────────────────────
+  // Live per-release smoke-test checklist tool. Each run snapshots the base
+  // checklist + auto-injected "what just shipped" sections (one per patch
+  // note newer than the most recent submitted run's base_release_version).
+
+  function _patchNotesNewerThan(baseVersion) {
+    let patchNotes;
+    try { patchNotes = require('../data/patchNotes'); }
+    catch (_) { return []; }
+    if (!Array.isArray(patchNotes)) return [];
+    if (!baseVersion) {
+      // First-ever run: just include the single most-recent note so the
+      // operator has at least one release-section to verify.
+      return patchNotes.slice(0, 1);
+    }
+    const idx = patchNotes.findIndex(n => String(n.version) === String(baseVersion));
+    // If we can't find it (deleted note, renamed version, etc.) be safe and
+    // include just the newest few rather than the whole history.
+    if (idx < 0) return patchNotes.slice(0, 3);
+    return patchNotes.slice(0, idx);
+  }
+
+  router.post('/admin/smoke-test/runs', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const tmpl = require('../data/smokeTestTemplate');
+      const latest = await db.getLatestSubmittedSmokeTestRun();
+      const baseVersion = latest ? latest.base_release_version : null;
+      const newNotes = _patchNotesNewerThan(baseVersion);
+      const template = tmpl.buildTemplateForRun({ patchNotesSince: newNotes });
+      const state = tmpl.buildInitialState(template);
+      // Stamp the current head version on the new run so the NEXT run knows
+      // where to draw its "since" line from.
+      let headVersion = baseVersion;
+      try {
+        const all = require('../data/patchNotes');
+        if (Array.isArray(all) && all[0]) headVersion = String(all[0].version);
+      } catch (_) {}
+      const run = await db.createSmokeTestRun({
+        accountId: (req.session && req.session.accountId) || null,
+        baseReleaseVersion: headVersion,
+        template,
+        state,
+      });
+      res.json({ run });
+    } catch (err) {
+      console.error('[API] admin/smoke-test/runs POST:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create smoke-test run' });
+    }
+  });
+
+  router.get('/admin/smoke-test/runs', requireSuperuser, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit, 10) || 50;
+      const runs = await db.listSmokeTestRuns({ limit });
+      res.json({ runs });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to list smoke-test runs' });
+    }
+  });
+
+  router.get('/admin/smoke-test/runs/:id', requireSuperuser, async (req, res) => {
+    try {
+      const run = await db.getSmokeTestRun(req.params.id);
+      if (!run) return res.status(404).json({ error: 'Run not found' });
+      const tmpl = require('../data/smokeTestTemplate');
+      const summary = tmpl.summariseState(run.template || [], run.state || {});
+      res.json({ run, summary });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to load run' });
+    }
+  });
+
+  router.patch('/admin/smoke-test/runs/:id/items', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { sectionKey, itemKey, status, note } = req.body || {};
+      const run = await db.updateSmokeTestRunItem(req.params.id, sectionKey, itemKey, { status, note });
+      if (!run) return res.status(409).json({ error: 'Run not found or already submitted' });
+      res.json({ run });
+    } catch (err) {
+      res.status(400).json({ error: err.message || 'Failed to update item' });
+    }
+  });
+
+  router.post('/admin/smoke-test/runs/:id/overall-notes', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { notes } = req.body || {};
+      const run = await db.updateSmokeTestRunOverallNotes(req.params.id, notes);
+      if (!run) return res.status(409).json({ error: 'Run not found or already submitted' });
+      res.json({ run });
+    } catch (err) {
+      res.status(400).json({ error: err.message || 'Failed to update notes' });
+    }
+  });
+
+  router.post('/admin/smoke-test/runs/:id/submit', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      // submitSmokeTestRun is atomic — it locks the row, recomputes summary
+      // from current state under the lock, then sets submitted_at. No need
+      // to pre-read or pre-compute (that read would race with in-flight saves).
+      const run = await db.submitSmokeTestRun(req.params.id);
+      if (!run) return res.status(409).json({ error: 'Run not found or already submitted' });
+      res.json({ run, summary: run.summary });
+    } catch (err) {
+      res.status(400).json({ error: err.message || 'Failed to submit run' });
+    }
+  });
+
+  router.get('/admin/smoke-test/runs/:id/export.md', requireSuperuser, async (req, res) => {
+    try {
+      const run = await db.getSmokeTestRun(req.params.id);
+      if (!run) return res.status(404).send('Run not found');
+      const tmpl = require('../data/smokeTestTemplate');
+      const md = tmpl.exportRunAsMarkdown({
+        run,
+        template: run.template || [],
+        state: run.state || {},
+      });
+      res.set('Content-Type', 'text/markdown; charset=utf-8');
+      res.set('Content-Disposition', `inline; filename="smoke-test-run-${run.id}.md"`);
+      res.send(md);
+    } catch (err) {
+      res.status(500).send(err.message || 'Failed to export run');
+    }
+  });
+
   router.get('/admin/overview', requireSuperuser, async (req, res) => {
     try {
       const p = db.getPool();
