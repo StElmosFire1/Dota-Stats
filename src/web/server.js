@@ -55,11 +55,13 @@ async function _sendExpoPush(messages) {
       const json = await r.json().catch(() => ({}));
       const tickets = Array.isArray(json?.data) ? json.data : [];
       if (_ops) _ops.reportPush({ delivered: true, error: null });
+      let _batchOk = 0, _batchRemoved = 0;
       for (let j = 0; j < tickets.length; j++) {
         const t = tickets[j];
         const token = batch[j]?.to;
         if (t?.status === 'ok') {
           sent++;
+          _batchOk++;
           if (token) db.touchExpoPushToken(token).catch(() => {});
         } else if (t?.status === 'error') {
           const code = t?.details?.error;
@@ -67,13 +69,23 @@ async function _sendExpoPush(messages) {
             if (token) {
               await db.removeExpoPushToken(token).catch(() => {});
               removed++;
+              _batchRemoved++;
             }
           }
         }
       }
+      // Task #417 — push delivery counters per Expo batch.
+      try {
+        require('../observability/metrics').recordPushDelivery({
+          channel: 'expo', sent: _batchOk, removed: _batchRemoved,
+        });
+      } catch (_) {}
     } catch (err) {
       console.warn('[ExpoPush] batch failed:', err?.message || err);
       if (_ops) _ops.reportPush({ error: err?.message || String(err) });
+      try {
+        require('../observability/metrics').recordPushDelivery({ channel: 'expo', failed: batch.length });
+      } catch (_) {}
     }
   }
   return { sent, removed };
@@ -930,13 +942,21 @@ function createServer(startupStatus = {}) {
       return res.status(503).send('Stripe webhook secret not configured');
     }
     try {
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const sig = req.headers['stripe-signature'];
       if (!sig) return res.status(400).send('Missing stripe-signature header');
       const _opsReceivedAt = Date.now();
       const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      const _processedAt = Date.now();
       try {
-        require('./opsState').reportStripeWebhook(event?.type || 'unknown', { receivedAt: _opsReceivedAt, processedAt: Date.now() });
+        require('./opsState').reportStripeWebhook(event?.type || 'unknown', { receivedAt: _opsReceivedAt, processedAt: _processedAt });
+      } catch (_) {}
+      // Task #417 — webhook processing lag metric.
+      try {
+        require('../observability/metrics').recordStripeWebhook({
+          eventType: event?.type || 'unknown',
+          lagMs: _processedAt - _opsReceivedAt,
+        });
       } catch (_) {}
       // Extracted so both `checkout.session.completed` (sync card payments)
       // and `checkout.session.async_payment_succeeded` (BECS / other async
@@ -1152,7 +1172,7 @@ function createServer(startupStatus = {}) {
               // the Discord bot. recordFoundersRingRefund is idempotent on
               // stripe_session_id so a Stripe webhook retry is safe.
               console.error('[Stripe] founders_ring CAP RACE — paid session', session.id, 'for account', ringAccountId, 'rejected: cap reached. Auto-refunding.');
-              const refundStripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+              const refundStripe = require('../observability/stripeClient').getStripe();
               let refundId = null;
               let refundStatus = 'refund_failed';
               let refundError = null;
@@ -1778,11 +1798,31 @@ function createServer(startupStatus = {}) {
   // the API router so it sees every response status that flows through.
   try {
     const opsState = require('./opsState');
+    // Task #417 — OTel HTTP request metrics. Records request count +
+    // duration histogram, attributed by method / route / status. Uses the
+    // matched Express route pattern (e.g. /api/players/:id) rather than the
+    // raw URL so cardinality stays bounded.
+    let _otelMetrics = null;
+    try { _otelMetrics = require('../observability/metrics'); } catch (_) {}
     app.use((req, res, next) => {
+      const start = Date.now();
       res.on('finish', () => {
         if (res.statusCode >= 500 && res.statusCode <= 599) {
           opsState.recordHttp5xx();
           opsState.pushLog('http', 'error', `${res.statusCode} ${req.method} ${req.originalUrl || req.url}`);
+        }
+        if (_otelMetrics) {
+          try {
+            const route = (req.route && req.route.path)
+              || (req.baseUrl ? req.baseUrl + (req.route?.path || '') : null)
+              || 'unmatched';
+            _otelMetrics.recordHttpRequest({
+              method: req.method,
+              route,
+              status: res.statusCode,
+              durationMs: Date.now() - start,
+            });
+          } catch (_) {}
         }
       });
       next();
@@ -5169,7 +5209,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
 
   router.post('/buyin/create-checkout', async (req, res) => {
     try {
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const { season_id, display_name, account_id } = req.body;
       if (!season_id || !display_name || !display_name.trim()) {
         return res.status(400).json({ error: 'season_id and display_name are required' });
@@ -5223,7 +5263,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
 
   router.get('/buyin/confirm', async (req, res) => {
     try {
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const { session_id } = req.query;
       if (!session_id) return res.status(400).json({ error: 'session_id required' });
 
@@ -8034,7 +8074,7 @@ NOTES
       const elig = await db.isPlayerEligibleForTournament(tournamentId, finalAccountId);
       if (!elig.eligible) return res.status(403).json({ error: elig.reason || 'Not eligible' });
 
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://170.64.182.110:5000`;
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
@@ -8131,7 +8171,7 @@ NOTES
       const { session_id } = req.query;
       if (!session_id) return res.status(400).json({ error: 'session_id required' });
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const session = await stripe.checkout.sessions.retrieve(session_id);
       if (session.payment_status !== 'paid') {
         return res.status(402).json({ error: 'Payment not completed', status: session.payment_status });
@@ -8198,7 +8238,7 @@ NOTES
         const pi = entry.stripe_payment_intent_id;
         if (!pi) return res.status(409).json({ error: 'No payment record on file — contact an admin to refund manually.' });
         try {
-          const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+          const stripe = require('../observability/stripeClient').getStripe();
           await stripe.refunds.create({ payment_intent: pi });
         } catch (e) {
           console.error('[API] tournament withdraw refund failed:', e.message);
@@ -12877,7 +12917,7 @@ NOTES
       }
       const FRAME_PRICES = { gold: 299, 'neon-blue': 299, cosmic: 399, fire: 399 };
       const priceCents = FRAME_PRICES[frameId] || 299;
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const frameLabelMap = { gold: 'Gold', 'neon-blue': 'Neon Blue', cosmic: 'Cosmic', fire: 'Fire' };
       const session = await stripe.checkout.sessions.create({
@@ -12955,7 +12995,7 @@ NOTES
           error: 'Refund row has no stripe_payment_intent — cannot retry; refund manually in Stripe',
         });
       }
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       let refundId = row.stripe_refund_id || null;
       let newStatus = 'refund_failed';
       let errorMessage = null;
@@ -13073,7 +13113,7 @@ NOTES
       if (!cosm.isValidFounderRingSlug(slug)) {
         return res.status(400).json({ error: 'Unknown ring slug.' });
       }
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
       // ── Legacy capped Founders Pack path (Inscribed) ──────────────────────
@@ -13260,7 +13300,7 @@ NOTES
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: 'Payments are not configured.' });
       }
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const priceCents = _proPriceCents();
       const session = await stripe.checkout.sessions.create({
@@ -13324,7 +13364,7 @@ NOTES
       if (alreadyHas) {
         return res.status(409).json({ error: 'This player already has the Season Pass for the current season.', already_active: true });
       }
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const SEASON_PASS_GIFT_CENTS = 799;
       const session = await stripe.checkout.sessions.create({
@@ -13525,7 +13565,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       // Task #318 — plan picker. Default to monthly; lifetime is the
       // premium Founders-tier one-time SKU.
       const planType = req.body?.plan === 'lifetime' ? 'lifetime' : 'monthly';
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const successUrl = `${baseUrl}/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${baseUrl}/pro?checkout=cancelled`;
@@ -13613,7 +13653,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: 'Payments are not configured.' });
       }
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const portal = await stripe.billingPortal.sessions.create({
         customer: sub.stripe_customer_id,
@@ -13648,7 +13688,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: 'Payments are not configured.' });
       }
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const updated = await stripe.subscriptions.update(sub.stripe_subscription_id, {
         cancel_at_period_end: true,
       });
@@ -13678,7 +13718,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const sub = await db.getProSubscription(accountId).catch(() => null);
       if (!sub?.stripe_subscription_id) return res.status(404).json({ error: 'No active subscription.' });
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not configured.' });
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       const updated = await stripe.subscriptions.update(sub.stripe_subscription_id, {
         cancel_at_period_end: false,
       });
@@ -13710,7 +13750,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       const sub = await db.getProSubscription(accountId).catch(() => null);
       if (!sub?.stripe_subscription_id) return res.status(404).json({ error: 'No active subscription.' });
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not configured.' });
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const stripe = require('../observability/stripeClient').getStripe();
       await stripe.subscriptions.update(sub.stripe_subscription_id, { coupon: couponId });
       const reason = String(req.body?.reason || 'too_expensive').slice(0, 100);
       await db.recordCancellationReason({
@@ -13808,7 +13848,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
 
   function _stripe() {
     if (!process.env.STRIPE_SECRET_KEY) return null;
-    return require('stripe')(process.env.STRIPE_SECRET_KEY);
+    return require('../observability/stripeClient').getStripe();
   }
 
   // Eligibility for the viewer's own account. Superusers always pass so we
@@ -17357,7 +17397,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         isSuperuser: _isSu,
         requirePro,
         getStripe: () => process.env.STRIPE_SECRET_KEY
-          ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null,
+          ? require('../observability/stripeClient').getStripe() : null,
         getSiteUrl: () => process.env.SITE_URL
           || `http://localhost:${process.env.PORT || 5000}`,
         getGroq: () => {

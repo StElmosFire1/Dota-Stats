@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "7.82",
+    "title": "Observability — OpenTelemetry → Grafana Cloud (Task #417)",
+    "published_at": "2026-05-27",
+    "notes": [
+      "**OTel SDK bootstrap.** New `src/observability/otel.js` initialises `@opentelemetry/sdk-node` with HTTP + Express auto-instrumentation and OTLP/HTTP trace + metric exporters. Required as the very first side-effect in `src/index.js` (after dotenv) so HTTP/Express/pg are auto-hooked before they're loaded. Gated on `OTEL_EXPORTER_OTLP_ENDPOINT` — when unset, the SDK never starts and there is zero perf cost in dev. Companion env vars: `OTEL_EXPORTER_OTLP_HEADERS` (e.g. Grafana Cloud `Authorization=Basic <base64(instanceID:token)>`), `OTEL_SERVICE_NAME` (defaults to `oi-bot`), `OTEL_METRICS_EXPORT_INTERVAL_MS` (defaults to 30s). Fs/dns/net auto-instrumentations are explicitly disabled to keep trace volume on the free tier sane.",
+      "**Custom spans.** `withSpan()` helper in `src/observability/tracing.js` wraps: replay parse round-trip (`replay.parse`), HTTP replay download (`replay.download`), dedicated-server provisioner (`inhouse.provision`), Discord channel sends (`discord.send`), and every Stripe SDK call (`stripe.<resource>.<method>`). Stripe instrumentation is transparent — a single cached `getStripe()` returns a recursive `Proxy` so all 19 `require('stripe')(STRIPE_SECRET_KEY)` call sites in `src/web/server.js` now flow through the wrapper without per-call boilerplate.",
+      "**Metrics.** New `src/observability/metrics.js` exposes HTTP request count/duration (by method/route/status), parser parse-duration histogram + queue-depth gauge, Stripe call latency + outcome counter, Stripe webhook processing-lag histogram, Discord send count/duration, provisioner run count/duration (by trigger), replay-download duration/size, and Expo push delivery success/removed/failure counters. Wired into the existing Express finish-listener (next to the 5xx ops counter) and the existing ops-state reporters so nothing is double-counted and the ops dashboard semantics are preserved.",
+      "**Grafana dashboard.** `ops/grafana/dashboard.json` ships an importable Service Overview with ten panels covering HTTP throughput + p95 by route, parser queue depth + p50/p95, Stripe call latency by op, webhook lag by event type, push delivery rates, provisioner success/failure, Discord send outcomes, and replay-download p95. Re-importable from Grafana → Dashboards → New → Import.",
+      "**Docs.** `replit.md` Environment variables section documents `OTEL_EXPORTER_OTLP_ENDPOINT` + companion vars and points at the committed dashboard JSON.",
+      "**Out of scope.** Log aggregation (PM2 logs stay as-is), frontend RUM, and Grafana alert rules — operators can layer those on top via the Grafana UI without code changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.81",
     "title": "Money-path test coverage (Task #416)",
     "published_at": "2026-05-27",

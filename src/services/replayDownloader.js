@@ -10,6 +10,32 @@ function buildReplayUrl(cluster, matchId, replaySalt) {
 }
 
 async function downloadFile(url, destPath) {
+  // Task #417 — span + duration/size metric for replay HTTP fetch.
+  let _otelMetrics = null, _otelTracing = null;
+  try { _otelMetrics = require('../observability/metrics'); } catch (_) {}
+  try { _otelTracing = require('../observability/tracing'); } catch (_) {}
+  const _start = Date.now();
+  const _run = async () => {
+    const r = await _downloadFileInner(url, destPath);
+    if (_otelMetrics) {
+      try {
+        const bytes = require('fs').existsSync(destPath)
+          ? require('fs').statSync(destPath).size : 0;
+        _otelMetrics.recordReplayDownload({ source: 'http', ok: true, durationMs: Date.now() - _start, bytes });
+      } catch (_) {}
+    }
+    return r;
+  };
+  try {
+    if (_otelTracing) return await _otelTracing.withSpan('replay.download', { 'replay.url': String(url).slice(0, 200) }, _run);
+    return await _run();
+  } catch (err) {
+    if (_otelMetrics) _otelMetrics.recordReplayDownload({ source: 'http', ok: false, durationMs: Date.now() - _start });
+    throw err;
+  }
+}
+
+async function _downloadFileInner(url, destPath) {
   const res = await fetch(url, { timeout: 120000 });
   if (!res.ok) throw new Error(`Valve CDN returned HTTP ${res.status}`);
   const buffer = await res.buffer();

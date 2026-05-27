@@ -1,0 +1,119 @@
+{
+  "title": "OCE Inhouse — Service Overview (Task #417)",
+  "uid": "oi-bot-service-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "timezone": "browser",
+  "tags": ["oi-bot", "opentelemetry"],
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "grafanacloud-prom", "value": "grafanacloud-prom" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP requests / sec (by status class)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{
+        "expr": "sum by (status) (rate(http_server_request_count_total{service_name=\"oi-bot\"}[5m]))",
+        "legendFormat": "{{status}}"
+      }],
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP request duration p95 (ms) by route",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le, route) (rate(http_server_request_duration_ms_bucket{service_name=\"oi-bot\"}[5m])))",
+        "legendFormat": "{{route}}"
+      }],
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "type": "stat",
+      "title": "Parser queue depth",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "max(parser_queue_depth{service_name=\"oi-bot\"})" }],
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 4 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Parser duration p50/p95 (ms)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(parser_parse_duration_ms_bucket{service_name=\"oi-bot\"}[10m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(parser_parse_duration_ms_bucket{service_name=\"oi-bot\"}[10m])))", "legendFormat": "p95" }
+      ],
+      "gridPos": { "x": 6, "y": 8, "w": 18, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Stripe call latency p95 (ms) by op",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le, op) (rate(stripe_call_duration_ms_bucket{service_name=\"oi-bot\"}[10m])))",
+        "legendFormat": "{{op}}"
+      }],
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Stripe webhook lag p95 (ms) by event",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le, event_type) (rate(stripe_webhook_lag_ms_bucket{service_name=\"oi-bot\"}[10m])))",
+        "legendFormat": "{{event_type}}"
+      }],
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Push delivery (success vs removed vs failed)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "sum(rate(push_delivery_success_total{service_name=\"oi-bot\"}[5m]))", "legendFormat": "success" },
+        { "expr": "sum(rate(push_delivery_removed_tokens_total{service_name=\"oi-bot\"}[5m]))", "legendFormat": "removed" },
+        { "expr": "sum(rate(push_delivery_failure_total{service_name=\"oi-bot\"}[5m]))", "legendFormat": "failed" }
+      ],
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Inhouse provisioner runs (success vs failure)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{
+        "expr": "sum by (ok) (rate(inhouse_provision_count_total{service_name=\"oi-bot\"}[15m]))",
+        "legendFormat": "ok={{ok}}"
+      }],
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Discord send count (success vs failure)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{
+        "expr": "sum by (ok) (rate(discord_send_count_total{service_name=\"oi-bot\"}[5m]))",
+        "legendFormat": "ok={{ok}}"
+      }],
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Replay download duration p95 (ms) by source",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le, source) (rate(replay_download_duration_ms_bucket{service_name=\"oi-bot\"}[15m])))",
+        "legendFormat": "{{source}}"
+      }],
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 }
+    }
+  ]
+}

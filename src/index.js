@@ -1,4 +1,8 @@
 require('dotenv').config();
+// Task #417 — OpenTelemetry must initialise BEFORE any module that should
+// be auto-instrumented (express, http, pg, …) is required. Disabled cleanly
+// when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so this is a no-op in dev.
+require('./observability/otel');
 const { config, validateConfig } = require('./config');
 const { getDiscordBot } = require('./discord/bot');
 const { getReplayParser } = require('./replay/replayParser');

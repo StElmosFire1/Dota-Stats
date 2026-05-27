@@ -263,6 +263,11 @@ class ReplayParser {
     const _opsParseStart = Date.now();
     let _opsOpsState = null;
     try { _opsOpsState = require('../web/opsState'); } catch (_) {}
+    // Task #417 — OTel span + parse-duration histogram for the parser
+    // child-process round-trip. Wraps the existing ops-dashboard reporting.
+    let _otelMetrics = null, _otelTracing = null;
+    try { _otelMetrics = require('../observability/metrics'); } catch (_) {}
+    try { _otelTracing = require('../observability/tracing'); } catch (_) {}
     // Track concurrent in-flight parses across the singleton parser so the
     // ops dashboard "Queue depth" tile reflects real backlog. Counts both
     // running and awaiting-_sendToParser work since both consume the
@@ -270,17 +275,28 @@ class ReplayParser {
     if (typeof this._opsQueueDepth !== 'number') this._opsQueueDepth = 0;
     this._opsQueueDepth += 1;
     if (_opsOpsState) _opsOpsState.reportParser({ ready: this.parserReady, queueDepth: this._opsQueueDepth });
-    try {
-      const result = await this._parseReplayFullInner(filePath);
-      if (_opsOpsState) _opsOpsState.reportParser({ ready: true, parsedMs: Date.now() - _opsParseStart, error: null });
-      return result;
-    } catch (err) {
-      if (_opsOpsState) _opsOpsState.reportParser({ error: err && err.message ? err.message : String(err) });
-      throw err;
-    } finally {
-      this._opsQueueDepth = Math.max(0, this._opsQueueDepth - 1);
-      if (_opsOpsState) _opsOpsState.reportParser({ queueDepth: this._opsQueueDepth });
+    if (_otelMetrics) _otelMetrics.updateParserQueueDepth(this._opsQueueDepth);
+    const _run = async () => {
+      try {
+        const result = await this._parseReplayFullInner(filePath);
+        const dur = Date.now() - _opsParseStart;
+        if (_opsOpsState) _opsOpsState.reportParser({ ready: true, parsedMs: dur, error: null });
+        if (_otelMetrics) _otelMetrics.recordParse({ durationMs: dur, ok: true });
+        return result;
+      } catch (err) {
+        if (_opsOpsState) _opsOpsState.reportParser({ error: err && err.message ? err.message : String(err) });
+        if (_otelMetrics) _otelMetrics.recordParse({ durationMs: Date.now() - _opsParseStart, ok: false });
+        throw err;
+      } finally {
+        this._opsQueueDepth = Math.max(0, this._opsQueueDepth - 1);
+        if (_opsOpsState) _opsOpsState.reportParser({ queueDepth: this._opsQueueDepth });
+        if (_otelMetrics) _otelMetrics.updateParserQueueDepth(this._opsQueueDepth);
+      }
+    };
+    if (_otelTracing) {
+      return _otelTracing.withSpan('replay.parse', { 'replay.file': require('path').basename(filePath) }, _run);
     }
+    return _run();
   }
 
   async _parseReplayFullInner(filePath) {

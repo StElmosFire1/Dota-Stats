@@ -465,9 +465,28 @@ class DiscordBot {
   _notifyChannel(message) {
     const ids = new Set(config.discord.statsChannelIds);
     if (this.lobbyChannelId) ids.add(this.lobbyChannelId);
+    // Task #417 — OTel span + send-count metric per channel fan-out. Lazy
+    // requires so a missing observability module never blocks notifications.
+    let _otelMetrics = null, _otelTracing = null;
+    try { _otelMetrics = require('../observability/metrics'); } catch (_) {}
+    try { _otelTracing = require('../observability/tracing'); } catch (_) {}
+    const _send = (channel) => {
+      const start = Date.now();
+      const p = channel.send(message);
+      p.then(
+        () => _otelMetrics && _otelMetrics.recordDiscordSend({ kind: 'channel', ok: true, durationMs: Date.now() - start }),
+        () => _otelMetrics && _otelMetrics.recordDiscordSend({ kind: 'channel', ok: false, durationMs: Date.now() - start })
+      ).catch(() => {});
+      return p.catch(() => {});
+    };
     for (const id of ids) {
       const channel = this.client.channels.cache.get(id);
-      if (channel) channel.send(message).catch(() => {});
+      if (!channel) continue;
+      if (_otelTracing) {
+        _otelTracing.withSpan('discord.send', { 'discord.channel_id': String(id) }, () => _send(channel)).catch(() => {});
+      } else {
+        _send(channel);
+      }
     }
   }
 

@@ -40,6 +40,17 @@ async function provisionInhouseServer(sessionId, opts = {}) {
   }
   _inFlight.add(id);
   _opsReport({ inFlight: Array.from(_inFlight) });
+  // Task #417 — wrap the full provisioning round-trip in an OTel span +
+  // record a duration/outcome metric. Best-effort: missing modules never
+  // affect provisioning.
+  let _otelMetrics = null, _otelTracing = null;
+  try { _otelMetrics = require('../observability/metrics'); } catch (_) {}
+  try { _otelTracing = require('../observability/tracing'); } catch (_) {}
+  const _provStart = Date.now();
+  const _origFinally = () => {
+    _inFlight.delete(id);
+    _opsReport({ inFlight: Array.from(_inFlight) });
+  };
   try {
     const cfg = require('../config').config;
     const cur = await db.getInhouseSession(id);
@@ -163,13 +174,32 @@ async function provisionInhouseServer(sessionId, opts = {}) {
       console.warn('[Inhouse] Could not notify Discord of server provisioning:', e.message);
     }
 
+    if (_otelMetrics) _otelMetrics.recordProvisionerRun({
+      ok: true, durationMs: Date.now() - _provStart, trigger: opts.trigger || 'manual',
+    });
     return { ok: true, session, rcon: rconResult };
   } catch (err) {
+    if (_otelMetrics) _otelMetrics.recordProvisionerRun({
+      ok: false, durationMs: Date.now() - _provStart, trigger: opts.trigger || 'manual',
+    });
     return { ok: false, error: err.message };
   } finally {
-    _inFlight.delete(id);
-    _opsReport({ inFlight: Array.from(_inFlight) });
+    _origFinally();
   }
+}
+
+// Wrap with an OTel span if available. We do this here (rather than inside
+// the function) so the existing in-flight + ops state semantics are
+// unchanged when OTel is disabled.
+const _origProvisionInhouseServer = provisionInhouseServer;
+async function provisionInhouseServerTraced(sessionId, opts = {}) {
+  let _otelTracing = null;
+  try { _otelTracing = require('../observability/tracing'); } catch (_) {}
+  if (!_otelTracing) return _origProvisionInhouseServer(sessionId, opts);
+  return _otelTracing.withSpan('inhouse.provision', {
+    'inhouse.session_id': Number(sessionId) || 0,
+    'inhouse.trigger': String(opts.trigger || 'manual'),
+  }, () => _origProvisionInhouseServer(sessionId, opts));
 }
 
 // Returns true when the 8 non-captain slots are all placed (i.e. the snake
@@ -184,4 +214,4 @@ function isDraftComplete(session, players) {
   return drafted >= 8;
 }
 
-module.exports = { provisionInhouseServer, isDraftComplete };
+module.exports = { provisionInhouseServer: provisionInhouseServerTraced, isDraftComplete };

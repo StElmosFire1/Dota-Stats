@@ -83,6 +83,7 @@ Production must continue using the live `sk_live_…` key. Both keys go through 
 
 ## Environment variables (security-relevant)
 - `OWNER_DISCORD_ID` — overrides the hardcoded Discord owner ID used by `!perf-backfill`, `!backfill-pick-source`, and other owner-only Discord commands in both editions (`src/discord/bot.js`, `community-edition/src/discord/bot.js`). Falls back to the historical default (`135991380760592384`) when unset so prod doesn't break on a missed env update — set this in Replit secrets / prod env any time the owner handle changes.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` — Task #417 observability gate. When **unset**, OpenTelemetry stays fully disabled (no SDK, no exporter, no perf cost). Set to the Grafana Cloud OTLP/HTTP base URL (e.g. `https://otlp-gateway-prod-us-east-0.grafana.net/otlp`) to enable HTTP + Express auto-instrumentation, plus custom spans/metrics on the parser, Stripe SDK, dedicated-server provisioner, Discord sends, replay download, and push delivery. Companion vars: `OTEL_EXPORTER_OTLP_HEADERS` (e.g. `Authorization=Basic <base64(instanceID:token)>`), `OTEL_SERVICE_NAME` (defaults to `oi-bot`), `OTEL_METRICS_EXPORT_INTERVAL_MS` (defaults to `30000`). Dashboard JSON committed at `ops/grafana/dashboard.json` — import it via Grafana → Dashboards → New → Import.
 - `attached_assets/*.json|*.pem|*.key` are now `.gitignore`-blocked after Task #362's leaked GCP service-account incident. Don't bypass; if a JSON dump genuinely needs to be in-tree, scrub the secrets first.
 
 ## External Dependencies
