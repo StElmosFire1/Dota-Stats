@@ -2231,6 +2231,45 @@ async function init() {
     // schema change.
     await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS prize_split JSONB DEFAULT '[50,30,20]'::jsonb`);
 
+    // Task #412 — Tournament v2: Swiss format, structured check-in window,
+    // per-place prize splits, payout snapshot.
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS swiss_rounds INTEGER`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS checkin_offset_min INTEGER NOT NULL DEFAULT 30`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS tie_break_method TEXT NOT NULL DEFAULT 'buchholz'`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS checkin_dq_done BOOLEAN NOT NULL DEFAULT FALSE`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS payouts_finalized_at TIMESTAMPTZ`);
+    // Permit a starts_at column for tournaments that don't currently set
+    // start/end_date columns (the Swiss check-in window is offset from this).
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tournament_checkins (
+        tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (tournament_id, account_id)
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tournament_prize_splits (
+        tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+        place INTEGER NOT NULL CHECK (place > 0),
+        percent NUMERIC NOT NULL CHECK (percent >= 0 AND percent <= 100),
+        PRIMARY KEY (tournament_id, place)
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS tournament_payouts (
+        id SERIAL PRIMARY KEY,
+        tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        place INTEGER NOT NULL,
+        percent NUMERIC NOT NULL,
+        amount_cents INTEGER NOT NULL DEFAULT 0,
+        finalized_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_tournament_payouts_t ON tournament_payouts(tournament_id)`);
+
     // Inhouse queue — persistent across restarts
     await p.query(`
       CREATE TABLE IF NOT EXISTS inhouse_queue (
@@ -20033,6 +20072,17 @@ module.exports = {
   setTournamentMatchWinner,
   clearTournamentMatchWinner,
   linkTournamentMatch,
+  // Task #412 — Swiss + check-ins + per-place prize splits + payouts
+  generateSwissBracket,
+  advanceSwissRound,
+  getSwissStandings,
+  checkInTournamentParticipant,
+  getTournamentCheckIns,
+  sweepTournamentCheckInDqs,
+  getTournamentPrizeSplits,
+  setTournamentPrizeSplits,
+  finalizeTournamentPayouts,
+  getTournamentPayouts,
   createWeekendTournament,
   getWeekendTournaments,
   getWeekendTournamentById,
@@ -20978,6 +21028,9 @@ async function createTournament({
   bracketSize = null,
   maxParticipants = null, prizeSplit = null,
   tenantId = null,
+  // Task #412 — Tournament v2 additions
+  swissRounds = null, checkinOffsetMin = null, tieBreakMethod = null,
+  startsAt = null,
 }) {
   const p = getPool();
   const fmt = format || 'single_elim';
@@ -20999,16 +21052,18 @@ async function createTournament({
   }
   const result = await p.query(
     `INSERT INTO tournaments (name, description, season_id, format, bracket_type, bracket_size, status, created_by,
-       tier_number, entry_fee_cents, signup_open_at, signup_close_at, max_participants, prize_split, tenant_id)
+       tier_number, entry_fee_cents, signup_open_at, signup_close_at, max_participants, prize_split, tenant_id,
+       swiss_rounds, checkin_offset_min, tie_break_method, starts_at)
      VALUES ($1, $2, $3, $4, $5, $6, 'upcoming', $7, $8, $9, $10, $11, $12,
-             COALESCE($13::jsonb, '[50,30,20]'::jsonb), $14)
+             COALESCE($13::jsonb, '[50,30,20]'::jsonb), $14,
+             $15, COALESCE($16, 30), COALESCE($17, 'buchholz'), $18)
      RETURNING *`,
     [
       name,
       description || null,
       seasonId ? parseInt(seasonId) : null,
       fmt,
-      fmt === 'weekend_points' ? 'none' : fmt,
+      fmt === 'weekend_points' ? 'none' : (fmt === 'swiss' ? 'swiss' : fmt),
       bracketSize ? parseInt(bracketSize) : null,
       createdBy || null,
       tierNumber != null ? parseInt(tierNumber) : null,
@@ -21018,9 +21073,28 @@ async function createTournament({
       maxParticipants != null && maxParticipants !== '' ? parseInt(maxParticipants) : null,
       splitJson,
       tenantId != null ? parseInt(tenantId) : null,
+      swissRounds != null && swissRounds !== '' ? parseInt(swissRounds) : null,
+      checkinOffsetMin != null && checkinOffsetMin !== '' ? parseInt(checkinOffsetMin) : null,
+      tieBreakMethod || null,
+      startsAt ? new Date(startsAt) : null,
     ]
   );
-  return result.rows[0];
+  const created = result.rows[0];
+  // Mirror per-place prize splits into the normalized table so the new
+  // /prize-splits endpoint returns them immediately for newly-created events.
+  if (created && splitJson) {
+    try {
+      const nums = JSON.parse(splitJson);
+      for (let i = 0; i < nums.length; i++) {
+        await p.query(
+          `INSERT INTO tournament_prize_splits (tournament_id, place, percent)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (tournament_id, place) DO UPDATE SET percent = EXCLUDED.percent`,
+          [created.id, i + 1, nums[i]]);
+      }
+    } catch (_) { /* best-effort */ }
+  }
+  return created;
 }
 
 // v5.92 — paid-entry counter for capacity gate.
@@ -21445,6 +21519,11 @@ async function generateTournamentBracket(tournamentId) {
     size = minSize;
   }
 
+  // Task #412 — Swiss has its own generator (no fixed-size bracket).
+  if (tournament.format === 'swiss') {
+    return generateSwissBracket(parseInt(tournamentId));
+  }
+
   const ordered = participants;
   const bracketType = tournament.format === 'double_elim' ? 'double_elim' : 'single_elim';
 
@@ -21602,6 +21681,7 @@ async function setTournamentMatchWinner(matchId, winnerId) {
   const tournamentRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [match.tournament_id]);
   const tournament = tournamentRes.rows[0];
   const isDoubleElim = tournament?.format === 'double_elim';
+  const isSwiss = tournament?.format === 'swiss';
 
   const winnerBig = BigInt(winnerId);
   await p.query(`UPDATE tournament_matches SET winner_id = $2 WHERE id = $1`, [parseInt(matchId), winnerBig]);
@@ -21610,6 +21690,19 @@ async function setTournamentMatchWinner(matchId, winnerId) {
   const loserId = (match.p1_id && match.p2_id)
     ? (winnerBig === BigInt(match.p1_id) ? match.p2_id : match.p1_id)
     : null;
+
+  if (isSwiss) {
+    // Swiss has no bracket routing — players are paired round-by-round via
+    // `advanceSwissRound`. We just record the winner and check whether the
+    // tournament has reached its configured round count and resolved fully.
+    await _maybeCompleteSwissTournament(p, match.tournament_id);
+    const finalMatches = await getTournamentMatches(match.tournament_id);
+    await p.query(
+      `UPDATE tournaments SET bracket_data = $2 WHERE id = $1`,
+      [match.tournament_id, JSON.stringify(finalMatches)]
+    );
+    return finalMatches;
+  }
 
   if (isDoubleElim) {
     await _routeDoubleElim(p, match, BigInt(winnerId), loserId ? BigInt(loserId) : null);
@@ -21842,6 +21935,361 @@ async function clearTournamentMatchWinner(matchId) {
     [match.tournament_id, JSON.stringify(clearedMatches)]
   );
   return clearedMatches;
+}
+
+// ─── Task #412 — Swiss format, check-ins, per-place prize splits ──────────
+
+const _swissEngine = require('../tournaments/swissEngine');
+
+async function generateSwissBracket(tournamentId) {
+  const p = getPool();
+  const tid = parseInt(tournamentId);
+  await p.query(`DELETE FROM tournament_matches WHERE tournament_id = $1`, [tid]);
+  const tRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [tid]);
+  const tournament = tRes.rows[0];
+  if (!tournament) throw new Error('Tournament not found');
+
+  // Only check-in-confirmed participants enter the bracket. If nobody has
+  // checked in (e.g. admin skipping the window), fall back to all signed-up
+  // participants so the generator still works.
+  let participants = await getTournamentParticipants(tid);
+  const checkedInRes = await p.query(
+    `SELECT account_id FROM tournament_checkins WHERE tournament_id = $1`, [tid]
+  );
+  const checkedKeys = new Set(checkedInRes.rows.map(r => String(r.account_id)));
+  if (checkedKeys.size > 0) {
+    participants = participants.filter(pl => checkedKeys.has(String(pl.account_id)));
+  }
+  if (participants.length < 2) throw new Error('Need at least 2 participants to start');
+
+  const targetRounds = tournament.swiss_rounds
+    || _swissEngine.recommendedSwissRounds(participants.length);
+
+  const playersIn = participants.map((pl, i) => ({
+    account_id: pl.account_id,
+    seed: pl.seed || (i + 1),
+    display_name: pl.display_name,
+  }));
+  const { pairs, bye } = _swissEngine.pairRound1(playersIn);
+
+  let slot = 1;
+  for (const [a, b] of pairs) {
+    await p.query(
+      `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id)
+       VALUES ($1, 'S', 1, $2, $3, $4)`,
+      [tid, slot++, a.account_id, b.account_id]
+    );
+  }
+  if (bye) {
+    // Bye match: p1 only, winner_id immediately set so standings count it.
+    await p.query(
+      `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id, winner_id)
+       VALUES ($1, 'S', 1, $2, $3, NULL, $3)`,
+      [tid, slot++, bye.account_id]
+    );
+  }
+
+  await p.query(
+    `UPDATE tournaments SET status = 'active', bracket_type = 'swiss', swiss_rounds = $2,
+       seeding = $3 WHERE id = $1`,
+    [tid, targetRounds, JSON.stringify(playersIn.map(pl => ({
+      account_id: String(pl.account_id), display_name: pl.display_name, seed: pl.seed,
+    })))]
+  );
+
+  const matches = await getTournamentMatches(tid);
+  await p.query(`UPDATE tournaments SET bracket_data = $2 WHERE id = $1`,
+    [tid, JSON.stringify(matches)]);
+  return matches;
+}
+
+async function advanceSwissRound(tournamentId) {
+  const p = getPool();
+  const tid = parseInt(tournamentId);
+  const tRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [tid]);
+  const tournament = tRes.rows[0];
+  if (!tournament) throw new Error('Tournament not found');
+  if (tournament.format !== 'swiss') throw new Error('Not a Swiss tournament');
+
+  const matches = await getTournamentMatches(tid);
+  const allParticipants = await getTournamentParticipants(tid);
+  if (matches.length === 0) {
+    return generateSwissBracket(tid);
+  }
+  // Code-review fix: derive the eligible Swiss pool from the players who
+  // were actually paired into round 1 (i.e. who passed the check-in gate
+  // at generation time). Going back to `tournament_participants` would
+  // re-admit no-shows whose participant row hadn't yet been swept.
+  const round1 = matches.filter(m => m.round === 1);
+  const round1Ids = new Set();
+  for (const m of round1) {
+    if (m.p1_id != null) round1Ids.add(String(m.p1_id));
+    if (m.p2_id != null) round1Ids.add(String(m.p2_id));
+  }
+  const participants = round1Ids.size > 0
+    ? allParticipants.filter(pl => round1Ids.has(String(pl.account_id)))
+    : allParticipants;
+  const currentRound = matches.reduce((m, x) => Math.max(m, x.round), 0);
+  const currentRoundMatches = matches.filter(m => m.round === currentRound);
+  const unresolved = currentRoundMatches.filter(m => !m.winner_id);
+  if (unresolved.length > 0) {
+    throw new Error(`Round ${currentRound} has ${unresolved.length} unresolved match(es)`);
+  }
+  const targetRounds = tournament.swiss_rounds
+    || _swissEngine.recommendedSwissRounds(participants.length);
+  if (currentRound >= targetRounds) {
+    await _maybeCompleteSwissTournament(p, tid);
+    return getTournamentMatches(tid);
+  }
+
+  const stats = _swissEngine.buildPlayerStatsFromMatches(
+    participants.map(pl => ({ account_id: pl.account_id, seed: pl.seed, display_name: pl.display_name })),
+    matches
+  );
+  const { pairs, bye } = _swissEngine.pairNextRound(stats);
+  // Defensive invariant: no account may appear in more than one pair (or
+  // simultaneously in a pair and the bye) in the same round. Guards against
+  // a future regression in the pairing engine corrupting the round.
+  const _seen = new Set();
+  const _markOrThrow = (id, where) => {
+    const key = String(id);
+    if (_seen.has(key)) throw new Error(`Swiss pairing invariant: account ${key} appears twice in round (${where})`);
+    _seen.add(key);
+  };
+  for (const [a, b] of pairs) {
+    _markOrThrow(a.account_id, 'pair[0]');
+    _markOrThrow(b.account_id, 'pair[1]');
+  }
+  if (bye) _markOrThrow(bye.account_id, 'bye');
+  let slot = 1;
+  const nextRound = currentRound + 1;
+  for (const [a, b] of pairs) {
+    await p.query(
+      `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id)
+       VALUES ($1, 'S', $2, $3, $4, $5)`,
+      [tid, nextRound, slot++, a.account_id, b.account_id]
+    );
+  }
+  if (bye) {
+    await p.query(
+      `INSERT INTO tournament_matches (tournament_id, bracket, round, slot, p1_id, p2_id, winner_id)
+       VALUES ($1, 'S', $2, $3, $4, NULL, $4)`,
+      [tid, nextRound, slot++, bye.account_id]
+    );
+  }
+  const updated = await getTournamentMatches(tid);
+  await p.query(`UPDATE tournaments SET bracket_data = $2 WHERE id = $1`,
+    [tid, JSON.stringify(updated)]);
+  // If targetRounds == 1 (tiny event) and we somehow hit here without
+  // pairing, finalize so the tournament doesn't stall.
+  if (nextRound >= targetRounds) {
+    await _maybeCompleteSwissTournament(p, tid);
+  }
+  return updated;
+}
+
+async function _maybeCompleteSwissTournament(p, tournamentId) {
+  const tid = parseInt(tournamentId);
+  const tRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [tid]);
+  const tournament = tRes.rows[0];
+  if (!tournament || tournament.format !== 'swiss') return;
+  if (tournament.status === 'completed') return;
+
+  const matches = await getTournamentMatches(tid);
+  if (matches.length === 0) return;
+  const currentRound = matches.reduce((m, x) => Math.max(m, x.round), 0);
+  const targetRounds = tournament.swiss_rounds || 0;
+  const participants = await getTournamentParticipants(tid);
+  const effectiveTarget = targetRounds || _swissEngine.recommendedSwissRounds(participants.length);
+  if (currentRound < effectiveTarget) return;
+  const unresolved = matches.filter(m => m.round === currentRound && !m.winner_id);
+  if (unresolved.length > 0) return;
+
+  await p.query(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [tid]);
+  // Best-effort payout snapshot — swallow errors so completion isn't blocked.
+  try { await finalizeTournamentPayouts(tid); }
+  catch (err) { console.error('[swiss] finalize payouts:', err.message); }
+}
+
+async function getSwissStandings(tournamentId) {
+  const tid = parseInt(tournamentId);
+  const participants = await getTournamentParticipants(tid);
+  const matches = await getTournamentMatches(tid);
+  const p = getPool();
+  const tRes = await p.query('SELECT tie_break_method FROM tournaments WHERE id = $1', [tid]);
+  const tb = tRes.rows[0]?.tie_break_method || 'buchholz';
+  return _swissEngine.computeStandings(
+    participants.map(pl => ({
+      account_id: pl.account_id, display_name: pl.display_name, seed: pl.seed,
+    })),
+    matches,
+    { tieBreak: tb }
+  );
+}
+
+// --- Check-ins -----------------------------------------------------------
+
+async function checkInTournamentParticipant(tournamentId, accountId) {
+  const p = getPool();
+  const tid = parseInt(tournamentId);
+  // Must be a registered participant.
+  const partRes = await p.query(
+    `SELECT 1 FROM tournament_participants WHERE tournament_id = $1 AND account_id = $2`,
+    [tid, accountId]);
+  if (partRes.rowCount === 0) {
+    // Also accept paid signups (tournament_entries.status='paid').
+    const entryRes = await p.query(
+      `SELECT 1 FROM tournament_entries WHERE tournament_id = $1 AND account_id = $2 AND status = 'paid'`,
+      [tid, accountId]);
+    if (entryRes.rowCount === 0) throw new Error('Not registered for this tournament');
+  }
+  // Window check: open from (starts_at - checkin_offset_min) to starts_at.
+  const tRes = await p.query(
+    `SELECT starts_at, checkin_offset_min, status FROM tournaments WHERE id = $1`, [tid]);
+  const t = tRes.rows[0];
+  if (!t) throw new Error('Tournament not found');
+  if (t.status !== 'upcoming') throw new Error('Check-in is closed');
+  if (t.starts_at) {
+    const opens = new Date(t.starts_at).getTime() - (t.checkin_offset_min || 30) * 60 * 1000;
+    const closes = new Date(t.starts_at).getTime();
+    const now = Date.now();
+    if (now < opens) throw new Error('Check-in has not opened yet');
+    if (now > closes) throw new Error('Check-in window has closed');
+  }
+  await p.query(
+    `INSERT INTO tournament_checkins (tournament_id, account_id) VALUES ($1, $2)
+     ON CONFLICT (tournament_id, account_id) DO NOTHING`,
+    [tid, accountId]);
+  return getTournamentCheckIns(tid);
+}
+
+async function getTournamentCheckIns(tournamentId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT account_id, checked_in_at FROM tournament_checkins WHERE tournament_id = $1
+     ORDER BY checked_in_at ASC`,
+    [parseInt(tournamentId)]);
+  return r.rows;
+}
+
+// Sweep ALL upcoming tournaments whose check-in window has closed and
+// auto-DQ (remove as participant) anyone who didn't check in. Runs from the
+// cron tick in server init.
+async function sweepTournamentCheckInDqs({ now = new Date() } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id FROM tournaments
+     WHERE status = 'upcoming' AND checkin_dq_done = FALSE
+       AND starts_at IS NOT NULL AND starts_at <= $1`, [now]);
+  const summaries = [];
+  for (const row of r.rows) {
+    const tid = row.id;
+    try {
+      const removedRes = await p.query(
+        `DELETE FROM tournament_participants
+         WHERE tournament_id = $1 AND account_id NOT IN (
+           SELECT account_id FROM tournament_checkins WHERE tournament_id = $1
+         )
+         RETURNING account_id`, [tid]);
+      await p.query(
+        `UPDATE tournaments SET checkin_dq_done = TRUE WHERE id = $1`, [tid]);
+      summaries.push({ tournament_id: tid, removed: removedRes.rowCount });
+    } catch (err) {
+      console.error(`[swiss] sweep DQ for tournament ${tid}:`, err.message);
+    }
+  }
+  return summaries;
+}
+
+// --- Per-place prize splits ---------------------------------------------
+
+async function getTournamentPrizeSplits(tournamentId) {
+  const p = getPool();
+  const tid = parseInt(tournamentId);
+  const r = await p.query(
+    `SELECT place, percent::float8 AS percent FROM tournament_prize_splits
+     WHERE tournament_id = $1 ORDER BY place ASC`, [tid]);
+  if (r.rowCount > 0) return r.rows;
+  // Fallback: derive from legacy tournaments.prize_split JSONB ([50,30,20]).
+  const tRes = await p.query(`SELECT prize_split FROM tournaments WHERE id = $1`, [tid]);
+  const legacy = Array.isArray(tRes.rows[0]?.prize_split) ? tRes.rows[0].prize_split : [50, 30, 20];
+  return legacy.map((percent, i) => ({ place: i + 1, percent: Number(percent) || 0 }));
+}
+
+async function setTournamentPrizeSplits(tournamentId, splits) {
+  const p = getPool();
+  const tid = parseInt(tournamentId);
+  if (!Array.isArray(splits) || splits.length === 0) {
+    throw new Error('splits must be a non-empty array of {place, percent}');
+  }
+  const cleaned = splits.map(s => ({
+    place: parseInt(s.place),
+    percent: Number(s.percent),
+  })).filter(s => Number.isFinite(s.place) && s.place > 0 && Number.isFinite(s.percent) && s.percent >= 0);
+  const sum = cleaned.reduce((acc, s) => acc + s.percent, 0);
+  if (Math.abs(sum - 100) > 0.5) {
+    throw new Error(`prize split percentages must sum to 100 (got ${sum.toFixed(2)})`);
+  }
+  // Replace atomically.
+  await p.query(`DELETE FROM tournament_prize_splits WHERE tournament_id = $1`, [tid]);
+  for (const s of cleaned) {
+    await p.query(
+      `INSERT INTO tournament_prize_splits (tournament_id, place, percent)
+       VALUES ($1, $2, $3)`, [tid, s.place, s.percent]);
+  }
+  // Mirror to legacy JSONB so old consumers stay in sync.
+  const legacy = cleaned.sort((a, b) => a.place - b.place).map(s => s.percent);
+  await p.query(`UPDATE tournaments SET prize_split = $1::jsonb WHERE id = $2`,
+    [JSON.stringify(legacy), tid]);
+  return cleaned;
+}
+
+// Snapshot per-place payouts to tournament_payouts. Idempotent — repeated
+// calls overwrite the snapshot rather than duplicating rows.
+async function finalizeTournamentPayouts(tournamentId) {
+  const p = getPool();
+  const tid = parseInt(tournamentId);
+  const tRes = await p.query('SELECT * FROM tournaments WHERE id = $1', [tid]);
+  const t = tRes.rows[0];
+  if (!t) throw new Error('Tournament not found');
+  const splits = await getTournamentPrizeSplits(tid);
+  const poolCents = Math.round((Number(t.prize_pool) || 0) * 100);
+  let standings;
+  if (t.format === 'swiss') {
+    standings = await getSwissStandings(tid);
+  } else {
+    // Single/double elim — derive a simple standings from match outcomes.
+    const matches = await getTournamentMatches(tid);
+    const participants = await getTournamentParticipants(tid);
+    standings = _swissEngine.computeStandings(
+      participants.map(pl => ({ account_id: pl.account_id, display_name: pl.display_name, seed: pl.seed })),
+      matches.map(m => ({ round: m.round, p1_id: m.p1_id, p2_id: m.p2_id, winner_id: m.winner_id }))
+    );
+  }
+  const payouts = _swissEngine.computePayouts(splits, standings, poolCents);
+  await p.query(`DELETE FROM tournament_payouts WHERE tournament_id = $1`, [tid]);
+  for (const row of payouts) {
+    await p.query(
+      `INSERT INTO tournament_payouts (tournament_id, account_id, place, percent, amount_cents)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [tid, row.account_id, row.place, row.percent, row.cents]);
+  }
+  await p.query(`UPDATE tournaments SET payouts_finalized_at = NOW() WHERE id = $1`, [tid]);
+  return payouts;
+}
+
+async function getTournamentPayouts(tournamentId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT tp.account_id, tp.place, tp.percent::float8 AS percent, tp.amount_cents,
+            COALESCE(n.nickname,
+              (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tp.account_id ORDER BY ps.id DESC LIMIT 1),
+              tp.account_id::text) AS display_name
+     FROM tournament_payouts tp
+     LEFT JOIN nicknames n ON n.account_id = tp.account_id
+     WHERE tp.tournament_id = $1 ORDER BY tp.place ASC`,
+    [parseInt(tournamentId)]);
+  return r.rows;
 }
 
 // ─── Weekend / Special Event Tournaments ───────────────────────────────────

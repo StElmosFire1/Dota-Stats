@@ -1562,6 +1562,55 @@ export async function reseedTournamentParticipants(tournamentId, orderedAccountI
   return res.json();
 }
 
+// Task #412 — Tournament v2 client helpers
+export async function getTournamentStandings(tournamentId) {
+  return fetchJson(`/tournaments/${tournamentId}/standings`);
+}
+export async function getTournamentCheckIns(tournamentId) {
+  return fetchJson(`/tournaments/${tournamentId}/checkins`);
+}
+export async function checkInToTournament(tournamentId) {
+  const res = await fetch(BASE + `/tournaments/${tournamentId}/checkin`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Check-in failed');
+  return d;
+}
+export async function advanceSwissRound(tournamentId, superuserKey) {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/advance-swiss-round`, {
+    method: 'POST', headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to advance round');
+  return d;
+}
+export async function getTournamentPrizeSplits(tournamentId) {
+  return fetchJson(`/tournaments/${tournamentId}/prize-splits`);
+}
+export async function setTournamentPrizeSplits(tournamentId, splits, superuserKey) {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/prize-splits`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ splits }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to save prize splits');
+  return d;
+}
+export async function getTournamentPayouts(tournamentId) {
+  return fetchJson(`/tournaments/${tournamentId}/payouts`);
+}
+export async function finalizeTournamentPayouts(tournamentId, superuserKey) {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/finalize-payouts`, {
+    method: 'POST', headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to finalize payouts');
+  return d;
+}
+
 export async function deleteTournament(id, superuserKey) {
   const res = await superuserFetch(BASE + `/tournaments/${id}`, {
     method: 'DELETE',

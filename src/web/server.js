@@ -7571,6 +7571,8 @@ NOTES
         name, description, seasonId, format, bracketSize,
         tierNumber, entryFeeCents, signupOpenAt, signupCloseAt,
         maxParticipants, prizeSplit,
+        // Task #412
+        swissRounds, checkinOffsetMin, tieBreakMethod, startsAt,
       } = req.body;
       if (!name) return res.status(400).json({ error: 'Name required' });
       const tournament = await db.createTournament({
@@ -7578,6 +7580,7 @@ NOTES
         tierNumber, entryFeeCents,
         signupOpenAt, signupCloseAt,
         maxParticipants, prizeSplit,
+        swissRounds, checkinOffsetMin, tieBreakMethod, startsAt,
         createdBy: req.session?.username,
         // Task #333 — Stamp the host-resolved tenant onto the new row so
         // sub-brand-hosted tournaments stay isolated. Default tenant (no
@@ -11384,6 +11387,113 @@ NOTES
       res.status(400).json({ error: err.message });
     }
   });
+
+  // ─── Task #412 — Tournament v2: Swiss, check-ins, per-place splits ─────
+  // Shared tenant-scope guard for every new tournament v2 endpoint. Mirrors
+  // the pattern at the top of /tournaments/:id (Task #333). Returns the
+  // tournament row when visible to the caller, otherwise sends a 404 and
+  // returns null so the route handler can short-circuit.
+  async function _t412RequireScopedTournament(req, res) {
+    const t = await db.getTournamentById(req.params.id);
+    if (!t || !_visibleInScope(t, _resolveScopeTenantId(req))) {
+      res.status(404).json({ error: 'Tournament not found' });
+      return null;
+    }
+    return t;
+  }
+
+  router.get('/tournaments/:id/standings', async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const rows = await db.getSwissStandings(req.params.id);
+      res.json({ standings: rows });
+    } catch (err) {
+      console.error('[API] tournament standings:', err.message);
+      res.status(500).json({ error: 'Failed to fetch standings' });
+    }
+  });
+
+  router.get('/tournaments/:id/checkins', async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const rows = await db.getTournamentCheckIns(req.params.id);
+      res.json({ checkins: rows });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch check-ins' });
+    }
+  });
+
+  router.post('/tournaments/:id/checkin', express.json(), async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const rows = await db.checkInTournamentParticipant(req.params.id, accountId);
+      res.json({ ok: true, checkins: rows });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/tournaments/:id/advance-swiss-round', requireSuperuser, async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const matches = await db.advanceSwissRound(req.params.id);
+      res.json({ ok: true, matches });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.get('/tournaments/:id/prize-splits', async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const splits = await db.getTournamentPrizeSplits(req.params.id);
+      res.json({ splits });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch prize splits' });
+    }
+  });
+
+  router.put('/tournaments/:id/prize-splits', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const splits = await db.setTournamentPrizeSplits(req.params.id, req.body?.splits);
+      res.json({ ok: true, splits });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.get('/tournaments/:id/payouts', async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const payouts = await db.getTournamentPayouts(req.params.id);
+      res.json({ payouts });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch payouts' });
+    }
+  });
+
+  router.post('/tournaments/:id/finalize-payouts', requireSuperuser, async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const payouts = await db.finalizeTournamentPayouts(req.params.id);
+      res.json({ ok: true, payouts });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Task #412 — sweep no-show DQs every 60s.
+  if (!global.__t412_checkin_sweep) {
+    global.__t412_checkin_sweep = setInterval(() => {
+      db.sweepTournamentCheckInDqs().catch(err => {
+        console.error('[swiss] check-in DQ sweep:', err.message);
+      });
+    }, 60 * 1000);
+    if (global.__t412_checkin_sweep.unref) global.__t412_checkin_sweep.unref();
+  }
 
   // ---------- F6: MVP / attitude analytics ----------
   router.get('/player/:id/mvp-attitude-trends', async (req, res) => {

@@ -8,6 +8,10 @@ import {
   linkTournamentMatch, reseedTournamentParticipants,
   getTournamentEligibility, registerForTournament, withdrawFromTournament,
   confirmTournamentEntry, getTournamentEntries,
+  // Task #412 — Tournament v2
+  getTournamentStandings, getTournamentCheckIns, checkInToTournament,
+  advanceSwissRound, getTournamentPrizeSplits, setTournamentPrizeSplits,
+  getTournamentPayouts, finalizeTournamentPayouts,
 } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -16,7 +20,7 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 
 const STATUS_LABELS = { upcoming: '⏳ Upcoming', active: '🏆 Active', completed: '✅ Completed' };
 const STATUS_COLORS = { upcoming: 'var(--text-muted)', active: 'var(--accent-gold, #f59e0b)', completed: 'var(--radiant-color)' };
-const FORMAT_LABELS = { single_elim: 'Single Elimination', double_elim: 'Double Elimination', weekend_points: 'Points Tournament' };
+const FORMAT_LABELS = { single_elim: 'Single Elimination', double_elim: 'Double Elimination', swiss: 'Swiss', weekend_points: 'Points Tournament' };
 
 // datetime-local inputs reflect local browser time but carry no timezone.
 // Convert to UTC ISO for storage so the date is timezone-correct.
@@ -520,6 +524,24 @@ function TournamentDetail() {
 
       <TournamentSelfSignupPanel tournament={tournament} onChange={() => { load(); reloadEntries(); }} />
 
+      <TournamentCheckInPanel tournament={tournament} />
+
+      {tournament.format === 'swiss' && (
+        <SwissPanel
+          tournament={tournament}
+          matches={matches}
+          isAdmin={isAdmin}
+          superuserKey={superuserKey}
+          onChanged={load}
+        />
+      )}
+
+      {isAdmin && (
+        <PrizeSplitsEditor tournament={tournament} superuserKey={superuserKey} onChanged={load} />
+      )}
+
+      <TournamentPayoutsPanel tournament={tournament} />
+
       {isAdmin && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button onClick={handleGenerate} style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
@@ -731,6 +753,303 @@ function TournamentDetail() {
 
 const inputStyle = { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 6, padding: '7px 12px', fontSize: 14, width: '100%' };
 
+// ─── Task #412 — Tournament v2 panels ────────────────────────────────────
+
+function TournamentCheckInPanel({ tournament }) {
+  const { steamUser } = useSteamAuth();
+  const accountId = steamUser?.accountId;
+  const [checkins, setCheckins] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const reload = useCallback(() => {
+    getTournamentCheckIns(tournament.id)
+      .then(d => setCheckins(d?.checkins || []))
+      .catch(() => setCheckins([]));
+  }, [tournament.id]);
+  useEffect(() => { reload(); }, [reload]);
+
+  if (tournament.status !== 'upcoming' || !tournament.starts_at) return null;
+
+  const startsAt = new Date(tournament.starts_at);
+  const offsetMin = tournament.checkin_offset_min || 30;
+  const opens = new Date(startsAt.getTime() - offsetMin * 60 * 1000);
+  const now = new Date();
+  const isOpen = now >= opens && now <= startsAt;
+  const alreadyIn = accountId && checkins.some(c => String(c.account_id) === String(accountId));
+
+  const handleCheckIn = async () => {
+    if (!accountId) { setMsg({ kind: 'warn', text: 'Sign in with Steam to check in.' }); return; }
+    setBusy(true);
+    try {
+      await checkInToTournament(tournament.id);
+      setMsg({ kind: 'ok', text: 'Checked in!' });
+      reload();
+    } catch (e) {
+      setMsg({ kind: 'warn', text: e.message });
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>📋 Check-in window</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Opens <strong>{opens.toLocaleString()}</strong> · Closes <strong>{startsAt.toLocaleString()}</strong>
+            {' · '}{checkins.length} checked in
+          </div>
+        </div>
+        {accountId && (
+          <button
+            type="button"
+            onClick={handleCheckIn}
+            disabled={busy || !isOpen || alreadyIn}
+            aria-label={alreadyIn ? 'Already checked in' : 'Check in to tournament'}
+            style={{
+              background: alreadyIn ? 'rgba(74,222,128,0.15)' : 'var(--accent-blue)',
+              color: alreadyIn ? '#4ade80' : '#fff',
+              border: 'none', borderRadius: 7, padding: '8px 18px',
+              cursor: (busy || !isOpen || alreadyIn) ? 'default' : 'pointer',
+              fontSize: 13, fontWeight: 600, opacity: (!isOpen && !alreadyIn) ? 0.5 : 1,
+            }}>
+            {alreadyIn ? '✓ Checked in' : (isOpen ? (busy ? '…' : 'Check in') : 'Check-in closed')}
+          </button>
+        )}
+      </div>
+      {msg && (
+        <div role="status" style={{ marginTop: 10, fontSize: 12, color: msg.kind === 'ok' ? '#4ade80' : '#f87171' }}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SwissPanel({ tournament, matches, isAdmin, superuserKey, onChanged }) {
+  const [standings, setStandings] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const reload = useCallback(() => {
+    getTournamentStandings(tournament.id)
+      .then(d => setStandings(d?.standings || []))
+      .catch(() => setStandings([]));
+  }, [tournament.id]);
+  // Code-review fix: react to winner changes, not just match count. A match
+  // count tick alone won't refire when a winner is set on an existing row,
+  // so standings would otherwise stay stale until the next manual refresh.
+  const matchesSig = matches
+    .map(m => `${m.id || `${m.round}:${m.slot}`}:${m.winner_id || ''}`)
+    .join('|');
+  useEffect(() => { reload(); }, [reload, matchesSig]);
+
+  const currentRound = matches.length ? Math.max(...matches.map(m => m.round)) : 0;
+  const target = tournament.swiss_rounds || 0;
+  const unresolved = matches.filter(m => m.round === currentRound && !m.winner_id).length;
+  const canAdvance = isAdmin && tournament.status === 'active' && currentRound > 0
+    && unresolved === 0 && (target === 0 || currentRound < target);
+
+  const handleAdvance = async () => {
+    if (!window.confirm(`Pair Swiss round ${currentRound + 1}?`)) return;
+    setBusy(true); setErr(null);
+    try {
+      await advanceSwissRound(tournament.id, superuserKey);
+      onChanged && onChanged();
+      reload();
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>♟️ Swiss standings</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Round {currentRound || '—'} of {target || '?'} · tie-break: {tournament.tie_break_method || 'buchholz'}
+            {unresolved > 0 && ` · ${unresolved} match(es) pending`}
+          </div>
+        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={handleAdvance}
+            disabled={!canAdvance || busy}
+            aria-label="Pair next Swiss round"
+            style={{
+              background: canAdvance ? 'var(--accent-blue)' : 'var(--bg-secondary)',
+              color: canAdvance ? '#fff' : 'var(--text-muted)',
+              border: '1px solid var(--border)', borderRadius: 7, padding: '7px 14px',
+              cursor: canAdvance && !busy ? 'pointer' : 'default', fontSize: 13, fontWeight: 600,
+            }}>
+            {busy ? 'Pairing…' : `Pair round ${currentRound + 1}`}
+          </button>
+        )}
+      </div>
+      {err && <div role="status" style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>{err}</div>}
+      {standings.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>No standings yet — start the bracket to see results.</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '6px 8px' }}>#</th>
+                <th style={{ padding: '6px 8px' }}>Player</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>W</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>L</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Buchholz</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>SB</th>
+              </tr>
+            </thead>
+            <tbody>
+              {standings.map(r => (
+                <tr key={String(r.account_id)} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '6px 8px', fontWeight: 700 }}>{r.rank}</td>
+                  <td style={{ padding: '6px 8px' }}>{r.display_name}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.wins}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.losses}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.buchholz}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.sonnebornBerger}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PrizeSplitsEditor({ tournament, superuserKey, onChanged }) {
+  const [splits, setSplits] = useState([]);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const reload = useCallback(() => {
+    getTournamentPrizeSplits(tournament.id)
+      .then(d => {
+        const list = d?.splits || [];
+        setSplits(list);
+        setDraft(list.map(s => `${s.place}:${s.percent}`).join(', '));
+      })
+      .catch(() => {});
+  }, [tournament.id]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const handleSave = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      // Accept either "50,30,20" (positional) or "1:50, 2:30, 3:20".
+      const parts = draft.split(',').map(s => s.trim()).filter(Boolean);
+      const parsed = parts.map((s, i) => {
+        if (s.includes(':')) {
+          const [place, percent] = s.split(':').map(x => Number(x.trim()));
+          return { place, percent };
+        }
+        return { place: i + 1, percent: Number(s) };
+      });
+      await setTournamentPrizeSplits(tournament.id, parsed, superuserKey);
+      setMsg({ kind: 'ok', text: 'Saved.' });
+      reload();
+      onChanged && onChanged();
+    } catch (e) { setMsg({ kind: 'warn', text: e.message }); }
+    setBusy(false);
+  };
+
+  const handleFinalize = async () => {
+    if (!window.confirm('Snapshot per-place payouts now? (Idempotent — safe to re-run.)')) return;
+    setBusy(true); setMsg(null);
+    try {
+      await finalizeTournamentPayouts(tournament.id, superuserKey);
+      setMsg({ kind: 'ok', text: 'Payouts snapshotted.' });
+      onChanged && onChanged();
+    } catch (e) { setMsg({ kind: 'warn', text: e.message }); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>💰 Per-place prize splits</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label htmlFor="prize-splits-input" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          Splits (% — comma-separated, e.g. <code>50,30,15,5</code> or <code>1:50, 2:30, 3:20</code>):
+        </label>
+        <input
+          id="prize-splits-input"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          style={{ ...inputStyle, maxWidth: 360 }}
+        />
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={busy}
+          aria-label="Save prize splits"
+          style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+          {busy ? '…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={handleFinalize}
+          disabled={busy}
+          aria-label="Snapshot payouts"
+          style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
+          Snapshot payouts
+        </button>
+      </div>
+      {splits.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+          Current: {splits.map(s => `#${s.place} ${s.percent}%`).join(' · ')}
+        </div>
+      )}
+      {msg && (
+        <div role="status" style={{ marginTop: 8, fontSize: 12, color: msg.kind === 'ok' ? '#4ade80' : '#f87171' }}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TournamentPayoutsPanel({ tournament }) {
+  const [payouts, setPayouts] = useState([]);
+  useEffect(() => {
+    getTournamentPayouts(tournament.id)
+      .then(d => setPayouts(d?.payouts || []))
+      .catch(() => setPayouts([]));
+  }, [tournament.id, tournament.status, tournament.payouts_finalized_at]);
+  if (payouts.length === 0) return null;
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🏆 Payouts</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+            <th style={{ padding: '6px 8px' }}>Place</th>
+            <th style={{ padding: '6px 8px' }}>Player</th>
+            <th style={{ padding: '6px 8px', textAlign: 'right' }}>%</th>
+            <th style={{ padding: '6px 8px', textAlign: 'right' }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payouts.map(p => (
+            <tr key={p.place} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '6px 8px', fontWeight: 700 }}>#{p.place}</td>
+              <td style={{ padding: '6px 8px' }}>{p.display_name}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right' }}>{p.percent}%</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right' }}>${(p.amount_cents / 100).toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function TournamentList() {
   const navigate = useNavigate();
   const { seasonId } = useSeason();
@@ -744,6 +1063,8 @@ function TournamentList() {
     // v5.92 — self-signup admin fields.
     entryFee: '', maxParticipants: '', prizeSplit: '50,30,20',
     signupOpenAt: '', signupCloseAt: '',
+    // Task #412 — Swiss + check-in window + tiebreak
+    swissRounds: '', checkinOffsetMin: 30, tieBreakMethod: 'buchholz', startsAt: '',
   });
   const [creating, setCreating] = useState(false);
 
@@ -794,9 +1115,13 @@ function TournamentList() {
           prizeSplit,
           signupOpenAt: toUtcIso(form.signupOpenAt),
           signupCloseAt: toUtcIso(form.signupCloseAt),
+          swissRounds: form.swissRounds === '' ? null : parseInt(form.swissRounds),
+          checkinOffsetMin: form.checkinOffsetMin === '' ? 30 : parseInt(form.checkinOffsetMin),
+          tieBreakMethod: form.tieBreakMethod || 'buchholz',
+          startsAt: toUtcIso(form.startsAt),
         }, superuserKey);
         loadAll();
-        setForm({ name: '', description: '', format: 'single_elim', bracketSize: '', startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '', entryFee: '', maxParticipants: '', prizeSplit: '50,30,20', signupOpenAt: '', signupCloseAt: '' });
+        setForm({ name: '', description: '', format: 'single_elim', bracketSize: '', startDate: '', endDate: '', gamesToCount: 3, prizePool: '', buyIn: '', entryFee: '', maxParticipants: '', prizeSplit: '50,30,20', signupOpenAt: '', signupCloseAt: '', swissRounds: '', checkinOffsetMin: 30, tieBreakMethod: 'buchholz', startsAt: '' });
         setShowCreate(false);
       }
     } catch (e) { alert(e.message); }
@@ -830,6 +1155,7 @@ function TournamentList() {
               <select value={form.format} onChange={e => setForm(f => ({ ...f, format: e.target.value }))} style={inputStyle}>
                 <option value="single_elim">Single Elimination</option>
                 <option value="double_elim">Double Elimination</option>
+                <option value="swiss">Swiss</option>
                 <option value="weekend_points">Points Tournament</option>
               </select>
             </div>
@@ -868,6 +1194,33 @@ function TournamentList() {
           {isPoints && (
             <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
               Players earn points from every game played during the window. Only their top <strong>{form.gamesToCount}</strong> game scores count toward the final total.
+            </div>
+          )}
+          {!isPoints && form.format === 'swiss' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Swiss rounds (blank = auto)</label>
+                <input type="number" min="1" max="7" value={form.swissRounds} onChange={e => setForm(f => ({ ...f, swissRounds: e.target.value }))} placeholder="auto" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Tie-break method</label>
+                <select value={form.tieBreakMethod} onChange={e => setForm(f => ({ ...f, tieBreakMethod: e.target.value }))} style={inputStyle}>
+                  <option value="buchholz">Buchholz</option>
+                  <option value="sonneborn_berger">Sonneborn–Berger</option>
+                </select>
+              </div>
+            </div>
+          )}
+          {!isPoints && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Starts at (local)</label>
+                <input type="datetime-local" value={form.startsAt} onChange={e => setForm(f => ({ ...f, startsAt: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Check-in opens N min before start</label>
+                <input type="number" min="0" max="240" value={form.checkinOffsetMin} onChange={e => setForm(f => ({ ...f, checkinOffsetMin: e.target.value }))} style={inputStyle} />
+              </div>
             </div>
           )}
           {!isPoints && (
