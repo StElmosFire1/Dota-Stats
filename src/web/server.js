@@ -341,6 +341,18 @@ async function _runSeasonRolloverTick(reason = 'cron') {
 setTimeout(() => { _runSeasonRolloverTick('boot').catch(() => {}); }, 90_000).unref();
 setInterval(() => { _runSeasonRolloverTick('cron').catch(() => {}); }, 60_000).unref();
 
+// Task #423 — Persisted ops history. Every minute we snapshot the in-memory
+// opsState (5xx counts, parser duration/queue, Stripe lag, provisioner
+// outcomes, etc.) into `ops_metrics` and prune anything older than the
+// retention window. Runs in-process; .unref() so tests don't hang on it.
+// First write is delayed 30s so db.init() and other boot work finishes.
+setTimeout(() => {
+  require('./opsState').captureHistorySnapshot(db).catch(() => {});
+}, 30_000).unref();
+setInterval(() => {
+  require('./opsState').captureHistorySnapshot(db).catch(() => {});
+}, 60_000).unref();
+
 // Replay store cleanup: runs every 12 hours, deletes expired files from disk.
 setInterval(async () => {
   try {
@@ -6282,6 +6294,25 @@ function createApiRouter(startupStatus = {}, _app = null) {
       snap.push.webPushReady = _webPushReady();
       res.set('Cache-Control', 'no-store');
       res.json(snap);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #423 — Persisted ops history for sparklines on /admin/ops. Returns
+  // up to N hours (capped at the retention window) of 1-minute samples
+  // covering the same metrics shown on the live tiles. Superuser-only.
+  router.get('/admin/ops/history', requireSuperuser, async (req, res) => {
+    try {
+      const opsState = require('./opsState');
+      const hours = Number(req.query.hours) || 24;
+      const samples = await opsState.readHistory(db, { hours });
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        retainDays: opsState.HISTORY_RETAIN_DAYS,
+        hours: Math.max(1, Math.min(24 * opsState.HISTORY_RETAIN_DAYS, hours)),
+        samples,
+      });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

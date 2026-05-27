@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "7.87",
+    "title": "/admin/ops now keeps a rolling 7-day history with per-tile sparklines (Task #423)",
+    "published_at": "2026-05-27",
+    "notes": [
+      "**Problem.** The server-side ops dashboard introduced in Task #406 was process-local — restart the bot and 'was last night's parser slowness new?' was unanswerable. Tiles only showed the current value and a 60-minute 5xx window.",
+      "**New `ops_metrics` table.** One row per ~1-minute snapshot, lazily created by `src/web/opsState.js` (`ensureHistoryTable` runs once per process). Columns mirror the live tiles: `http_5xx_60m`, `parser_queue_depth`, `parser_last_duration_ms`, `parser_ready`, `stripe_max_lag_ms`, `provisioner_in_flight`, cumulative `provisioner_success_total` / `provisioner_failure_total`, `discord_gateway_latency_ms`, `push_subscription_count`. `ts DESC` index for the read-side range scan.",
+      "**Snapshot writer.** New `captureHistorySnapshot(db)` reads from the in-memory opsState, looks up the live push-subscription count, inserts a row, and prunes anything older than `HISTORY_RETAIN_DAYS=7` in the same call. `src/web/server.js` schedules an initial write 30s after boot (so db.init() + first parser/Discord/Steam reports have landed) and then every 60s. Both timers are `.unref()`'d so tests don't hang. Snapshot failures are best-effort — they log to the ops ring buffer but never throw.",
+      "**Provisioner counters.** `reportProvisioner` now increments `successTotal` / `failureTotal` cumulative counters alongside the existing `lastSuccessAt` / `lastFailureAt` timestamps so the frontend can compute per-minute failure deltas from consecutive samples.",
+      "**New `/admin/ops/history?hours=N` route.** Superuser-only. Returns `{ retainDays, hours, samples: [...] }` where `hours` is clamped to the retention window. Samples are returned ascending by ts so the frontend can render them directly.",
+      "**Frontend sparklines (`web/src/pages/AdminOps.jsx`).** New `<Sparkline>` component renders an inline SVG mini-chart inside each tile: parser duration, Discord gateway latency, push subscriptions, 5xx count (amber/red), and provisioner failures-per-minute (computed client-side as the delta of the cumulative counter, with a guard so a process restart doesn't show as a negative spike). A trend-window selector in the page header (1h / 6h / 24h / 3d / 7d) re-fetches via the new endpoint and refreshes every 60s to match the server-side cadence. 'Collecting…' placeholder shows on tiles with <2 datapoints (e.g. immediately after the schema is first created). A11y gate green — the select has an aria-label and the SVG is marked aria-hidden while the wrapper carries the descriptive label.",
+      "**Coverage.** New `tests/opsHistory.test.js` (4 tests) covers the schema-ensure call, insert param order, the best-effort failure path (pool throws → returns false, no exception), the hours-clamping behaviour of `readHistory`, and that provisioner success/failure counters increment correctly across calls."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.86",
     "title": "Live smoke-test checklist tool (Task #479)",
     "published_at": "2026-05-27",

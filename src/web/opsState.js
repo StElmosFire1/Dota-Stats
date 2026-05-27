@@ -43,6 +43,8 @@ const state = {
     lastFailureAt: null,
     lastFailureSessionId: null,
     lastFailureError: null,
+    successTotal: 0,         // cumulative since boot — Task #423 history deltas
+    failureTotal: 0,
   },
   push: {
     webPushReady: false,
@@ -161,12 +163,14 @@ function reportProvisioner({ inFlight, success, failure }) {
   if (success && success.sessionId != null) {
     state.provisioner.lastSuccessAt = Date.now();
     state.provisioner.lastSuccessSessionId = success.sessionId;
+    state.provisioner.successTotal += 1;
     pushLog('provisioner', 'info', `provision succeeded for session #${success.sessionId}`);
   }
   if (failure && failure.sessionId != null) {
     state.provisioner.lastFailureAt = Date.now();
     state.provisioner.lastFailureSessionId = failure.sessionId;
     state.provisioner.lastFailureError = failure.error ? String(failure.error).slice(0, 300) : null;
+    state.provisioner.failureTotal += 1;
     pushLog('provisioner', 'error', `provision failed for session #${failure.sessionId}: ${failure.error || 'unknown'}`);
   }
 }
@@ -233,6 +237,126 @@ async function snapshot(db) {
   };
 }
 
+// ── Task #423 — Persisted rolling history ────────────────────────────
+//
+// The in-memory state above evaporates on restart, so the live dashboard
+// can't show "was last night's parser slowness new?". `ensureHistoryTable`
+// is idempotent and called from `captureHistorySnapshot` so we don't need
+// to thread it through db.init(). We keep ~7 days of 1-minute samples
+// and prune on every write — a 7-day window at 60s cadence is 10,080
+// rows, comfortably small.
+const HISTORY_RETAIN_DAYS = 7;
+let _historyTableReady = false;
+
+async function ensureHistoryTable(db) {
+  if (_historyTableReady) return;
+  const p = db.getPool();
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS ops_metrics (
+      ts                          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      http_5xx_60m                INTEGER NOT NULL DEFAULT 0,
+      parser_queue_depth          INTEGER NOT NULL DEFAULT 0,
+      parser_last_duration_ms     INTEGER,
+      parser_ready                BOOLEAN NOT NULL DEFAULT false,
+      stripe_max_lag_ms           INTEGER,
+      provisioner_in_flight       INTEGER NOT NULL DEFAULT 0,
+      provisioner_success_total   INTEGER NOT NULL DEFAULT 0,
+      provisioner_failure_total   INTEGER NOT NULL DEFAULT 0,
+      discord_gateway_latency_ms  INTEGER,
+      push_subscription_count     INTEGER
+    )
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_ops_metrics_ts ON ops_metrics (ts DESC)`);
+  _historyTableReady = true;
+}
+
+function _stripeMaxLagMs() {
+  let max = null;
+  for (const v of state.stripeWebhooks.byType.values()) {
+    if (v.lastLagMs != null && (max == null || v.lastLagMs > max)) max = v.lastLagMs;
+  }
+  return max;
+}
+
+async function captureHistorySnapshot(db) {
+  if (!db || typeof db.getPool !== 'function') return null;
+  try {
+    await ensureHistoryTable(db);
+    const p = db.getPool();
+    let pushCount = null;
+    try {
+      const r = await p.query(`SELECT COUNT(*)::int AS c FROM web_push_subscriptions`);
+      pushCount = r.rows[0]?.c ?? null;
+    } catch (_) { /* table may not exist yet */ }
+
+    await p.query(
+      `INSERT INTO ops_metrics (
+        http_5xx_60m, parser_queue_depth, parser_last_duration_ms, parser_ready,
+        stripe_max_lag_ms, provisioner_in_flight, provisioner_success_total,
+        provisioner_failure_total, discord_gateway_latency_ms, push_subscription_count
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        _count5xx(),
+        state.parser.queueDepth | 0,
+        state.parser.lastParseDurationMs != null ? Math.round(state.parser.lastParseDurationMs) : null,
+        !!state.parser.ready,
+        _stripeMaxLagMs(),
+        state.provisioner.inFlight.length | 0,
+        state.provisioner.successTotal | 0,
+        state.provisioner.failureTotal | 0,
+        state.discord.gatewayLatencyMs != null ? Math.round(state.discord.gatewayLatencyMs) : null,
+        pushCount,
+      ],
+    );
+    await p.query(
+      `DELETE FROM ops_metrics WHERE ts < NOW() - INTERVAL '${HISTORY_RETAIN_DAYS} days'`,
+    );
+    return true;
+  } catch (e) {
+    // History is best-effort — never let it surface as a 500 or crash the tick.
+    pushLog('ops', 'warn', `history snapshot failed: ${e.message}`);
+    return false;
+  }
+}
+
+async function readHistory(db, { hours = 24 } = {}) {
+  if (!db || typeof db.getPool !== 'function') return [];
+  const h = Math.max(1, Math.min(24 * HISTORY_RETAIN_DAYS, Number(hours) || 24));
+  await ensureHistoryTable(db);
+  const p = db.getPool();
+  const r = await p.query(
+    `SELECT
+       EXTRACT(EPOCH FROM ts) * 1000 AS ts_ms,
+       http_5xx_60m,
+       parser_queue_depth,
+       parser_last_duration_ms,
+       parser_ready,
+       stripe_max_lag_ms,
+       provisioner_in_flight,
+       provisioner_success_total,
+       provisioner_failure_total,
+       discord_gateway_latency_ms,
+       push_subscription_count
+     FROM ops_metrics
+     WHERE ts >= NOW() - ($1 || ' hours')::INTERVAL
+     ORDER BY ts ASC`,
+    [String(h)],
+  );
+  return r.rows.map(row => ({
+    ts: Math.round(Number(row.ts_ms)),
+    http5xx: row.http_5xx_60m,
+    parserQueueDepth: row.parser_queue_depth,
+    parserLastDurationMs: row.parser_last_duration_ms,
+    parserReady: row.parser_ready,
+    stripeMaxLagMs: row.stripe_max_lag_ms,
+    provisionerInFlight: row.provisioner_in_flight,
+    provisionerSuccessTotal: row.provisioner_success_total,
+    provisionerFailureTotal: row.provisioner_failure_total,
+    discordGatewayLatencyMs: row.discord_gateway_latency_ms,
+    pushSubscriptionCount: row.push_subscription_count,
+  }));
+}
+
 module.exports = {
   reportParser,
   reportSteam,
@@ -243,4 +367,7 @@ module.exports = {
   recordHttp5xx,
   pushLog,
   snapshot,
+  captureHistorySnapshot,
+  readHistory,
+  HISTORY_RETAIN_DAYS,
 };

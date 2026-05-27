@@ -17,7 +17,7 @@ function fmtTime(ts) {
   try { return new Date(ts).toLocaleTimeString(); } catch (_) { return '—'; }
 }
 
-function Tile({ title, status, children }) {
+function Tile({ title, status, children, spark }) {
   const dot = status === 'ok' ? '#4caf50' : status === 'warn' ? '#f59e0b' : status === 'err' ? '#f44336' : '#888';
   return (
     <div style={{
@@ -33,6 +33,49 @@ function Tile({ title, status, children }) {
       </div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
         {children}
+      </div>
+      {spark}
+    </div>
+  );
+}
+
+// Task #423 — tiny inline SVG sparkline. `values` is an array of numbers
+// (nulls allowed); we render only the defined points so a missing sample
+// doesn't drag the line to zero. `windowHours` labels the axis below.
+function Sparkline({ values, windowHours, color = 'var(--brass, #c5a975)', height = 28, label }) {
+  const defined = values.filter(v => v != null && Number.isFinite(v));
+  if (defined.length < 2) {
+    return (
+      <div style={{ marginTop: 8, height: height + 14, color: 'var(--text-muted)', fontSize: 11 }}>
+        Trend ({windowHours}h): collecting…
+      </div>
+    );
+  }
+  const min = Math.min(...defined);
+  const max = Math.max(...defined);
+  const span = max - min || 1;
+  const w = 240;
+  const h = height;
+  const n = values.length;
+  let path = '';
+  let started = false;
+  values.forEach((v, i) => {
+    if (v == null || !Number.isFinite(v)) return;
+    const x = n === 1 ? 0 : (i / (n - 1)) * w;
+    const y = h - ((v - min) / span) * h;
+    path += `${started ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)} `;
+    started = true;
+  });
+  const last = defined[defined.length - 1];
+  return (
+    <div style={{ marginTop: 8 }} aria-label={label || `Trend over last ${windowHours} hours`}>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none"
+           style={{ width: '100%', height, display: 'block' }} aria-hidden="true">
+        <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+        <span>{windowHours}h</span>
+        <span>min {Math.round(min)} · max {Math.round(max)} · now {Math.round(last)}</span>
       </div>
     </div>
   );
@@ -52,6 +95,8 @@ export default function AdminOps() {
   const [snap, setSnap] = useState(null);
   const [err, setErr] = useState(null);
   const [source, setSource] = useState('');
+  const [historyHours, setHistoryHours] = useState(24);
+  const [history, setHistory] = useState(null);
 
   useEffect(() => {
     if (!isSuperuser) { setShowModal(true); return; }
@@ -72,6 +117,58 @@ export default function AdminOps() {
     const t = setInterval(load, 10_000);
     return () => { stopped = true; clearInterval(t); };
   }, [isSuperuser, setShowModal]);
+
+  // Task #423 — fetch the persisted history once on mount + when the
+  // operator changes the window, and refresh every 60s (matches the
+  // server-side snapshot cadence).
+  useEffect(() => {
+    if (!isSuperuser) return;
+    let stopped = false;
+    const load = async () => {
+      try {
+        const r = await superuserFetch(`/admin/ops/history?hours=${historyHours}`, {
+          headers: { 'x-superuser-key': 'session' },
+        });
+        const d = await r.json();
+        if (r.ok && !stopped) setHistory(d);
+      } catch (_) { /* non-fatal — tiles still show live state */ }
+    };
+    load();
+    const t = setInterval(load, 60_000);
+    return () => { stopped = true; clearInterval(t); };
+  }, [isSuperuser, historyHours]);
+
+  // Pre-extract per-metric value arrays for the sparklines so we walk the
+  // sample array exactly once per render rather than once per tile.
+  const series = useMemo(() => {
+    const empty = {
+      http5xx: [], parserDur: [], parserQueue: [],
+      stripeLag: [], provFail: [], provInFlight: [],
+      discordLatency: [], pushSubs: [],
+    };
+    if (!history?.samples?.length) return empty;
+    const out = { ...empty };
+    let prevFail = null;
+    for (const s of history.samples) {
+      out.http5xx.push(s.http5xx);
+      out.parserDur.push(s.parserLastDurationMs);
+      out.parserQueue.push(s.parserQueueDepth);
+      out.stripeLag.push(s.stripeMaxLagMs);
+      out.provInFlight.push(s.provisionerInFlight);
+      out.discordLatency.push(s.discordGatewayLatencyMs);
+      out.pushSubs.push(s.pushSubscriptionCount);
+      // Failure rate per sample = delta of cumulative counter. The very
+      // first sample (or any after a process restart that reset the
+      // counter) shows 0 rather than a spurious negative spike.
+      if (prevFail == null || s.provisionerFailureTotal < prevFail) {
+        out.provFail.push(0);
+      } else {
+        out.provFail.push(s.provisionerFailureTotal - prevFail);
+      }
+      prevFail = s.provisionerFailureTotal;
+    }
+    return out;
+  }, [history]);
 
   const stripeRows = useMemo(() => {
     if (!snap) return [];
@@ -100,10 +197,24 @@ export default function AdminOps() {
 
   return (
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0 }}>Server-side Ops</h1>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          Auto-refreshing every 10s · <Link to="/admin">← back to admin</Link>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label>
+            Trend window:&nbsp;
+            <select
+              value={historyHours}
+              onChange={e => setHistoryHours(Number(e.target.value))}
+              aria-label="Trend window length"
+            >
+              <option value={1}>1h</option>
+              <option value={6}>6h</option>
+              <option value={24}>24h</option>
+              <option value={72}>3d</option>
+              <option value={168}>7d</option>
+            </select>
+          </label>
+          <span>Auto-refreshing every 10s · <Link to="/admin">← back to admin</Link></span>
         </div>
       </div>
       {err && (
@@ -118,6 +229,7 @@ export default function AdminOps() {
             <Tile
               title="Replay parser"
               status={snap.parser.ready ? (snap.parser.lastError ? 'warn' : 'ok') : 'err'}
+              spark={<Sparkline values={series.parserDur} windowHours={historyHours} label="Parser last duration trend" />}
             >
               <Row k="Ready" v={snap.parser.ready ? 'yes' : 'no'} />
               <Row k="Queue depth" v={snap.parser.queueDepth} />
@@ -140,6 +252,7 @@ export default function AdminOps() {
             <Tile
               title="Discord bot"
               status={snap.discord.connected ? (snap.discord.gatewayLatencyMs != null && snap.discord.gatewayLatencyMs > 500 ? 'warn' : 'ok') : 'err'}
+              spark={<Sparkline values={series.discordLatency} windowHours={historyHours} label="Discord gateway latency trend" />}
             >
               <Row k="Connected" v={snap.discord.connected ? 'yes' : 'no'} />
               <Row k="Gateway latency" v={snap.discord.gatewayLatencyMs != null ? `${snap.discord.gatewayLatencyMs} ms` : '—'} />
@@ -149,6 +262,7 @@ export default function AdminOps() {
             <Tile
               title="Provisioner"
               status={snap.provisioner.lastFailureAt && (!snap.provisioner.lastSuccessAt || snap.provisioner.lastFailureAt > snap.provisioner.lastSuccessAt) ? 'warn' : 'ok'}
+              spark={<Sparkline values={series.provFail} windowHours={historyHours} color="#f08a8a" label="Provisioner failures per minute trend" />}
             >
               <Row k="In-flight" v={snap.provisioner.inFlight.length ? snap.provisioner.inFlight.join(', ') : 'none'} />
               <Row k="Last success" v={`${fmtAge(snap.provisioner.lastSuccessAt)}${snap.provisioner.lastSuccessSessionId ? ` (#${snap.provisioner.lastSuccessSessionId})` : ''}`} />
@@ -159,6 +273,7 @@ export default function AdminOps() {
             <Tile
               title="Push subscriptions"
               status={snap.push.webPushReady ? (snap.push.lastDeliveryError ? 'warn' : 'ok') : 'warn'}
+              spark={<Sparkline values={series.pushSubs} windowHours={historyHours} label="Push subscription count trend" />}
             >
               <Row k="Web Push" v={snap.push.webPushReady ? 'configured' : 'not configured'} />
               <Row k="Subscriptions" v={snap.push.subscriptionCount != null ? snap.push.subscriptionCount : '—'} />
@@ -169,6 +284,7 @@ export default function AdminOps() {
             <Tile
               title="5xx (last 60 min)"
               status={snap.http.count5xxLast60m === 0 ? 'ok' : snap.http.count5xxLast60m < 10 ? 'warn' : 'err'}
+              spark={<Sparkline values={series.http5xx} windowHours={historyHours} color="#f08a8a" label="5xx count trend" />}
             >
               <Row k="Count" v={snap.http.count5xxLast60m} />
               <Row k="Window" v={`${Math.round(snap.http.windowMs / 60000)} min`} />
