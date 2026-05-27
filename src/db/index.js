@@ -2045,6 +2045,44 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_feature_health_key_ran ON feature_health_probes (key, ran_at DESC)`);
+
+    // Task #426 — Browser smoke test runs. One row per Playwright execution;
+    // step-level results (assertions + screenshot paths + perceptual diff
+    // scores) live in browser_smoke_steps. Baselines on disk under
+    // tests/smoke/baselines/, the row just stores the relative path so the
+    // UI can serve current/baseline/diff PNGs side-by-side and an Approve
+    // button can promote the current screenshot to the baseline.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS browser_smoke_runs (
+        id BIGSERIAL PRIMARY KEY,
+        trigger TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running',
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        finished_at TIMESTAMPTZ,
+        total_steps INTEGER NOT NULL DEFAULT 0,
+        passed_steps INTEGER NOT NULL DEFAULT 0,
+        failed_steps INTEGER NOT NULL DEFAULT 0,
+        notes TEXT
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_browser_smoke_runs_started ON browser_smoke_runs (started_at DESC)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS browser_smoke_steps (
+        id BIGSERIAL PRIMARY KEY,
+        run_id BIGINT NOT NULL REFERENCES browser_smoke_runs(id) ON DELETE CASCADE,
+        step_key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reason TEXT,
+        duration_ms INTEGER,
+        screenshot_path TEXT,
+        baseline_path TEXT,
+        diff_path TEXT,
+        diff_pixels INTEGER,
+        diff_ratio REAL
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_browser_smoke_steps_run ON browser_smoke_steps (run_id, step_key)`);
     // Replace the legacy single-column UNIQUE(slug) with a tenant-aware
     // uniqueness model so a global slot ("home_banner", tenant_id=NULL) and
     // a tenant-specific override of the same slug can coexist. Two partial
@@ -16513,6 +16551,83 @@ async function getLastSuccessByKey() {
   return out;
 }
 
+// Task #426 — Browser smoke test helpers.
+async function createBrowserSmokeRun({ trigger }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO browser_smoke_runs (trigger, status) VALUES ($1, 'running') RETURNING *`,
+    [String(trigger || 'manual').slice(0, 32)]
+  );
+  return r.rows[0];
+}
+
+async function finishBrowserSmokeRun(id, { status, totalSteps, passedSteps, failedSteps, notes }) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE browser_smoke_runs
+        SET status=$2, finished_at=NOW(), total_steps=$3, passed_steps=$4, failed_steps=$5, notes=$6
+      WHERE id=$1 RETURNING *`,
+    [id, String(status).slice(0, 32), totalSteps | 0, passedSteps | 0, failedSteps | 0, notes ? String(notes).slice(0, 4000) : null]
+  );
+  return r.rows[0] || null;
+}
+
+async function recordBrowserSmokeStep({
+  runId, stepKey, label, status, reason = null, durationMs = null,
+  screenshotPath = null, baselinePath = null, diffPath = null, diffPixels = null, diffRatio = null,
+}) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO browser_smoke_steps
+       (run_id, step_key, label, status, reason, duration_ms,
+        screenshot_path, baseline_path, diff_path, diff_pixels, diff_ratio)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [runId, String(stepKey).slice(0, 64), String(label).slice(0, 200),
+     String(status).slice(0, 32), reason ? String(reason).slice(0, 1000) : null,
+     durationMs, screenshotPath, baselinePath, diffPath, diffPixels, diffRatio]
+  );
+  return r.rows[0];
+}
+
+async function listBrowserSmokeRuns({ limit = 30 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM browser_smoke_runs ORDER BY started_at DESC LIMIT $1`,
+    [Math.max(1, Math.min(200, limit | 0))]
+  );
+  return r.rows;
+}
+
+async function getBrowserSmokeRun(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM browser_smoke_runs WHERE id=$1`, [id]);
+  return r.rows[0] || null;
+}
+
+async function getBrowserSmokeSteps(runId) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM browser_smoke_steps WHERE run_id=$1 ORDER BY id ASC`, [runId]);
+  return r.rows;
+}
+
+async function getBrowserSmokeStep(runId, stepKey) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM browser_smoke_steps WHERE run_id=$1 AND step_key=$2 ORDER BY id DESC LIMIT 1`,
+    [runId, stepKey]
+  );
+  return r.rows[0] || null;
+}
+
+async function updateBrowserSmokeStepBaseline(id, baselinePath) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE browser_smoke_steps SET baseline_path=$2 WHERE id=$1 RETURNING *`,
+    [id, baselinePath]
+  );
+  return r.rows[0] || null;
+}
+
 async function recordSponsorshipImpression(orderId) {
   if (!orderId) return;
   const p = getPool();
@@ -20923,6 +21038,15 @@ module.exports = {
   getLatestFeatureHealthProbe,
   getLatestFeatureHealthProbes,
   getLastSuccessByKey,
+  // Task #426 — browser smoke
+  createBrowserSmokeRun,
+  finishBrowserSmokeRun,
+  recordBrowserSmokeStep,
+  listBrowserSmokeRuns,
+  getBrowserSmokeRun,
+  getBrowserSmokeSteps,
+  getBrowserSmokeStep,
+  updateBrowserSmokeStepBaseline,
   // Task #378 — Pro replay browser
   upsertProMatchHeader,
   upsertProMatchDetails,

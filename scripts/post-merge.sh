@@ -175,4 +175,12 @@ else
   fi
 fi
 
+echo "[post-merge] Checking for major patch-note → triggering browser smoke suite (Task #426)..."
+# Best-effort: scripts/trigger-major-smoke.js reads src/data/patchNotes.js,
+# checks if the most-recent entry has `major: true`, and POSTs to the
+# running server's /api/internal/smoke/trigger endpoint with the shared
+# SMOKE_INTERNAL_TOKEN bearer. No-ops silently when the latest note isn't
+# major or when the token/URL aren't configured. Never fails the push.
+node scripts/trigger-major-smoke.js || true
+
 echo "[post-merge] Done."

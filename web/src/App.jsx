@@ -75,6 +75,7 @@ const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const AdminSpotlight = lazy(() => import('./pages/AdminSpotlight'));
 const AdminOps = lazy(() => import('./pages/AdminOps'));
 const AdminFeatureHealth = lazy(() => import('./pages/AdminFeatureHealth'));
+const AdminBrowserSmoke = lazy(() => import('./pages/AdminBrowserSmoke'));
 const AdminSmurfWatch = lazy(() => import('./pages/AdminSmurfWatch'));
 const AdminSmokeTest = lazy(() => import('./pages/AdminSmokeTest'));
 const AdminSmokeTestRun = lazy(() => import('./pages/AdminSmokeTestRun'));
@@ -1244,6 +1245,8 @@ function AppRoutes() {
                 <Route path="/admin/spotlight" element={<AdminSpotlight />} />
                 <Route path="/admin/ops" element={<AdminOps />} />
                 <Route path="/admin/feature-health" element={<AdminFeatureHealth />} />
+                <Route path="/admin/browser-smoke" element={<AdminBrowserSmoke />} />
+                <Route path="/admin/browser-smoke/:id" element={<AdminBrowserSmoke />} />
                 <Route path="/admin/smurf-watch" element={<AdminSmurfWatch />} />
                 <Route path="/admin/smoke-test" element={<AdminSmokeTest />} />
                 <Route path="/admin/smoke-test/:id" element={<AdminSmokeTestRun />} />

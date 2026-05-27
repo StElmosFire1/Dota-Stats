@@ -82,6 +82,55 @@ Stripe Connect Express requires real KYC, so dev-testing the coaching marketplac
 
 Production must continue using the live `sk_live_…` key. Both keys go through Replit secrets, never committed.
 
+## Release ritual (Task #426)
+Five-minute manual smoke I run after every meaningful prod deploy, in addition to the
+automated browser-smoke suite below. Burn through it in order; bail on the first thing
+that looks off and fix forward.
+
+1. **Sign in via Steam** on `oceinhouse.gg`. Confirm the avatar + nickname load in the
+   top-right and `/profile` resolves to my own account.
+2. **Spin up an inhouse lobby** (`/inhouse` → Sign in → register a position → wait for
+   the auto-fill bot, or run with 2 friends + bots). Confirm the captain draft renders
+   and the dedicated server provisions on the 10th pick.
+3. **Complete one coaching surface action** — book a 1:1 (or open the coach editor as a
+   promoted test coach via Path A in the "Test coach end-to-end" section), confirm the
+   Stripe Checkout page loads (or test-card succeeds in test mode), and `/coach/earnings`
+   reflects the row.
+4. **Skim `/admin/feature-health`** — every probe green, no NEVER RUN tiles since the
+   last deploy, scheduler "last ran" within the last 35 minutes.
+5. **Skim `/admin/browser-smoke`** — most recent run green, screenshot thumbnails match
+   the baselines, no orphan RUNNING rows older than 10 minutes.
+6. **Confirm the Discord bot is online** in the OCE Inhouse server (presence pill green)
+   and post a `!ping` in #bot-spam. Sub-200ms reply means the gateway is healthy.
+
+### Automated browser smoke suite (Task #426)
+Real-browser Playwright check that loads ~12 user journeys against prod and
+perceptual-diffs each page against a stored baseline. Catches visual / route /
+interaction regressions the feature-health probe layer can't see.
+
+- **Specs + baselines** live under `tests/smoke/` — `smoke.spec.js` iterates
+  `src/smoke/journeys.js`; baselines are PNGs at `tests/smoke/baselines/<key>.png`.
+- **Programmatic runner** at `src/smoke/runner.js` is the production entry point —
+  uses the `playwright` package directly, screenshots each journey, perceptual-diffs
+  via `pixelmatch`, writes per-step results to `browser_smoke_runs` /
+  `browser_smoke_steps`, and DMs `OWNER_DISCORD_ID` on any step failure.
+- **Three triggers**:
+  1. Weekly cron `0 3 * * 0` in `Australia/Sydney` (registered in `src/index.js`).
+  2. Admin button on `/admin/browser-smoke` → ▶ Run smoke now (superuser-gated).
+  3. `scripts/trigger-major-smoke.js` invoked from `scripts/post-merge.sh` — fires
+     `POST /api/internal/smoke/trigger` when the most-recently-merged patch note
+     carries `major: true`. Requires `SMOKE_INTERNAL_TOKEN` (shared bearer token,
+     set in Replit secrets + prod env) and optionally `SMOKE_TRIGGER_URL` (defaults
+     to `https://oceinhouse.gg`).
+- **Baseline approval** — every step's detail card on `/admin/browser-smoke/:id`
+  has an *Approve new baseline* button that copies the current screenshot over
+  `tests/smoke/baselines/<key>.png`. Commit the changed PNG with the next batch
+  so production picks it up on the next deploy.
+- **Optional devDependencies**: `@playwright/test`, `playwright`, `pixelmatch`,
+  `pngjs`. On a fresh prod host: `npx playwright install chromium` once. The
+  runner degrades gracefully when these aren't installed — the run records a
+  single SKIPPED step with a clear message instead of throwing.
+
 ## Environment variables (security-relevant)
 - `OWNER_DISCORD_ID` — overrides the hardcoded Discord owner ID used by `!perf-backfill`, `!backfill-pick-source`, and other owner-only Discord commands in both editions (`src/discord/bot.js`, `community-edition/src/discord/bot.js`). Falls back to the historical default (`135991380760592384`) when unset so prod doesn't break on a missed env update — set this in Replit secrets / prod env any time the owner handle changes.
 - `OTEL_EXPORTER_OTLP_ENDPOINT` — Task #417 observability gate. When **unset**, OpenTelemetry stays fully disabled (no SDK, no exporter, no perf cost). Set to the Grafana Cloud OTLP/HTTP base URL (e.g. `https://otlp-gateway-prod-us-east-0.grafana.net/otlp`) to enable HTTP + Express auto-instrumentation, plus custom spans/metrics on the parser, Stripe SDK, dedicated-server provisioner, Discord sends, replay download, and push delivery. Companion vars: `OTEL_EXPORTER_OTLP_HEADERS` (e.g. `Authorization=Basic <base64(instanceID:token)>`), `OTEL_SERVICE_NAME` (defaults to `oi-bot`), `OTEL_METRICS_EXPORT_INTERVAL_MS` (defaults to `30000`). Dashboard JSON committed at `ops/grafana/dashboard.json` — import it via Grafana → Dashboards → New → Import.

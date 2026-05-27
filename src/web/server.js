@@ -6390,6 +6390,119 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // ─── Task #426 — Browser smoke runs ──────────────────────────────────────
+  // Distinct from the manual checklist tool below (Task #479). This is the
+  // automated Playwright suite — admin button, weekly cron, post-merge
+  // major-patch hook. Routes are superuser-gated; the internal hook uses a
+  // shared env-var token so the post-merge script can fire without holding
+  // a superuser session.
+
+  router.get('/admin/smoke/runs', requireSuperuser, async (req, res) => {
+    try {
+      const runs = await db.listBrowserSmokeRuns({ limit: Number(req.query.limit) || 30 });
+      res.set('Cache-Control', 'no-store');
+      res.json({ runs });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.get('/admin/smoke/runs/:id', requireSuperuser, async (req, res) => {
+    try {
+      const run = await db.getBrowserSmokeRun(Number(req.params.id));
+      if (!run) return res.status(404).json({ error: 'run not found' });
+      const steps = await db.getBrowserSmokeSteps(run.id);
+      res.set('Cache-Control', 'no-store');
+      res.json({ run, steps });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.post('/admin/smoke/run', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { runSmoke } = require('../smoke/runner');
+      // Don't await — Playwright takes 60-180s and we don't want to block
+      // the request. Return the runId immediately; the UI polls runs/:id.
+      const run = await db.createBrowserSmokeRun({ trigger: 'admin' });
+      setImmediate(() => {
+        runSmoke({ trigger: 'admin', _existingRunId: run.id }).catch((e) => {
+          console.warn('[Smoke] admin-triggered run failed:', e.message);
+        });
+      });
+      res.json({ runId: run.id, status: 'queued' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Internal trigger used by scripts/post-merge.sh on a major patch note.
+  // Token check matches SMOKE_INTERNAL_TOKEN; the hook reads the same env
+  // var to set the Authorization header. No-op (404) when unconfigured so
+  // a forgotten env var fails closed rather than leaving the route open.
+  router.post('/internal/smoke/trigger', express.json(), async (req, res) => {
+    const expected = process.env.SMOKE_INTERNAL_TOKEN;
+    if (!expected) return res.status(404).json({ error: 'not configured' });
+    const provided = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    if (provided !== expected) return res.status(401).json({ error: 'unauthorized' });
+    try {
+      const { runSmoke, isLatestPatchNoteMajor } = require('../smoke/runner');
+      if (!isLatestPatchNoteMajor()) return res.json({ skipped: true, reason: 'latest patch note is not major' });
+      const run = await db.createBrowserSmokeRun({ trigger: 'post_merge_major' });
+      setImmediate(() => {
+        runSmoke({ trigger: 'post_merge_major', _existingRunId: run.id }).catch((e) => {
+          console.warn('[Smoke] post-merge run failed:', e.message);
+        });
+      });
+      res.json({ runId: run.id, status: 'queued' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.post('/admin/smoke/runs/:id/steps/:stepKey/approve-baseline', requireSuperuser, async (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const runId = Number(req.params.id);
+      const stepKey = String(req.params.stepKey);
+      const step = await db.getBrowserSmokeStep(runId, stepKey);
+      if (!step) return res.status(404).json({ error: 'step not found' });
+      if (!step.screenshot_path) return res.status(400).json({ error: 'step has no screenshot to promote' });
+      const repoRoot = path.resolve(__dirname, '..', '..');
+      const src = path.join(repoRoot, step.screenshot_path);
+      const baselineRel = path.join('tests', 'smoke', 'baselines', `${stepKey}.png`);
+      const dst = path.join(repoRoot, baselineRel);
+      if (!fs.existsSync(src)) return res.status(400).json({ error: 'screenshot file missing on disk' });
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst);
+      await db.updateBrowserSmokeStepBaseline(step.id, baselineRel);
+      res.json({ ok: true, baselinePath: baselineRel });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Screenshot / baseline / diff image server. Superuser-only; resolves
+  // paths inside the repo and refuses anything outside tests/smoke/.
+  // Accepts both header-based superuser auth (browsers with an active
+  // session) and a `superuser_key` query param (so an <img> tag, which
+  // can't send custom headers, can still render through the gate).
+  function _smokeImageAuth(req, res, next) {
+    if (req.session && req.session.isSuperuser) return next();
+    const expected = process.env.SUPERUSER_PASSWORD;
+    if (!expected) return res.status(503).end();
+    const provided = req.headers['x-superuser-key'] || req.query.superuser_key;
+    if (provided && provided === expected) return next();
+    return res.status(401).end();
+  }
+  router.get('/admin/smoke/image', _smokeImageAuth, async (req, res) => {
+    try {
+      const path = require('path');
+      const fs = require('fs');
+      const rel = String(req.query.path || '');
+      if (!rel) return res.status(400).end();
+      const repoRoot = path.resolve(__dirname, '..', '..');
+      const abs = path.resolve(repoRoot, rel);
+      const allowedRoot = path.join(repoRoot, 'tests', 'smoke');
+      if (!abs.startsWith(allowedRoot + path.sep)) return res.status(403).end();
+      if (!fs.existsSync(abs)) return res.status(404).end();
+      res.set('Cache-Control', 'no-store');
+      res.set('Content-Type', 'image/png');
+      fs.createReadStream(abs).pipe(res);
+    } catch (err) { res.status(500).end(); }
+  });
+
   // ─── Task #479 — Smoke-test runs ─────────────────────────────────────────
   // Live per-release smoke-test checklist tool. Each run snapshots the base
   // checklist + auto-injected "what just shipped" sections (one per patch

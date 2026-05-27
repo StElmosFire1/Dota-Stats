@@ -105,6 +105,30 @@ export async function runFeatureHealth(superuserKey, key = null) {
   });
 }
 
+// Task #426 — Browser smoke run helpers.
+export async function listBrowserSmokeRuns(superuserKey) {
+  return superuserJson('/admin/smoke/runs', { superuserKey });
+}
+export async function getBrowserSmokeRun(superuserKey, id) {
+  return superuserJson(`/admin/smoke/runs/${encodeURIComponent(id)}`, { superuserKey });
+}
+export async function triggerBrowserSmokeRun(superuserKey) {
+  return superuserJson('/admin/smoke/run', { method: 'POST', superuserKey, body: {} });
+}
+export async function approveBrowserSmokeBaseline(superuserKey, runId, stepKey) {
+  return superuserJson(
+    `/admin/smoke/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepKey)}/approve-baseline`,
+    { method: 'POST', superuserKey, body: {} }
+  );
+}
+export function browserSmokeImageUrl(superuserKey, relPath) {
+  // Image route is superuser-gated but <img> can't send custom headers, so
+  // we pass the key as a query param (the requireSuperuser middleware
+  // accepts ?superuser_key= in addition to the header).
+  const q = new URLSearchParams({ path: relPath, superuser_key: superuserKey || '' });
+  return `/api/admin/smoke/image?${q.toString()}`;
+}
+
 // Task #297 — superuser one-click "provision & connect" diagnostic helpers.
 // `runInhouseDiagProvision` creates a synthetic flagged session and pushes
 // the real RCON match-password to the configured dedicated server, returning

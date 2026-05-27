@@ -1,5 +1,22 @@
 module.exports = [
   {
+    "version": "7.90",
+    "title": "Browser smoke suite + release ritual (Task #426)",
+    "published_at": "2026-05-27",
+    "notes": [
+      "**Why.** Feature-health probes (Task #425) prove the backend can answer questions; they can't prove the React frontend actually rendered something, that the captain-draft page didn't go blank, or that the coaches grid still lays out the way it did yesterday. This task adds a real-browser Playwright smoke pass that loads ~12 top user journeys, screenshots each one, and perceptual-diffs against a stored baseline — the missing layer between 'the API responded' and 'the site is alive'.",
+      "**Three triggers.** Weekly cron at `0 3 * * 0` in `Australia/Sydney` registered from `src/index.js` (node-cron handles DST). Admin button on the new `/admin/browser-smoke` page (▶ Run smoke now). And `scripts/trigger-major-smoke.js` invoked from `scripts/post-merge.sh` after every push — POSTs to the internal trigger route only when the most-recently-merged patch note carries `major: true`, so day-to-day batches don't fire the suite but a 6.x → 7.x style release does.",
+      "**Programmatic runner (`src/smoke/runner.js`).** Uses the `playwright` package directly (Chromium-only, headless, 1280x800 viewport). For each journey: navigate, wait for an expected selector, screenshot the viewport, perceptual-diff via `pixelmatch` against `tests/smoke/baselines/<key>.png` if present, record pass/fail to `browser_smoke_steps`. A single in-flight flag prevents overlapping runs. Optional deps (`playwright`, `pixelmatch`, `pngjs`, `@playwright/test`) are detected at runtime — when missing, the runner writes a single SKIPPED step with a clear `npx playwright install` hint instead of throwing.",
+      "**Journey registry (`src/smoke/journeys.js`).** 12 journeys cover home, leaderboard, players index, match list, hero stats, synergy grid, coaches listing, tournaments, inhouse lobby, patch notes, Pro upsell, and the `/api/health` JSON endpoint. Adding a new journey is a one-line append.",
+      "**Owner alerting.** On any step failure the runner DMs `OWNER_DISCORD_ID` via `getDiscordBot()._dmOwner()` with a per-step failure summary (capped at 10 lines + a 'and N more' tail) and a link to the admin run page. Alert is best-effort — Discord-unavailable never breaks the runner.",
+      "**Baseline approval UI.** New `/admin/browser-smoke` page lists the latest 30 runs with status pills, trigger source, and per-row pass/fail counts. Clicking through to `/admin/browser-smoke/:id` shows each step's Current / Baseline / Diff PNGs side-by-side, the diff ratio, and an *Approve new baseline* button that copies the current screenshot over `tests/smoke/baselines/<key>.png`. The PNG ships with the next merge so prod picks it up on deploy.",
+      "**New schema.** `browser_smoke_runs (id, trigger, status, started_at, finished_at, total_steps, passed_steps, failed_steps, notes)` + `browser_smoke_steps (id, run_id, step_key, label, status, reason, duration_ms, screenshot_path, baseline_path, diff_path, diff_pixels, diff_ratio)` added inline in `src/db/index.js` init() with `(started_at DESC)` and `(run_id, step_key)` indexes. Helpers: `createBrowserSmokeRun`, `finishBrowserSmokeRun`, `recordBrowserSmokeStep`, `listBrowserSmokeRuns`, `getBrowserSmokeRun`, `getBrowserSmokeSteps`, `getBrowserSmokeStep`, `updateBrowserSmokeStepBaseline`.",
+      "**Routes.** `GET /api/admin/smoke/runs` (list), `GET /api/admin/smoke/runs/:id` (detail + steps), `POST /api/admin/smoke/run` (queues an admin-triggered run), `POST /api/admin/smoke/runs/:id/steps/:stepKey/approve-baseline` (promotes screenshot to baseline), `GET /api/admin/smoke/image?path=…` (serves screenshot/baseline/diff PNGs with path-traversal protection scoped to `tests/smoke/`). All five superuser-gated. Plus `POST /api/internal/smoke/trigger` (shared-secret `SMOKE_INTERNAL_TOKEN` bearer) for the post-merge hook — fails closed with 404 when the env var is unset.",
+      "**Release ritual section in `replit.md`.** 6-step 5-minute manual checklist (Steam sign-in, inhouse smoke, coaching surface, feature-health, browser-smoke, Discord presence) plus a full reference for the automated suite. Distinct from the existing manual `/admin/smoke-test` checklist tool (Task #479) which is the per-release verification runner."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.89",
     "title": "AI scraper / clone-builder hardening — deterrent + observability (Task #492)",
     "published_at": "2026-05-28",

@@ -305,6 +305,30 @@ async function main() {
       }
     }
 
+    // Task #426 — weekly browser-smoke cron, Sunday 03:00 OCE. node-cron's
+    // tz support handles AEDT/AEST. Best-effort: any failure is logged and
+    // never blocks the rest of startup. Skipped entirely if node-cron isn't
+    // resolvable (shouldn't happen — it's already a hard dep — but keep
+    // the guard so we degrade gracefully).
+    if (startupStatus.database) {
+      try {
+        const cron = require('node-cron');
+        cron.schedule('0 3 * * 0', async () => {
+          try {
+            const { runSmoke } = require('./smoke/runner');
+            console.log('[Smoke] weekly cron firing...');
+            const res = await runSmoke({ trigger: 'cron_weekly' });
+            console.log(`[Smoke] weekly cron done — run #${res.runId} status=${res.status || (res.skipped ? 'skipped' : '?')}`);
+          } catch (err) {
+            console.warn('[Smoke] weekly cron error:', err.message);
+          }
+        }, { timezone: 'Australia/Sydney' });
+        console.log('[Startup] Browser-smoke weekly cron scheduled (Sun 03:00 Australia/Sydney)');
+      } catch (err) {
+        console.warn('[Startup] Browser-smoke cron failed to register:', err.message);
+      }
+    }
+
     // v5.75: kick off the inhouse auto-start ticker once the API is up so
     // its internal /select-captains call can hit the live server.
     if (startupStatus.database) {
