@@ -264,6 +264,83 @@ async function _runSmurfRecompute(reason = 'cron') {
 setTimeout(() => { _runSmurfRecompute('boot').catch(() => {}); }, 5 * 60_000).unref();
 setInterval(() => { _runSmurfRecompute('cron').catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
 
+// Task #419 — Bot-independent owner alert path. Used by the rollover cron
+// when the Discord bot isn't around (or when bot._dmOwner itself throws) so
+// failures are never silent. Tries, in order:
+//   1. bot._dmOwner if the bot is connected (DMs OWNER_DISCORD_ID).
+//   2. OWNER_ALERT_WEBHOOK_URL — POSTs a JSON body { text } to that URL.
+//      Compatible with Discord/Slack-style incoming webhooks out of the box.
+//   3. Loud stderr line tagged [ROLLOVER FAILURE] — guaranteed to land in
+//      PM2 logs even when both 1 and 2 are unavailable, so the operator can
+//      find it after the fact.
+async function _alertOwnerOfRolloverFailure(season, err, bot) {
+  const text =
+    `🚨 [Auto-Rollover Failure] Season "${season.name}" (id=${season.id}): ` +
+    `${err.message || String(err)}. Season remains active; the next per-minute ` +
+    `cron tick will retry. Investigate before then.`;
+  let delivered = false;
+  if (bot && typeof bot._dmOwner === 'function') {
+    try { await bot._dmOwner(text); delivered = true; } catch (_) {}
+  }
+  if (!delivered && process.env.OWNER_ALERT_WEBHOOK_URL) {
+    try {
+      const fetchFn = global.fetch || (await import('node-fetch')).default;
+      const r = await fetchFn(process.env.OWNER_ALERT_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, content: text }),
+      });
+      if (r.ok) delivered = true;
+    } catch (whErr) {
+      console.warn('[Season] OWNER_ALERT_WEBHOOK_URL post failed:', whErr.message);
+    }
+  }
+  // Always also log loud so a log-only alert is still discoverable.
+  console.error(`[ROLLOVER FAILURE] ${text}${delivered ? '' : ' (owner-alert channels unavailable — log-only)'}`);
+}
+
+// Task #419 — Season auto-rollover cron tick. Runs every minute, finds any
+// seasons whose `end_date` is in the past + are still active + have no
+// `season_archives` row, and triggers the bot's transactional rollover
+// (snapshot → archive → mint achievements → activate next → announce). The
+// in-flight flag prevents overlapping ticks; the underlying DB rollover is
+// also idempotent. Owner-DM-on-failure happens inside _closeSeasonAndAnnounce.
+let _seasonRolloverInFlight = false;
+async function _runSeasonRolloverTick(reason = 'cron') {
+  if (_seasonRolloverInFlight) return;
+  _seasonRolloverInFlight = true;
+  try {
+    const due = await db.getSeasonsDueForRollover();
+    if (!due.length) return;
+    const bot = getDiscordBot();
+    for (const season of due) {
+      try {
+        if (bot && typeof bot._closeSeasonAndAnnounce === 'function') {
+          // Bot path: owner-DM-on-failure happens inside the bot helper.
+          await bot._closeSeasonAndAnnounce(season, { adminId: `auto:${reason}` });
+        } else {
+          // Task #419 — strict all-or-nothing: if the bot isn't connected we
+          // CAN'T announce, so we MUST NOT archive. Treat as a hard failure
+          // and alert the owner; the next per-minute tick will retry once
+          // the bot reconnects.
+          throw new Error('Discord bot unavailable — refusing to roll over without announcement (per all-or-nothing contract).');
+        }
+      } catch (e) {
+        console.error(`[Season] Auto-rollover failed for ${season.name}:`, e.message);
+        await _alertOwnerOfRolloverFailure(season, e, bot);
+      }
+    }
+  } catch (e) {
+    console.warn('[Season] Rollover tick error:', e.message);
+  } finally {
+    _seasonRolloverInFlight = false;
+  }
+}
+// First tick 90 s after boot to let the Discord bot finish connecting, then
+// every 60 s. .unref() so the timer doesn't keep Node alive during tests.
+setTimeout(() => { _runSeasonRolloverTick('boot').catch(() => {}); }, 90_000).unref();
+setInterval(() => { _runSeasonRolloverTick('cron').catch(() => {}); }, 60_000).unref();
+
 // Replay store cleanup: runs every 12 hours, deletes expired files from disk.
 setInterval(async () => {
   try {
@@ -5339,12 +5416,92 @@ function createApiRouter(startupStatus = {}, _app = null) {
         await bot.closeSeasonManually(id);
         res.json({ success: true, message: `Season "${rows[0].name}" closed — summary announced on Discord.` });
       } else {
-        await db.archiveSeason(id);
-        res.json({ success: true, archived_only: true, message: `Season "${rows[0].name}" archived. Discord bot is unavailable — no announcement was posted and next-season activation did not run. Restart the bot and use the re-announce feature.` });
+        // Task #419 — strict all-or-nothing: refuse to archive when we can't
+        // announce. Alert the owner and return a 503 so the operator knows
+        // to retry once the bot is back.
+        await _alertOwnerOfRolloverFailure(
+          rows[0],
+          new Error('Manual close attempted while Discord bot was unavailable.'),
+          bot,
+        );
+        return res.status(503).json({
+          error: 'Discord bot unavailable — refusing to roll over without announcement. Retry once the bot is connected.',
+        });
       }
     } catch (err) {
       console.error('[API] closeSeason error:', err.message);
       res.status(500).json({ error: 'Failed to close season' });
+    }
+  });
+
+  // Task #419 — "Roll over now" alias around the existing close path. Same
+  // transactional rollover + announcement; explicit endpoint so admin UI can
+  // surface it without overloading the older `/close` button label.
+  router.post('/seasons/:id/rollover', requireSuperuser, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
+      const { rows } = await db.getPool().query(`SELECT * FROM seasons WHERE id = $1`, [id]);
+      if (!rows[0]) return res.status(404).json({ error: 'Season not found' });
+      if (rows[0].is_legacy) return res.status(400).json({ error: 'Season already archived — use Undo Rollover or Repost Announcement.' });
+      const bot = getDiscordBot();
+      const adminId = req.session?.user?.steamId || 'superuser';
+      if (bot && typeof bot._closeSeasonAndAnnounce === 'function') {
+        const result = await bot._closeSeasonAndAnnounce(rows[0], { adminId });
+        return res.json({ success: true, alreadyRolled: !!result?.alreadyRolled, message: `Season "${rows[0].name}" rolled over.` });
+      }
+      // Strict all-or-nothing: refuse to archive without an announce path.
+      await _alertOwnerOfRolloverFailure(
+        rows[0],
+        new Error('Roll over now clicked while Discord bot was unavailable.'),
+        bot,
+      );
+      return res.status(503).json({
+        error: 'Discord bot unavailable — refusing to roll over without announcement. Retry once the bot is connected.',
+      });
+    } catch (err) {
+      console.error('[API] rolloverSeason error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to roll over season' });
+    }
+  });
+
+  router.post('/seasons/:id/undo-rollover', requireSuperuser, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
+      const result = await db.undoLastRollover(id);
+      res.json({ success: true, ...result, message: 'Rollover undone — season restored to active.' });
+    } catch (err) {
+      console.error('[API] undoLastRollover error:', err.message);
+      res.status(400).json({ error: err.message || 'Failed to undo rollover' });
+    }
+  });
+
+  router.put('/seasons/:id/next-template', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid season id' });
+      const { template } = req.body || {};
+      if (template != null && typeof template !== 'object') {
+        return res.status(400).json({ error: 'template must be a JSON object or null' });
+      }
+      const season = await db.setNextSeasonTemplate(id, template || null);
+      if (!season) return res.status(404).json({ error: 'Season not found' });
+      res.json({ season });
+    } catch (err) {
+      console.error('[API] setNextSeasonTemplate error:', err.message);
+      res.status(500).json({ error: 'Failed to set next-season template' });
+    }
+  });
+
+  router.get('/seasons/:id/archive', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const archive = await db.getSeasonArchive(id);
+      if (!archive) return res.status(404).json({ error: 'No archive snapshot for this season' });
+      res.json({ archive });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch archive' });
     }
   });
 

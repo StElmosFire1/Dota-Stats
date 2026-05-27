@@ -122,6 +122,15 @@ const ACHIEVEMENTS_CATALOGUE = [
   { key: 'referral_3',   label: 'Talent Scout',   desc: 'Refer 3 players to the league',    icon: '🎯',  group: 'Community',     secret: false, check: s => s.referrals >= 3 },
   { key: 'referral_5',   label: 'League Builder', desc: 'Refer 5+ players to the league',   icon: '🏗️',  group: 'Community',     secret: false, check: s => s.referrals >= 5 },
 
+  // ── Season Awards (Task #419 — minted by season auto-rollover, never by the
+  // per-match grant engine; check() always returns false) ────────────────────
+  { key: 'season_champion',     label: 'Season Champion',     desc: 'Finished #1 on the season leaderboard',         icon: '🥇',  group: 'Season Awards', secret: false, check: () => false },
+  { key: 'season_silver',       label: 'Season Silver',       desc: 'Finished #2 on the season leaderboard',         icon: '🥈',  group: 'Season Awards', secret: false, check: () => false },
+  { key: 'season_bronze',       label: 'Season Bronze',       desc: 'Finished #3 on the season leaderboard',         icon: '🥉',  group: 'Season Awards', secret: false, check: () => false },
+  { key: 'season_biggest_climb',label: 'Most Improved',       desc: 'Largest MMR gain across a season',              icon: '📈',  group: 'Season Awards', secret: false, check: () => false },
+  { key: 'season_iron_butt',    label: 'Iron Butt',           desc: 'Played the most games in a season',             icon: '🪑',  group: 'Season Awards', secret: false, check: () => false },
+  { key: 'season_mvp_machine',  label: 'MVP Machine',         desc: 'Most MVP votes earned in a season',             icon: '⭐',  group: 'Season Awards', secret: false, check: () => false },
+
   // ── Secret (label/desc hidden until earned) ───────────────────────────────────
   { key: 'secret_hat_trick',       label: 'Hat Trick',       desc: 'First blood in 3 consecutive games',          icon: '🎩',  group: 'Secret',        secret: true,  check: s => s.maxConsecFb >= 3 },
   { key: 'secret_perfect_support', label: 'Selfless',        desc: '0 kills, 0 deaths, 10+ assists in a winning game', icon: '🕊️', group: 'Secret',   secret: true,  check: s => s.hasPerfectSupport },

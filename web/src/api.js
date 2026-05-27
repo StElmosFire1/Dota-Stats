@@ -1851,6 +1851,37 @@ export async function closeSeasonApi(seasonId, superuserKey) {
   return data;
 }
 
+export async function rolloverSeasonApi(seasonId, superuserKey) {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/rollover`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to roll over season');
+  return data;
+}
+
+export async function undoSeasonRolloverApi(seasonId, superuserKey) {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/undo-rollover`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to undo rollover');
+  return data;
+}
+
+export async function setSeasonNextTemplateApi(seasonId, template, superuserKey) {
+  const res = await superuserFetch(BASE + `/seasons/${seasonId}/next-template`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-superuser-key': superuserKey },
+    body: JSON.stringify({ template }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to set next-season template');
+  return data;
+}
+
 export async function reannounceSeasonApi(seasonId, superuserKey) {
   const res = await superuserFetch(BASE + `/seasons/${seasonId}/announce`, {
     method: 'POST',

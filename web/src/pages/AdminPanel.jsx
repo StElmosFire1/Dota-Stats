@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -1639,6 +1639,17 @@ function SeasonLifecyclePanel({ superuserKey }) {
   const [seasons, setSeasons] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [endDate, setEndDate] = useState('');
+  // datetime-local expects local wall time as `YYYY-MM-DDTHH:mm`, not UTC.
+  // `toISOString()` would shift values by the local TZ offset (potentially
+  // by hours or even cross a date boundary) and silently move the rollover
+  // moment — so we format from local Date components instead.
+  function fmtDatetimeLocal(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
   const [matchLimit, setMatchLimit] = useState('');
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -1654,7 +1665,7 @@ function SeasonLifecyclePanel({ superuserKey }) {
         const active = list.find(s => s.active) || list[0];
         if (active) {
           setSelectedId(String(active.id));
-          setEndDate(active.end_date ? active.end_date.slice(0, 10) : '');
+          setEndDate(fmtDatetimeLocal(active.end_date));
           setMatchLimit(active.match_count_limit != null ? String(active.match_count_limit) : '');
         }
       })
@@ -1669,7 +1680,7 @@ function SeasonLifecyclePanel({ superuserKey }) {
     setMsg(''); setError('');
     const s = seasons.find(s => String(s.id) === id);
     if (s) {
-      setEndDate(s.end_date ? s.end_date.slice(0, 10) : '');
+      setEndDate(fmtDatetimeLocal(s.end_date));
       setMatchLimit(s.match_count_limit != null ? String(s.match_count_limit) : '');
     }
   }
@@ -1678,9 +1689,14 @@ function SeasonLifecyclePanel({ superuserKey }) {
     e.preventDefault();
     setSaving(true); setMsg(''); setError('');
     try {
+      // `endDate` is a local `YYYY-MM-DDTHH:mm` string from the datetime-local
+      // input. Send a proper ISO timestamp (with the browser's UTC offset
+      // baked in) so the server stores exactly the moment the operator picked
+      // in their own timezone, regardless of where the server runs.
+      const endIso = endDate ? new Date(endDate).toISOString() : null;
       const res = await setSeasonEndConditions(
         selectedId,
-        { end_date: endDate || null, match_count_limit: matchLimit ? parseInt(matchLimit) : null },
+        { end_date: endIso, match_count_limit: matchLimit ? parseInt(matchLimit) : null },
         superuserKey
       );
       const s = res.season;
@@ -1712,6 +1728,34 @@ function SeasonLifecyclePanel({ superuserKey }) {
       setError(err.message);
     } finally {
       setClosing(false);
+    }
+  }
+
+  const [undoing, setUndoing] = useState(false);
+  async function handleUndoRollover() {
+    if (!selectedId) return;
+    const s = selectedSeason;
+    if (!window.confirm(
+      `Undo the rollover for "${s?.name}"?\n\n` +
+      `This will:\n` +
+      `• restore this season to active\n` +
+      `• un-flag its matches as legacy\n` +
+      `• deactivate the next season if it was created/opened by the rollover\n` +
+      `• delete the archive snapshot row\n\n` +
+      `Refuses if the next season already has matches recorded. ` +
+      `Use this only to recover from a mistaken rollover.`
+    )) return;
+    setUndoing(true); setMsg(''); setError('');
+    try {
+      const res = await undoSeasonRolloverApi(selectedId, superuserKey);
+      setMsg(res.message || 'Rollover undone.');
+      const raw = await getSeasons();
+      const list = raw?.seasons || (Array.isArray(raw) ? raw : []);
+      setSeasons(list);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUndoing(false);
     }
   }
 
@@ -1760,10 +1804,10 @@ function SeasonLifecyclePanel({ superuserKey }) {
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <div style={{ flex: 1 }}>
               <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                End Date (auto-close on this date)
+                End Date & Time (auto-close at this moment — per-minute cron)
               </label>
               <input
-                type="date"
+                type="datetime-local"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
                 style={{ width: '100%', boxSizing: 'border-box' }}
@@ -1806,6 +1850,18 @@ function SeasonLifecyclePanel({ superuserKey }) {
                 style={{ fontSize: 13, color: '#a78bfa', borderColor: '#a78bfa' }}
               >
                 {reannouncing ? 'Reposting…' : '📢 Repost Announcement'}
+              </button>
+            )}
+            {selectedSeason?.is_legacy && (
+              <button
+                className="btn"
+                type="button"
+                disabled={undoing}
+                onClick={handleUndoRollover}
+                title="Restore this archived season to active and remove the archive snapshot. Refuses if the next season already has matches."
+                style={{ fontSize: 13, color: '#fbbf24', borderColor: '#fbbf24' }}
+              >
+                {undoing ? 'Undoing…' : '↩️ Undo Rollover'}
               </button>
             )}
             {selectedSeason && (

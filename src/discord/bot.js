@@ -2758,22 +2758,24 @@ class DiscordBot {
     }
   }
 
-  _buildSeasonCompleteEmbed(season, summary) {
+  _buildSeasonCompleteEmbed(season, summary, { payouts = [], nextSeason = null } = {}) {
     const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
     const summaryUrl = `${siteUrl}/seasons/${season.id}/summary`;
+    const ov = summary.overview || {};
 
     const embed = new EmbedBuilder()
       .setColor(0x7c6bff)
       .setTitle(`🏆 ${season.name} — Season Complete!`)
       .setDescription(
-        `**${summary.overview.totalMatches}** matches · **${summary.overview.totalPlayers}** players\n` +
+        `**${ov.totalMatches ?? 0}** matches · **${ov.totalPlayers ?? 0}** players\n` +
         `[📊 View Full Season Summary](${summaryUrl})`
       )
       .setTimestamp();
 
-    if (summary.topPlayers.length > 0) {
+    const top = summary.topPlayers || [];
+    if (top.length > 0) {
       const medals = ['🥇', '🥈', '🥉'];
-      const topStr = summary.topPlayers
+      const topStr = top
         .map((p, i) => `${medals[i]} **${p.display_name}** — ${p.mmr ?? '?'} MMR (${p.wins ?? 0}W/${p.losses ?? 0}L)`)
         .join('\n');
       embed.addFields({ name: '📊 Final Top 3', value: topStr });
@@ -2801,6 +2803,29 @@ class DiscordBot {
       });
     }
 
+    // Task #419 — prize winners (from snapshot) + next-season start.
+    const paidPayouts = (payouts || []).filter(po => po.winner_display_name);
+    if (paidPayouts.length > 0) {
+      const lines = paidPayouts.slice(0, 8).map(po => {
+        const cents = Number.isFinite(parseInt(po.resolved_amount_cents))
+          ? parseInt(po.resolved_amount_cents)
+          : parseInt(po.amount_cents) || 0;
+        const amount = cents > 0 ? ` — $${(cents / 100).toFixed(2)}` : '';
+        return `• **${po.label}**${amount} → ${po.winner_display_name}`;
+      });
+      embed.addFields({ name: '💰 Prize Winners', value: lines.join('\n') });
+    }
+
+    if (nextSeason) {
+      const startsAt = nextSeason.end_date
+        ? ` (runs until ${new Date(nextSeason.end_date).toLocaleDateString('en-AU')})`
+        : '';
+      embed.addFields({
+        name: '➡️ Next Up',
+        value: `**${nextSeason.name}** is now open${startsAt}.`,
+      });
+    }
+
     return embed;
   }
 
@@ -2811,41 +2836,55 @@ class DiscordBot {
     return announceIds.length > 0 ? announceIds : config.discord.statsChannelIds;
   }
 
-  async _closeSeasonAndAnnounce(season) {
+  async _closeSeasonAndAnnounce(season, { adminId = null } = {}) {
     try {
-      // Idempotency guard: re-fetch the season inside the transaction to confirm it
-      // is still active. If a concurrent call already closed it, bail out silently.
-      const { rows: check } = await db.getPool().query(
-        `SELECT id FROM seasons WHERE id = $1 AND active = true AND season_status = 'active'`,
-        [season.id]
-      );
-      if (!check.length) {
-        console.log(`[Season] ${season.name} already closed by a concurrent call — skipping.`);
-        return;
-      }
-
-      const summary = await db.getSeasonSummary(season.id);
-      const embed = this._buildSeasonCompleteEmbed(season, summary);
-
-      await db.archiveSeason(season.id);
-
-      // Prefer the announce channel for season closure events; fall back to stats channels.
+      // Task #419 — single all-or-nothing transactional rollover. The
+      // announce step runs as `onBeforeCommit` inside the txn so a Discord
+      // failure (network, all-channels-down, permission error) ROLLS BACK
+      // the whole DB rollover. The next per-minute cron tick will then
+      // retry from a clean slate instead of leaving an archived season
+      // with no announcement.
       const channels = await this._resolveChannels(this._resolveAnnounceChannelIds());
-      for (const ch of channels) {
-        await ch.send({ embeds: [embed] }).catch(err =>
-          console.error(`[Season] Announce error on ${ch.id}:`, err.message)
-        );
+      const result = await db.rolloverSeason(season.id, {
+        adminId,
+        onBeforeCommit: async (r) => {
+          const closedSeason = r.season || season;
+          const nextSeason = r.nextSeason || null;
+          const summary = r.archive?.summary || {};
+          const payouts = r.archive?.payouts || [];
+          const embed = this._buildSeasonCompleteEmbed(closedSeason, summary, { payouts, nextSeason });
+          if (channels.length === 0) {
+            throw new Error('No Discord announce channels resolved — aborting rollover so it can be retried.');
+          }
+          // Require at least one successful send. Per-channel failures are
+          // tolerated, but if every channel fails we throw so the txn aborts.
+          const sendResults = await Promise.all(channels.map(ch =>
+            ch.send({ embeds: [embed] })
+              .then(() => ({ ok: true, id: ch.id }))
+              .catch(err => {
+                console.error(`[Season] Announce error on ${ch.id}:`, err.message);
+                return { ok: false, id: ch.id, err: err.message };
+              })
+          ));
+          const successCount = sendResults.filter(s => s.ok).length;
+          if (successCount === 0) {
+            throw new Error(`All ${channels.length} Discord announce channel(s) failed — rollover aborted.`);
+          }
+        },
+      });
+      if (result.alreadyRolled) {
+        console.log(`[Season] ${season.name} already rolled over — skipping announcement.`);
+        return result;
       }
+      const closedSeason = result.season || season;
+      const nextSeason = result.nextSeason || null;
+      const grants = result.grants || [];
 
-      // Activate the next explicitly-pending season. Using season_status='pending'
-      // is precise — it won't accidentally activate an old inactive/deactivated season.
-      const { rows } = await db.getPool().query(
-        `SELECT * FROM seasons WHERE season_status = 'pending' AND id > $1 ORDER BY id ASC LIMIT 1`,
-        [season.id]
-      );
-      const nextSeason = rows[0];
+      // Post-commit "next season open" follow-up message. Best-effort —
+      // the season embed (the user-visible "what happened" message) has
+      // already been guaranteed to land by the in-txn announce above, so
+      // missing this opener won't leave the community in the dark.
       if (nextSeason) {
-        await db.setActiveSeason(nextSeason.id);
         const openMsg = `🎉 **${nextSeason.name}** is now open! Good luck everyone.`;
         for (const ch of channels) {
           await ch.send(openMsg).catch(() => {});
@@ -2854,12 +2893,31 @@ class DiscordBot {
       } else {
         this._notifyAdminChannel(
           `⚠️ **${season.name}** has ended but no next season is configured. ` +
-          `Create a new season in the admin panel to continue.`
+          `Create a new season in the admin panel to continue, or set a ` +
+          `\`next_season_template\` on the closing season for next time.`
         );
       }
+      return { ...result, grants };
     } catch (err) {
       console.error('[Season] Close and announce error:', err.message);
+      // Owner DM — surfaces silent cron failures so the operator can intervene
+      // before the next minute's tick re-tries against partially-modified state.
+      this._dmOwner(
+        `🚨 Season rollover failed for **${season.name}** (id=${season.id}):\n` +
+        `\`${err.message || String(err)}\`\n` +
+        `The DB transaction was rolled back; the season remains active. ` +
+        `Investigate before the next per-minute tick retries.`
+      ).catch(() => {});
       throw err;
+    }
+  }
+
+  async _dmOwner(message) {
+    try {
+      const user = await this.client.users.fetch(OWNER_DISCORD_ID);
+      if (user) await user.send(message);
+    } catch (e) {
+      console.warn('[Owner DM] failed:', e.message);
     }
   }
 

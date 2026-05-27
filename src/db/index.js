@@ -599,6 +599,25 @@ async function init() {
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS season_status TEXT NOT NULL DEFAULT 'pending'`);
     await p.query(`UPDATE seasons SET season_status = 'active' WHERE active = true AND season_status = 'pending'`);
     await p.query(`UPDATE seasons SET season_status = 'archived' WHERE is_legacy = true AND season_status = 'pending'`);
+    // Task #419 — Season auto-rollover. `next_season_template` is a free-form
+    // JSON blob the admin can attach to a season; on rollover, if there is no
+    // pending next season already configured, the rollover routine creates one
+    // from this template (currently honours { name, end_date, match_count_limit,
+    // buyin_amount_cents }). `season_archives` is an idempotency anchor + undo
+    // store — one row per archived season holds the final leaderboard, payouts
+    // and summary at the moment of rollover.
+    await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS next_season_template JSONB`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS season_archives (
+        id SERIAL PRIMARY KEY,
+        season_id INTEGER NOT NULL UNIQUE REFERENCES seasons(id) ON DELETE CASCADE,
+        leaderboard JSONB NOT NULL DEFAULT '[]'::jsonb,
+        payouts JSONB NOT NULL DEFAULT '[]'::jsonb,
+        summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+        next_season_id INTEGER REFERENCES seasons(id) ON DELETE SET NULL,
+        snapshotted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS season_buyins (
@@ -633,6 +652,10 @@ async function init() {
     `);
     await p.query(`ALTER TABLE season_payout_categories ADD COLUMN IF NOT EXISTS payout_mode VARCHAR(10) NOT NULL DEFAULT 'cents'`);
     await p.query(`ALTER TABLE season_payout_categories ADD COLUMN IF NOT EXISTS amount_percent DECIMAL(5,2) NOT NULL DEFAULT 0`);
+    // Task #419 — set when the season rolls over so payouts are explicitly
+    // "triggered" at rollover time. Read by operators/finance scripts and
+    // surfaced in the season archive snapshot.
+    await p.query(`ALTER TABLE season_payout_categories ADD COLUMN IF NOT EXISTS paid_out_at TIMESTAMPTZ`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_payout_categories_season ON season_payout_categories(season_id)`);
 
     await p.query(`
@@ -3179,6 +3202,498 @@ async function archiveSeason(id) {
   } catch (err) {
     await p.query('ROLLBACK');
     throw err;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task #419 — Season auto-rollover.
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-minute cron in src/web/server.js calls `getSeasonsDueForRollover()` and
+// then `rolloverSeason(id)` for each. The rollover is idempotent (no-op if
+// `season_archives` already has a row for the season) and transactional —
+// snapshot leaderboard+payouts+summary → archive season → open or create next
+// from `next_season_template`. Discord announce + season-end achievement minting
+// happen post-commit in src/discord/bot.js so a Discord/network failure cannot
+// roll back the DB-level rollover. Failures bubble; the cron tick DMs the
+// owner on any exception and does NOT mark the season archived.
+
+async function getSeasonArchive(seasonId) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM season_archives WHERE season_id = $1`, [parseInt(seasonId)]);
+  return r.rows[0] || null;
+}
+
+async function getSeasonsDueForRollover(now = new Date()) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT s.*
+       FROM seasons s
+       LEFT JOIN season_archives sa ON sa.season_id = s.id
+      WHERE s.active = true
+        AND s.season_status = 'active'
+        AND s.end_date IS NOT NULL
+        AND s.end_date <= $1
+        AND sa.season_id IS NULL`,
+    [now.toISOString()]
+  );
+  return r.rows;
+}
+
+async function setNextSeasonTemplate(seasonId, template) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE seasons SET next_season_template = $1 WHERE id = $2 RETURNING *`,
+    [template == null ? null : JSON.stringify(template), parseInt(seasonId)]
+  );
+  return r.rows[0] || null;
+}
+
+/**
+ * Apply season payout amounts to actual prize-pool totals.
+ *
+ * `season_payout_categories` rows store either a fixed `amount_cents` value
+ * (mode='cents') or a `amount_percent` of the buy-in pool (mode='percent').
+ * For percent rows we resolve the cents now, against the season's final paid
+ * buy-in total, so the snapshot reflects what was actually owed at rollover
+ * time rather than re-deriving from a possibly-changing pool later.
+ *
+ * Pure helper — no DB writes; caller persists the result into season_archives.
+ */
+function _resolvePayoutAmount(payout, totalPoolCents) {
+  if (payout.payout_mode === 'percent') {
+    return Math.round((Number(payout.amount_percent) || 0) * (totalPoolCents || 0) / 100);
+  }
+  return parseInt(payout.amount_cents) || 0;
+}
+
+/**
+ * Trigger payout finalization for a season. Stamps `paid_out_at = NOW()` on
+ * every payout category that has a winner assigned and hasn't been paid yet.
+ *
+ * Idempotent (the `paid_out_at IS NULL` guard means re-running on an already-
+ * finalized season is a no-op). Takes an open pg client so it can participate
+ * in the rolloverSeason transaction; if no client is supplied it uses the
+ * shared pool, which is the right thing for ad-hoc operator scripts.
+ *
+ * Returns the pg result so callers can read `.rows` (ids that were stamped)
+ * and `.rowCount`.
+ */
+async function triggerSeasonPayouts(clientOrNull, seasonId) {
+  const runner = clientOrNull || getPool();
+  return await runner.query(
+    `UPDATE season_payout_categories
+        SET paid_out_at = NOW()
+      WHERE season_id = $1
+        AND winner_account_id IS NOT NULL
+        AND paid_out_at IS NULL
+      RETURNING id`,
+    [parseInt(seasonId)]
+  );
+}
+
+async function rolloverSeason(seasonId, { adminId = null, onBeforeCommit = null } = {}) {
+  const p = getPool();
+  const sid = parseInt(seasonId);
+  if (!Number.isFinite(sid)) throw new Error('Invalid season id');
+
+  // Idempotency guard outside the transaction — fast path for already-rolled
+  // seasons. The transaction below repeats the same check under a row lock so
+  // two concurrent callers can't both write archive rows.
+  const existing = await getSeasonArchive(sid);
+  if (existing) return { archive: existing, alreadyRolled: true };
+
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Lock + re-check under transaction. SELECT … FOR UPDATE on the season row
+    // serialises concurrent rollovers; the archive UNIQUE constraint is the
+    // ultimate backstop.
+    const sR = await client.query(
+      `SELECT * FROM seasons WHERE id = $1 FOR UPDATE`,
+      [sid]
+    );
+    const season = sR.rows[0];
+    if (!season) throw new Error('Season not found');
+
+    const existingTxn = await client.query(
+      `SELECT * FROM season_archives WHERE season_id = $1`, [sid]
+    );
+    if (existingTxn.rows[0]) {
+      await client.query('ROLLBACK');
+      return { archive: existingTxn.rows[0], alreadyRolled: true };
+    }
+
+    if (!season.active || season.season_status !== 'active') {
+      throw new Error(`Season "${season.name}" is not currently active — refusing to roll over.`);
+    }
+
+    // Snapshot inputs captured AFTER the FOR UPDATE row lock. The lock
+    // prevents another rollover from racing; the recorder pipeline assigns
+    // new matches to the currently-active season, which is still this one
+    // until we flip it below — so the snapshot is taken right before we
+    // archive the season and matches, giving a tight, consistent "final
+    // state". These reads use the shared pool (READ COMMITTED) rather than
+    // the client so the long-running summary/leaderboard queries don't hold
+    // the open transaction longer than necessary, but the row lock + the
+    // immediate matches-flip below close the window to a small,
+    // self-correcting one (any straggler match assigned to this season-id
+    // becomes legacy with everything else).
+    const [summary, leaderboard, payouts, buyins] = await Promise.all([
+      getSeasonSummary(sid),
+      getComputedLeaderboard(sid).catch(() => []),
+      getSeasonPayouts(sid),
+      getSeasonBuyins(sid).catch(() => ({ totalCents: 0 })),
+    ]);
+    const totalPoolCents = buyins?.totalCents || 0;
+    const resolvedPayouts = payouts.map(po => ({
+      ...po,
+      resolved_amount_cents: _resolvePayoutAmount(po, totalPoolCents),
+    }));
+
+    // 1. Archive the season (flip flags). Match-level is_legacy cascade
+    // matches the original archiveSeason() behaviour so existing read paths
+    // keep working.
+    await client.query(
+      `UPDATE seasons SET active = false, is_legacy = true, season_status = 'archived' WHERE id = $1`,
+      [sid]
+    );
+    await client.query(`UPDATE matches SET is_legacy = true WHERE season_id = $1`, [sid]);
+
+    // 2. Activate the next season — prefer an explicitly-pending one, else
+    // create from this season's `next_season_template` (a JSONB blob; see the
+    // migration comment for honoured fields).
+    let nextSeasonId = null;
+    let nextSeasonRow = null;
+    const pendingR = await client.query(
+      `SELECT * FROM seasons WHERE season_status = 'pending' AND id > $1 ORDER BY id ASC LIMIT 1`,
+      [sid]
+    );
+    if (pendingR.rows[0]) {
+      nextSeasonRow = pendingR.rows[0];
+    } else if (season.next_season_template) {
+      const tpl = typeof season.next_season_template === 'string'
+        ? JSON.parse(season.next_season_template)
+        : season.next_season_template;
+      const tplName = (tpl && tpl.name && String(tpl.name).trim()) || `${season.name} +1`;
+      const ins = await client.query(
+        `INSERT INTO seasons
+           (name, active, season_status, end_date, match_count_limit, buyin_amount_cents)
+         VALUES ($1, false, 'pending', $2, $3, $4)
+         RETURNING *`,
+        [
+          tplName,
+          tpl?.end_date || null,
+          tpl?.match_count_limit ? parseInt(tpl.match_count_limit) : null,
+          Number.isFinite(parseInt(tpl?.buyin_amount_cents)) ? parseInt(tpl.buyin_amount_cents) : 0,
+        ]
+      );
+      nextSeasonRow = ins.rows[0];
+    }
+    if (nextSeasonRow) {
+      await client.query(
+        `UPDATE seasons SET active = true, season_status = 'active' WHERE id = $1`,
+        [nextSeasonRow.id]
+      );
+      nextSeasonId = nextSeasonRow.id;
+    }
+
+    // 3. Persist resolved payout `resolved_amount_cents` back onto the live
+    // category rows AND mark them as paid out (the "trigger payouts" step).
+    // Anything with a winner is stamped with paid_out_at = NOW(); rows with
+    // no winner are still snapshotted into the archive but not finalised.
+    for (const po of resolvedPayouts) {
+      if (po.payout_mode === 'percent') {
+        await client.query(
+          `UPDATE season_payout_categories SET amount_cents = $1 WHERE id = $2`,
+          [po.resolved_amount_cents, po.id]
+        );
+      }
+    }
+    const paidR = await triggerSeasonPayouts(client, sid);
+
+    // 4. Mint season-end achievements INSIDE the transaction so a failure
+    // here aborts the whole rollover (per task spec: failures abort + owner
+    // DM, no partial state). Each insert is ON CONFLICT DO NOTHING so a
+    // partial earlier attempt doesn't block a clean retry, but any actual
+    // DB error rolls back archival + next-season activation along with it.
+    const grants = [];
+    async function _grantTxn(playerId, key) {
+      if (!playerId || playerId === 0 || playerId === '0') return;
+      const r = await client.query(
+        `INSERT INTO achievements (player_id, achievement_key, achieved_at, value)
+         VALUES ($1, $2, NOW(), $3)
+         ON CONFLICT (player_id, achievement_key) DO NOTHING
+         RETURNING id`,
+        [Number(playerId), key, sid]
+      );
+      if (r.rowCount > 0) grants.push({ player_id: Number(playerId), key });
+    }
+    const topPlayers = summary.topPlayers || [];
+    if (topPlayers[0]) await _grantTxn(topPlayers[0].account_id, 'season_champion');
+    if (topPlayers[1]) await _grantTxn(topPlayers[1].account_id, 'season_silver');
+    if (topPlayers[2]) await _grantTxn(topPlayers[2].account_id, 'season_bronze');
+    if (summary.mostImproved?.player_id) {
+      await _grantTxn(summary.mostImproved.player_id, 'season_biggest_climb');
+    }
+    const ironR = await client.query(
+      `SELECT ps.account_id, COUNT(DISTINCT ps.match_id) AS games
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE m.season_id = $1 AND ps.account_id != 0
+        GROUP BY ps.account_id
+       HAVING COUNT(DISTINCT ps.match_id) >= 5
+        ORDER BY games DESC LIMIT 1`,
+      [sid]
+    );
+    if (ironR.rows[0]) await _grantTxn(ironR.rows[0].account_id, 'season_iron_butt');
+    // mvp_votes table only exists on the full edition; if the table is
+    // missing the SELECT throws and aborts the rollover. Detect+skip cleanly
+    // by checking pg_tables under the same client first.
+    const mvpTblR = await client.query(
+      `SELECT 1 FROM information_schema.tables WHERE table_name = 'mvp_votes' LIMIT 1`
+    );
+    if (mvpTblR.rows[0]) {
+      const mvpR = await client.query(
+        `SELECT mv.recipient_account_id AS account_id, COUNT(*) AS mvp_count
+           FROM mvp_votes mv
+           JOIN matches m ON m.match_id::text = mv.match_id::text
+          WHERE m.season_id = $1 AND mv.recipient_account_id IS NOT NULL
+          GROUP BY mv.recipient_account_id
+          ORDER BY mvp_count DESC LIMIT 1`,
+        [sid]
+      );
+      if (mvpR.rows[0]) await _grantTxn(mvpR.rows[0].account_id, 'season_mvp_machine');
+    }
+
+    // 5. Insert archive row LAST — the idempotency anchor. UNIQUE(season_id)
+    // means any concurrent insert will collide here and the transaction will
+    // abort, which is the desired safety.
+    const archiveR = await client.query(
+      `INSERT INTO season_archives (season_id, leaderboard, payouts, summary, next_season_id)
+       VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5)
+       RETURNING *`,
+      [
+        sid,
+        JSON.stringify(leaderboard),
+        JSON.stringify(resolvedPayouts),
+        JSON.stringify({
+          ...summary,
+          total_pool_cents: totalPoolCents,
+          rolled_at: new Date().toISOString(),
+          admin_id: adminId || null,
+          payouts_finalized: paidR.rowCount,
+          achievements_granted: grants,
+        }),
+        nextSeasonId,
+      ]
+    );
+
+    // 6. Optional pre-commit callback. The bot caller passes its Discord
+    // announce step here so a Discord failure rolls back the entire DB
+    // rollover — making the full 5-step sequence (snapshot + archive +
+    // open-next + payouts + achievements + announce) truly all-or-nothing.
+    // The callback runs while the txn is still open, so it MUST NOT issue
+    // its own DB writes through the pool (those would deadlock against this
+    // client's FOR UPDATE lock). It receives the same result object the
+    // function returns on success.
+    const result = {
+      archive: archiveR.rows[0],
+      season: { ...season, active: false, is_legacy: true, season_status: 'archived' },
+      nextSeason: nextSeasonRow,
+      grants,
+      payoutsFinalized: paidR.rowCount,
+      alreadyRolled: false,
+    };
+    if (typeof onBeforeCommit === 'function') {
+      await onBeforeCommit(result);
+    }
+
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Mint season-end achievements onto the relevant accounts. Best-effort —
+ * each insert uses ON CONFLICT DO NOTHING so re-running is safe, and a
+ * failure on one award does not block the others.
+ *
+ * Awarded keys: season_champion / season_silver / season_bronze (top 3 by
+ * final season MMR via getSeasonSummary().topPlayers), season_biggest_climb
+ * (summary.mostImproved), season_iron_butt (most matches this season),
+ * season_mvp_machine (highest mvp_count among players who played this season).
+ */
+async function mintSeasonEndAchievements(seasonId) {
+  const p = getPool();
+  const sid = parseInt(seasonId);
+  const granted = [];
+
+  async function _grant(playerId, key) {
+    if (!playerId || playerId === 0 || playerId === '0') return;
+    try {
+      const r = await p.query(
+        `INSERT INTO achievements (player_id, achievement_key, achieved_at, value)
+         VALUES ($1, $2, NOW(), $3)
+         ON CONFLICT (player_id, achievement_key) DO NOTHING
+         RETURNING id`,
+        [Number(playerId), key, sid]
+      );
+      if (r.rowCount > 0) granted.push({ player_id: Number(playerId), key });
+    } catch (e) {
+      console.warn(`[Season] mint ${key} for ${playerId} failed:`, e.message);
+    }
+  }
+
+  try {
+    const summary = await getSeasonSummary(sid);
+    const top = summary.topPlayers || [];
+    if (top[0]) await _grant(top[0].account_id, 'season_champion');
+    if (top[1]) await _grant(top[1].account_id, 'season_silver');
+    if (top[2]) await _grant(top[2].account_id, 'season_bronze');
+    if (summary.mostImproved?.player_id) {
+      await _grant(summary.mostImproved.player_id, 'season_biggest_climb');
+    }
+
+    // Most matches this season (>=5 games to filter casuals).
+    const ironR = await p.query(
+      `SELECT ps.account_id, COUNT(DISTINCT ps.match_id) AS games
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE m.season_id = $1 AND ps.account_id != 0
+        GROUP BY ps.account_id
+       HAVING COUNT(DISTINCT ps.match_id) >= 5
+        ORDER BY games DESC LIMIT 1`,
+      [sid]
+    );
+    if (ironR.rows[0]) await _grant(ironR.rows[0].account_id, 'season_iron_butt');
+
+    // MVP machine — most mvp_votes received in matches from this season.
+    // Best-effort: silently skip if the table doesn't exist on this deploy.
+    try {
+      const mvpR = await p.query(
+        `SELECT mv.recipient_account_id AS account_id, COUNT(*) AS mvp_count
+           FROM mvp_votes mv
+           JOIN matches m ON m.match_id::text = mv.match_id::text
+          WHERE m.season_id = $1 AND mv.recipient_account_id IS NOT NULL
+          GROUP BY mv.recipient_account_id
+          ORDER BY mvp_count DESC LIMIT 1`,
+        [sid]
+      );
+      if (mvpR.rows[0]) await _grant(mvpR.rows[0].account_id, 'season_mvp_machine');
+    } catch (e) {
+      // mvp_votes table may not exist on every deploy — silently skip.
+    }
+  } catch (err) {
+    console.warn(`[Season] mintSeasonEndAchievements failed:`, err.message);
+  }
+  return granted;
+}
+
+/**
+ * Fully reverse the most recent rollover for a season, using the
+ * `season_archives` row as the restoration source. Reverses every side effect
+ * applied by rolloverSeason:
+ *
+ *   - season flags (active / is_legacy / season_status)
+ *   - match-level is_legacy cascade
+ *   - next-season activation (deactivated; created-fresh ones flipped back to 'pending')
+ *   - payout finalization (paid_out_at cleared; percent-mode amount_cents reset
+ *     to 0 since we resolved them in place during rollover)
+ *   - season-end achievements (DELETEd via the granted list captured in the
+ *     archive's summary.achievements_granted)
+ *   - the archive row itself
+ *
+ * Refuses if the next season already has matches recorded — operator must
+ * reassign/delete those first so we don't silently strand match history.
+ */
+async function undoLastRollover(seasonId) {
+  const p = getPool();
+  const sid = parseInt(seasonId);
+  const arch = await getSeasonArchive(sid);
+  if (!arch) throw new Error('No archive row found — nothing to undo.');
+
+  // Parse archived snapshot — may be jsonb (already object) or text.
+  const summary = typeof arch.summary === 'string' ? JSON.parse(arch.summary) : (arch.summary || {});
+  const payouts = typeof arch.payouts === 'string' ? JSON.parse(arch.payouts) : (arch.payouts || []);
+  const grants = Array.isArray(summary.achievements_granted) ? summary.achievements_granted : [];
+
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    if (arch.next_season_id) {
+      const matchR = await client.query(
+        `SELECT COUNT(*)::int AS cnt FROM matches WHERE season_id = $1`,
+        [arch.next_season_id]
+      );
+      if ((matchR.rows[0]?.cnt || 0) > 0) {
+        throw new Error(`Next season (id=${arch.next_season_id}) already has matches recorded — refusing to undo. Reassign or delete those matches first.`);
+      }
+      await client.query(
+        `UPDATE seasons SET active = false, season_status = 'pending' WHERE id = $1`,
+        [arch.next_season_id]
+      );
+    }
+
+    // Restore the rolled-over season to active. Deactivate anything else that
+    // somehow became active in the interim so we keep the "exactly one active"
+    // invariant.
+    await client.query(
+      `UPDATE seasons SET active = false WHERE active = true AND id != $1`,
+      [sid]
+    );
+    await client.query(
+      `UPDATE seasons SET active = true, is_legacy = false, season_status = 'active' WHERE id = $1`,
+      [sid]
+    );
+    await client.query(`UPDATE matches SET is_legacy = false WHERE season_id = $1`, [sid]);
+
+    // Reverse payout finalization. Clear paid_out_at, and for percent-mode
+    // rows reset amount_cents to 0 (rolloverSeason wrote the resolved cents
+    // back onto the row; the canonical source is amount_percent).
+    await client.query(
+      `UPDATE season_payout_categories SET paid_out_at = NULL WHERE season_id = $1`,
+      [sid]
+    );
+    for (const po of payouts) {
+      if (po.payout_mode === 'percent' && po.id) {
+        await client.query(
+          `UPDATE season_payout_categories SET amount_cents = 0 WHERE id = $1`,
+          [po.id]
+        );
+      }
+    }
+
+    // Reverse achievement grants. Each entry in summary.achievements_granted
+    // is { player_id, key } — the only achievements we know we minted from
+    // this rollover. We scope the DELETE by both fields so we never touch a
+    // user's pre-existing trophy of the same key from an earlier season.
+    for (const g of grants) {
+      if (!g || !g.player_id || !g.key) continue;
+      await client.query(
+        `DELETE FROM achievements WHERE player_id = $1 AND achievement_key = $2`,
+        [Number(g.player_id), g.key]
+      );
+    }
+
+    await client.query(`DELETE FROM season_archives WHERE season_id = $1`, [sid]);
+    await client.query('COMMIT');
+    return {
+      restored_season_id: sid,
+      deactivated_next_season_id: arch.next_season_id || null,
+      cleared_payouts: payouts.length,
+      removed_achievements: grants.length,
+    };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
@@ -20183,6 +20698,13 @@ module.exports = {
   createSeason,
   setActiveSeason,
   archiveSeason,
+  rolloverSeason,
+  getSeasonArchive,
+  getSeasonsDueForRollover,
+  setNextSeasonTemplate,
+  mintSeasonEndAchievements,
+  triggerSeasonPayouts,
+  undoLastRollover,
   updateMatchMeta,
   updateMatchDetails,
   updatePlayerStats,
