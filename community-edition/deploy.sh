@@ -51,6 +51,12 @@ echo "==> [community] Verifying committed replay parser jar is in sync with sour
 # is shared by both editions.
 bash scripts/build-parser.sh --check
 
+echo "==> [community] Verifying patch notes have unique versions (Task #418)..."
+# Hard gate: refuse to deploy if src/data/patchNotes.js contains two
+# entries with the same `version` string. The patch-notes file is shared
+# by both editions so this gate runs identically here.
+node scripts/check-patch-notes.js
+
 echo "==> [community] Verifying frontend accessibility (Task #164 — house rule gate)..."
 # Hard gate: refuse to deploy if any non-interactive element has an onClick
 # without the documented role+tabIndex+onKeyDown triad. The top-level

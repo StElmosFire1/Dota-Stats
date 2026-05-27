@@ -25,12 +25,13 @@ Both scripts: `git reset --hard origin/main` → run the safety gates below → 
 **Community edition is paywall-free by policy** (see `community-edition/SETUP.md`). Pro tier, Stripe, and every paywall touchpoint is full-edition-only.
 
 ### Pre-deploy safety gates
-All four gates run in both `deploy.sh` and `scripts/post-merge.sh`. The scripts are the source of truth — the summary here is just so I know what's protecting me. Any gate failure aborts the deploy / GitHub push before PM2 is touched.
+All gates run in both `deploy.sh` and `scripts/post-merge.sh`. The scripts are the source of truth — the summary here is just so I know what's protecting me. Any gate failure aborts the deploy / GitHub push before PM2 is touched.
 
 1. **Parser-jar freshness** (`scripts/build-parser.sh --check`, also `npm run check:parser`). Fails if the committed `odota-parser/target/stats-0.1.0.jar` is older than any file under `odota-parser/src/` or `odota-parser/pom.xml`. No JDK required — never invokes Maven.
 2. **A11y gate** (`scripts/check-a11y.js`, also `npm run check:a11y`). Six passes enforcing the frontend house rules below. See `docs/a11y-gates-history.md` for per-pass detail.
 3. **Community paywall gate** (`scripts/check-community-paywall.sh`). Source-scan pass (runs before build, fails fast) plus dist-scan pass (after build). Allow-list: `community-edition/SETUP.md`, `community-edition/README.md`, `community-edition/src/data/patchNotes.js`.
 4. **Wrong-edition + PM2-entrypoint gates** (inline in each `deploy.sh`). Aborts if the checkout's directory basename looks wrong for its edition, AND verifies via `pm2 jlist` that the target PM2 process's `pm_exec_path` + `pm_cwd` actually point at this checkout's entrypoint. First-time deploys (no PM2 process yet) are a no-op. If gate 4 fires, the abort message points at the one-time PM2 re-registration snippet (see below).
+5. **Patch-notes uniqueness** (`scripts/check-patch-notes.js`, also `npm run check:patch-notes`). Asserts every entry in `src/data/patchNotes.js` has a unique `version`. Replaces the silent runtime warning `db.seedPatchNotes()` used to emit on every bot boot.
 
 ### One-time PM2 re-registration (community edition)
 If `pm2 describe inhouse-bot | grep -E 'script path|cwd'` shows the full-edition entrypoint, re-register once:

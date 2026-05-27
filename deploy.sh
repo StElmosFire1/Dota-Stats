@@ -47,6 +47,12 @@ echo "==> Verifying committed replay parser jar is in sync with sources..."
 # committed artifact cannot be silently self-healed by the deploy host.
 bash scripts/build-parser.sh --check
 
+echo "==> Verifying patch notes have unique versions (Task #418)..."
+# Hard gate: refuse to deploy if src/data/patchNotes.js contains two
+# entries with the same `version` string. Duplicates were previously only
+# a runtime warning from db.seedPatchNotes() on every bot boot.
+node scripts/check-patch-notes.js
+
 echo "==> Verifying frontend accessibility (Task #164 — house rule gate)..."
 # Hard gate: refuse to deploy if any non-interactive element (div/span/li/tr/td
 # /th/etc.) has an onClick without the documented role+tabIndex+onKeyDown

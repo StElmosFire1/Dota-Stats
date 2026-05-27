@@ -20,6 +20,13 @@ if [ -f scripts/build-parser.sh ]; then
   bash scripts/build-parser.sh --check
 fi
 
+echo "[post-merge] Verifying patch notes have unique versions (Task #418)..."
+# Hard gate: refuse to push if src/data/patchNotes.js contains two entries
+# with the same `version` string. Duplicates were previously only a runtime
+# warning from db.seedPatchNotes(), which silently dropped the dup on every
+# bot boot — this catches them at build time instead.
+node scripts/check-patch-notes.js
+
 echo "[post-merge] Verifying frontend accessibility (Task #164 — house rule gate)..."
 # Hard gate: refuse to push if any non-interactive element (div/span/li/tr/td
 # /th/etc.) has an onClick without the documented role+tabIndex+onKeyDown
