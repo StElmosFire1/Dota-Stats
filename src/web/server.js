@@ -6318,6 +6318,33 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #425 — Feature health dashboard. Superuser-only snapshot of the
+  // probe registry's most-recent results, with an on-demand "run now"
+  // endpoint that re-executes either all probes or just the one named.
+  router.get('/admin/feature-health', requireSuperuser, async (req, res) => {
+    try {
+      const { getSnapshot } = require('../featureHealth/runner');
+      const snapshot = await getSnapshot();
+      res.set('Cache-Control', 'no-store');
+      res.json({ probes: snapshot });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/admin/feature-health/run', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { runAll, runOne, getSnapshot } = require('../featureHealth/runner');
+      const key = (req.body && req.body.key) || (req.query && req.query.key) || null;
+      const results = key ? [await runOne(String(key))] : await runAll();
+      const snapshot = await getSnapshot();
+      res.set('Cache-Control', 'no-store');
+      res.json({ results, probes: snapshot });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // Task #406 — filter-friendly log fetch (superuser). The snapshot above
   // already includes the ring buffer; this route lets the UI poll just the
   // logs (and apply a source filter server-side) when the operator wants

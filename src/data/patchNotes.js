@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "7.88",
+    "title": "Feature health dashboard — green/yellow/red status per subsystem (Task #425)",
+    "published_at": "2026-05-27",
+    "notes": [
+      "**Problem.** With 24+ subsystems (Steam auth, parser, OpenDota fallback, inhouse provisioner, captains draft, tournaments, prize pools, three coaching surfaces, Stripe checkout/webhook, web push, leaderboard, hero meta, replay viewer, public v1/mobile APIs, season state, notification prefs, …) there was no single place to ask 'is everything still working?'. `/admin/ops` shows live counters and history but not 'does feature X still actually function end-to-end'. The answer used to be 'try it in the UI and see' — for every feature, every release.",
+      "**New `/admin/feature-health` page (superuser-only).** Single-pane table listing every probe with a green/yellow/red status pill, last-run timestamp (relative + absolute), last-success timestamp, and a 'Run now' button per row. A 'Run all' button at the top kicks every probe in series and refreshes the snapshot in place. Reason text shown inline beneath the probe label on failure. Empty/never-run state shows a neutral 'NEVER RUN' badge instead of a misleading green.",
+      "**Probe registry in one file (`src/featureHealth/probes.js`).** Adding a new feature to the dashboard is a one-line edit: append `{ key, label, run: async () => ({ ok, reason }) }` to the PROBES array. 24 probes ship in this release covering every major subsystem. Each probe is defensive — wrapped in try/catch + a 10s timeout — so a hung subsystem never blocks the dashboard or other probes.",
+      "**Scheduler.** `src/featureHealth/runner.js` runs all probes on a cron tick (default every 30 min, override via `FEATURE_HEALTH_INTERVAL_MS`), with an initial run 2 minutes after boot so Discord/Steam/parser have time to come up. Single-flight guard prevents overlapping ticks. Both timers are `.unref()`'d so tests don't hang.",
+      "**Persistence.** New `feature_health_probes` table (id, key, status, reason, duration_ms, ran_at) with `(key, ran_at DESC)` index. Snapshot read uses `DISTINCT ON (key)` for the latest result per probe plus a separate `MAX(ran_at) WHERE status='ok'` for the last-success column. Insert is fire-and-forget — a DB error during recording never breaks the probe loop.",
+      "**Owner alerting with 24h dedupe.** When a probe flips from ok → red, the runner DMs the bot owner via `getDiscordBot()._dmOwner()` with the probe key, label, and failure reason. Per-key in-process Map suppresses re-alerts for 24h so a flapping subsystem doesn't spam the owner. Recovery (red → ok) clears the suppression window for that key — the next failure alerts immediately.",
+      "**New routes** (both superuser-gated via the existing `requireSuperuser` middleware): `GET /api/admin/feature-health` returns the snapshot; `POST /api/admin/feature-health/run` re-runs either every probe or just the one named in `{ key }` and returns the fresh snapshot inline so the UI updates without a second fetch."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.87",
     "title": "/admin/ops now keeps a rolling 7-day history with per-tile sparklines (Task #423)",
     "published_at": "2026-05-27",

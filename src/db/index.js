@@ -2029,6 +2029,22 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_sponsorship_slots_tenant ON sponsorship_slots (tenant_id, slug)`);
+
+    // Task #425 — feature-health probe history. One row per probe run, lazily
+    // pruned via the rolling cron (we only ever read the latest per key for
+    // the dashboard). Index on (key, ran_at DESC) is exactly what the read
+    // path needs.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS feature_health_probes (
+        id BIGSERIAL PRIMARY KEY,
+        key TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reason TEXT,
+        duration_ms INTEGER,
+        ran_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_feature_health_key_ran ON feature_health_probes (key, ran_at DESC)`);
     // Replace the legacy single-column UNIQUE(slug) with a tenant-aware
     // uniqueness model so a global slot ("home_banner", tenant_id=NULL) and
     // a tenant-specific override of the same slug can coexist. Two partial
@@ -16453,6 +16469,50 @@ async function listCronHeartbeats() {
   return r.rows;
 }
 
+// Task #425 — feature health helpers.
+async function recordFeatureHealthProbe({ key, status, reason = null, duration_ms = null }) {
+  if (!key || !status) return;
+  const p = getPool();
+  await p.query(
+    `INSERT INTO feature_health_probes (key, status, reason, duration_ms) VALUES ($1,$2,$3,$4)`,
+    [key, String(status).slice(0, 32), reason != null ? String(reason).slice(0, 500) : null, duration_ms]
+  );
+}
+
+async function getLatestFeatureHealthProbe(key) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT key, status, reason, duration_ms, ran_at
+       FROM feature_health_probes WHERE key = $1
+       ORDER BY ran_at DESC LIMIT 1`,
+    [key]
+  );
+  return r.rows[0] || null;
+}
+
+async function getLatestFeatureHealthProbes() {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT DISTINCT ON (key) key, status, reason, duration_ms, ran_at
+      FROM feature_health_probes
+      ORDER BY key, ran_at DESC
+  `);
+  return r.rows;
+}
+
+async function getLastSuccessByKey() {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT key, MAX(ran_at) AS last_success_at
+      FROM feature_health_probes
+      WHERE status = 'ok'
+      GROUP BY key
+  `);
+  const out = new Map();
+  for (const row of r.rows) out.set(row.key, row.last_success_at);
+  return out;
+}
+
 async function recordSponsorshipImpression(orderId) {
   if (!orderId) return;
   const p = getPool();
@@ -20858,6 +20918,11 @@ module.exports = {
   getPool,
   recordCronHeartbeat,
   listCronHeartbeats,
+  // Task #425 — feature health
+  recordFeatureHealthProbe,
+  getLatestFeatureHealthProbe,
+  getLatestFeatureHealthProbes,
+  getLastSuccessByKey,
   // Task #378 — Pro replay browser
   upsertProMatchHeader,
   upsertProMatchDetails,

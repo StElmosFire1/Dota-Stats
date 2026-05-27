@@ -292,6 +292,19 @@ async function main() {
     console.log(`[Web] Dashboard running on port ${webPort}`);
     console.log(`[Startup] All systems ready.\n`);
 
+    // Task #425 — kick off the feature-health probe scheduler. Defaults to
+    // every 30 min; override via FEATURE_HEALTH_INTERVAL_MS. Best-effort —
+    // failure here never stops the rest of the bot.
+    if (startupStatus.database) {
+      try {
+        const { startScheduler } = require('./featureHealth/runner');
+        const { intervalMs } = startScheduler();
+        console.log(`[Startup] Feature health scheduler started (every ${Math.round(intervalMs / 60_000)}m)`);
+      } catch (err) {
+        console.warn('[Startup] Feature health scheduler failed to start:', err.message);
+      }
+    }
+
     // v5.75: kick off the inhouse auto-start ticker once the API is up so
     // its internal /select-captains call can hit the live server.
     if (startupStatus.database) {

@@ -87,6 +87,18 @@ export async function superuserJson(url, {
   return data;
 }
 
+// Task #425 — Feature health dashboard helpers.
+export async function getFeatureHealth(superuserKey) {
+  return superuserJson('/admin/feature-health', { superuserKey });
+}
+export async function runFeatureHealth(superuserKey, key = null) {
+  return superuserJson('/admin/feature-health/run', {
+    method: 'POST',
+    superuserKey,
+    body: key ? { key } : {},
+  });
+}
+
 // Task #297 — superuser one-click "provision & connect" diagnostic helpers.
 // `runInhouseDiagProvision` creates a synthetic flagged session and pushes
 // the real RCON match-password to the configured dedicated server, returning
