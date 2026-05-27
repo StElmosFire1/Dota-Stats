@@ -1873,6 +1873,47 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_stripe_fee_ledger_pi
                      ON stripe_fee_ledger (payment_intent) WHERE payment_intent IS NOT NULL`);
 
+    // ---------- Task #421: Stripe refund-fee reconciliation ----------
+    // Sibling of stripe_fee_ledger but for refund BalanceTransactions. Each
+    // Stripe refund creates its OWN BalanceTransaction whose `fee` is the
+    // *negative* of the portion of the original processing fee Stripe
+    // returns (often 0 in AU/NZ, where Stripe keeps the original fee even
+    // on a full refund) and whose `amount` is the negative refunded gross.
+    //
+    // We store these so the coach earnings dashboard can show refunded
+    // rows with their true financial impact:
+    //   coach_loss = original_stripe_fee + refund_bt.fee   // (fee is <= 0)
+    // i.e. the slice of the original processing fee Stripe kept.
+    //
+    // One row per Stripe refund (UNIQUE on refund_id). source_kind /
+    // source_id mirror the parent stripe_fee_ledger row so the earnings
+    // query can join straight back to the originating booking / seat /
+    // vod_review without a second PI lookup.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS stripe_refund_fee_ledger (
+        id SERIAL PRIMARY KEY,
+        refund_id TEXT NOT NULL UNIQUE,
+        charge_id TEXT NOT NULL,
+        payment_intent TEXT,
+        balance_tx_id TEXT,
+        gross_cents INTEGER NOT NULL,
+        fee_cents INTEGER NOT NULL,
+        net_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'aud',
+        source_kind TEXT,
+        source_id INTEGER,
+        refunded_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_stripe_refund_fee_ledger_source
+                     ON stripe_refund_fee_ledger (source_kind, source_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_stripe_refund_fee_ledger_pi
+                     ON stripe_refund_fee_ledger (payment_intent) WHERE payment_intent IS NOT NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_stripe_refund_fee_ledger_charge
+                     ON stripe_refund_fee_ledger (charge_id)`);
+
     // ---------- Task #320: Commission tiers + coach premium + sponsorships + tenants ----------
     // Additive ALTERs on `coaches` — per-coach commission overrides + premium tier flag.
     // `commission_bps` is basis points (e.g. 1000 = 10.00%, NULL = use site default).
@@ -18363,15 +18404,181 @@ async function getCoachEarningsMonth({ coachAccountId, ym }) {
     });
   }
 
+  // Task #421 — Surface refund impact on coach earnings. One row per
+  // refund recorded in `stripe_refund_fee_ledger` for this coach's
+  // sources within the month (bucketed by refunded_at). Each refund row
+  // uses the refund's OWN BalanceTransaction amounts, so partial refunds
+  // and multiple refunds against a single charge are each represented
+  // individually (no double-counting, no overstatement).
+  //
+  // Stripe shapes (all from the refund's BalanceTransaction):
+  //   srfl.gross_cents : negative — the refunded gross amount.
+  //   srfl.fee_cents   : <= 0 — negative when Stripe returns part of the
+  //                      original processing fee; 0 when Stripe keeps it
+  //                      (the common AU/NZ domestic-card case).
+  //   srfl.net_cents   : srfl.gross - srfl.fee (≤ 0) — cash leaving the
+  //                      platform balance.
+  //
+  // What we display on the coach's row (signed convention matches the
+  // completed/paid rows: amount = gross flow in/out, platform_fee/
+  // stripe_fee are debits taken from gross, net = amount - platform -
+  // stripe). All four are signed so refunds aggregate cleanly with
+  // completed rows in totals:
+  //   amount_cents       = srfl.gross_cents  (negative — refund out)
+  //   platform_fee_cents = -platform_share   (negative — platform take
+  //                        refunded back to coach via refund_application_fee:true,
+  //                        proportional to the refund's share of the
+  //                        original charge)
+  //   stripe_fee_cents   = srfl.fee_cents    (≤ 0 — the slice of the
+  //                        original fee Stripe RETURNED; displayed as a
+  //                        credit. The slice Stripe KEPT is surfaced
+  //                        separately as stripe_fee_kept and rolled up
+  //                        into totals.stripe_fee_kept_on_refunds.)
+  //   net_cents          = -stripe_fee_kept (the COACH'S real balance
+  //                        delta from this refund). The completed-row
+  //                        formula `amount - platform - stripe` would
+  //                        overstate the loss because reverse_transfer:
+  //                        true + refund_application_fee:true (used by
+  //                        booking + group + VOD refunds — see
+  //                        src/web/server.js charge.refunded branch and
+  //                        the auto-no-show / dispute-release helpers)
+  //                        cleanly reverses the gross-minus-platform
+  //                        transfer to the coach, so the only money the
+  //                        coach truly loses is the slice of the original
+  //                        Stripe processing fee that Stripe did NOT
+  //                        return (== stripe_fee_kept). The frontend +
+  //                        totals trust this explicit `net_cents` when
+  //                        present and skip the algebraic recompute.
+  //
+  // The original charge's BalanceTransaction (stripe_fee_ledger.fee_cents)
+  // is LEFT-JOINed so we can compute the proportional fee Stripe kept for
+  // each refund. When the parent ledger row is missing we fall back to the
+  // AU domestic-card estimate.
+  const refunds = await p.query(
+    `SELECT srfl.id, srfl.source_kind, srfl.source_id,
+            srfl.gross_cents AS refund_gross, srfl.fee_cents AS refund_fee,
+            srfl.net_cents AS refund_net, srfl.currency, srfl.refunded_at,
+            srfl.refund_id, srfl.payment_intent,
+            CASE srfl.source_kind
+              WHEN 'booking'    THEN cb.amount_cents
+              WHEN 'group_seat' THEN cgss.amount_cents
+              WHEN 'vod_review' THEN cvr.price_cents
+            END AS orig_amount_cents,
+            CASE srfl.source_kind
+              WHEN 'booking'    THEN cb.platform_fee_cents
+              WHEN 'group_seat' THEN cgss.platform_fee_cents
+              WHEN 'vod_review' THEN cvr.platform_fee_cents
+            END AS orig_platform_fee_cents,
+            CASE srfl.source_kind
+              WHEN 'booking'    THEN cb.coach_account_id
+              WHEN 'group_seat' THEN cgs.coach_account_id
+              WHEN 'vod_review' THEN cvr.coach_account_id
+            END AS coach_account_id,
+            cvr.match_id AS vod_match_id,
+            cgs.title AS group_title,
+            sfl.fee_cents AS orig_stripe_fee_cents,
+            sfl.gross_cents AS orig_charge_gross_cents
+       FROM stripe_refund_fee_ledger srfl
+       LEFT JOIN coaching_bookings cb
+         ON srfl.source_kind = 'booking' AND srfl.source_id = cb.id
+       LEFT JOIN coach_group_session_seats cgss
+         ON srfl.source_kind = 'group_seat' AND srfl.source_id = cgss.id
+       LEFT JOIN coach_group_sessions cgs
+         ON cgss.session_id = cgs.id
+       LEFT JOIN coach_vod_reviews cvr
+         ON srfl.source_kind = 'vod_review' AND srfl.source_id = cvr.id
+       LEFT JOIN stripe_fee_ledger sfl
+         ON sfl.source_kind = srfl.source_kind AND sfl.source_id = srfl.source_id
+      WHERE srfl.refunded_at >= $2 AND srfl.refunded_at < $3
+        AND (
+              (srfl.source_kind = 'booking'    AND cb.coach_account_id = $1)
+           OR (srfl.source_kind = 'group_seat' AND cgs.coach_account_id = $1)
+           OR (srfl.source_kind = 'vod_review' AND cvr.coach_account_id = $1)
+        )`,
+    [coachAccountId, start.toISOString(), end.toISOString()]
+  );
+  for (const r of refunds.rows) {
+    const refundGrossSigned = Number(r.refund_gross || 0);        // negative
+    const refundFeeSigned = Number(r.refund_fee || 0);             // ≤ 0
+    const refundGrossAbs = Math.abs(refundGrossSigned);
+    const refundFeeReturned = -refundFeeSigned;                    // ≥ 0
+    const origAmount = r.orig_amount_cents != null
+      ? Number(r.orig_amount_cents) : refundGrossAbs;
+    const origPlatform = r.orig_platform_fee_cents != null
+      ? Number(r.orig_platform_fee_cents) : 0;
+    // Proportional share of the parent charge attributable to this refund.
+    // For a full refund this is 1.0; for partial refunds it's < 1. The
+    // ratio uses the refund/charge gross from the BalanceTransactions
+    // when both are present (defends against future per-row price drift)
+    // and falls back to the row's amount_cents otherwise.
+    const denom = r.orig_charge_gross_cents != null && Number(r.orig_charge_gross_cents) > 0
+      ? Number(r.orig_charge_gross_cents)
+      : origAmount;
+    const ratio = denom > 0 ? Math.min(1, refundGrossAbs / denom) : 1;
+    const platformShare = Math.round(ratio * origPlatform);
+    // Original stripe fee for this refund's share — prefer the reconciled
+    // ledger value when present, else AU domestic-card estimate. Used to
+    // compute "fee Stripe kept on this refund" for the summary tile.
+    const origStripeFeeForCharge = r.orig_stripe_fee_cents != null
+      ? Number(r.orig_stripe_fee_cents)
+      : _estStripeFeeCents(origAmount, r.currency);
+    const stripeFeeShare = Math.round(ratio * origStripeFeeForCharge);
+    const feeKeptForThisRefund = Math.max(0, stripeFeeShare - refundFeeReturned);
+    rows.push({
+      kind: `${r.source_kind}_refund`,
+      id: r.id,
+      when: r.refunded_at,
+      title: r.group_title || null,
+      match_id: r.vod_match_id || null,
+      amount_cents: refundGrossSigned,            // negative — refunded gross out
+      platform_fee_cents: -platformShare,         // negative — platform take refunded back
+      stripe_fee_cents: refundFeeSigned,          // ≤ 0 — fee Stripe returned (credit)
+      net_cents: -feeKeptForThisRefund,           // explicit: coach's real balance delta
+      currency: r.currency,
+      reconciled: true,
+      refunded: true,
+      refund_id: r.refund_id,
+      source_kind: r.source_kind,
+      source_id: r.source_id,
+      stripe_fee_kept: feeKeptForThisRefund,
+      orig_stripe_fee_cents: origStripeFeeForCharge,
+      orig_stripe_fee_share_cents: stripeFeeShare,
+      partial: refundGrossAbs < denom,
+    });
+  }
+
   rows.sort((a, b) => new Date(a.when) - new Date(b.when));
+  // totals.net uses explicit `net_cents` when the row carries one (refunds),
+  // else the standard `amount - platform - stripe` computation for completed
+  // rows. We deliberately do NOT mix refund row gross/platform/stripe into
+  // the gross/platform/stripe totals — they represent reversals, not new
+  // revenue, and folding them into the same totals as completed rows would
+  // distort the month's commission + fee figures. Refund-specific totals
+  // (refunded_gross, stripe_fee_kept_on_refunds, refund_net_loss) live in
+  // their own keys so the dashboard can show both pictures cleanly.
   const totals = rows.reduce((acc, r) => {
-    acc.gross += r.amount_cents;
-    acc.platform_fee += r.platform_fee_cents;
-    acc.stripe_fee += r.stripe_fee_cents;
-    if (!r.reconciled) acc.unreconciled_rows += 1;
+    if (r.refunded) {
+      acc.refunded_rows += 1;
+      acc.refunded_gross += r.amount_cents;                  // sum of negatives
+      acc.stripe_fee_kept_on_refunds += r.stripe_fee_kept || 0;
+      acc.stripe_fee_returned_on_refunds += (-r.stripe_fee_cents); // ≥ 0
+      acc.refund_net_loss += (r.net_cents || 0);             // sum of negatives
+      acc.net += (r.net_cents != null
+        ? r.net_cents
+        : (r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents));
+    } else {
+      acc.gross += r.amount_cents;
+      acc.platform_fee += r.platform_fee_cents;
+      acc.stripe_fee += r.stripe_fee_cents;
+      if (!r.reconciled) acc.unreconciled_rows += 1;
+      acc.net += (r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents);
+    }
     return acc;
-  }, { gross: 0, platform_fee: 0, stripe_fee: 0, unreconciled_rows: 0 });
-  totals.net = totals.gross - totals.platform_fee - totals.stripe_fee;
+  }, {
+    gross: 0, platform_fee: 0, stripe_fee: 0, net: 0, unreconciled_rows: 0,
+    refunded_rows: 0, refunded_gross: 0, refund_net_loss: 0,
+    stripe_fee_kept_on_refunds: 0, stripe_fee_returned_on_refunds: 0,
+  });
   totals.fully_reconciled = rows.length > 0 && totals.unreconciled_rows === 0;
 
   // Task #413 — MRR + retained-students tiles for the earnings dashboard.
@@ -18456,6 +18663,109 @@ async function upsertStripeFeeFromCharge(stripe, {
   } catch (err) {
     console.warn('[stripe_fee_ledger] ingest failed:', err && err.message ? err.message : err);
     return null;
+  }
+}
+
+// Task #421 — Stripe refund-fee ledger ingestor.
+//
+// Given a Stripe client + a chargeId (or paymentIntent), retrieve the
+// charge with `refunds.data.balance_transaction` expanded and upsert one
+// row per refund into `stripe_refund_fee_ledger`. The refund's
+// BalanceTransaction carries the refunded gross (negative), the portion
+// of the original processing fee Stripe is returning (negative, often
+// 0 in AU/NZ where Stripe keeps the fee), and the resulting net.
+//
+// Best-effort + idempotent on refund_id — Stripe webhook retries and the
+// per-charge cron sweep can both call this safely. Returns the array of
+// upserted rows (may be empty if no refunds yet or no BalanceTransactions
+// have settled).
+async function upsertStripeRefundsFromCharge(stripe, {
+  paymentIntent = null,
+  chargeId = null,
+  sourceKind = null,
+  sourceId = null,
+} = {}) {
+  if (!stripe) return [];
+  if (!paymentIntent && !chargeId) return [];
+  try {
+    let charge = null;
+    if (chargeId) {
+      charge = await stripe.charges.retrieve(chargeId, {
+        expand: ['refunds.data.balance_transaction'],
+      });
+    } else {
+      const pi = await stripe.paymentIntents.retrieve(paymentIntent, {
+        expand: ['latest_charge.refunds.data.balance_transaction'],
+      });
+      charge = pi && pi.latest_charge && typeof pi.latest_charge === 'object'
+        ? pi.latest_charge : null;
+    }
+    if (!charge) return [];
+    const refunds = charge.refunds && Array.isArray(charge.refunds.data)
+      ? charge.refunds.data : [];
+    if (!refunds.length) return [];
+    const pi = typeof charge.payment_intent === 'string'
+      ? charge.payment_intent : (paymentIntent || null);
+    // If we weren't told the source, resolve it from the parent ledger row
+    // (populated by upsertStripeFeeFromCharge on charge.succeeded).
+    let resolvedKind = sourceKind, resolvedId = sourceId;
+    if ((!resolvedKind || !resolvedId) && pi) {
+      const p = getPool();
+      const r = await p.query(
+        `SELECT source_kind, source_id FROM stripe_fee_ledger
+          WHERE payment_intent = $1 AND source_kind IS NOT NULL
+          ORDER BY created_at DESC LIMIT 1`,
+        [pi]
+      );
+      if (r.rows[0]) {
+        resolvedKind = resolvedKind || r.rows[0].source_kind;
+        resolvedId = resolvedId || r.rows[0].source_id;
+      }
+      if (!resolvedKind || !resolvedId) {
+        const fallback = await resolveStripeFeeSourceByIntent(pi);
+        resolvedKind = resolvedKind || fallback.sourceKind;
+        resolvedId = resolvedId || fallback.sourceId;
+      }
+    }
+    const p = getPool();
+    const upserted = [];
+    for (const refund of refunds) {
+      const bt = refund.balance_transaction && typeof refund.balance_transaction === 'object'
+        ? refund.balance_transaction : null;
+      if (!bt) continue; // BT may not have settled yet; webhook will redeliver
+      const refundedAt = refund.created
+        ? new Date(refund.created * 1000).toISOString() : null;
+      const r = await p.query(
+        `INSERT INTO stripe_refund_fee_ledger
+           (refund_id, charge_id, payment_intent, balance_tx_id, gross_cents,
+            fee_cents, net_cents, currency, source_kind, source_id, refunded_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (refund_id) DO UPDATE SET
+           charge_id = EXCLUDED.charge_id,
+           payment_intent = COALESCE(EXCLUDED.payment_intent, stripe_refund_fee_ledger.payment_intent),
+           balance_tx_id = EXCLUDED.balance_tx_id,
+           gross_cents = EXCLUDED.gross_cents,
+           fee_cents = EXCLUDED.fee_cents,
+           net_cents = EXCLUDED.net_cents,
+           currency = EXCLUDED.currency,
+           source_kind = COALESCE(EXCLUDED.source_kind, stripe_refund_fee_ledger.source_kind),
+           source_id = COALESCE(EXCLUDED.source_id, stripe_refund_fee_ledger.source_id),
+           refunded_at = COALESCE(EXCLUDED.refunded_at, stripe_refund_fee_ledger.refunded_at),
+           updated_at = NOW()
+         RETURNING *`,
+        [
+          refund.id, charge.id, pi, bt.id,
+          bt.amount, bt.fee, bt.net,
+          String(bt.currency || refund.currency || charge.currency || 'aud').toLowerCase(),
+          resolvedKind, resolvedId, refundedAt,
+        ]
+      );
+      if (r.rows[0]) upserted.push(r.rows[0]);
+    }
+    return upserted;
+  } catch (err) {
+    console.warn('[stripe_refund_fee_ledger] ingest failed:', err && err.message ? err.message : err);
+    return [];
   }
 }
 
@@ -21021,6 +21331,7 @@ module.exports = {
   deleteVodNote,
   getCoachEarningsMonth,
   upsertStripeFeeFromCharge,
+  upsertStripeRefundsFromCharge,
   resolveStripeFeeSourceByIntent,
   addPushSubscription,
   removePushSubscriptionByEndpoint,

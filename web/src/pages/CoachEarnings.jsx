@@ -15,7 +15,15 @@ const KIND_LABEL = {
   group_seat: 'Group session seat',
   vod_review: 'VOD review',
   plan_invoice: 'Plan subscription',
+  booking_refund: '1:1 booking · refunded',
+  group_seat_refund: 'Group seat · refunded',
+  vod_review_refund: 'VOD review · refunded',
 };
+
+function fmtSigned(c, cur = 'aud') {
+  const sign = c < 0 ? '−' : '';
+  return `${sign}$${(Math.abs(c) / 100).toFixed(2)} ${String(cur).toUpperCase()}`;
+}
 
 export default function CoachEarnings() {
   const [ym, setYm] = useState(currentYM());
@@ -101,6 +109,16 @@ export default function CoachEarnings() {
               ? 'All line items below are reconciled against Stripe BalanceTransactions — fees and net payout match your Stripe dashboard exactly.'
               : 'Rows marked Reconciled show real Stripe fees pulled from the BalanceTransaction; unreconciled rows fall back to the AU domestic-card estimate (1.75% + 30c) until the next reconciliation run.'}
           </p>
+          {data.totals.refunded_rows > 0 && (
+            <p style={{ fontSize: 12, color: 'var(--amber)', marginTop: -8 }}>
+              {data.totals.refunded_rows} refunded {data.totals.refunded_rows === 1 ? 'row' : 'rows'} this month
+              — refunded gross {fmtSigned(data.totals.refunded_gross)}
+              {data.totals.stripe_fee_kept_on_refunds > 0
+                ? `, Stripe kept ${fmtPrice(data.totals.stripe_fee_kept_on_refunds)} of the original processing fee (your real refund cost)`
+                : '. Stripe returned the original processing fee in full — no extra cost beyond the refunded gross'}
+              . Refund rows appear as negative entries in the table below.
+            </p>
+          )}
 
           <h3 style={{ marginTop: 20 }}>Line items ({data.rows.length})</h3>
           {data.rows.length === 0 ? (
@@ -117,19 +135,39 @@ export default function CoachEarnings() {
               </thead>
               <tbody>
                 {data.rows.map(r => {
-                  const net = r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents;
-                  const stripeLabel = r.reconciled ? 'Stripe fee' : 'Stripe est';
+                  // Refund rows carry an explicit `net_cents` = coach's true
+                  // balance delta (-stripe_fee_kept under reverse_transfer:true
+                  // + refund_application_fee:true). Completed rows omit it and
+                  // fall back to the classic gross - platform - stripe formula.
+                  const net = r.net_cents != null
+                    ? r.net_cents
+                    : (r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents);
+                  const stripeLabel = r.refunded
+                    ? (r.stripe_fee_kept > 0
+                        ? `Stripe kept ${fmtPrice(r.stripe_fee_kept, r.currency)} of the original processing fee (your real cost on this refund)`
+                        : 'Stripe returned the original processing fee in full')
+                    : (r.reconciled ? 'Stripe fee' : 'Stripe est');
+                  const rowStyle = r.refunded
+                    ? { borderBottom: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.04)' }
+                    : { borderBottom: '1px solid var(--border)' };
+                  const netColor = net < 0 ? 'var(--dire-color)' : 'var(--radiant-color)';
                   return (
-                    <tr key={`${r.kind}-${r.id}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <tr key={`${r.kind}-${r.id}`} style={rowStyle}>
                       <td style={{ padding: 8, fontSize: 13 }}>{KIND_LABEL[r.kind] || r.kind}</td>
                       <td style={{ padding: 8, fontSize: 13 }}>{new Date(r.when).toLocaleString()}</td>
                       <td style={{ padding: 8, fontSize: 13 }}>{r.title || r.match_id || '—'}</td>
-                      <td style={{ padding: 8, textAlign: 'right' }}>{fmtPrice(r.amount_cents, r.currency)}</td>
-                      <td style={{ padding: 8, textAlign: 'right', color: 'var(--amber)' }}>−{fmtPrice(r.platform_fee_cents, r.currency)}</td>
-                      <td style={{ padding: 8, textAlign: 'right', color: 'var(--text-muted)' }} title={stripeLabel}>−{fmtPrice(r.stripe_fee_cents, r.currency)}</td>
-                      <td style={{ padding: 8, textAlign: 'right', color: 'var(--radiant-color)' }}>{fmtPrice(net, r.currency)}</td>
+                      <td style={{ padding: 8, textAlign: 'right' }}>{fmtSigned(r.amount_cents, r.currency)}</td>
+                      <td style={{ padding: 8, textAlign: 'right', color: 'var(--amber)' }}>{r.platform_fee_cents <= 0 ? fmtSigned(-r.platform_fee_cents, r.currency) : `−${fmtPrice(r.platform_fee_cents, r.currency)}`}</td>
+                      <td style={{ padding: 8, textAlign: 'right', color: 'var(--text-muted)' }} title={stripeLabel}>{r.stripe_fee_cents < 0 ? fmtSigned(-r.stripe_fee_cents, r.currency) : `−${fmtPrice(r.stripe_fee_cents, r.currency)}`}</td>
+                      <td style={{ padding: 8, textAlign: 'right', color: netColor }}>{fmtSigned(net, r.currency)}</td>
                       <td style={{ padding: 8, fontSize: 11 }}>
-                        {r.reconciled ? (
+                        {r.refunded ? (
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+                            background: 'rgba(245, 158, 11, 0.15)', color: 'var(--amber)',
+                            border: '1px solid rgba(245, 158, 11, 0.45)', fontWeight: 600,
+                          }} aria-label="Refunded; Stripe BalanceTransaction reconciled">↺ Refunded</span>
+                        ) : r.reconciled ? (
                           <span style={{
                             display: 'inline-block', padding: '2px 8px', borderRadius: 999,
                             background: 'rgba(34, 197, 94, 0.15)', color: 'var(--radiant-color)',

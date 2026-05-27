@@ -1631,6 +1631,23 @@ function createServer(startupStatus = {}) {
           }
           const refundedVod = await db.markVodRefundedByIntent(pi).catch(() => null);
           if (refundedVod) console.log('[Stripe] Refunded VOD review', refundedVod.id);
+          // Task #421 — Ingest the refund's BalanceTransaction(s) so the
+          // coach earnings dashboard can show the real cost of the refund
+          // (refunded gross + the slice of the original processing fee
+          // Stripe keeps). Best-effort: swallows on missing PI / BT not
+          // yet settled — webhook retries (and any reconciliation sweep)
+          // will fill the row in later. Source kind/id is resolved from
+          // the parent stripe_fee_ledger row when present, else from a
+          // direct PI → table lookup, so this works for arbitrary refund
+          // origins (auto no-show, admin release, manual Stripe-dashboard).
+          try {
+            await db.upsertStripeRefundsFromCharge(stripe, {
+              paymentIntent: pi,
+              chargeId: charge.id,
+            });
+          } catch (e) {
+            console.warn('[Stripe] charge.refunded refund-ledger upsert failed:', e?.message || e);
+          }
         }
       } else if (event.type === 'payment_intent.succeeded') {
         // With manual capture, payment_intent.succeeded only fires AFTER
@@ -15894,15 +15911,27 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         const s = String(v);
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       };
-      const lines = ['kind,id,when,title_or_match,amount_cents,platform_fee_cents,stripe_fee_cents,net_cents,currency,reconciled'];
+      // Task #421 — extra `refunded` + `refund_id` columns so a refund row
+      // (kind=*_refund, negative gross) is unambiguous in the export.
+      // Task #421 — refund rows carry explicit `net_cents` (coach's true
+      // balance delta = -stripe_fee_kept); completed rows compute net the
+      // classic way. `stripe_fee_kept_cents` is non-empty only on refund
+      // rows so a downstream sheet can sum the real refund cost directly.
+      const lines = ['kind,id,when,title_or_match,amount_cents,platform_fee_cents,stripe_fee_cents,net_cents,stripe_fee_kept_cents,currency,reconciled,refunded,refund_id'];
       for (const r of data.rows) {
-        const net = r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents;
+        const net = r.net_cents != null
+          ? r.net_cents
+          : (r.amount_cents - r.platform_fee_cents - r.stripe_fee_cents);
         lines.push([r.kind, r.id, r.when, r.title || r.match_id || '', r.amount_cents,
-                    r.platform_fee_cents, r.stripe_fee_cents, net, r.currency,
-                    r.reconciled ? 'true' : 'false'].map(esc).join(','));
+                    r.platform_fee_cents, r.stripe_fee_cents, net,
+                    r.refunded ? (r.stripe_fee_kept || 0) : '',
+                    r.currency,
+                    r.reconciled ? 'true' : 'false',
+                    r.refunded ? 'true' : 'false',
+                    r.refund_id || ''].map(esc).join(','));
       }
       lines.push('');
-      lines.push(`TOTAL,,,,${data.totals.gross},${data.totals.platform_fee},${data.totals.stripe_fee},${data.totals.net},,${data.totals.fully_reconciled ? 'true' : 'false'}`);
+      lines.push(`TOTAL,,,,${data.totals.gross},${data.totals.platform_fee},${data.totals.stripe_fee},${data.totals.net},${data.totals.stripe_fee_kept_on_refunds || 0},,${data.totals.fully_reconciled ? 'true' : 'false'},,`);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="coach-earnings-${data.ym}.csv"`);
       res.send(lines.join('\n'));
