@@ -329,6 +329,17 @@ async function main() {
       }
     }
 
+    // Task #446 — Discord Rich Presence pusher. Subscribes to presenceService
+    // events + ticks periodically; gated by feature flag at publish time, so
+    // safe to start unconditionally when the DB is up.
+    if (startupStatus.database) {
+      try {
+        require('./services/discordRichPresencePusher').start();
+      } catch (err) {
+        console.warn('[Startup] Discord Rich Presence pusher failed to start:', err.message);
+      }
+    }
+
     // v5.75: kick off the inhouse auto-start ticker once the API is up so
     // its internal /select-captains call can hit the live server.
     if (startupStatus.database) {

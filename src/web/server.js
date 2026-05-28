@@ -1235,6 +1235,192 @@ function createServer(startupStatus = {}) {
     return back({ discord_link: 'success', username: verification.username || discordUser.username || '' });
   });
 
+  // ------------------------------------------------------------------
+  // Task #446 — Discord Rich Presence OAuth (separate from the link
+  // flow). Always returns to /settings/account?tab=rpc. Stashed under a
+  // distinct session key (`discordRpcOAuth`) so it can't collide with an
+  // in-flight link round-trip. Requires the caller to already be signed
+  // in with Steam AND have a Discord account linked — we are not the
+  // primary link path, just an extra scope grant on top of it.
+  // ------------------------------------------------------------------
+  const RPC_RETURN_PATH = '/settings/account?tab=rpc';
+  app.get('/auth/discord-rpc', authLimiter, (req, res) => {
+    if (!req.session?.accountId) return res.redirect('/?auth=required');
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return res.redirect(`${RPC_RETURN_PATH}&rpc_connect=error&reason=oauth_disabled`);
+    }
+    const state = crypto.randomBytes(24).toString('hex');
+    req.session.discordRpcOAuth = { state, createdAt: Date.now() };
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: 'code',
+      scope: 'identify rpc.activities.write',
+      state,
+      redirect_uri: `${steamBaseUrl(req)}/auth/discord-rpc/callback`,
+      prompt: 'consent',
+    });
+    res.redirect(`${DISCORD_OAUTH_AUTHORIZE}?${params}`);
+  });
+
+  app.get('/auth/discord-rpc/callback', authLimiter, async (req, res) => {
+    const stash = req.session?.discordRpcOAuth || {};
+    if (req.session) req.session.discordRpcOAuth = null;
+    const back = (qs) => res.redirect(`${RPC_RETURN_PATH}&${qs}`);
+    if (!req.session?.accountId) return back('rpc_connect=error&reason=signed_out');
+    if (req.query.error) {
+      return back(`rpc_connect=error&reason=${req.query.error === 'access_denied' ? 'cancelled' : 'oauth_error'}`);
+    }
+    const code = (req.query.code || '').toString();
+    const state = (req.query.state || '').toString();
+    if (!code || !state || !stash.state || state !== stash.state) {
+      return back('rpc_connect=error&reason=bad_state');
+    }
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return back('rpc_connect=error&reason=oauth_disabled');
+
+    let tokenJson;
+    try {
+      const tokenRes = await fetch(DISCORD_OAUTH_TOKEN, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: `${steamBaseUrl(req)}/auth/discord-rpc/callback`,
+        }).toString(),
+      });
+      if (!tokenRes.ok) {
+        const body = await tokenRes.text().catch(() => '');
+        console.error('[discord-rpc-oauth] token exchange failed:', tokenRes.status, body.slice(0, 200));
+        return back('rpc_connect=error&reason=token_exchange');
+      }
+      tokenJson = await tokenRes.json();
+    } catch (err) {
+      console.error('[discord-rpc-oauth] token exchange threw:', err.message);
+      return back('rpc_connect=error&reason=token_exchange');
+    }
+    const accessToken = tokenJson?.access_token;
+    const refreshToken = tokenJson?.refresh_token || null;
+    const expiresIn = parseInt(tokenJson?.expires_in, 10);
+    const scope = (tokenJson?.scope || '').toString();
+    if (!accessToken) return back('rpc_connect=error&reason=token_exchange');
+    if (!/rpc\.activities\.write/.test(scope)) {
+      return back('rpc_connect=error&reason=missing_scope');
+    }
+
+    let discordUser;
+    try {
+      const userRes = await fetch(DISCORD_OAUTH_USER, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!userRes.ok) return back('rpc_connect=error&reason=user_fetch');
+      discordUser = await userRes.json();
+    } catch (_) {
+      return back('rpc_connect=error&reason=user_fetch');
+    }
+    const discordId = (discordUser?.id || '').toString();
+    if (!/^\d{17,19}$/.test(discordId)) return back('rpc_connect=error&reason=bad_id');
+
+    // Bind the RPC connection to the same Discord account the user has
+    // already linked — refuse mismatches so we never broadcast to a
+    // different person's Discord client.
+    let linkedDiscordId = null;
+    try { linkedDiscordId = await db.getDiscordIdByAccountId(req.session.accountId); } catch (_) {}
+    if (!linkedDiscordId) return back('rpc_connect=error&reason=not_linked');
+    if (String(linkedDiscordId) !== discordId) return back('rpc_connect=error&reason=discord_mismatch');
+
+    try {
+      await db.upsertDiscordRpcConnection({
+        accountId: req.session.accountId,
+        discordId,
+        accessToken,
+        refreshToken,
+        tokenExpiresAt: Number.isFinite(expiresIn) ? new Date(Date.now() + expiresIn * 1000) : null,
+        scope,
+      });
+    } catch (err) {
+      console.error('[discord-rpc-oauth] upsert failed:', err.message);
+      return back('rpc_connect=error&reason=save_failed');
+    }
+    return back('rpc_connect=success');
+  });
+
+  // GET /api/me/discord-rpc — current connection + opt-in state for the
+  // signed-in user. Never returns the access/refresh tokens.
+  app.get('/api/me/discord-rpc', async (req, res) => {
+    if (!req.session?.accountId) return res.status(401).json({ error: 'not_signed_in' });
+    try {
+      const conn = await db.getDiscordRpcConnection(req.session.accountId);
+      let flagState = 'off';
+      try { flagState = (await db.getFeatureFlag('discord_rich_presence_enabled'))?.state || 'off'; } catch (_) {}
+      if (!conn) return res.json({ connected: false, flag_state: flagState });
+      return res.json({
+        connected: true,
+        opted_in: !!conn.opted_in,
+        discord_id: conn.discord_id,
+        last_state: conn.last_state,
+        last_published_at: conn.last_published_at,
+        last_error: conn.last_error,
+        publish_count: conn.publish_count,
+        connected_at: conn.connected_at,
+        flag_state: flagState,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: 'db_error', message: err.message });
+    }
+  });
+
+  // POST /api/me/discord-rpc/opt-in { opted_in: bool } — pause/resume
+  // publishing without revoking the OAuth grant.
+  app.post('/api/me/discord-rpc/opt-in', async (req, res) => {
+    if (!req.session?.accountId) return res.status(401).json({ error: 'not_signed_in' });
+    const optedIn = !!req.body?.opted_in;
+    try {
+      const updated = await db.setDiscordRpcOptedIn(req.session.accountId, optedIn);
+      if (!updated) return res.status(404).json({ error: 'not_connected' });
+      return res.json({ ok: true, opted_in: updated.opted_in });
+    } catch (err) {
+      return res.status(500).json({ error: 'db_error', message: err.message });
+    }
+  });
+
+  // POST /api/me/discord-rpc/disconnect — fully revoke the connection.
+  app.post('/api/me/discord-rpc/disconnect', async (req, res) => {
+    if (!req.session?.accountId) return res.status(401).json({ error: 'not_signed_in' });
+    try {
+      await db.deleteDiscordRpcConnection(req.session.accountId);
+      return res.json({ ok: true });
+    } catch (err) {
+      return res.status(500).json({ error: 'db_error', message: err.message });
+    }
+  });
+
+  // GET /api/admin/discord-rich-presence — superuser-only status table.
+  app.get('/api/admin/discord-rich-presence', requireSuperuser, async (req, res) => {
+    try {
+      const [flag, stats, rows] = await Promise.all([
+        db.getFeatureFlag('discord_rich_presence_enabled').catch(() => null),
+        db.getDiscordRpcConnectionStats().catch(() => null),
+        db.listDiscordRpcConnectionsForAdmin(200).catch(() => []),
+      ]);
+      let worker = null;
+      try { worker = require('../services/discordRichPresencePusher').getStatus(); } catch (_) {}
+      return res.json({
+        flag: flag || { key: 'discord_rich_presence_enabled', state: 'off' },
+        stats,
+        worker,
+        connections: rows,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: 'db_error', message: err.message });
+    }
+  });
+
   // Stripe webhook MUST be registered before express.json() to receive raw body
   app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;

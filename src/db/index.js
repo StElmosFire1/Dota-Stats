@@ -1081,7 +1081,8 @@ async function init() {
          ('coaching_marketplace', 'on', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.'),
          ('chat_log_visible', 'preview', 'Task #363 — chat + chat-wheel log on /match/:id. preview = admins/superusers only; on = everyone.'),
          ('public_api', 'preview', 'Task #371 — public /v1 API + outbound webhooks. preview = superuser keys only; on = available to all users (free + Pro tiers).'),
-         ('pro_replay_browser', 'on', 'Task #378 — searchable browser of recent OpenDota pro matches with draft analyze + replay deep-links. on = public (default), preview = superuser only, off = surface fully hidden + sync paused.')
+         ('pro_replay_browser', 'on', 'Task #378 — searchable browser of recent OpenDota pro matches with draft analyze + replay deep-links. on = public (default), preview = superuser only, off = surface fully hidden + sync paused.'),
+         ('discord_rich_presence_enabled', 'off', 'Task #446 — Discord Rich Presence. When off, the per-user opt-in card on /settings/account still works but the pusher worker never actually publishes activities to Discord. Flip to on for a staged rollout.')
        ON CONFLICT (key) DO NOTHING`
     );
 
@@ -1156,6 +1157,34 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_discord_autojoin_log_ts ON discord_autojoin_log (ts DESC)`);
+
+    // Task #446 — Discord Rich Presence opt-in. One row per account that has
+    // completed the extra OAuth round-trip granting `rpc.activities.write`.
+    // The presence pusher worker (src/services/discordRichPresencePusher.js)
+    // walks this table on a tick and publishes the user's current site
+    // presence to Discord — but ONLY when the admin flag
+    // `discord_rich_presence_enabled` is `on` AND `opted_in` is true for
+    // that row. `opted_in` lets a user pause publishing without revoking
+    // the OAuth grant outright. `last_state` + `last_published_at` +
+    // `publish_count` power the admin "connected users" status table.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS discord_rpc_connections (
+        account_id TEXT PRIMARY KEY,
+        discord_id TEXT NOT NULL,
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expires_at TIMESTAMPTZ,
+        scope TEXT,
+        opted_in BOOLEAN NOT NULL DEFAULT TRUE,
+        last_state TEXT,
+        last_published_at TIMESTAMPTZ,
+        last_error TEXT,
+        publish_count INTEGER NOT NULL DEFAULT 0,
+        connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_discord_rpc_connections_discord_id ON discord_rpc_connections (discord_id)`);
 
     // Task #371 — Public API + webhooks. `api_keys` stores hashed tokens (SHA-256)
     // so a DB leak doesn't expose live keys. `webhook_subscriptions` is per-user
@@ -22805,10 +22834,107 @@ async function listProMatchLeagues({ limit = 100 } = {}) {
 }
 // ===== /Task #378 =====
 
+// Task #446 — Discord Rich Presence connection helpers. Plain CRUD; the
+// pusher worker, OAuth callback, and admin/status routes all use these.
+async function upsertDiscordRpcConnection({ accountId, discordId, accessToken, refreshToken, tokenExpiresAt, scope }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO discord_rpc_connections
+       (account_id, discord_id, access_token, refresh_token, token_expires_at, scope, opted_in, connected_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, TRUE, NOW(), NOW())
+     ON CONFLICT (account_id) DO UPDATE SET
+       discord_id = EXCLUDED.discord_id,
+       access_token = EXCLUDED.access_token,
+       refresh_token = EXCLUDED.refresh_token,
+       token_expires_at = EXCLUDED.token_expires_at,
+       scope = EXCLUDED.scope,
+       updated_at = NOW()
+     RETURNING *`,
+    [String(accountId), String(discordId), accessToken || null, refreshToken || null, tokenExpiresAt || null, scope || null]
+  );
+  return r.rows[0];
+}
+async function getDiscordRpcConnection(accountId) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM discord_rpc_connections WHERE account_id = $1`, [String(accountId)]);
+  return r.rows[0] || null;
+}
+async function setDiscordRpcOptedIn(accountId, optedIn) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE discord_rpc_connections SET opted_in = $2, updated_at = NOW() WHERE account_id = $1 RETURNING *`,
+    [String(accountId), !!optedIn]
+  );
+  return r.rows[0] || null;
+}
+async function deleteDiscordRpcConnection(accountId) {
+  const p = getPool();
+  const r = await p.query(`DELETE FROM discord_rpc_connections WHERE account_id = $1`, [String(accountId)]);
+  return r.rowCount > 0;
+}
+async function listOptedInDiscordRpcConnections() {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM discord_rpc_connections WHERE opted_in = TRUE`);
+  return r.rows;
+}
+async function recordDiscordRpcPublish(accountId, { state, ok, error }) {
+  const p = getPool();
+  await p.query(
+    `UPDATE discord_rpc_connections
+        SET last_state = $2,
+            last_published_at = CASE WHEN $3 THEN NOW() ELSE last_published_at END,
+            last_error = $4,
+            publish_count = publish_count + CASE WHEN $3 THEN 1 ELSE 0 END,
+            updated_at = NOW()
+      WHERE account_id = $1`,
+    [String(accountId), state || null, !!ok, error || null]
+  );
+}
+async function getDiscordRpcConnectionStats() {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE opted_in)::int AS opted_in,
+      COUNT(*) FILTER (WHERE last_published_at >= NOW() - INTERVAL '24 hours')::int AS published_24h,
+      COALESCE(SUM(publish_count), 0)::bigint AS publish_count_total
+    FROM discord_rpc_connections
+  `);
+  return r.rows[0] || { total: 0, opted_in: 0, published_24h: 0, publish_count_total: 0 };
+}
+async function listDiscordRpcConnectionsForAdmin(limit = 200) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT c.account_id, c.discord_id, c.opted_in, c.last_state,
+            c.last_published_at, c.last_error, c.publish_count, c.connected_at,
+            COALESCE(n.nickname, ps.persona_name) AS display_name
+       FROM discord_rpc_connections c
+       LEFT JOIN nicknames n ON n.account_id::text = c.account_id
+       LEFT JOIN LATERAL (
+         SELECT persona_name FROM player_stats
+          WHERE account_id::text = c.account_id
+          ORDER BY id DESC LIMIT 1
+       ) ps ON TRUE
+      ORDER BY c.connected_at DESC
+      LIMIT $1`,
+    [Math.max(1, Math.min(500, limit))]
+  );
+  return r.rows;
+}
+
 module.exports = {
   init,
   initSchema: init,
   getPool,
+  // Task #446 — Discord Rich Presence opt-in
+  upsertDiscordRpcConnection,
+  getDiscordRpcConnection,
+  setDiscordRpcOptedIn,
+  deleteDiscordRpcConnection,
+  listOptedInDiscordRpcConnections,
+  recordDiscordRpcPublish,
+  getDiscordRpcConnectionStats,
+  listDiscordRpcConnectionsForAdmin,
   recordCronHeartbeat,
   listCronHeartbeats,
   // Task #425 — feature health

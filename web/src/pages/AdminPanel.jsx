@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -3662,6 +3662,170 @@ function CoachingMarketplaceFlagPanel({ superuserKey }) {
   );
 }
 
+// Task #446 — Discord Rich Presence admin control. Three-state flag toggle
+// (on / preview / off) + status table of all users who connected.
+function DiscordRichPresenceCard({ superuserKey }) {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+  const [sortKey, setSortKey] = React.useState('last_published_at');
+  const [sortDir, setSortDir] = React.useState('desc');
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true);
+    getAdminDiscordRichPresence(superuserKey)
+      .then(d => { setData(d); setMsg(''); })
+      .catch(e => setMsg('Load failed: ' + e.message))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  async function handleSet(next) {
+    if (next === data?.flag?.state) return;
+    setSaving(true); setMsg('');
+    try {
+      await setFeatureFlag({ key: 'discord_rich_presence_enabled', state: next }, superuserKey);
+      setMsg(`Saved — flag is now ${next}.`);
+      await load();
+    } catch (e) {
+      setMsg('Save failed: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function sort(k) {
+    if (k === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(k); setSortDir(k === 'last_published_at' || k === 'connected_at' || k === 'publish_count' ? 'desc' : 'asc'); }
+  }
+
+  const rows = React.useMemo(() => {
+    const arr = [...(data?.connections || [])];
+    arr.sort((a, b) => {
+      const av = a[sortKey]; const bv = b[sortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
+      const as = String(av); const bs = String(bv);
+      return sortDir === 'asc' ? as.localeCompare(bs) : bs.localeCompare(as);
+    });
+    return arr;
+  }, [data, sortKey, sortDir]);
+
+  const OPTIONS = [
+    { value: 'on', label: 'On', hint: 'Pusher publishes for opted-in users' },
+    { value: 'preview', label: 'Preview', hint: 'Connect UI live, publishing paused' },
+    { value: 'off', label: 'Off', hint: 'Pusher idle (still records intent)' },
+  ];
+  const flagState = data?.flag?.state || 'off';
+  const stats = data?.stats || {};
+  const worker = data?.worker || null;
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-discord-rpc" className="section-title" style={{ marginBottom: 6 }}>
+        🎮 Discord Rich Presence — feature flag
+      </h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Mirrors each user's site presence (queue / lobby / match) to their Discord profile.
+        Per-user opt-in lives on <code>/settings/account</code>. This flag is the global kill-switch:
+        when <code>off</code> the pusher worker still records what it <em>would</em> publish so this
+        table stays useful, but never calls Discord. Default is <code>off</code> for the staged rollout.
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        {OPTIONS.map(opt => {
+          const active = flagState === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              className="btn"
+              disabled={saving || loading}
+              onClick={() => handleSet(opt.value)}
+              aria-pressed={active}
+              aria-label={`Set Discord Rich Presence flag to ${opt.label}`}
+              title={opt.hint}
+              style={{
+                padding: '6px 14px',
+                borderColor: active ? 'var(--accent)' : 'var(--border)',
+                background: active ? 'rgba(245,158,11,0.15)' : 'var(--bg-card)',
+                color: active ? 'var(--accent)' : 'var(--text-primary)',
+                fontWeight: active ? 700 : 500,
+              }}
+            >
+              {opt.label}
+              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
+                {opt.hint}
+              </span>
+            </button>
+          );
+        })}
+        {msg && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{msg}</span>}
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+        <span>Connected: <strong style={{ color: 'var(--text-primary)' }}>{stats.total ?? '—'}</strong></span>
+        <span>Opted-in: <strong style={{ color: 'var(--text-primary)' }}>{stats.opted_in ?? '—'}</strong></span>
+        <span>Published 24h: <strong style={{ color: 'var(--text-primary)' }}>{stats.published_24h ?? '—'}</strong></span>
+        <span>Total publishes: <strong style={{ color: 'var(--text-primary)' }}>{stats.publish_count_total ?? '—'}</strong></span>
+        {worker && (
+          <span>
+            Worker: <strong style={{ color: 'var(--text-primary)' }}>
+              {worker.started ? 'running' : 'idle'}
+            </strong>
+            {' '}· tick {Math.round(worker.tick_ms / 1000)}s
+            {!worker.app_id_configured && ' · ⚠ DISCORD_CLIENT_ID unset'}
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No users have connected Rich Presence yet.</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" style={{ width: '100%', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <SortableTh onSort={() => sort('display_name')} active={sortKey === 'display_name'} direction={sortDir}>Player</SortableTh>
+                <SortableTh onSort={() => sort('discord_id')} active={sortKey === 'discord_id'} direction={sortDir}>Discord ID</SortableTh>
+                <SortableTh onSort={() => sort('opted_in')} active={sortKey === 'opted_in'} direction={sortDir}>Opted in</SortableTh>
+                <SortableTh onSort={() => sort('last_state')} active={sortKey === 'last_state'} direction={sortDir}>Last state</SortableTh>
+                <SortableTh onSort={() => sort('last_published_at')} active={sortKey === 'last_published_at'} direction={sortDir}>Last published</SortableTh>
+                <SortableTh onSort={() => sort('publish_count')} active={sortKey === 'publish_count'} direction={sortDir} style={{ textAlign: 'right' }}>Publishes</SortableTh>
+                <SortableTh onSort={() => sort('connected_at')} active={sortKey === 'connected_at'} direction={sortDir}>Connected</SortableTh>
+                <SortableTh onSort={() => sort('last_error')} active={sortKey === 'last_error'} direction={sortDir}>Last error</SortableTh>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.account_id}>
+                  <td>{r.display_name || <span style={{ color: 'var(--text-muted)' }}>#{r.account_id}</span>}</td>
+                  <td><code style={{ fontSize: 11 }}>{r.discord_id}</code></td>
+                  <td>{r.opted_in ? '✓' : '—'}</td>
+                  <td>{r.last_state || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td>{r.last_published_at ? new Date(r.last_published_at).toLocaleString() : <span style={{ color: 'var(--text-muted)' }}>never</span>}</td>
+                  <td style={{ textAlign: 'right' }}>{r.publish_count || 0}</td>
+                  <td>{r.connected_at ? new Date(r.connected_at).toLocaleString() : '—'}</td>
+                  <td style={{ color: r.last_error && r.last_error !== 'flag_off' ? 'var(--amber)' : 'var(--text-muted)', fontSize: 12 }}>
+                    {r.last_error || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // Task #312 — Superuser-only dev shortcut for testing the coaching marketplace
 // without going through Stripe Connect Express KYC. Hits the
 // /api/admin/coaching/promote-test-coach route which inserts a synthetic
@@ -5068,6 +5232,8 @@ export default function AdminPanel() {
       <TierLadderPreview />
       {/* ── Coaching Marketplace flag (v5.93 launch kill-switch) ─────── */}
       <CoachingMarketplaceFlagPanel superuserKey={superuserKey} />
+      {/* ── Discord Rich Presence (Task #446) ────────────────────────── */}
+      <DiscordRichPresenceCard superuserKey={superuserKey} />
       <TestCoachPanel superuserKey={superuserKey} />
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />

@@ -282,6 +282,42 @@ export async function setFeatureFlag({ key, state, description }, superuserKey) 
   return data;
 }
 
+// Task #446 — Discord Rich Presence
+export async function getMeDiscordRpc() {
+  const res = await fetch(BASE + '/me/discord-rpc', { credentials: 'include' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+export async function setMeDiscordRpcOptIn(optedIn) {
+  const res = await fetch(BASE + '/me/discord-rpc/opt-in', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ opted_in: !!optedIn }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+export async function disconnectMeDiscordRpc() {
+  const res = await fetch(BASE + '/me/discord-rpc/disconnect', {
+    method: 'POST',
+    credentials: 'include',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+export async function getAdminDiscordRichPresence(superuserKey) {
+  const res = await superuserFetch(BASE + '/admin/discord-rich-presence', {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
 export async function launchSeason10(superuserKey) {
   const res = await superuserFetch(BASE + '/admin/launch-season-10', {
     method: 'POST',

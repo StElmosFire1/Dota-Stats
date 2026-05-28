@@ -10,6 +10,7 @@
 // the cover chip can never block profile render.
 
 const db = require('../db');
+const { EventEmitter } = require('events');
 
 const STEAM64_OFFSET = 76561197960265728n;
 const STALE_MS = 5 * 60 * 1000;
@@ -17,12 +18,21 @@ const STALE_MS = 5 * 60 * 1000;
 const _discord = new Map();
 const _steam = new Map();
 
+// Task #446 — change-event emitter for the Discord Rich Presence pusher.
+// Listeners receive `{ source: 'steam'|'discord', key, patch }` after each
+// setSteamPresence / setDiscordPresence so the pusher can opportunistically
+// publish in addition to its periodic tick. Best-effort; emitter has a
+// high max listener cap to avoid noisy warnings during tests.
+const events = new EventEmitter();
+events.setMaxListeners(50);
+
 function _now() { return Date.now(); }
 
 function setDiscordPresence(discordId, patch) {
   if (!discordId) return;
   const prev = _discord.get(String(discordId)) || {};
   _discord.set(String(discordId), { ...prev, ...patch, updatedAt: _now() });
+  try { events.emit('change', { source: 'discord', key: String(discordId), patch }); } catch (_) {}
 }
 
 function clearDiscordPresence(discordId) {
@@ -34,6 +44,7 @@ function setSteamPresence(steamId64, patch) {
   if (!steamId64) return;
   const prev = _steam.get(String(steamId64)) || {};
   _steam.set(String(steamId64), { ...prev, ...patch, updatedAt: _now() });
+  try { events.emit('change', { source: 'steam', key: String(steamId64), patch }); } catch (_) {}
 }
 
 function clearSteamPresence(steamId64) {
@@ -357,6 +368,8 @@ module.exports = {
   getPlayerPresence,
   getAllLivePresences,
   parseDotaRichPresence,
+  // Task #446 — change-event emitter for the Discord Rich Presence pusher.
+  events,
   // exposed for tests
   _caches: { _discord, _steam },
 };
