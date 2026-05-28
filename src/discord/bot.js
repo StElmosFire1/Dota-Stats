@@ -730,6 +730,7 @@ class DiscordBot {
         switch (command) {
           case 'help': await this._cmdHelp(msg); break;
           case 'perf-backfill': case 'perfbackfill': await this._cmdPerfBackfill(msg, args); break;
+          case 'insights-backfill': case 'insightsbackfill': await this._cmdInsightsBackfill(msg, args); break;
           case 'backfill-pick-source': case 'backfillpicksource': await this._cmdBackfillPickSource(msg, args); break;
           case 'recompute-baselines': case 'recomputebaselines': await this._cmdRecomputeBaselines(msg, args); break;
           case 'top': await this._cmdTop(msg, args); break;
@@ -2214,6 +2215,33 @@ class DiscordBot {
       );
     } catch (err) {
       await msg.reply(`PERF backfill failed: ${err.message}`);
+    }
+  }
+
+  async _cmdInsightsBackfill(msg, args) {
+    if (msg.author.id !== OWNER_DISCORD_ID) {
+      return msg.reply('You don\'t have permission to use this command.');
+    }
+    // Args: optional numeric limit (default 200, max 5000). The runner is
+    // idempotent — re-runs only touch player_stats rows where the target
+    // column is still NULL, so re-firing the command is safe and cheap.
+    const limitArg = args.find(a => /^\d+$/.test(a));
+    const limit = limitArg ? Math.min(5000, parseInt(limitArg, 10)) : 200;
+    await msg.reply(`Match-insights backfill starting (limit=${limit}). See bot logs for per-match progress.`);
+    try {
+      const { runBackfill } = require('../insights/backfill');
+      const r = await runBackfill({ limit });
+      if (r.skipped) {
+        await msg.reply(`Backfill already running — try again after the current sweep finishes. State: ${JSON.stringify(r.state)}`);
+        return;
+      }
+      const s = r.state;
+      await msg.reply(
+        `Match-insights backfill complete. Scanned ${s.scanned}/${s.total}, updated ${s.updated}, errors ${s.errors}.` +
+        (s.lastError ? `\nLast error: \`${s.lastError}\`` : '')
+      );
+    } catch (err) {
+      await msg.reply(`Match-insights backfill failed: ${err.message}`);
     }
   }
 

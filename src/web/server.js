@@ -9270,6 +9270,75 @@ NOTES
     }
   });
 
+  // ── Match Insights v2 (Task #439) ─────────────────────────────────────
+  // Admin-only preview surface for rich per-match insights derived from
+  // already-stored data. Each insight is also gated by a per-key feature
+  // flag (`match_insights_<name>`) so we can drip-feed individual insights
+  // to the public via the feature-flag admin panel without redeploying.
+  router.get('/admin/match-insights/:matchId', requireSuperuser, async (req, res) => {
+    try {
+      const { deriveAllInsights } = require('../insights/matchInsights');
+      const matchId = req.params.matchId;
+      const match = await db.getMatch(matchId);
+      if (!match) return res.status(404).json({ error: 'match not found' });
+      const fights = await db.getMatchFights(matchId).catch(() => []);
+      // Resolve the per-insight feature flag for the caller (superuser, so
+      // preview-state flags resolve to true via getResolvedFeatureFlags).
+      const flagMap = await db.getResolvedFeatureFlags({ isSuperuser: true }).catch(() => ({}));
+      const insights = deriveAllInsights(match, { fights }).map(ins => ({
+        ...ins,
+        flag_state: flagMap?.[ins.key] === true ? 'on' : (flagMap?.[ins.key] === false ? 'off' : 'unknown'),
+      }));
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        match_id: matchId,
+        match: { date: match.date, duration: match.duration, radiant_win: match.radiant_win },
+        insights,
+      });
+    } catch (err) {
+      console.error('[API] admin/match-insights error:', err.message);
+      res.status(500).json({ error: 'Failed to derive match insights' });
+    }
+  });
+
+  router.get('/admin/match-insights/:matchId/ward-heatmap.png', requireSuperuser, async (req, res) => {
+    try {
+      const { renderWardHeatmap } = require('../insights/wardHeatmap');
+      const match = await db.getMatch(req.params.matchId);
+      if (!match) return res.status(404).json({ error: 'match not found' });
+      const png = await renderWardHeatmap(match.players || []);
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'private, max-age=60');
+      res.send(png);
+    } catch (err) {
+      console.error('[API] match-insights ward-heatmap error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to render heatmap' });
+    }
+  });
+
+  router.post('/admin/match-insights/backfill', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const { runBackfill, getBackfillState } = require('../insights/backfill');
+      const limit = Math.max(1, Math.min(5000, parseInt(req.body?.limit ?? '200', 10)));
+      // Fire-and-forget — the runner manages its own in-flight flag so
+      // duplicate clicks coalesce into a single sweep.
+      runBackfill({ limit }).catch(e => console.warn('[InsightsBackfill] failed:', e.message));
+      res.json({ started: true, limit, state: getBackfillState() });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to start backfill' });
+    }
+  });
+
+  router.get('/admin/match-insights/backfill/status', requireSuperuser, async (req, res) => {
+    try {
+      const { getBackfillState } = require('../insights/backfill');
+      res.set('Cache-Control', 'no-store');
+      res.json({ state: getBackfillState() });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to load status' });
+    }
+  });
+
   // ── Feature flags ─────────────────────────────────────────────────────
   // Public endpoint — returns the resolved { key: bool } map for the caller.
   // Optional x-superuser-key header lets a superuser see preview-state flags

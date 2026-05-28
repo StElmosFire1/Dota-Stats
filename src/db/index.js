@@ -753,6 +753,20 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS sen_dewarded_count INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS sen_avg_lifespan INTEGER DEFAULT NULL`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS dead_time_seconds INTEGER DEFAULT NULL`);
+    // Task #439 — Match Insights v2 fields. Surface-derivable columns
+    // (lane_outcome, death_context, fight_arrival_time) are populated by
+    // the backfill runner in src/insights/backfill.js from existing data.
+    // Parser-derived columns (items_sold_gold, end_inventory_gold,
+    // time_spent_dead, save_events) are stubs — the Java replay parser
+    // doesn't surface them yet; they remain NULL/empty until that work
+    // ships and are exposed to the admin preview as "—" / empty rows.
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS lane_outcome TEXT`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS death_context TEXT`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS fight_arrival_time INTEGER`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS items_sold_gold INTEGER`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS end_inventory_gold INTEGER`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS time_spent_dead INTEGER`);
+    await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS save_events JSONB`);
     // Rename shallow_grave_count → death_prevention_count (expanded to track all death-prevention modifiers)
     await p.query(`DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='player_stats' AND column_name='shallow_grave_count') THEN

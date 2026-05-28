@@ -87,6 +87,23 @@ export async function superuserJson(url, {
   return data;
 }
 
+// Task #439 — Match Insights v2 helpers (admin-only).
+export async function getMatchInsights(superuserKey, matchId) {
+  return superuserJson(`/admin/match-insights/${encodeURIComponent(matchId)}`, { superuserKey });
+}
+export async function startMatchInsightsBackfill(superuserKey, limit = 200) {
+  return superuserJson('/admin/match-insights/backfill', {
+    method: 'POST', superuserKey, body: { limit },
+  });
+}
+export async function getMatchInsightsBackfillStatus(superuserKey) {
+  return superuserJson('/admin/match-insights/backfill/status', { superuserKey });
+}
+export function matchInsightsWardHeatmapUrl(superuserKey, matchId) {
+  const q = new URLSearchParams({ superuser_key: superuserKey || '' });
+  return `/api/admin/match-insights/${encodeURIComponent(matchId)}/ward-heatmap.png?${q.toString()}`;
+}
+
 // Task #492 — AI agent traffic report (superuser).
 export async function getAgentTrafficReport(superuserKey, days = 7) {
   const qs = days ? `?days=${encodeURIComponent(days)}` : '';

@@ -78,6 +78,7 @@ const AdminFeatureHealth = lazy(() => import('./pages/AdminFeatureHealth'));
 const AdminBrowserSmoke = lazy(() => import('./pages/AdminBrowserSmoke'));
 const AdminSmurfWatch = lazy(() => import('./pages/AdminSmurfWatch'));
 const AdminSmokeTest = lazy(() => import('./pages/AdminSmokeTest'));
+const AdminMatchInsights = lazy(() => import('./pages/AdminMatchInsights'));
 const AdminSmokeTestRun = lazy(() => import('./pages/AdminSmokeTestRun'));
 const DraftSandbox = lazy(() => import('./pages/DraftSandbox'));
 const ProfileSandbox = lazy(() => import('./pages/ProfileSandbox'));
@@ -1250,6 +1251,8 @@ function AppRoutes() {
                 <Route path="/admin/smurf-watch" element={<AdminSmurfWatch />} />
                 <Route path="/admin/smoke-test" element={<AdminSmokeTest />} />
                 <Route path="/admin/smoke-test/:id" element={<AdminSmokeTestRun />} />
+                <Route path="/admin/match-insights" element={<AdminMatchInsights />} />
+                <Route path="/admin/match-insights/:matchId" element={<AdminMatchInsights />} />
                 <Route path="/admin/draft-sandbox" element={<DraftSandbox />} />
                 <Route path="/admin/profile-sandbox" element={<ProfileSandbox />} />
                 <Route path="/admin/profile-demo" element={<ProfileDemo />} />
