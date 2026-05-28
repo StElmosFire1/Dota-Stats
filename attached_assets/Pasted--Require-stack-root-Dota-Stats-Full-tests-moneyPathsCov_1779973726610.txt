@@ -1,0 +1,1041 @@
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:318:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:327:1
+✖ webhook: checkout.session.completed PAID coaching_vod_review → markVodPaidBySession (0.732552ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:328:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:334:1
+✖ webhook: checkout.session.completed UNPAID coaching_vod_review → does NOT fulfil (0.732279ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:335:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:341:1
+✖ webhook: async_payment_succeeded coaching_vod_review → markVodPaidBySession (0.550513ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:342:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:348:1
+✖ webhook: async_payment_failed coaching_vod_review → markVodCancelledBySession (0.537356ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:350:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:356:1
+✖ webhook: checkout.session.expired coaching_vod_review → markVodCancelledBySession (0.599944ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:358:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:364:1
+✖ webhook: payment_intent.canceled coaching_vod_review → markVodRefundedByIntent (0.563168ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:366:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:375:1
+✖ refund fail-closed: /bookings/:id/no-show-refund — Stripe cancel throws → 502, no markBookingRefunded (0.737967ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:376:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:390:1
+✖ refund fail-closed: /bookings/:id/no-show-refund — Stripe cancel succeeds → 200 + DB flip (0.65979ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:391:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:404:1
+✖ refund fail-closed: /vod-reviews/:id/refund — Stripe cancel throws → 502, no setVodStatus refunded (0.633205ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:405:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:421:1
+✖ refund fail-closed: /vod-reviews/:id/refund — Stripe cancel succeeds → 200 + markVodRefundedByIntent (1.180876ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:422:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:433:1
+✖ refund fail-closed: /me/coach/group-sessions/:id/cancel — Stripe cancel throws → 502, session NOT flipped to cancelled (0.648023ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:438:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:458:1
+✖ refund fail-closed: /me/coach/group-sessions/:id/cancel — all Stripe cancels succeed → 200 + status flipped (0.767744ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:462:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/moneyPathsCoverage.test.js:480:1
+✖ race: 5 concurrent group session joins on a capacity-3 session → exactly 3 succeed, 2 get 400 "Session full" (0.689534ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:144:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:501:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils tournament_entry (8.471061ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at node:internal/test_runner/harness:255:12
+      at node:internal/process/task_queues:140:7 {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil tournament_entry (deferred) (1.946384ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils tournament_entry (1.360045ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils pro_lifetime (1.026161ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil pro_lifetime (deferred) (1.697575ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils pro_lifetime (0.941051ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils coaching_booking (0.648458ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil coaching_booking (deferred) (0.717625ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils coaching_booking (0.804138ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils founders_ring (0.700519ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil founders_ring (deferred) (0.505177ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils founders_ring (0.437025ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils frame_purchase (0.56543ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil frame_purchase (deferred) (0.493021ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils frame_purchase (0.637366ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils gift_pro (0.558689ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil gift_pro (deferred) (1.215463ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils gift_pro (0.449165ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils gift_season_pass (0.533785ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil gift_season_pass (deferred) (0.564324ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils gift_season_pass (0.423758ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils default buyin (no purpose metadata) (0.508257ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil default buyin (no purpose metadata) (deferred) (0.511473ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils default buyin (no purpose metadata) (0.498851ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:389:1
+✖ checkout.session.completed payment_status='no_payment_required' → fulfils (default buyin) (0.56475ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:391:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:398:1
+✖ checkout.session.async_payment_failed for coaching_booking → frees the slot (0.615756ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:400:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookAsyncPayment.test.js:414:1
+✖ checkout.session.async_payment_failed for non-coaching purpose → no DB mutation (0.45858ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:162:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:416:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:177:1
+✖ charge.refunded with payment_intent → revokes Pro AND flips coaching booking (6.800746ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:182:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at node:internal/test_runner/harness:255:12
+      at node:internal/process/task_queues:140:7 {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:194:1
+✖ charge.refunded WITHOUT payment_intent → no DB mutation (3.098857ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:199:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:209:1
+✖ payment_intent.succeeded for coaching_booking → marks booking completed (0.970104ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:214:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:221:1
+✖ payment_intent.succeeded for non-coaching purpose → no DB mutation (1.106353ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:226:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:233:1
+✖ payment_intent.succeeded with no metadata → no DB mutation (0.880098ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:238:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:245:1
+✖ payment_intent.canceled for coaching_booking → flips booking refunded (0.817989ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:250:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:257:1
+✖ payment_intent.canceled for non-coaching purpose → no DB mutation (0.706689ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:262:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:270:1
+✖ account.updated with charges_enabled AND payouts_enabled → promotes coach to active (1.557405ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:275:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:282:1
+✖ account.updated with charges_enabled only (payouts disabled) → coach NOT promoted (0.816882ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:287:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:294:1
+✖ account.updated with payouts_enabled only (charges disabled) → coach NOT promoted (0.681691ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:299:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:305:1
+✖ account.updated with neither flag → coach NOT promoted (0.565277ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:310:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:317:1
+✖ checkout.session.expired for coaching_booking → frees the slot (0.500898ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:322:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:329:1
+✖ checkout.session.expired for non-coaching purpose → no DB mutation (0.633776ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:334:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
+
+test at tests/stripeWebhookRefundsKyc.test.js:341:1
+✖ checkout.session.expired with no metadata → no DB mutation (0.62132ms)
+  Error: Cannot find module 'connect-pg-simple'
+  Require stack:
+  - /root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+      at Function.resolve (node:internal/modules/helpers:193:19)
+      at stubModule (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:22:51)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:108:3)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:346:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [ '/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js' ]
+  }
