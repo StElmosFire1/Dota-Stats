@@ -1,5 +1,21 @@
 module.exports = [
   {
+    "version": "8.00",
+    "title": "Head-to-Head page — drill-down, OG card, compare-vs pickers (Task #442)",
+    "published_at": "2026-05-28",
+    "major": true,
+    "notes": [
+      "**Why.** The existing `/head-to-head` tab inside PlayerTools answered 'what's the score?' for two players, but every other question — *which heroes did they pick into each other, who won lane when they faced off, how does the score swing by side, what's the longest streak either way* — required clicking into individual matches. Task #442 promotes head-to-head from an in-app tab to its own first-class, deep-linkable, shareable page so two players can settle a beef in a single URL.",
+      "**New `/h2h/:playerA/:playerB` route** with a `/me/h2h/:other` shortcut that resolves the viewer's account id from session and redirects to the canonical URL. Same Pro paywall (`requirePro('head_to_head')`) as the in-app tab so the gating story stays consistent across both surfaces. Lazy-loaded React page (`web/src/pages/H2H.jsx`) with a header scoreboard (record, win-rate, all-time PERF Δ, longest streak each), four tabs (Hero matchups grid, Lane matchups, Side breakdown, Timeline with running score), and a Share button that copies the canonical link.",
+      "**New `db.getH2HDetailed(a, b, seasonId)` in `src/db/index.js`.** Single query joins `player_stats a` to `player_stats b` on opposing teams for the same match, returns a header bundle (totals + a/b longest streak walked chronologically + average PERF + perf delta), the aggregated hero-matchup grid, derived lane-matchup rows (lane bucketing matches `computeMatchLaneOutcomes` so 'A safe vs B off' / 'A mid vs B mid' / 'A off vs B safe' detection is consistent with the rest of the site; per-row W/~/L outcome uses the existing >2000 / >500 / -500 / -2000 net-worth thresholds when both players have `laning_nw` populated), side breakdown (A's record on Radiant vs Dire), and the full chronological timeline.",
+      "**Shareable OG card.** New `src/services/h2hOgCard.js` patterned on `profileOgCard.js` — 1200×630 PNG via `@napi-rs/canvas`, in-memory cache (10-min TTL, 200-entry cap), each player's top hero as a faded backdrop slab on their side of a brass divider, scoreline rendered in 220px numerals with the leader coloured green / loser red / ties parchment. Endpoint at `GET /og/h2h/:a/:b.png`. Companion crawler unfurl at `GET /h2h/:a/:b` sniffs the social-bot UA list (Discord/Twitter/Slack/Facebook/LinkedIn/Telegram/WhatsApp/Reddit/Skype/Embedly/Iframely/Googlebot) and responds with OG meta-tag HTML; real browsers fall through to the SPA so React still mounts normally.",
+      "**'Compare vs…' pickers.** New `H2HComparePicker` component on every Player Profile (own + others) — a single `<select>` of all players that navigates to `/h2h/<thisProfile>/<picked>` on change, plus a one-click 'vs me →' button when the signed-in viewer is looking at someone else's profile so they don't have to scroll the dropdown. Self-fetches the roster once via `getAllPlayers()`. RivalCard (Task #441) gains a 'Detailed H2H →' link pointing at `/me/h2h/:rivalAccountId` so the weekly rivalry pipes straight into the new drill-down page.",
+      "**A11y.** All buttons are `<button type=\"button\">` with `aria-label` on icon-only actions (Swap, Share, vs me, change-left/right selects); the tab strip uses `role=\"tablist\"` + `role=\"tab\"` + `aria-selected` + `aria-controls`; the panel below is `role=\"tabpanel\"` + `aria-labelledby`; the picker `<select>` has a real `<label>` wrapping it; no `<div onClick>` and no hover-only reveals.",
+      "**Scope.** Full edition only (mirrors the rest of the Pro-paywalled surface — community edition is paywall-free by policy). Out of scope by design: 3-way comparisons, time-window slicing (use the existing season selector for the season-scoped slice). The lane-outcome column is intentionally blank ('—') when either player's `laning_nw` is missing rather than guessing from the match result, so the column either tells you the truth or stays silent."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.99",
     "title": "Weekly Rivals auto-pairing (Task #441)",
     "published_at": "2026-05-28",

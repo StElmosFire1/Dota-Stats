@@ -575,6 +575,15 @@ export async function getAllPlayers(seasonId = null) {
   return fetchJson(`/players?x=1${seasonParam(seasonId)}`);
 }
 
+// Task #442 — Detailed head-to-head used by the `/h2h/:a/:b` page. The
+// server endpoint is Pro-paywalled like the in-app head-to-head tab, so
+// callers should treat a thrown `{ paywall: true }` error the same way
+// the existing PlayerTools tab does.
+export async function getH2HDetailed(a, b, seasonId = null) {
+  const qs = seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : '';
+  return fetchJson(`/h2h/${encodeURIComponent(a)}/${encodeURIComponent(b)}${qs}`);
+}
+
 export async function getHeroStats(seasonId = null) {
   return fetchJson(`/heroes?x=1${seasonParam(seasonId)}`);
 }

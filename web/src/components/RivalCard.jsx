@@ -70,6 +70,7 @@ export default function RivalCard({ compact = false }) {
           fontSize: 12, color: 'var(--text-muted)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           borderTop: '1px solid var(--border, #2a2d3a)', paddingTop: 8,
+          gap: 8, flexWrap: 'wrap',
         }}
       >
         <span>
@@ -78,6 +79,14 @@ export default function RivalCard({ compact = false }) {
             {rival.all_time_my_wins || 0}–{rival.all_time_rival_wins || 0}
           </strong>
         </span>
+        {/* Task #442 — Compare-vs shortcut to the detailed H2H page. */}
+        <Link
+          to={`/me/h2h/${rival.rival_account_id}`}
+          aria-label={`View detailed head-to-head against ${rivalLabel}`}
+          style={{ color: 'var(--accent, #c5a975)', fontWeight: 600, textDecoration: 'none' }}
+        >
+          Detailed H2H →
+        </Link>
       </div>
       {rival.both_in_queue && (
         <div

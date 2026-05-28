@@ -2999,6 +2999,110 @@ function createServer(startupStatus = {}) {
     }
   }
 
+  // Task #442 — OG card endpoint for `/h2h/:a/:b`. Mirrors the profile +
+  // match endpoints: validates the two account ids, asks the
+  // h2hOgCard service for a 1200×630 PNG, falls back to the OA logo on
+  // any failure so crawlers never get an error page.
+  async function _renderH2HOgCard(res, db, aId, bId) {
+    try {
+      const [aNick, bNick, aHero, bHero, h2h] = await Promise.all([
+        db.getNickname(aId).catch(() => null),
+        db.getNickname(bId).catch(() => null),
+        _resolveOgProfileHero(db, aId).catch(() => ({ heroId: null, heroName: null })),
+        _resolveOgProfileHero(db, bId).catch(() => ({ heroId: null, heroName: null })),
+        db.getHeadToHead(aId, bId, null).catch(() => ({ a_wins: 0, b_wins: 0 })),
+      ]);
+      const { generateH2HOgCard } = require('../services/h2hOgCard');
+      const buf = await generateH2HOgCard({
+        aName: aNick || `Player ${aId}`,
+        bName: bNick || `Player ${bId}`,
+        aWins: h2h.a_wins || 0,
+        bWins: h2h.b_wins || 0,
+        aHeroId: aHero.heroId,
+        aHeroName: aHero.heroName,
+        bHeroId: bHero.heroId,
+        bHeroName: bHero.heroName,
+      });
+      if (!buf) return res.redirect(302, '/oa-logo.png');
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=600');
+      return res.send(buf);
+    } catch (err) {
+      console.warn('[h2h-og] card render failed:', err.message);
+      return res.redirect(302, '/oa-logo.png');
+    }
+  }
+
+  app.get('/og/h2h/:a/:b.png', async (req, res) => {
+    const a = String(req.params.a || '');
+    const b = String(req.params.b || '');
+    if (!/^\d{1,20}$/.test(a) || !/^\d{1,20}$/.test(b) || a === b) {
+      return res.redirect(302, '/oa-logo.png');
+    }
+    const db = require('../db');
+    return _renderH2HOgCard(res, db, a, b);
+  });
+
+  // Crawler unfurl for `/h2h/:a/:b`. Real browsers fall through to the
+  // SPA catch-all so the React page mounts normally — only social bots
+  // get the meta-only HTML.
+  app.get('/h2h/:a/:b', async (req, res, next) => {
+    const a = String(req.params.a || '');
+    const b = String(req.params.b || '');
+    if (!/^\d{1,20}$/.test(a) || !/^\d{1,20}$/.test(b) || a === b) return next();
+    const ua = String(req.get('user-agent') || '');
+    if (!_isSocialUnfurler(ua)) return next();
+    try {
+      const db = require('../db');
+      const [aNick, bNick, h2h] = await Promise.all([
+        db.getNickname(a).catch(() => null),
+        db.getNickname(b).catch(() => null),
+        db.getHeadToHead(a, b, null).catch(() => ({ total: 0, a_wins: 0, b_wins: 0 })),
+      ]);
+      const aName = aNick || `Player ${a}`;
+      const bName = bNick || `Player ${b}`;
+      const total = h2h.total || ((h2h.a_wins || 0) + (h2h.b_wins || 0));
+      const title = `${aName} vs ${bName} · ${h2h.a_wins || 0}–${h2h.b_wins || 0} · OCE Inhouse`;
+      const description = total > 0
+        ? `Head-to-head over ${total} match${total === 1 ? '' : 'es'} — ${aName} ${h2h.a_wins || 0}, ${bName} ${h2h.b_wins || 0}.`
+        : `No recorded meetings yet between ${aName} and ${bName}.`;
+      const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+      const host = req.get('host') || 'oceinhouse.gg';
+      const origin = `${proto}://${host}`;
+      const pageUrl = `${origin}/h2h/${encodeURIComponent(a)}/${encodeURIComponent(b)}`;
+      const imageUrl = `${origin}/og/h2h/${encodeURIComponent(a)}/${encodeURIComponent(b)}.png`;
+      const eTitle = _escapeHtml(title);
+      const eDesc = _escapeHtml(description);
+      const eUrl = _escapeHtml(pageUrl);
+      const eImage = _escapeHtml(imageUrl);
+      res.status(200).set('Cache-Control', 'public, max-age=300').type('html').send(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+        `<title>${eTitle}</title>` +
+        `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+        `<meta name="description" content="${eDesc}">` +
+        `<link rel="canonical" href="${eUrl}">` +
+        `<meta property="og:type" content="article">` +
+        `<meta property="og:site_name" content="OCE Inhouse">` +
+        `<meta property="og:title" content="${eTitle}">` +
+        `<meta property="og:description" content="${eDesc}">` +
+        `<meta property="og:url" content="${eUrl}">` +
+        `<meta property="og:image" content="${eImage}">` +
+        `<meta property="og:image:width" content="1200">` +
+        `<meta property="og:image:height" content="630">` +
+        `<meta property="og:image:alt" content="${eTitle}">` +
+        `<meta name="twitter:card" content="summary_large_image">` +
+        `<meta name="twitter:title" content="${eTitle}">` +
+        `<meta name="twitter:description" content="${eDesc}">` +
+        `<meta name="twitter:image" content="${eImage}">` +
+        `<meta http-equiv="refresh" content="0; url=${eUrl}">` +
+        `</head><body><p><a href="${eUrl}">${eTitle}</a></p></body></html>`
+      );
+    } catch (err) {
+      console.warn('[h2h-og] unfurl failed:', err.message);
+      return next();
+    }
+  });
+
   app.get('/og/match/:matchId.png', async (req, res) => {
     const matchId = String(req.params.matchId || '');
     if (!/^[A-Za-z0-9_-]{1,50}$/.test(matchId)) {
@@ -7807,6 +7911,30 @@ NOTES
       const data = await db.getHeadToHead(a, b, season_id || null);
       res.json(data);
     } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch head-to-head' });
+    }
+  });
+
+  // Task #442 — Detailed head-to-head used by the dedicated `/h2h/:a/:b`
+  // page. Same Pro paywall as `/head-to-head` (the in-app tab uses
+  // `head_to_head`; a deep-linked page reuses the same gate so the
+  // surface is consistent). The shape is richer — header totals,
+  // longest streaks, PERF delta, hero/lane/side breakdowns, and the
+  // full timeline of meetings.
+  router.get('/h2h/:a/:b', requirePro('head_to_head'), async (req, res) => {
+    try {
+      const { a, b } = req.params;
+      if (!/^\d{1,20}$/.test(String(a)) || !/^\d{1,20}$/.test(String(b))) {
+        return res.status(400).json({ error: 'Invalid account ids' });
+      }
+      if (String(a) === String(b)) {
+        return res.status(400).json({ error: 'Pick two different players' });
+      }
+      const seasonId = req.query.season_id || req.query.season || null;
+      const data = await db.getH2HDetailed(a, b, seasonId);
+      res.json(data);
+    } catch (err) {
+      console.error('[API] /h2h failed:', err.message);
       res.status(500).json({ error: 'Failed to fetch head-to-head' });
     }
   });

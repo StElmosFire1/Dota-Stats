@@ -60,6 +60,13 @@ const Upload = lazy(() => import('./pages/Upload'));
 const Seasons = lazy(() => import('./pages/Seasons'));
 const BuyinSuccess = lazy(() => import('./pages/BuyinSuccess'));
 const PlayerTools = lazy(() => import('./pages/PlayerTools'));
+const H2H = lazy(() => import('./pages/H2H'));
+// Task #442 — `/me/h2h/:other` shortcut resolves viewer → canonical
+// `/h2h/:a/:b`. Named export from the same lazy chunk so we don't ship
+// a second copy of the same module on first hit.
+const H2HMeRedirectLazy = lazy(() =>
+  import('./pages/H2H').then(m => ({ default: m.H2HMeRedirect }))
+);
 const Predictions = lazy(() => import('./pages/Predictions'));
 const StatsEditor = lazy(() => import('./pages/StatsEditor'));
 const PatchNotes = lazy(() => import('./pages/PatchNotes'));
@@ -342,6 +349,16 @@ function SteamButton() {
               <Link to={`/player/${accountId}#matches`} role="menuitem" style={itemStyle}
                 onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
                 <span aria-hidden="true">🎮</span> My matches
+              </Link>
+            )}
+            {/* Task #442 — Quick entry point to the H2H page. Hands the
+                viewer off to the Compare-vs picker on their own profile
+                (the picker on PlayerProfile.jsx routes to /h2h/<me>/<picked>
+                which is the canonical `/me/h2h/:other` destination). */}
+            {accountId && (
+              <Link to={`/player/${accountId}?compare=1`} role="menuitem" style={itemStyle}
+                onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
+                <span aria-hidden="true">⚔️</span> Compare H2H vs…
               </Link>
             )}
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
@@ -1225,6 +1242,9 @@ function AppRoutes() {
                 <Route path="/buyin-success" element={<BuyinSuccess />} />
                 <Route path="/player-tools" element={<PlayerTools />} />
                 <Route path="/head-to-head" element={<PlayerTools />} />
+                {/* Task #442 — Detailed H2H page + viewer shortcut. */}
+                <Route path="/h2h/:playerA/:playerB" element={<H2H />} />
+                <Route path="/me/h2h/:other" element={<H2HMeRedirectLazy />} />
                 <Route path="/compare" element={<PlayerTools />} />
                 <Route path="/draft" element={<Draft />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />

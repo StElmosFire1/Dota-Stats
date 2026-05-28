@@ -9223,6 +9223,215 @@ async function getHeadToHead(playerA, playerB, seasonId = null) {
   };
 }
 
+// Task #442 — Detailed head-to-head between two players. Same opponent
+// scope as getHeadToHead (legacy excluded unless a season is supplied),
+// but returns a richer object the dedicated `/h2h/:a/:b` page renders:
+// header totals, longest win streak per player, average PERF delta, the
+// hero-matchup grid, lane matchup rows (when laning_nw is populated for
+// both players), Radiant/Dire side breakdown, and the full chronological
+// timeline of every meeting.
+async function getH2HDetailed(playerA, playerB, seasonId = null) {
+  const p = getPool();
+  const aId = parseInt(playerA);
+  const bId = parseInt(playerB);
+  if (!Number.isFinite(aId) || !Number.isFinite(bId) || aId === bId) {
+    return {
+      a_account_id: aId, b_account_id: bId,
+      a_name: null, b_name: null,
+      header: { total: 0, a_wins: 0, b_wins: 0, a_perf_avg: null, b_perf_avg: null, perf_delta: null, a_longest_streak: 0, b_longest_streak: 0 },
+      hero_matchups: [], lane_matchups: [], side_breakdown: { a_radiant: {games:0,wins:0}, a_dire: {games:0,wins:0} },
+      timeline: [],
+    };
+  }
+  const params = [aId, bId];
+  const sc = seasonId
+    ? ` AND m.season_id = $${params.push(parseInt(seasonId))}`
+    : ' AND m.is_legacy = false';
+
+  // 1. All head-to-head meetings (a vs b on opposing teams).
+  const result = await p.query(
+    `SELECT
+       m.match_id, m.date, m.radiant_win, m.duration, m.season_id,
+       a.team AS a_team, a.slot AS a_slot,
+       a.hero_id AS a_hero_id, a.hero_name AS a_hero, a.position AS a_position,
+       a.kills AS a_kills, a.deaths AS a_deaths, a.assists AS a_assists,
+       a.gpm AS a_gpm, a.xpm AS a_xpm, a.perf AS a_perf,
+       a.laning_nw AS a_laning_nw,
+       b.team AS b_team, b.slot AS b_slot,
+       b.hero_id AS b_hero_id, b.hero_name AS b_hero, b.position AS b_position,
+       b.kills AS b_kills, b.deaths AS b_deaths, b.assists AS b_assists,
+       b.gpm AS b_gpm, b.xpm AS b_xpm, b.perf AS b_perf,
+       b.laning_nw AS b_laning_nw
+     FROM player_stats a
+     JOIN player_stats b ON b.match_id = a.match_id AND b.account_id = $2 AND b.team != a.team
+     JOIN matches m ON m.match_id = a.match_id
+     WHERE a.account_id = $1${sc}
+     ORDER BY m.date DESC`,
+    params
+  );
+  const rows = result.rows;
+
+  // 2. Display names (one round-trip each, both nullable).
+  const [aNick, bNick] = await Promise.all([
+    p.query(`SELECT nickname FROM nicknames WHERE account_id = $1 ORDER BY updated_at DESC LIMIT 1`, [aId]).then(r => r.rows[0]?.nickname || null).catch(() => null),
+    p.query(`SELECT nickname FROM nicknames WHERE account_id = $1 ORDER BY updated_at DESC LIMIT 1`, [bId]).then(r => r.rows[0]?.nickname || null).catch(() => null),
+  ]);
+  let aName = aNick;
+  let bName = bNick;
+  if (!aName || !bName) {
+    for (const r of rows) {
+      if (!aName) aName = null; // persona name not in this query
+      if (!bName) bName = null;
+    }
+    // Fall back to a persona lookup if nicknames are blank.
+    if (!aName) {
+      const r = await p.query(`SELECT persona_name FROM player_stats WHERE account_id=$1 AND persona_name IS NOT NULL ORDER BY match_id DESC LIMIT 1`, [aId]).catch(() => null);
+      aName = r?.rows?.[0]?.persona_name || `Player ${aId}`;
+    }
+    if (!bName) {
+      const r = await p.query(`SELECT persona_name FROM player_stats WHERE account_id=$1 AND persona_name IS NOT NULL ORDER BY match_id DESC LIMIT 1`, [bId]).catch(() => null);
+      bName = r?.rows?.[0]?.persona_name || `Player ${bId}`;
+    }
+  }
+
+  // 3. Header aggregates.
+  const aWon = (r) => (r.a_team === 'radiant' && r.radiant_win) || (r.a_team === 'dire' && !r.radiant_win);
+  let aWins = 0, bWins = 0;
+  let aPerfSum = 0, aPerfN = 0, bPerfSum = 0, bPerfN = 0;
+  for (const r of rows) {
+    if (aWon(r)) aWins++; else bWins++;
+    if (r.a_perf != null) { aPerfSum += parseFloat(r.a_perf); aPerfN++; }
+    if (r.b_perf != null) { bPerfSum += parseFloat(r.b_perf); bPerfN++; }
+  }
+  // Longest streak each — walk chronologically (oldest → newest).
+  const chrono = rows.slice().sort((x, y) => new Date(x.date) - new Date(y.date));
+  let aStreak = 0, aBest = 0, bStreak = 0, bBest = 0;
+  for (const r of chrono) {
+    if (aWon(r)) { aStreak++; bStreak = 0; if (aStreak > aBest) aBest = aStreak; }
+    else { bStreak++; aStreak = 0; if (bStreak > bBest) bBest = bStreak; }
+  }
+
+  // 4. Hero matchup grid — aggregated per (a_hero_id, b_hero_id).
+  const heroMap = new Map();
+  for (const r of rows) {
+    const key = `${r.a_hero_id || 0}|${r.b_hero_id || 0}`;
+    let cell = heroMap.get(key);
+    if (!cell) {
+      cell = {
+        a_hero_id: r.a_hero_id || 0, a_hero: r.a_hero || null,
+        b_hero_id: r.b_hero_id || 0, b_hero: r.b_hero || null,
+        games: 0, a_wins: 0,
+      };
+      heroMap.set(key, cell);
+    }
+    cell.games++;
+    if (aWon(r)) cell.a_wins++;
+  }
+  const hero_matchups = Array.from(heroMap.values())
+    .sort((x, y) => y.games - x.games || (y.a_wins / y.games) - (x.a_wins / x.games));
+
+  // 5. Lane matchup detection. Two players faced each other in lane when
+  //    A's lane bucket and B's lane bucket are opponent-paired (e.g. A
+  //    safe_radiant vs B off_dire). If laning_nw exists on both, also
+  //    compute a per-lane W/~/L outcome from net-worth delta.
+  const laneOf = (pos, team) => {
+    const n = parseInt(pos);
+    if (n === 1 || n === 5) return team === 'radiant' ? 'safe_radiant' : 'off_dire';
+    if (n === 3 || n === 4) return team === 'radiant' ? 'off_radiant' : 'safe_dire';
+    if (n === 2) return team === 'radiant' ? 'mid_radiant' : 'mid_dire';
+    return null;
+  };
+  const opposingLane = {
+    safe_radiant: 'off_dire', off_dire: 'safe_radiant',
+    off_radiant: 'safe_dire', safe_dire: 'off_radiant',
+    mid_radiant: 'mid_dire', mid_dire: 'mid_radiant',
+  };
+  const laneLabel = (lane) => {
+    if (lane === 'safe_radiant' || lane === 'off_dire') return 'Bot (safe vs off)';
+    if (lane === 'off_radiant' || lane === 'safe_dire') return 'Top (off vs safe)';
+    if (lane === 'mid_radiant' || lane === 'mid_dire') return 'Mid';
+    return 'Lane';
+  };
+  const laneOutcome = (advA) => {
+    if (advA > 2000) return 'W';
+    if (advA > 500) return 'w';
+    if (advA < -2000) return 'L';
+    if (advA < -500) return 'l';
+    return '~';
+  };
+  const lane_matchups = [];
+  for (const r of rows) {
+    const aLane = laneOf(r.a_position, r.a_team);
+    const bLane = laneOf(r.b_position, r.b_team);
+    if (!aLane || !bLane) continue;
+    if (opposingLane[aLane] !== bLane) continue;
+    let outcome = null;
+    if (r.a_laning_nw != null && r.b_laning_nw != null) {
+      outcome = laneOutcome((parseInt(r.a_laning_nw) || 0) - (parseInt(r.b_laning_nw) || 0));
+    }
+    lane_matchups.push({
+      match_id: r.match_id,
+      date: r.date,
+      lane: laneLabel(aLane),
+      a_hero_id: r.a_hero_id, a_hero: r.a_hero,
+      b_hero_id: r.b_hero_id, b_hero: r.b_hero,
+      a_laning_nw: r.a_laning_nw == null ? null : parseInt(r.a_laning_nw),
+      b_laning_nw: r.b_laning_nw == null ? null : parseInt(r.b_laning_nw),
+      lane_outcome: outcome,
+      match_winner: aWon(r) ? 'a' : 'b',
+    });
+  }
+
+  // 6. Side breakdown — A's record on Radiant vs Dire.
+  const side_breakdown = {
+    a_radiant: { games: 0, wins: 0 },
+    a_dire: { games: 0, wins: 0 },
+  };
+  for (const r of rows) {
+    const bucket = r.a_team === 'radiant' ? side_breakdown.a_radiant : side_breakdown.a_dire;
+    bucket.games++;
+    if (aWon(r)) bucket.wins++;
+  }
+
+  // 7. Timeline rows. Compress to the columns the UI actually needs.
+  const timeline = rows.map(r => ({
+    match_id: r.match_id,
+    date: r.date,
+    duration: r.duration,
+    a_team: r.a_team,
+    b_team: r.b_team,
+    radiant_win: r.radiant_win,
+    a_won: aWon(r),
+    a_hero_id: r.a_hero_id, a_hero: r.a_hero,
+    b_hero_id: r.b_hero_id, b_hero: r.b_hero,
+    a_kills: r.a_kills, a_deaths: r.a_deaths, a_assists: r.a_assists,
+    b_kills: r.b_kills, b_deaths: r.b_deaths, b_assists: r.b_assists,
+    a_perf: r.a_perf == null ? null : parseFloat(r.a_perf),
+    b_perf: r.b_perf == null ? null : parseFloat(r.b_perf),
+  }));
+
+  return {
+    a_account_id: aId,
+    b_account_id: bId,
+    a_name: aName,
+    b_name: bName,
+    header: {
+      total: rows.length,
+      a_wins: aWins,
+      b_wins: bWins,
+      a_perf_avg: aPerfN > 0 ? aPerfSum / aPerfN : null,
+      b_perf_avg: bPerfN > 0 ? bPerfSum / bPerfN : null,
+      perf_delta: (aPerfN > 0 && bPerfN > 0) ? (aPerfSum / aPerfN - bPerfSum / bPerfN) : null,
+      a_longest_streak: aBest,
+      b_longest_streak: bBest,
+    },
+    hero_matchups,
+    lane_matchups,
+    side_breakdown,
+    timeline,
+  };
+}
+
 // Rivals leaderboard — for a single player, returns every opponent they have
 // faced (across teams) with games played, wins, against, alongside, and last
 // match together. The shape is one row per opponent; the UI ranks them by
@@ -22436,6 +22645,7 @@ module.exports = {
   getPlayerRecentRatingHistory,
   getPlayerStreaks,
   getHeadToHead,
+  getH2HDetailed,
   getPlayerRivals,
   getPlayerComparison,
   getPlayerAchievements,

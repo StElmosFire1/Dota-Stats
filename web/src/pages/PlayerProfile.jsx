@@ -34,6 +34,68 @@ import {
 
 const POS_NAMES = { 1: 'Pos 1 (Safe)', 2: 'Pos 2 (Mid)', 3: 'Pos 3 (Off)', 4: 'Pos 4 (Sup)', 5: 'Pos 5 (Hard Sup)' };
 
+// Task #442 — "Compare vs…" picker. Self-fetches the player roster
+// once, navigates to /h2h/<thisProfile>/<pickedAccountId> on change.
+// Renders a quick "vs me" link when the viewer is signed in and looking
+// at someone else's profile so they don't have to scroll the dropdown.
+function H2HComparePicker({ thisAccountId, isOwnProfile, viewerAccountId }) {
+  const navigate = useNavigate();
+  const [players, setPlayers] = React.useState([]);
+  React.useEffect(() => {
+    let alive = true;
+    getAllPlayers()
+      .then(list => { if (alive) setPlayers(Array.isArray(list) ? list : []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  if (!thisAccountId) return null;
+  const handleChange = (e) => {
+    const v = e.target.value;
+    if (!v || String(v) === String(thisAccountId)) return;
+    navigate(`/h2h/${thisAccountId}/${v}`);
+  };
+  const showVsMe = !isOwnProfile && viewerAccountId
+    && String(viewerAccountId) !== String(thisAccountId);
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)' }}>
+        <span aria-hidden="true">⚔️</span>
+        <span>Compare H2H vs</span>
+        <select
+          value=""
+          onChange={handleChange}
+          aria-label="Compare this player's head-to-head against another player"
+          style={{
+            background: 'var(--bg-card)', color: 'var(--text)',
+            border: '1px solid var(--border)', borderRadius: 8,
+            padding: '6px 10px', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          <option value="">Pick a player…</option>
+          {players
+            .filter(p => p.account_id && String(p.account_id) !== String(thisAccountId))
+            .map(p => (
+              <option key={p.account_id} value={p.account_id}>
+                {p.nickname || p.persona_name || `Player ${p.account_id}`}
+              </option>
+            ))}
+        </select>
+      </label>
+      {showVsMe && (
+        <Link
+          to={`/h2h/${thisAccountId}/${viewerAccountId}`}
+          aria-label="View detailed head-to-head: this player vs me"
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            color: 'var(--accent, #c5a975)', borderRadius: 8,
+            padding: '6px 14px', fontSize: 13, fontWeight: 600, textDecoration: 'none',
+          }}
+        >vs me →</Link>
+      )}
+    </div>
+  );
+}
+
 function formatDuration(seconds) {
   if (!seconds) return '--';
   const m = Math.floor(seconds / 60);
@@ -1130,6 +1192,12 @@ export default function PlayerProfile() {
           <RivalCard compact />
         </div>
       )}
+      {/* Task #442 — Compare-vs picker. Navigates to /h2h/<thisProfile>/<picked>
+          so the same control works on your own profile (compare you vs anyone)
+          and on someone else's profile (compare them vs anyone). When viewing
+          another player while signed in, also offer a one-click "vs me" link. */}
+      <H2HComparePicker thisAccountId={accountId} isOwnProfile={isOwnProfile} viewerAccountId={steamUser?.accountId} />
+      
       {/* Gift buttons — shown when viewing another player's profile and signed in */}
       {!isOwnProfile && steamUser?.accountId && (
         <>
@@ -1840,6 +1908,14 @@ export default function PlayerProfile() {
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {nemesis.map((n, i) => {
               const medals = ['💀', '🩸', '⚔️'];
+              // Task #442 — Deep-link each Nemesis card to the detailed
+              // H2H page. Uses /me/h2h/:other when the viewer is signed
+              // in (so the redirect resolves to /h2h/<me>/<nemesis>), or
+              // /h2h/<thisProfile>/<nemesis> when browsing as a guest /
+              // viewing someone else's profile.
+              const h2hHref = (steamUser?.accountId && isOwnProfile)
+                ? `/me/h2h/${n.killer_account_id}`
+                : `/h2h/${accountId}/${n.killer_account_id}`;
               return (
                 <div key={n.killer_account_id} style={{
                   background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
@@ -1857,6 +1933,15 @@ export default function PlayerProfile() {
                       Last seen on {formatHeroName(n.last_hero)}
                     </div>
                   )}
+                  <Link
+                    to={h2hHref}
+                    aria-label={`View detailed head-to-head against ${n.killer_name || `Player ${n.killer_account_id}`}`}
+                    style={{
+                      display: 'inline-block', marginTop: 8,
+                      fontSize: 12, fontWeight: 600,
+                      color: 'var(--accent, #c5a975)', textDecoration: 'none',
+                    }}
+                  >Detailed H2H →</Link>
                 </div>
               );
             })}
