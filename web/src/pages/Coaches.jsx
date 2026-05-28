@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { formatHeroName } from '../utils/heroes';
 
 const BASE = '/api';
 
@@ -195,17 +196,20 @@ export default function Coaches() {
   const [filters, setFilters] = useState({
     language: '',
     role: '',
+    hero: '',
     min_price_cents: '',
     max_price_cents: '',
     min_rating: '',
     available_this_week: false,
   });
   const [sort, setSort] = useState('relevance');
+  const [heroOptions, setHeroOptions] = useState([]);
 
   const qs = useMemo(() => {
     const u = new URLSearchParams();
     if (filters.language) u.set('language', filters.language);
     if (filters.role) u.set('role', filters.role);
+    if (filters.hero) u.set('hero', filters.hero);
     if (filters.min_price_cents) u.set('min_price_cents', filters.min_price_cents);
     if (filters.max_price_cents) u.set('max_price_cents', filters.max_price_cents);
     if (filters.min_rating) u.set('min_rating', filters.min_rating);
@@ -238,8 +242,28 @@ export default function Coaches() {
       .catch(() => {});
   }, []);
 
+  // Task #436 — hero typeahead options. Pulls the hero list already shipped
+  // by /api/heroes and maps internal hero_name → display name so the input's
+  // <datalist> can offer "Invoker", "Pudge", etc. taught_heroes on the coach
+  // row is free-text, so we ILIKE-match the display name and let students
+  // also type custom strings.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${BASE}/heroes`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(rows => {
+        if (cancelled || !Array.isArray(rows)) return;
+        const names = Array.from(new Set(
+          rows.map(h => formatHeroName(h.hero_name)).filter(n => n && n !== '—')
+        )).sort((a, b) => a.localeCompare(b));
+        setHeroOptions(names);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const resetFilters = () => {
-    setFilters({ language: '', role: '', min_price_cents: '', max_price_cents: '', min_rating: '', available_this_week: false });
+    setFilters({ language: '', role: '', hero: '', min_price_cents: '', max_price_cents: '', min_rating: '', available_this_week: false });
     setSort('relevance');
   };
 
@@ -313,6 +337,24 @@ export default function Coaches() {
               value={filters.language}
               onChange={e => setFilters(f => ({ ...f, language: e.target.value }))}
               style={fieldStyle} />
+          </div>
+
+          {/* Task #436 — hero specialty filter. Free-text input backed by a
+              <datalist> typeahead of every hero shipped via /api/heroes, so
+              students can pick "Invoker" without knowing the API also accepts
+              arbitrary substrings (matched server-side via ILIKE against the
+              coach's taught_heroes free-text field). */}
+          <div style={{ marginBottom: 14 }}>
+            <label htmlFor="cm-hero" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Hero specialty</label>
+            <input id="cm-hero" placeholder="e.g. Invoker"
+              list="cm-hero-options"
+              value={filters.hero}
+              onChange={e => setFilters(f => ({ ...f, hero: e.target.value }))}
+              autoComplete="off"
+              style={fieldStyle} />
+            <datalist id="cm-hero-options">
+              {heroOptions.map(name => <option key={name} value={name} />)}
+            </datalist>
           </div>
 
           <div style={{ marginBottom: 14 }}>

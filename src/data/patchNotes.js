@@ -1,6 +1,42 @@
 module.exports = [
   {
-    "version": "7.90",
+    "version": "7.94",
+    "title": "Coach of the Month congratulations DM (Task #437)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** Task #410 ships the auto-picked 'Coach of the Month' tile on /coaches, but the winner only finds out by visiting the page. A monthly DM closes the loop, gives coaches something to share, and reinforces the marketplace ranking signal.",
+      "**New cron in `src/discord/bot.js`.** Scheduled `0 9 1 * *` UTC (1st of each month at 09:00 UTC) alongside the existing pro-winback cron. Resolves `db.getCoachOfTheMonth({ tenantId: 'all' })` to pick the overall winner and DMs them a single congratulatory embed with their monthly completed-sessions count and average review rating. Delivery routes through the existing `notify()` helper so the per-user `coach_of_the_month` toggle gates it.",
+      "**New event in the notification catalogue.** `coach_of_the_month` added to `NOTIFICATION_EVENTS` in `src/db/index.js` with defaults `{ discord: true, push: false }` — push stays off because spotlight wins are rare and not time-sensitive. Users can opt out from /me/notifications like every other event.",
+      "**Operability.** Heartbeat written via `db.recordCronHeartbeat({ name: 'coach_of_the_month_dm' })` on every tick (ok / skipped / partial / error), so `/admin/ops` overdue check doesn't mistake quiet months for breakage. No-winner months still heartbeat ok with a `'no winner this month'` summary."
+    ],
+    "author": "System"
+  },
+  {
+    "version": "7.93",
+    "title": "Coach marketplace — hero specialty filter (Task #436)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** The Task #410 marketplace refresh added Position, Language, Price, Rating and Available-this-week filters, but the `hero` query param — which the `/api/coaches` endpoint and `db.listActiveCoaches` have always supported via ILIKE against the coach's `taught_heroes` free-text field — wasn't surfaced anywhere in the UI. Students who wanted 'only Invoker coaches' had to know to hand-edit the URL.",
+      "**New control in `web/src/pages/Coaches.jsx`.** A Hero specialty input now sits in the filter sidebar between Language and Price range. It's a normal text input backed by a `<datalist>` typeahead populated from `/api/heroes` (mapped through `formatHeroName` so the suggestions read 'Invoker', 'Pudge', 'Nature's Prophet'). Selecting or typing a hero sets the `hero` query param; clearing it (or clicking Reset filters) drops it.",
+      "**Server / DB untouched.** No backend changes — `GET /api/coaches` and `db.listActiveCoaches` already wire the param through. The input still accepts arbitrary substrings, so a coach whose `taught_heroes` reads 'Carry heroes, Anti-Mage, Spectre' matches both 'Anti-Mage' and 'Carry'."
+    ],
+    "author": "System"
+  },
+  {
+    "version": "7.92",
+    "title": "Smurf detector — fingerprint signal now actually fires (Task #431)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** The smurf score has a `fingerprint` signal worth 10 / 100 points whose job is to catch the clearest-cut smurf case: two accounts signing in from the same machine. The scorer (`src/smurf/smurfScorer.js`) already knew how to read `sess.ip` / `sess.ua` off the `user_sessions.sess` JSONB and overlap them across accounts — but nothing was writing those keys, so the signal always degraded to `\"no fingerprint data available\"` in production. This patch wires up the missing writer.",
+      "**New `src/web/sessionFingerprint.js`.** Tiny middleware that, on every authenticated request, stamps `sess.ip` + `sess.ua` onto the express-session row. Mounted in `src/web/server.js` directly after `app.use(session(...))`, plus an immediate stamp inside the `/api/auth/complete` and `/auth/steam/test-login` handlers so the freshly-regenerated session has prints before the user makes a second request.",
+      "**Privacy posture.** Raw IPs and UAs never hit the DB. Both values are salted-SHA-256-hashed and truncated to 16 hex chars before storage — enough entropy for overlap detection, no recoverability of the source string. Salt is `SESSION_FINGERPRINT_SALT` if set, else falls back to `SESSION_SECRET` (same trust boundary as the cookie signature). Rotating either env var effectively forgets all prior fingerprints on next login.",
+      "**Retention.** Bounded by the existing 7-day cookie `maxAge` plus connect-pg-simple's session pruner — no separate long-lived audit log of IPs / UAs is created. Only authenticated sessions are stamped; anonymous visitors leave nothing behind. The middleware re-writes at most once every 15 minutes per session, OR immediately when the hashed IP/UA changes (the case the scorer cares about, e.g. same account signing in from a different machine).",
+      "**Documented** in `replit.md` → \"Environment variables (security-relevant)\" under `SESSION_FINGERPRINT_SALT`. Community edition (which has no smurf detector) is untouched."
+    ],
+    "author": "System"
+  },
+  {
+    "version": "7.91",
     "title": "Browser smoke suite + release ritual (Task #426)",
     "published_at": "2026-05-27",
     "notes": [
@@ -14,6 +50,20 @@ module.exports = [
       "**New schema.** `browser_smoke_runs (id, trigger, status, started_at, finished_at, total_steps, passed_steps, failed_steps, notes)` + `browser_smoke_steps (id, run_id, step_key, label, status, reason, duration_ms, screenshot_path, baseline_path, diff_path, diff_pixels, diff_ratio)` added inline in `src/db/index.js` init() with `(started_at DESC)` and `(run_id, step_key)` indexes. Helpers: `createBrowserSmokeRun`, `finishBrowserSmokeRun`, `recordBrowserSmokeStep`, `listBrowserSmokeRuns`, `getBrowserSmokeRun`, `getBrowserSmokeSteps`, `getBrowserSmokeStep`, `updateBrowserSmokeStepBaseline`.",
       "**Routes.** `GET /api/admin/smoke/runs` (list), `GET /api/admin/smoke/runs/:id` (detail + steps), `POST /api/admin/smoke/run` (queues an admin-triggered run), `POST /api/admin/smoke/runs/:id/steps/:stepKey/approve-baseline` (promotes screenshot to baseline), `GET /api/admin/smoke/image?path=…` (serves screenshot/baseline/diff PNGs with path-traversal protection scoped to `tests/smoke/`). All five superuser-gated. Plus `POST /api/internal/smoke/trigger` (shared-secret `SMOKE_INTERNAL_TOKEN` bearer) for the post-merge hook — fails closed with 404 when the env var is unset.",
       "**Release ritual section in `replit.md`.** 6-step 5-minute manual checklist (Steam sign-in, inhouse smoke, coaching surface, feature-health, browser-smoke, Discord presence) plus a full reference for the automated suite. Distinct from the existing manual `/admin/smoke-test` checklist tool (Task #479) which is the per-release verification runner."
+    ],
+    "author": "System"
+  },
+  {
+    "version": "7.90",
+    "title": "Owner-only login gate for oceinhouse.gg (Task #493)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** While the full edition is still being built out, scrapers (and over-eager link-preview bots) shouldn't get to see in-progress pages. A single env flag now hides the entire site behind a minimal password gate until launch.",
+      "**Toggle.** Set `FULL_SITE_LOCKDOWN=1` on the production server to enable the gate. Unset it at launch to remove the gate cleanly — no code change required. Default off, so nothing changes for anyone who doesn't opt in. Documented in `replit.md` under 'Environment variables (security-relevant)'.",
+      "**Behavior when on.** Unauthenticated browser navigations (any URL) get a minimal inline HTML sign-in page — no app HTML, no meta description, no OG tags, `X-Robots-Tag: noindex, nofollow, noai, noimageai`. Unauthenticated non-HTML requests (API calls, JSON, images, JS bundles) get a 401 with an empty body. Scrapers and link-preview bots get nothing useful.",
+      "**Allowlist.** `/api/stripe/webhook` (server-to-server), `/api/admin/superuser-login` (the gate's own form), `/auth/steam` + `/auth/steam/return` + `/api/auth/complete` (Steam OpenID round-trip), `/robots.txt`, `/favicon.ico`. Everything else is blocked until the visitor authenticates as superuser via session or `x-superuser-key` header.",
+      "**Unlock flow.** The inline page POSTs to the existing `/api/admin/superuser-login` (no new endpoint), then reloads to the original URL so deep links survive. After unlock, the real site (Steam login, admin panel, etc.) behaves exactly as before.",
+      "**Scope.** Full edition only. Community edition (`dota.stats.corvidaeinc.com`) is untouched — no gate, no env var, no behavior change."
     ],
     "author": "System"
   },

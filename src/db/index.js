@@ -13286,6 +13286,7 @@ const NOTIFICATION_EVENTS = [
   { key: 'coach_booking_reminder',  label: 'Coach booking reminder',      desc: 'About one hour before a scheduled coaching session.',        legacy: 'coaching_session_reminder',  defaults: { discord: true,  push: true  } },
   { key: 'league_scrim_accepted',   label: 'League / scrim accepted',     desc: 'When a league or scrim request you sent is accepted.',       legacy: null,                         defaults: { discord: true,  push: true  } },
   { key: 'season_rollover',         label: 'Season rollover',             desc: 'When a season ends and new tier placements are issued.',     legacy: null,                         defaults: { discord: true,  push: false } },
+  { key: 'coach_of_the_month',      label: 'Coach of the Month win',      desc: 'When you win the monthly coach spotlight on /coaches.',      legacy: null,                         defaults: { discord: true,  push: false } },
 ];
 
 function eventDef(eventKey) {

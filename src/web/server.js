@@ -597,6 +597,131 @@ function createServer(startupStatus = {}) {
     },
   }));
 
+  // Task #431 — Stamp a hashed IP + UA onto every authenticated session
+  // so the smurf scorer's fingerprint signal can actually find overlaps
+  // between accounts that share a machine. Defaults to a no-op for
+  // anonymous visitors; see src/web/sessionFingerprint.js for the
+  // privacy posture (salted SHA-256, 16-hex truncation, retention
+  // bounded by the 7-day cookie maxAge).
+  try {
+    const { middleware: fpMiddleware } = require('./sessionFingerprint');
+    app.use(fpMiddleware);
+  } catch (e) {
+    console.warn('[SessionFP] failed to mount:', e.message);
+  }
+
+  // Task #493 — Owner-only lockdown gate (full edition only).
+  //
+  // When `FULL_SITE_LOCKDOWN=1`, every request is blocked unless one of the
+  // following is true:
+  //   - The session is already authenticated as superuser.
+  //   - The request carries a matching `x-superuser-key` header.
+  //   - The path is on a small allowlist (Steam OpenID round-trip, the
+  //     superuser login endpoint itself, the Stripe webhook, robots.txt,
+  //     favicon.ico).
+  //
+  // Blocked HTML navigations get a minimal inline gate page (no app HTML,
+  // no meta description, no OG tags) with a password form that POSTs to
+  // the existing superuser login endpoint. Blocked non-HTML requests
+  // (API/JSON/images/JS bundles) get a 401 with an empty body so scrapers
+  // and link-preview bots get nothing useful.
+  //
+  // Default off — when the env var is unset the middleware is a no-op,
+  // so the site behaves exactly as it does today. Toggle off at launch
+  // by unsetting `FULL_SITE_LOCKDOWN` (no code change required).
+  const LOCKDOWN_ALLOWED_PATHS = new Set([
+    '/api/stripe/webhook',          // Stripe server-to-server callback
+    '/api/admin/superuser-login',   // the gate's form posts here
+    '/auth/steam',                  // Steam OpenID kickoff
+    '/auth/steam/return',           // Steam OpenID return
+    '/api/auth/complete',           // single-use token → session exchange
+    '/robots.txt',                  // crawler policy
+    '/favicon.ico',                 // browser default request
+  ]);
+  const GATE_HTML = [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<meta name="robots" content="noindex, nofollow, noai, noimageai">',
+    '<title>Sign in</title>',
+    '<style>',
+    'html,body{margin:0;padding:0;background:#0d1424;color:#f5efe2;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;height:100%}',
+    'body{display:flex;align-items:center;justify-content:center}',
+    '.card{background:#121b30;border:1px solid #1f2a44;border-radius:8px;padding:28px;max-width:340px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.35)}',
+    'h1{font-size:1.05rem;margin:0 0 4px;letter-spacing:0.02em}',
+    '.sub{color:#8a93a8;font-size:0.82rem;margin:0 0 18px}',
+    'input{width:100%;box-sizing:border-box;padding:10px 12px;background:#0d1424;border:1px solid #2a3654;border-radius:6px;color:#f5efe2;font-size:0.95rem}',
+    'input:focus{outline:none;border-color:#c5a975}',
+    'button{margin-top:12px;width:100%;padding:10px 12px;background:#c5a975;color:#0d1424;border:0;border-radius:6px;font-weight:600;cursor:pointer;font-size:0.95rem}',
+    'button:disabled{opacity:0.6;cursor:wait}',
+    '.err{color:#ef4444;font-size:0.82rem;margin-top:10px;min-height:1em}',
+    '</style>',
+    '</head>',
+    '<body>',
+    '<main class="card">',
+    '<h1>Sign in</h1>',
+    '<p class="sub">This site is in private preview.</p>',
+    '<form id="f" autocomplete="off">',
+    '<label for="p" style="display:none">Password</label>',
+    '<input id="p" name="password" type="password" autocomplete="current-password" autofocus required>',
+    '<button id="b" type="submit">Continue</button>',
+    '<div class="err" id="e" aria-live="polite"></div>',
+    '</form>',
+    '</main>',
+    '<script>',
+    'var f=document.getElementById("f"),p=document.getElementById("p"),b=document.getElementById("b"),e=document.getElementById("e");',
+    'f.addEventListener("submit",function(ev){ev.preventDefault();e.textContent="";b.disabled=true;',
+    'fetch("/api/admin/superuser-login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({password:p.value})})',
+    '.then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})})',
+    '.then(function(o){if(o.ok){window.location.replace(window.location.pathname+window.location.search+window.location.hash);}else{e.textContent=(o.j&&o.j.error)||"Invalid password";b.disabled=false;p.focus();p.select();}})',
+    '.catch(function(){e.textContent="Network error";b.disabled=false;});});',
+    '</script>',
+    '</body>',
+    '</html>',
+  ].join('\n');
+
+  function lockdownMiddleware(req, res, next) {
+    if (process.env.FULL_SITE_LOCKDOWN !== '1') return next();
+    // Already-authenticated superusers pass straight through.
+    if (req.session && req.session.isSuperuser) return next();
+    // Header credential for non-browser clients (scripts, deploy hooks).
+    const pwd = process.env.SUPERUSER_PASSWORD;
+    if (pwd && req.headers['x-superuser-key'] === pwd) return next();
+    // Path allowlist — these endpoints must work for the lock itself to
+    // be usable (login, Steam round-trip, Stripe webhook, robots/favicon).
+    if (LOCKDOWN_ALLOWED_PATHS.has(req.path)) return next();
+
+    res.set('X-Robots-Tag', 'noindex, nofollow, noai, noimageai');
+    res.set('Cache-Control', 'no-store');
+    // Browser top-level navigations get the inline gate page; everything
+    // else (API/JSON/images/JS bundles/fetch calls) gets a 401 with an
+    // empty body so scrapers and link-preview bots see nothing useful.
+    //
+    // Detection: we treat a request as a document navigation only when
+    // it's a GET/HEAD AND either:
+    //   - `Sec-Fetch-Dest: document` (modern browsers send this on
+    //     top-level navigations; subresource fetches send `image`,
+    //     `script`, `style`, `empty`, etc.), OR
+    //   - the `Accept` header explicitly lists `text/html` as the first
+    //     media type (legacy/no-Sec-Fetch-Dest fallback; deliberately
+    //     does NOT match `*/*` which most fetch/curl/image clients send).
+    // This avoids the trap where `req.accepts(['html','json'])` returns
+    // `'html'` for any `*/*` Accept header.
+    const method = req.method;
+    const isReadable = method === 'GET' || method === 'HEAD';
+    const secFetchDest = req.headers['sec-fetch-dest'];
+    const acceptRaw = (req.headers['accept'] || '').toLowerCase();
+    const acceptsHtmlFirst = acceptRaw.split(',')[0].trim().startsWith('text/html');
+    const isDocumentNav = isReadable && (secFetchDest === 'document' || (!secFetchDest && acceptsHtmlFirst));
+    if (isDocumentNav) {
+      return res.status(200).type('html').send(GATE_HTML);
+    }
+    return res.status(401).type('text/plain').send('');
+  }
+  app.use(lockdownMiddleware);
+
   // Steam OpenID authentication
   const fetch = require('node-fetch');
   const STEAM_OPEN_ID = 'https://steamcommunity.com/openid/login';
@@ -714,6 +839,7 @@ function createServer(startupStatus = {}) {
       req.session.accountId = accountId;
       req.session.steamId64 = (BigInt(accountId) + 76561197960265728n).toString();
       req.session.displayName = lookup.rows[0]?.display_name || `smoke-test-${accountId}`;
+      try { require('./sessionFingerprint').stampSession(req); } catch (_) {}
       console.log('[Steam Auth] test-login success — accountId:', accountId);
       res.json({ ok: true, accountId, displayName: req.session.displayName });
     } catch (err) {
@@ -3223,6 +3349,13 @@ function createApiRouter(startupStatus = {}, _app = null) {
       req.session.accountId = accountId;
       req.session.steamId64 = steamId64;
       req.session.displayName = displayName;
+      // Task #431 — stamp the hashed IP/UA immediately on the freshly
+      // regenerated session so the smurf scorer's fingerprint signal
+      // can see it without waiting for a subsequent request.
+      try {
+        const { stampSession } = require('./sessionFingerprint');
+        stampSession(req);
+      } catch (_) {}
       // Task #317 — Steam login during the 30-day grace cancels the
       // pending account-deletion request. Best-effort: a DB hiccup must
       // not block the session-save path. If the account has already been

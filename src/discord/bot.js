@@ -5789,6 +5789,23 @@ class DiscordBot {
       }, { timezone: 'Australia/Sydney' });
       console.log('[Discord] Pro winback DM cron scheduled (09:00 Australia/Sydney).');
 
+      // Task #437 — Coach of the Month congratulatory DM. Runs once on the
+      // 1st of each month at 09:00 UTC; resolves the overall winner via
+      // `db.getCoachOfTheMonth({ tenantId: 'all' })` and sends a single DM
+      // through `notify()` so the pref centre's `coach_of_the_month` toggle
+      // gates it. Heartbeat is written even on no-winner months so the
+      // /admin/ops overdue check doesn't mistake quiet months for breakage.
+      cron.schedule('0 9 1 * *', async () => {
+        try { await this._sendCoachOfTheMonthDm(); }
+        catch (e) {
+          console.error('[CoachOfMonth] Monthly cron error:', e.message);
+          if (db.recordCronHeartbeat) {
+            await db.recordCronHeartbeat({ name: 'coach_of_the_month_dm', status: 'error', message: e.message }).catch(() => {});
+          }
+        }
+      }, { timezone: 'UTC' });
+      console.log('[Discord] Coach of the Month DM cron scheduled (1st of month, 09:00 UTC).');
+
       // Daily season end-date check — runs at midnight Australia/Sydney time
       // (AEDT UTC+11 in summer, AEST UTC+10 in winter — node-cron handles DST).
       // Ensures seasons are closed and announced even if no match is played on
@@ -6424,6 +6441,75 @@ class DiscordBot {
     if (db.recordCronHeartbeat) {
       const summary = `sent=${sent}/${queue.length}${_hbMessage ? ' · ' + _hbMessage : ''}`;
       await db.recordCronHeartbeat({ name: 'pro_winback_dms', status: _hbStatus, message: summary }).catch(() => {});
+    }
+  }
+
+  // Task #437 — Monthly Coach of the Month congratulatory DM. Resolves the
+  // overall winner (tenantId: 'all') and DMs them via notify() so the
+  // `coach_of_the_month` pref gates delivery. Heartbeats every tick so a
+  // silently-broken cron stands out in /admin/ops.
+  async _sendCoachOfTheMonthDm() {
+    let _hbStatus = 'ok';
+    let _hbMessage = null;
+    if (!db.getCoachOfTheMonth) {
+      if (db.recordCronHeartbeat) {
+        await db.recordCronHeartbeat({ name: 'coach_of_the_month_dm', status: 'skipped', message: 'DB helpers missing' }).catch(() => {});
+      }
+      return;
+    }
+    let winner = null;
+    try {
+      winner = await db.getCoachOfTheMonth({ tenantId: 'all' });
+    } catch (e) {
+      console.error('[CoachOfMonth] getCoachOfTheMonth failed:', e.message);
+      if (db.recordCronHeartbeat) {
+        await db.recordCronHeartbeat({ name: 'coach_of_the_month_dm', status: 'error', message: e.message }).catch(() => {});
+      }
+      return;
+    }
+    if (!winner || !winner.account_id) {
+      if (db.recordCronHeartbeat) {
+        await db.recordCronHeartbeat({ name: 'coach_of_the_month_dm', status: 'ok', message: 'no winner this month' }).catch(() => {});
+      }
+      return;
+    }
+    const monthLabel = new Date().toLocaleString('en-AU', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const siteUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const rating = Number(winner.avg_rating) > 0 ? Number(winner.avg_rating).toFixed(2) : null;
+    const bookings = Number(winner.monthly_bookings) || 0;
+    const lines = [
+      `Congratulations — you're **${monthLabel}'s Coach of the Month** on /coaches!`,
+      ``,
+      `Your spotlight tile is live now on [the coaches page](${siteUrl}/coaches).`,
+      ``,
+      `**This month's stats**`,
+      `• Completed sessions: ${bookings}`,
+      rating ? `• Average review rating: ${rating} ★` : null,
+      winner.review_count ? `• Total reviews: ${winner.review_count}` : null,
+    ].filter(Boolean);
+    const embed = new EmbedBuilder()
+      .setTitle('🏆 Coach of the Month')
+      .setColor(0xf59e0b)
+      .setDescription(lines.join('\n'))
+      .setFooter({ text: 'Toggle off in /me/notifications' });
+    try {
+      const { notify } = require('../notify');
+      const r = await notify(winner.account_id, 'coach_of_the_month', {
+        discord: { embed },
+      });
+      if (r?.discord?.error) {
+        _hbStatus = 'partial';
+        _hbMessage = `DM error: ${r.discord.error}`;
+      }
+      console.log(`[CoachOfMonth] DM dispatched to account ${winner.account_id} (sent=${r?.discord?.sent || 0}, skipped=${r?.discord?.skipped ? 1 : 0}).`);
+    } catch (e) {
+      _hbStatus = 'partial';
+      _hbMessage = `notify error: ${e.message}`;
+      console.warn('[CoachOfMonth] notify failed:', e.message);
+    }
+    if (db.recordCronHeartbeat) {
+      const summary = `winner=${winner.account_id}${_hbMessage ? ' · ' + _hbMessage : ''}`;
+      await db.recordCronHeartbeat({ name: 'coach_of_the_month_dm', status: _hbStatus, message: summary }).catch(() => {});
     }
   }
 
