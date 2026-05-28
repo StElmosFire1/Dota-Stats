@@ -1649,6 +1649,12 @@ export default function SettingsProfile() {
                 <input type="checkbox" checked={!!extras.show_streak} onChange={(e) => setExtra('show_streak', e.target.checked)} />
                 <span style={{ fontSize: 14 }}>Show win/loss streak badge</span>
               </label>
+              {/* Task #445 — Live pick advisor opt-in. Off by default; when on, the
+                  inhouse lobby panel surfaces hero suggestions during draft phase. */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!extras.pick_advisor_optin} onChange={(e) => setExtra('pick_advisor_optin', e.target.checked)} />
+                <span style={{ fontSize: 14 }}>Show pick suggestions when I join a lobby</span>
+              </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isPro ? 'pointer' : 'not-allowed', opacity: isPro ? 1 : 0.55 }}>
                 <input type="checkbox" disabled={!isPro} checked={!!extras.frame_animated} onChange={(e) => setExtra('frame_animated', e.target.checked)} />
                 <span style={{ fontSize: 14 }}>Animated frame shimmer</span>

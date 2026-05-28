@@ -254,4 +254,7 @@ export const DEFAULT_EXTRAS = {
   // auto MMR / W-L stats line, and a toggle for the MMR pill.
   share_card_tagline: null,
   share_card_show_mmr: true,
+  // Task #445 — Live pick advisor opt-in. Off by default so only players
+  // who explicitly want hero suggestions during inhouse draft see them.
+  pick_advisor_optin: false,
 };

@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "8.03",
+    "title": "Live pick advisor (opt-in) for inhouse drafts (Task #445)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** During an inhouse draft the captain's call is canonical, but the player on the team still has to volunteer a hero they're comfortable on into the role they're being slotted into. Task #445 adds a tiny, non-blocking advisor that whispers — only if the player asked for it — *'your team needs a 4 and you're on a 87% heater on Hoodwink, want to try that?'* It's a personal nudge, not a draft tool — captain-pick suggestions and counter-pick scoring are deliberately out of scope.",
+      "**New profile toggle.** Added `pick_advisor_optin: false` to `DEFAULT_EXTRAS` in `web/src/profileCosmetics.js` and a matching checkbox in Settings → Profile (`web/src/pages/SettingsProfile.jsx`, next to the streak-badge toggle). Off by default — anyone who doesn't flip the switch never sees the panel and never pays the network cost.",
+      "**New `GET /api/inhouse/:id/pick-advisor` in `src/web/server.js`.** Authorization: must be a signed-in member of the inhouse session AND drafted onto a team (team > 0); spectators / un-team'd pool get an empty result, not a 403. Computes the team's *missing positions* by subtracting teammates' single-position preferences from {1..5} (ambiguous multi-position prefs don't claim a role). Pulls the requester's last 25 matches grouped by hero with the community's primary position for each hero stamped on via a `pos_mode` window CTE, filters out heroes currently picked/banned in the live GC lobby (best-effort — degrades to no-exclusion when lobbyManager isn't holding lobby data), then returns up to 3 candidates sorted by WR then sample size. `Cache-Control: no-store`.",
+      "**New `PickAdvisorPanel` in `web/src/pages/Inhouse.jsx`.** Renders inside the lobby card, above the Connect button, only when (a) the viewer has opted in, (b) is on a team, and (c) status is `drafting` or `in_progress`. Polls the endpoint every 8s, shows the spec's sample line — *'Your team needs a 4. You're 87% WR on Hoodwink (last 10).'* — plus an alternatives chip row when there's more than one suggestion. Dismiss state is keyed per `session.id` in component-local state, so closing the panel hides it for THIS draft only; joining the next inhouse brings it back without touching profile settings.",
+      "**Viewer opt-in fetch.** A small one-shot `useEffect` reads `/api/me/profile` and stores `customization.extras.pick_advisor_optin` so the panel is only mounted (and only polls) when the toggle is on. No traffic for the default-off case.",
+      "**A11y.** The dismiss control is a `<button type=\"button\">` with `aria-label=\"Dismiss pick suggestions for this draft\"`. The panel wraps in `<aside aria-label=\"Hero pick suggestions for this draft\">`. No `<div onClick>`, no hover-only reveals, no icon-only buttons.",
+      "**Scope.** Full edition only — no `community-edition/` wiring (the paywall-free edition stays untouched). Out of scope by design: captain-side draft suggestions, counter-pick scoring against the enemy lineup, and any kind of forced or modal recommendation flow. Soft signal, easy to ignore, easy to switch off."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.02",
     "title": "Pre-match mood & form widget (Task #444)",
     "published_at": "2026-05-28",

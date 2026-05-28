@@ -281,6 +281,108 @@ function DiscordJoinGate({ steamUser, refreshMe }) {
   return null;
 }
 
+// Task #445 — Live pick advisor panel. Non-blocking, opt-in surface that
+// appears inside the lobby card once the viewer is drafted onto a team
+// (team > 0) and the session is in `drafting` or `in_progress`. The panel
+// polls /api/inhouse/:id/pick-advisor every 8s, renders up to three hero
+// suggestions sorted by the viewer's personal WR, and exposes a single
+// dismiss button whose state lives in the parent (keyed per session.id) so
+// the dismissal sticks for THIS draft only — joining a new session brings
+// the panel back without touching profile settings. Hidden by default; the
+// caller only mounts this when `extras.pick_advisor_optin` is true.
+function PickAdvisorPanel({ sessionId, onDismiss }) {
+  const [data, setData] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+  React.useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const d = await api(`/inhouse/${sessionId}/pick-advisor`);
+        if (alive) { setData(d); setErr(null); }
+      } catch (e) {
+        if (alive) setErr(e.message);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 8000);
+    return () => { alive = false; clearInterval(id); };
+  }, [sessionId]);
+  if (err || !data) return null;
+  const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+  if (suggestions.length === 0) return null;
+  const top = suggestions[0];
+  const wrPct = Math.round((top.wr || 0) * 100);
+  const missing = Array.isArray(data.missingPositions) ? data.missingPositions : [];
+  const missingLabel = missing.length === 0
+    ? 'every role looks claimed'
+    : missing.length >= 5
+      ? 'an open role'
+      : `a ${missing.map(p => p).join(' / ')}`;
+  return (
+    <aside
+      aria-label="Hero pick suggestions for this draft"
+      style={{
+        marginTop: 12,
+        padding: '12px 14px',
+        background: 'color-mix(in srgb, var(--brass) 8%, var(--bg-card))',
+        border: '1px solid color-mix(in srgb, var(--brass) 35%, var(--border))',
+        borderLeft: '3px solid var(--brass)',
+        borderRadius: 6,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700, color: 'var(--brass)', fontSize: 13, letterSpacing: 0.4, textTransform: 'uppercase', fontFamily: 'var(--font-condensed, var(--font))' }}>
+          🪄 Pick Advisor
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          Your team needs {missingLabel}. You're <strong style={{ color: 'var(--text)' }}>{wrPct}% WR on {top.hero_name || `hero ${top.hero_id}`}</strong> (last {top.games}).
+        </span>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss pick suggestions for this draft"
+          style={{
+            marginLeft: 'auto',
+            background: 'transparent',
+            border: '1px solid var(--border)',
+            color: 'var(--text-muted)',
+            borderRadius: 4,
+            padding: '3px 9px',
+            fontSize: 11,
+            cursor: 'pointer',
+            fontWeight: 600,
+          }}
+        >
+          Dismiss
+        </button>
+      </div>
+      {suggestions.length > 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', alignSelf: 'center' }}>Alternatives:</span>
+          {suggestions.slice(1).map(s => (
+            <span
+              key={s.hero_id}
+              style={{
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 999,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+              }}
+            >
+              {s.hero_name || `hero ${s.hero_id}`} · {Math.round((s.wr || 0) * 100)}% ({s.games})
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6 }}>
+        Suggestions exclude heroes already picked or banned this match. Toggle off any time in <a href="/settings/profile" style={{ color: 'var(--brass)' }}>Settings → Profile</a>.
+      </div>
+    </aside>
+  );
+}
+
 export default function Inhouse() {
   const { superuserKey } = useSuperuser();
   const { steamUser, refreshMe } = useSteamAuth();
@@ -309,6 +411,28 @@ export default function Inhouse() {
   const [draftPickSeconds, setDraftPickSeconds] = useState(30);
   const [myPositions, setMyPositions] = useState([]);
   const [draftStatus, setDraftStatus] = useState(null);
+  // Task #445 — Live pick advisor opt-in. We fetch the signed-in viewer's
+  // own profile customisation once (cheap GET /api/me/profile read) to
+  // decide whether to mount the suggestions panel. Off by default → no
+  // network traffic for anyone who hasn't opted in. Dismiss state is keyed
+  // per session.id so closing it sticks for THIS draft only — joining a
+  // new session brings the panel back without touching settings.
+  const [pickAdvisorOptin, setPickAdvisorOptin] = useState(false);
+  const [pickAdvisorDismissed, setPickAdvisorDismissed] = useState({});
+  useEffect(() => {
+    if (!myAccountId) { setPickAdvisorOptin(false); return; }
+    let alive = true;
+    fetch('/api/me/profile', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!alive) return;
+        const extras = (d && d.customization && d.customization.extras) || {};
+        setPickAdvisorOptin(!!extras.pick_advisor_optin);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [myAccountId]);
+
   // Task #190 — per-captain auto-pick rate over the last N completed sessions.
   // Keyed by accountId. Populated lazily when captains are known on the active
   // session, so we can flag chronic AFK captains in-lobby with a small badge.
@@ -1212,6 +1336,19 @@ export default function Inhouse() {
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Waiting for a captain or admin to retry…</span>
                   )}
                 </div>
+              )}
+              {/* Task #445 — Live pick advisor. Opt-in, non-blocking. Only
+                  mounts when the viewer has flipped the toggle in Settings,
+                  is drafted onto a team, and the draft is live (or the match
+                  is in progress so they can plan their next pick). Dismiss
+                  state is keyed per session so it resets next inhouse. */}
+              {pickAdvisorOptin && isInSession && (myPlayer?.team === 1 || myPlayer?.team === 2)
+                && (session.status === 'drafting' || session.status === 'in_progress')
+                && !pickAdvisorDismissed[session.id] && (
+                <PickAdvisorPanel
+                  sessionId={session.id}
+                  onDismiss={() => setPickAdvisorDismissed(prev => ({ ...prev, [session.id]: true }))}
+                />
               )}
               {connectLink && session.status === 'in_progress' && isInSession && (
                 <div style={{ marginTop: 8 }}>

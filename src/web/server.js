@@ -11558,6 +11558,132 @@ NOTES
     }
   });
 
+  // Task #445 — Live pick advisor (opt-in). Returns up to 3 hero suggestions
+  // for the requesting player based on (a) the team's missing positions and
+  // (b) the player's recent-match WR on heroes they actually play. Hidden by
+  // default; the frontend only calls this endpoint when the viewer has
+  // `extras.pick_advisor_optin` flipped on in their profile customisation.
+  //
+  // Authorization: must be a signed-in member of this inhouse session. Any
+  // drafted teammate (team > 0) can ask; spectators / captains' un-team'd
+  // pool get a 403 (no team → no "missing positions"). Excludes heroes
+  // currently picked or banned in the live lobby (best-effort — degrades to
+  // "no exclusions" when the GC lobby data isn't available).
+  router.get('/inhouse/:id/pick-advisor', async (req, res) => {
+    try {
+      const actor = _resolveInhouseActor(req);
+      if (actor.error) return res.status(actor.status || 401).json({ error: actor.error });
+      const session = await db.getInhouseSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      const players = await db.getInhouseSessionPlayers(session.id);
+      const me = players.find(p => Number(p.account_id) === Number(actor.accountId));
+      if (!me) return res.status(403).json({ error: 'Not a member of this session.' });
+      const myTeam = Number(me.team) || 0;
+      if (myTeam !== 1 && myTeam !== 2) {
+        return res.json({ suggestions: [], missingPositions: [], excluded: [], reason: 'no_team' });
+      }
+      // Heroes already picked or banned in the live lobby — both sides count
+      // as "can't pick this anymore". Best-effort: missing lobby data just
+      // means we don't filter on it.
+      const excluded = new Set();
+      try {
+        const { getLobbyManager } = require('../lobby/lobbyManager');
+        const lm = getLobbyManager && getLobbyManager();
+        const cl = lm && lm.currentLobby;
+        if (cl && cl.draft) {
+          for (const arr of [cl.draft.radiant_picks, cl.draft.dire_picks, cl.draft.radiant_bans, cl.draft.dire_bans]) {
+            if (!Array.isArray(arr)) continue;
+            for (const entry of arr) {
+              const hid = Number(entry?.hero_id || entry?.heroId || entry);
+              if (Number.isFinite(hid) && hid > 0) excluded.add(hid);
+            }
+          }
+        }
+        // Also exclude any hero already assigned to a roster slot (live).
+        if (cl && Array.isArray(cl.players)) {
+          for (const p of cl.players) {
+            const hid = Number(p?.hero_id);
+            if (Number.isFinite(hid) && hid > 0) excluded.add(hid);
+          }
+        }
+      } catch (_) {}
+
+      // Teammates' single-position preferences indicate roles that are
+      // already "claimed" before any hero is picked. Only count a teammate
+      // when their preferred_positions string resolves to exactly one
+      // position (e.g. "1" or "3" — but not "1,2" which is ambiguous).
+      const claimedPositions = new Set();
+      for (const p of players) {
+        if (Number(p.team) !== myTeam) continue;
+        if (Number(p.account_id) === Number(actor.accountId)) continue;
+        const raw = String(p.preferred_positions || '').trim();
+        if (!raw) continue;
+        const tokens = raw.split(/[,\s]+/).map(s => parseInt(s, 10)).filter(n => n >= 1 && n <= 5);
+        if (tokens.length === 1) claimedPositions.add(tokens[0]);
+      }
+      const missingPositions = [1, 2, 3, 4, 5].filter(p => !claimedPositions.has(p));
+
+      // Player's recent hero performance (last 25 matches), grouped by hero
+      // with the community's primary position for each hero stamped on.
+      const pool = db.getPool();
+      const recent = await pool.query(
+        `WITH recent_matches AS (
+           SELECT match_id FROM player_stats
+            WHERE account_id = $1 AND hero_id > 0
+            ORDER BY match_id DESC LIMIT 25
+         ),
+         pos_mode AS (
+           SELECT hero_id, position, COUNT(*) AS cnt,
+                  ROW_NUMBER() OVER (PARTITION BY hero_id ORDER BY COUNT(*) DESC) AS rn
+             FROM player_stats
+            WHERE hero_id > 0 AND position > 0
+            GROUP BY hero_id, position
+         )
+         SELECT ps.hero_id,
+                MAX(ps.hero_name) AS hero_name,
+                COUNT(*) AS games,
+                SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                          OR (ps.team = 'dire'    AND NOT m.radiant_win)
+                         THEN 1 ELSE 0 END) AS wins,
+                COALESCE((SELECT pm.position FROM pos_mode pm
+                           WHERE pm.hero_id = ps.hero_id AND pm.rn = 1), 0) AS position
+           FROM player_stats ps
+           JOIN matches m ON m.match_id = ps.match_id
+          WHERE ps.account_id = $1
+            AND ps.hero_id > 0
+            AND ps.match_id IN (SELECT match_id FROM recent_matches)
+          GROUP BY ps.hero_id
+          HAVING COUNT(*) >= 2`,
+        [String(actor.accountId)]
+      );
+      const candidates = recent.rows
+        .map(r => ({
+          hero_id: parseInt(r.hero_id, 10),
+          hero_name: r.hero_name,
+          games: parseInt(r.games, 10),
+          wins: parseInt(r.wins, 10),
+          position: parseInt(r.position, 10) || 0,
+          wr: parseInt(r.games, 10) > 0 ? parseInt(r.wins, 10) / parseInt(r.games, 10) : 0,
+        }))
+        .filter(c => !excluded.has(c.hero_id))
+        .filter(c => c.position === 0 || missingPositions.includes(c.position))
+        .sort((a, b) => b.wr - a.wr || b.games - a.games)
+        .slice(0, 3);
+
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        suggestions: candidates,
+        missingPositions,
+        claimedPositions: [...claimedPositions].sort(),
+        excluded: [...excluded],
+        sample: recent.rowCount,
+      });
+    } catch (err) {
+      console.error('[API] inhouse/pick-advisor:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Task #168 — captain-callable retry. After a `server_failed` transition,
   // the captains see a Retry button on /inhouse; this is the route it hits.
   // Authorization: either captain of the session, OR a superuser. Same
