@@ -6,6 +6,8 @@ import { useSeason } from '../context/SeasonContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import QuestTracker from '../components/QuestTracker';
+import CommunityChallengeTile from '../components/CommunityChallengeTile';
 import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
 import SponsorshipBanner from '../components/SponsorshipBanner';
@@ -563,6 +565,15 @@ export default function Home() {
         </div>
         <PersonalisedDashboard steamUser={steamUser} />
 
+        {/* Task #440 — Daily/weekly quests + community challenges */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
+          marginBottom: 24,
+        }} className="oa-home-pulse-row">
+          <QuestTracker />
+          <CommunityChallengeTile />
+        </div>
+
         <CourtPitchHomeLanding
           loading={loading}
           totals={totals}
@@ -592,6 +603,8 @@ export default function Home() {
         <PlayerOfTheWeek />
         <HotHeroes />
       </div>
+
+      <CommunityChallengeTile />
 
       <CourtPitchHomeLanding
         loading={loading}

@@ -63,6 +63,7 @@ const PlayerTools = lazy(() => import('./pages/PlayerTools'));
 const Predictions = lazy(() => import('./pages/Predictions'));
 const StatsEditor = lazy(() => import('./pages/StatsEditor'));
 const PatchNotes = lazy(() => import('./pages/PatchNotes'));
+const ChallengeDetail = lazy(() => import('./pages/ChallengeDetail'));
 const ThisWeek = lazy(() => import('./pages/ThisWeek'));
 const Pickem = lazy(() => import('./pages/Pickem'));
 const SponsorshipInbox = lazy(() => import('./pages/SponsorshipInbox'));
@@ -1235,6 +1236,7 @@ function AppRoutes() {
                 <Route path="/position-player-profiles" element={<PositionStats defaultTab="profiles" />} />
                 <Route path="/predictions" element={<Predictions />} />
                 <Route path="/patch-notes" element={<PatchNotes />} />
+                <Route path="/challenges/:id" element={<ChallengeDetail />} />
                 <Route path="/pickem" element={<Pickem />} />
                 <Route path="/coins/buy" element={<BuyCoins />} />
                 <Route path="/sponsorships/inbox" element={<SponsorshipInbox />} />

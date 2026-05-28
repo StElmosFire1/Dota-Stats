@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState } from '../api';
+import { adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -3758,6 +3758,188 @@ function TestCoachPanel({ superuserKey }) {
   );
 }
 
+// Task #440 — Community challenges admin (full edition only).
+function CommunityChallengesPanel({ superuserKey }) {
+  const [rows, setRows] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+  const [editing, setEditing] = React.useState(null); // null | 'new' | {row}
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true);
+    adminListCommunityChallenges(superuserKey)
+      .then(d => setRows(d.challenges || []))
+      .catch(e => setMsg('Load failed: ' + e.message))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  function startNew() {
+    const now = new Date();
+    const end = new Date(Date.now() + 7 * 86400000);
+    setEditing({
+      id: null,
+      title: '',
+      description: '',
+      prize_text: '',
+      starts_at: now.toISOString().slice(0, 16),
+      ends_at: end.toISOString().slice(0, 16),
+      is_active: true,
+      scoring: JSON.stringify({ metric: 'kills', agg: 'sum' }, null, 2),
+    });
+  }
+
+  function startEdit(row) {
+    setEditing({
+      id: row.id,
+      title: row.title || '',
+      description: row.description || '',
+      prize_text: row.prize_text || '',
+      starts_at: row.starts_at ? new Date(row.starts_at).toISOString().slice(0, 16) : '',
+      ends_at: row.ends_at ? new Date(row.ends_at).toISOString().slice(0, 16) : '',
+      is_active: !!row.is_active,
+      scoring: JSON.stringify(row.scoring || {}, null, 2),
+    });
+  }
+
+  async function save() {
+    if (!editing) return;
+    let scoringObj;
+    try { scoringObj = JSON.parse(editing.scoring); }
+    catch (e) { setMsg('Scoring JSON invalid: ' + e.message); return; }
+    const payload = {
+      title: editing.title,
+      description: editing.description,
+      prize_text: editing.prize_text || null,
+      starts_at: editing.starts_at,
+      ends_at: editing.ends_at,
+      is_active: editing.is_active,
+      scoring: scoringObj,
+    };
+    try {
+      if (editing.id) await adminUpdateCommunityChallenge(superuserKey, editing.id, payload);
+      else await adminCreateCommunityChallenge(superuserKey, payload);
+      setMsg('Saved.');
+      setEditing(null);
+      load();
+    } catch (e) {
+      setMsg('Save failed: ' + e.message);
+    }
+  }
+
+  async function remove(row) {
+    if (!window.confirm(`Delete "${row.title}"? This also removes its scoreboard.`)) return;
+    try {
+      await adminDeleteCommunityChallenge(superuserKey, row.id);
+      load();
+    } catch (e) { setMsg('Delete failed: ' + e.message); }
+  }
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h2 style={{ margin: 0 }}>🎯 Community Challenges</h2>
+        <button type="button" className="btn btn-primary" onClick={startNew}>+ New challenge</button>
+      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+        Time-boxed leaderboards scored from match data. Scoring DSL:
+        <code style={{ marginLeft: 6 }}>{'{ "metric": "kills|wins|matches|perf|kda|deaths|assists|gpm|xpm|last_hits|hero_damage|tower_damage|hero_healing", "agg": "sum|max|count", "filter": { "team"?: "radiant|dire", "position"?: [1..5], "won"?: true } }'}</code>
+      </p>
+      {msg && <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-secondary)' }}>{msg}</div>}
+
+      {loading ? <div>Loading…</div> : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ textAlign: 'left', color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
+              <th style={{ padding: '6px 8px' }}>Title</th>
+              <th style={{ padding: '6px 8px' }}>Window</th>
+              <th style={{ padding: '6px 8px' }}>Active</th>
+              <th style={{ padding: '6px 8px' }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={4} style={{ padding: 12, color: 'var(--text-muted)' }}>No challenges yet.</td></tr>
+            )}
+            {rows.map(r => (
+              <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '8px' }}>
+                  <strong>{r.title}</strong>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.description}</div>
+                </td>
+                <td style={{ padding: '8px', fontSize: 12, color: 'var(--text-muted)' }}>
+                  {new Date(r.starts_at).toLocaleDateString()} → {new Date(r.ends_at).toLocaleDateString()}
+                </td>
+                <td style={{ padding: '8px' }}>
+                  <span style={{
+                    fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                    background: r.is_active ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.15)',
+                    color: r.is_active ? '#22c55e' : 'var(--text-muted)',
+                  }}>{r.is_active ? 'Active' : 'Inactive'}</span>
+                </td>
+                <td style={{ padding: '8px', display: 'flex', gap: 6 }}>
+                  <button type="button" className="btn btn-small" onClick={() => startEdit(r)} aria-label={`Edit ${r.title}`}>Edit</button>
+                  <button type="button" className="btn btn-small" onClick={() => remove(r)} aria-label={`Delete ${r.title}`}>Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {editing && (
+        <div style={{
+          marginTop: 16, padding: 16, border: '1px solid var(--border)',
+          borderRadius: 10, background: 'var(--bg-card)',
+        }}>
+          <h3 style={{ marginTop: 0 }}>{editing.id ? 'Edit challenge' : 'New challenge'}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+              Title
+              <input value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value })} />
+            </label>
+            <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+              Description
+              <textarea rows={2} value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+              Starts at
+              <input type="datetime-local" value={editing.starts_at} onChange={e => setEditing({ ...editing, starts_at: e.target.value })} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+              Ends at
+              <input type="datetime-local" value={editing.ends_at} onChange={e => setEditing({ ...editing, ends_at: e.target.value })} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+              Prize text (optional)
+              <input value={editing.prize_text} onChange={e => setEditing({ ...editing, prize_text: e.target.value })} placeholder="e.g. 1 month Pro for the winner" />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, alignSelf: 'end' }}>
+              <input type="checkbox" checked={editing.is_active} onChange={e => setEditing({ ...editing, is_active: e.target.checked })} />
+              Active (visible on Home + scored)
+            </label>
+            <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+              Scoring DSL (JSON)
+              <textarea
+                rows={8}
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+                value={editing.scoring}
+                onChange={e => setEditing({ ...editing, scoring: e.target.value })}
+              />
+            </label>
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-primary" onClick={save}>Save</button>
+            <button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WelcomeModalPanel({ superuserKey }) {
   const [cfg, setCfg] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -4334,6 +4516,9 @@ export default function AdminPanel() {
     { label: 'Marketplace', items: [
       { id: 'marketplace', icon: '💰', label: 'Gifts, Coaching & Tournaments' },
     ]},
+    { label: 'Engagement', items: [
+      { id: 'challenges', icon: '🎯', label: 'Community Challenges' },
+    ]},
   ];
 
   // Searchable index of admin features. Each entry deep-links to a tab and
@@ -4375,6 +4560,7 @@ export default function AdminPanel() {
     { label: 'Founders Pass Refunds', tab: 'marketplace', anchor: 'ap-anchor-founders-refunds', icon: '💍', kw: 'founders ring refund cap race stripe audit failed' },
     { label: 'Coaching Marketplace', tab: 'marketplace', anchor: 'ap-anchor-coaching', icon: '🎓', kw: 'coach payout connect bookings' },
     { label: 'Tournament Brackets', tab: 'marketplace', anchor: 'ap-anchor-tournaments', icon: '🏆', kw: 'tournament prize pool buy-in' },
+    { label: 'Community Challenges', tab: 'challenges', icon: '🎯', kw: 'challenge leaderboard scoring quest community event' },
   ];
 
   const q = searchQuery.trim().toLowerCase();
@@ -4690,6 +4876,10 @@ export default function AdminPanel() {
         </div>
       </section>
 
+      </>)}
+
+      {activeTab === 'challenges' && (<>
+      <CommunityChallengesPanel superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'config' && (<>

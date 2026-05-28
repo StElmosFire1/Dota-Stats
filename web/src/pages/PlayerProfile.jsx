@@ -18,6 +18,7 @@ import HeroIcon from '../components/HeroIcon';
 import ProBadge from '../components/ProBadge';
 import PaywallCard from '../components/PaywallCard';
 import WeeklyReportTile from '../components/WeeklyReportTile';
+import QuestTracker from '../components/QuestTracker';
 import HeroMasterySection from '../components/HeroMasterySection';
 import SponsorChip from '../components/SponsorChip';
 import SponsorshipBanner from '../components/SponsorshipBanner';
@@ -1341,6 +1342,7 @@ export default function PlayerProfile() {
       <div style={{ marginTop: 12 }}>
         <SponsorChip accountId={accountId} />
       </div>
+      {isOwnProfile && <QuestTracker />}
       {isOwnProfile && <WeeklyReportTile />}
       {isOwnProfile && <CoachRecommendationsTile />}
       {isOwnProfile && <VerifiedBadgeOwnerCta accountId={accountId} />}

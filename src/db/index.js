@@ -2882,6 +2882,86 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_wcp_account ON weekly_challenge_progress(account_id)`);
 
+    // Task #440 — Daily / weekly quests (full edition only).
+    //   player_quests       — assigned quests per (account, period, period_start).
+    //                         `progress` accumulates per-match deltas; when it
+    //                         reaches `target` the row is marked completed and
+    //                         XP is awarded via awardSeasonPassXp.
+    //   player_quest_hero_log — dedup table for "unique heroes won on" weekly
+    //                         predicate (`uniqueOn = hero_id`). Each (quest_row,
+    //                         hero_id) is recorded at most once.
+    //
+    //   community_challenges — admin-authored event with a tiny scoring DSL:
+    //                            { metric, agg, filter? }
+    //                          metric ∈ player_stats integer columns + 'wins'
+    //                                  / 'matches' / 'perf' / 'mvp_votes'.
+    //                          agg    ∈ 'sum' | 'max' | 'count'.
+    //                          filter (optional) ∈ { team?, position?[], won? }.
+    //   community_challenge_scores — upsert-aggregated score per (challenge, account).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS player_quests (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        quest_id TEXT NOT NULL,
+        period TEXT NOT NULL CHECK (period IN ('daily','weekly')),
+        period_start DATE NOT NULL,
+        target INTEGER NOT NULL,
+        progress INTEGER NOT NULL DEFAULT 0,
+        xp_reward INTEGER NOT NULL,
+        completed_at TIMESTAMPTZ,
+        awarded_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (account_id, quest_id, period_start)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_player_quests_lookup ON player_quests (account_id, period, period_start)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS player_quest_hero_log (
+        player_quest_id INTEGER NOT NULL REFERENCES player_quests(id) ON DELETE CASCADE,
+        hero_id INTEGER NOT NULL,
+        PRIMARY KEY (player_quest_id, hero_id)
+      )
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS community_challenges (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(120) NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        scoring JSONB NOT NULL,
+        prize_text TEXT,
+        starts_at TIMESTAMPTZ NOT NULL,
+        ends_at TIMESTAMPTZ NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_community_challenges_window ON community_challenges (starts_at, ends_at, is_active)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS community_challenge_scores (
+        challenge_id INTEGER NOT NULL REFERENCES community_challenges(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        score DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matches_counted INTEGER NOT NULL DEFAULT 0,
+        last_match_id VARCHAR(50),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (challenge_id, account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_challenge_scores_lookup ON community_challenge_scores (challenge_id, score DESC)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS community_challenge_match_log (
+        challenge_id INTEGER NOT NULL REFERENCES community_challenges(id) ON DELETE CASCADE,
+        match_id VARCHAR(50) NOT NULL,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (challenge_id, match_id)
+      )
+    `);
+
     // Limited-drop cosmetics. Admin tool rotates a SKU window; the shop
     // surface reads /api/limited-drops/active and renders an "Available now"
     // panel during the window. Optional quantity cap for true scarcity.
@@ -4534,6 +4614,61 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
       } catch (e) {
         console.warn(`[SeasonPass] grant failed for match ${matchStats.matchId}: ${e.message}`);
       }
+    }
+
+    // Task #440 — Daily / weekly quest progress + community challenge scoring.
+    // Best-effort, never rolls back the recorded match. Notify fires for each
+    // newly-completed quest (Discord DM + web push, opt-out via prefs).
+    try {
+      const { notify } = require('../notify');
+      const winningTeam = matchStats.radiantWin ? 0 : 1;
+      for (const player of matchStats.players) {
+        const accountId = player.accountId ? parseInt(player.accountId) : 0;
+        if (!accountId || accountId === 0) continue;
+        const playerRow = {
+          ...player,
+          // Normalise team to the string form used in the quest predicates.
+          team: (player.team === 'radiant' || Number(player.team) === 0) ? 'radiant' : 'dire',
+          won: (Number(player.team) === winningTeam),
+        };
+        try {
+          const { completed } = await applyMatchToPlayerQuests({
+            accountId, matchStats, playerRow, seasonNumber: seasonId,
+          });
+          for (const q of completed) {
+            // Fire-and-forget notify; opt-out gating is enforced by notify().
+            notify(accountId, 'quest_completed', {
+              discord: {
+                embed: {
+                  title: '🎯 Quest complete!',
+                  description: `**${q.title}** — ${q.description}`,
+                  color: 0xf59e0b,
+                  fields: [
+                    { name: 'Reward', value: `+${q.xp_reward} Season Pass XP`, inline: true },
+                    { name: 'Type',   value: q.period === 'daily' ? 'Daily' : 'Weekly', inline: true },
+                  ],
+                  footer: { text: 'OCE Inhouse — Quests' },
+                },
+              },
+              push: {
+                title: 'Quest complete!',
+                body: `${q.title} · +${q.xp_reward} XP`,
+                url: '/season-pass',
+              },
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn(`[Quests] apply failed for ${accountId} on ${matchStats.matchId}: ${e.message}`);
+        }
+      }
+      try {
+        const r = await applyMatchToCommunityChallenges({ matchStats });
+        if (r.updated > 0) console.log(`[CommunityChallenge] match ${matchStats.matchId}: ${r.updated} score updates`);
+      } catch (e) {
+        console.warn(`[CommunityChallenge] apply failed for ${matchStats.matchId}: ${e.message}`);
+      }
+    } catch (e) {
+      console.warn(`[Quests/Challenges] hook failed for ${matchStats.matchId}: ${e.message}`);
     }
 
     // Grant achievements for every player — best-effort, non-blocking, happens after commit.
@@ -7056,6 +7191,46 @@ async function saveMatchRating(matchId, raterAccountId, ratedAccountId, attitude
       const mr = await p.query(`SELECT season_id FROM matches WHERE match_id = $1`, [matchId]);
       const sid = mr.rows[0]?.season_id;
       if (sid) await grantSeasonPassXpForMatchMvp(matchId, sid);
+      // Task #440 — bump the weekly "Win N MVP votes" quest for the current
+      // top-voted MVP recipient. Idempotent at the quest layer via the
+      // `quest:<id>:<periodStart>` source key inside awardSeasonPassXp; we
+      // gate here with the same match_mvp_quest_log table so the quest only
+      // advances once per (match, mvp recipient) even if the MVP flips back
+      // and forth as votes change.
+      if (sid) {
+        const topMvp = await p.query(
+          `SELECT rated_account_id
+             FROM match_ratings
+            WHERE match_id = $1 AND is_mvp_vote = TRUE AND rated_account_id IS NOT NULL
+            GROUP BY rated_account_id
+            ORDER BY COUNT(*) DESC, rated_account_id ASC
+            LIMIT 1`,
+          [matchId]
+        );
+        const mvpAcct = topMvp.rows[0]?.rated_account_id;
+        if (mvpAcct) {
+          // Ensure the dedupe table exists. Cheap IF NOT EXISTS; runs once
+          // per cold start in practice because Postgres caches the lookup.
+          await p.query(
+            `CREATE TABLE IF NOT EXISTS match_mvp_quest_log (
+               match_id BIGINT NOT NULL,
+               account_id BIGINT NOT NULL,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+               PRIMARY KEY (match_id, account_id)
+             )`
+          );
+          const dedup = await p.query(
+            `INSERT INTO match_mvp_quest_log (match_id, account_id)
+             VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING match_id`,
+            [matchId, mvpAcct]
+          );
+          if (dedup.rowCount > 0) {
+            await bumpMvpQuestProgress({
+              accountId: mvpAcct, seasonNumber: sid, matchId,
+            }).catch(e => console.warn(`[Quests] MVP bump failed: ${e.message}`));
+          }
+        }
+      }
     } catch (e) {
       console.warn(`[SeasonPass] MVP grant failed for match ${matchId}: ${e.message}`);
     }
@@ -13301,6 +13476,7 @@ const NOTIFICATION_EVENTS = [
   { key: 'league_scrim_accepted',   label: 'League / scrim accepted',     desc: 'When a league or scrim request you sent is accepted.',       legacy: null,                         defaults: { discord: true,  push: true  } },
   { key: 'season_rollover',         label: 'Season rollover',             desc: 'When a season ends and new tier placements are issued.',     legacy: null,                         defaults: { discord: true,  push: false } },
   { key: 'coach_of_the_month',      label: 'Coach of the Month win',      desc: 'When you win the monthly coach spotlight on /coaches.',      legacy: null,                         defaults: { discord: true,  push: false } },
+  { key: 'quest_completed',         label: 'Quest completed',             desc: 'When you finish a daily or weekly quest.',                   legacy: null,                         defaults: { discord: true,  push: true  } },
 ];
 
 function eventDef(eventKey) {
@@ -20518,6 +20694,491 @@ async function claimWeeklyChallenge({ accountId, challengeId }) {
   finally { client.release(); }
 }
 
+// ===== Task #440 — Daily / weekly quests + community challenges =====
+//
+// Quest assignment is deterministic per (account, period_start) — we don't
+// need a cron job: the next call to `getOrAssignActiveQuests` after a period
+// rolls over inserts the new quests on-demand. `period_start` is the
+// UTC-day for dailies and the most recent Monday (UTC) for weeklies.
+// XP is awarded via the same idempotent `awardSeasonPassXp` ledger every
+// other Season Pass surface uses, so retried calls never double-grant.
+
+const _Q_CAT = require('../data/questCatalogue');
+
+function _dayBucket(now = new Date()) {
+  const d = new Date(now);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+function _weekBucket(now = new Date()) {
+  const d = new Date(now);
+  d.setUTCHours(0, 0, 0, 0);
+  const dow = (d.getUTCDay() + 6) % 7; // Monday=0
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+function _seedFor(accountId, periodStart) {
+  let h = 2166136261 >>> 0;
+  const s = String(accountId) + '|' + periodStart;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
+}
+
+async function getOrAssignActiveQuests(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  const dayStart = _dayBucket();
+  const weekStart = _weekBucket();
+
+  // Insert assignments idempotently. Static catalogue, so a missed cron
+  // means the very next request fills them in.
+  const dailies = _Q_CAT.pickDailyQuests(_seedFor(accountId, 'd:' + dayStart));
+  const weeklies = _Q_CAT.pickWeeklyQuests(_seedFor(accountId, 'w:' + weekStart));
+
+  const rows = [
+    ...dailies.map(q => ({ q, periodStart: dayStart })),
+    ...weeklies.map(q => ({ q, periodStart: weekStart })),
+  ];
+  for (const { q, periodStart } of rows) {
+    await p.query(
+      `INSERT INTO player_quests (account_id, quest_id, period, period_start, target, xp_reward)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (account_id, quest_id, period_start) DO NOTHING`,
+      [accountId, q.id, q.period, periodStart, q.target, q.xp]
+    );
+  }
+
+  const r = await p.query(
+    `SELECT id, quest_id, period, period_start, target, progress, xp_reward,
+            completed_at, awarded_at
+       FROM player_quests
+      WHERE account_id = $1
+        AND ( (period = 'daily'  AND period_start = $2)
+           OR (period = 'weekly' AND period_start = $3) )
+      ORDER BY period DESC, quest_id ASC`,
+    [accountId, dayStart, weekStart]
+  );
+  return r.rows.map(row => {
+    const def = _Q_CAT.QUESTS_BY_ID[row.quest_id] || {};
+    return {
+      id: row.id,
+      quest_id: row.quest_id,
+      period: row.period,
+      period_start: row.period_start,
+      target: row.target,
+      progress: Math.min(row.progress, row.target),
+      xp_reward: row.xp_reward,
+      completed_at: row.completed_at,
+      awarded_at: row.awarded_at,
+      title: def.title || row.quest_id,
+      description: def.description || '',
+    };
+  });
+}
+
+// Apply per-match quest progress for one player. Returns array of newly
+// completed quests so the caller can fire notify().
+// Task #440 — Normalise the camelCase-keyed match player object into a row
+// that also carries snake_case aliases, so quest predicates (in
+// questCatalogue.js) and the community-challenge scoring DSL can refer to
+// fields using the same names as the underlying `player_stats` columns
+// regardless of which intake path (parser / GC / OpenDota fallback) produced
+// the matchStats object. New keys are appended; original keys are preserved.
+function _normaliseMatchPlayerForScoring(player) {
+  if (!player || typeof player !== 'object') return player;
+  const m = {
+    lastHits:        'last_hits',
+    goldPerMin:      'gpm',
+    xpPerMin:        'xpm',
+    heroDamage:      'hero_damage',
+    towerDamage:     'tower_damage',
+    heroHealing:     'hero_healing',
+    netWorth:        'net_worth',
+    obsPlaced:       'obs_placed',
+    senPlaced:       'sen_placed',
+    obsPurchased:    'obs_purchased',
+    senPurchased:    'sen_purchased',
+    stunDuration:    'stun_duration',
+    towersKilled:    'towers_killed',
+    roshansKilled:   'roshans_killed',
+    runePickups:     'rune_pickups',
+    wardsKilled:     'wards_killed',
+    smokeKills:      'smoke_kills',
+    heroId:          'hero_id',
+    heroName:        'hero_name',
+  };
+  const out = { ...player };
+  for (const [camel, snake] of Object.entries(m)) {
+    if (out[snake] == null && out[camel] != null) out[snake] = out[camel];
+    // Reverse mapping too, so code reading the camelCase form keeps working
+    // even if a future caller hands us a snake_case-only payload.
+    if (out[camel] == null && out[snake] != null) out[camel] = out[snake];
+  }
+  return out;
+}
+
+async function applyMatchToPlayerQuests({ accountId, matchStats, playerRow, seasonNumber }) {
+  if (!accountId || !matchStats || !playerRow) return { completed: [] };
+  playerRow = _normaliseMatchPlayerForScoring(playerRow);
+  const p = getPool();
+  const dayStart = _dayBucket();
+  const weekStart = _weekBucket();
+
+  // Ensure assignments exist so first-match-of-the-period still ticks.
+  await getOrAssignActiveQuests(accountId);
+
+  // Retry XP grants for any quest that was previously marked completed but
+  // whose awardSeasonPassXp call failed transiently (e.g. DB hiccup). Source
+  // key is stable per (quest_id, period_start) so re-trying is idempotent
+  // inside awardSeasonPassXp itself.
+  if (seasonNumber) {
+    try {
+      const pending = await p.query(
+        `SELECT id, quest_id, period_start, xp_reward
+           FROM player_quests
+          WHERE account_id = $1
+            AND completed_at IS NOT NULL
+            AND awarded_at IS NULL
+          LIMIT 20`,
+        [accountId]
+      );
+      for (const row of pending.rows) {
+        const def = _Q_CAT.QUESTS_BY_ID[row.quest_id];
+        if (!def) continue;
+        const ok = await awardSeasonPassXp({
+          accountId,
+          seasonNumber,
+          matchId: matchStats.matchId,
+          source: `quest:${row.quest_id}:${row.period_start}`,
+          xpDelta: row.xp_reward,
+          notes: `Quest: ${def.title}`,
+        }).catch(() => false);
+        if (ok) await p.query(`UPDATE player_quests SET awarded_at = NOW() WHERE id = $1`, [row.id]);
+      }
+    } catch (e) {
+      console.warn(`[Quests] XP retry sweep failed for ${accountId}: ${e.message}`);
+    }
+  }
+
+  const r = await p.query(
+    `SELECT id, quest_id, period, period_start, target, progress, xp_reward,
+            completed_at, awarded_at
+       FROM player_quests
+      WHERE account_id = $1
+        AND ( (period = 'daily'  AND period_start = $2)
+           OR (period = 'weekly' AND period_start = $3) )`,
+    [accountId, dayStart, weekStart]
+  );
+
+  const completed = [];
+  for (const row of r.rows) {
+    if (row.completed_at) continue;
+    const def = _Q_CAT.QUESTS_BY_ID[row.quest_id];
+    if (!def || def.onMvp) continue; // MVP quests are handled separately
+    let delta = 0;
+    try { delta = Number(def.metric(playerRow, matchStats)) || 0; } catch { delta = 0; }
+    if (delta <= 0) continue;
+
+    // Unique-hero dedup for `uniqueOn` quests — only ticks once per hero_id.
+    if (def.uniqueOn === 'hero_id') {
+      const heroId = Number(playerRow.heroId || playerRow.hero_id || 0);
+      if (!heroId) continue;
+      const dup = await p.query(
+        `INSERT INTO player_quest_hero_log (player_quest_id, hero_id)
+         VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING hero_id`,
+        [row.id, heroId]
+      );
+      if (dup.rowCount === 0) continue;
+      delta = 1;
+    }
+
+    const newProgress = Math.min(row.target, row.progress + delta);
+    const justCompleted = newProgress >= row.target;
+    const upd = await p.query(
+      `UPDATE player_quests
+          SET progress = $2,
+              completed_at = CASE WHEN completed_at IS NULL AND $3::boolean THEN NOW() ELSE completed_at END
+        WHERE id = $1
+        RETURNING completed_at, awarded_at`,
+      [row.id, newProgress, justCompleted]
+    );
+
+    if (justCompleted && upd.rows[0]?.completed_at && !upd.rows[0].awarded_at && seasonNumber) {
+      const ok = await awardSeasonPassXp({
+        accountId,
+        seasonNumber,
+        matchId: matchStats.matchId,
+        source: `quest:${row.quest_id}:${row.period_start}`,
+        xpDelta: row.xp_reward,
+        notes: `Quest: ${def.title}`,
+      }).catch(() => false);
+      if (ok) {
+        await p.query(`UPDATE player_quests SET awarded_at = NOW() WHERE id = $1`, [row.id]);
+      }
+      completed.push({
+        quest_id: row.quest_id,
+        title: def.title,
+        description: def.description,
+        xp_reward: row.xp_reward,
+        period: row.period,
+      });
+    }
+  }
+  return { completed };
+}
+
+// MVP-vote driven quest tick. Called when an MVP vote tally lands. Each
+// vote (or each "you were awarded MVP" event) bumps onMvp quests by 1.
+async function bumpMvpQuestProgress({ accountId, seasonNumber, matchId }) {
+  if (!accountId) return { completed: [] };
+  const p = getPool();
+  await getOrAssignActiveQuests(accountId);
+  const weekStart = _weekBucket();
+  const r = await p.query(
+    `SELECT id, quest_id, target, progress, xp_reward, completed_at, awarded_at
+       FROM player_quests
+      WHERE account_id = $1 AND period = 'weekly' AND period_start = $2`,
+    [accountId, weekStart]
+  );
+  const completed = [];
+  for (const row of r.rows) {
+    const def = _Q_CAT.QUESTS_BY_ID[row.quest_id];
+    if (!def || !def.onMvp || row.completed_at) continue;
+    const newProgress = Math.min(row.target, row.progress + 1);
+    const justCompleted = newProgress >= row.target;
+    await p.query(
+      `UPDATE player_quests
+          SET progress = $2,
+              completed_at = CASE WHEN completed_at IS NULL AND $3::boolean THEN NOW() ELSE completed_at END
+        WHERE id = $1`,
+      [row.id, newProgress, justCompleted]
+    );
+    if (justCompleted && seasonNumber) {
+      const ok = await awardSeasonPassXp({
+        accountId, seasonNumber, matchId: matchId || null,
+        source: `quest:${row.quest_id}:${row.period_start || weekStart}`,
+        xpDelta: row.xp_reward, notes: `Quest: ${def.title}`,
+      }).catch(() => false);
+      if (ok) await p.query(`UPDATE player_quests SET awarded_at = NOW() WHERE id = $1`, [row.id]);
+      completed.push({
+        quest_id: row.quest_id, title: def.title, description: def.description,
+        xp_reward: row.xp_reward, period: 'weekly',
+      });
+    }
+  }
+  return { completed };
+}
+
+// ---------- Community challenges ----------
+
+const _CHAL_METRIC_COLUMNS = new Set([
+  'kills','deaths','assists','last_hits','denies','gpm','xpm',
+  'hero_damage','hero_healing','tower_damage','net_worth',
+  'obs_placed','sen_placed','stun_duration','towers_killed','roshans_killed',
+  'rampages','smoke_kills','rune_pickups','wards_killed',
+]);
+const _CHAL_METRIC_SYNTHETIC = new Set(['wins','matches','perf','kda']);
+const _CHAL_AGG = new Set(['sum','max','count']);
+
+function _validateChallengeScoring(s) {
+  if (!s || typeof s !== 'object') throw new Error('scoring must be an object');
+  const { metric, agg, filter } = s;
+  if (typeof metric !== 'string'
+      || (!_CHAL_METRIC_COLUMNS.has(metric) && !_CHAL_METRIC_SYNTHETIC.has(metric))) {
+    throw new Error(`scoring.metric must be one of: ${[..._CHAL_METRIC_COLUMNS, ..._CHAL_METRIC_SYNTHETIC].join(', ')}`);
+  }
+  if (typeof agg !== 'string' || !_CHAL_AGG.has(agg)) {
+    throw new Error(`scoring.agg must be one of: ${[..._CHAL_AGG].join(', ')}`);
+  }
+  if (filter) {
+    if (filter.team && !['radiant','dire'].includes(filter.team)) throw new Error('filter.team');
+    if (filter.position && (!Array.isArray(filter.position) || filter.position.some(n => ![1,2,3,4,5].includes(Number(n))))) {
+      throw new Error('filter.position');
+    }
+    if (filter.won != null && typeof filter.won !== 'boolean') throw new Error('filter.won');
+  }
+  return { metric, agg, filter: filter || null };
+}
+
+function _challengePlayerValue(metric, player, match) {
+  player = _normaliseMatchPlayerForScoring(player);
+  if (metric === 'matches') return 1;
+  if (metric === 'wins') {
+    const wonRad = !!match.radiantWin;
+    const onRad = (player.team === 'radiant' || Number(player.team) === 0);
+    return (wonRad === onRad) ? 1 : 0;
+  }
+  if (metric === 'perf') return Number(player.perf || 0) || 0;
+  if (metric === 'kda') {
+    const d = Math.max(1, Number(player.deaths) || 0);
+    return (Number(player.kills || 0) + Number(player.assists || 0)) / d;
+  }
+  return Number(player[metric] || player[metric.replace(/_/g, '')] || 0) || 0;
+}
+
+function _challengeFilterPasses(filter, player, match) {
+  if (!filter) return true;
+  if (filter.team) {
+    const onRad = (player.team === 'radiant' || Number(player.team) === 0);
+    if ((filter.team === 'radiant') !== onRad) return false;
+  }
+  if (filter.position) {
+    if (!filter.position.map(Number).includes(Number(player.position || 0))) return false;
+  }
+  if (filter.won != null) {
+    const wonRad = !!match.radiantWin;
+    const onRad = (player.team === 'radiant' || Number(player.team) === 0);
+    if ((wonRad === onRad) !== filter.won) return false;
+  }
+  return true;
+}
+
+async function listCommunityChallenges({ activeOnly = false } = {}) {
+  const p = getPool();
+  const where = activeOnly
+    ? `WHERE is_active = TRUE AND starts_at <= NOW() AND ends_at > NOW()`
+    : ``;
+  const r = await p.query(`SELECT * FROM community_challenges ${where} ORDER BY starts_at DESC, id DESC`);
+  return r.rows;
+}
+
+async function getCommunityChallenge(id) {
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM community_challenges WHERE id = $1`, [id]);
+  return r.rows[0] || null;
+}
+
+async function createCommunityChallenge({ title, description, scoring, prizeText, startsAt, endsAt, createdBy }) {
+  const scoringClean = _validateChallengeScoring(scoring);
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO community_challenges (title, description, scoring, prize_text, starts_at, ends_at, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [title, description || '', scoringClean, prizeText || null, startsAt, endsAt, createdBy || null]
+  );
+  return r.rows[0];
+}
+
+async function updateCommunityChallenge(id, patch) {
+  const p = getPool();
+  const cur = await getCommunityChallenge(id);
+  if (!cur) return null;
+  const next = {
+    title: patch.title != null ? patch.title : cur.title,
+    description: patch.description != null ? patch.description : cur.description,
+    scoring: patch.scoring ? _validateChallengeScoring(patch.scoring) : cur.scoring,
+    prize_text: patch.prizeText != null ? patch.prizeText : cur.prize_text,
+    starts_at: patch.startsAt || cur.starts_at,
+    ends_at: patch.endsAt || cur.ends_at,
+    is_active: patch.isActive != null ? !!patch.isActive : cur.is_active,
+  };
+  const r = await p.query(
+    `UPDATE community_challenges
+        SET title=$2, description=$3, scoring=$4, prize_text=$5,
+            starts_at=$6, ends_at=$7, is_active=$8
+      WHERE id = $1 RETURNING *`,
+    [id, next.title, next.description, next.scoring, next.prize_text,
+     next.starts_at, next.ends_at, next.is_active]
+  );
+  return r.rows[0] || null;
+}
+
+async function deleteCommunityChallenge(id) {
+  const p = getPool();
+  await p.query(`DELETE FROM community_challenges WHERE id = $1`, [id]);
+}
+
+// Pass `limit: null` (or omit when wanting "all") to return the full
+// leaderboard with no cap — used by the dedicated `/challenges/:id` page.
+async function getChallengeLeaderboard(id, { limit = null } = {}) {
+  const p = getPool();
+  const useLimit = (limit != null && Number.isFinite(Number(limit)) && Number(limit) > 0);
+  const sql =
+    `SELECT s.account_id, s.score, s.matches_counted, s.updated_at,
+            COALESCE(NULLIF(n.nickname, ''), ps.persona_name, '') AS name,
+            RANK() OVER (ORDER BY s.score DESC) AS rank
+       FROM community_challenge_scores s
+       LEFT JOIN nicknames n ON n.account_id = s.account_id
+       LEFT JOIN LATERAL (
+         SELECT persona_name FROM player_stats
+          WHERE account_id = s.account_id AND persona_name <> ''
+          ORDER BY id DESC LIMIT 1
+       ) ps ON TRUE
+      WHERE s.challenge_id = $1
+      ORDER BY s.score DESC
+      ${useLimit ? 'LIMIT $2' : ''}`;
+  const r = await p.query(sql, useLimit ? [id, Number(limit)] : [id]);
+  return r.rows;
+}
+
+async function getChallengeRankForAccount(id, accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `WITH ranked AS (
+       SELECT account_id, score, matches_counted,
+              RANK() OVER (ORDER BY score DESC) AS rank,
+              COUNT(*) OVER () AS total
+         FROM community_challenge_scores
+        WHERE challenge_id = $1
+     )
+     SELECT * FROM ranked WHERE account_id = $2`,
+    [id, accountId]
+  );
+  return r.rows[0] || null;
+}
+
+async function applyMatchToCommunityChallenges({ matchStats }) {
+  if (!matchStats || !matchStats.matchId || !Array.isArray(matchStats.players)) return { updated: 0 };
+  const p = getPool();
+  const challenges = await p.query(
+    `SELECT id, scoring FROM community_challenges
+      WHERE is_active = TRUE AND starts_at <= NOW() AND ends_at > NOW()`
+  );
+  let updated = 0;
+  for (const c of challenges.rows) {
+    // Idempotent — dedup applied matches per challenge.
+    const ins = await p.query(
+      `INSERT INTO community_challenge_match_log (challenge_id, match_id)
+       VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING challenge_id`,
+      [c.id, matchStats.matchId]
+    );
+    if (ins.rowCount === 0) continue;
+
+    const { metric, agg, filter } = c.scoring || {};
+    for (const player of matchStats.players) {
+      const accountId = Number(player.accountId) || 0;
+      if (!accountId) continue;
+      if (!_challengeFilterPasses(filter, player, matchStats)) continue;
+      const v = _challengePlayerValue(metric, player, matchStats);
+      if (!Number.isFinite(v)) continue;
+      const delta = agg === 'count' ? (v > 0 ? 1 : 0) : v;
+      if (delta === 0 && agg !== 'max') continue;
+      const setExpr = agg === 'max'
+        ? `score = GREATEST(community_challenge_scores.score, EXCLUDED.score)`
+        : `score = community_challenge_scores.score + EXCLUDED.score`;
+      await p.query(
+        `INSERT INTO community_challenge_scores
+           (challenge_id, account_id, score, matches_counted, last_match_id, updated_at)
+         VALUES ($1,$2,$3,1,$4,NOW())
+         ON CONFLICT (challenge_id, account_id) DO UPDATE
+           SET ${setExpr},
+               matches_counted = community_challenge_scores.matches_counted + 1,
+               last_match_id = EXCLUDED.last_match_id,
+               updated_at = NOW()`,
+        [c.id, accountId, delta, matchStats.matchId]
+      );
+      updated++;
+    }
+  }
+  return { updated };
+}
+
+// ===== /Task #440 =====
+
 // ---------- Limited drops ----------
 async function createLimitedDrop({ sku, label, description, kind, priceCents, coinPrice, quantityCap, seasonNumber, availableFrom, availableUntil, createdBy }) {
   const p = getPool();
@@ -21428,6 +22089,18 @@ module.exports = {
   getWeeklyChallengeProgress,
   bumpWeeklyChallengeProgress,
   claimWeeklyChallenge,
+  // Task #440 — quests + community challenges
+  getOrAssignActiveQuests,
+  applyMatchToPlayerQuests,
+  bumpMvpQuestProgress,
+  listCommunityChallenges,
+  getCommunityChallenge,
+  createCommunityChallenge,
+  updateCommunityChallenge,
+  deleteCommunityChallenge,
+  getChallengeLeaderboard,
+  getChallengeRankForAccount,
+  applyMatchToCommunityChallenges,
   createLimitedDrop,
   getActiveLimitedDrops,
   listAllLimitedDrops,

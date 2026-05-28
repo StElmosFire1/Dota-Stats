@@ -1,5 +1,24 @@
 module.exports = [
   {
+    "version": "7.98",
+    "title": "Daily / weekly quests + community challenges (Task #440)",
+    "published_at": "2026-05-28",
+    "major": true,
+    "notes": [
+      "**Why.** Inhouse activity flatlines mid-week between scheduled lobbies, and the only ongoing 'something to chase' was the season pass itself — which moves slowly. Quests give every player a fresh, individual reason to queue any time (3 daily + 2 weekly, auto-rolled), and community challenges layer a shared, time-boxed leaderboard on top so a single eye-catching event (e.g. 'most kills as Pos 1 this week') can rally the whole community for 7 days.",
+      "**New `src/data/questCatalogue.js`.** 8 daily + 7 weekly quest definitions, each a pure predicate over a `player_stats` row (`win`, `kills>=X`, `kda>=X`, position-specific support quests, parser-derived wards/healing/dewarding/last-hits/ranged hero stuns, etc.). Daily/weekly assignments use a deterministic shuffle keyed on `(accountId, periodStart)` so a player gets a stable mix per day/week and quests don't reshuffle on refresh.",
+      "**DB additions in `src/db/index.js`.** Five new tables: `player_quests` (assigned quests + progress + completion ts + idempotent XP grant key), `player_quest_hero_log` (per-match contribution audit, drives 'no double counting' on re-records), `community_challenges` (admin-authored, JSON scoring DSL), `community_challenge_scores` (rolled-up per-account leaderboard), `community_challenge_match_log` (idempotent per-match contribution log). New helpers: `getOrAssignActiveQuests`, `applyMatchToPlayerQuests`, `bumpMvpQuestProgress`, `list/get/create/update/deleteCommunityChallenge`, `getChallengeLeaderboard`, `getChallengeRankForAccount`, `applyMatchToCommunityChallenges`.",
+      "**Post-match hook in `recordMatch()`.** Every recorded match walks the 10 players, applies each one's active quests + every active community challenge, and on any quest transition from in-progress to completed: fires `awardSeasonPassXp` (sourced as `quest:<id>:<periodStart>` so re-records can never double-grant), and fires `notify({ event: 'quest_completed' })` so the per-user opt-out catalogue gates both the Discord DM (rich embed with XP) and web push.",
+      "**Notification catalogue.** New `quest_completed` event registered in `NOTIFICATION_EVENTS` with defaults `{ discord: true, push: true }`. Surfaces in the existing `/me/notifications` settings page like every other event.",
+      "**Scoring DSL.** Community challenges score from a small JSON DSL: `{ metric, agg, filter? }`. Metric ∈ `kills | deaths | assists | gpm | xpm | last_hits | hero_damage | tower_damage | hero_healing | wins | matches | perf | kda`. Agg ∈ `sum | max | count`. Optional filter narrows to `team` (radiant/dire), `position` (any subset of 1–5), or `won` (true/false). Examples: `{metric:'kills', agg:'sum', filter:{position:[1]}}` = 'most kills as Pos 1 this week', `{metric:'wins', agg:'count', filter:{position:[4,5]}}` = 'most wins as a support'.",
+      "**Frontend.** New `QuestTracker` widget on `/` (signed-in users) and on your own `/player/:id` profile — grouped Daily / Weekly with progress bars, in-page completion toast with XP delta when a quest flips to done between renders, soft 60s poll. New `CommunityChallengeTile` on the Home page showing the current challenge's top 3 + the viewer's rank-of-N if they're scored. New `/challenges/:id` route with the full leaderboard and a highlighted 'you' row.",
+      "**Admin.** New 'Engagement → 🎯 Community Challenges' tab in AdminPanel. Lists every challenge with active pill + window dates, plus an inline editor for title/description/prize/window/active + JSON scoring DSL with validation. Routes: `GET/POST/PATCH/DELETE /api/admin/community-challenges`, all superuser-gated via `_isSu`. Public reads: `GET /api/me/quests`, `GET /api/community-challenges/active` (top 3 + viewer rank), `GET /api/community-challenges/:id` (full leaderboard).",
+      "**A11y.** All buttons are `<button type=\"button\">` with `aria-label` on icon-only / per-row destructive actions, completion toast uses `role=\"status\"` + `aria-live=\"polite\"`, the Home challenge tile is `aria-labelledby` its title heading, no `<div onClick>` and no hover-only reveals.",
+      "**Scope.** Full edition only — none of this is wired into `community-edition/`. Out of scope by design: no cosmetic, coin, or Stripe rewards on this batch — XP only. Those can layer on later without touching this surface."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.97",
     "title": "Match Insights v2 — admin preview, ward-heatmap PNG, backfill (Task #439)",
     "published_at": "2026-05-28",

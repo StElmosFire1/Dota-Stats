@@ -18132,6 +18132,111 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     }
   });
 
+  // ── Task #440 — Daily / weekly quests + community challenges ─────────────
+  router.get('/me/quests', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.json({ quests: [] });
+      const quests = await db.getOrAssignActiveQuests(accountId);
+      res.json({ quests });
+    } catch (e) {
+      console.error('[API] /me/quests:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/community-challenges/active', async (req, res) => {
+    try {
+      const rows = await db.listCommunityChallenges({ activeOnly: true });
+      const viewer = req.session?.accountId || null;
+      const withRank = await Promise.all(rows.map(async (c) => {
+        const [top, myRank] = await Promise.all([
+          db.getChallengeLeaderboard(c.id, { limit: 3 }),
+          viewer ? db.getChallengeRankForAccount(c.id, viewer) : null,
+        ]);
+        return { ...c, top, my_rank: myRank };
+      }));
+      res.json({ challenges: withRank });
+    } catch (e) {
+      console.error('[API] /community-challenges/active:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/community-challenges/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const challenge = await db.getCommunityChallenge(id);
+      if (!challenge) return res.status(404).json({ error: 'Not found' });
+      const viewer = req.session?.accountId || null;
+      const [leaderboard, myRank] = await Promise.all([
+        db.getChallengeLeaderboard(id, { limit: null }),
+        viewer ? db.getChallengeRankForAccount(id, viewer) : null,
+      ]);
+      res.json({ challenge, leaderboard, my_rank: myRank });
+    } catch (e) {
+      console.error('[API] /community-challenges/:id:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/admin/community-challenges', async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      res.json({ challenges: await db.listCommunityChallenges({ activeOnly: false }) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/admin/community-challenges', express.json(), async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const b = req.body || {};
+      const startsAt = b.starts_at ? new Date(b.starts_at) : new Date();
+      const endsAt = b.ends_at ? new Date(b.ends_at) : new Date(Date.now() + 7 * 86400000);
+      const row = await db.createCommunityChallenge({
+        title: String(b.title || '').slice(0, 120),
+        description: String(b.description || ''),
+        scoring: b.scoring,
+        prizeText: b.prize_text || null,
+        startsAt, endsAt,
+        createdBy: req.session?.accountId || null,
+      });
+      res.json({ challenge: row });
+    } catch (e) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  router.patch('/admin/community-challenges/:id', express.json(), async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const id = parseInt(req.params.id, 10);
+      const b = req.body || {};
+      const patch = {};
+      if (b.title != null) patch.title = String(b.title).slice(0, 120);
+      if (b.description != null) patch.description = String(b.description);
+      if (b.scoring) patch.scoring = b.scoring;
+      if (b.prize_text !== undefined) patch.prizeText = b.prize_text;
+      if (b.starts_at) patch.startsAt = new Date(b.starts_at);
+      if (b.ends_at) patch.endsAt = new Date(b.ends_at);
+      if (b.is_active != null) patch.isActive = !!b.is_active;
+      const row = await db.updateCommunityChallenge(id, patch);
+      if (!row) return res.status(404).json({ error: 'Not found' });
+      res.json({ challenge: row });
+    } catch (e) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  router.delete('/admin/community-challenges/:id', async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const id = parseInt(req.params.id, 10);
+      await db.deleteCommunityChallenge(id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Limited drops ────────────────────────────────────────────────────────
   router.get('/limited-drops/active', async (req, res) => {
     try { res.json({ drops: await db.getActiveLimitedDrops() }); }

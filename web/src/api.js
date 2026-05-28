@@ -2310,6 +2310,22 @@ export const adminDeactivateLimitedDrop = (id) => _postJson(`/admin/limited-drop
 export const giftCoins = ({ recipientAccountId, packId, anonymous, message }) =>
   _postJson('/gift/coins', { recipientAccountId, packId, anonymous, message });
 
+// Task #440 — Daily / weekly quests + community challenges (full edition only)
+export const getMyQuests = () =>
+  _getJson('/me/quests').catch(() => ({ quests: [] }));
+export const getActiveCommunityChallenges = () =>
+  _getJson('/community-challenges/active').catch(() => ({ challenges: [] }));
+export const getCommunityChallenge = (id) =>
+  _getJson(`/community-challenges/${id}`);
+export const adminListCommunityChallenges = (superuserKey) =>
+  superuserJson('/admin/community-challenges', { superuserKey });
+export const adminCreateCommunityChallenge = (superuserKey, payload) =>
+  superuserJson('/admin/community-challenges', { method: 'POST', body: payload, superuserKey });
+export const adminUpdateCommunityChallenge = (superuserKey, id, payload) =>
+  superuserJson(`/admin/community-challenges/${id}`, { method: 'PATCH', body: payload, superuserKey });
+export const adminDeleteCommunityChallenge = (superuserKey, id) =>
+  superuserJson(`/admin/community-challenges/${id}`, { method: 'DELETE', superuserKey });
+
 // ── Task #479 — Smoke-test runs (superuser) ────────────────────────────────
 export const adminListSmokeTestRuns = (superuserKey) =>
   superuserJson('/admin/smoke-test/runs', { superuserKey });
