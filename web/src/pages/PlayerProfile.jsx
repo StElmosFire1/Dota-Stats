@@ -7,6 +7,7 @@ import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import ProfileCard from '../components/ProfileCard';
 import RivalCard from '../components/RivalCard';
+import MoodFormWidget from '../components/MoodFormWidget';
 import ProfileV3Panels from '../components/ProfileV3Panels';
 import MagazineCover from '../components/MagazineCover';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
@@ -1192,6 +1193,10 @@ export default function PlayerProfile() {
           <RivalCard compact />
         </div>
       )}
+      {/* Task #444 — Pre-match mood & form widget. Own profile only; the
+          widget self-gates on the `mood_widget` notification pref so the
+          viewer can hide it from Settings → Notifications. */}
+      {isOwnProfile && <MoodFormWidget accountId={accountId} />}
       {/* Task #442 — Compare-vs picker. Navigates to /h2h/<thisProfile>/<picked>
           so the same control works on your own profile (compare you vs anyone)
           and on someone else's profile (compare them vs anyone). When viewing

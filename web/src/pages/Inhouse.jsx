@@ -7,6 +7,7 @@ import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayNa
 import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
 import LiveQueueWidget from '../components/LiveQueueWidget';
+import MoodFormWidget from '../components/MoodFormWidget';
 
 const POSITIONS = [
   { id: 1, label: 'P1 — Carry' },
@@ -782,6 +783,13 @@ export default function Inhouse() {
           </p>
           {myAccountId ? (
             <>
+              {/* Task #444 — Pre-match mood & form widget. Renders for the
+                  signed-in viewer right above the position picker so the
+                  vibe line lands the moment they're about to queue.
+                  Self-gates on the `mood_widget` notification pref. */}
+              <div style={{ maxWidth: 520, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' }}>
+                <MoodFormWidget accountId={myAccountId} compact />
+              </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
                 {POSITIONS.map(p => (
                   <button key={p.id} onClick={() => setMyPositions(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}

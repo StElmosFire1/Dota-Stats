@@ -1827,6 +1827,11 @@ export async function announceWeekendTournament(id, superuserKey) {
   return d;
 }
 
+// ── Pre-match mood & form widget (Task #444) ───────────────────────────────
+export async function getPlayerFormSummary(accountId) {
+  return fetchJson(`/player/${encodeURIComponent(accountId)}/form-summary`);
+}
+
 // ── Profile chart v2 (1.4) ──────────────────────────────────────────────────
 export async function getPlayerMatchStatsHistory(accountId, seasonId = null) {
   const url = `/player/${encodeURIComponent(accountId)}/match-stats-history${seasonId ? `?season=${seasonId}` : ''}`;

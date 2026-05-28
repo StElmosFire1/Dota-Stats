@@ -13975,6 +13975,11 @@ const NOTIFICATION_CATEGORIES = [
   // members get notified when their card fails, but listed in settings so
   // they can mute the marketing-flavoured winback nudges if they prefer.
   { key: 'pro_billing_dm',             label: 'Pro billing & winback DMs', default: true },
+  // Task #444 — controls the pre-match mood & form widget on /me and the
+  // inhouse sign-in page. Default ON so the widget shows for everyone; flip
+  // off to hide it. Pref is honoured client-side (the API endpoint stays
+  // open so the toggle is the only thing gating render).
+  { key: 'mood_widget',                label: 'Pre-match mood & form widget', default: true },
 ];
 
 function categoryDef(key) {
@@ -23475,6 +23480,7 @@ module.exports = {
   getPlayerAlly,
   getPlayerWinRateHistory,
   getPlayerMatchStatsHistory,
+  getPlayerFormSummary,
   getHallOfFameCareerStats,
   getPlayerBenchmarkAverages,
   getTournaments,
@@ -24350,6 +24356,101 @@ async function getPlayerMatchStatsHistory(accountId, seasonId = null) {
   `, params);
   // Reverse so caller gets oldest -> newest for charting.
   return result.rows.reverse();
+}
+
+// Task #444 — Pre-match mood & form widget.
+// Pulls the player's most recent ~60 non-legacy matches (date, hero_id, won)
+// in a single query and derives:
+//   * last7 / last14 W-L records
+//   * weekday win-rate breakdown (Australia/Sydney) with a "best weekday"
+//     pick over the trailing window
+//   * hot-hero detection over the last 10 matches (≥3 games, ≥60% WR)
+// All math happens in JS so the SQL stays as a single index lookup. Returns
+// `null`-shaped fields when the player has no recent matches so the widget
+// can render a friendly empty state instead of breaking.
+async function getPlayerFormSummary(accountId) {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT m.date, ps.hero_id,
+      CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+             OR (ps.team = 'dire' AND NOT m.radiant_win)
+        THEN 1 ELSE 0 END AS won
+    FROM player_stats ps
+    JOIN matches m ON m.match_id::text = ps.match_id::text
+    WHERE ps.account_id::text = $1::text AND m.is_legacy = false
+    ORDER BY m.date DESC
+    LIMIT 60
+  `, [String(accountId)]);
+  const rows = r.rows || [];
+  const total = rows.length;
+  if (total === 0) {
+    return {
+      total, sample: 0,
+      last7: { wins: 0, losses: 0, games: 0 },
+      last14: { wins: 0, losses: 0, games: 0 },
+      weekday: null,
+      hotHero: null,
+    };
+  }
+  const now = Date.now();
+  const D = 24 * 60 * 60 * 1000;
+  const tally = (since) => {
+    let w = 0, l = 0;
+    for (const row of rows) {
+      const t = new Date(row.date).getTime();
+      if (now - t > since) continue;
+      if (row.won) w++; else l++;
+    }
+    return { wins: w, losses: l, games: w + l };
+  };
+  const last7 = tally(7 * D);
+  const last14 = tally(14 * D);
+
+  // Weekday breakdown in Australia/Sydney — that's the bot's canonical TZ.
+  // `Intl.DateTimeFormat` with `weekday: 'long'` is the most robust way to
+  // pull a TZ-correct day name in Node without bringing in a date lib.
+  const weekdayFmt = new Intl.DateTimeFormat('en-AU', {
+    weekday: 'long', timeZone: 'Australia/Sydney',
+  });
+  const byDay = {};
+  for (const row of rows) {
+    const day = weekdayFmt.format(new Date(row.date));
+    if (!byDay[day]) byDay[day] = { wins: 0, losses: 0, games: 0 };
+    if (row.won) byDay[day].wins++; else byDay[day].losses++;
+    byDay[day].games++;
+  }
+  const overallWr = rows.reduce((s, r) => s + (r.won ? 1 : 0), 0) / total;
+  let bestDay = null;
+  for (const [day, t] of Object.entries(byDay)) {
+    if (t.games < 3) continue; // need a minimum sample before bragging
+    const wr = t.wins / t.games;
+    const lift = wr - overallWr;
+    if (!bestDay || lift > bestDay.lift) bestDay = { day, wr, lift, ...t };
+  }
+
+  // Hot hero — over the most recent 10 matches, find any hero with ≥3 games
+  // played and ≥60% win rate. If multiple qualify, pick the one with the
+  // highest WR (then highest games as a tiebreak).
+  const recent10 = rows.slice(0, 10);
+  const byHero = {};
+  for (const row of recent10) {
+    if (!row.hero_id) continue;
+    const k = String(row.hero_id);
+    if (!byHero[k]) byHero[k] = { hero_id: row.hero_id, wins: 0, games: 0 };
+    if (row.won) byHero[k].wins++;
+    byHero[k].games++;
+  }
+  let hotHero = null;
+  for (const h of Object.values(byHero)) {
+    if (h.games < 3) continue;
+    const wr = h.wins / h.games;
+    if (wr < 0.6) continue;
+    if (!hotHero || wr > hotHero.wr || (wr === hotHero.wr && h.games > hotHero.games)) {
+      hotHero = { hero_id: h.hero_id, wins: h.wins, games: h.games, wr };
+    }
+  }
+
+  return { total, sample: total, last7, last14, weekday: bestDay, hotHero };
 }
 
 async function getHallOfFameCareerStats(seasonId = null) {

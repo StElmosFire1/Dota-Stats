@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "8.02",
+    "title": "Pre-match mood & form widget (Task #444)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** Before someone queues an inhouse the most useful thing the site can tell them isn't more numbers — it's a one-glance read on their own recent form so they know whether tonight feels like a hot streak to ride or a cold patch to break. Task #444 adds a soft, non-judgemental 'pre-match vibe' card that summarises the last 7/14 days, surfaces a weekday-WR pattern if there is one, and calls out any hero on a heater over the most recent 10 games.",
+      "**New `db.getPlayerFormSummary(accountId)` in `src/db/index.js`.** Single query pulls the last 60 non-legacy matches (`date`, `hero_id`, derived `won` flag), then computes: last-7d and last-14d W-L tallies, per-weekday WR keyed off `Intl.DateTimeFormat` in `Australia/Sydney` (DST-correct), the weekday with the largest lift versus the player's overall WR over the same sample (≥3 games required before bragging), and the 'hot hero' — any hero in the last 10 matches with ≥3 games and ≥60% WR, highest WR wins ties. Returns `{ sample: 0, … }` for new accounts so the widget self-suppresses with no empty-state clutter.",
+      "**New `GET /api/player/:id/form-summary` in `src/web/server.js`.** Open endpoint — same posture as the other public profile reads (e.g. win-rate-history). The only thing gating render is the viewer's `mood_widget` notification pref, which is honoured client-side.",
+      "**New `web/src/components/MoodFormWidget.jsx`.** Self-fetching display-only card. Renders an italic templated vibe line ('Hot week. Ride it.', 'Mondays are your day — that's today.', 'Your Pudge is on fire.', or 'Steady. Anything could happen tonight.' — no LLM, no MMR forecast) above a row of chips: last 7d W-L, last 14d W-L (only when distinct from 7d), best-weekday WR with delta, and the hot hero. Colour cues are gentle: brass for the section header, green for ≥60% WR / strong week / hot hero, brass-muted for in-between, muted text for cold signals — never red. No buttons, no interactive elements; the whole card is one `<section aria-label>`.",
+      "**Wiring.** Rendered on `web/src/pages/PlayerProfile.jsx` (own profile only, gated by `isOwnProfile`, immediately below the Weekly Rivals card) and on `web/src/pages/Inhouse.jsx` (above the position picker when the viewer is signed in, so the vibe line lands the moment they're about to queue). The widget itself fetches `/api/me/notifications` once and hides if `mood_widget` is toggled off; the new category is registered in `NOTIFICATION_CATEGORIES` so the existing Settings → Notifications page picks up the toggle automatically — no settings UI change required.",
+      "**A11y.** Display-only card — no `<div onClick>`, no hover-only reveals, no toggles, no icon-only buttons. Wrapped in a `<section aria-label=\"Pre-match mood and form\">` so screen readers announce the surface.",
+      "**Scope.** Full edition only — no `community-edition/` wiring. By design out of scope: any LLM-generated text (the vibe line is a small template over the same data the chips show), MMR forecasting, and any kind of 'should you queue right now?' prediction. Soft signal, nothing more."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.00",
     "title": "Head-to-Head page — drill-down, OG card, compare-vs pickers (Task #442)",
     "published_at": "2026-05-28",

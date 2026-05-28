@@ -8349,6 +8349,20 @@ NOTES
     }
   });
 
+  // Task #444 — Pre-match mood & form widget. Returns last7/last14 W-L,
+  // weekday WR breakdown + best weekday, hot hero over last 10 games.
+  // Open endpoint (no auth) so it can render on public profiles too; the
+  // /me page just calls it with the viewer's own accountId.
+  router.get('/player/:id/form-summary', async (req, res) => {
+    try {
+      const summary = await db.getPlayerFormSummary(req.params.id);
+      res.json(summary);
+    } catch (err) {
+      console.error('[API] form-summary error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch form summary' });
+    }
+  });
+
   router.get('/player/:id/win-rate-history', async (req, res) => {
     try {
       const seasonId = req.query.season || null;
