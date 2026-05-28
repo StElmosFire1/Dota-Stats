@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "7.95",
+    "title": "Cache marketplace next-available so popular filters don't re-walk every coach (Task #438)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** `db.listActiveCoaches` (the engine behind `GET /api/coaches` and the `/coaches` browse page) computes each coach's `next_available_at` and the `instant_booking` badge in JS by walking up to 14 days × N weekly slots per coach on every request. The work is pure CPU and grows linearly with roster size, but the underlying availability rows only change when a coach edits their schedule — so any given request usually recomputes a value that was already correct seconds ago.",
+      "**Small in-process memo in `src/db/index.js`.** New `_cachedNextAvailableForSlots(accountId, slots, now)` wraps the existing `_nextAvailableForSlots` helper. Cache key is the coach's account id; entry stores the computed `nextMs`, a 5-minute `expiresAt`, and a canonical hash of the slot set (day + start + end + timezone, sorted) so a mid-cache schedule change is detected even if the explicit invalidation path were ever bypassed. Stale entries whose cached `nextMs` has fallen into the past are also recomputed automatically, so the weekly roll-forward heals itself without waiting for the TTL.",
+      "**Explicit bust on edit.** `db.setCoachAvailability` calls `_bustCoachAvailabilityCache(coachAccountId)` right after the transaction commits, so the very next browse request recomputes against the freshly-written slots — no eventual-consistency window for a coach who just hit Save.",
+      "**No API shape change.** `next_available_at` / `instant_booking` are returned exactly as before; only the per-request CPU drops. Snippets, ratings, sorting, and the `availableThisWeek` filter all keep working unchanged."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.94",
     "title": "Coach of the Month congratulations DM (Task #437)",
     "published_at": "2026-05-28",

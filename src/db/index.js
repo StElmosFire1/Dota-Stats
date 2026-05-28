@@ -17179,6 +17179,43 @@ function _nextAvailableForSlots(slots, fromMs) {
   return best;
 }
 
+// Task #438 — small in-process memo for the marketplace's next-available
+// computation. The slot walk in `_nextSlotStartMs` is O(14 days × N slots)
+// per coach per request and the underlying availability rows only change
+// when a coach edits their schedule. Key = coach account id; entry stores
+// a canonical hash of the slot set so a mid-cache schedule edit is detected
+// even if `setCoachAvailability`'s explicit bust were ever bypassed.
+// TTL keeps the entry self-healing if the cached `nextMs` happens to fall
+// in the past (the next weekly occurrence rolls forward).
+const _COACH_AVAIL_TTL_MS = 5 * 60_000;
+const _coachAvailCache = new Map();
+
+function _hashCoachSlots(slots) {
+  const parts = (slots || []).map(s =>
+    `${s.day_of_week}|${String(s.start_time || '').slice(0,5)}|${String(s.end_time || '').slice(0,5)}|${s.timezone || ''}`
+  );
+  parts.sort();
+  return parts.join(';');
+}
+
+function _cachedNextAvailableForSlots(accountId, slots, nowMs) {
+  const key = String(accountId);
+  const hash = _hashCoachSlots(slots);
+  const hit = _coachAvailCache.get(key);
+  if (hit && hit.hash === hash && hit.expiresAt > nowMs
+      && (hit.nextMs == null || hit.nextMs > nowMs)) {
+    return hit.nextMs;
+  }
+  const nextMs = _nextAvailableForSlots(slots, nowMs);
+  _coachAvailCache.set(key, { hash, nextMs, expiresAt: nowMs + _COACH_AVAIL_TTL_MS });
+  return nextMs;
+}
+
+function _bustCoachAvailabilityCache(accountId) {
+  if (accountId == null) return;
+  _coachAvailCache.delete(String(accountId));
+}
+
 // Public browse listing — only active coaches. Filters narrow further.
 // Task #410 — marketplace discovery upgrade. New params:
 //   minRating         : drop coaches whose avg < this (NULL ratings are kept iff minRating <= 0)
@@ -17265,7 +17302,7 @@ async function listActiveCoaches({
   const now = Date.now();
   for (const c of rows) {
     const slots = slotsByCoach.get(String(c.account_id)) || [];
-    const next = _nextAvailableForSlots(slots, now);
+    const next = _cachedNextAvailableForSlots(c.account_id, slots, now);
     c.next_available_at = next ? new Date(next).toISOString() : null;
     c.instant_booking = next != null && (next - now) <= 48 * 3600_000;
   }
@@ -17499,6 +17536,9 @@ async function setCoachAvailability(coachAccountId, slots) {
   } finally {
     client.release();
   }
+  // Task #438 — drop the memoised next-available entry so the next
+  // `listActiveCoaches` call recomputes against the freshly written slots.
+  _bustCoachAvailabilityCache(coachAccountId);
   return getCoachAvailability(coachAccountId);
 }
 
