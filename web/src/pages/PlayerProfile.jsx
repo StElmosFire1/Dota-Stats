@@ -6,6 +6,7 @@ import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import ProfileCard from '../components/ProfileCard';
+import RivalCard from '../components/RivalCard';
 import ProfileV3Panels from '../components/ProfileV3Panels';
 import MagazineCover from '../components/MagazineCover';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
@@ -1123,6 +1124,12 @@ export default function PlayerProfile() {
           eligible (top-5 leaderboard or Immortal+). Hidden when the
           coaching_marketplace flag is off (eligibility endpoint 404s). */}
       {isOwnProfile && <CoachingApplyCta />}
+      {/* Task #441 — Weekly Rivals card on your own profile. */}
+      {isOwnProfile && (
+        <div style={{ marginTop: 12 }}>
+          <RivalCard compact />
+        </div>
+      )}
       {/* Gift buttons — shown when viewing another player's profile and signed in */}
       {!isOwnProfile && steamUser?.accountId && (
         <>

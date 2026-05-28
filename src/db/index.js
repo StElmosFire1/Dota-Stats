@@ -2962,6 +2962,49 @@ async function init() {
       )
     `);
 
+    // Task #441 — Weekly Rivals auto-pairing (full edition only).
+    //   weekly_rivals  — one row per (week_start, account_id_a). Each pairing
+    //                    writes TWO mirror rows (a,b) and (b,a) so each player's
+    //                    "my rival this week" lookup is a single PK hit. wins_a
+    //                    / wins_b are bumped from the recordMatch post-commit
+    //                    hook whenever the two rivals appear on opposing teams.
+    //   rival_exemptions — accountId allow-list maintained from the admin panel.
+    //                      Players in this set are skipped by the Monday cron.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS weekly_rivals (
+        week_start DATE NOT NULL,
+        account_id_a BIGINT NOT NULL,
+        account_id_b BIGINT NOT NULL,
+        wins_a INTEGER NOT NULL DEFAULT 0,
+        wins_b INTEGER NOT NULL DEFAULT 0,
+        score DOUBLE PRECISION,
+        mmr_a INTEGER,
+        mmr_b INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (week_start, account_id_a)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_weekly_rivals_b ON weekly_rivals(week_start, account_id_b)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_weekly_rivals_week ON weekly_rivals(week_start)`);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS rival_exemptions (
+        account_id BIGINT PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_by BIGINT
+      )
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS weekly_rival_match_log (
+        week_start DATE NOT NULL,
+        account_id_a BIGINT NOT NULL,
+        match_id VARCHAR(50) NOT NULL,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (week_start, account_id_a, match_id)
+      )
+    `);
+
     // Limited-drop cosmetics. Admin tool rotates a SKU window; the shop
     // surface reads /api/limited-drops/active and renders an "Available now"
     // panel during the window. Optional quantity cap for true scarcity.
@@ -21179,6 +21222,434 @@ async function applyMatchToCommunityChallenges({ matchStats }) {
 
 // ===== /Task #440 =====
 
+// ───────────────────────── Task #441 — Weekly Rivals ─────────────────────────
+// Pairing engine lives in src/rivals/pairing.js (pure, no DB). This module
+// provides the persistence + query helpers, the post-match H2H bump, and the
+// admin-facing inspector/exempt/repair surface. The Monday cron lives in
+// src/discord/bot.js and just calls `generateWeeklyRivals(weekStart)`.
+const _rivalsPairing = require('../rivals/pairing');
+
+async function _gatherRivalCandidates({ activeWithinDays = 14, tiebreakWindowDays = 30 } = {}) {
+  const p = getPool();
+  // Active players: any account with a recorded match in the last N days.
+  // We join ratings for current MMR. Anonymous / accountId=0 are excluded.
+  const r = await p.query(
+    `WITH active AS (
+       SELECT DISTINCT ps.account_id
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id IS NOT NULL AND ps.account_id <> 0
+          AND m.date >= NOW() - ($1 || ' days')::INTERVAL
+     ),
+     mmr AS (
+       SELECT r.player_id::BIGINT AS account_id,
+              ROUND(((r.mu - 3 * r.sigma) * 100 + 5000)::numeric)::INT AS mmr
+         FROM ratings r
+     ),
+     hero30 AS (
+       SELECT ps.account_id, ps.hero_id
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE m.date >= NOW() - ($2 || ' days')::INTERVAL
+          AND ps.account_id IS NOT NULL AND ps.account_id <> 0
+       GROUP BY ps.account_id, ps.hero_id
+     ),
+     side30 AS (
+       SELECT ps.account_id,
+              COUNT(*) FILTER (WHERE ps.team = 'radiant')::INT AS radiant_games,
+              COUNT(*) FILTER (WHERE ps.team = 'dire')::INT    AS dire_games
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE m.date >= NOW() - ($2 || ' days')::INTERVAL
+          AND ps.account_id IS NOT NULL AND ps.account_id <> 0
+       GROUP BY ps.account_id
+     )
+     SELECT a.account_id,
+            COALESCE(mmr.mmr, 0) AS mmr,
+            COALESCE(ARRAY_AGG(DISTINCT h.hero_id) FILTER (WHERE h.hero_id IS NOT NULL), '{}') AS heroes,
+            COALESCE(s.radiant_games, 0) AS radiant_games,
+            COALESCE(s.dire_games, 0)    AS dire_games
+       FROM active a
+       LEFT JOIN mmr   ON mmr.account_id = a.account_id
+       LEFT JOIN hero30 h ON h.account_id = a.account_id
+       LEFT JOIN side30 s ON s.account_id = a.account_id
+      GROUP BY a.account_id, mmr.mmr, s.radiant_games, s.dire_games`,
+    [String(activeWithinDays), String(tiebreakWindowDays)],
+  );
+  return r.rows.map(row => ({
+    accountId: String(row.account_id),
+    mmr: Number(row.mmr) || 0,
+    heroes: new Set((row.heroes || []).map(Number)),
+    radiantGames: Number(row.radiant_games) || 0,
+    direGames: Number(row.dire_games) || 0,
+  }));
+}
+
+async function _listRivalExemptions() {
+  const p = getPool();
+  const r = await p.query(`SELECT account_id FROM rival_exemptions`);
+  return new Set(r.rows.map(x => String(x.account_id)));
+}
+
+// Idempotent on (week_start). Returns { weekStart, pairs, unpaired, replaced }.
+// If pairings already exist for the week they're returned as-is — pass
+// { force: true } to wipe and regenerate (used by the admin "force re-pair"
+// button and by `repairAccount`).
+async function generateWeeklyRivals(weekStart, { force = false } = {}) {
+  const p = getPool();
+  if (!weekStart) weekStart = _rivalsPairing.currentWeekStart();
+
+  if (!force) {
+    const exist = await p.query(
+      `SELECT COUNT(*)::int AS n FROM weekly_rivals WHERE week_start = $1`,
+      [weekStart],
+    );
+    if ((exist.rows[0]?.n || 0) > 0) {
+      const rows = await listAllWeeklyRivalPairings(weekStart);
+      return { weekStart, pairs: rows, unpaired: [], replaced: false };
+    }
+  }
+
+  const [candidates, exempt] = await Promise.all([
+    _gatherRivalCandidates(),
+    _listRivalExemptions(),
+  ]);
+  const { pairs, unpaired } = _rivalsPairing.pairPlayers(candidates, { exempt });
+
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    if (force) {
+      await client.query(`DELETE FROM weekly_rivals WHERE week_start = $1`, [weekStart]);
+    }
+    for (const pair of pairs) {
+      // Write the mirror pair as two rows so the "my rival this week"
+      // lookup is a single PK hit regardless of which side the caller is.
+      await client.query(
+        `INSERT INTO weekly_rivals (week_start, account_id_a, account_id_b, mmr_a, mmr_b, score)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (week_start, account_id_a) DO NOTHING`,
+        [weekStart, pair.a, pair.b, Math.round(pair.mmrA), Math.round(pair.mmrB), pair.score],
+      );
+      await client.query(
+        `INSERT INTO weekly_rivals (week_start, account_id_a, account_id_b, mmr_a, mmr_b, score)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (week_start, account_id_a) DO NOTHING`,
+        [weekStart, pair.b, pair.a, Math.round(pair.mmrB), Math.round(pair.mmrA), pair.score],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+  return { weekStart, pairs, unpaired, replaced: !!force };
+}
+
+// All-time H2H wins between two accounts — counts every recorded match
+// where they were on opposing teams. Returns { my_wins, rival_wins, total }.
+async function getAllTimeRivalH2H(accountId, rivalAccountId) {
+  if (!accountId || !rivalAccountId) return { my_wins: 0, rival_wins: 0, total: 0 };
+  const p = getPool();
+  const r = await p.query(
+    `WITH pair_matches AS (
+       SELECT m.match_id, m.radiant_win,
+              MAX(CASE WHEN ps.account_id = $1 THEN ps.team END) AS my_team,
+              MAX(CASE WHEN ps.account_id = $2 THEN ps.team END) AS rival_team
+         FROM matches m
+         JOIN player_stats ps ON ps.match_id = m.match_id
+        WHERE ps.account_id IN ($1, $2)
+        GROUP BY m.match_id, m.radiant_win
+       HAVING COUNT(DISTINCT ps.account_id) = 2
+     )
+     SELECT
+       COUNT(*) FILTER (
+         WHERE my_team <> rival_team
+           AND ((my_team = 'radiant' AND radiant_win)
+             OR (my_team = 'dire'    AND NOT radiant_win))
+       )::INT AS my_wins,
+       COUNT(*) FILTER (
+         WHERE my_team <> rival_team
+           AND ((rival_team = 'radiant' AND radiant_win)
+             OR (rival_team = 'dire'    AND NOT radiant_win))
+       )::INT AS rival_wins
+     FROM pair_matches`,
+    [accountId, rivalAccountId],
+  );
+  const row = r.rows[0] || {};
+  const my = Number(row.my_wins || 0);
+  const rv = Number(row.rival_wins || 0);
+  return { my_wins: my, rival_wins: rv, total: my + rv };
+}
+
+// Returns true when both accounts are currently in the inhouse queue,
+// driving the "both in queue — go!" indicator on the RivalCard.
+async function areBothInInhouseQueue(accountIdA, accountIdB) {
+  if (!accountIdA || !accountIdB) return false;
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `SELECT COUNT(*)::int AS n FROM inhouse_queue
+        WHERE account_id IN ($1, $2)`,
+      [accountIdA, accountIdB],
+    );
+    return (r.rows[0]?.n || 0) >= 2;
+  } catch (_) {
+    // inhouse_queue may not exist in every install — be safe.
+    return false;
+  }
+}
+
+// One-shot lookup: the caller's rival for the current week, with the
+// live H2H score (wins_a is the caller's wins) + all-time H2H + a
+// "both currently in queue" indicator. Returns null when the caller
+// is unpaired or exempt this week.
+async function getCurrentRival(accountId, weekStart = null) {
+  if (!accountId) return null;
+  const p = getPool();
+  const ws = weekStart || _rivalsPairing.currentWeekStart();
+  const r = await p.query(
+    `SELECT week_start, account_id_a, account_id_b, wins_a, wins_b, mmr_a, mmr_b, score, created_at
+       FROM weekly_rivals
+      WHERE week_start = $1 AND account_id_a = $2`,
+    [ws, accountId],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  // Enrich with rival's display name for a one-shot render.
+  let nick = null;
+  try {
+    const nq = await p.query(
+      `SELECT nickname FROM nicknames WHERE account_id = $1`, [row.account_id_b],
+    );
+    nick = nq.rows[0]?.nickname || null;
+  } catch (_) {}
+  const [allTime, bothQueued] = await Promise.all([
+    getAllTimeRivalH2H(row.account_id_a, row.account_id_b),
+    areBothInInhouseQueue(row.account_id_a, row.account_id_b),
+  ]);
+  return {
+    week_start: row.week_start,
+    my_account_id: String(row.account_id_a),
+    rival_account_id: String(row.account_id_b),
+    rival_nickname: nick,
+    my_wins: row.wins_a,
+    rival_wins: row.wins_b,
+    my_mmr: row.mmr_a,
+    rival_mmr: row.mmr_b,
+    score: row.score,
+    created_at: row.created_at,
+    all_time_my_wins: allTime.my_wins,
+    all_time_rival_wins: allTime.rival_wins,
+    all_time_total: allTime.total,
+    both_in_queue: bothQueued,
+  };
+}
+
+// Admin inspector — distinct pairs (canonical a<b) plus unpaired list.
+async function listAllWeeklyRivalPairings(weekStart = null) {
+  const p = getPool();
+  const ws = weekStart || _rivalsPairing.currentWeekStart();
+  const r = await p.query(
+    `SELECT week_start, account_id_a, account_id_b, wins_a, wins_b, mmr_a, mmr_b, score, created_at
+       FROM weekly_rivals
+      WHERE week_start = $1
+        AND account_id_a < account_id_b
+      ORDER BY score DESC NULLS LAST`,
+    [ws],
+  );
+  return r.rows.map(row => ({
+    week_start: row.week_start,
+    account_id_a: String(row.account_id_a),
+    account_id_b: String(row.account_id_b),
+    wins_a: row.wins_a,
+    wins_b: row.wins_b,
+    mmr_a: row.mmr_a,
+    mmr_b: row.mmr_b,
+    score: row.score,
+    created_at: row.created_at,
+  }));
+}
+
+// Hook from src/web/server.js — after a match is recorded, walk every
+// player and bump their (and their rival's mirror) H2H score for the
+// current week whenever both rivals appear on opposing teams. Idempotent
+// via weekly_rival_match_log so a re-record cannot double-credit.
+async function recordRivalMatchResult(matchStats) {
+  if (!matchStats || !matchStats.matchId || !Array.isArray(matchStats.players)) {
+    return { updates: 0 };
+  }
+  const p = getPool();
+  const ws = _rivalsPairing.currentWeekStart();
+  const matchId = String(matchStats.matchId);
+  const radiantWin = !!matchStats.radiantWin;
+  // Build accountId → {team, won} for O(1) opponent lookup.
+  const byAcct = new Map();
+  for (const pl of matchStats.players) {
+    const aid = pl.accountId ? String(pl.accountId) : null;
+    if (!aid || aid === '0') continue;
+    const team = (pl.team === 'radiant' || Number(pl.team) === 0) ? 'radiant' : 'dire';
+    const won = (team === 'radiant') === radiantWin;
+    byAcct.set(aid, { team, won });
+  }
+  let updates = 0;
+  for (const [aid, info] of byAcct.entries()) {
+    const rivalRow = await p.query(
+      `SELECT account_id_b FROM weekly_rivals
+        WHERE week_start = $1 AND account_id_a = $2`,
+      [ws, aid],
+    );
+    const rivalId = rivalRow.rows[0]?.account_id_b ? String(rivalRow.rows[0].account_id_b) : null;
+    if (!rivalId) continue;
+    const rivalInfo = byAcct.get(rivalId);
+    if (!rivalInfo) continue;
+    if (rivalInfo.team === info.team) continue; // same team — doesn't count as H2H.
+
+    // Idempotency guard, keyed per-account so the mirror row gets its own log line.
+    const ins = await p.query(
+      `INSERT INTO weekly_rival_match_log (week_start, account_id_a, match_id)
+       VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING match_id`,
+      [ws, aid, matchId],
+    );
+    if (ins.rowCount === 0) continue;
+
+    if (info.won) {
+      // Bump wins_a on the caller's row, wins_b on the rival's mirror row.
+      await p.query(
+        `UPDATE weekly_rivals SET wins_a = wins_a + 1
+          WHERE week_start = $1 AND account_id_a = $2`,
+        [ws, aid],
+      );
+      await p.query(
+        `UPDATE weekly_rivals SET wins_b = wins_b + 1
+          WHERE week_start = $1 AND account_id_a = $2`,
+        [ws, rivalId],
+      );
+      updates++;
+    }
+  }
+  return { updates };
+}
+
+// Returns a flat array of { account_id, match_ids[] } so the post-match
+// DM hook can fan out a "you played your rival" notification per side.
+async function listRivalMatchOutcomesForMatch(matchId) {
+  if (!matchId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT account_id_a FROM weekly_rival_match_log WHERE match_id = $1`,
+    [String(matchId)],
+  );
+  return r.rows.map(row => String(row.account_id_a));
+}
+
+async function setRivalExemption(accountId, exempt, actorAccountId = null) {
+  if (!accountId) throw new Error('accountId required');
+  const p = getPool();
+  if (exempt) {
+    await p.query(
+      `INSERT INTO rival_exemptions (account_id, created_by)
+       VALUES ($1, $2) ON CONFLICT (account_id) DO NOTHING`,
+      [accountId, actorAccountId],
+    );
+  } else {
+    await p.query(`DELETE FROM rival_exemptions WHERE account_id = $1`, [accountId]);
+  }
+  return { exempt: !!exempt };
+}
+
+async function listRivalExemptions() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT account_id, created_at, created_by FROM rival_exemptions ORDER BY created_at DESC`,
+  );
+  return r.rows.map(x => ({
+    account_id: String(x.account_id),
+    created_at: x.created_at,
+    created_by: x.created_by ? String(x.created_by) : null,
+  }));
+}
+
+// "Force re-pair" for a single account: drop their existing pair (both
+// mirror rows + the partner's mirror row), then re-run the engine across
+// every currently-unpaired active player. Returns the new pairing or null
+// if no partner could be found this week.
+async function repairAccount(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const ws = _rivalsPairing.currentWeekStart();
+  const existing = await p.query(
+    `SELECT account_id_b FROM weekly_rivals
+      WHERE week_start = $1 AND account_id_a = $2`,
+    [ws, accountId],
+  );
+  const partner = existing.rows[0]?.account_id_b ? String(existing.rows[0].account_id_b) : null;
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    // Drop both directions for the caller AND for their existing partner
+    // (if any). Both go back into the unpaired pool.
+    await client.query(
+      `DELETE FROM weekly_rivals
+        WHERE week_start = $1
+          AND (account_id_a = $2 OR account_id_b = $2
+            OR account_id_a = $3 OR account_id_b = $3)`,
+      [ws, accountId, partner || '0'],
+    );
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+    throw e;
+  }
+  client.release();
+
+  // Pair the now-unpaired set across the unfilled slots.
+  const [candidates, exempt] = await Promise.all([
+    _gatherRivalCandidates(),
+    _listRivalExemptions(),
+  ]);
+  const pairedAlready = await p.query(
+    `SELECT account_id_a FROM weekly_rivals WHERE week_start = $1`, [ws],
+  );
+  const taken = new Set(pairedAlready.rows.map(x => String(x.account_id_a)));
+  const unpaired = candidates.filter(c => !taken.has(c.accountId));
+  // Make sure the caller is in the pool even if they fell out of activity.
+  if (!unpaired.find(c => c.accountId === String(accountId))) {
+    unpaired.push({ accountId: String(accountId), mmr: 0, heroes: new Set(), radiantGames: 0, direGames: 0 });
+  }
+  const { pairs } = _rivalsPairing.pairPlayers(unpaired, { exempt });
+  if (pairs.length === 0) return null;
+
+  const newPair = pairs.find(x => x.a === String(accountId) || x.b === String(accountId));
+  for (const pair of pairs) {
+    await p.query(
+      `INSERT INTO weekly_rivals (week_start, account_id_a, account_id_b, mmr_a, mmr_b, score)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (week_start, account_id_a) DO NOTHING`,
+      [ws, pair.a, pair.b, Math.round(pair.mmrA), Math.round(pair.mmrB), pair.score],
+    );
+    await p.query(
+      `INSERT INTO weekly_rivals (week_start, account_id_a, account_id_b, mmr_a, mmr_b, score)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (week_start, account_id_a) DO NOTHING`,
+      [ws, pair.b, pair.a, Math.round(pair.mmrB), Math.round(pair.mmrA), pair.score],
+    );
+  }
+  return newPair || null;
+}
+
+// Used by the Sunday recap DM. Returns null when the player wasn't paired
+// or when neither side scored a single H2H over the week.
+async function getWeeklyRivalRecap(accountId, weekStart = null) {
+  const row = await getCurrentRival(accountId, weekStart);
+  if (!row) return null;
+  if ((row.my_wins || 0) + (row.rival_wins || 0) === 0) return null;
+  return row;
+}
+
+// ===== /Task #441 =====
+
 // ---------- Limited drops ----------
 async function createLimitedDrop({ sku, label, description, kind, priceCents, coinPrice, quantityCap, seasonNumber, availableFrom, availableUntil, createdBy }) {
   const p = getPool();
@@ -21807,6 +22278,19 @@ module.exports = {
   creditCoinPackAtomically,
   listWeeklySummaryRecipients,
   getWeeklyPlayerSummary,
+  // Task #441 — Weekly Rivals
+  generateWeeklyRivals,
+  getCurrentRival,
+  listAllWeeklyRivalPairings,
+  recordRivalMatchResult,
+  getAllTimeRivalH2H,
+  areBothInInhouseQueue,
+  listRivalMatchOutcomesForMatch,
+  setRivalExemption,
+  listRivalExemptions,
+  repairAccount: repairAccount,
+  repairRivalForAccount: repairAccount,
+  getWeeklyRivalRecap,
   recordMatch,
   // Task #411 — match_fights helpers (replay viewer v3 team-fight overlay).
   getMatchFights,

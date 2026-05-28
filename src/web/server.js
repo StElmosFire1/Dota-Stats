@@ -18237,6 +18237,76 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Task #441 — Weekly Rivals (full edition only) ───────────────────────
+  router.get('/me/rival', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.json({ rival: null });
+      const rival = await db.getCurrentRival(accountId);
+      res.json({ rival });
+    } catch (e) {
+      console.error('[API] /me/rival:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/admin/rivals', async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const week = req.query.week_start || null;
+      const [pairings, exemptions] = await Promise.all([
+        db.listAllWeeklyRivalPairings(week),
+        db.listRivalExemptions(),
+      ]);
+      res.json({
+        week_start: pairings[0]?.week_start || week || require('../rivals/pairing').currentWeekStart(),
+        pairings,
+        exemptions,
+      });
+    } catch (e) {
+      console.error('[API] /admin/rivals:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/admin/rivals/regenerate', express.json(), async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const result = await db.generateWeeklyRivals(null, { force: !!req.body?.force });
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      console.error('[API] /admin/rivals/regenerate:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/admin/rivals/repair', express.json(), async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const accountId = String(req.body?.account_id || '');
+      if (!accountId) return res.status(400).json({ error: 'account_id required' });
+      const newPair = await db.repairRivalForAccount(accountId);
+      res.json({ ok: true, pair: newPair });
+    } catch (e) {
+      console.error('[API] /admin/rivals/repair:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/admin/rivals/exempt', express.json(), async (req, res) => {
+    try {
+      if (!_isSu(req)) return res.status(403).json({ error: 'Superuser required.' });
+      const accountId = String(req.body?.account_id || '');
+      const exempt = !!req.body?.exempt;
+      if (!accountId) return res.status(400).json({ error: 'account_id required' });
+      const r = await db.setRivalExemption(accountId, exempt, req.session?.accountId || null);
+      res.json({ ok: true, ...r });
+    } catch (e) {
+      console.error('[API] /admin/rivals/exempt:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Limited drops ────────────────────────────────────────────────────────
   router.get('/limited-drops/active', async (req, res) => {
     try { res.json({ drops: await db.getActiveLimitedDrops() }); }
@@ -18640,6 +18710,61 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
         ).catch(() => {});
       }
     } catch (_) {}
+
+    // Task #441 — Weekly Rivals: bump H2H scores for any rival pair on
+    // opposing teams in this match, then DM each side via notify().
+    // Best-effort — never blocks the upload pipeline.
+    try {
+      if (typeof db.recordRivalMatchResult === 'function') {
+        await db.recordRivalMatchResult(matchStats);
+        const { notify } = require('../notify');
+        const touched = await db.listRivalMatchOutcomesForMatch(matchStats.matchId).catch(() => []);
+        // Pre-compute who-won-the-match per touched account so the DM can
+        // say "and won! 2–1" vs "and lost. 2–1" with the real outcome.
+        const radiantWin = !!matchStats.radiantWin;
+        const wonByAcct = new Map();
+        for (const pl of (matchStats.players || [])) {
+          const aid = pl.accountId ? String(pl.accountId) : null;
+          if (!aid || aid === '0') continue;
+          const team = (pl.team === 'radiant' || Number(pl.team) === 0) ? 'radiant' : 'dire';
+          wonByAcct.set(aid, (team === 'radiant') === radiantWin);
+        }
+        for (const aid of (touched || [])) {
+          try {
+            const r = await db.getCurrentRival(aid);
+            if (!r) continue;
+            const won = !!wonByAcct.get(String(aid));
+            const rivalName = r.rival_nickname || `account ${r.rival_account_id}`;
+            const weekScore = `${r.my_wins}–${r.rival_wins}`;
+            const allTimeScore = `${r.all_time_my_wins}–${r.all_time_rival_wins}`;
+            const verdict = won
+              ? `You just played your weekly rival **${rivalName}** and **won**! 🏆`
+              : `You just played your weekly rival **${rivalName}** and **lost**. 💢`;
+            notify(aid, 'rival_match_played', {
+              discord: {
+                embed: {
+                  title: won ? '⚔️ Weekly rival match — WIN' : '⚔️ Weekly rival match — LOSS',
+                  description: verdict,
+                  color: won ? 0x22c55e : 0xef4444,
+                  fields: [
+                    { name: 'This week', value: `you ${weekScore} ${rivalName}`, inline: true },
+                    { name: 'All time',  value: `you ${allTimeScore} ${rivalName}`, inline: true },
+                  ],
+                  footer: { text: 'OCE Inhouse — Weekly Rivals' },
+                },
+              },
+              push: {
+                title: won ? 'Weekly rival — WIN' : 'Weekly rival — LOSS',
+                body: `vs ${rivalName} · week ${weekScore} · all-time ${allTimeScore}`,
+                url: '/',
+              },
+            }).catch(() => {});
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      console.warn('[Rivals] post-match hook failed:', e.message);
+    }
 
     // Notify Discord about achievements granted inside recordMatch()
     if (recordResult && recordResult.achievementGrants && recordResult.achievementGrants.length > 0) {

@@ -104,6 +104,32 @@ export function matchInsightsWardHeatmapUrl(superuserKey, matchId) {
   return `/api/admin/match-insights/${encodeURIComponent(matchId)}/ward-heatmap.png?${q.toString()}`;
 }
 
+// Task #441 — Weekly Rivals.
+export async function getMyRival() {
+  const res = await fetch(BASE + '/me/rival', { credentials: 'same-origin' });
+  if (!res.ok) return { rival: null };
+  return res.json();
+}
+export async function getAdminRivals(superuserKey, weekStart = null) {
+  const qs = weekStart ? `?week_start=${encodeURIComponent(weekStart)}` : '';
+  return superuserJson(`/admin/rivals${qs}`, { superuserKey });
+}
+export async function regenerateRivals(superuserKey, force = false) {
+  return superuserJson('/admin/rivals/regenerate', {
+    method: 'POST', superuserKey, body: { force },
+  });
+}
+export async function repairRival(superuserKey, accountId) {
+  return superuserJson('/admin/rivals/repair', {
+    method: 'POST', superuserKey, body: { account_id: accountId },
+  });
+}
+export async function setRivalExempt(superuserKey, accountId, exempt) {
+  return superuserJson('/admin/rivals/exempt', {
+    method: 'POST', superuserKey, body: { account_id: accountId, exempt: !!exempt },
+  });
+}
+
 // Task #492 — AI agent traffic report (superuser).
 export async function getAgentTrafficReport(superuserKey, days = 7) {
   const qs = days ? `?days=${encodeURIComponent(days)}` : '';

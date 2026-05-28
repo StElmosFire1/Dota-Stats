@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -4362,6 +4362,175 @@ function SideBannerPanel({ superuserKey }) {
   );
 }
 
+// Task #441 — Weekly Rivals admin panel. Lists this week's pairings,
+// allows force-regenerate (wipe + re-pair everyone), per-account
+// force-repair (drop the pair and re-pair just that account against
+// the unpaired pool), and exemption add/remove.
+function WeeklyRivalsPanel({ superuserKey }) {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState(null);
+  const [busy, setBusy] = React.useState(null);
+  const [exemptInput, setExemptInput] = React.useState('');
+
+  const load = React.useCallback(async () => {
+    setLoading(true); setErr(null);
+    try { setData(await getAdminRivals(superuserKey)); }
+    catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  }, [superuserKey]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const onForceRegenerate = async () => {
+    if (!confirm('Wipe and re-pair every active player this week? This drops all current H2H scores.')) return;
+    setBusy('regen');
+    try { await regenerateRivals(superuserKey, true); await load(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(null); }
+  };
+  const onRepair = async (accountId) => {
+    setBusy(`repair:${accountId}`);
+    try { await repairRival(superuserKey, accountId); await load(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(null); }
+  };
+  const onToggleExempt = async (accountId, exempt) => {
+    setBusy(`exempt:${accountId}`);
+    try { await setRivalExempt(superuserKey, accountId, exempt); await load(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(null); }
+  };
+  const onAddExempt = async (e) => {
+    e.preventDefault();
+    const aid = exemptInput.trim();
+    if (!aid) return;
+    await onToggleExempt(aid, true);
+    setExemptInput('');
+  };
+
+  return (
+    <section
+      aria-labelledby="rivals-panel-heading"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, marginBottom: 16 }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h3 id="rivals-panel-heading" style={{ margin: 0 }}>⚔️ Weekly Rivals</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '6px 12px', fontSize: 13, cursor: 'pointer' }}
+            aria-label="Refresh weekly rivals"
+          >🔄 Refresh</button>
+          <button
+            type="button"
+            onClick={onForceRegenerate}
+            disabled={busy === 'regen'}
+            style={{ background: 'var(--accent)', border: 'none', color: '#000', borderRadius: 6, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            aria-label="Force re-pair everyone this week"
+          >{busy === 'regen' ? 'Working…' : '♻️ Force re-pair week'}</button>
+        </div>
+      </div>
+
+      {err && <div role="alert" style={{ color: '#ef4444', marginBottom: 12, fontSize: 13 }}>{err}</div>}
+
+      {loading ? <div>Loading…</div> : data && (
+        <>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+            Week of <strong>{String(data.week_start).slice(0, 10)}</strong> · {data.pairings.length} pair{data.pairings.length === 1 ? '' : 's'}
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '6px 8px' }}>Player A</th>
+                  <th style={{ padding: '6px 8px' }}>Player B</th>
+                  <th style={{ padding: '6px 8px' }}>MMR Δ</th>
+                  <th style={{ padding: '6px 8px' }}>H2H (A–B)</th>
+                  <th style={{ padding: '6px 8px' }}>Score</th>
+                  <th style={{ padding: '6px 8px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.pairings.map(p => (
+                  <tr key={`${p.account_id_a}-${p.account_id_b}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '6px 8px' }}>
+                      <a href={`/player/${p.account_id_a}`} style={{ color: 'var(--accent)' }}>{p.account_id_a}</a>
+                      <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>({p.mmr_a})</span>
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <a href={`/player/${p.account_id_b}`} style={{ color: 'var(--accent)' }}>{p.account_id_b}</a>
+                      <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>({p.mmr_b})</span>
+                    </td>
+                    <td style={{ padding: '6px 8px', fontVariantNumeric: 'tabular-nums' }}>{Math.abs((p.mmr_a || 0) - (p.mmr_b || 0))}</td>
+                    <td style={{ padding: '6px 8px', fontVariantNumeric: 'tabular-nums' }}>{p.wins_a}–{p.wins_b}</td>
+                    <td style={{ padding: '6px 8px', fontVariantNumeric: 'tabular-nums' }}>{p.score != null ? Number(p.score).toFixed(2) : '—'}</td>
+                    <td style={{ padding: '6px 8px', display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => onRepair(p.account_id_a)}
+                        disabled={busy === `repair:${p.account_id_a}`}
+                        style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 4, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}
+                        aria-label={`Force re-pair account ${p.account_id_a}`}
+                      >Re-pair A</button>
+                      <button
+                        type="button"
+                        onClick={() => onToggleExempt(p.account_id_a, true)}
+                        disabled={busy === `exempt:${p.account_id_a}`}
+                        style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 4, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}
+                        aria-label={`Exempt account ${p.account_id_a}`}
+                      >Exempt A</button>
+                    </td>
+                  </tr>
+                ))}
+                {data.pairings.length === 0 && (
+                  <tr><td colSpan={6} style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>No pairings yet for this week.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: 14 }}>Exemptions ({data.exemptions.length})</h4>
+            <form onSubmit={onAddExempt} style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              <label htmlFor="rival-exempt-input" style={{ position: 'absolute', left: -9999 }}>Account ID to exempt</label>
+              <input
+                id="rival-exempt-input"
+                type="text"
+                value={exemptInput}
+                onChange={e => setExemptInput(e.target.value)}
+                placeholder="Account ID to exempt"
+                style={{ flex: 1, background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 4, padding: '6px 8px', fontSize: 13 }}
+              />
+              <button type="submit" style={{ background: 'var(--accent)', border: 'none', color: '#000', borderRadius: 4, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+            </form>
+            {data.exemptions.length === 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No accounts exempted.</div>
+            ) : (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {data.exemptions.map(ex => (
+                  <li key={ex.account_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', fontSize: 13 }}>
+                    <a href={`/player/${ex.account_id}`} style={{ color: 'var(--accent)' }}>{ex.account_id}</a>
+                    <button
+                      type="button"
+                      onClick={() => onToggleExempt(ex.account_id, false)}
+                      disabled={busy === `exempt:${ex.account_id}`}
+                      style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 4, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}
+                      aria-label={`Remove exemption for account ${ex.account_id}`}
+                    >Remove</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function AdminPanel() {
   const { isSuperuser, superuserKey, logout } = useSuperuser();
   const { activeSeason } = useSeason();
@@ -4518,6 +4687,7 @@ export default function AdminPanel() {
     ]},
     { label: 'Engagement', items: [
       { id: 'challenges', icon: '🎯', label: 'Community Challenges' },
+      { id: 'rivals', icon: '⚔️', label: 'Weekly Rivals' },
     ]},
   ];
 
@@ -4561,6 +4731,7 @@ export default function AdminPanel() {
     { label: 'Coaching Marketplace', tab: 'marketplace', anchor: 'ap-anchor-coaching', icon: '🎓', kw: 'coach payout connect bookings' },
     { label: 'Tournament Brackets', tab: 'marketplace', anchor: 'ap-anchor-tournaments', icon: '🏆', kw: 'tournament prize pool buy-in' },
     { label: 'Community Challenges', tab: 'challenges', icon: '🎯', kw: 'challenge leaderboard scoring quest community event' },
+    { label: 'Weekly Rivals', tab: 'rivals', icon: '⚔️', kw: 'rival weekly pairing h2h head to head opponent matchup auto pair' },
   ];
 
   const q = searchQuery.trim().toLowerCase();
@@ -4880,6 +5051,10 @@ export default function AdminPanel() {
 
       {activeTab === 'challenges' && (<>
       <CommunityChallengesPanel superuserKey={superuserKey} />
+      </>)}
+
+      {activeTab === 'rivals' && (<>
+      <WeeklyRivalsPanel superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'config' && (<>

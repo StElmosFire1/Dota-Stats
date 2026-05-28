@@ -5721,6 +5721,80 @@ class DiscordBot {
       // Auto-create lobby at game time: check every minute
       setInterval(() => this._autoCreateScheduledLobbies().catch(err => console.error('[LobbyAuto] Error:', err.message)), 60 * 1000);
 
+      // Task #441 — Weekly Rivals. Monday 00:05 Australia/Sydney: rebuild
+      // pairings for the new week. Idempotent on (week_start) — re-running
+      // is a no-op unless the admin "Force re-pair everyone" button is hit.
+      cron.schedule('5 0 * * 1', async () => {
+        try {
+          const result = await db.generateWeeklyRivals(null, { force: false });
+          console.log(`[Rivals] Weekly auto-pair: week_start=${result.weekStart} pairs=${result.pairs.length} unpaired=${result.unpaired.length}`);
+          if (db.recordCronHeartbeat) {
+            await db.recordCronHeartbeat({
+              name: 'weekly_rivals_pair', status: 'ok',
+              message: `pairs=${result.pairs.length} unpaired=${result.unpaired.length}`,
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.error('[Rivals] Weekly auto-pair error:', e.message);
+          if (db.recordCronHeartbeat) {
+            await db.recordCronHeartbeat({ name: 'weekly_rivals_pair', status: 'error', message: e.message }).catch(() => {});
+          }
+        }
+      }, { timezone: 'Australia/Sydney' });
+      console.log('[Discord] Weekly Rivals auto-pair scheduled (Mondays 00:05 Australia/Sydney).');
+
+      // Task #441 — End-of-week rival recap DM. Sunday 20:00 Australia/Sydney.
+      // For each player paired this week with any H2H activity, send a single
+      // recap embed via notify() so the per-user `rival_weekly_recap` toggle
+      // gates it. Best-effort per recipient.
+      cron.schedule('0 20 * * 0', async () => {
+        try {
+          const { notify } = require('../notify');
+          const pairings = await db.listAllWeeklyRivalPairings(null);
+          let sent = 0;
+          for (const pair of pairings) {
+            for (const side of ['a', 'b']) {
+              const me = side === 'a' ? pair.account_id_a : pair.account_id_b;
+              const rival = side === 'a' ? pair.account_id_b : pair.account_id_a;
+              const myWins   = side === 'a' ? pair.wins_a : pair.wins_b;
+              const rivalWins = side === 'a' ? pair.wins_b : pair.wins_a;
+              if ((myWins + rivalWins) === 0) continue;
+              const verdict = myWins > rivalWins
+                ? 'You took the week! 🏆'
+                : myWins < rivalWins
+                ? 'They got you this week — get them back next week.'
+                : 'A draw — the rematch decides it.';
+              // All-time H2H for the recap so the player sees the bigger picture.
+              const allTime = await db.getAllTimeRivalH2H(me, rival).catch(() => ({ my_wins: 0, rival_wins: 0 }));
+              notify(me, 'rival_weekly_recap', {
+                discord: {
+                  embed: {
+                    title: '⚔️ Your weekly rival recap',
+                    description: verdict,
+                    color: 0xc5a975,
+                    fields: [
+                      { name: 'This week', value: `you ${myWins}–${rivalWins} rival (#${rival})`, inline: true },
+                      { name: 'All time',  value: `you ${allTime.my_wins}–${allTime.rival_wins} rival`, inline: true },
+                    ],
+                    footer: { text: 'OCE Inhouse — Weekly Rivals · new pair drops Monday' },
+                  },
+                },
+                push: {
+                  title: 'Weekly rival recap',
+                  body: `week ${myWins}–${rivalWins} · all-time ${allTime.my_wins}–${allTime.rival_wins}`,
+                  url: '/',
+                },
+              }).catch(() => {});
+              sent++;
+            }
+          }
+          console.log(`[Rivals] Weekly recap DM run: ${sent} sent`);
+        } catch (e) {
+          console.error('[Rivals] Weekly recap error:', e.message);
+        }
+      }, { timezone: 'Australia/Sydney' });
+      console.log('[Discord] Weekly Rivals recap DM scheduled (Sundays 20:00 Australia/Sydney).');
+
       // Position baselines recompute — weekly (Mondays 3am UTC) so PERF
       // timeline_v1 baselines stay current as the patch meta evolves. Owner can
       // also trigger it on demand via `!recompute-baselines`.

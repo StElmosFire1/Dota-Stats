@@ -8,6 +8,7 @@ import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import QuestTracker from '../components/QuestTracker';
 import CommunityChallengeTile from '../components/CommunityChallengeTile';
+import RivalCard from '../components/RivalCard';
 import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
 import SponsorshipBanner from '../components/SponsorshipBanner';
@@ -572,6 +573,12 @@ export default function Home() {
         }} className="oa-home-pulse-row">
           <QuestTracker />
           <CommunityChallengeTile />
+        </div>
+
+        {/* Task #441 — Weekly Rivals tile (self-fetching; renders nothing
+            when the viewer isn't paired this week). */}
+        <div style={{ marginBottom: 24 }}>
+          <RivalCard />
         </div>
 
         <CourtPitchHomeLanding
