@@ -5929,6 +5929,23 @@ class DiscordBot {
       }, { timezone: 'Australia/Sydney' });
       console.log('[Discord] Pro winback DM cron scheduled (09:00 Australia/Sydney).');
 
+      // Task #448 — Birthday & anniversary flair. Runs once a day at
+      // 09:00 Australia/Sydney; finds every account whose first-recorded
+      // OCE inhouse match shares today's month+day (Sydney) AND >=1 year
+      // ago, mints any milestone anniversary badges (1y/3y/5y/10y), and
+      // posts one combined channel shout-out. Respects per-user opt-out
+      // via the `anniversary_shoutout` notification event.
+      cron.schedule('0 9 * * *', async () => {
+        try { await this._sendDailyAnniversaryShoutout(); }
+        catch (e) {
+          console.error('[Anniversary] Daily cron error:', e.message);
+          if (db.recordCronHeartbeat) {
+            await db.recordCronHeartbeat({ name: 'anniversary_shoutout', status: 'error', message: e.message }).catch(() => {});
+          }
+        }
+      }, { timezone: 'Australia/Sydney' });
+      console.log('[Discord] Anniversary shout-out cron scheduled (09:00 Australia/Sydney).');
+
       // Task #437 — Coach of the Month congratulatory DM. Runs once on the
       // 1st of each month at 09:00 UTC; resolves the overall winner via
       // `db.getCoachOfTheMonth({ tenantId: 'all' })` and sends a single DM
@@ -6500,6 +6517,109 @@ class DiscordBot {
   // {accountId, stage} returned by `listLapsedSubscribersForDm`, look up the
   // Discord ID, DM a stage-appropriate winback message, then call
   // `markWinbackDmSent` so we don't double-send. Errors are best-effort.
+  // Task #448 — Birthday & anniversary flair daily fan-out. Wired from
+  // the 09:00 Australia/Sydney cron above. Steps:
+  //   1. Pull every account whose first-recorded OCE inhouse match shares
+  //      today's Sydney month+day (and is >=1 year ago).
+  //   2. For each milestone year (1/3/5/10), idempotently mint the
+  //      matching `anniv_<years>y` achievement so it shows up in the
+  //      existing badge strip permanently.
+  //   3. Filter out users who opted out via the `anniversary_shoutout`
+  //      notification event (Discord channel). Their badge is still
+  //      minted, only the channel call-out is suppressed.
+  //   4. Post one combined shout-out to stats channels (skipped if
+  //      everyone today opted out, or if there's no-one to celebrate).
+  //   5. Heartbeat the result so /admin/feature-health can spot a
+  //      silently-broken cron.
+  async _sendDailyAnniversaryShoutout() {
+    let _hbStatus = 'ok';
+    let _hbMessage = null;
+    if (!db.getAnniversariesToday) {
+      console.warn('[Anniversary] DB helpers missing — skipping.');
+      if (db.recordCronHeartbeat) {
+        await db.recordCronHeartbeat({ name: 'anniversary_shoutout', status: 'skipped', message: 'DB helpers missing' }).catch(() => {});
+      }
+      return;
+    }
+    let rows = [];
+    try { rows = await db.getAnniversariesToday(); }
+    catch (e) {
+      console.error('[Anniversary] getAnniversariesToday failed:', e.message);
+      _hbStatus = 'error';
+      _hbMessage = e.message;
+    }
+
+    // Step 2 — mint milestone badges (always, regardless of opt-out).
+    let badgesMinted = 0;
+    for (const row of rows) {
+      if (![1, 3, 5, 10].includes(row.years)) continue;
+      try {
+        const key = await db.grantAnniversaryAchievement(row.account_id, row.years);
+        if (key) badgesMinted++;
+      } catch (e) {
+        console.warn('[Anniversary] mint failed for', row.account_id, e.message);
+      }
+    }
+
+    // Step 3 — filter for the shout-out only. Fail-open: errors treated
+    // as opted-in so a transient DB blip doesn't silence the celebration.
+    const shoutable = [];
+    for (const row of rows) {
+      let enabled = true;
+      if (db.isEventEnabled) {
+        enabled = await db.isEventEnabled(row.account_id, 'anniversary_shoutout', 'discord').catch(() => true);
+      }
+      if (enabled) shoutable.push(row);
+    }
+
+    // Step 4 — build the combined message. Groups by years DESC so
+    // milestone years lead. Uses Discord <@discordId> mentions when we
+    // know the user's linked Discord; otherwise falls back to the
+    // display_name. Skips entirely on empty.
+    if (shoutable.length > 0) {
+      const byYears = new Map();
+      for (const row of shoutable) {
+        if (!byYears.has(row.years)) byYears.set(row.years, []);
+        byYears.get(row.years).push(row);
+      }
+      const lines = [];
+      for (const years of [...byYears.keys()].sort((a, b) => b - a)) {
+        const group = byYears.get(years);
+        const isMilestone = [1, 3, 5, 10].includes(years);
+        const icon = isMilestone ? '👑' : '🎂';
+        const names = [];
+        for (const row of group) {
+          let mention = null;
+          try {
+            const discordId = await db.getDiscordIdByAccountId(row.account_id).catch(() => null);
+            if (discordId) mention = `<@${discordId}>`;
+          } catch (_) {}
+          names.push(mention || `**${row.display_name}**`);
+        }
+        const suffix = isMilestone ? ' — milestone badge unlocked!' : '';
+        lines.push(`${icon} **${years}-Year OCE Inhouse Anniversary** — ${names.join(', ')}${suffix}`);
+      }
+      const header = shoutable.length === 1
+        ? '🎉 **Happy OCE Inhouse anniversary!**'
+        : `🎉 **Happy OCE Inhouse anniversaries — ${shoutable.length} today!**`;
+      const content = `${header}\n${lines.join('\n')}`;
+      try { await this._broadcastToStatsChannels(content); }
+      catch (e) {
+        console.warn('[Anniversary] broadcast error:', e.message);
+        _hbStatus = 'partial';
+        _hbMessage = `broadcast error: ${e.message}`;
+      }
+    }
+
+    if (rows.length || badgesMinted) {
+      console.log(`[Anniversary] today=${rows.length} shouted=${shoutable.length} badges_minted=${badgesMinted}`);
+    }
+    if (db.recordCronHeartbeat) {
+      const summary = `today=${rows.length} shouted=${shoutable.length} badges=${badgesMinted}${_hbMessage ? ' · ' + _hbMessage : ''}`;
+      await db.recordCronHeartbeat({ name: 'anniversary_shoutout', status: _hbStatus, message: summary }).catch(() => {});
+    }
+  }
+
   async _sendProWinbackDms() {
     // Task #361 — heartbeat so the admin Config tab can spot a silently-
     // broken cron. We always write a row at the end of the tick (success

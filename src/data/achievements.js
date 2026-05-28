@@ -24,6 +24,16 @@ const ACHIEVEMENTS_CATALOGUE = [
   { key: 'veteran_500',      label: 'Immortal',             desc: '500 games played',                             icon: '👁️',  group: 'Milestones',    secret: false, check: s => s.games >= 500 },
   { key: 'wins_50',          label: 'Half Century',         desc: '50 career wins',                               icon: '🥇',  group: 'Milestones',    secret: false, check: s => s.totalWins >= 50 },
 
+  // ── Anniversaries (Task #448) ────────────────────────────────────────────────
+  // Granted by the daily anniversary cron (src/discord/bot.js) when a player
+  // hits a milestone year since their first OCE inhouse match. `check` is a
+  // no-op so the regular per-match grant pipeline never tries to award these
+  // — the cron is the only source of truth.
+  { key: 'anniv_1y',         label: '1-Year Inhouser',      desc: '1 year since your first OCE inhouse match',    icon: '🎂',  group: 'Milestones',    secret: false, check: () => false },
+  { key: 'anniv_3y',         label: '3-Year Inhouser',      desc: '3 years since your first OCE inhouse match',   icon: '🎉',  group: 'Milestones',    secret: false, check: () => false },
+  { key: 'anniv_5y',         label: '5-Year Inhouser',      desc: '5 years since your first OCE inhouse match',   icon: '🏵️',  group: 'Milestones',    secret: false, check: () => false },
+  { key: 'anniv_10y',        label: '10-Year Inhouser',     desc: '10 years since your first OCE inhouse match',  icon: '👑',  group: 'Milestones',    secret: false, check: () => false },
+
   // ── Win Rate ────────────────────────────────────────────────────────────────
   { key: 'wr_55',            label: 'Above Average',        desc: '55%+ win rate (20+ games)',                    icon: '📈',  group: 'Win Rate',      secret: false, check: s => s.games >= 20 && s.winRate >= 0.55 },
   { key: 'wr_60',            label: 'Dominant',             desc: '60%+ win rate (20+ games)',                    icon: '🔝',  group: 'Win Rate',      secret: false, check: s => s.games >= 20 && s.winRate >= 0.60 },

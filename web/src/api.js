@@ -1221,6 +1221,11 @@ export async function getPlayerAchievements(accountId) {
   return fetchJson(`/players/${accountId}/achievements`);
 }
 
+// Task #448 — anniversary ribbon (today's first-inhouse-match anniversary).
+export async function getPlayerAnniversary(accountId) {
+  return fetchJson(`/player/${accountId}/anniversary`);
+}
+
 export async function getAchievementLeaderboard(limit = 25) {
   return fetchJson(`/achievement-leaderboard?limit=${limit}`);
 }

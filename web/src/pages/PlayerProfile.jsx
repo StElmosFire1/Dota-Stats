@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks, getDraftTrainerAccuracy } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerAnniversary, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks, getDraftTrainerAccuracy } from '../api';
 import Dialog from '../components/Dialog';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
@@ -297,6 +297,45 @@ function ItemBenchmarksSection({ data }) {
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+// Task #448 — anniversary ribbon. Shown only on the player's actual
+// anniversary day (Sydney time) when years >= 1. Milestone years
+// (1/3/5/10) get the gold treatment + a "milestone" call-out; non-
+// milestone years get the parchment-on-brass variant.
+function AnniversaryRibbon({ anniversary, displayName }) {
+  if (!anniversary || !anniversary.isToday || !(anniversary.years > 0)) return null;
+  const { years, isMilestone } = anniversary;
+  const label = `${years}-Year OCE Inhouse Anniversary`;
+  const subtitle = isMilestone
+    ? `🎉 Milestone unlocked — ${displayName} has been inhousing for ${years} year${years === 1 ? '' : 's'}.`
+    : `🎂 ${displayName} hit ${years} year${years === 1 ? '' : 's'} of OCE Inhouse today.`;
+  return (
+    <section
+      aria-label={label}
+      style={{
+        marginBottom: 16,
+        padding: '12px 16px',
+        borderRadius: 10,
+        background: isMilestone
+          ? 'linear-gradient(90deg, rgba(245,158,11,0.18), rgba(197,169,117,0.08))'
+          : 'linear-gradient(90deg, rgba(197,169,117,0.18), rgba(245,239,226,0.06))',
+        border: `1px solid ${isMilestone ? 'rgba(245,158,11,0.55)' : 'rgba(197,169,117,0.45)'}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        flexWrap: 'wrap',
+      }}
+    >
+      <span style={{ fontSize: 22 }} aria-hidden="true">{isMilestone ? '👑' : '🎂'}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <strong style={{ fontFamily: 'var(--font-serif, serif)', fontSize: 16, color: 'var(--gold, #f59e0b)' }}>
+          {label}
+        </strong>
+        <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{subtitle}</span>
       </div>
     </section>
   );
@@ -848,6 +887,7 @@ export default function PlayerProfile() {
   const [ratingHistory, setRatingHistory] = useState([]);
   const [modifierHistory, setModifierHistory] = useState([]);
   const [achievements, setAchievements] = useState([]);
+  const [anniversary, setAnniversary] = useState(null);
   const [nemesis, setNemesis] = useState([]);
   const [trainerAccuracy, setTrainerAccuracy] = useState(null);
   const [allies, setAllies] = useState([]);
@@ -1015,6 +1055,7 @@ export default function PlayerProfile() {
       getPlayerRatingHistory(accountId).catch(() => ({ history: [] })),
       getPlayerV3ModifierHistory(accountId).catch(() => ({ history: [] })),
       getPlayerAchievements(accountId).catch(() => ({ achievements: [] })),
+      getPlayerAnniversary(accountId).catch(() => ({ anniversary: null })),
       getPlayerNemesis(accountId).catch(() => []),
       getPlayerAlly(accountId, seasonId).catch(() => []),
       getPlayerWinRateHistory(accountId, seasonId).catch(() => ({ history: [] })),
@@ -1025,12 +1066,13 @@ export default function PlayerProfile() {
       getPlayerCommunityRatings(accountId).catch(() => null),
       getPositionAverages(seasonId).catch(() => ({ averages: [] })),
       getPlayerRivals(accountId, seasonId).catch(() => []),
-    ]).then(([playerData, posData, histData, modHistData, achData, nemData, allyData, wrHistData, predData, counterData, streakData, durData, ratingData, avgData, rivalsData]) => {
+    ]).then(([playerData, posData, histData, modHistData, achData, annivData, nemData, allyData, wrHistData, predData, counterData, streakData, durData, ratingData, avgData, rivalsData]) => {
       setData(playerData);
       setPositions(posData?.positions || []);
       setRatingHistory(histData?.history || []);
       setModifierHistory(modHistData?.history || []);
       setAchievements(achData?.achievements || []);
+      setAnniversary(annivData?.anniversary || null);
       setNemesis(Array.isArray(nemData) ? nemData : []);
       setAllies(Array.isArray(allyData) ? allyData : []);
       setRivals(Array.isArray(rivalsData) ? rivalsData : []);
@@ -1897,6 +1939,7 @@ export default function PlayerProfile() {
 
       {/* AUDIT (v5.91 parity pass): PUBLIC — achievement badges grid (with category
           filter + show-locked toggle). /players/:id/achievements is open. */}
+      <AnniversaryRibbon anniversary={anniversary} displayName={displayName} />
       <div id="achievements" />
       <AchievementBadges achievements={achievements} />
 

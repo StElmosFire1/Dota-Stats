@@ -8770,6 +8770,23 @@ NOTES
     }
   });
 
+  // Task #448 — anniversary ribbon. Public read: returns the player's
+  // first-recorded OCE inhouse match date plus whether today (in Sydney
+  // time) is their anniversary and whether it's a milestone year.
+  // Returns `{ anniversary: null }` for accounts with no recorded matches.
+  router.get('/player/:id/anniversary', async (req, res) => {
+    try {
+      if (await db.isAccountHidden(req.params.id)) {
+        return res.status(404).json({ error: 'Account not available', code: 'account_hidden' });
+      }
+      const anniversary = await db.getPlayerAnniversary(req.params.id);
+      res.json({ anniversary });
+    } catch (err) {
+      console.error('[API] anniversary error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch anniversary' });
+    }
+  });
+
   router.get('/player/:id/nemesis', async (req, res) => {
     try {
       const accountId = BigInt(req.params.id);

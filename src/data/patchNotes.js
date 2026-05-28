@@ -1,5 +1,22 @@
 module.exports = [
   {
+    "version": "8.06",
+    "title": "Birthday & anniversary flair (Task #448)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** People who've been inhousing for years should get the small visible nod when their anniversary lands. Task #448 adds it across all three of the surfaces it should hit: a profile ribbon on the day, a daily 09:00 Sydney combined Discord shout-out, and permanent milestone badges (1y/3y/5y/10y) in the existing achievement strip. Per-user opt-out lives in the standard notification preferences centre. Steam join_date isn't accessible, so the signal is purely 'first recorded OCE inhouse match' — which is what the community actually cares about anyway.",
+      "**New DB helpers in `src/db/index.js`.** `getPlayerAnniversary(accountId)` returns `{ first_seen_at, years, isToday, isMilestone }` from `MIN(matches.date)` joined via `player_stats`, with all month/day/year comparisons done at `AT TIME ZONE 'Australia/Sydney'`. `getAnniversariesToday()` returns one row per account whose first-recorded match's Sydney-local month+day matches today, sorted years DESC. `grantAnniversaryAchievement(accountId, years)` idempotently INSERTs `anniv_<years>y` into the existing `achievements` table (ON CONFLICT DO NOTHING).",
+      "**Four new milestone entries in `src/data/achievements.js`.** `anniv_1y` / `anniv_3y` / `anniv_5y` / `anniv_10y` live in the Milestones group with `check: () => false` so the per-match grant pipeline never tries to award them — the daily cron is the only source of truth, matching the existing pattern used by `season_*` awards.",
+      "**Daily 09:00 Australia/Sydney cron in `src/discord/bot.js`.** New `_sendDailyAnniversaryShoutout()` pulls today's anniversaries, mints any milestone badges (always, regardless of opt-out), filters the channel post by the new `anniversary_shoutout` notification event (fail-open on errors), and posts one combined message to stats channels grouped by years DESC with `<@discordId>` mentions when the player has linked Discord. Heartbeats via `recordCronHeartbeat({ name: 'anniversary_shoutout' })` so /admin/feature-health can spot a silently-broken cron.",
+      "**New `anniversary_shoutout` notification event** in `NOTIFICATION_EVENTS` — defaults to `discord: true, push: false`. Renders automatically in `/me/notifications` (v2 prefs centre, server-supplied labels). Opting out suppresses the channel call-out only — the milestone badge is still minted.",
+      "**New `GET /player/:id/anniversary` API + `web/src/api.js` helper.** Public read, honours `isAccountHidden`. Returns `{ anniversary: { first_seen_at, years, isToday, isMilestone } | null }`.",
+      "**Profile ribbon on `web/src/pages/PlayerProfile.jsx`.** New `AnniversaryRibbon` component renders above the achievement strip only when `isToday` (Sydney) is true. Milestone years get the gold-gradient variant + 'milestone unlocked' subtitle; non-milestone years get the parchment-on-brass variant.",
+      "**A11y gate green.** Ribbon is a `<section>` with `aria-label`, decorative emoji marked `aria-hidden`, no clickable surface. No `<div onClick>`, no hover-only reveals.",
+      "**Scope.** Full edition only — community edition (`dota.stats.corvidaeinc.com`) is untouched."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.05",
     "title": "Embeddable player stat cards (Task #447)",
     "published_at": "2026-05-28",

@@ -9833,6 +9833,147 @@ async function _getPlayerAggregateStats(accountIds) {
  * derived from the persisted `achievements` table rows.
  * Secret achievements reveal their real label/desc once earned.
  */
+/**
+ * Task #448 — anniversary helpers.
+ *
+ * `first seen` is the earliest recorded OCE inhouse match for the account
+ * (MIN(matches.date) joined via player_stats). Steam join_date is not
+ * accessible, so it's deliberately not part of this signal.
+ *
+ * `getPlayerAnniversary` returns whichever of these are true today for the
+ * given account in Australia/Sydney time:
+ *   { first_seen_at, years, isToday, isMilestone }
+ * — `years` is whole years since first_seen as of today's Sydney date.
+ * — `isToday` is true when today's Sydney month+day equal first_seen's
+ *   month+day AND `years >= 1`.
+ * — `isMilestone` is true when `isToday` AND `years` is in {1,3,5,10}.
+ *
+ * Returns null when the account has no recorded matches.
+ */
+async function getPlayerAnniversary(accountId) {
+  const p = getPool();
+  const id = parseInt(accountId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  try {
+    const r = await p.query(
+      `SELECT
+         MIN(m.date) AS first_seen_at,
+         (date_part('month', (MIN(m.date) AT TIME ZONE 'Australia/Sydney')) =
+          date_part('month', (NOW()      AT TIME ZONE 'Australia/Sydney')))
+         AND
+         (date_part('day',   (MIN(m.date) AT TIME ZONE 'Australia/Sydney')) =
+          date_part('day',   (NOW()      AT TIME ZONE 'Australia/Sydney'))) AS month_day_match,
+         (date_part('year',  (NOW()      AT TIME ZONE 'Australia/Sydney'))
+          - date_part('year', (MIN(m.date) AT TIME ZONE 'Australia/Sydney')))::int AS years
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id = $1`,
+      [id]
+    );
+    const row = r.rows[0];
+    if (!row || !row.first_seen_at) return null;
+    const years = Number(row.years) || 0;
+    const isToday = !!row.month_day_match && years >= 1;
+    const isMilestone = isToday && [1, 3, 5, 10].includes(years);
+    return {
+      first_seen_at: row.first_seen_at,
+      years,
+      isToday,
+      isMilestone,
+    };
+  } catch (err) {
+    console.warn(`[Anniversary] getPlayerAnniversary failed for ${accountId}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Returns one row per account whose first-recorded OCE inhouse match's
+ * Sydney-local month+day equals today's Sydney-local month+day, with
+ * `years >= 1`. Used by the daily 09:00 Sydney Discord shout-out cron.
+ *
+ *   [{ account_id, display_name, first_seen_at, years }]
+ *
+ * Display name preference: nicknames.nickname → most-recent persona_name
+ * → "Player <id>". Sorted by years DESC then display_name ASC so the
+ * combined channel message reads "5-year, 5-year, 3-year, 1-year".
+ */
+async function getAnniversariesToday() {
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `WITH firsts AS (
+         SELECT ps.account_id, MIN(m.date) AS first_seen_at
+           FROM player_stats ps
+           JOIN matches m ON m.match_id = ps.match_id
+          WHERE ps.account_id > 0
+          GROUP BY ps.account_id
+       )
+       SELECT f.account_id,
+              f.first_seen_at,
+              (date_part('year', (NOW() AT TIME ZONE 'Australia/Sydney'))
+               - date_part('year', (f.first_seen_at AT TIME ZONE 'Australia/Sydney')))::int AS years,
+              COALESCE(
+                NULLIF(n.nickname, ''),
+                NULLIF(ps_name.persona_name, ''),
+                'Player ' || f.account_id::text
+              ) AS display_name
+         FROM firsts f
+         LEFT JOIN nicknames n ON n.account_id = f.account_id
+         LEFT JOIN LATERAL (
+           SELECT persona_name FROM player_stats
+            WHERE account_id = f.account_id
+            ORDER BY match_id DESC LIMIT 1
+         ) ps_name ON TRUE
+        WHERE date_part('month', (f.first_seen_at AT TIME ZONE 'Australia/Sydney'))
+            = date_part('month', (NOW()           AT TIME ZONE 'Australia/Sydney'))
+          AND date_part('day',   (f.first_seen_at AT TIME ZONE 'Australia/Sydney'))
+            = date_part('day',   (NOW()           AT TIME ZONE 'Australia/Sydney'))
+          AND date_part('year',  (NOW()           AT TIME ZONE 'Australia/Sydney'))
+            > date_part('year',  (f.first_seen_at AT TIME ZONE 'Australia/Sydney'))
+        ORDER BY years DESC, display_name ASC`
+    );
+    return r.rows.map(row => ({
+      account_id: String(row.account_id),
+      first_seen_at: row.first_seen_at,
+      years: Number(row.years) || 0,
+      display_name: row.display_name,
+    }));
+  } catch (err) {
+    console.warn(`[Anniversary] getAnniversariesToday failed: ${err.message}`);
+    return [];
+  }
+}
+
+/**
+ * Idempotently grants the milestone anniversary achievement for a given
+ * (accountId, years) tuple. No-op if years is not a milestone (1/3/5/10)
+ * or the row already exists.
+ *
+ * Returns the achievement key when a new row was inserted, or null when
+ * nothing changed.
+ */
+async function grantAnniversaryAchievement(accountId, years) {
+  if (![1, 3, 5, 10].includes(Number(years))) return null;
+  const id = parseInt(accountId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const key = `anniv_${years}y`;
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `INSERT INTO achievements (player_id, achievement_key, achieved_at, match_id)
+       VALUES ($1, $2, NOW(), NULL)
+       ON CONFLICT (player_id, achievement_key) DO NOTHING
+       RETURNING achievement_key`,
+      [id, key]
+    );
+    return r.rows.length > 0 ? key : null;
+  } catch (err) {
+    console.warn(`[Anniversary] grantAnniversaryAchievement failed for ${accountId} (${years}y): ${err.message}`);
+    return null;
+  }
+}
+
 async function getPlayerAchievements(accountId) {
   const p = getPool();
   const pid = Array.isArray(accountId) ? accountId.map(Number) : [parseInt(accountId)];
@@ -14140,6 +14281,7 @@ const NOTIFICATION_EVENTS = [
   { key: 'coach_of_the_month',      label: 'Coach of the Month win',      desc: 'When you win the monthly coach spotlight on /coaches.',      legacy: null,                         defaults: { discord: true,  push: false } },
   { key: 'quest_completed',         label: 'Quest completed',             desc: 'When you finish a daily or weekly quest.',                   legacy: null,                         defaults: { discord: true,  push: true  } },
   { key: 'season_wrapped',          label: 'Season Wrapped recap',        desc: 'Personal season-end retrospective DM after season rollover.', legacy: null,                        defaults: { discord: true,  push: false } },
+  { key: 'anniversary_shoutout',    label: 'Anniversary shout-out',       desc: 'Yearly OCE-inhouse anniversary celebration in Discord.',    legacy: null,                         defaults: { discord: true,  push: false } },
 ];
 
 function eventDef(eventKey) {
@@ -23157,6 +23299,10 @@ module.exports = {
   getPlayerRivals,
   getPlayerComparison,
   getPlayerAchievements,
+  // Task #448 — anniversary helpers
+  getPlayerAnniversary,
+  getAnniversariesToday,
+  grantAnniversaryAchievement,
   checkAndGrantAchievements,
   getAchievementLeaderboard,
   getReferralLeaderboard,
