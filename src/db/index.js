@@ -10419,6 +10419,382 @@ async function getPlayerSeasonWrapped(accountId, seasonId = null) {
   return { season, items };
 }
 
+// Task #443 — Spotify-Wrapped-style retrospective per player. Returns a
+// season + a structured 8–10 card slideshow with narrative copy ready for
+// rendering. Used by the standalone /wrapped/:season/:player page and by
+// the OG share-card generator. Reuses the same season-resolution rules as
+// getPlayerSeasonWrapped (most recent archived/legacy if seasonId omitted).
+async function getSeasonWrappedCards(accountId, seasonId = null) {
+  const p = getPool();
+  const aid = String(accountId);
+
+  let season;
+  if (seasonId) {
+    const r = await p.query(
+      `SELECT id, name, active, season_status, start_date, end_date
+         FROM seasons WHERE id = $1`,
+      [parseInt(seasonId)]
+    );
+    season = r.rows[0] || null;
+  } else {
+    const r = await p.query(`
+      SELECT id, name, active, season_status, start_date, end_date
+        FROM seasons
+       WHERE active = false AND (is_legacy = true OR season_status = 'archived')
+       ORDER BY id DESC LIMIT 1
+    `);
+    season = r.rows[0] || null;
+  }
+  if (!season) return { season: null, player: null, cards: [], summary: null };
+
+  // Resolve display name from nicknames → ratings.display_name → fallback.
+  const nameR = await p.query(`
+    SELECT COALESCE(n.nickname, r.display_name, 'Player ' || $1::text) AS name
+      FROM (SELECT 1) _
+      LEFT JOIN nicknames n ON n.account_id::text = $1
+      LEFT JOIN ratings r ON r.player_id::text = $1
+     LIMIT 1
+  `, [aid]);
+  const displayName = nameR.rows[0]?.name || `Player ${aid}`;
+
+  // Headline aggregates (matches the existing wrapped panel, plus extras).
+  const aggR = await p.query(`
+    SELECT
+      COUNT(*)::int AS games,
+      SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                 OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins,
+      ROUND(AVG(ps.kills)::numeric, 1) AS avg_kills,
+      ROUND(AVG(ps.deaths)::numeric, 1) AS avg_deaths,
+      ROUND(AVG(ps.assists)::numeric, 1) AS avg_assists,
+      ROUND(AVG(ps.gpm)::numeric) AS avg_gpm,
+      ROUND(AVG(ps.perf)::numeric, 2) AS avg_perf,
+      MAX(ps.perf) AS best_perf,
+      MAX(ps.kills) AS best_kills,
+      SUM(ps.kills)::int AS total_kills,
+      SUM(ps.assists)::int AS total_assists
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id::text = $1 AND m.season_id = $2
+  `, [aid, season.id]);
+  const agg = aggR.rows[0] || {};
+  const games = parseInt(agg.games) || 0;
+  if (games === 0) {
+    return {
+      season: { id: season.id, name: season.name },
+      player: { account_id: aid, display_name: displayName },
+      cards: [],
+      summary: { games: 0, wins: 0, losses: 0 },
+    };
+  }
+  const wins = parseInt(agg.wins) || 0;
+  const losses = games - wins;
+  const wrPct = Math.round((wins / games) * 1000) / 10;
+
+  // Signature hero — most-played in season.
+  const heroR = await p.query(`
+    SELECT ps.hero_id, MAX(ps.hero_name) AS hero_name, COUNT(*)::int AS games,
+           SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                      OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins
+    FROM player_stats ps
+    JOIN matches m ON m.match_id = ps.match_id
+    WHERE ps.account_id::text = $1 AND m.season_id = $2 AND ps.hero_id > 0
+    GROUP BY ps.hero_id
+    ORDER BY games DESC, wins DESC
+    LIMIT 1
+  `, [aid, season.id]);
+  const topHero = heroR.rows[0] || null;
+
+  // Signature item — most frequently first-purchased mid/late item this
+  // season (filters out starting items / consumables / branches / wards).
+  const SKIP_ITEMS = new Set([
+    'tango', 'flask', 'clarity', 'enchanted_mango', 'faerie_spark', 'tpscroll',
+    'branches', 'gauntlets', 'slippers', 'mantle', 'circlet', 'belt_of_strength',
+    'boots_of_elves', 'ogre_axe', 'blade_of_alacrity', 'staff_of_wizardry',
+    'ring_of_protection', 'gem', 'ward_observer', 'ward_sentry', 'ward_dispenser',
+    'dust', 'smoke_of_deceit', 'bottle', 'magic_stick', 'magic_wand', 'orb_of_venom',
+    'fluffy_hat', 'recipe_magic_wand', 'recipe_wraith_band', 'recipe_null_talisman',
+  ]);
+  let signatureItem = null;
+  try {
+    const itR = await p.query(`
+      SELECT kv.key AS item, COUNT(*)::int AS uses
+        FROM player_stats ps
+        JOIN matches m ON m.match_id = ps.match_id
+        , LATERAL jsonb_each_text(ps.item_first_times) AS kv
+       WHERE ps.account_id::text = $1
+         AND m.season_id = $2
+         AND ps.item_first_times IS NOT NULL
+       GROUP BY kv.key
+       ORDER BY uses DESC
+       LIMIT 30
+    `, [aid, season.id]);
+    for (const row of itR.rows) {
+      if (SKIP_ITEMS.has(row.item)) continue;
+      signatureItem = { name: row.item, uses: row.uses };
+      break;
+    }
+  } catch (_) { /* item_first_times may be empty / column missing on legacy */ }
+
+  // Biggest comeback — the player's win with the highest comeback_factor.
+  let comeback = null;
+  try {
+    const cbR = await p.query(`
+      SELECT m.match_id, m.comeback_factor, m.duration, ps.hero_name
+        FROM player_stats ps
+        JOIN matches m ON m.match_id = ps.match_id
+       WHERE ps.account_id::text = $1
+         AND m.season_id = $2
+         AND m.comeback_factor IS NOT NULL
+         AND ((ps.team = 'radiant' AND m.radiant_win)
+           OR (ps.team = 'dire' AND NOT m.radiant_win))
+       ORDER BY m.comeback_factor DESC NULLS LAST
+       LIMIT 1
+    `, [aid, season.id]);
+    if (cbR.rows[0] && cbR.rows[0].comeback_factor != null) {
+      comeback = {
+        match_id: String(cbR.rows[0].match_id),
+        factor: parseInt(cbR.rows[0].comeback_factor),
+        hero_name: cbR.rows[0].hero_name || null,
+      };
+    }
+  } catch (_) {}
+
+  // MVP votes received this season.
+  let mvpCount = 0;
+  try {
+    const mvpTbl = await p.query(
+      `SELECT 1 FROM information_schema.tables WHERE table_name = 'mvp_votes' LIMIT 1`
+    );
+    if (mvpTbl.rows[0]) {
+      const mvpR = await p.query(`
+        SELECT COUNT(*)::int AS cnt
+          FROM mvp_votes mv
+          JOIN matches m ON m.match_id::text = mv.match_id::text
+         WHERE m.season_id = $1 AND mv.recipient_account_id::text = $2
+      `, [season.id, aid]);
+      mvpCount = mvpR.rows[0]?.cnt || 0;
+    }
+  } catch (_) {}
+
+  // Longest win streak inside the season — walk season matches in date order.
+  const seqR = await p.query(`
+    SELECT m.match_id, m.date,
+           CASE WHEN (ps.team = 'radiant' AND m.radiant_win)
+                  OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END AS won
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+     WHERE ps.account_id::text = $1 AND m.season_id = $2
+     ORDER BY m.date ASC NULLS LAST, m.match_id ASC
+  `, [aid, season.id]);
+  let bestStreak = 0;
+  let cur = 0;
+  for (const r of seqR.rows) {
+    if (r.won) { cur += 1; if (cur > bestStreak) bestStreak = cur; }
+    else cur = 0;
+  }
+
+  // Rival — opponent met most often this season (with games_against ≥ 2).
+  let rival = null;
+  try {
+    const rivR = await p.query(`
+      SELECT o.account_id::text AS opp_id,
+             COALESCE(MAX(n.nickname), MAX(o.persona_name), 'Player ' || o.account_id::text) AS opp_name,
+             COUNT(*) FILTER (WHERE o.team != me.team)::int AS games_against,
+             COUNT(*) FILTER (WHERE o.team != me.team AND (
+               (me.team = 'radiant' AND m.radiant_win) OR
+               (me.team = 'dire' AND NOT m.radiant_win)
+             ))::int AS wins_against
+        FROM player_stats me
+        JOIN player_stats o ON o.match_id = me.match_id AND o.account_id != me.account_id
+        JOIN matches m ON m.match_id = me.match_id
+        LEFT JOIN nicknames n ON n.account_id::text = o.account_id::text
+       WHERE me.account_id::text = $1 AND m.season_id = $2 AND o.account_id != 0
+       GROUP BY o.account_id
+      HAVING COUNT(*) FILTER (WHERE o.team != me.team) >= 2
+       ORDER BY games_against DESC, wins_against ASC
+       LIMIT 1
+    `, [aid, season.id]);
+    if (rivR.rows[0]) {
+      rival = {
+        account_id: rivR.rows[0].opp_id,
+        name: rivR.rows[0].opp_name,
+        games_against: rivR.rows[0].games_against,
+        wins_against: rivR.rows[0].wins_against,
+      };
+    }
+  } catch (_) {}
+
+  // Best teammate — ally most often on your winning side this season.
+  let teammate = null;
+  try {
+    const tmR = await p.query(`
+      SELECT a.account_id::text AS ally_id,
+             COALESCE(MAX(n.nickname), MAX(a.persona_name), 'Player ' || a.account_id::text) AS ally_name,
+             COUNT(*)::int AS games_with,
+             SUM(CASE WHEN (me.team = 'radiant' AND m.radiant_win)
+                        OR (me.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END)::int AS wins_with
+        FROM player_stats me
+        JOIN player_stats a ON a.match_id = me.match_id
+          AND a.team = me.team AND a.account_id != me.account_id
+        JOIN matches m ON m.match_id = me.match_id
+        LEFT JOIN nicknames n ON n.account_id::text = a.account_id::text
+       WHERE me.account_id::text = $1 AND m.season_id = $2 AND a.account_id != 0
+       GROUP BY a.account_id
+      HAVING COUNT(*) >= 3
+       ORDER BY wins_with DESC, games_with DESC
+       LIMIT 1
+    `, [aid, season.id]);
+    if (tmR.rows[0]) {
+      teammate = {
+        account_id: tmR.rows[0].ally_id,
+        name: tmR.rows[0].ally_name,
+        games_with: tmR.rows[0].games_with,
+        wins_with: tmR.rows[0].wins_with,
+      };
+    }
+  } catch (_) {}
+
+  // Personal grade — letter from a weighted blend of win-rate + avg PERF.
+  const avgPerf = agg.avg_perf != null ? parseFloat(agg.avg_perf) : null;
+  const perfScore = avgPerf != null ? Math.min(100, Math.max(0, (avgPerf - 4) * 16.67)) : 50;
+  const blended = (wrPct * 0.55) + (perfScore * 0.45);
+  let grade, gradeBlurb;
+  if      (blended >= 78) { grade = 'S';  gradeBlurb = 'Carrying the league on your back.'; }
+  else if (blended >= 70) { grade = 'A+'; gradeBlurb = 'Elite season — call yourself a problem.'; }
+  else if (blended >= 62) { grade = 'A';  gradeBlurb = 'A genuinely great season.'; }
+  else if (blended >= 55) { grade = 'B+'; gradeBlurb = 'Solid season with real upside.'; }
+  else if (blended >= 48) { grade = 'B';  gradeBlurb = 'You showed up. The wins followed.'; }
+  else if (blended >= 40) { grade = 'C';  gradeBlurb = 'Mixed bag — bring the heaters back.'; }
+  else if (blended >= 30) { grade = 'D';  gradeBlurb = 'Rough patch. Next season is the comeback.'; }
+  else                    { grade = 'F';  gradeBlurb = 'Foundation laid. Only one way to go.'; }
+
+  // Assemble cards. Each entry: { key, title, headline, sub, accent? }.
+  const cards = [];
+
+  cards.push({
+    key: 'intro',
+    title: 'Your Season Wrapped',
+    headline: season.name,
+    sub: `${games} matches · ${wins}W ${losses}L · ${wrPct}% WR`,
+    accent: 'amber',
+  });
+
+  if (topHero) {
+    const hwr = topHero.games > 0 ? Math.round((topHero.wins / topHero.games) * 100) : 0;
+    cards.push({
+      key: 'hero',
+      title: 'Your signature hero',
+      headline: topHero.hero_name
+        ? topHero.hero_name.replace('npc_dota_hero_', '').replace(/_/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase())
+        : `Hero ${topHero.hero_id}`,
+      sub: `${topHero.games} games · ${hwr}% win rate`,
+      hero_id: topHero.hero_id,
+      hero_name: topHero.hero_name,
+    });
+  }
+
+  if (signatureItem) {
+    cards.push({
+      key: 'item',
+      title: 'Your signature item',
+      headline: signatureItem.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      sub: `Bought first in ${signatureItem.uses} matches`,
+    });
+  }
+
+  if (comeback) {
+    cards.push({
+      key: 'comeback',
+      title: 'Your biggest comeback',
+      headline: `${comeback.factor}% throwback`,
+      sub: comeback.hero_name
+        ? `On ${comeback.hero_name.replace('npc_dota_hero_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} — match #${comeback.match_id}`
+        : `Match #${comeback.match_id}`,
+      match_id: comeback.match_id,
+    });
+  }
+
+  if (mvpCount > 0) {
+    cards.push({
+      key: 'mvp',
+      title: 'Most Valuable',
+      headline: `${mvpCount} MVP vote${mvpCount === 1 ? '' : 's'}`,
+      sub: 'Teammates picked you out of the lineup.',
+    });
+  }
+
+  if (bestStreak >= 2) {
+    cards.push({
+      key: 'streak',
+      title: 'Your hottest run',
+      headline: `${bestStreak}-game win streak`,
+      sub: bestStreak >= 10 ? 'Heater of the season.' : bestStreak >= 5 ? 'Genuine momentum.' : 'A real two-step.',
+    });
+  }
+
+  if (rival) {
+    const rwr = rival.games_against > 0 ? Math.round((rival.wins_against / rival.games_against) * 100) : 0;
+    cards.push({
+      key: 'rival',
+      title: 'Your rival',
+      headline: rival.name,
+      sub: `${rival.games_against} clashes · ${rival.wins_against}W ${rival.games_against - rival.wins_against}L · ${rwr}% WR`,
+      account_id: rival.account_id,
+    });
+  }
+
+  if (teammate) {
+    const twr = teammate.games_with > 0 ? Math.round((teammate.wins_with / teammate.games_with) * 100) : 0;
+    cards.push({
+      key: 'teammate',
+      title: 'Your best teammate',
+      headline: teammate.name,
+      sub: `${teammate.games_with} games together · ${teammate.wins_with}W · ${twr}% WR`,
+      account_id: teammate.account_id,
+    });
+  }
+
+  cards.push({
+    key: 'kda',
+    title: 'You averaged',
+    headline: `${agg.avg_kills ?? '—'} / ${agg.avg_deaths ?? '—'} / ${agg.avg_assists ?? '—'}`,
+    sub: agg.avg_gpm != null ? `${agg.avg_gpm} GPM` : null,
+  });
+
+  cards.push({
+    key: 'grade',
+    title: 'Season grade',
+    headline: grade,
+    sub: gradeBlurb,
+    accent: 'brass',
+  });
+
+  return {
+    season: { id: season.id, name: season.name },
+    player: { account_id: aid, display_name: displayName },
+    cards,
+    summary: {
+      games, wins, losses, win_rate: wrPct,
+      avg_perf: avgPerf, best_perf: agg.best_perf != null ? parseFloat(agg.best_perf) : null,
+      grade,
+    },
+  };
+}
+
+// Task #443 — list every account that played at least one match in the
+// given season (used by the post-rollover Discord DM fan-out).
+async function getSeasonParticipants(seasonId) {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT DISTINCT ps.account_id::text AS account_id
+      FROM player_stats ps
+      JOIN matches m ON m.match_id = ps.match_id
+     WHERE m.season_id = $1 AND ps.account_id != 0
+  `, [parseInt(seasonId)]);
+  return r.rows.map(row => row.account_id);
+}
+
 // Hall-of-Fame plaques for a single player: any career stat where they are the
 // all-time #1 or top-1% holder. We reuse getPersonalRecords (per-match record
 // holders) and getHallOfFameCareerStats (career totals) so the plaque always
@@ -13729,6 +14105,7 @@ const NOTIFICATION_EVENTS = [
   { key: 'season_rollover',         label: 'Season rollover',             desc: 'When a season ends and new tier placements are issued.',     legacy: null,                         defaults: { discord: true,  push: false } },
   { key: 'coach_of_the_month',      label: 'Coach of the Month win',      desc: 'When you win the monthly coach spotlight on /coaches.',      legacy: null,                         defaults: { discord: true,  push: false } },
   { key: 'quest_completed',         label: 'Quest completed',             desc: 'When you finish a daily or weekly quest.',                   legacy: null,                         defaults: { discord: true,  push: true  } },
+  { key: 'season_wrapped',          label: 'Season Wrapped recap',        desc: 'Personal season-end retrospective DM after season rollover.', legacy: null,                        defaults: { discord: true,  push: false } },
 ];
 
 function eventDef(eventKey) {
@@ -22980,6 +23357,8 @@ module.exports = {
   getSeasonalItemBenchmarks,
   getPlayerItemBenchmarks,
   getPlayerSeasonWrapped,
+  getSeasonWrappedCards,
+  getSeasonParticipants,
   getPlayerHallOfFamePlaques,
   getHomeStats,
   saveWeeklyRecap,

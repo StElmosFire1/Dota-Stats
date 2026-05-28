@@ -97,6 +97,7 @@ const TeamCreate = lazy(() => import('./pages/TeamCreate'));
 const TeamProfile = lazy(() => import('./pages/TeamProfile'));
 const Leagues = lazy(() => import('./pages/Leagues'));
 const LeagueProfile = lazy(() => import('./pages/LeagueProfile'));
+const WrappedSlideshow = lazy(() => import('./pages/WrappedSlideshow'));
 const ProfileDemo = lazy(() => import('./pages/ProfileDemo'));
 const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
@@ -349,6 +350,15 @@ function SteamButton() {
               <Link to={`/player/${accountId}#matches`} role="menuitem" style={itemStyle}
                 onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
                 <span aria-hidden="true">🎮</span> My matches
+              </Link>
+            )}
+            {/* Task #443 — Personal Season Wrapped shortcut. /wrapped/me/latest
+                resolves the viewer's most recent archived season server-side
+                and redirects into the slideshow. */}
+            {accountId && (
+              <Link to="/wrapped/me/latest" role="menuitem" style={itemStyle}
+                onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
+                <span aria-hidden="true">🎁</span> Season Wrapped
               </Link>
             )}
             {/* Task #442 — Quick entry point to the H2H page. Hands the
@@ -1231,6 +1241,9 @@ function AppRoutes() {
                 <Route path="/match/:matchId" element={<MatchDetail />} />
                 <Route path="/match/:matchId/edit" element={<StatsEditor />} />
                 <Route path="/player/:accountId" element={<PlayerProfile />} />
+                <Route path="/wrapped/me/latest" element={<WrappedSlideshow resolveLatest />} />
+                <Route path="/wrapped/:seasonId/:accountId" element={<WrappedSlideshow />} />
+                <Route path="/wrapped/:accountId" element={<WrappedSlideshow />} />
                 <Route path="/heroes" element={<Heroes />} />
                 <Route path="/players" element={<Players />} />
                 <Route path="/stats" element={<OverallStats />} />

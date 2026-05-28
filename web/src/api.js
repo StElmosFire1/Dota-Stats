@@ -721,6 +721,15 @@ export async function getPlayerHeroItems(accountId) {
 export async function getPlayerSeasonWrapped(accountId, seasonId = null) {
   return fetchJson(`/players/${accountId}/season-wrapped${seasonId ? `/${seasonId}` : ''}`);
 }
+// Task #443 — Personal Season Wrapped slideshow.
+export async function getSeasonWrappedCards(accountId, seasonId = null) {
+  return fetchJson(seasonId
+    ? `/wrapped/${seasonId}/${accountId}`
+    : `/wrapped/${accountId}`);
+}
+export async function getMyLatestWrapped() {
+  return fetchJson('/wrapped/me/latest');
+}
 export async function getPlayerHallOfFamePlaques(accountId) {
   return fetchJson(`/players/${accountId}/hall-of-fame`);
 }

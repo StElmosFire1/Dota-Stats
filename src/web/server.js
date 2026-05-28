@@ -2784,6 +2784,103 @@ function createServer(startupStatus = {}) {
     );
   }
 
+  // Task #443 — Personal Season Wrapped OG share card. 1200×630 PNG
+  // generated from the wrapped cards payload. Cached for 10 minutes in
+  // memory; falls back to the OA logo when @napi-rs/canvas is missing.
+  app.get('/og/wrapped/:seasonId/:accountId.png', async (req, res) => {
+    try {
+      const db = require('../db');
+      const accountId = String(req.params.accountId || '');
+      const seasonId = parseInt(req.params.seasonId);
+      if (!/^\d{1,20}$/.test(accountId) || !Number.isFinite(seasonId)) {
+        return res.redirect(302, '/oa-logo.png');
+      }
+      const data = await db.getSeasonWrappedCards(accountId, seasonId).catch(() => null);
+      if (!data || !data.season || !data.summary || !data.summary.games) {
+        return res.redirect(302, '/oa-logo.png');
+      }
+      const heroCard = (data.cards || []).find(c => c.key === 'hero');
+      const streakCard = (data.cards || []).find(c => c.key === 'streak');
+      const mvpCard = (data.cards || []).find(c => c.key === 'mvp');
+      const { generateWrappedOgCard } = require('../services/wrappedOgCard');
+      const buf = await generateWrappedOgCard({
+        accountId,
+        seasonId,
+        displayName: data.player?.display_name || `Player ${accountId}`,
+        seasonName: data.season.name,
+        grade: data.summary.grade,
+        games: data.summary.games,
+        wins: data.summary.wins,
+        losses: data.summary.losses,
+        wrPct: data.summary.win_rate,
+        heroName: heroCard ? heroCard.headline : null,
+        streak: streakCard ? parseInt(String(streakCard.headline).match(/\d+/)?.[0]) : null,
+        mvp: mvpCard ? parseInt(String(mvpCard.headline).match(/\d+/)?.[0]) : null,
+      });
+      if (!buf) return res.redirect(302, '/oa-logo.png');
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=600');
+      return res.send(buf);
+    } catch (err) {
+      console.warn('[wrapped-og] render failed:', err.message);
+      return res.redirect(302, '/oa-logo.png');
+    }
+  });
+
+  // Task #443 — Unfurler intercept on the canonical `/wrapped/:season/:account`
+  // slideshow URL. Crawlers get OG/Twitter meta-tags pointing at the share
+  // card; real browsers fall through to the SPA so React loads the slideshow.
+  async function _sendWrappedOgMeta(req, res, accountId, seasonId, data) {
+    const origin = (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+    const canonical = `${origin}/wrapped/${seasonId}/${accountId}`;
+    const imageUrl = `${origin}/og/wrapped/${seasonId}/${accountId}.png`;
+    const name = data.player?.display_name || `Player ${accountId}`;
+    const title = `${name} — ${data.season.name} Wrapped`;
+    const { games, wins, losses, win_rate: wr, grade } = data.summary || {};
+    const desc =
+      `Grade ${grade || '—'} · ${games} matches · ${wins}W ${losses}L · ${wr}% WR ` +
+      `· OCE Inhouse season retrospective.`;
+    const safe = _escapeHtml;
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=600');
+    return res.send(
+      `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+      `<title>${safe(title)}</title>` +
+      `<meta name="description" content="${safe(desc)}">` +
+      `<link rel="canonical" href="${safe(canonical)}">` +
+      `<meta property="og:type" content="website">` +
+      `<meta property="og:title" content="${safe(title)}">` +
+      `<meta property="og:description" content="${safe(desc)}">` +
+      `<meta property="og:url" content="${safe(canonical)}">` +
+      `<meta property="og:image" content="${safe(imageUrl)}">` +
+      `<meta property="og:image:width" content="1200">` +
+      `<meta property="og:image:height" content="630">` +
+      `<meta name="twitter:card" content="summary_large_image">` +
+      `<meta name="twitter:title" content="${safe(title)}">` +
+      `<meta name="twitter:description" content="${safe(desc)}">` +
+      `<meta name="twitter:image" content="${safe(imageUrl)}">` +
+      `<meta http-equiv="refresh" content="0;url=${safe(canonical)}">` +
+      `</head><body><a href="${safe(canonical)}">${safe(title)}</a></body></html>`
+    );
+  }
+
+  app.get('/wrapped/:seasonId/:accountId', async (req, res, next) => {
+    const ua = String(req.get('user-agent') || '');
+    if (!_isSocialUnfurler(ua)) return next();
+    const accountId = String(req.params.accountId || '');
+    const seasonId = parseInt(req.params.seasonId);
+    if (!/^\d{1,20}$/.test(accountId) || !Number.isFinite(seasonId)) return next();
+    try {
+      const db = require('../db');
+      const data = await db.getSeasonWrappedCards(accountId, seasonId).catch(() => null);
+      if (!data || !data.season || !data.summary || !data.summary.games) return next();
+      return _sendWrappedOgMeta(req, res, accountId, seasonId, data);
+    } catch (err) {
+      console.warn('[wrapped] unfurl failed:', err.message);
+      return next();
+    }
+  });
+
   // Task #258 — Canonical `/player/:accountId` unfurl handler. Crawlers
   // get the same hero-portrait OG card as `/p/<slug>`; real browsers fall
   // through (next()) to the SPA catch-all so the React app boots normally.
@@ -8435,6 +8532,46 @@ NOTES
   };
   router.get('/players/:id/season-wrapped', seasonWrappedHandler);
   router.get('/players/:id/season-wrapped/:seasonId', seasonWrappedHandler);
+
+  // Task #443 — Personal Season Wrapped slideshow (full edition only).
+  // Three endpoints, all public reads:
+  //   GET /wrapped/me/latest          → resolve viewer's most recent
+  //                                      archived-season + account id
+  //                                      (used by the user-menu shortcut).
+  //   GET /wrapped/:season/:accountId → full structured card payload.
+  //   GET /wrapped/:accountId         → same as above but for the most
+  //                                      recently archived season.
+  router.get('/wrapped/me/latest', async (req, res) => {
+    try {
+      if (!req.session?.accountId) return res.status(401).json({ error: 'sign_in_required' });
+      const data = await db.getSeasonWrappedCards(String(req.session.accountId), null);
+      if (!data || !data.season) return res.status(404).json({ error: 'no_archived_season' });
+      res.json({ seasonId: data.season.id, accountId: String(req.session.accountId) });
+    } catch (err) {
+      console.error('[API] /wrapped/me/latest error:', err.message);
+      res.status(500).json({ error: 'failed' });
+    }
+  });
+
+  const wrappedCardsHandler = async (req, res) => {
+    try {
+      const accountId = String(req.params.accountId || '').trim();
+      if (!/^\d{1,20}$/.test(accountId)) return res.status(400).json({ error: 'bad_account_id' });
+      const seasonId = req.params.seasonId ? parseInt(req.params.seasonId) : null;
+      if (req.params.seasonId && !Number.isFinite(seasonId)) {
+        return res.status(400).json({ error: 'bad_season_id' });
+      }
+      const data = await _v3PanelGet(`wrapped-cards:${accountId}:${seasonId || ''}`,
+        () => db.getSeasonWrappedCards(accountId, seasonId));
+      if (!data || !data.season) return res.status(404).json({ error: 'no_season' });
+      res.json(data);
+    } catch (err) {
+      console.error('[API] /wrapped/:season/:accountId error:', err.message);
+      res.status(500).json({ error: 'failed' });
+    }
+  };
+  router.get('/wrapped/:seasonId/:accountId', wrappedCardsHandler);
+  router.get('/wrapped/:accountId', wrappedCardsHandler);
 
   router.get('/players/:id/hall-of-fame', async (req, res) => {
     try {

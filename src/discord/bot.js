@@ -2925,6 +2925,44 @@ class DiscordBot {
           `\`next_season_template\` on the closing season for next time.`
         );
       }
+      // Task #443 — Personal Season Wrapped DM fan-out. Best-effort,
+      // post-commit, asynchronous so a slow Discord users.fetch() loop
+      // never blocks the rollover return path. Each DM respects the
+      // user's `season_wrapped` notification preference (defaults: on
+      // for Discord, off for push) and links to the personal
+      // /wrapped/<seasonId>/<accountId> slideshow.
+      setImmediate(async () => {
+        try {
+          const notify = require('../notify');
+          const participants = await db.getSeasonParticipants(closedSeason.id).catch(() => []);
+          const origin = (process.env.SITE_URL || 'https://oceinhouse.gg').replace(/\/+$/, '');
+          let sent = 0;
+          for (const accountId of participants) {
+            try {
+              const cards = await db.getSeasonWrappedCards(accountId, closedSeason.id).catch(() => null);
+              if (!cards || !cards.summary || !cards.summary.games) continue;
+              const url = `${origin}/wrapped/${closedSeason.id}/${accountId}`;
+              const grade = cards.summary.grade || '—';
+              const { games, wins, losses, win_rate: wr } = cards.summary;
+              const out = await notify.notify(accountId, 'season_wrapped', {
+                discord: {
+                  content:
+                    `🎁 **Your ${closedSeason.name} Wrapped is ready.**\n` +
+                    `Grade: **${grade}** · ${games} matches · ${wins}W ${losses}L · ${wr}% WR\n` +
+                    `Open your retrospective: <${url}>`,
+                },
+              });
+              if (out?.discord?.sent) sent++;
+            } catch (e) {
+              // per-user failures are silent — fan-out is best-effort
+            }
+          }
+          console.log(`[Season] Wrapped DMs sent: ${sent}/${participants.length} for ${closedSeason.name}`);
+        } catch (err) {
+          console.warn('[Season] Wrapped DM fan-out failed:', err.message);
+        }
+      });
+
       return { ...result, grants };
     } catch (err) {
       console.error('[Season] Close and announce error:', err.message);
