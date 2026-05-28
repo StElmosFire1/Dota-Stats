@@ -2861,6 +2861,262 @@ function createServer(startupStatus = {}) {
     return _renderProfileOgCard(res, db, accountId, opts);
   });
 
+  // ── Task #447 — Embeddable player stat cards ─────────────────────────────
+  // Public-facing iframe + image embeds anyone can drop into a Discord
+  // channel, blog, or stream overlay. Two iframe size variants (tall
+  // 240×320, wide 480×120) and a matching PNG endpoint for static embeds.
+  // Honours the per-player `embed_enabled` toggle (extras JSONB). 5-minute
+  // in-memory cache lives inside `services/playerStatCard.js` plus per-route
+  // payload caches for the iframe + meta lookups.
+  const _embedAssembleCache = new Map();
+  const _embedAvatarCache = new Map();
+  const EMBED_DATA_TTL_MS = 5 * 60 * 1000;
+  const EMBED_AVATAR_TTL_MS = 24 * 60 * 60 * 1000;
+  async function _resolveEmbedAvatar(accountId) {
+    const hit = _embedAvatarCache.get(String(accountId));
+    if (hit && Date.now() - hit.t < EMBED_AVATAR_TTL_MS) return hit.url;
+    let url = null;
+    try {
+      const opendota = require('../api/opendota');
+      const fetcher = opendota?.opendotaApi || opendota?.default || opendota;
+      if (fetcher && typeof fetcher.getPlayerProfile === 'function') {
+        const p = await fetcher.getPlayerProfile(accountId);
+        url = p?.avatarFull || p?.avatarMedium || null;
+      }
+    } catch (_) { url = null; }
+    if (_embedAvatarCache.size >= 1000) {
+      const k = _embedAvatarCache.keys().next().value;
+      if (k) _embedAvatarCache.delete(k);
+    }
+    _embedAvatarCache.set(String(accountId), { t: Date.now(), url });
+    return url;
+  }
+  async function _assemblePlayerEmbedData(db, accountId) {
+    const cached = _embedAssembleCache.get(String(accountId));
+    if (cached && Date.now() - cached.t < EMBED_DATA_TTL_MS) return cached.data;
+    const [nick, rating, hero, recent, cust, avatarUrl] = await Promise.all([
+      db.getNickname(accountId).catch(() => null),
+      db.getPlayerRating(accountId).catch(() => null),
+      _resolveOgProfileHero(db, accountId).catch(() => ({ heroId: null, heroName: null, heroDisplayName: null })),
+      db.getPlayerRecentResults(accountId, 10).catch(() => []),
+      db.getPlayerProfileCustomization(accountId).catch(() => null),
+      _resolveEmbedAvatar(accountId).catch(() => null),
+    ]);
+    const wins = parseInt(rating?.wins) || 0;
+    const losses = parseInt(rating?.losses) || 0;
+    const mmr = rating ? parseInt(rating.mmr) : NaN;
+    let tierName = null;
+    try {
+      const { getMmrTier } = require('../config');
+      if (Number.isFinite(mmr) && typeof getMmrTier === 'function') {
+        const t = getMmrTier(mmr);
+        if (t && t.name) tierName = t.name;
+      }
+    } catch (_) {}
+    const recentSeq = (recent || []).map(r => (r.won ? 'W' : 'L')).join('');
+    const extras = (cust && cust.extras) || {};
+    const embedEnabled = extras.embed_enabled === false ? false : true;
+    const data = {
+      embedEnabled,
+      displayName: nick || rating?.display_name || `Player ${accountId}`,
+      mmr: Number.isFinite(mmr) ? mmr : null,
+      tierName,
+      wins, losses,
+      recent: recentSeq,
+      heroId: hero?.heroId || null,
+      heroName: hero?.heroName || null,
+      heroDisplayName: hero?.heroDisplayName || null,
+      avatarUrl: avatarUrl || null,
+    };
+    if (_embedAssembleCache.size >= 500) {
+      const k = _embedAssembleCache.keys().next().value;
+      if (k) _embedAssembleCache.delete(k);
+    }
+    _embedAssembleCache.set(String(accountId), { t: Date.now(), data });
+    return data;
+  }
+
+  function _embedTheme(req) {
+    return String(req.query.theme || '').toLowerCase() === 'light' ? 'light' : 'dark';
+  }
+  function _embedSize(req) {
+    const s = String(req.query.size || '').toLowerCase();
+    return s === 'wide' ? 'wide' : 'tall';
+  }
+  function _embedAccountId(req) {
+    const raw = String(req.params.steamId || '');
+    if (!/^\d{1,20}$/.test(raw)) return null;
+    return raw;
+  }
+
+  // GET /embed/player/:steamId — compact themable HTML page suitable for
+  // dropping into an <iframe>. Always returns 200; the body content reflects
+  // privacy / hidden / error state so embedders get a predictable surface.
+  app.get('/embed/player/:steamId', async (req, res) => {
+    const accountId = _embedAccountId(req);
+    const theme = _embedTheme(req);
+    const variant = _embedSize(req);
+    const dims = variant === 'wide' ? { w: 480, h: 120 } : { w: 240, h: 320 };
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=300');
+    res.set('X-Frame-Options', 'ALLOWALL');
+    res.removeHeader('X-Frame-Options');
+    res.set('Content-Security-Policy', "frame-ancestors *");
+
+    function shell(bodyHtml, opts = {}) {
+      const palette = theme === 'light'
+        ? { bg: '#f5efe2', bgAccent: '#e6ddc7', text: '#0d1424', muted: '#3b4250', brass: '#a8884d', border: 'rgba(13,20,36,0.12)', win: '#2e7d32', loss: '#c62828', neutral: '#d1d5db' }
+        : { bg: '#0d1424', bgAccent: '#1a2440', text: '#f5efe2', muted: '#a8b0c0', brass: '#c5a975', border: 'rgba(245,239,226,0.12)', win: '#4ade80', loss: '#f87171', neutral: '#3b4250' };
+      return `<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>OCE Inhouse · Player Embed</title>
+<style>
+  html,body{margin:0;padding:0;background:${palette.bg};color:${palette.text};font-family:'Inter','Helvetica Neue',Arial,sans-serif;}
+  body{width:${dims.w}px;height:${dims.h}px;overflow:hidden;box-sizing:border-box;}
+  *{box-sizing:border-box;}
+  a{color:inherit;text-decoration:none;}
+  .card{position:relative;width:100%;height:100%;display:flex;flex-direction:${variant === 'wide' ? 'row' : 'column'};}
+  .stripe{position:absolute;background:${palette.brass};${variant === 'wide' ? 'left:0;top:0;bottom:0;width:4px;' : 'left:0;right:0;top:0;height:4px;'}}
+  .hero{position:absolute;${variant === 'wide' ? 'left:0;top:0;width:200px;height:100%;' : 'left:0;right:0;top:0;height:140px;'}background-size:cover;background-position:center;opacity:${theme === 'light' ? 0.28 : 0.45};}
+  .veil{position:absolute;${variant === 'wide' ? 'left:0;top:0;width:220px;height:100%;background:linear-gradient(90deg,${palette.bg}00,${palette.bg}f2);' : 'left:0;right:0;top:0;height:140px;background:linear-gradient(180deg,${palette.bg}1a,${palette.bg}f2);'}}
+  .pad{position:relative;padding:${variant === 'wide' ? '12px 16px' : '14px 14px 6px'};width:100%;height:100%;display:flex;flex-direction:column;justify-content:flex-start;}
+  .eyebrow{color:${palette.brass};font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;}
+  .name{color:${palette.text};font-weight:800;font-size:${variant === 'wide' ? '20px' : '20px'};margin:${variant === 'wide' ? '4px 0 6px' : '6px 0 8px'};line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mmrRow{display:flex;align-items:baseline;gap:8px;}
+  .mmr{color:${palette.brass};font-weight:800;font-size:${variant === 'wide' ? '22px' : '32px'};line-height:1;}
+  .mmrLabel{color:${palette.muted};font-weight:600;font-size:11px;}
+  .tier{color:${palette.muted};font-weight:600;font-size:12px;margin-top:2px;}
+  .wl{color:${palette.text};font-weight:600;font-size:13px;margin-top:${variant === 'wide' ? '8px' : '10px'};}
+  .recentLabel{color:${palette.muted};font-weight:600;font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-top:${variant === 'wide' ? '4px' : '14px'};}
+  .dots{display:flex;gap:4px;margin-top:4px;}
+  .dot{width:14px;height:14px;border-radius:50%;background:${palette.neutral};}
+  .dot.W{background:${palette.win};}
+  .dot.L{background:${palette.loss};}
+  .sig{margin-top:${variant === 'wide' ? '4px' : '12px'};}
+  .sigEyebrow{color:${palette.muted};font-weight:600;font-size:9px;letter-spacing:.08em;text-transform:uppercase;}
+  .sigName{color:${palette.text};font-weight:700;font-size:13px;}
+  .topRight{position:absolute;top:${variant === 'wide' ? '10px' : '12px'};right:14px;display:flex;flex-direction:column;align-items:flex-end;}
+  .powered{position:absolute;bottom:6px;${variant === 'wide' ? 'right:14px' : 'left:0;right:0;text-align:center'};color:${palette.brass};font-size:9px;font-weight:500;}
+  .empty{display:flex;align-items:center;justify-content:center;text-align:center;height:100%;color:${palette.muted};font-size:12px;padding:14px;}
+  .avatar{position:absolute;${variant === 'wide' ? 'left:14px;top:50%;transform:translateY(-50%);width:56px;height:56px;' : 'right:14px;top:72px;width:48px;height:48px;'}border-radius:50%;border:2px solid ${palette.brass};object-fit:cover;background:${palette.bgAccent};box-shadow:0 2px 8px rgba(0,0,0,0.35);}
+  ${variant === 'wide' ? '.pad{padding-left:84px;}' : ''}
+</style>
+</head><body>${bodyHtml}</body></html>`;
+    }
+
+    if (!accountId) {
+      return res.send(shell(`<div class="card"><span class="stripe"></span><div class="empty">Invalid player ID</div><a class="powered" href="https://oceinhouse.gg" target="_blank" rel="noopener">powered by oceinhouse.gg</a></div>`));
+    }
+    try {
+      const db = require('../db');
+      if (await db.isAccountHidden(accountId)) {
+        return res.send(shell(`<div class="card"><span class="stripe"></span><div class="empty">Profile unavailable</div><a class="powered" href="https://oceinhouse.gg" target="_blank" rel="noopener">powered by oceinhouse.gg</a></div>`));
+      }
+      const d = await _assemblePlayerEmbedData(db, accountId);
+      if (!d.embedEnabled) {
+        return res.send(shell(`<div class="card"><span class="stripe"></span><div class="empty">This player has disabled their public embed.</div><a class="powered" href="https://oceinhouse.gg" target="_blank" rel="noopener">powered by oceinhouse.gg</a></div>`));
+      }
+      const heroUrl = d.heroId
+        ? require('./../services/profileOgCard').heroImageUrl(d.heroId, d.heroName)
+        : null;
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const recent = d.recent.padEnd(10, '·').slice(0, 10);
+      const dots = Array.from(recent).map(ch => `<span class="dot ${ch === 'W' ? 'W' : ch === 'L' ? 'L' : ''}"></span>`).join('');
+      const wr = (d.wins + d.losses) > 0 ? Math.round((d.wins / (d.wins + d.losses)) * 100) : null;
+      const wlLine = `${d.wins}W ${d.losses}L${wr != null ? ` · ${wr}% WR` : ''}`;
+      const profileUrl = `/player/${encodeURIComponent(accountId)}`;
+      const heroBg = heroUrl ? `<div class="hero" style="background-image:url('${esc(heroUrl)}')"></div><div class="veil"></div>` : '';
+      const avatarHtml = d.avatarUrl
+        ? (variant === 'wide'
+            ? `<img class="avatar" src="${esc(d.avatarUrl)}" alt="" referrerpolicy="no-referrer" />`
+            : `<img class="avatar" src="${esc(d.avatarUrl)}" alt="" referrerpolicy="no-referrer" />`)
+        : '';
+
+      let body;
+      if (variant === 'wide') {
+        body = `<a class="card" href="${esc(profileUrl)}" target="_blank" rel="noopener">
+  <span class="stripe"></span>${heroBg}${avatarHtml}
+  <div class="pad">
+    <div class="eyebrow">OCE Inhouse</div>
+    <div class="name">${esc(d.displayName)}</div>
+    <div class="mmrRow">
+      ${d.mmr != null ? `<span class="mmr">${esc(d.mmr)}</span><span class="mmrLabel">MMR</span>` : ''}
+      ${d.tierName ? `<span class="tier">${esc(d.tierName)}</span>` : ''}
+    </div>
+    <div class="wl">${esc(wlLine)}</div>
+    <div class="topRight">
+      <div class="recentLabel">Last 10</div>
+      <div class="dots">${dots}</div>
+      ${d.heroDisplayName ? `<div class="sig"><div class="sigEyebrow">Signature</div><div class="sigName">${esc(d.heroDisplayName)}</div></div>` : ''}
+    </div>
+    <div class="powered">powered by oceinhouse.gg</div>
+  </div>
+</a>`;
+      } else {
+        body = `<a class="card" href="${esc(profileUrl)}" target="_blank" rel="noopener">
+  <span class="stripe"></span>${heroBg}${avatarHtml}
+  <div class="pad">
+    <div class="eyebrow">OCE Inhouse${d.tierName ? ` <span style="color:${theme === 'light' ? '#3b4250' : '#a8b0c0'};margin-left:6px;">· ${esc(d.tierName)}</span>` : ''}</div>
+    <div class="name" style="margin-top:80px;">${esc(d.displayName)}</div>
+    <div class="mmrRow">
+      ${d.mmr != null ? `<span class="mmr">${esc(d.mmr)}</span><span class="mmrLabel">MMR</span>` : ''}
+    </div>
+    <div class="wl">${esc(wlLine)}</div>
+    <div class="recentLabel">Last 10</div>
+    <div class="dots">${dots}</div>
+    ${d.heroDisplayName ? `<div class="sig"><div class="sigEyebrow">Signature</div><div class="sigName">${esc(d.heroDisplayName)}</div></div>` : ''}
+    <div class="powered">powered by oceinhouse.gg</div>
+  </div>
+</a>`;
+      }
+      return res.send(shell(body));
+    } catch (err) {
+      console.warn('[embed/player] render failed:', err.message);
+      return res.send(shell(`<div class="card"><span class="stripe"></span><div class="empty">Embed unavailable</div><a class="powered" href="https://oceinhouse.gg" target="_blank" rel="noopener">powered by oceinhouse.gg</a></div>`));
+    }
+  });
+
+  // GET /og/player/:steamId.png — PNG version for static embeds.
+  app.get('/og/player/:steamId.png', async (req, res) => {
+    const accountId = _embedAccountId(req);
+    if (!accountId) return res.redirect(302, '/oa-logo.png');
+    try {
+      const db = require('../db');
+      if (await db.isAccountHidden(accountId)) {
+        return res.redirect(302, '/oa-logo.png');
+      }
+      const d = await _assemblePlayerEmbedData(db, accountId);
+      if (!d.embedEnabled) {
+        return res.redirect(302, '/oa-logo.png');
+      }
+      const { generatePlayerStatCard } = require('../services/playerStatCard');
+      const buf = await generatePlayerStatCard({
+        steamId: accountId,
+        variant: _embedSize(req),
+        theme: _embedTheme(req),
+        displayName: d.displayName,
+        mmr: d.mmr,
+        tierName: d.tierName,
+        wins: d.wins,
+        losses: d.losses,
+        recent: d.recent,
+        heroId: d.heroId,
+        heroName: d.heroName,
+        heroDisplayName: d.heroDisplayName,
+        avatarUrl: d.avatarUrl,
+      });
+      if (!buf) return res.redirect(302, '/oa-logo.png');
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.send(buf);
+    } catch (err) {
+      console.warn('[og/player] render failed:', err.message);
+      return res.redirect(302, '/oa-logo.png');
+    }
+  });
+
   // Task #221 / #258 — Shared OG meta-tag responder. Used for both
   // `/p/<slug>` and `/player/<accountId>` unfurls so both URL shapes
   // produce identical cards. `slug` may be null for the account-id path,

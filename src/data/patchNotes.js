@@ -1,5 +1,21 @@
 module.exports = [
   {
+    "version": "8.05",
+    "title": "Embeddable player stat cards (Task #447)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** People already share screenshots of their OCE Inhouse profile in Discord and on streams — Task #447 makes that a first-class surface so anyone can drop a live, themable card into a Discord channel, blog post, or stream overlay without spinning up a screenshot every time. Two iframe size variants + a matching PNG endpoint, both honouring a per-player privacy toggle.",
+      "**New `GET /embed/player/:steamId` HTML route in `src/web/server.js`.** Self-contained HTML (no SPA, no React) so it loads instantly inside an iframe. Two sizes via `?size=tall|wide` — `tall` is 240×320 (default), `wide` is 480×120. Theme via `?theme=light|dark` (defaults to dark). Always returns 200; the body content reflects privacy / hidden / invalid-id state so embedders get a predictable surface. `X-Frame-Options` cleared + `Content-Security-Policy: frame-ancestors *` so the iframe works on any host.",
+      "**New `GET /og/player/:steamId.png` PNG route + `src/services/playerStatCard.js`.** Canvas-based PNG generator built on `@napi-rs/canvas`, matching the two size variants exactly. Pulls signature hero via the existing `_resolveOgProfileHero` so the embed picks the same hero the OG card does (pinned → most-played fallback). Privacy / hidden / invalid-id paths redirect to `/oa-logo.png` so the image slot never breaks.",
+      "**5-minute in-memory cache.** Two layers: `_embedAssembleCache` in `server.js` keyed by `accountId` caches the DB roll-up (nickname + rating + signature hero + last-10 + customization extras) shared by both the HTML and PNG routes; `services/playerStatCard.js` keeps a buffer cache keyed by `(accountId, variant, theme)` plus a content signature so re-renders only happen when the underlying stats change.",
+      "**Per-player privacy toggle.** New `embed_enabled` boolean on `extras` JSONB (default `true`) wired through `validateExtras()` in `src/profileCosmetics.js` + mirrored on `web/src/profileCosmetics.js`. Settings → Profile gets a new checkbox under the share-card section — *Allow public embeds of my stats (iframe & image)*. When false, both routes return a generic 'embed disabled' placeholder (HTML) / redirect to the logo (PNG) instead of leaking any rating data.",
+      "**New owner-only Share / Embed panel on `web/src/pages/PlayerProfile.jsx`.** Rendered right after `ShareCardPreviewTile` (own-profile only). Two size segmented controls (`role='radio'` + `aria-checked`), two theme controls, copy-iframe-snippet + copy-image-URL buttons, and a live `<iframe>` preview keyed by `(variant, theme)` so toggling instantly re-renders against the same URL the embedder will use.",
+      "**A11y.** Size + theme segmented controls use `role='radiogroup'` + `role='radio'` + `aria-checked` (per house-rule #5). Copy buttons are real `<button type='button'>` with `aria-label`. No `<div onClick>`, no hover-only reveals, no icon-only buttons without labels. The embed HTML itself wraps in a single `<a>` so the whole card is keyboard-reachable.",
+      "**Scope.** Full edition only — no `community-edition/` wiring (the paywall-free edition stays untouched). Out of scope by design: team / match / leaderboard cards, animated or video embeds — this ships the player-card primitives first and leaves the other surfaces as a follow-up."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.04",
     "title": "Discord Rich Presence — admin-gated rollout (Task #446)",
     "published_at": "2026-05-28",

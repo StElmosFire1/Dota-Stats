@@ -254,6 +254,11 @@ export const DEFAULT_EXTRAS = {
   // auto MMR / W-L stats line, and a toggle for the MMR pill.
   share_card_tagline: null,
   share_card_show_mmr: true,
+  // Task #447 — public embeddable stat cards (iframe + PNG) opt-out.
+  // Default true so existing players are opted-in; flip false on
+  // /settings/profile to make `/embed/player/:id` + `/og/player/:id.png`
+  // return a generic "embed disabled" placeholder.
+  embed_enabled: true,
   // Task #445 — Live pick advisor opt-in. Off by default so only players
   // who explicitly want hero suggestions during inhouse draft see them.
   pick_advisor_optin: false,

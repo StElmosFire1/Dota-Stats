@@ -286,6 +286,17 @@ function ShareCardHeroPicker({ accountId, extras, setExtra, ownHeroes, pinnedHer
           />
           <span style={{ fontSize: 14 }}>Show my MMR &amp; tier on the card</span>
         </label>
+        {/* Task #447 — opt-out for the public iframe + PNG embeds. Default
+            on; flipping it off makes /embed/player/:id + /og/player/:id.png
+            return a generic "embed disabled" placeholder. */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={extras.embed_enabled !== false}
+            onChange={(e) => setExtra('embed_enabled', e.target.checked)}
+          />
+          <span style={{ fontSize: 14 }}>Allow public embeds of my stats (iframe &amp; image)</span>
+        </label>
       </div>
 
       <div style={{ marginTop: 14 }}>

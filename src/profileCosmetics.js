@@ -307,6 +307,11 @@ function validateExtras(raw) {
     if (t) shareCardTagline = t;
   }
   const shareCardShowMmr = e.share_card_show_mmr == null ? true : !!e.share_card_show_mmr;
+  // Task #447 — per-player toggle for the public embeddable stat cards
+  // (`/embed/player/:steamId` + `/og/player/:steamId.png`). Defaults to
+  // true so existing players opt in; setting it false makes the embed
+  // routes return a 403 + a plain "embed disabled" placeholder.
+  const embedEnabled = e.embed_enabled == null ? true : !!e.embed_enabled;
   const out = {
     pinned_hero_border: e.pinned_hero_border == null || e.pinned_hero_border === '' ? null : String(e.pinned_hero_border),
     pinned_achievement_id: e.pinned_achievement_id == null || e.pinned_achievement_id === '' ? null : String(e.pinned_achievement_id).slice(0, 64),
@@ -322,6 +327,7 @@ function validateExtras(raw) {
     share_card_hero_id: shareCardHeroId,
     share_card_tagline: shareCardTagline,
     share_card_show_mmr: shareCardShowMmr,
+    embed_enabled: embedEnabled,
   };
   if (!isValidHeroBorder(out.pinned_hero_border)) return { ok: false, error: 'Unknown pinned-hero border colour' };
   if (!isValidFlair(out.flair_override)) return { ok: false, error: 'Unknown flair override' };

@@ -551,6 +551,103 @@ function ShareCardPreviewTile({ accountId }) {
   );
 }
 
+// Task #447 — Owner-only Share / Embed panel. Lets the profile owner copy
+// an <iframe> snippet or a static image URL for the public embed cards
+// served by /embed/player/:id and /og/player/:id.png. Two size presets
+// (tall 240×320, wide 480×120) and a light/dark theme toggle. Renders a
+// live preview using the same iframe URL the snippet exposes so the user
+// sees exactly what their embed will look like.
+function EmbedSharePanel({ accountId }) {
+  const [variant, setVariant] = React.useState('tall');
+  const [theme, setTheme] = React.useState('dark');
+  const [copied, setCopied] = React.useState(null);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const dims = variant === 'wide' ? { w: 480, h: 120 } : { w: 240, h: 320 };
+  const qs = `?size=${variant}&theme=${theme}`;
+  const iframeUrl = `${origin}/embed/player/${accountId}${qs}`;
+  const imageUrl = `${origin}/og/player/${accountId}.png${qs}`;
+  const iframeSnippet = `<iframe src="${iframeUrl}" width="${dims.w}" height="${dims.h}" frameborder="0" style="border:0;border-radius:10px;overflow:hidden" loading="lazy" title="OCE Inhouse player card"></iframe>`;
+
+  const copy = async (label, text) => {
+    try {
+      await navigator.clipboard?.writeText(text);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 1800);
+    } catch {
+      window.prompt('Copy:', text);
+    }
+  };
+
+  const segBtn = (active) => ({
+    background: active ? 'rgba(197,169,117,0.18)' : 'var(--bg-card)',
+    border: `1px solid ${active ? 'var(--brass, #c5a975)' : 'var(--border)'}`,
+    color: active ? 'var(--brass, #c5a975)' : 'var(--text-primary)',
+    borderRadius: 6, padding: '5px 10px', cursor: 'pointer',
+    fontSize: 12, fontWeight: 600,
+  });
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(197,169,117,0.08) 0%, var(--bg-card) 100%)',
+      border: '1px solid rgba(197,169,117,0.3)', borderRadius: 12,
+      padding: '14px 18px', marginTop: 12, marginBottom: 8,
+    }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginBottom: 3 }}>
+        🖼️ Share / Embed
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+        Drop a live card into Discord, your stream overlay, or a blog post. Settings &gt; Profile has a toggle to opt out.
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 220px', minWidth: 220 }}>
+          <div role="radiogroup" aria-label="Embed size" style={{ display: 'flex', gap: 6 }}>
+            <button type="button" role="radio" aria-checked={variant === 'tall'} onClick={() => setVariant('tall')} style={segBtn(variant === 'tall')}>Tall 240×320</button>
+            <button type="button" role="radio" aria-checked={variant === 'wide'} onClick={() => setVariant('wide')} style={segBtn(variant === 'wide')}>Wide 480×120</button>
+          </div>
+          <div role="radiogroup" aria-label="Embed theme" style={{ display: 'flex', gap: 6 }}>
+            <button type="button" role="radio" aria-checked={theme === 'dark'} onClick={() => setTheme('dark')} style={segBtn(theme === 'dark')}>Dark</button>
+            <button type="button" role="radio" aria-checked={theme === 'light'} onClick={() => setTheme('light')} style={segBtn(theme === 'light')}>Light</button>
+          </div>
+
+          <div style={{ marginTop: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 4 }}>iframe snippet</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-secondary)', borderRadius: 6, padding: '6px 8px', fontFamily: 'monospace', wordBreak: 'break-all', maxHeight: 70, overflow: 'auto' }}>
+              {iframeSnippet}
+            </div>
+            <button type="button" onClick={() => copy('iframe', iframeSnippet)} aria-label="Copy iframe snippet" style={{ marginTop: 6, background: copied === 'iframe' ? 'rgba(74,222,128,0.15)' : 'var(--bg-card)', border: `1px solid ${copied === 'iframe' ? 'var(--accent-green)' : 'rgba(197,169,117,0.4)'}`, color: copied === 'iframe' ? 'var(--accent-green)' : 'var(--brass, #c5a975)', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              {copied === 'iframe' ? '✅ Copied!' : '📋 Copy iframe'}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 4 }}>image URL</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-secondary)', borderRadius: 6, padding: '6px 8px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+              {imageUrl}
+            </div>
+            <button type="button" onClick={() => copy('image', imageUrl)} aria-label="Copy image URL" style={{ marginTop: 6, background: copied === 'image' ? 'rgba(74,222,128,0.15)' : 'var(--bg-card)', border: `1px solid ${copied === 'image' ? 'var(--accent-green)' : 'rgba(197,169,117,0.4)'}`, color: copied === 'image' ? 'var(--accent-green)' : 'var(--brass, #c5a975)', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              {copied === 'image' ? '✅ Copied!' : '📋 Copy image URL'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ flex: '0 0 auto' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 4 }}>Live preview</div>
+          <iframe
+            key={`${variant}-${theme}`}
+            src={iframeUrl}
+            width={dims.w}
+            height={dims.h}
+            style={{ border: '1px solid var(--border)', borderRadius: 10, display: 'block', background: theme === 'light' ? '#f5efe2' : '#0d1424' }}
+            title="OCE Inhouse player card preview"
+            loading="lazy"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InviteLinkCard({ accountId }) {
   const [inviteData, setInviteData] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
@@ -1449,6 +1546,8 @@ export default function PlayerProfile() {
       {/* Task #269 — owner-only share-card preview tile, click-through to
           Settings → Profile § share-card picker. */}
       {isOwnProfile && <ShareCardPreviewTile accountId={accountId} />}
+      {/* Task #447 — owner-only Share / Embed panel (iframe + image embeds). */}
+      {isOwnProfile && <EmbedSharePanel accountId={accountId} />}
 
       {/* AUDIT (v5.91 parity pass): PRO-PAYWALLED — AI Scouting Report. Trigger
           button shows for any signed-in viewer; the actual /player/:id/scouting-report

@@ -63,6 +63,8 @@ class OpenDotaClient {
       return {
         rankTier:        data.rank_tier        || null,
         leaderboardRank: data.leaderboard_rank || null,
+        avatarFull:      data.profile?.avatarfull || null,
+        avatarMedium:    data.profile?.avatarmedium || null,
       };
     } catch (err) {
       console.error(`[OpenDota] Player profile error (${accountId32}):`, err.message);
