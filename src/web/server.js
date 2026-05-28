@@ -435,6 +435,37 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
+// Task #497 — DB-backed runtime override for the lockdown gate.
+//
+// Module-level state so the route handlers in `createApiRouter` and the
+// middleware in `createServer` (different closures) share the same cache.
+// The env var `FULL_SITE_LOCKDOWN=1` is still the highest-priority
+// switch (env-only deploy path keeps working). When the env var is unset
+// the gate falls back to this persisted setting in `site_settings` (key:
+// `site_lockdown`) which the AdminPanel can toggle at runtime — no
+// restart needed. The DB value is cached and refreshed when the PUT
+// route writes a new value, so the middleware never adds a per-request
+// DB hit.
+const lockdownState = { enabled: false, since: null, actor: null };
+async function refreshLockdownStateFromDb() {
+  try {
+    const dbMod = require('../db');
+    const raw = await dbMod.getSetting('site_lockdown');
+    if (!raw) {
+      lockdownState.enabled = false;
+      lockdownState.since = null;
+      lockdownState.actor = null;
+      return;
+    }
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    lockdownState.enabled = !!parsed.enabled;
+    lockdownState.since = parsed.since || null;
+    lockdownState.actor = parsed.actor || null;
+  } catch (e) {
+    console.warn('[Lockdown] refreshLockdownStateFromDb failed:', e?.message || e);
+  }
+}
+
 function createServer(startupStatus = {}) {
   const app = express();
 
@@ -682,8 +713,15 @@ function createServer(startupStatus = {}) {
     '</html>',
   ].join('\n');
 
+  // Initial load — non-blocking. The middleware reads from the
+  // module-level cache (lockdownState), which defaults to disabled until
+  // the row is loaded; that's the safe direction (open) for the brief
+  // window during boot.
+  refreshLockdownStateFromDb();
+
   function lockdownMiddleware(req, res, next) {
-    if (process.env.FULL_SITE_LOCKDOWN !== '1') return next();
+    const envForced = process.env.FULL_SITE_LOCKDOWN === '1';
+    if (!envForced && !lockdownState.enabled) return next();
     // Already-authenticated superusers pass straight through.
     if (req.session && req.session.isSuperuser) return next();
     // Header credential for non-browser clients (scripts, deploy hooks).
@@ -6544,6 +6582,63 @@ function createApiRouter(startupStatus = {}, _app = null) {
       res.set('Cache-Control', 'no-store');
       res.json({ days, ...report });
     } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #497 — Lockdown gate runtime toggle (superuser).
+  //
+  // GET returns the live resolved state plus the source so the admin UI
+  // can show whether the gate is being driven by the env var (in which
+  // case the toggle is informational only — the env wins) or by the DB
+  // setting (toggle-able).
+  router.get('/admin/lockdown', requireSuperuser, (req, res) => {
+    const envForced = process.env.FULL_SITE_LOCKDOWN === '1';
+    const enabled = envForced || lockdownState.enabled;
+    const source = envForced ? 'env' : (lockdownState.enabled ? 'db' : 'off');
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      enabled,
+      source,
+      envForced,
+      since: envForced ? null : lockdownState.since,
+      actor: envForced ? null : lockdownState.actor,
+    });
+  });
+
+  // PUT flips the persisted setting. When the env var is forcing the
+  // gate ON we still accept the write (so the operator can pre-stage
+  // the DB value for when they later unset the env), but we return the
+  // resolved state which makes it obvious the env still wins.
+  router.put('/admin/lockdown', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const enabled = !!(req.body && req.body.enabled);
+      const now = new Date().toISOString();
+      const actor = req.session && req.session.steamId64
+        ? `steam:${req.session.steamId64}`
+        : 'superuser';
+      // Preserve the existing `since` when flipping off→off or on→on (a
+      // no-op write shouldn't reset the clock); update it on any state
+      // change.
+      const stateChanged = enabled !== lockdownState.enabled;
+      const since = enabled ? (stateChanged ? now : (lockdownState.since || now)) : null;
+      const payload = { enabled, since, actor: enabled ? actor : null };
+      await db.setSetting('site_lockdown', JSON.stringify(payload));
+      lockdownState.enabled = payload.enabled;
+      lockdownState.since = payload.since;
+      lockdownState.actor = payload.actor;
+      const envForced = process.env.FULL_SITE_LOCKDOWN === '1';
+      const resolvedSource = envForced ? 'env' : (lockdownState.enabled ? 'db' : 'off');
+      console.log(`[Lockdown] toggle by ${actor}: db=${enabled}, resolved=${resolvedSource}`);
+      res.json({
+        enabled: envForced || lockdownState.enabled,
+        source: resolvedSource,
+        envForced,
+        since: envForced ? null : lockdownState.since,
+        actor: envForced ? null : lockdownState.actor,
+      });
+    } catch (err) {
+      console.error('[Lockdown] PUT failed:', err);
       res.status(500).json({ error: err.message });
     }
   });

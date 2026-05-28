@@ -93,6 +93,18 @@ export async function getAgentTrafficReport(superuserKey, days = 7) {
   return superuserJson(`/admin/agent-traffic-report${qs}`, { superuserKey });
 }
 
+// Task #497 — Lockdown gate runtime toggle (superuser).
+export async function getLockdownState(superuserKey) {
+  return superuserJson('/admin/lockdown', { superuserKey });
+}
+export async function setLockdownState(superuserKey, enabled) {
+  return superuserJson('/admin/lockdown', {
+    superuserKey,
+    method: 'PUT',
+    body: { enabled: !!enabled },
+  });
+}
+
 // Task #425 — Feature health dashboard helpers.
 export async function getFeatureHealth(superuserKey) {
   return superuserJson('/admin/feature-health', { superuserKey });

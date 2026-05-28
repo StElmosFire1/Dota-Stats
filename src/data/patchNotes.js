@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "7.96",
+    "title": "One-click site-lockdown toggle in the admin panel (Task #497)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Why.** The owner-only lockdown gate from v7.90 was env-var-only (`FULL_SITE_LOCKDOWN=1`), which meant SSH + pm2 restart to flip. New AdminPanel card now toggles it live — useful at launch, and when temporarily sharing a preview link to a tester.",
+      "**Where.** AdminPanel → Overview tab, top of the page (above the AI agent traffic card). Card shows the current state with a LOCKED/OPEN status pill, an 'ON since …' timestamp, the actor who flipped it, and a single switch.",
+      "**Precedence.** The env var still wins when set — if `FULL_SITE_LOCKDOWN=1` is forcing the gate, the toggle goes read-only and the card surfaces the override clearly. Unset the env var to let the DB toggle take effect.",
+      "**Backend.** New `site_settings.site_lockdown` row stores `{enabled, since, actor}`; cached in memory and refreshed only on PUT so the middleware stays O(1). New routes: `GET /api/admin/lockdown`, `PUT /api/admin/lockdown` (both superuser-only). Boot-time DB read fails open (gate disabled) so a brief DB hiccup at startup can never lock the public site by surprise.",
+      "**A11y.** Toggle uses `role=\"switch\"` + `aria-checked` per the house rule for custom toggle shapes, and the confirm dialog asks before any flip so a stray click can't accidentally lock the site."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.95",
     "title": "Cache marketplace next-available so popular filters don't re-walk every coach (Task #438)",
     "published_at": "2026-05-28",

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -122,6 +122,121 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
       <td><input type="number" min={0} max={50} value={player.deaths} onChange={e => onChange({ deaths: parseInt(e.target.value) || 0 })} style={{ width: 50 }} /></td>
       <td><input type="number" min={0} max={50} value={player.assists} onChange={e => onChange({ assists: parseInt(e.target.value) || 0 })} style={{ width: 50 }} /></td>
     </tr>
+  );
+}
+
+// Task #497 — Runtime toggle for the FULL_SITE_LOCKDOWN gate.
+// Lets the owner flip the public site between "locked" (owner-only sign-in
+// gate) and "open" without SSH/pm2/env edits. The env var still wins when
+// set, so the toggle is read-only in that case.
+function LockdownCard({ superuserKey }) {
+  const [state, setState] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true); setError('');
+    getLockdownState(superuserKey)
+      .then(setState)
+      .catch(e => setError(e.message || 'Failed to load lockdown state'))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const onToggle = async () => {
+    if (!state || saving) return;
+    if (state.envForced) return; // env wins — toggle is informational only
+    const next = !state.enabled;
+    const verb = next ? 'lock down' : 'unlock';
+    if (!window.confirm(`Are you sure you want to ${verb} the public site?`)) return;
+    setSaving(true); setError(''); setMsg('');
+    try {
+      const updated = await setLockdownState(superuserKey, next);
+      setState(updated);
+      setMsg(next
+        ? '🔒 Site is now locked. Visitors will see the sign-in gate.'
+        : '🔓 Site is now open. Visitors can browse normally.');
+    } catch (e) {
+      setError(e.message || 'Failed to update lockdown');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fmtTs = (t) => t ? new Date(t).toLocaleString() : '—';
+  const enabled = !!state?.enabled;
+  const envForced = !!state?.envForced;
+  const dot = enabled ? '#ef4444' : '#22c55e';
+  const label = enabled ? 'LOCKED' : 'OPEN';
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-lockdown-h">
+      <div className="card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <h2 id="ap-lockdown-h" style={{ margin: 0, fontSize: '1.05rem' }}>
+            🔒 Site lockdown
+          </h2>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+              <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: dot, display: 'inline-block' }} />
+              <strong style={{ color: enabled ? '#ef4444' : '#22c55e' }}>{label}</strong>
+            </span>
+            <button type="button" className="btn" onClick={load} disabled={loading} aria-label="Refresh lockdown state" style={{ fontSize: 12 }}>
+              {loading ? '…' : '↻'}
+            </button>
+          </div>
+        </div>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 0, marginBottom: 14 }}>
+          When ON, every visitor to <code>oceinhouse.gg</code> sees the owner-only sign-in page until they unlock with the superuser password.
+          Steam OpenID, the Stripe webhook, and <code>robots.txt</code> stay reachable so logins and payments keep working.
+          {envForced && (
+            <> The <code>FULL_SITE_LOCKDOWN</code> env var is currently forcing the gate ON — unset it on the prod host to make this toggle take effect.</>
+          )}
+        </p>
+        {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{error}</div>}
+        {msg && <div role="status" style={{ color: '#22c55e', fontSize: 13, marginBottom: 10 }}>{msg}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label={enabled ? 'Disable site lockdown (unlock the site)' : 'Enable site lockdown (lock the site)'}
+            onClick={onToggle}
+            disabled={saving || envForced || !state}
+            style={{
+              position: 'relative',
+              width: 56, height: 30, borderRadius: 999, border: 0,
+              background: enabled ? '#ef4444' : '#4b5563',
+              cursor: (saving || envForced || !state) ? 'not-allowed' : 'pointer',
+              opacity: (envForced || !state) ? 0.6 : 1,
+              transition: 'background 0.15s ease',
+              padding: 0,
+            }}
+          >
+            <span aria-hidden="true" style={{
+              position: 'absolute', top: 3, left: enabled ? 29 : 3,
+              width: 24, height: 24, borderRadius: '50%', background: '#fff',
+              transition: 'left 0.15s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+            }} />
+          </button>
+          <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+            <div><strong>{enabled ? 'Locked' : 'Open'}</strong> {envForced ? '(forced by env var)' : '(via admin toggle)'}</div>
+            {enabled && state?.since && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                ON since {fmtTs(state.since)}
+                {state.actor && <> · by <code>{state.actor}</code></>}
+              </div>
+            )}
+            {saving && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Saving…</div>}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -4398,6 +4513,9 @@ export default function AdminPanel() {
           />
         </div>
       </section>
+
+      {/* Task #497 — Site lockdown toggle */}
+      <LockdownCard superuserKey={superuserKey} />
 
       {/* Task #492 — AI agent traffic */}
       <AgentTrafficCard superuserKey={superuserKey} />
