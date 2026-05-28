@@ -87,6 +87,12 @@ export async function superuserJson(url, {
   return data;
 }
 
+// Task #492 — AI agent traffic report (superuser).
+export async function getAgentTrafficReport(superuserKey, days = 7) {
+  const qs = days ? `?days=${encodeURIComponent(days)}` : '';
+  return superuserJson(`/admin/agent-traffic-report${qs}`, { superuserKey });
+}
+
 // Task #425 — Feature health dashboard helpers.
 export async function getFeatureHealth(superuserKey) {
   return superuserJson('/admin/feature-health', { superuserKey });

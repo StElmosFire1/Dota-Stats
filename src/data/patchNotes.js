@@ -1,5 +1,23 @@
 module.exports = [
   {
+    "version": "7.89",
+    "title": "AI scraper / clone-builder hardening — deterrent + observability (Task #492)",
+    "published_at": "2026-05-28",
+    "notes": [
+      "**Problem.** A near-pixel-perfect clone of `oceinhouse.gg` recently appeared in the wild, almost certainly produced by pointing an AI app-builder agent at the live site. We can't stop a human screenshotting, but we can raise the cost: declare the policy in `robots.txt` + meta tags, identify and throttle known AI/agent user-agents, and emit a clear server-side signal when one is detected so a repeat is visible immediately.",
+      "**Single source of truth (`src/security/agentUaList.js`).** Lists 21 AI-crawler families (GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, Claude-Web, anthropic-ai, Google-Extended, CCBot, PerplexityBot, Perplexity-User, cohere-ai, Bytespider, Amazonbot, Diffbot, FacebookBot, meta-externalagent, Omgilibot, Applebot-Extended, YouBot, AI2Bot, ImagesiftBot) and 7 app-builder agent families (Replit-Agent, Lovable, v0, Cursor-Agent, Emergent, Devin, Bolt). Each entry carries the documented source URL so the list survives drift. `web/public/robots.txt` and `community-edition/web/public/robots.txt` are generated from this same list — both editions explicitly disallow every family above.",
+      "**Runtime classifier (`src/security/agentClassifier.js`).** Mounted as the first middleware in `src/web/server.js` so it runs before everything except `helmet()`. On every request: (a) sets `X-Robots-Tag: noai, noimageai`, (b) classifies the UA as `human` / `ai-crawler` / `app-builder` / `unknown-bot`, (c) records classified hits into an in-process ring buffer (capped at 5000 entries — sustained scrape cannot OOM the process), (d) applies a stricter `express-rate-limit` bucket keyed on `(ip, ua-family)` so one family can't blow up the quota for others sharing an IP. Wrapped end-to-end in try/catch — a bad regex or Discord outage can never break request handling.",
+      "**Opt-in hard block via `BLOCK_AI_AGENTS=1`.** Default off (observability first). When set, ai-crawler / app-builder UAs get a 403 with a short policy message; `unknown-bot` is never hard-blocked (observability only, so we can spot new patterns before deciding to add them to the list).",
+      "**Owner DM on first-seen-per-24h.** Reuses the dedupe pattern from `src/featureHealth/runner.js` — in-process `Map<family, lastAlertAt>`, 24h window — so a new AI family appearing on the site pings the owner once, not every page-view. `unknown-bot` does not DM.",
+      "**`<meta name=\"robots\" content=\"noai, noimageai\">` on both editions.** Added to `web/index.html` and `community-edition/web/index.html`. Per the task scope, community edition gets robots.txt + meta only — none of the runtime middleware, classifier, hard-block, DM, or admin card touches it (community is paywall-free; the surface stays minimal).",
+      "**Three-state decision tracking (blocked / throttled / logged).** The agent rate-limiter has a custom `handler` that flips the ring-buffer entry's decision to `throttled` before returning the 429, so the report can distinguish *rejected-by-quota* from *merely-recorded* traffic. The 'AI agent traffic' admin card surfaces all three columns.",
+      "**New admin card.** `GET /api/admin/agent-traffic-report?days=N` (superuser; N clamped to 1–30) returns `{ families: [{ family, kind, hits, blocked, throttled, logged, unique_ips, unique_paths, first_seen, last_seen, sample_ua }], recent: [...last 200 raw entries...], ringBufferSize, blockOn }`. Rendered as a new 'AI agent traffic' card in the Overview tab of the full-edition AdminPanel — sortable table using the shared `SortableTh` component, native `<button type=\"button\">` controls with explicit `aria-label`s, expandable recent-requests panel with `aria-expanded`/`aria-controls`. All six a11y rules satisfied.",
+      "**Generator script + drift gate.** `scripts/build-robots-txt.js` regenerates both robots.txt files from `agentUaList.js`; `npm run check:robots` (and `... --check`) fails CI if either file drifts. Both editions' robots.txt now carry a 'DO NOT EDIT BY HAND' header.",
+      "**Gates.** `npm run check:a11y`, `npm run check:patch-notes`, `npm run check:parser`, `npm run check:robots`, and `scripts/check-community-paywall.sh` all pass. Patch notes get this grouped entry; `replit.md` 'Environment variables (security-relevant)' section documents `BLOCK_AI_AGENTS`."
+    ],
+    "author": "System"
+  },
+  {
     "version": "7.88",
     "title": "Feature health dashboard — green/yellow/red status per subsystem (Task #425)",
     "published_at": "2026-05-27",
