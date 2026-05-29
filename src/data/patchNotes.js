@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.08",
+    "title": "Fix deploy-blocking server boot crash",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**What.** The full edition refused to boot — `createServer()` threw `ReferenceError: requireSuperuser is not defined` at `src/web/server.js` the moment the admin Discord Rich Presence route was registered. Because the boot crash also tripped the test-suite gate, it blocked both editions' deploys.",
+      "**Root cause.** The `GET /api/admin/discord-rich-presence` route (added with the Discord Rich Presence work) was registered directly on `app` inside `createServer()`, but the `requireSuperuser` middleware it referenced is declared inside `createApiRouter()` — a separate function scope — so it was never in scope at the registration site.",
+      "**Fix.** Added a scope-local `requireSuperuserApp` guard in `createServer()` that mirrors `requireSuperuser` exactly (session-based superuser OR the `x-superuser-key` header; the lower-privilege `UPLOAD_KEY` still never satisfies a superuser check, per the threat model) and pointed the route at it. No behaviour change to the endpoint's auth contract.",
+      "**Scope.** Full edition only — community edition was unaffected."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.07",
     "title": "Match Prediction Game (Task #449)",
     "published_at": "2026-05-28",

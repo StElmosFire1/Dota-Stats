@@ -1400,8 +1400,26 @@ function createServer(startupStatus = {}) {
     }
   });
 
+  // Superuser-only guard usable at the `app` scope (the `requireSuperuser`
+  // declared inside createApiRouter is out of scope here). Mirrors that
+  // helper: session-based superuser OR the x-superuser-key header — the
+  // lower-privilege UPLOAD_KEY must never satisfy a superuser check.
+  function requireSuperuserApp(req, res, next) {
+    if (req.session && req.session.isSuperuser) return next();
+    const superuserPassword = process.env.SUPERUSER_PASSWORD;
+    if (!superuserPassword) {
+      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
+    }
+    const provided = req.headers['x-superuser-key'];
+    if (provided && provided === superuserPassword) return next();
+    if (!provided || provided === 'session') {
+      return res.status(401).json({ error: 'Superuser session expired' });
+    }
+    return res.status(403).json({ error: 'Invalid superuser key' });
+  }
+
   // GET /api/admin/discord-rich-presence — superuser-only status table.
-  app.get('/api/admin/discord-rich-presence', requireSuperuser, async (req, res) => {
+  app.get('/api/admin/discord-rich-presence', requireSuperuserApp, async (req, res) => {
     try {
       const [flag, stats, rows] = await Promise.all([
         db.getFeatureFlag('discord_rich_presence_enabled').catch(() => null),

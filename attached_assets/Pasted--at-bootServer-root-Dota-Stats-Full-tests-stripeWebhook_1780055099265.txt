@@ -1,0 +1,1025 @@
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:416:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.
+[Session] Using Postgres-backed session store (table=user_sessions).
+✖ charge.refunded with payment_intent → revokes Pro AND flips coaching booking (178.650922ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:182:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at node:internal/test_runner/harness:255:12
+      at node:internal/process/task_queues:140:7
+      at AsyncResource.runInAsyncScope (node:async_hooks:206:9)
+      at AsyncResource.runMicrotask (node:internal/process/task_queues:137:8)
+
+✖ charge.refunded WITHOUT payment_intent → no DB mutation (30.908142ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:199:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ payment_intent.succeeded for coaching_booking → marks booking completed (30.433901ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:214:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ payment_intent.succeeded for non-coaching purpose → no DB mutation (33.866601ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:226:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ payment_intent.succeeded with no metadata → no DB mutation (27.717038ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:238:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ payment_intent.canceled for coaching_booking → flips booking refunded (26.620731ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:250:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ payment_intent.canceled for non-coaching purpose → no DB mutation (26.922853ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:262:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ account.updated with charges_enabled AND payouts_enabled → promotes coach to active (26.169482ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:275:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ account.updated with charges_enabled only (payouts disabled) → coach NOT promoted (27.454949ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:287:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ account.updated with payouts_enabled only (charges disabled) → coach NOT promoted (26.336615ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:299:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ account.updated with neither flag → coach NOT promoted (26.037616ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:310:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ checkout.session.expired for coaching_booking → frees the slot (26.172538ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:322:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ checkout.session.expired for non-coaching purpose → no DB mutation (28.955876ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:334:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+✖ checkout.session.expired with no metadata → no DB mutation (26.499385ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:346:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+ℹ tests 71
+ℹ suites 0
+ℹ pass 9
+ℹ fail 62
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2574.413604
+
+✖ failing tests:
+
+test at tests/moneyPathsCoverage.test.js:261:1
+✖ webhook: checkout.session.completed PAID coaching_group_seat → markGroupSeatPaidBySession (174.120379ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:262:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at node:internal/test_runner/harness:255:12
+      at node:internal/process/task_queues:140:7
+      at AsyncResource.runInAsyncScope (node:async_hooks:206:9)
+      at AsyncResource.runMicrotask (node:internal/process/task_queues:137:8)
+
+test at tests/moneyPathsCoverage.test.js:268:1
+✖ webhook: checkout.session.completed UNPAID coaching_group_seat → does NOT fulfil (28.297179ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:269:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:275:1
+✖ webhook: async_payment_succeeded coaching_group_seat → markGroupSeatPaidBySession (27.198553ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:276:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:282:1
+✖ webhook: async_payment_failed coaching_group_seat → cancels seat AND reopens session (41.221974ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:284:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:291:1
+✖ webhook: checkout.session.expired coaching_group_seat → cancels seat AND reopens session (27.138808ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:293:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:299:1
+✖ webhook: charge.refunded with PI → also flips group_seat AND vod_review rows (35.802823ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:301:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:308:1
+✖ webhook: payment_intent.succeeded coaching_group_seat → markGroupSeatCapturedByIntent (26.249255ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:310:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:316:1
+✖ webhook: payment_intent.canceled coaching_group_seat → flips refunded (26.023216ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:318:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:327:1
+✖ webhook: checkout.session.completed PAID coaching_vod_review → markVodPaidBySession (28.054691ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:328:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:334:1
+✖ webhook: checkout.session.completed UNPAID coaching_vod_review → does NOT fulfil (26.607683ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:335:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:341:1
+✖ webhook: async_payment_succeeded coaching_vod_review → markVodPaidBySession (26.087308ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:342:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:348:1
+✖ webhook: async_payment_failed coaching_vod_review → markVodCancelledBySession (26.559357ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:350:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:356:1
+✖ webhook: checkout.session.expired coaching_vod_review → markVodCancelledBySession (29.402764ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:358:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:364:1
+✖ webhook: payment_intent.canceled coaching_vod_review → markVodRefundedByIntent (26.091873ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:366:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:375:1
+✖ refund fail-closed: /bookings/:id/no-show-refund — Stripe cancel throws → 502, no markBookingRefunded (26.160837ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:376:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:390:1
+✖ refund fail-closed: /bookings/:id/no-show-refund — Stripe cancel succeeds → 200 + DB flip (26.386984ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:391:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:404:1
+✖ refund fail-closed: /vod-reviews/:id/refund — Stripe cancel throws → 502, no setVodStatus refunded (26.763144ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:405:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:421:1
+✖ refund fail-closed: /vod-reviews/:id/refund — Stripe cancel succeeds → 200 + markVodRefundedByIntent (26.011307ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:422:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:433:1
+✖ refund fail-closed: /me/coach/group-sessions/:id/cancel — Stripe cancel throws → 502, session NOT flipped to cancelled (26.515218ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:438:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:458:1
+✖ refund fail-closed: /me/coach/group-sessions/:id/cancel — all Stripe cancels succeed → 200 + status flipped (26.182938ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:462:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/moneyPathsCoverage.test.js:480:1
+✖ race: 5 concurrent group session joins on a capacity-3 session → exactly 3 succeed, 2 get 400 "Session full" (31.974888ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:165:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/moneyPathsCoverage.test.js:501:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils tournament_entry (173.334637ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at node:internal/test_runner/harness:255:12
+      at node:internal/process/task_queues:140:7
+      at AsyncResource.runInAsyncScope (node:async_hooks:206:9)
+      at AsyncResource.runMicrotask (node:internal/process/task_queues:137:8)
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil tournament_entry (deferred) (26.959688ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils tournament_entry (25.94717ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils pro_lifetime (29.029069ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil pro_lifetime (deferred) (26.211773ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils pro_lifetime (40.594684ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils coaching_booking (26.066088ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil coaching_booking (deferred) (26.537554ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils coaching_booking (25.866153ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils founders_ring (26.176803ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil founders_ring (deferred) (28.018577ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils founders_ring (30.182316ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils frame_purchase (28.556262ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil frame_purchase (deferred) (27.398441ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils frame_purchase (29.785034ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils gift_pro (26.204737ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil gift_pro (deferred) (25.958103ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils gift_pro (25.792382ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils gift_season_pass (27.608258ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil gift_season_pass (deferred) (26.43847ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils gift_season_pass (26.645603ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:357:3
+✖ checkout.session.completed PAID → fulfils default buyin (no purpose metadata) (26.62676ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:359:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:366:3
+✖ checkout.session.completed UNPAID → does NOT fulfil default buyin (no purpose metadata) (deferred) (37.831643ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:368:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:376:3
+✖ checkout.session.async_payment_succeeded → fulfils default buyin (no purpose metadata) (28.51066ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:378:28)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:389:1
+✖ checkout.session.completed payment_status='no_payment_required' → fulfils (default buyin) (27.08173ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:391:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:398:1
+✖ checkout.session.async_payment_failed for coaching_booking → frees the slot (29.275132ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:400:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookAsyncPayment.test.js:414:1
+✖ checkout.session.async_payment_failed for non-coaching purpose → no DB mutation (25.894459ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:187:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookAsyncPayment.test.js:416:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:177:1
+✖ charge.refunded with payment_intent → revokes Pro AND flips coaching booking (178.650922ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:182:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at node:internal/test_runner/harness:255:12
+      at node:internal/process/task_queues:140:7
+      at AsyncResource.runInAsyncScope (node:async_hooks:206:9)
+      at AsyncResource.runMicrotask (node:internal/process/task_queues:137:8)
+
+test at tests/stripeWebhookRefundsKyc.test.js:194:1
+✖ charge.refunded WITHOUT payment_intent → no DB mutation (30.908142ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:199:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:209:1
+✖ payment_intent.succeeded for coaching_booking → marks booking completed (30.433901ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:214:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:221:1
+✖ payment_intent.succeeded for non-coaching purpose → no DB mutation (33.866601ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:226:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:233:1
+✖ payment_intent.succeeded with no metadata → no DB mutation (27.717038ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:238:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:245:1
+✖ payment_intent.canceled for coaching_booking → flips booking refunded (26.620731ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:250:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:257:1
+✖ payment_intent.canceled for non-coaching purpose → no DB mutation (26.922853ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:262:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:270:1
+✖ account.updated with charges_enabled AND payouts_enabled → promotes coach to active (26.169482ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:275:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:282:1
+✖ account.updated with charges_enabled only (payouts disabled) → coach NOT promoted (27.454949ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:287:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:294:1
+✖ account.updated with payouts_enabled only (charges disabled) → coach NOT promoted (26.336615ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:299:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:305:1
+✖ account.updated with neither flag → coach NOT promoted (26.037616ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:310:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:317:1
+✖ checkout.session.expired for coaching_booking → frees the slot (26.172538ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:322:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:329:1
+✖ checkout.session.expired for non-coaching purpose → no DB mutation (28.955876ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:334:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/stripeWebhookRefundsKyc.test.js:341:1
+✖ checkout.session.expired with no metadata → no DB mutation (26.499385ms)
+  ReferenceError [Error]: requireSuperuser is not defined
+      at createServer (/root/Dota-Stats-Full/src/web/server.js:1404:47)
+      at _bootServer (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:129:11)
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookRefundsKyc.test.js:346:26)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
