@@ -3,7 +3,7 @@
 // POSTs to /api/scrims/:id/respond which is already session-authed.
 import React, { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionShell, ActionState, PrimaryButton } from '../../../components/ActionShell';
+import { ActionShell, ActionState, PrimaryButton, actionErrorState } from '../../../components/ActionShell';
 import { api } from '../../../lib/api';
 
 export default function ScrimRespond() {
@@ -16,7 +16,7 @@ export default function ScrimRespond() {
       await api.respondScrim(id!, accept);
       setState({ kind: 'ok', message: accept ? 'Scrim accepted — see you on the day.' : 'Scrim declined.' });
     } catch (err) {
-      setState({ kind: 'error', message: (err as Error).message });
+      setState(actionErrorState(err));
     }
   };
 

@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import { Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionShell, ActionState, PrimaryButton } from '../../../components/ActionShell';
+import { ActionShell, ActionState, PrimaryButton, actionErrorState } from '../../../components/ActionShell';
 import { api } from '../../../lib/api';
 import { theme } from '../../../lib/theme';
 
@@ -20,7 +20,7 @@ export default function ReadyCheck() {
       else await api.inhouseDecline(id!);
       setState({ kind: 'ok', message: accept ? 'You\'re in — see you in the lobby.' : 'Declined.' });
     } catch (err) {
-      setState({ kind: 'error', message: (err as Error).message });
+      setState(actionErrorState(err));
     }
   };
 

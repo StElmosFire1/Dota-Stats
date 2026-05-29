@@ -4,6 +4,14 @@
 // see mobile/README.md.
 import Constants from 'expo-constants';
 import { getSessionCookie } from './session';
+import {
+  enqueueAction,
+  QueuedError,
+  startQueueAutoDrain,
+  type QueuedAction,
+  type QueuedActionKind,
+  type ReplayResult,
+} from './offlineQueue';
 
 const API_BASE: string =
   (Constants.expoConfig?.extra as any)?.apiBase || 'https://oceinhouse.gg';
@@ -12,7 +20,12 @@ export function apiBase(): string {
   return API_BASE;
 }
 
-type FetchOpts = RequestInit & { auth?: boolean };
+// `queue` opts in a write action to the Task #460 offline retry queue. When
+// set, a network-level failure (no HTTP response) persists the
+// `{ method, path, body }` triple and throws a `QueuedError` instead of a
+// raw network error, so the screen can show "Queued — will retry when
+// online".
+type FetchOpts = RequestInit & { auth?: boolean; queue?: { kind: QueuedActionKind } };
 
 // Task #414 — single, app-wide 401 handler. The session-expiry modal in
 // app/_layout.tsx subscribes here; every write-action screen routes its
@@ -51,7 +64,24 @@ async function request<T = any>(path: string, opts: FetchOpts = {}): Promise<T> 
   const cookie = await getSessionCookie();
   if (cookie) headers['Cookie'] = cookie;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+  } catch (netErr) {
+    // No HTTP response at all — offline, DNS failure, or a dropped
+    // connection mid-tap. If this is a queueable write, persist the intent
+    // and surface it as "queued" rather than a hard error (Task #460).
+    if (opts.queue) {
+      await enqueueAction({
+        kind: opts.queue.kind,
+        method: (opts.method as string) || 'POST',
+        path,
+        body: typeof opts.body === 'string' ? opts.body : null,
+      });
+      throw new QueuedError(opts.queue.kind);
+    }
+    throw netErr;
+  }
   const ct = res.headers.get('content-type') || '';
   const isJson = ct.includes('application/json');
   const payload = isJson ? await res.json().catch(() => null) : await res.text();
@@ -149,21 +179,21 @@ export const api = {
   // POST /api/matches/:id/mvp-vote and POST /api/bookings/:id/reminder-ack.
   // The rest pre-existed for the web app.
   inhouseAccept: (sessionId: string | number) =>
-    request<{ player: any }>(`/api/inhouse/${sessionId}/accept`, { method: 'POST' }),
+    request<{ player: any }>(`/api/inhouse/${sessionId}/accept`, { method: 'POST', queue: { kind: 'ready-check' } }),
   inhouseDecline: (sessionId: string | number) =>
-    request<{ player: any }>(`/api/inhouse/${sessionId}/decline`, { method: 'POST' }),
+    request<{ player: any }>(`/api/inhouse/${sessionId}/decline`, { method: 'POST', queue: { kind: 'ready-check' } }),
   castMvpVote: (matchId: string | number, ratedAccountId: string | number) =>
     request<{ ok: true; match_id: number; rated_account_id: string }>(
       `/api/matches/${matchId}/mvp-vote`,
-      { method: 'POST', body: JSON.stringify({ rated_account_id: String(ratedAccountId) }) }
+      { method: 'POST', body: JSON.stringify({ rated_account_id: String(ratedAccountId) }), queue: { kind: 'mvp-vote' } }
     ),
   respondScrim: (scrimId: string | number, accept: boolean) =>
     request<{ scrim: any }>(`/api/scrims/${scrimId}/respond`, {
-      method: 'POST', body: JSON.stringify({ accept }),
+      method: 'POST', body: JSON.stringify({ accept }), queue: { kind: 'scrim' },
     }),
   respondRosterTransfer: (transferId: string | number, approve: boolean) =>
     request<any>(`/api/roster-transfers/${transferId}/respond`, {
-      method: 'POST', body: JSON.stringify({ approve }),
+      method: 'POST', body: JSON.stringify({ approve }), queue: { kind: 'roster-transfer' },
     }),
   bookCoach: (coachId: string | number, body: {
     slot_start_at: string;
@@ -187,7 +217,7 @@ export const api = {
     ),
   ackBookingReminder: (bookingId: string | number) =>
     request<{ ok: true; booking: any }>(`/api/bookings/${bookingId}/reminder-ack`, {
-      method: 'POST',
+      method: 'POST', queue: { kind: 'booking-reminder' },
     }),
 
   // Read-side helpers used by action screens for context (player names etc).
@@ -216,3 +246,37 @@ export type PendingAction = {
   subtitle?: string;
   [extra: string]: any;
 };
+
+// ---------- Task #460 — offline queue replay ----------
+// Re-sends a previously-queued write. Deliberately bypasses the `queue`
+// opt so a still-offline replay doesn't re-enqueue the same intent — the
+// drainer keeps it on a 'retry' result instead. Any HTTP response (even a
+// 4xx) counts as delivered: the server saw the request, so we drop it.
+async function replayQueuedAction(action: QueuedAction): Promise<ReplayResult> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (action.body) headers['Content-Type'] = 'application/json';
+  const cookie = await getSessionCookie();
+  if (cookie) headers['Cookie'] = cookie;
+  try {
+    const res = await fetch(`${API_BASE}${action.path}`, {
+      method: action.method,
+      headers,
+      body: action.body ?? undefined,
+    });
+    if (res.status === 401 && _onUnauthorized) {
+      try { _onUnauthorized(); } catch (_) {}
+    }
+    return 'ok';
+  } catch (_) {
+    return 'retry'; // still no connection — keep for the next pass
+  }
+}
+
+// Starts the foreground retry loop (NetInfo + AppState driven). Call once
+// from the root layout; returns an unsubscribe.
+export function startOfflineQueue(): () => void {
+  return startQueueAutoDrain(replayQueuedAction);
+}
+
+export { QueuedError } from './offlineQueue';
+export { getQueuedCount, subscribeQueue } from './offlineQueue';

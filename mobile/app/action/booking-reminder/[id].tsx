@@ -4,7 +4,7 @@
 // /api/bookings/:id/reminder-ack (new in this task).
 import React, { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionShell, ActionState, PrimaryButton } from '../../../components/ActionShell';
+import { ActionShell, ActionState, PrimaryButton, actionErrorState } from '../../../components/ActionShell';
 import { api } from '../../../lib/api';
 
 export default function BookingReminderAck() {
@@ -17,7 +17,7 @@ export default function BookingReminderAck() {
       await api.ackBookingReminder(id!);
       setState({ kind: 'ok', message: 'Got it — your coach will see you\'re ready.' });
     } catch (err) {
-      setState({ kind: 'error', message: (err as Error).message });
+      setState(actionErrorState(err));
     }
   };
 

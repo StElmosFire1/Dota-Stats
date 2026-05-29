@@ -8,12 +8,29 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { theme } from '../lib/theme';
+import { QueuedError } from '../lib/offlineQueue';
 
 export type ActionState =
   | { kind: 'idle' }
   | { kind: 'busy' }
   | { kind: 'ok'; message: string }
+  | { kind: 'queued'; message: string }
   | { kind: 'error'; message: string };
+
+// Task #460 — maps a thrown error into the right terminal state. A
+// QueuedError means the network dropped mid-tap and the intent was saved
+// for retry, so we show a calm "queued" affordance instead of a red error.
+export function actionErrorState(err: unknown): ActionState {
+  if (err instanceof QueuedError) {
+    return { kind: 'queued', message: 'Queued — will retry when online.' };
+  }
+  return { kind: 'error', message: (err as Error)?.message || 'Request failed' };
+}
+
+// Disables a button once the action has reached a terminal-ish state.
+export function isActionPending(state: ActionState): boolean {
+  return state.kind === 'busy';
+}
 
 export function ActionShell({
   title,
@@ -39,6 +56,9 @@ export function ActionShell({
           ) : null}
           {state.kind === 'ok' ? (
             <Text style={s.ok} accessibilityRole="text" accessibilityLiveRegion="polite">{state.message}</Text>
+          ) : null}
+          {state.kind === 'queued' ? (
+            <Text style={s.queued} accessibilityRole="text" accessibilityLiveRegion="polite">{state.message}</Text>
           ) : null}
           {state.kind === 'error' ? (
             <Text style={s.error} accessibilityRole="text" accessibilityLiveRegion="polite">{state.message}</Text>
@@ -94,6 +114,7 @@ const s = StyleSheet.create({
   subtitle: { color: theme.textMuted, lineHeight: 20 },
   body: { marginTop: 12, gap: 12 },
   ok: { color: theme.win, fontWeight: '700', marginTop: 12 },
+  queued: { color: theme.amber, fontWeight: '700', marginTop: 12 },
   error: { color: theme.loss, marginTop: 12 },
   btn: { borderRadius: 10, paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' },
   btnLabel: { fontWeight: '800' },

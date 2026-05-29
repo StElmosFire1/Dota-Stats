@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.17",
+    "title": "Mobile: don't lose an action when the network drops mid-tap (Task #460)",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** Task #414 explicitly left offline queueing out of scope. On flaky transit Wi-Fi, tapping Accept on a ready-check (or any mobile write action) just failed with a red error — the intent was lost and the user had to re-open a push that may already have timed out server-side. That meant missed lobby seats.",
+      "**Queue.** New `mobile/lib/offlineQueue.ts` is an AsyncStorage-backed queue that persists the `{ method, path, body }` triple whenever a write fails at the network level (no HTTP response). De-dupes identical pending intents so a double-tap doesn't stack.",
+      "**Retry loop.** A foreground drainer wired to `NetInfo` + `AppState` (started once in `mobile/app/_layout.tsx`) replays the queue the moment connectivity returns or the app is foregrounded — single-flight and in tap order, so \"accept then decline\" replays correctly.",
+      "**TTLs.** Per-kind expiries (`ready-check` 2 min, `mvp-vote` / `booking-reminder` 1 h, `scrim` 6 h, `roster-transfer` 1 day) drop stale intents so a queued ready-check accept never fires after the accept window closes. Any HTTP response on replay (even a 4xx) counts as delivered and the intent is dropped; only true network failures keep it queued.",
+      "**UX.** Each action screen now shows a calm amber \"Queued — will retry when online\" affordance (via `actionErrorState` in `ActionShell.tsx`) instead of the red error. Coach booking / VOD review are deliberately NOT queued — they need an interactive Stripe Checkout hand-off.",
+      "**Scope.** Full edition mobile companion only. Adds `@react-native-async-storage/async-storage` + `@react-native-community/netinfo`; no server or schema change — replays hit the existing Task #414 endpoints."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.16",
     "title": "Mobile Inbox — every pending action in one place (Task #459)",
     "published_at": "2026-05-29",

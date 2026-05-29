@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { Text, View, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionShell, ActionState } from '../../../components/ActionShell';
+import { ActionShell, ActionState, actionErrorState } from '../../../components/ActionShell';
 import { api } from '../../../lib/api';
 import { getAccountId } from '../../../lib/session';
 import { theme } from '../../../lib/theme';
@@ -46,7 +46,7 @@ export default function MvpVote() {
       await api.castMvpVote(id!, picked);
       setState({ kind: 'ok', message: 'MVP vote recorded.' });
     } catch (err) {
-      setState({ kind: 'error', message: (err as Error).message });
+      setState(actionErrorState(err));
     }
   };
 

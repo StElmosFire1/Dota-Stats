@@ -27,11 +27,36 @@ Push notifications encode the action URL as `data.url` (e.g.
 screen via the deep-link router in `app/_layout.tsx`. A 401 from any
 write action raises a single app-wide reauth modal.
 
+## Offline write-action queue (Task #460)
+
+If the network drops mid-tap (flaky transit Wi-Fi), a write action no
+longer fails with a red error and loses the user's intent. Instead:
+
+- The api client (`lib/api.ts`) detects a *network-level* failure (no HTTP
+  response) on any write opted in via `queue: { kind }` and persists the
+  `{ method, path, body }` triple to an AsyncStorage-backed queue
+  (`lib/offlineQueue.ts`), then throws a `QueuedError`.
+- The action screen shows an amber "Queued — will retry when online"
+  affordance (via `actionErrorState` in `components/ActionShell.tsx`)
+  instead of the red error.
+- A foreground drainer wired to `NetInfo` + `AppState` (started once in
+  `app/_layout.tsx` via `startOfflineQueue`) replays the queue the moment
+  connectivity is restored, in tap order, single-flight.
+- Per-kind TTLs (`ready-check` 2 min, `mvp-vote` / `booking-reminder` 1 h,
+  `scrim` 6 h, `roster-transfer` 1 day) drop stale intents so a queued
+  ready-check accept never fires after the accept window closes.
+- Any HTTP response on replay (even a 4xx) counts as delivered and the
+  intent is dropped; only true network failures keep it queued. Coach
+  booking / VOD review are NOT queued — they need an interactive Stripe
+  Checkout hand-off, so deferring them makes no sense.
+
+Requires `@react-native-async-storage/async-storage` and
+`@react-native-community/netinfo` (run `npx expo install` after pulling).
+
 ## Out of scope (intentionally)
 
 - Any other write/mutation flow (admin panel, queue management,
   captain draft).
-- Offline queueing of write actions.
 - iOS / Android app-store submission (EAS build pipeline only).
 - Community-edition wiring.
 

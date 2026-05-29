@@ -4,7 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
-import { api, setOnUnauthorized } from '../lib/api';
+import { api, setOnUnauthorized, startOfflineQueue } from '../lib/api';
 import {
   clearSession, getAccountId, setAccountId, setSessionFromSetCookieHeader,
 } from '../lib/session';
@@ -32,6 +32,14 @@ export default function RootLayout() {
   useEffect(() => {
     setOnUnauthorized(showReauth);
     return () => setOnUnauthorized(null);
+  }, []);
+
+  // Task #460 — start the offline write-action drainer. Replays any
+  // network-dropped intents (ready-check accept, MVP vote, etc.) the moment
+  // NetInfo reports connectivity restored or the app returns to foreground.
+  useEffect(() => {
+    const stop = startOfflineQueue();
+    return () => stop();
   }, []);
 
   // Handle the `oceinhouse://?t=<token>` deep link that Steam OpenID lands

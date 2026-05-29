@@ -4,7 +4,7 @@
 // /api/roster-transfers/:id/respond (already session-authed).
 import React, { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionShell, ActionState, PrimaryButton } from '../../../components/ActionShell';
+import { ActionShell, ActionState, PrimaryButton, actionErrorState } from '../../../components/ActionShell';
 import { api } from '../../../lib/api';
 
 export default function RosterTransferRespond() {
@@ -17,7 +17,7 @@ export default function RosterTransferRespond() {
       await api.respondRosterTransfer(id!, approve);
       setState({ kind: 'ok', message: approve ? 'Transfer approved.' : 'Transfer declined.' });
     } catch (err) {
-      setState({ kind: 'error', message: (err as Error).message });
+      setState(actionErrorState(err));
     }
   };
 
