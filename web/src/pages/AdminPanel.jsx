@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getLockdownState, setLockdownState, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -129,6 +129,238 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
 // Lets the owner flip the public site between "locked" (owner-only sign-in
 // gate) and "open" without SSH/pm2/env edits. The env var still wins when
 // set, so the toggle is read-only in that case.
+// Task #450 — inhouse coin betting controls: global kill-switch, plus a
+// per-match market inspector for void / manual-settle / custom-market
+// creation. Markets are loaded on demand by entering a match id.
+function BettingControlsCard({ superuserKey }) {
+  const [paused, setPaused] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [matchId, setMatchId] = useState('');
+  const [markets, setMarkets] = useState(null);
+  const [loadingMarkets, setLoadingMarkets] = useState(false);
+  // Custom market form.
+  const [customTitle, setCustomTitle] = useState('');
+  const [customOutcomes, setCustomOutcomes] = useState('');
+  const [customTrigger, setCustomTrigger] = useState('match_start');
+
+  const loadMarkets = useCallback(async () => {
+    if (!matchId) return;
+    setLoadingMarkets(true); setError(''); setMsg('');
+    try {
+      const d = await getInhouseMarkets(matchId.trim());
+      setMarkets(d.markets || []);
+      if (typeof d.paused === 'boolean') setPaused(d.paused);
+    } catch (e) {
+      setError(e.message || 'Failed to load markets');
+      setMarkets(null);
+    } finally {
+      setLoadingMarkets(false);
+    }
+  }, [matchId]);
+
+  const togglePause = async () => {
+    if (saving) return;
+    const next = !paused;
+    if (!window.confirm(next ? 'Pause ALL coin betting?' : 'Resume coin betting?')) return;
+    setSaving(true); setError(''); setMsg('');
+    try {
+      const r = await adminSetBettingPaused(next, superuserKey);
+      setPaused(Boolean(r.paused));
+      setMsg(next ? '⏸ Betting paused.' : '▶ Betting resumed.');
+    } catch (e) {
+      setError(e.message || 'Failed to toggle pause');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const voidMkt = async (m) => {
+    if (!window.confirm(`Void "${m.title}" and refund all stakes? This cannot be undone.`)) return;
+    setError(''); setMsg('');
+    try {
+      await adminVoidBetMarket(m.id, superuserKey);
+      setMsg(`↩ Voided "${m.title}".`);
+      loadMarkets();
+    } catch (e) {
+      setError(e.message || 'Void failed');
+    }
+  };
+
+  const settleMkt = async (m, outcomeId) => {
+    const o = m.outcomes.find(x => x.id === outcomeId);
+    if (!o) return;
+    if (!window.confirm(`Settle "${m.title}" to "${o.label}"? Winners are paid immediately.`)) return;
+    setError(''); setMsg('');
+    try {
+      await adminSettleBetMarket(m.id, outcomeId, superuserKey);
+      setMsg(`✓ Settled "${m.title}".`);
+      loadMarkets();
+    } catch (e) {
+      setError(e.message || 'Settle failed');
+    }
+  };
+
+  const createCustom = async () => {
+    const outcomes = customOutcomes.split('\n').map(s => s.trim()).filter(Boolean).map(label => ({ label }));
+    if (!customTitle.trim() || outcomes.length < 2) {
+      setError('Custom market needs a title and at least 2 outcomes (one per line).');
+      return;
+    }
+    setError(''); setMsg('');
+    try {
+      await adminCreateCustomMarket(matchId.trim(), { title: customTitle.trim(), outcomes, lockTrigger: customTrigger }, superuserKey);
+      setMsg('✓ Custom market created.');
+      setCustomTitle(''); setCustomOutcomes('');
+      loadMarkets();
+    } catch (e) {
+      setError(e.message || 'Create failed');
+    }
+  };
+
+  const inputStyle = {
+    padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)',
+    background: 'var(--bg-input, var(--bg))', color: 'var(--text-primary)', fontSize: 13,
+  };
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-betting-h">
+      <div className="card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <h2 id="ap-betting-h" style={{ margin: 0, fontSize: '1.05rem' }}>🪙 Coin betting</h2>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {paused == null ? '—' : paused ? 'PAUSED' : 'LIVE'}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={!paused}
+              aria-label={paused ? 'Resume coin betting' : 'Pause coin betting'}
+              onClick={togglePause}
+              disabled={saving}
+              style={{
+                position: 'relative', width: 56, height: 30, borderRadius: 999, border: 0,
+                background: paused ? '#ef4444' : '#22c55e',
+                cursor: saving ? 'not-allowed' : 'pointer', padding: 0,
+              }}
+            >
+              <span aria-hidden="true" style={{
+                position: 'absolute', top: 3, left: paused ? 3 : 29,
+                width: 24, height: 24, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.15s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+              }} />
+            </button>
+          </div>
+        </div>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 0, marginBottom: 14 }}>
+          Kill-switch pauses all new bets globally. Below, load a match's markets to void (refund),
+          manually settle a custom market, or create a new custom market.
+        </p>
+        {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{error}</div>}
+        {msg && <div role="status" style={{ color: '#22c55e', fontSize: 13, marginBottom: 10 }}>{msg}</div>}
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          <input
+            type="text"
+            value={matchId}
+            onChange={e => setMatchId(e.target.value)}
+            placeholder="Match ID"
+            aria-label="Match ID to load betting markets"
+            style={{ ...inputStyle, flex: 1, minWidth: 160 }}
+          />
+          <button type="button" className="btn" onClick={loadMarkets} disabled={!matchId || loadingMarkets}>
+            {loadingMarkets ? 'Loading…' : 'Load markets'}
+          </button>
+        </div>
+
+        {markets && markets.length === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>No markets on this match.</div>
+        )}
+        {markets && markets.map(m => (
+          <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>
+                {m.title} <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>· {m.status} · 🪙 {m.pool}</span>
+              </div>
+              {(m.status === 'open' || m.status === 'locked') && (
+                <button
+                  type="button"
+                  onClick={() => voidMkt(m)}
+                  aria-label={`Void market ${m.title} and refund all stakes`}
+                  style={{ ...inputStyle, cursor: 'pointer', color: '#ef4444', borderColor: '#ef444455' }}
+                >
+                  ↩ Void / refund
+                </button>
+              )}
+            </div>
+            {m.is_custom && (m.status === 'open' || m.status === 'locked') && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Settle to outcome:</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {m.outcomes.map(o => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => settleMkt(m, o.id)}
+                      aria-label={`Settle ${m.title} to ${o.label}`}
+                      style={{ ...inputStyle, cursor: 'pointer' }}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {matchId && markets && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 0, marginBottom: 10 }}>Create custom market</h3>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <input
+                type="text"
+                value={customTitle}
+                onChange={e => setCustomTitle(e.target.value)}
+                placeholder="Market title (e.g. First Roshan)"
+                aria-label="Custom market title"
+                style={inputStyle}
+              />
+              <textarea
+                value={customOutcomes}
+                onChange={e => setCustomOutcomes(e.target.value)}
+                placeholder={'One outcome per line\nRadiant\nDire'}
+                aria-label="Custom market outcomes, one per line"
+                rows={4}
+                style={{ ...inputStyle, resize: 'vertical' }}
+              />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label htmlFor="ap-custom-trigger" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Lock trigger</label>
+                <select
+                  id="ap-custom-trigger"
+                  value={customTrigger}
+                  onChange={e => setCustomTrigger(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="lobby_launch">Lobby launch</option>
+                  <option value="match_start">Match start</option>
+                  <option value="first_blood">First blood</option>
+                </select>
+                <button type="button" className="btn" onClick={createCustom}>Create market</button>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                Custom markets are settled manually (no auto-grader) — use the per-outcome settle buttons above.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function LockdownCard({ superuserKey }) {
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -5040,6 +5272,9 @@ export default function AdminPanel() {
 
       {/* Task #492 — AI agent traffic */}
       <AgentTrafficCard superuserKey={superuserKey} />
+
+      {/* Task #450 — coin betting controls */}
+      <BettingControlsCard superuserKey={superuserKey} />
 
       </>)}
 

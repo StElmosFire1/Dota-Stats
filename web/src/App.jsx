@@ -116,6 +116,7 @@ const Tournaments = lazy(() => import('./pages/Tournaments'));
 const WeekendTournament = lazy(() => import('./pages/WeekendTournament'));
 const RecordMatch = lazy(() => import('./pages/RecordMatch'));
 const Inhouse = lazy(() => import('./pages/Inhouse'));
+const InhouseMarkets = lazy(() => import('./pages/InhouseMarkets'));
 const PlayerInsights = lazy(() => import('./pages/PlayerInsights'));
 const Join = lazy(() => import('./pages/Join'));
 const SettingsNotifications = lazy(() => import('./pages/SettingsNotifications'));
@@ -1294,6 +1295,7 @@ function AppRoutes() {
                 <Route path="/pudge-stats" element={<PudgeStats />} />
                 <Route path="/schedule" element={<Schedule />} />
                 <Route path="/inhouse" element={<Inhouse />} />
+                <Route path="/inhouse/:matchId/markets" element={<InhouseMarkets />} />
                 <Route path="/social" element={<PlayerInsights defaultTab="network" />} />
                 <Route path="/player-network" element={<PlayerInsights defaultTab="network" />} />
                 <Route path="/benchmarks" element={<PlayerInsights defaultTab="benchmarks" />} />

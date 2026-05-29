@@ -2435,6 +2435,70 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_wagers_match ON match_wagers (match_ref)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_wagers_account ON match_wagers (account_id)`);
 
+    // Task #450 — Inhouse coin betting (full markets). Generic pari-mutuel
+    // markets engine over inhouse matches, keyed by match_id (mirrors the
+    // Task #449 match_prediction_windows lifecycle: open on matchIdCaptured,
+    // lock on matchStarted/first-blood, settle in recordMatch). Full edition
+    // only — community edition has no betting wiring.
+    //   bet_markets          — one row per market on a match. status:
+    //                          open|locked|settled|voided. player_account_ids
+    //                          captures the 10 drafted players so the place-bet
+    //                          path can reject in-match players (self-bet block)
+    //                          even before player_stats rows exist.
+    //   bet_market_outcomes  — the selectable outcomes for a market.
+    //   bets                 — one bet per (market, account). Stake debits the
+    //                          coin ledger at place time; payout credits at
+    //                          settlement (pari-mutuel pool split).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS bet_markets (
+        id SERIAL PRIMARY KEY,
+        match_id BIGINT NOT NULL,
+        market_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','locked','settled','voided')),
+        lock_trigger TEXT NOT NULL,
+        opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        locked_at TIMESTAMPTZ,
+        settled_at TIMESTAMPTZ,
+        voided_at TIMESTAMPTZ,
+        winning_outcome_id INTEGER,
+        is_custom BOOLEAN NOT NULL DEFAULT false,
+        created_by TEXT,
+        player_account_ids BIGINT[] NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (match_id, market_type, title)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_bet_markets_match ON bet_markets (match_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_bet_markets_status ON bet_markets (status)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS bet_market_outcomes (
+        id SERIAL PRIMARY KEY,
+        market_id INTEGER NOT NULL REFERENCES bet_markets(id) ON DELETE CASCADE,
+        outcome_key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (market_id, outcome_key)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_bet_outcomes_market ON bet_market_outcomes (market_id)`);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS bets (
+        id SERIAL PRIMARY KEY,
+        market_id INTEGER NOT NULL REFERENCES bet_markets(id) ON DELETE CASCADE,
+        outcome_id INTEGER NOT NULL REFERENCES bet_market_outcomes(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        stake INTEGER NOT NULL CHECK (stake > 0),
+        payout INTEGER,
+        status TEXT NOT NULL DEFAULT 'placed' CHECK (status IN ('placed','won','lost','refunded')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        settled_at TIMESTAMPTZ,
+        UNIQUE (market_id, account_id)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_bets_market ON bets (market_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_bets_account ON bets (account_id)`);
+
     await p.query(`
       CREATE TABLE IF NOT EXISTS coin_pack_purchases (
         id SERIAL PRIMARY KEY,
@@ -4860,6 +4924,15 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
       }
     } catch (e) {
       console.warn(`[Wagers] resolve failed for match ${matchStats.matchId}: ${e.message}`);
+    }
+    // Task #450 — settle inhouse coin betting markets from recorded data.
+    try {
+      const r = await settleMarketsForMatch(String(matchStats.matchId));
+      if (r.settled > 0) {
+        console.log(`[Betting] match ${matchStats.matchId}: ${r.settled} market(s) settled, ${r.paid} coins paid out`);
+      }
+    } catch (e) {
+      console.warn(`[Betting] settle failed for match ${matchStats.matchId}: ${e.message}`);
     }
 
     return { matchId: matchStats.matchId, achievementGrants };
@@ -20668,6 +20741,551 @@ async function resolveCoinWagers(matchRef, radiantWin) {
   };
 }
 
+// ===========================================================================
+// Task #450 — Inhouse coin betting (full markets).
+// Generic pari-mutuel markets engine keyed by match_id. See
+// src/betting/markets.js for the pure engine config (market types, payout
+// maths, buckets, caps). Everything below is the DB / coin-ledger plumbing.
+// ===========================================================================
+const bettingEngine = require('../betting/markets');
+
+const BETTING_PAUSED_KEY = 'betting_paused';
+
+async function getBettingPaused() {
+  try {
+    const v = await getSetting(BETTING_PAUSED_KEY);
+    return v === '1' || v === 'true' || v === true;
+  } catch (_) { return false; }
+}
+
+async function setBettingPaused(paused) {
+  await setSetting(BETTING_PAUSED_KEY, paused ? '1' : '0');
+  return Boolean(paused);
+}
+
+// Build the settlement context for a match from recorded data. Returns null
+// when the match hasn't been recorded yet (settlement should not run).
+async function _buildBettingContext(matchId) {
+  const p = getPool();
+  const m = await p.query(
+    `SELECT match_id, radiant_win, duration, first_blood_chain FROM matches WHERE match_id = $1`,
+    [String(matchId)],
+  );
+  if (!m.rows.length) return null;
+  const match = m.rows[0];
+  const ps = await p.query(
+    `SELECT account_id, persona_name, team, COALESCE(kills,0)::int AS kills,
+            perf, COALESCE(firstblood_claimed,0)::int AS firstblood_claimed
+       FROM player_stats WHERE match_id = $1`,
+    [String(matchId)],
+  );
+  const rows = ps.rows || [];
+  const totalKills = rows.reduce((s, r) => s + (Number(r.kills) || 0), 0);
+  // First blood: prefer the parsed chain, fall back to the firstblood_claimed
+  // flag on player_stats.
+  let firstBloodTeam = null;
+  try {
+    const chain = match.first_blood_chain;
+    if (chain && chain.fbTeam != null) firstBloodTeam = bettingEngine.normaliseTeam(chain.fbTeam);
+  } catch (_) {}
+  if (!firstBloodTeam) {
+    const fb = rows.find(r => Number(r.firstblood_claimed) > 0);
+    if (fb) firstBloodTeam = bettingEngine.normaliseTeam(fb.team);
+  }
+  // MVP: highest perf, tiebreak by kills. Only real accounts (account_id > 0).
+  let mvpAccountId = null;
+  let best = -Infinity;
+  for (const r of rows) {
+    if (!(Number(r.account_id) > 0)) continue;
+    const perf = r.perf != null ? Number(r.perf) : -1;
+    const score = perf >= 0 ? perf * 100 + Number(r.kills || 0) : Number(r.kills || 0);
+    if (score > best) { best = score; mvpAccountId = Number(r.account_id); }
+  }
+  return {
+    radiantWin: typeof match.radiant_win === 'boolean' ? match.radiant_win : null,
+    durationSec: Number(match.duration) || null,
+    firstBloodTeam,
+    totalKills,
+    mvpAccountId,
+    players: rows
+      .filter(r => Number(r.account_id) > 0)
+      .map(r => ({ accountId: Number(r.account_id), name: r.persona_name || null, team: r.team })),
+  };
+}
+
+// Create a single market + its outcomes inside an existing client tx.
+async function _insertMarket(client, { matchId, marketType, title, lockTrigger, outcomes, isCustom = false, createdBy = null, playerAccountIds = [] }) {
+  const ins = await client.query(
+    `INSERT INTO bet_markets (match_id, market_type, title, lock_trigger, is_custom, created_by, player_account_ids)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (match_id, market_type, title) DO NOTHING
+     RETURNING id`,
+    [String(matchId), marketType, title, lockTrigger, isCustom, createdBy, playerAccountIds],
+  );
+  if (!ins.rowCount) return null; // already exists — idempotent open
+  const marketId = ins.rows[0].id;
+  for (const o of outcomes) {
+    await client.query(
+      `INSERT INTO bet_market_outcomes (market_id, outcome_key, label, sort_order)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (market_id, outcome_key) DO NOTHING`,
+      [marketId, o.key, String(o.label).slice(0, 120), o.sortOrder || 0],
+    );
+  }
+  return marketId;
+}
+
+// Open the default market set for a match. Idempotent — re-firing the
+// matchIdCaptured hook (or a partial open) only fills in what's missing.
+// `players` is [{ accountId, name, team }] captured from the locked lobby so
+// MVP outcomes + the self-bet block work before player_stats rows exist.
+async function openMarketsForMatch(matchId, { players = [] } = {}) {
+  if (!matchId) return { opened: 0 };
+  const p = getPool();
+  const playerAccountIds = players.map(pl => Number(pl.accountId)).filter(n => n > 0);
+  const ctx = { players };
+  const client = await p.connect();
+  let opened = 0;
+  try {
+    await client.query('BEGIN');
+    for (const type of bettingEngine.DEFAULT_MARKET_TYPES) {
+      const def = bettingEngine.MARKET_TYPES[type];
+      if (!def) continue;
+      const outcomes = def.buildOutcomes(ctx) || [];
+      if (!outcomes.length) continue; // e.g. MVP with no players captured
+      const id = await _insertMarket(client, {
+        matchId,
+        marketType: type,
+        title: def.title,
+        lockTrigger: def.lockTrigger,
+        outcomes,
+        playerAccountIds,
+      });
+      if (id) opened++;
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw e;
+  } finally {
+    client.release();
+  }
+  return { opened };
+}
+
+// Lock markets whose lock_trigger is in `triggers`. Lazy — only flips open
+// markets to 'locked'. Idempotent.
+async function lockMarketsForMatch(matchId, triggers) {
+  if (!matchId || !Array.isArray(triggers) || !triggers.length) return { locked: 0 };
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE bet_markets
+        SET status = 'locked', locked_at = NOW()
+      WHERE match_id = $1 AND status = 'open' AND lock_trigger = ANY($2::text[])`,
+    [String(matchId), triggers],
+  );
+  return { locked: r.rowCount || 0 };
+}
+
+// Full read model for the markets page: every market on a match with its
+// outcomes (incl. per-outcome staked pool + bettor count), the viewer's own
+// bet, and computed lock state.
+async function getMarketsForMatch(matchId, viewerAccountId = null) {
+  if (!matchId) return [];
+  const p = getPool();
+  const markets = await p.query(
+    `SELECT * FROM bet_markets WHERE match_id = $1 ORDER BY is_custom ASC, id ASC`,
+    [String(matchId)],
+  );
+  if (!markets.rows.length) return [];
+  const marketIds = markets.rows.map(m => m.id);
+  const outcomes = await p.query(
+    `SELECT o.id, o.market_id, o.outcome_key, o.label, o.sort_order,
+            COALESCE(SUM(b.stake), 0)::int AS pool,
+            COUNT(b.id)::int AS bettors
+       FROM bet_market_outcomes o
+       LEFT JOIN bets b ON b.outcome_id = o.id
+      WHERE o.market_id = ANY($1::int[])
+      GROUP BY o.id
+      ORDER BY o.sort_order ASC, o.id ASC`,
+    [marketIds],
+  );
+  let myBets = [];
+  if (viewerAccountId) {
+    const mb = await p.query(
+      `SELECT * FROM bets WHERE market_id = ANY($1::int[]) AND account_id = $2`,
+      [marketIds, viewerAccountId],
+    );
+    myBets = mb.rows;
+  }
+  return markets.rows.map(m => {
+    const outs = outcomes.rows.filter(o => o.market_id === m.id);
+    const pool = outs.reduce((s, o) => s + (Number(o.pool) || 0), 0);
+    const mine = myBets.find(b => b.market_id === m.id) || null;
+    const bettable = m.status === 'open';
+    return {
+      id: m.id,
+      match_id: String(m.match_id),
+      market_type: m.market_type,
+      title: m.title,
+      status: m.status,
+      lock_trigger: m.lock_trigger,
+      is_custom: m.is_custom,
+      opened_at: m.opened_at,
+      locked_at: m.locked_at,
+      settled_at: m.settled_at,
+      voided_at: m.voided_at,
+      winning_outcome_id: m.winning_outcome_id,
+      pool,
+      bettable,
+      outcomes: outs.map(o => ({
+        id: o.id,
+        outcome_key: o.outcome_key,
+        label: o.label,
+        pool: Number(o.pool) || 0,
+        bettors: Number(o.bettors) || 0,
+        is_winner: m.winning_outcome_id === o.id,
+      })),
+      my_bet: mine ? {
+        id: mine.id,
+        outcome_id: mine.outcome_id,
+        stake: mine.stake,
+        status: mine.status,
+        payout: mine.payout,
+      } : null,
+    };
+  });
+}
+
+// Place a bet. Atomic, per-account advisory lock (serialises against grants,
+// purchases, and other bets). Enforces: kill-switch, market open, valid
+// outcome, self-bet block, min/max stake, per-match cap, daily loss cap,
+// one bet per market, sufficient balance.
+async function placeBet({ accountId, marketId, outcomeId, stake }) {
+  if (!accountId) { const e = new Error('Sign in to bet'); e.code = 'AUTH'; throw e; }
+  const marketIdInt = parseInt(marketId, 10);
+  const outcomeIdInt = parseInt(outcomeId, 10);
+  const stakeInt = parseInt(stake, 10);
+  if (!Number.isInteger(marketIdInt) || !Number.isInteger(outcomeIdInt)) {
+    const e = new Error('Invalid market or outcome'); e.code = 'BAD_INPUT'; throw e;
+  }
+  if (!Number.isInteger(stakeInt) || stakeInt < bettingEngine.BET_MIN_STAKE) {
+    const e = new Error(`Minimum stake is ${bettingEngine.BET_MIN_STAKE} coins`); e.code = 'BAD_INPUT'; throw e;
+  }
+  if (stakeInt > bettingEngine.BET_MAX_STAKE_PER_MARKET) {
+    const e = new Error(`Maximum stake per market is ${bettingEngine.BET_MAX_STAKE_PER_MARKET} coins`); e.code = 'STAKE_TOO_HIGH'; throw e;
+  }
+  if (await getBettingPaused()) {
+    const e = new Error('Betting is currently paused by an admin'); e.code = 'BETTING_PAUSED'; throw e;
+  }
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [accountId]);
+    await client.query(`INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`, [accountId]);
+    // Lock the market row so concurrent locks/settles can't slip past.
+    const mr = await client.query(`SELECT * FROM bet_markets WHERE id = $1 FOR UPDATE`, [marketIdInt]);
+    if (!mr.rows.length) { const e = new Error('Market not found'); e.code = 'NOT_FOUND'; await client.query('ROLLBACK'); throw e; }
+    const market = mr.rows[0];
+    if (market.status !== 'open') { const e = new Error('This market is closed for betting'); e.code = 'MARKET_CLOSED'; await client.query('ROLLBACK'); throw e; }
+    // Self-bet block: a player in the match can't bet on it.
+    const players = (market.player_account_ids || []).map(Number);
+    if (players.includes(Number(accountId))) {
+      const e = new Error("You can't bet on a match you're playing in"); e.code = 'SELF_BET'; await client.query('ROLLBACK'); throw e;
+    }
+    // Outcome must belong to this market.
+    const or = await client.query(`SELECT id FROM bet_market_outcomes WHERE id = $1 AND market_id = $2`, [outcomeIdInt, marketIdInt]);
+    if (!or.rows.length) { const e = new Error('Invalid outcome for this market'); e.code = 'BAD_INPUT'; await client.query('ROLLBACK'); throw e; }
+    // One bet per market.
+    const dup = await client.query(`SELECT id FROM bets WHERE market_id = $1 AND account_id = $2`, [marketIdInt, accountId]);
+    if (dup.rows.length) { const e = new Error('You already have a bet on this market'); e.code = 'ALREADY_BET'; await client.query('ROLLBACK'); throw e; }
+    // Per-match stake cap (sum of this user's stakes across all markets on this match).
+    const matchStakeRes = await client.query(
+      `SELECT COALESCE(SUM(b.stake), 0)::int AS staked
+         FROM bets b JOIN bet_markets bm ON bm.id = b.market_id
+        WHERE bm.match_id = $1 AND b.account_id = $2`,
+      [String(market.match_id), accountId],
+    );
+    const alreadyStaked = matchStakeRes.rows[0]?.staked || 0;
+    if (alreadyStaked + stakeInt > bettingEngine.BET_MAX_STAKE_PER_MATCH) {
+      const e = new Error(`Per-match cap is ${bettingEngine.BET_MAX_STAKE_PER_MATCH} coins (you've staked ${alreadyStaked})`);
+      e.code = 'MATCH_CAP'; await client.query('ROLLBACK'); throw e;
+    }
+    // Daily loss circuit breaker: net coin loss from settled bets today.
+    const lossRes = await client.query(
+      `SELECT COALESCE(-SUM(delta), 0)::int AS net_loss
+         FROM coin_transactions
+        WHERE account_id = $1
+          AND reason IN ('bet_stake','bet_payout','bet_refund')
+          AND created_at >= date_trunc('day', NOW())`,
+      [accountId],
+    );
+    const netLoss = lossRes.rows[0]?.net_loss || 0;
+    if (netLoss >= bettingEngine.BET_DAILY_LOSS_CAP) {
+      const e = new Error('Daily betting loss limit reached — come back tomorrow');
+      e.code = 'DAILY_LOSS_CAP'; await client.query('ROLLBACK'); throw e;
+    }
+    // Balance check + debit.
+    const br = await client.query(
+      `SELECT COALESCE(coin_balance, 0)::int AS balance FROM player_profiles WHERE account_id = $1 FOR UPDATE`,
+      [accountId],
+    );
+    const bal = br.rows[0]?.balance ?? 0;
+    if (bal < stakeInt) {
+      const e = new Error(`Insufficient coins (have ${bal}, need ${stakeInt})`); e.code = 'INSUFFICIENT_FUNDS'; await client.query('ROLLBACK'); throw e;
+    }
+    await client.query(`UPDATE player_profiles SET coin_balance = coin_balance - $1 WHERE account_id = $2`, [stakeInt, accountId]);
+    await client.query(
+      `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id) VALUES ($1, $2, 'bet_stake', $3)`,
+      [accountId, -stakeInt, String(market.match_id)],
+    );
+    const ins = await client.query(
+      `INSERT INTO bets (market_id, outcome_id, account_id, stake) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [marketIdInt, outcomeIdInt, accountId, stakeInt],
+    );
+    await client.query('COMMIT');
+    return ins.rows[0];
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Settle one market given its winning outcome key (or null = VOID/refund).
+// Idempotent on bet_markets.status. Pari-mutuel: winners split the whole pool
+// pro-rata; no winners => refund all stakes.
+async function _settleMarket(marketId, winningKey) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const mr = await client.query(`SELECT * FROM bet_markets WHERE id = $1 FOR UPDATE`, [marketId]);
+    if (!mr.rows.length) { await client.query('ROLLBACK'); return { settled: false }; }
+    const market = mr.rows[0];
+    if (market.status === 'settled' || market.status === 'voided') { await client.query('ROLLBACK'); return { settled: false, idempotent: true }; }
+    const outs = await client.query(`SELECT * FROM bet_market_outcomes WHERE market_id = $1`, [marketId]);
+    const bets = await client.query(`SELECT * FROM bets WHERE market_id = $1 AND status = 'placed'`, [marketId]);
+    const winningOutcome = winningKey != null ? outs.rows.find(o => o.outcome_key === String(winningKey)) : null;
+    const isVoid = winningKey == null || !winningOutcome;
+    // Build per-outcome pools.
+    const pools = {};
+    for (const o of outs.rows) pools[o.outcome_key] = 0;
+    for (const b of bets.rows) {
+      const o = outs.rows.find(x => x.id === b.outcome_id);
+      if (o) pools[o.outcome_key] = (pools[o.outcome_key] || 0) + Number(b.stake);
+    }
+    let paid = 0;
+    if (isVoid) {
+      // Refund every stake.
+      for (const b of bets.rows) {
+        await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [b.account_id]);
+        await client.query(
+          `UPDATE player_profiles SET coin_balance = COALESCE(coin_balance,0) + $1 WHERE account_id = $2`,
+          [b.stake, b.account_id],
+        );
+        // ref_match_id is intentionally NULL: a single account can be refunded
+        // across multiple markets on the same match, which would collide with
+        // the partial unique index uq_coin_tx_match_grant(account_id,
+        // ref_match_id, reason) WHERE ref_match_id IS NOT NULL AND delta > 0.
+        // The bet→match link is preserved via the bets/bet_markets tables.
+        await client.query(
+          `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id) VALUES ($1, $2, 'bet_refund', NULL)`,
+          [b.account_id, b.stake],
+        );
+        await client.query(`UPDATE bets SET status = 'refunded', payout = $1, settled_at = NOW() WHERE id = $2`, [b.stake, b.id]);
+        paid += Number(b.stake);
+      }
+      await client.query(
+        `UPDATE bet_markets SET status = 'voided', voided_at = NOW(), settled_at = NOW() WHERE id = $1`,
+        [marketId],
+      );
+    } else {
+      const plan = bettingEngine.computePayoutPlan(pools, winningOutcome.outcome_key);
+      for (const b of bets.rows) {
+        const o = outs.rows.find(x => x.id === b.outcome_id);
+        const isWinner = o && o.outcome_key === winningOutcome.outcome_key;
+        const payout = bettingEngine.payoutForBet(plan, Number(b.stake), isWinner);
+        await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [b.account_id]);
+        if (payout > 0) {
+          // Refund-all (no-winner) returns stake; otherwise it's winnings.
+          const reason = plan.refundAll ? 'bet_refund' : 'bet_payout';
+          await client.query(
+            `UPDATE player_profiles
+                SET coin_balance = COALESCE(coin_balance,0) + $1,
+                    coin_lifetime = COALESCE(coin_lifetime,0) + $2
+              WHERE account_id = $3`,
+            [payout, plan.refundAll ? 0 : Math.max(0, payout - Number(b.stake)), b.account_id],
+          );
+          // ref_match_id is intentionally NULL — see the refund branch above:
+          // one account can win several markets on the same match, which would
+          // collide with the partial unique index uq_coin_tx_match_grant.
+          await client.query(
+            `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id) VALUES ($1, $2, $3, NULL)`,
+            [b.account_id, payout, reason],
+          );
+          paid += payout;
+        }
+        const finalStatus = plan.refundAll ? 'refunded' : (isWinner ? 'won' : 'lost');
+        await client.query(`UPDATE bets SET status = $1, payout = $2, settled_at = NOW() WHERE id = $3`, [finalStatus, payout, b.id]);
+      }
+      await client.query(
+        `UPDATE bet_markets SET status = 'settled', settled_at = NOW(), winning_outcome_id = $2 WHERE id = $1`,
+        [marketId, winningOutcome.id],
+      );
+    }
+    await client.query('COMMIT');
+    return { settled: true, paid, voided: isVoid };
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Settle all open/locked markets on a recorded match. Called from the
+// recordMatch post-commit hook. Builds the settlement context once, then
+// grades each market via its adapter's settle() fn. Custom markets have no
+// adapter so they are left for an admin to void/settle manually.
+async function settleMarketsForMatch(matchId) {
+  if (!matchId) return { settled: 0, paid: 0 };
+  const p = getPool();
+  const open = await p.query(
+    `SELECT id, market_type FROM bet_markets WHERE match_id = $1 AND status IN ('open','locked')`,
+    [String(matchId)],
+  );
+  if (!open.rows.length) return { settled: 0, paid: 0 };
+  const ctx = await _buildBettingContext(matchId);
+  if (!ctx) return { settled: 0, paid: 0 };
+  let settled = 0, paid = 0;
+  for (const m of open.rows) {
+    const def = bettingEngine.MARKET_TYPES[m.market_type];
+    if (!def || typeof def.settle !== 'function') continue; // custom markets: admin-graded
+    let winningKey = null;
+    try { winningKey = def.settle(ctx); } catch (_) { winningKey = null; }
+    try {
+      const r = await _settleMarket(m.id, winningKey);
+      if (r.settled) { settled++; paid += (r.paid || 0); }
+    } catch (e) {
+      console.warn(`[Betting] settle failed for market ${m.id}:`, e.message);
+    }
+  }
+  return { settled, paid };
+}
+
+// Admin: void a single market (refund all stakes). Idempotent.
+async function voidMarket(marketId) {
+  return _settleMarket(parseInt(marketId, 10), null);
+}
+
+// Admin: manually settle a market to a chosen outcome (used for custom
+// markets that have no auto-settle adapter).
+async function settleMarketToOutcome(marketId, outcomeId) {
+  const p = getPool();
+  const o = await p.query(`SELECT outcome_key FROM bet_market_outcomes WHERE id = $1 AND market_id = $2`, [parseInt(outcomeId, 10), parseInt(marketId, 10)]);
+  if (!o.rows.length) { const e = new Error('Outcome not found for market'); e.code = 'BAD_INPUT'; throw e; }
+  return _settleMarket(parseInt(marketId, 10), o.rows[0].outcome_key);
+}
+
+// Admin: create a custom market on a match. `outcomes` is [{label}] (keys are
+// auto-assigned). Captures the match's existing player_account_ids for the
+// self-bet block.
+async function createCustomMarket({ matchId, title, outcomes, lockTrigger = 'match_start', createdBy = null }) {
+  if (!matchId || !title || !Array.isArray(outcomes) || outcomes.length < 2) {
+    const e = new Error('Custom market needs a title and at least 2 outcomes'); e.code = 'BAD_INPUT'; throw e;
+  }
+  const p = getPool();
+  // Inherit the player list from any existing market on this match.
+  const existing = await p.query(`SELECT player_account_ids FROM bet_markets WHERE match_id = $1 LIMIT 1`, [String(matchId)]);
+  const playerAccountIds = (existing.rows[0]?.player_account_ids || []).map(Number);
+  const built = outcomes
+    .map((o, i) => ({ key: `c${i}`, label: String(o.label || '').trim().slice(0, 120), sortOrder: i }))
+    .filter(o => o.label);
+  if (built.length < 2) { const e = new Error('Need at least 2 non-empty outcomes'); e.code = 'BAD_INPUT'; throw e; }
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const id = await _insertMarket(client, {
+      matchId, marketType: 'custom', title: String(title).slice(0, 120),
+      lockTrigger, outcomes: built, isCustom: true, createdBy, playerAccountIds,
+    });
+    await client.query('COMMIT');
+    if (!id) { const e = new Error('A market with that title already exists on this match'); e.code = 'DUPLICATE'; throw e; }
+    return { id };
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Per-account betting profile: lifetime staked / won / net, win-rate, and a
+// by-market-type breakdown, plus recent settled bets.
+async function getBettingStats(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const totals = await p.query(
+    `SELECT
+        COUNT(*)::int AS total_bets,
+        COUNT(*) FILTER (WHERE b.status = 'won')::int AS wins,
+        COUNT(*) FILTER (WHERE b.status = 'lost')::int AS losses,
+        COUNT(*) FILTER (WHERE b.status = 'refunded')::int AS refunds,
+        COUNT(*) FILTER (WHERE b.status = 'placed')::int AS open_bets,
+        COALESCE(SUM(b.stake), 0)::int AS total_staked,
+        COALESCE(SUM(b.payout) FILTER (WHERE b.status IN ('won','refunded')), 0)::int AS total_returned
+       FROM bets b WHERE b.account_id = $1`,
+    [accountId],
+  );
+  const byType = await p.query(
+    `SELECT bm.market_type,
+            COUNT(*)::int AS bets,
+            COUNT(*) FILTER (WHERE b.status = 'won')::int AS wins,
+            COALESCE(SUM(b.stake), 0)::int AS staked,
+            COALESCE(SUM(b.payout) FILTER (WHERE b.status IN ('won','refunded')), 0)::int AS returned
+       FROM bets b JOIN bet_markets bm ON bm.id = b.market_id
+      WHERE b.account_id = $1 AND b.status IN ('won','lost','refunded')
+      GROUP BY bm.market_type
+      ORDER BY bets DESC`,
+    [accountId],
+  );
+  const recent = await p.query(
+    `SELECT b.id, b.stake, b.payout, b.status, b.created_at, b.settled_at,
+            bm.match_id, bm.market_type, bm.title, o.label AS outcome_label
+       FROM bets b
+       JOIN bet_markets bm ON bm.id = b.market_id
+       JOIN bet_market_outcomes o ON o.id = b.outcome_id
+      WHERE b.account_id = $1
+      ORDER BY b.id DESC LIMIT 20`,
+    [accountId],
+  );
+  const t = totals.rows[0] || {};
+  const settled = (t.wins || 0) + (t.losses || 0);
+  return {
+    total_bets: t.total_bets || 0,
+    wins: t.wins || 0,
+    losses: t.losses || 0,
+    refunds: t.refunds || 0,
+    open_bets: t.open_bets || 0,
+    total_staked: t.total_staked || 0,
+    total_returned: t.total_returned || 0,
+    net: (t.total_returned || 0) - (t.total_staked || 0),
+    win_rate: settled > 0 ? Math.round((t.wins / settled) * 100) : 0,
+    by_market: byType.rows.map(r => ({
+      market_type: r.market_type,
+      bets: r.bets,
+      wins: r.wins,
+      staked: r.staked,
+      returned: r.returned,
+      net: (r.returned || 0) - (r.staked || 0),
+    })),
+    recent: recent.rows,
+  };
+}
+
 // Coin pack purchases — Stripe-backed real-money top-ups.
 async function recordCoinPackPurchase({ accountId, stripeSessionId, packId, coins, amountCents, currency = 'aud' }) {
   const p = getPool();
@@ -23436,6 +24054,18 @@ module.exports = {
   getWagersForMatch,
   getMyWagerForMatch,
   resolveCoinWagers,
+  // Task #450 — inhouse coin betting (full markets)
+  getBettingPaused,
+  setBettingPaused,
+  openMarketsForMatch,
+  lockMarketsForMatch,
+  getMarketsForMatch,
+  placeBet,
+  settleMarketsForMatch,
+  voidMarket,
+  settleMarketToOutcome,
+  createCustomMarket,
+  getBettingStats,
   recordCoinPackPurchase,
   markCoinPackCompleted,
   creditCoinPackAtomically,

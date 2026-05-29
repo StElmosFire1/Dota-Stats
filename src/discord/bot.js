@@ -138,6 +138,33 @@ class DiscordBot {
       } catch (e) {
         console.warn('[Predictions] open-window hook failed:', e.message);
       }
+      // Task #450 — open the coin betting markets for this match on the same
+      // post-draft lobby-lock signal. Captures the 10 drafted players so the
+      // MVP market has outcomes and the self-bet block works before
+      // player_stats rows exist. Best-effort — never blocks the prediction
+      // window or the channel notify above.
+      try {
+        const db = require('../db');
+        if (typeof db.openMarketsForMatch !== 'function') return;
+        const lobby = this._lobbyManager?.currentLobby || {};
+        const players = [];
+        for (const pl of (lobby.players || [])) {
+          if (pl.team !== 0 && pl.team !== 1) continue;
+          let aid = pl.accountId || null;
+          if (!aid && pl.steamId) {
+            try { aid = Number(BigInt(pl.steamId) - 76561197960265728n); } catch (_) { aid = null; }
+          }
+          if (!aid) continue;
+          players.push({
+            accountId: aid,
+            name: pl.name || pl.personaName || null,
+            team: pl.team === 0 ? 'radiant' : 'dire',
+          });
+        }
+        await db.openMarketsForMatch(matchId, { players });
+      } catch (e) {
+        console.warn('[Betting] open-markets hook failed:', e.message);
+      }
     });
 
     lobbyManager.on('matchStarted', async (lobby) => {
@@ -151,6 +178,20 @@ class DiscordBot {
         if (lobby?.matchId) this._schedulePredictionLockOnFirstBlood(lobby.matchId);
       } catch (e) {
         console.warn('[Predictions] first-blood lock scheduler failed:', e.message);
+      }
+      // Task #450 — lobby launch / match start. Lock every betting market
+      // whose trigger fires here (first_blood, mvp, duration, total_kills).
+      // The Winner market locks later on first-blood (handled by the
+      // prediction first-blood poll below).
+      try {
+        const db = require('../db');
+        if (lobby?.matchId && typeof db.lockMarketsForMatch === 'function') {
+          await db.lockMarketsForMatch(lobby.matchId, [
+            ...require('../betting/markets').TRIGGERS_ON_MATCH_START,
+          ]);
+        }
+      } catch (e) {
+        console.warn('[Betting] match-start lock failed:', e.message);
       }
       // Move players into their team voice channels.
       await this._movePlayersToVoiceChannels(lobby).catch(e =>
@@ -2645,6 +2686,15 @@ class DiscordBot {
         console.log(`[Predictions] locked window for match ${matchId} (${reason})`);
       } catch (e) {
         console.warn(`[Predictions] lock failed for match ${matchId}:`, e.message);
+      }
+      // Task #450 — first-blood is also the Winner betting market's lock
+      // trigger. Piggy-back on the same poll so we don't run two timers.
+      try {
+        if (typeof db.lockMarketsForMatch === 'function') {
+          await db.lockMarketsForMatch(matchId, require('../betting/markets').TRIGGERS_ON_FIRST_BLOOD);
+        }
+      } catch (e) {
+        console.warn(`[Betting] first-blood lock failed for match ${matchId}:`, e.message);
       }
       cancel();
     };

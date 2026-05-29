@@ -117,6 +117,7 @@ const {
   setExpoFanOut,
 } = require('../notify');
 setExpoFanOut(_fanOutExpoPush);
+const bettingConfig = require('../betting/markets');
 const { getReplayParser } = require('../replay/replayParser');
 const { getStatsService } = require('../stats/statsService');
 const { generateChatResponse, generateWeeklyRecapBlurb } = require('../services/groqService');
@@ -16054,6 +16055,137 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       });
     } catch (e) {
       console.error('[API] GET /predictions/:matchRef/wager:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // =====================================================================
+  // Task #450 — Inhouse coin betting (full markets). Full edition only.
+  // Markets engine lives in src/db/index.js + src/betting/markets.js.
+  // =====================================================================
+  // Read model: all markets on a match with pools + the viewer's own bets.
+  router.get('/inhouse/:matchId/markets', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId || null;
+      const [markets, paused] = await Promise.all([
+        db.getMarketsForMatch(req.params.matchId, accountId),
+        db.getBettingPaused(),
+      ]);
+      let balance = null;
+      if (accountId) {
+        try { balance = (await db.getCoinBalance(accountId)).balance; } catch (_) {}
+      }
+      res.json({
+        markets,
+        paused,
+        balance,
+        signedIn: Boolean(accountId),
+        limits: {
+          min: bettingConfig.BET_MIN_STAKE,
+          maxPerMarket: bettingConfig.BET_MAX_STAKE_PER_MARKET,
+          maxPerMatch: bettingConfig.BET_MAX_STAKE_PER_MATCH,
+        },
+      });
+    } catch (e) {
+      console.error('[API] GET /inhouse/:matchId/markets:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Place a bet on a market.
+  router.post('/inhouse/markets/:marketId/bet', publicWriteLimiter, express.json(), async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to bet.' });
+    try {
+      const bet = await db.placeBet({
+        accountId,
+        marketId: req.params.marketId,
+        outcomeId: req.body?.outcomeId,
+        stake: req.body?.stake,
+      });
+      let balance = null;
+      try { balance = (await db.getCoinBalance(accountId)).balance; } catch (_) {}
+      res.json({ bet, balance });
+    } catch (e) {
+      const map = {
+        INSUFFICIENT_FUNDS: 402, ALREADY_BET: 409, MARKET_CLOSED: 409,
+        SELF_BET: 403, BAD_INPUT: 400, NOT_FOUND: 404, BETTING_PAUSED: 423,
+        STAKE_TOO_HIGH: 400, MATCH_CAP: 409, DAILY_LOSS_CAP: 429, AUTH: 401,
+      };
+      if (map[e.code]) return res.status(map[e.code]).json({ error: e.message });
+      console.error('[API] POST /inhouse/markets/:marketId/bet:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Signed-in user's own betting profile (lifetime + by-market breakdown).
+  router.get('/me/betting-stats', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam.' });
+    try {
+      res.json({ stats: await db.getBettingStats(accountId) });
+    } catch (e) {
+      console.error('[API] GET /me/betting-stats:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Public betting profile for a player's profile page.
+  router.get('/player/:id/betting-stats', async (req, res) => {
+    try {
+      if (await db.isAccountHidden(req.params.id)) return res.json({ stats: null });
+      res.json({ stats: await db.getBettingStats(req.params.id) });
+    } catch (e) {
+      console.error('[API] GET /player/:id/betting-stats:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin: betting kill-switch (pause/resume all bet placement).
+  router.post('/admin/betting/pause', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const paused = await db.setBettingPaused(Boolean(req.body?.paused));
+      res.json({ paused });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin: void a market (refund every stake).
+  router.post('/admin/betting/markets/:marketId/void', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const r = await db.voidMarket(req.params.marketId);
+      res.json(r);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin: manually settle a market to a chosen outcome (custom markets).
+  router.post('/admin/betting/markets/:marketId/settle', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const r = await db.settleMarketToOutcome(req.params.marketId, req.body?.outcomeId);
+      res.json(r);
+    } catch (e) {
+      if (e.code === 'BAD_INPUT') return res.status(400).json({ error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin: create a custom market on a match.
+  router.post('/admin/inhouse/:matchId/markets/custom', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const r = await db.createCustomMarket({
+        matchId: req.params.matchId,
+        title: req.body?.title,
+        outcomes: req.body?.outcomes,
+        lockTrigger: req.body?.lockTrigger || 'match_start',
+        createdBy: req.session?.accountId ? String(req.session.accountId) : 'admin',
+      });
+      res.json(r);
+    } catch (e) {
+      if (e.code === 'BAD_INPUT') return res.status(400).json({ error: e.message });
+      if (e.code === 'DUPLICATE') return res.status(409).json({ error: e.message });
       res.status(500).json({ error: e.message });
     }
   });

@@ -1044,6 +1044,21 @@ export default function Inhouse() {
                     🔴 Watch live
                   </Link>
                 )}
+                {/* Task #450 — coin betting markets for the live match. */}
+                {liveSpectate.matchId && (
+                  <Link
+                    to={`/inhouse/${liveSpectate.matchId}/markets`}
+                    aria-label={`Coin betting markets for match ${liveSpectate.matchId}`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '3px 10px', borderRadius: 999,
+                      background: 'rgba(197,169,117,0.18)', color: 'var(--brass)',
+                      fontSize: 11, fontWeight: 700, letterSpacing: 0.6,
+                      border: '1px solid #c5a97555', textDecoration: 'none',
+                    }}>
+                    🪙 Markets
+                  </Link>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                 <span style={{

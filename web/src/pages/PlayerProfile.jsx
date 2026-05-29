@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerAnniversary, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks, getDraftTrainerAccuracy } from '../api';
+import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerAnniversary, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks, getDraftTrainerAccuracy, getPlayerBettingStats } from '../api';
 import Dialog from '../components/Dialog';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
@@ -895,6 +895,7 @@ export default function PlayerProfile() {
   const [rawWinRateHistory, setRawWinRateHistory] = useState([]);
   const [wrWindow, setWrWindow] = useState(5);
   const [predictionStats, setPredictionStats] = useState(null);
+  const [bettingStats, setBettingStats] = useState(null);
   const [heroCounters, setHeroCounters] = useState([]);
   const [streak, setStreak] = useState(null);
   // Task #205 — live presence chip. Polled every 30s while the tab is visible.
@@ -1111,6 +1112,15 @@ export default function PlayerProfile() {
     }).catch(() => { if (!cancelled) setItemBenchmarks(null); });
     return () => { cancelled = true; };
   }, [accountId, seasonId]);
+
+  // Task #450 — public coin-betting profile widget.
+  useEffect(() => {
+    let cancelled = false;
+    getPlayerBettingStats(accountId)
+      .then(d => { if (!cancelled) setBettingStats(d?.stats || null); })
+      .catch(() => { if (!cancelled) setBettingStats(null); });
+    return () => { cancelled = true; };
+  }, [accountId]);
 
   // v5.82 — fetch the #1 leaderboard player so we can promote their MmrBadge
   // to "King" (every other player tops out at "Warlord").
@@ -2036,6 +2046,35 @@ export default function PlayerProfile() {
                   card('Current Streak', curr, curr >= 3 ? 'var(--amber, #f59e0b)' : 'var(--text-primary)'),
                   card('Best Streak', best, 'var(--brass, #c5a975)'),
                 ] : []),
+              ];
+            })()}
+          </div>
+        </section>
+      )}
+
+      {/* Task #450 — PUBLIC coin-betting profile. /player/:id/betting-stats
+          is open (returns null for hidden accounts). */}
+      {bettingStats && bettingStats.total_bets > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-title">🪙 Coin Betting</h2>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {(() => {
+              const card = (label, value, color = 'var(--text-primary)') => (
+                <div key={label} style={{
+                  background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+                  padding: '14px 20px', minWidth: 110, textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
+                </div>
+              );
+              const net = bettingStats.net || 0;
+              return [
+                card('Bets Placed', bettingStats.total_bets),
+                card('Won', bettingStats.wins, 'var(--accent-green)'),
+                card('Win Rate', `${bettingStats.win_rate}%`, bettingStats.win_rate >= 50 ? 'var(--accent-green)' : 'var(--accent-red)'),
+                card('Coins Staked', `🪙 ${bettingStats.total_staked}`, 'var(--brass, #c5a975)'),
+                card('Net', `${net >= 0 ? '+' : ''}${net}`, net >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'),
               ];
             })()}
           </div>

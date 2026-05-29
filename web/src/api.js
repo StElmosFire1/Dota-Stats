@@ -2183,6 +2183,21 @@ async function _postJson(path, body) {
   return data;
 }
 
+// Task #450 — Inhouse coin betting (full markets).
+export const getInhouseMarkets = (matchId) => _getJson(`/inhouse/${encodeURIComponent(matchId)}/markets`);
+export const placeInhouseBet = (marketId, outcomeId, stake) =>
+  _postJson(`/inhouse/markets/${encodeURIComponent(marketId)}/bet`, { outcomeId, stake });
+export const getMyBettingStats = () => _getJson('/me/betting-stats');
+export const getPlayerBettingStats = (accountId) => _getJson(`/player/${encodeURIComponent(accountId)}/betting-stats`);
+export const adminSetBettingPaused = (paused, superuserKey) =>
+  superuserJson('/admin/betting/pause', { method: 'POST', body: { paused }, superuserKey });
+export const adminVoidBetMarket = (marketId, superuserKey) =>
+  superuserJson(`/admin/betting/markets/${encodeURIComponent(marketId)}/void`, { method: 'POST', superuserKey });
+export const adminSettleBetMarket = (marketId, outcomeId, superuserKey) =>
+  superuserJson(`/admin/betting/markets/${encodeURIComponent(marketId)}/settle`, { method: 'POST', body: { outcomeId }, superuserKey });
+export const adminCreateCustomMarket = (matchId, payload, superuserKey) =>
+  superuserJson(`/admin/inhouse/${encodeURIComponent(matchId)}/markets/custom`, { method: 'POST', body: payload, superuserKey });
+
 // Task #384 — Coaching v2: group sessions, async VOD review, earnings.
 export const listOpenGroupSessions = () => _getJson('/group-sessions');
 export const getGroupSession = (id) => _getJson(`/group-sessions/${id}`);
